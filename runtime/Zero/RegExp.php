@@ -100,7 +100,8 @@ final class RegExp implements \Stringable
     public function execMatch(string $s): ?array
     {
         $stateful = $this->global || $this->sticky;
-        $offset = $stateful ? max(0, Js::toInteger(Js::toNumber($this->lastIndex))) : 0;
+        $index = max(0, Js::toInteger(Js::toNumber($this->lastIndex)));
+        $offset = $stateful ? $index : 0;
         if ($offset > Js::length($s)) { $this->lastIndex = 0; return null; }
         if (!$this->unicode && $this->requiresUnitMatching && preg_match('/[\x{10000}-\x{10FFFF}]/u', $s) === 1) {
             throw new JsError('This RegExp on astral text requires the u flag', 'RangeError');

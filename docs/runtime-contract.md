@@ -574,6 +574,11 @@ capture-number boundaries and named captures.
 Repeated groups containing captures are refused in every phase: Rust/PCRE
 retain captures from earlier iterations where JavaScript clears them. Regex
 literals receive located diagnostics; dynamically constructed patterns throw.
+Large parseInt results are supported for base 10 and power-of-two bases; other
+radices require safe integer results to avoid engine-specific approximations.
+Known unsupported literals are refused at source; dynamic values throw explicitly.
+PHP and Rust power-of-two parsing round once from the significant bits.
+Database builder calls also use the shared source arity contract.
 Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 

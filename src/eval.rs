@@ -2319,7 +2319,20 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
             Value::Str(value) => Value::str(&crate::uri::encode(&value, g == "encodeURIComponent")),
             _ => return err(span, format!("`{g}` needs a string")),
         },
-        "parseInt" => Value::Num(parse_int(&arg(0).to_js_string().unwrap_or_default(), &arg(1))),
+        "parseInt" => {
+            let value = crate::num::parse_int(
+                &arg(0).to_js_string().unwrap_or_default(),
+                crate::num::to_int32(to_number(&arg(1))),
+            );
+            let Some(value) = value else {
+                return err_help(
+                    span,
+                    crate::builtins::UNSAFE_RADIX,
+                    "use base 10, a power-of-two base, or a safe integer result",
+                );
+            };
+            Value::Num(value)
+        }
         "parseFloat" => Value::Num(parse_float(&arg(0).to_js_string().unwrap_or_default())),
         "isNaN" => Value::Bool(to_number(&arg(0)).is_nan()),
         "isFinite" => Value::Bool(to_number(&arg(0)).is_finite()),
@@ -2685,39 +2698,6 @@ fn parse_float(s: &str) -> f64 {
         candidate.pop();
     }
     f64::NAN
-}
-
-fn parse_int(s: &str, radix: &Value) -> f64 {
-    let mut t = s.trim_start_matches(crate::num::is_js_whitespace);
-    let mut sign = 1.0;
-    if let Some(r) = t.strip_prefix('-') {
-        sign = -1.0;
-        t = r;
-    } else if let Some(r) = t.strip_prefix('+') {
-        t = r;
-    }
-    let mut radix = match radix {
-        Value::Undef => 0,
-        v => crate::num::to_int32(to_number(v)),
-    };
-    if (radix == 0 || radix == 16) && (t.starts_with("0x") || t.starts_with("0X")) {
-        t = &t[2..];
-        radix = 16;
-    }
-    if radix == 0 {
-        radix = 10;
-    }
-    if !(2..=36).contains(&radix) {
-        return f64::NAN;
-    }
-    let digits: Vec<u32> = t.chars().map_while(|c| c.to_digit(radix as u32)).collect();
-    if digits.is_empty() {
-        return f64::NAN;
-    }
-    if radix == 10 {
-        return sign * t[..digits.len()].parse::<f64>().unwrap_or(f64::INFINITY);
-    }
-    sign * crate::num::radix_number(&digits, radix as u32)
 }
 
 fn slice_bounds(len: f64, start: &Value, end: &Value) -> (usize, usize) {

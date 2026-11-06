@@ -8,6 +8,13 @@ namespace Zero;
 final class Builtins
 {
     private const ARITIES = [
+        'db.insert' => null,
+        'db.update' => null,
+        'db.delete' => null,
+        'db.builder.values' => null,
+        'db.builder.set' => null,
+        'db.builder.where' => null,
+        'db.builder.returning' => null,
         'global.String' => [0, 1],
         'global.Number' => [0, 1],
         'global.Boolean' => [0, 1],

@@ -49,8 +49,11 @@ const fn overload(
 // Columns: surface, names, overload, evaluator arity, emitter arity, runtime arity.
 #[rustfmt::skip]
 pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
+    ("db", &["insert", "update", "delete"], overload("collection: Collection", None, arity(1, 1), None)),
+    ("db.builder", &["values", "set", "where"], overload("one values, changes or filter object", None, arity(1, 1), None)),
+    ("db.builder", &["returning"], overload("no arguments", None, arity(0, 0), None)),
     ("global", &["String", "Number", "Boolean"], overload("value?: unknown", arity(0, 1), arity(0, 1), arity(0, 1))),
-    ("global", &["parseInt"], overload("text: string, radix?: number", arity(1, 2), arity(1, 2), arity(0, 2))),
+    ("global", &["parseInt"], overload("text: string, radix?: number; other than base 10/powers of two: safe integers only", arity(1, 2), arity(1, 2), arity(0, 2))),
     ("global", &["parseFloat"], overload("text: string", arity(1, 1), arity(1, 1), arity(0, 1))),
     ("global", &["isFinite", "isNaN"], overload("value?: unknown", arity(0, 1), arity(0, 1), arity(0, 1))),
     ("global", &["encodeURI", "encodeURIComponent"], overload("text: string", arity(1, 1), arity(1, 1), arity(1, 1))),
@@ -71,7 +74,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("Array", &["of"], overload("...values: unknown[]", None, None, arity(0, VARIADIC))),
     ("Number", &["isInteger", "isFinite"], overload("value?: unknown", arity(0, 1), arity(0, 1), arity(0, 1))),
     ("Number", &["isNaN"], overload("value?: unknown", None, None, arity(0, 1))),
-    ("Number", &["parseInt"], overload("text: string, radix?: number", None, arity(1, 2), arity(0, 2))),
+    ("Number", &["parseInt"], overload("text: string, radix?: number; other than base 10/powers of two: safe integers only", None, arity(1, 2), arity(0, 2))),
     ("Number", &["parseFloat"], overload("text: string", None, arity(1, 1), arity(0, 1))),
     ("JSON", &["stringify"], overload("runtime-only value: data, null|undefined, space?: number|string", None, arity(1, 3), arity(0, 3))),
     ("JSON", &["parse"], overload("text: string, reviver?: null|undefined", None, arity(1, 2), arity(1, 2))),
@@ -131,6 +134,35 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("function", &["apply"], overload("thisArg?: unknown, arguments?: array-like", None, None, arity(0, 2))),
     ("function", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
 ];
+
+pub const UNSAFE_RADIX: &str = "parseInt with this radix requires a safe integer result";
+
+pub fn check_parse_int_literals(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {
+    use crate::ir::{ArrEl, ExprKind, UnOp};
+    let Some(ArrEl::Item(text)) = args.first() else {
+        return Ok(());
+    };
+    let ExprKind::Str(text) = &text.kind else {
+        return Ok(());
+    };
+    let radix = match args.get(1) {
+        None => 0,
+        Some(ArrEl::Item(expr)) => match &expr.kind {
+            ExprKind::Undefined | ExprKind::Null => 0,
+            ExprKind::Num(n) => crate::num::to_int32(*n),
+            ExprKind::Unary(UnOp::Neg, expr) => match expr.kind {
+                ExprKind::Num(n) => crate::num::to_int32(-n),
+                _ => return Ok(()),
+            },
+            _ => return Ok(()),
+        },
+        _ => return Ok(()),
+    };
+    if crate::num::parse_int(text, radix).is_none() {
+        return Err(Diag::new(span, UNSAFE_RADIX).help("use base 10, a power-of-two base, or a safe integer result"));
+    }
+    Ok(())
+}
 
 pub fn contract(surface: &str, name: &str) -> Option<Contract> {
     CONTRACTS

@@ -157,6 +157,41 @@ pub fn php_number(x: f64) -> String {
     }
 }
 
+/// None refuses implementation-dependent large non-binary radix approximations.
+pub fn parse_int(s: &str, mut radix: i32) -> Option<f64> {
+    let mut t = s.trim_start_matches(is_js_whitespace);
+    let mut sign = 1.0;
+    if let Some(r) = t.strip_prefix('-') {
+        sign = -1.0;
+        t = r;
+    } else if let Some(r) = t.strip_prefix('+') {
+        t = r;
+    }
+    if (radix == 0 || radix == 16) && (t.starts_with("0x") || t.starts_with("0X")) {
+        t = &t[2..];
+        radix = 16;
+    }
+    if radix == 0 {
+        radix = 10;
+    }
+    if !(2..=36).contains(&radix) {
+        return Some(f64::NAN);
+    }
+    let digits: Vec<u32> = t.chars().map_while(|c| c.to_digit(radix as u32)).collect();
+    if digits.is_empty() {
+        return Some(f64::NAN);
+    }
+    if radix == 10 {
+        return Some(sign * t[..digits.len()].parse::<f64>().unwrap_or(f64::INFINITY));
+    }
+    let value = sign * radix_number(&digits, radix as u32);
+    if !(radix as u32).is_power_of_two() && value.abs() > 9007199254740991.0 {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -955,6 +955,8 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "JSON.stringify({a: 1}, null, 2)",
         "parseFloat('1', 2)",
         "Math.abs(1, 2)",
+        "parseInt('120101100002111211120012010111012200200201', 3)",
+        "parseInt('14mnsu689fka', 36)",
     ] {
         for handler in [false, true] {
             // These contracts have different evaluator and emitter support.
@@ -1050,4 +1052,46 @@ fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
         assert_eq!(diagnostic["location"]["line"], 3);
         assert!(diagnostic["help"].as_str().unwrap().contains("one options object"));
     }
+}
+
+#[test]
+fn database_builders_refuse_discarded_arguments_at_the_call_site() {
+    for expression in [
+        "db.insert(notes, n++).values({count: 1})",
+        "db.insert(notes).values({count: 1}, n++)",
+        "db.delete(notes).where({id: 1}, n++)",
+        "db.insert(notes).values({count: 1}).returning(n++)",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig, table, id, integer, db}} from 'zero';\nconst notes=table({{id:id(),count:integer()}});\nexport default defineConfig({{name:'builderarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains("unsupported overload"),
+            "{report}"
+        );
+        assert_eq!(diagnostic["location"]["line"], 3);
+        assert!(diagnostic["help"].as_str().unwrap().contains("accepted contract"));
+    }
+}
+
+#[test]
+fn dynamic_large_radix_values_fail_as_an_explicit_runtime_refusal() {
+    let actual = php(
+        r#"
+        require $argv[1];
+        try {
+            \Zero\Js::parseInt('120101100002111211120012010111012200200201', 3);
+            echo json_encode(['accepted']);
+        } catch (\Zero\JsError $error) {
+            echo json_encode([$error->jsName, $error->getMessage()]);
+        }
+    "#,
+        &[&root().join("runtime/Zero/bootstrap.php")],
+    );
+    assert_eq!(
+        actual,
+        serde_json::json!(["RangeError", "parseInt with this radix requires a safe integer result"])
+    );
 }

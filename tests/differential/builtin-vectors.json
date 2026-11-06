@@ -304,5 +304,32 @@
     "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; const removed = a.splice(start, 1); const b = [1, 2, 3]; const fillStart = {valueOf: () => { b.push(4); return -1; }}; b.fill(9, fillStart); const c = [[1]]; const depth = {valueOf: () => { c.push([2]); return 1; }}; const flat = c.flat(depth); return [removed, a, b, flat, c]; })()",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "powerRadixRounding",
+    "expression": "[String(Number('0x8000000000000401')), String(parseInt('8000000000000401', 16)), String(parseInt('1307241560772262162000771522276664', 8)), String(parseInt('17b3revv1th40667rv0', 32)), String(parseInt('1000000000000081', 16)), String(parseInt('20000000000001', 16)), String(parseInt('20000000000003', 16)), String(Number('0x' + 'f'.repeat(256)))]",
+    "fold": true
+  },
+  {
+    "name": "safeNonBinaryRadix",
+    "expression": "[parseInt('1000000000000000000000000000000', 3), parseInt('zzzzzzzzzz', 36), parseInt('10', 4294967299)]",
+    "fold": true
+  },
+  {
+    "name": "lazyPaddingCoercion",
+    "expression": "(() => { let n = 0; const fill = {toString: () => { n++; return 'x'; }}; return ['abc'.padStart(0, fill), 'abc'.padEnd(3, fill), n, 'abc'.padStart(4, fill), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "nonGlobalRegexCoercion",
+    "expression": "(() => { let n = 0; const r = /a/; r.lastIndex = {valueOf: () => { n++; return 99; }}; return [r.test('a'), n, 'a'.match(r) !== null, n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "javascriptLazyPaddingCoercion",
+    "expression": "(() => { let n = 0; const fill = {toString: () => { n++; return 'x'; }}; return ['abc'.padStart(0, fill), 'abc'.padEnd(3, fill), n, 'abc'.padStart(4, fill), n]; })()",
+    "fold": false,
+    "javascript": true
   }
 ]

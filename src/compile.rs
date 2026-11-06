@@ -4308,6 +4308,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         self.builtin_args("global", g, args, span)?;
+        if g == "parseInt" {
+            crate::builtins::check_parse_int_literals(args, span)?;
+        }
         if matches!(g, "Error" | "TypeError" | "RangeError") {
             return self.error_constructor(g, args);
         }
@@ -4380,6 +4383,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         self.builtin_args(g, m, args, span)?;
+        if (g, m) == ("Number", "parseInt") {
+            crate::builtins::check_parse_int_literals(args, span)?;
+        }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
             && matches!(g, "Math" | "Array" | "Object" | "Number" | "JSON")
@@ -5754,6 +5760,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
         };
+        crate::builtins::check("db", m, args.len(), crate::builtins::Phase::Emitter, span)?;
         let t = self.arg(args, 0, span, "a collection")?;
         let v = self.expr(t)?;
         let Ty::Collection(table) = v.ty else {
@@ -5773,6 +5780,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn builder_call(&mut self, mut b: Builder, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        crate::builtins::check("db.builder", m, args.len(), crate::builtins::Phase::Emitter, span)?;
         match (b.kind.clone(), m) {
             (BuilderKind::Insert, "values") if b.values.is_none() => {
                 let x = self.arg(args, 0, span, "values")?;

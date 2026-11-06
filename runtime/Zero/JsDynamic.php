@@ -257,7 +257,7 @@ trait JsDynamic
                 'trim' => self::trim($receiver), 'trimStart' => self::trimStart($receiver), 'trimEnd' => self::trimEnd($receiver),
                 'charAt' => self::charAt($receiver, self::toNumber($get(0, 0))),
                 'at' => self::strAt($receiver, self::toNumber($get(0, 0))) ?? JsUndefined::Value,
-                'padStart', 'padEnd' => self::{$name}($receiver, self::toNumber($get(0)), $get(1) === JsUndefined::Value ? ' ' : self::str($get(1))),
+                'padStart', 'padEnd' => self::dynamicPad($receiver, $name, $get(0), $get(1)),
                 'charCodeAt' => self::dynamicCharCodeAt($receiver, self::toNumber($get(0, 0))),
                 'slice' => self::slice($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
                 'substring' => self::substring($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
@@ -301,6 +301,13 @@ trait JsDynamic
     {
         if (!$callback instanceof \Closure) { throw new JsError('Callback is not a function', 'TypeError'); }
         return $callback;
+    }
+
+    private static function dynamicPad(string $source, string $method, mixed $length, mixed $fill): string
+    {
+        $length = self::toInteger(self::toNumber($length));
+        if ($length <= self::length($source)) { return $source; }
+        return self::{$method}($source, $length, $fill === JsUndefined::Value ? ' ' : self::str($fill));
     }
 
     private static function dynamicArrayAt(JsArray $source, mixed $index): mixed

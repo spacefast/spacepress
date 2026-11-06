@@ -183,6 +183,9 @@ final class Js
         if ($used === 0) {
             return NAN;
         }
+        if ($r !== 10 && ($r & ($r - 1)) !== 0 && $value > 9007199254740991) {
+            throw new JsError('parseInt with this radix requires a safe integer result', 'RangeError');
+        }
         if ($r === 10 && $used > 15) {
             $value = (float) substr($s, 0, $used); // correctly rounded, like V8
         }
@@ -215,6 +218,10 @@ final class Js
     private static function parseDigits(string $s, int $radix): array
     {
         $value = 0;
+        $width = match ($radix) { 2 => 1, 4 => 2, 8 => 3, 16 => 4, 32 => 5, default => null };
+        $bits = '';
+        $bitLength = 0;
+        $sticky = false;
         $len = strlen($s);
         for ($i = 0; $i < $len; $i++) {
             $c = ord($s[$i]);
@@ -227,9 +234,25 @@ final class Js
             if ($d >= $radix) {
                 break;
             }
-            $value = $value * $radix + $d; // int overflows to float on its own
+            if ($width === null) {
+                $value = $value * $radix + $d;
+            } else {
+                $piece = str_pad(decbin($d), $width, '0', STR_PAD_LEFT);
+                if ($bitLength === 0) { $piece = ltrim($piece, '0'); }
+                $room = max(0, 54 - strlen($bits));
+                $bits .= substr($piece, 0, $room);
+                $sticky = $sticky || str_contains(substr($piece, $room), '1');
+                $bitLength += strlen($piece);
+            }
         }
-
+        if ($width !== null) {
+            $value = bindec(substr($bits, 0, 53));
+            if ($bitLength > 1024) { $value = INF; }
+            elseif ($bitLength > 53) {
+                if ($bits[53] === '1' && ($sticky || ($value & 1) === 1)) { $value++; }
+                $value *= 2.0 ** ($bitLength - 53);
+            }
+        }
         return [$value, $i];
     }
 

@@ -153,7 +153,7 @@ function defaultArgument(value: string = "fallback") {
 
 function argumentSemantics(first: string, ...tail: string[]) {
   const read = () => arguments[0];
-  const initial = { array: Array.isArray(arguments), string: String(arguments), json: JSON.stringify(arguments) };
+  const initial = { array: Array.isArray(arguments), string: String(arguments) };
   arguments[0] = "changed";
   arguments[3] = "extra";
   arguments.length = 1;
@@ -163,6 +163,10 @@ function argumentSemantics(first: string, ...tail: string[]) {
 }
 
 const BUILD_TIME_ARGUMENT_SEMANTICS = argumentSemantics("original", "tail");
+
+function argumentSerialization(...values: string[]) {
+  return JSON.stringify(arguments);
+}
 const ITEMS: Item[] = [
   { name: "Oat Milk", qty: 2, tags: ["dairy-free"] },
   { name: "eggs", qty: 0, tags: [] },
@@ -428,6 +432,7 @@ export default defineConfig({
     ...laneRefs,
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
+    argumentSerialization: run(() => argumentSerialization("original", "tail")),
     languageTypes: run(() => {
       const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
       const guard = isNamed;

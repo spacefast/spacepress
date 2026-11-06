@@ -4556,7 +4556,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 Out::atom(format!("\\Zero\\Js::fromEntries({})", php_args()), Ty::Map(Box::new(t)))
             }
-            ("Object", "hasOwn") => Out::atom(format!("\\Zero\\Js::hasOwn({})", php_args()), Ty::Bool),
+            ("Object", "hasOwn") => {
+                if a0.is_some_and(|value| value.ty.all(|ty| matches!(ty, Ty::Fn(..) | Ty::Class(_)))) {
+                    return err_help(
+                        span,
+                        "Object.hasOwn on functions isn't supported",
+                        "inspect a plain object, array or primitive value",
+                    );
+                }
+                Out::atom(
+                    format!(
+                        "\\Zero\\Js::dynamicStaticCall('Object', 'hasOwn', new \\Zero\\JsArray([{}]))",
+                        php_args()
+                    ),
+                    Ty::Bool,
+                )
+            }
             ("Array", "isArray") => Out::atom(
                 format!(
                     "({0} instanceof \\Zero\\JsArray)",
@@ -4569,19 +4584,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Number", "parseInt") => Out::atom(format!("\\Zero\\Js::parseInt({})", php_args()), Ty::Num),
             ("Number", "parseFloat") => Out::atom(format!("\\Zero\\Js::parseFloat({})", php_args()), Ty::Num),
             ("JSON", "stringify") => {
-                let t = Ty::Str;
+                let t = if a0.is_some_and(|value| {
+                    value
+                        .ty
+                        .all(|ty| !matches!(ty, Ty::Undefined | Ty::Unknown | Ty::Dynamic | Ty::Fn(..)))
+                }) {
+                    Ty::Str
+                } else {
+                    Ty::union([Ty::Str, Ty::Undefined])
+                };
                 if argv
                     .get(1)
                     .is_some_and(|value| !matches!(value.ty, Ty::Null | Ty::Undefined))
                 {
                     return err(span, "JSON.stringify replacers aren't supported");
                 }
-                if argv.len() > 1 {
-                    let indent = argv.get(2).map(|a| a.php.clone()).unwrap_or_else(|| "null".into());
-                    Out::atom(format!("\\Zero\\Js::jsonStringify({}, {indent})", argv[0].php), t)
-                } else {
-                    Out::atom(format!("\\Zero\\Js::jsonStringify({})", php_args()), t)
-                }
+                Out::atom(
+                    format!(
+                        "\\Zero\\Js::dynamicStaticCall('JSON', 'stringify', new \\Zero\\JsArray([{}]))",
+                        php_args()
+                    ),
+                    t,
+                )
             }
             ("JSON", "parse") => {
                 if argv
@@ -4590,10 +4614,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     return err(span, "JSON.parse revivers aren't supported");
                 }
-                let input = a0
-                    .map(|value| value.php.as_str())
-                    .unwrap_or("\\Zero\\JsUndefined::Value");
-                Out::atom(format!("\\Zero\\Js::jsonParse({input})"), Ty::Unknown)
+                Out::atom(
+                    format!(
+                        "\\Zero\\Js::dynamicStaticCall('JSON', 'parse', new \\Zero\\JsArray([{}]))",
+                        php_args()
+                    ),
+                    Ty::Unknown,
+                )
             }
             ("console", "log" | "info" | "warn" | "error" | "debug") => {
                 Out::atom(format!("\\Zero\\Js::log({}, {})", php_str(m), php_args()), Ty::Null)

@@ -552,11 +552,17 @@ Built-in overloads and phase arity are owned by `src/builtins.rs`. Its generated
 `runtime/Zero/Builtins.php` guards checked JavaScript dispatch; regenerate with
 `UPDATE_BUILTINS=1 cargo test --lib builtins::tests`. The normal Rust suite
 checks freshness. Type/coercion guards remain at their language boundary.
+JSON parsing/serialization and Error instances are runtime-only. The evaluator
+refuses these calls rather than serialize with Rust's JSON rules or substitute
+plain objects for Errors. Keep configuration data plain; serialize and construct
+Errors inside handlers.
+
 `tests/differential/builtin-vectors.json` supplies the same expressions to
 Node, captured configuration evaluation and generated PHP. Regex state is
 runtime-only because the pure evaluator has no mutable RegExp execution model.
-Build-time regex replacement accepts ASCII text/patterns without escapes or nested character classes,
-multiline mode, set operations or line terminators; other cases are refused
+Build-time regex replacement accepts ASCII text/patterns without escapes,
+nested character classes, multiline mode, set operations or line terminators;
+other cases are refused
 instead of inheriting Rust regex semantics. String replacements have no such
 ASCII restriction. Replacement tokens implement GetSubstitution, including
 capture-number boundaries and named captures.

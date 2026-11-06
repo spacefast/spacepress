@@ -1043,12 +1043,6 @@ impl<'p> Evaluator<'p> {
                             "class instances are only constructed inside compiled callbacks; configuration stays plain data",
                         );
                     }
-                    Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
-                        for value in &argv {
-                            require_static_data(value, e.span)?;
-                        }
-                        error_object(g, &argv)
-                    }
                     Value::Builtin(Builtin::HttpError) => {
                         let o = error_object("HttpError", argv.get(2..).unwrap_or(&[]));
                         if let Value::Object(map) = &o {
@@ -1684,7 +1678,6 @@ impl<'p> Evaluator<'p> {
     }
 
     fn call_static(&mut self, g: &str, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
-        crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
         if matches!(g, "Math" | "Number" | "JSON") || matches!((g, m), ("Array", "isArray")) {
             for value in &args {
                 require_static_data(value, span)?;
@@ -1699,6 +1692,7 @@ impl<'p> Evaluator<'p> {
                 require_static_data(key, span)?;
             }
         }
+        crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         let num = |i: usize| to_number(&args.get(i).cloned().unwrap_or(Value::Undef));
         Ok(match (g, m) {
@@ -1768,26 +1762,44 @@ impl<'p> Evaluator<'p> {
                 }
             },
             ("Object", "freeze") => arg(0),
-            ("Object", "hasOwn") => match (arg(0), arg(1)) {
-                (Value::Arguments(_), Value::Str(k)) if k.as_ref() == "callee" => Value::Bool(true),
-                (Value::Object(o) | Value::Arguments(o), Value::Str(k)) => Value::Bool(o.borrow().contains_key(&*k)),
-                _ => Value::Bool(false),
-            },
+            ("Object", "hasOwn") => {
+                let key = arg(1);
+                if !matches!(
+                    key,
+                    Value::Str(_) | Value::Num(_) | Value::Bool(_) | Value::Null | Value::Undef
+                ) {
+                    return err(span, "Object.hasOwn at build time needs a primitive property key");
+                }
+                let key = key.to_js_string().unwrap();
+                let index_in = |length| {
+                    key.parse::<usize>()
+                        .ok()
+                        .is_some_and(|i| i.to_string() == key && i < length)
+                };
+                Value::Bool(match arg(0) {
+                    Value::Arguments(_) if key == "callee" => true,
+                    Value::Object(o) | Value::Arguments(o) => o.borrow().contains_key(&key),
+                    Value::Array(a) => key == "length" || index_in(a.borrow().len()),
+                    Value::Str(s) => key == "length" || index_in(s.encode_utf16().count()),
+                    Value::Regex(..) => key == "lastIndex",
+                    Value::Bool(_) | Value::Num(_) => false,
+                    Value::Null | Value::Undef => return err(span, "Object.hasOwn cannot inspect null or undefined"),
+                    _ => {
+                        return err_help(
+                            span,
+                            "Object.hasOwn does not support this receiver at build time",
+                            "inspect a plain object, array or primitive value",
+                        );
+                    }
+                })
+            }
             ("Array", "isArray") => Value::Bool(matches!(arg(0), Value::Array(_))),
             ("Array", "from") => {
                 let f = arg(1);
                 let source = arg(0);
                 let fixed_length = match &source {
-                    Value::Array(_) => None,
-                    Value::Object(o) | Value::Arguments(o) => {
-                        let length = o.borrow().get("length").cloned().unwrap_or(Value::Undef);
-                        require_static_data(&length, span)?;
-                        let length = to_number(&length).max(0.0).floor();
-                        if length > STEP_BUDGET as f64 {
-                            return err(span, "Array.from result is too large to evaluate at build time");
-                        }
-                        Some(length as usize)
-                    }
+                    Value::Array(_) | Value::Arguments(_) => None,
+                    Value::Object(o) => Some(array_like_length(o, span)?),
                     other => {
                         return err(
                             span,
@@ -1798,13 +1810,12 @@ impl<'p> Evaluator<'p> {
                 let mut out = Vec::new();
                 let mut i = 0;
                 loop {
-                    let length = fixed_length.unwrap_or_else(|| {
-                        if let Value::Array(a) = &source {
-                            a.borrow().len()
-                        } else {
-                            unreachable!()
-                        }
-                    });
+                    let length = match (&source, fixed_length) {
+                        (_, Some(length)) => length,
+                        (Value::Array(a), None) => a.borrow().len(),
+                        (Value::Arguments(o), None) => array_like_length(o, span)?,
+                        _ => unreachable!(),
+                    };
                     if i >= length {
                         break;
                     }
@@ -1828,10 +1839,6 @@ impl<'p> Evaluator<'p> {
                 Value::Bool(matches!(arg(0), Value::Num(n) if n.is_finite() && n.fract() == 0.0))
             }
             ("Number", "isFinite") => Value::Bool(matches!(arg(0), Value::Num(n) if n.is_finite())),
-            ("JSON", "stringify") => match to_json(&arg(0)) {
-                Some(j) => Value::str(&j.to_string()),
-                None => Value::Undef,
-            },
             ("Date", "now") => {
                 return Err(Ctl::Err(
                     Diag::new(
@@ -2166,15 +2173,20 @@ fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
     }
 }
 
-fn arguments_items(object: &Obj, span: Span) -> R<Vec<Value>> {
-    let object = object.borrow();
-    let length = object.get("length").cloned().unwrap_or(Value::Undef);
+fn array_like_length(object: &Obj, span: Span) -> R<usize> {
+    let length = object.borrow().get("length").cloned().unwrap_or(Value::Undef);
     require_static_data(&length, span)?;
     let length = to_number(&length).max(0.0).floor();
     if length > STEP_BUDGET as f64 {
         return err(span, "the arguments object is too large to evaluate at build time");
     }
-    Ok((0..length as usize)
+    Ok(length as usize)
+}
+
+fn arguments_items(object: &Obj, span: Span) -> R<Vec<Value>> {
+    let length = array_like_length(object, span)?;
+    let object = object.borrow();
+    Ok((0..length)
         .map(|index| object.get(&index.to_string()).cloned().unwrap_or(Value::Undef))
         .collect())
 }
@@ -2246,7 +2258,6 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
         "parseFloat" => Value::Num(parse_float(&arg(0).to_js_string().unwrap_or_default())),
         "isNaN" => Value::Bool(to_number(&arg(0)).is_nan()),
         "isFinite" => Value::Bool(to_number(&arg(0)).is_finite()),
-        "Error" | "TypeError" | "RangeError" => error_object(g, args),
         "Date" => return err(span, "dates aren't available while the config is evaluated"),
         "console" => return err(span, "`console` isn't available while the config is evaluated"),
         _ => return err(span, format!("`{g}` isn't available in Zero code")),

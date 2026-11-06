@@ -411,6 +411,7 @@ $deviations = array_merge($deviations, [
     ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'RangeError']],
     ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
+    ['function own properties are refused', fn () => Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([static fn () => 1, 'length'])), ['$err' => 'TypeError']],
     ['repeated captures are refused', fn () => Js::re('(a(b)?)+', ''), ['$err' => 'SyntaxError']],
     ['astral regex quantifiers need Unicode mode', fn () => Js::re('^😀+$', '')->test('😀😀'), ['$err' => 'RangeError']],
     ['slice ending inside a pair throws', fn () => Js::slice('a🙂b', 0, 2), ['$err' => 'RangeError']],

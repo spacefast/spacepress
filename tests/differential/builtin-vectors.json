@@ -847,5 +847,11 @@
     "name": "concatNullishElementTypes",
     "expression": "(() => {const get=(flag:boolean):string[]|null=>flag?['b']:null;return [['a'].concat(null).map(x=>Boolean(x)),['a'].concat(undefined).map(x=>Boolean(x)),['a'].concat(get(false)).map(x=>Boolean(x)),['a'].concat(get(true)).map(x=>Boolean(x))];})()",
     "fold": true
+  },
+  {
+    "name": "namespacePropertyOwnership",
+    "expression": "[Object.hasOwn(Math,'PI'),Object.hasOwn(Math,'E'),Object.hasOwn(Math,'min'),Object.hasOwn(Math,'random'),Object.hasOwn(Math,'toString'),Object.hasOwn(Math,'valueOf'),Object.keys(Math),Object.hasOwn(structuredClone(Math),'PI')]",
+    "fold": false,
+    "javascript": true
   }
 ]

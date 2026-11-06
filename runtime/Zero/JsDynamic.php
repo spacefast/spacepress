@@ -479,6 +479,11 @@ trait JsDynamic
             if ($method === 'hasOwn') {
                 self::requirePresent($source); $key = self::key($get(1));
                 if ($source instanceof \Closure || $source instanceof JsClass) { throw new JsError('Object.hasOwn on functions is not supported', 'TypeError'); }
+                if ($source instanceof JsNamespace) {
+                    if (in_array($key, ['PI', 'E'], true) || Builtins::has($source->name, $key)) { return true; }
+                    if (in_array($key, ['toString', 'valueOf'], true)) { return false; }
+                    throw new JsError('Unsupported Math property ' . $key, 'TypeError');
+                }
                 if ($source instanceof JsError) {
                     if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
                     return $key === 'message' && $source->hasMessage;

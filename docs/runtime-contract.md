@@ -688,6 +688,8 @@ not model native Error descriptors. Undefined remains distinct inside JavaScript
 null for schema fields, including nested fields. Required storage fields still
 reject it. `Array.from` interleaves reads with its mapper,
 and arrays use live length. The standard Math namespace has stable identity.
+`Object.hasOwn` sees the namespace’s supported non-enumerable own properties;
+`Object.keys`, `values` and `entries` retain its empty enumerable surface.
 Handles expose PI, E and registered methods; other properties refuse explicitly
 instead of returning undefined. Error message coercion precedes cause-option
 validation, including options mutated during that coercion.

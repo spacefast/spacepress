@@ -1135,6 +1135,18 @@ impl<'p> Evaluator<'p> {
                         }
                         self.get_prop(&recv, prop, *prop_span)?
                     }
+                    ExprKind::Index {
+                        obj,
+                        index,
+                        optional: o,
+                    } => {
+                        let recv = self.eval(obj, scope)?;
+                        if *o && matches!(recv, Value::Null | Value::Undef) {
+                            return Err(Ctl::Short);
+                        }
+                        let index = self.eval(index, scope)?;
+                        self.get_index(&recv, &index, callee.span)?
+                    }
                     _ => self.eval(callee, scope)?,
                 };
                 if *optional && matches!(f, Value::Null | Value::Undef) {
@@ -1220,7 +1232,7 @@ impl<'p> Evaluator<'p> {
                 if *optional && matches!(v, Value::Null | Value::Undef) {
                     return Err(Ctl::Short);
                 }
-                self.get_prop(&v, prop, *prop_span)?
+                self.stored_property(self.get_prop(&v, prop, *prop_span)?, e.span)?
             }
             ExprKind::Index { obj, index, optional } => {
                 let v = self.eval(obj, scope)?;
@@ -1228,7 +1240,7 @@ impl<'p> Evaluator<'p> {
                     return Err(Ctl::Short);
                 }
                 let i = self.eval(index, scope)?;
-                self.get_index(&v, &i, e.span)?
+                self.stored_property(self.get_index(&v, &i, e.span)?, e.span)?
             }
             ExprKind::Chain(inner) => match self.eval(inner, scope) {
                 Err(Ctl::Short) => Value::Undef,
@@ -1320,7 +1332,7 @@ impl<'p> Evaluator<'p> {
         if matches!(value, Value::Bound(..)) {
             return err_help(
                 span,
-                "calling extracted methods isn't supported during configuration evaluation",
+                "reading extracted methods isn't supported during configuration evaluation",
                 "call the method on its receiver, or wrap that call in an arrow function",
             );
         }
@@ -1514,7 +1526,7 @@ impl<'p> Evaluator<'p> {
             Value::Builtin(b) => self.call_builtin(b, args, span),
             Value::Bound(..) => err_help(
                 span,
-                "calling extracted methods isn't supported during configuration evaluation",
+                "reading extracted methods isn't supported during configuration evaluation",
                 "call the method on its receiver, or wrap that call in an arrow function",
             ),
             other => err(span, format!("{} isn't a function", other.describe())),

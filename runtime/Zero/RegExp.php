@@ -392,13 +392,13 @@ final class RegExp implements \Stringable
             case 'v': return '\x{b}';
             case 'c':
                 $l = $this->src[$this->pos] ?? '';
-                if (ctype_alpha($l)) {
+                if (preg_match('/^[A-Za-z]$/D', $l) || (!$this->unicode && $inClass && ($l === '_' || preg_match('/^[0-9]$/D', $l)))) {
                     $this->pos++;
 
                     return sprintf('\x{%x}', ord($l) % 32);
                 }
 
-                return '\\\\c';
+                throw new JsError('Unsupported regular expression control escape', 'SyntaxError');
             case 'x':
                 if (preg_match('/\G[0-9A-Fa-f]{2}/A', $this->src, $m, 0, $this->pos)) {
                     $this->pos += 2;

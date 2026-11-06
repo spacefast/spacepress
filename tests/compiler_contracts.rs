@@ -1049,9 +1049,6 @@ fn unsupported_features_have_positions_and_actionable_help() {
 fn configuration_refuses_unsupported_coercion_at_the_call_site() {
     for expression in [
         "'ab'.repeat({valueOf: () => 2})",
-        "String(''.trim)",
-        "[''.trim].join(',')",
-        "'abc'.includes(''.trim)",
         "'abc'.slice({valueOf: () => 1})",
         "'a,b,c'.split(',', {valueOf: () => 2})",
     ] {
@@ -1177,6 +1174,12 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
 fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
     for source in [
         "const trim=' x '.trim; const result=trim();",
+        "const result=String(''.trim);",
+        "const result=[''.trim].join(',');",
+        "const result='abc'.includes(''.trim);",
+        "const a=[1]; const result=a.map===a.map;",
+        "const a=[1]; const result=a['map']===a['map'];",
+        "const a=[1]; const result=[a.map].includes(a.map);",
         "const holder={method:' abc '.trim}; const result=holder.method();",
         "const holder={'method':' abc '.trim}; const result=holder['method']();",
         "const methods=[' abc '.trim]; const result=methods[0]();",

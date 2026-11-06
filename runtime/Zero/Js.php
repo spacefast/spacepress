@@ -1810,7 +1810,7 @@ final class Js
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
     {
-        $s = preg_replace('~"(?:[^"\\\\]|\\\\.)*"(*SKIP)(*F)|-0(?=[\s,\]}]|$)~', '-0.0', $s);
+        $s = preg_replace('~"(?:[^"\\\\]|\\\\.)*"(*SKIP)(*F)|(?<![eE])-0(?=[\s,\]}]|$)~', '-0.0', $s);
         try {
             return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
         } catch (\JsonException $e) {

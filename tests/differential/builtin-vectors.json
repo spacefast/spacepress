@@ -685,7 +685,7 @@
   },
   {
     "name": "jsonNegativeZero",
-    "expression": "[1/JSON.parse('-0')===-Infinity,1/JSON.parse('[-0,-0.0,-0e0]')[0]===-Infinity,1/JSON.parse('{\"x\":-0}').x===-Infinity,JSON.parse('\"-0\"'),JSON.parse('\"x -0 y\"')]",
+    "expression": "[1/JSON.parse('-0')===-Infinity,1/JSON.parse('[-0,-0.0,-0e0]')[0]===-Infinity,1/JSON.parse('{\"x\":-0}').x===-Infinity,JSON.parse('\"-0\"'),JSON.parse('\"x -0 y\"'),JSON.parse('1e-0'),JSON.parse('1E-0'),JSON.parse('[1e-0,-0,0e-0,-0e-0]')]",
     "javascript": true,
     "fold": false
   },
@@ -698,5 +698,28 @@
     "name": "logicalMissingAssignment",
     "expression": "(() => { const a:string[]=[]; const x=(a[0]&&='x'); const o:Record<string,string>={}; const key='missing'; const y=(o[key]&&='y'); const p:{value?:string}={}; const z=(p.value&&='z'); return [x!==null?Boolean(x):true,y!==null?Boolean(y):true,z!==null?Boolean(z):true,typeof x,typeof y,typeof z]; })()",
     "fold": true
+  },
+  {
+    "name": "legacyControlClass",
+    "expression": "[/[\\c_]/.test('\\x1f'),/[\\c0]/.test('\\x10'),/[\\c9]/.test('\\x19')]",
+    "fold": false
+  },
+  {
+    "name": "regexpFlagMetadata",
+    "expression": "[/a/.hasIndices===false,/a/.unicodeSets===false,/a/g.hasIndices===false]",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "runtimeMethodIdentity",
+    "expression": "(() => { const a=[1]; const b=[2]; return [a.map===a.map,a.map===b.map,a.map===a.filter]; })()",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "computedBuiltinCall",
+    "expression": "(() => { const s=' hi '; return s['trim'](); })()",
+    "fold": true,
+    "javascript": true
   }
 ]

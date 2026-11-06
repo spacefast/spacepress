@@ -124,7 +124,7 @@ trait JsDynamic
                 'source' => $value->source, 'flags' => $value->flags, 'global' => $value->global,
                 'ignoreCase' => str_contains($value->flags, 'i'), 'multiline' => str_contains($value->flags, 'm'),
                 'unicode' => str_contains($value->flags, 'u'), 'dotAll' => str_contains($value->flags, 's'),
-                'sticky' => $value->sticky, 'lastIndex' => $value->lastIndex, default => self::dynamicMethodValue($value, $key),
+                'sticky' => $value->sticky, 'lastIndex' => $value->lastIndex, 'hasIndices', 'unicodeSets' => false, default => self::dynamicMethodValue($value, $key),
             };
         }
         if ($key === 'size' && ($value instanceof JsSet || $value instanceof JsMap)) {

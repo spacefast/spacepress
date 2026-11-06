@@ -245,6 +245,7 @@ $deviations = [
     ['negative zero Date year is refused', fn () => Js::date('-000000-01-01'), ['$err' => 'RangeError']],
     ['array Error cause is refused', function () { $a = new JsArray(); $a->p['cause'] = 42; return Js::dynamicConstruct('Error', new JsArray(['x', $a])); }, ['$err' => 'TypeError']],
     ['default object sort requires a comparator', fn () => Js::sort(new JsArray([new JsObject(), new JsObject()])), ['$err' => 'TypeError']],
+    ['unsupported legacy control escapes are refused', fn () => Js::re('\\c0', ''), ['$err' => 'SyntaxError']],
     ['non-ISO Date strings are refused', fn () => Js::date('2020-1-1'), ['$err' => 'RangeError']],
 ];
 

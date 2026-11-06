@@ -1396,17 +1396,47 @@ fn rejects_phase2_static_contracts() {
         assert_eq!(out.status.code(), Some(1), "{stderr}");
         assert!(stderr.contains(diagnostic), "{stderr}");
     }
-    for invocation in [
-        "[1, 2].reduce((acc, item) => { value++; return acc; }, 0)",
-        "[1, 2].flatMap(item => { value++; return [item]; })",
-        "[1, 2].findLast(item => { value++; return false; })",
-        "[1, 2].findLastIndex(item => { value++; return false; })",
-        "[2, 1].sort((a, b) => { value += 2; return a - b; })",
-        "[2, 1].toSorted((a, b) => { value += 2; return a - b; })",
-        "Array.from({ length: 2 }, () => { value++; return 1; })",
-        "const items = [1, 2]; Array.from(items, item => { value++; return item; })",
-        "'aa'.replace(/a/g, () => { value++; return 'b'; })",
-        "'aa'.replaceAll('a', () => { value++; return 'b'; })",
+    for (invocation, diagnostic) in [
+        (
+            "[1, 2].reduce((acc, item) => { value++; return acc; }, 0)",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[1, 2].flatMap(item => { value++; return [item]; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[1, 2].findLast(item => { value++; return false; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[1, 2].findLastIndex(item => { value++; return false; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[2, 1].sort((a, b) => { value += 2; return a - b; })",
+            "sorting requires a numeric key-difference comparator",
+        ),
+        (
+            "[2, 1].toSorted((a, b) => { value += 2; return a - b; })",
+            "sorting requires a numeric key-difference comparator",
+        ),
+        (
+            "Array.from({ length: 2 }, () => { value++; return 1; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const items = [1, 2]; Array.from(items, item => { value++; return item; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "'aa'.replace(/a/g, () => { value++; return 'b'; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "'aa'.replaceAll('a', () => { value++; return 'b'; })",
+            "field rules must return a boolean on every path",
+        ),
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
@@ -1414,10 +1444,7 @@ fn rejects_phase2_static_contracts() {
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{invocation}: {stderr}");
-        assert!(
-            stderr.contains("field rules must return a boolean on every path"),
-            "{invocation}: {stderr}"
-        );
+        assert!(stderr.contains(diagnostic), "{invocation}: {stderr}");
     }
     for extraction in [
         "const write = writers.at(0)!; write()",

@@ -222,7 +222,7 @@ pub fn check_date_literal(args: &[crate::ir::ArrEl], span: Span) -> Result<(), D
         return Ok(());
     };
     let syntax = regex::Regex::new(
-        r"^([+-][0-9]{6}|[0-9]{4})(?:-[0-9]{2}(?:-[0-9]{2})?)?(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?$",
+        r"^(?:([+-][0-9]{6}|[0-9]{4})(?:-[0-9]{2}(?:-[0-9]{2})?)?|([+-][0-9]{6}|[0-9]{4})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:[0-9]{2})?)$",
     )
     .expect("ISO date grammar");
     if !syntax.is_match(text) || text.starts_with("-000000") {
@@ -489,22 +489,52 @@ pub fn check_regex_literals(args: &[crate::ir::ArrEl], span: Span) -> Result<(),
 
 /// Refuse engine-specific capture retention rather than emulate a regex engine.
 pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
+    if flags.contains('i') && !pattern.is_ascii() {
+        return Err(Diag::new(span, "ignore-case regexes require ASCII source and input")
+            .help("remove ignore-case matching or use ASCII source and input"));
+    }
     let bytes = pattern.as_bytes();
     let mut stack = Vec::new();
     let mut captures = 0;
     let mut in_class = false;
+    let mut class_dash = false;
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
             b'\\' => {
+                if flags.contains('i') && bytes.get(i + 1).is_some_and(|c| matches!(c, b'u' | b'x')) {
+                    return Err(
+                        Diag::new(span, "ignore-case regexes don't support encoded character escapes")
+                            .help("remove ignore-case matching or use literal ASCII characters"),
+                    );
+                }
+                if in_class
+                    && bytes
+                        .get(i + 1)
+                        .is_some_and(|c| matches!(c, b'd' | b'D' | b'w' | b'W' | b's' | b'S'))
+                    && (class_dash || bytes.get(i + 2) == Some(&b'-'))
+                {
+                    return Err(
+                        Diag::new(span, "character-class escapes adjacent to hyphens aren't supported")
+                            .help("escape a literal hyphen with \\- or spell out the character range"),
+                    );
+                }
+                class_dash = false;
                 if flags.contains('u') && bytes.get(i + 1).is_some_and(|c| matches!(c, b'p' | b'P')) {
                     return Err(Diag::new(span, "Unicode regex properties aren't supported")
                         .help("use an explicit character class; regex engines use different Unicode versions"));
                 }
                 i += 1;
             }
-            b'[' => in_class = true,
-            b']' => in_class = false,
+            b'[' => {
+                in_class = true;
+                class_dash = false;
+            }
+            b']' => {
+                in_class = false;
+                class_dash = false;
+            }
+            b'-' if in_class => class_dash = true,
             b'(' if !in_class => {
                 let tail = &pattern[i + 1..];
                 let special = tail.starts_with('?');
@@ -541,7 +571,7 @@ pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
                     }
                 }
             }
-            _ => {}
+            _ => class_dash = false,
         }
         i += 1;
     }

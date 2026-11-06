@@ -604,8 +604,8 @@
     "javascript": true
   },
   {
-    "name": "unicodeRegexCaseFolding",
-    "expression": "[/k/iu.test('K'), /s/iu.test('ſ'), /k/i.test('K'), /s/i.test('S')]",
+    "name": "asciiRegexCaseFolding",
+    "expression": "[/k/iu.test('K'), /s/iu.test('S'), /k/i.test('K'), /s/i.test('S')]",
     "fold": false
   },
   {
@@ -789,6 +789,26 @@
   {
     "name": "flatOneDepthUnion",
     "expression": "(() => {const a:(number|number[])[]=[1,[2,3]];return [a.flat().map(v=>String(v)),a.flat(1).map(v=>String(v))];})()",
+    "fold": false
+  },
+  {
+    "name": "numericComparisonOperandOrder",
+    "expression": "(() => {let a=1;let b=1;let c=1;let d=1;return [a<(a=2),b<=(b=2),c>(c=2),d>=(d=2)];})()",
+    "fold": true
+  },
+  {
+    "name": "stringSearchReceiverOrder",
+    "expression": "(() => {let a='a';let b='a';let c='a';return [a.startsWith(a='b'),b.includes(b='b'),c.endsWith(c='b')];})()",
+    "fold": true
+  },
+  {
+    "name": "escapedClassHyphens",
+    "expression": "[/[\\w\\-a]/.test('-'), /[a\\-\\w]/.test('`'), /[\\s\\-z]/.test('-'), /[\\d\\-a]/.test('5'), /[\\w]/.test('_')]",
+    "fold": false
+  },
+  {
+    "name": "constructedUnicodeClosingBracket",
+    "expression": "['u',''].map(flags=>{try{return new RegExp(']',flags).test(']');}catch(e){return e.name;}})",
     "fold": false
   }
 ]

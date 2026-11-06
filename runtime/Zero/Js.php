@@ -1950,12 +1950,13 @@ final class Js
         return (int) self::trunc($t);
     }
 
-    /** ES date-time string format (plus a space separator and ±HHmm offsets); no zone = UTC. */
+    /** ES date-time string format; no zone = UTC. */
     private static function parseDate(string $s): int|float
     {
         $re = '/^([+-]\d{6}|\d{4})(?:-(\d{2})(?:-(\d{2}))?)?'
-            . '(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:?\d{2})?)?$/D';
-        if (!preg_match($re, $s, $m) || str_starts_with($s, '-000000')) {
+            . '(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})?)?$/D';
+        if (!preg_match($re, $s, $m) || str_starts_with($s, '-000000')
+            || (($m[4] ?? '') !== '' && (($m[2] ?? '') === '' || ($m[3] ?? '') === ''))) {
             throw new JsError('Date strings require the supported ISO format', 'RangeError');
         }
         $y = (int) $m[1];

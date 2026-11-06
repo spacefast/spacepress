@@ -65,6 +65,9 @@ final class RegExp implements \Stringable
         $this->multiline = in_array('m', $chars, true);
         $this->unicode = in_array('u', $chars, true);
 
+        if (str_contains($flags, 'i') && preg_match('/[^\\x00-\\x7f]/', $source) === 1) {
+            throw new JsError('Ignore-case regexes require literal ASCII source', 'SyntaxError');
+        }
         $this->checkCaptureContract($source);
         $this->src = $source;
         $this->pos = 0;
@@ -165,9 +168,8 @@ final class RegExp implements \Stringable
      */
     public function matchAt(string $s, int $offset, bool $anchored = false): ?array
     {
-        if (!$this->unicode && str_contains($this->flags, 'i')
-            && (preg_match('/[^\\x00-\\x7f]/', $s . $this->src) === 1 || preg_match('/\\\\[ux]/', $this->src) === 1)) {
-            throw new JsError('Case-insensitive RegExp on non-ASCII text requires the u flag', 'RangeError');
+        if (str_contains($this->flags, 'i') && preg_match('/[^\\x00-\\x7f]/', $s) === 1) {
+            throw new JsError('Ignore-case regexes require ASCII input', 'RangeError');
         }
         $r = preg_match($anchored ? $this->anchoredPattern : $this->pattern, $s, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $offset);
         if ($r === false) {
@@ -382,6 +384,7 @@ final class RegExp implements \Stringable
                 '(' => $this->groupOpen(),
                 '{' => $this->quantifierOpen(),
                 '}' => $this->unicode ? throw new JsError('Unmatched regular expression brace', 'SyntaxError') : '\\}',
+                ']' => $this->unicode ? throw new JsError('Unmatched regular expression bracket', 'SyntaxError') : '\\]',
                 default => $c,
             };
         }
@@ -421,6 +424,9 @@ final class RegExp implements \Stringable
     {
         if ($this->pos >= strlen($this->src)) { throw new JsError('Trailing regular expression escape', 'SyntaxError'); }
         $c = $this->src[$this->pos++];
+        if (str_contains($this->flags, 'i') && ($c === 'u' || $c === 'x')) {
+            throw new JsError('Ignore-case regexes do not support encoded character escapes', 'SyntaxError');
+        }
         if (in_array($c, ['D', 'W', 'S'], true)) {
             $this->requiresUnicodeOnAstral = true;
         }
@@ -568,11 +574,17 @@ final class RegExp implements \Stringable
             $this->pos++;
         }
         $body = '';
+        $classDash = false;
         $complements = [];
         $len = strlen($this->src);
         while ($this->pos < $len && $this->src[$this->pos] !== ']') {
             $c = $this->src[$this->pos++];
             if ($c === '\\') {
+                $setEscape = in_array($this->src[$this->pos] ?? '', ['d', 'D', 'w', 'W', 's', 'S'], true);
+                if ($setEscape && ($classDash || ($this->src[$this->pos + 1] ?? '') === '-')) {
+                    throw new JsError('Character-class escapes adjacent to hyphens are not supported; escape literal hyphens', 'SyntaxError');
+                }
+                $classDash = false;
                 $frag = $this->escape(true);
                 if (str_starts_with($frag, "\0")) {
                     $complements[] = ['D' => '0-9', 'W' => self::WORD, 'S' => Js::WS][$frag[1]];
@@ -580,8 +592,10 @@ final class RegExp implements \Stringable
                 }
                 $body .= $frag;
             } elseif ($c === '[' || $c === '/') {
+                $classDash = false;
                 $body .= '\\' . $c;
             } else {
+                $classDash = $c === '-';
                 $body .= $c;
             }
         }

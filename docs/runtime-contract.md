@@ -611,10 +611,10 @@ accept their serialized values; undefined array slots require null, and omitted
 properties must be optional. Addition and compound addition use default primitive
 conversion before string conversion. Sorting places undefined last without
 passing it to comparators. Typed Dates require explicit `toISOString()` or
-`toJSON()` before JSON.stringify; typed dates use a numeric timestamp internally.
+`toJSON()` before JSON.stringify; typed and imported dates share JsDate identity.
 Imported JavaScript for-of consumes live iterators. Regex source and string
-conversion escape delimiters and line terminators. Non-Unicode ignore-case
-matching on non-ASCII text throws explicitly; use the u flag. Regex split on
+conversion escape delimiters and line terminators. Ignore-case matching requires
+literal ASCII source and ASCII input, including in Unicode mode. Regex split on
 astral text also requires u because returned lone surrogates are unsupported.
 Typed invalid-Date `toJSON()` returns null. Generated undefined defaults become
 null at the storage boundary; required fields still refuse null. Object
@@ -714,14 +714,14 @@ about capture participation when that body can match empty text.
 Legacy regex braces that do not form JavaScript quantifiers remain literal text;
 Unicode mode refuses those malformed or unmatched braces.
 
-Case-insensitive Unicode regex properties (`\p{...}` or `\P{...}` with `iu`) are
-refused because JavaScript and PCRE fold those property sets differently.
-Remove ignore-case matching or use an explicit character class. Without ignore-case,
-property escapes accept the generated contract’s short General_Category aliases
-(such as Lu, Ll and N); other property names are refused. Unicode-mode
-constructors reject malformed hex, Unicode, named-reference and identity escapes;
-trailing backslashes are syntax errors in both modes;
-legacy-mode identity escapes retain their JavaScript literal behavior.
+Unicode regex properties (`\p{...}` and `\P{...}` with `u`) are refused because
+JavaScript and PCRE use different Unicode databases. Ignore-case matching requires
+literal ASCII source and ASCII input; encoded character escapes are refused in
+that mode. Remove ignore-case matching or use explicit character classes.
+Class escapes adjacent to unescaped hyphens are refused; escape a literal hyphen.
+Unicode-mode constructors reject malformed hex, Unicode, named-reference and
+identity escapes and unmatched closing brackets. Trailing backslashes are syntax
+errors in both modes; legacy-mode identity escapes retain their JavaScript behavior.
 
 `Math.log` and `Math.exp` accept only IEEE special values and exact identities
 (log(1), exp(0)). Other inputs receive a located literal refusal or a checked
@@ -785,7 +785,7 @@ Arrays (`JsArray`):
 - `reverse(JsArray $a): JsArray`, `sort(JsArray $a, ?callable $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort is stable; default comparison uses UTF-16 code units and refuses multiple object values. Custom comparators must be compiler-recognized numeric differences between the two parameters or matching property paths. The runtime sorts finite primitive keys; arbitrary or effectful comparator callbacks are refused before invocation.
 - `sorted(JsArray $a, ?callable $cmp = null): JsArray` (`toSorted`), `toReversed(JsArray $a): JsArray`, `with(JsArray $a, int|float $index, mixed $value): JsArray` return new handles.
 - `reduce(JsArray $a, callable $f, mixed ...$init): mixed` calls `(acc, value, index, array)`; empty without init throws `TypeError`.
-- `flat(JsArray $a, int|float $depth = 1): JsArray`, `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.
+- `flat(JsArray $a, int|float $depth = 1): JsArray` (typed calls accept depths 0 and 1, with null selecting 0 and undefined selecting 1), `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.
 - `concat(JsArray $a, mixed ...$items): JsArray` reads receiver elements after evaluating every argument.
 - `from(JsArray|string $source, ?callable $f = null): JsArray` uses live iterator length; strings iterate code points. `range(int $n, callable $f): JsArray` is the fixed-count `{ length: n }` path, passing `(null, index)`.
 - `max(int|float ...$n): int|float`, `min(...)` are JS Math helpers.
@@ -801,7 +801,7 @@ JSON:
 - `jsonParse(string $s): mixed` — handles; invalid → `JsError` named `SyntaxError`.
 
 Misc:
-- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC), unparseable → NAN. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; legacy/non-ISO syntax is refused explicitly (`10/30/2026` throws RangeError). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
+- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC). Time requires a complete date and T separator; offsets require a colon. Invalid calendar components produce NAN; unsupported syntax throws RangeError. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; legacy/non-ISO syntax is refused explicitly (`10/30/2026` throws RangeError). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
 - `uuid(): string` — RFC 4122 v4.
 - `random(): float` — `[0, 1)`.
 - `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[zero] ` prefix.

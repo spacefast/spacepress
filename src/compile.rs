@@ -2673,7 +2673,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => ">=",
                 };
                 if a.ty.is_num() && b.ty.is_num() {
-                    Out::new(format!("{} {sym} {}", a.wrapped(), b.wrapped()), Ty::Bool)
+                    self.javascript_binary(op, a, b, span)?
                 } else if a.ty.is_str() && b.ty.is_str() {
                     Out::new(
                         format!("\\Zero\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
@@ -4986,9 +4986,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "slice the string first, for example `s.slice(start).startsWith(x)`",
                 );
             }
-            "includes" => Out::atom(format!("str_contains({}, {})", s.php, need_str(0, self)?), Ty::Bool),
-            "startsWith" => Out::atom(format!("str_starts_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
-            "endsWith" => Out::atom(format!("str_ends_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
+            "includes" | "startsWith" | "endsWith" => {
+                need_str(0, self)?;
+                Out::atom(dispatch(), Ty::Bool)
+            }
             "indexOf" | "lastIndexOf" => {
                 need_str(0, self)?;
                 Out {

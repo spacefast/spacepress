@@ -1580,6 +1580,34 @@ fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() 
             "return RegExp('\\\\P{Ll}', 'u').test('A');",
             "Unicode regex properties aren't supported",
         ),
+        (
+            r"return /[\w-a]/.test('-');",
+            "character-class escapes adjacent to hyphens aren't supported",
+        ),
+        (
+            r"return /[a-\d]/.test('`');",
+            "character-class escapes adjacent to hyphens aren't supported",
+        ),
+        (
+            r"return /\u1c89/iu.test('ᲊ');",
+            "ignore-case regexes don't support encoded character escapes",
+        ),
+        (
+            "return /É/iu.test('é');",
+            "ignore-case regexes require ASCII source and input",
+        ),
+        (
+            "return new Date('2000-01-01 24:00:00.0001Z').getTime();",
+            "Date strings require the supported ISO format",
+        ),
+        (
+            "return new Date('2000-01-01T00:00:00+0100').getTime();",
+            "Date strings require the supported ISO format",
+        ),
+        (
+            "return new Date('2000T00:00:00Z').getTime();",
+            "Date strings require the supported ISO format",
+        ),
         ("return [[1]].flat(2);", "typed flat() supports only depths 0 and 1"),
         (
             "return [[1]].flat({valueOf:()=>1});",

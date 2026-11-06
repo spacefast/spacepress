@@ -132,7 +132,7 @@ export default defineConfig({
       const formatted = formatNumeric(-1);
       const numericChoice = values.length > 0 ? 0 : 1;
       const inferredNumber = numericChoice.toString();
-      const selected = finite[0]; if (selected === null) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite: finite.map((value: "a" | "b") => value), nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
+      const selected = finite[0]; if (selected === undefined) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite: finite.map((value: "a" | "b") => value), nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
     } }),
   },
 });

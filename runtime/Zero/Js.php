@@ -1063,9 +1063,9 @@ final class Js
         return $index === null ? null : ($a->a[$index] ?? null);
     }
 
-    public static function setAt(?JsArray $a, int|float $i, mixed $value): mixed
+    public static function setAt(JsArray|JsUndefined|null $a, int|float $i, mixed $value): mixed
     {
-        if ($a === null) {
+        if (self::isNullish($a)) {
             throw new JsError('Cannot set properties of null or undefined', 'TypeError');
         }
         $index = self::index($i);
@@ -1090,9 +1090,9 @@ final class Js
         return $o->p[self::key($key)] ?? null;
     }
 
-    public static function set(JsObject|JsClass|null $o, string $key, mixed $value): mixed
+    public static function set(JsObject|JsClass|JsUndefined|null $o, string $key, mixed $value): mixed
     {
-        if ($o === null) {
+        if (self::isNullish($o)) {
             throw new JsError('Cannot set properties of null or undefined', 'TypeError');
         }
         if ($o instanceof JsClass) { return $o->set($key, $value); }

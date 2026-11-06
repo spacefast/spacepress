@@ -182,6 +182,13 @@ final class Accounts
 
     private const UNSUPPORTED_PASSWORD_PROFILE = 'unsupported';
     private const PASSWORD_INVENTORY = "zero_identity_password_inventory";
+    // Operational ceilings, including imported hashes; see docs/identity-security.md.
+    private const MAX_BCRYPT_COST = 15;
+    private const MAX_PHPASS_LOG2 = 16;
+    private const MAX_SHA_CRYPT_ROUNDS = 1_000_000;
+    private const MAX_ARGON_MEMORY_KIB = 131_072;
+    private const MAX_ARGON_TIME = 8;
+    private const MAX_ARGON_THREADS = 2;
 
     /** Ordinary requests only provision fixed material and enqueue the background inventory. */
     public static function provisionPasswordHash(): void
@@ -311,7 +318,7 @@ final class Accounts
                 return self::UNSUPPORTED_PASSWORD_PROFILE;
             }
             $cost = strpos('./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', $hash[3]);
-            return $cost >= 7 && $cost <= 30 ? substr($hash, 0, 4) : self::UNSUPPORTED_PASSWORD_PROFILE;
+            return $cost >= 7 && $cost <= self::MAX_PHPASS_LOG2 ? substr($hash, 0, 4) : self::UNSUPPORTED_PASSWORD_PROFILE;
         }
         $prefixed = str_starts_with($hash, '$wp');
         $encoded = $prefixed ? substr($hash, 3) : $hash;
@@ -320,7 +327,7 @@ final class Accounts
             if (!preg_match('/^\$2[abxy]\$(\d{2})\$[.\/A-Za-z0-9]{21}[.Oeu][.\/A-Za-z0-9]{30}[.CGKOSWaeimquy26]$/D', $encoded, $match)) {
                 return self::UNSUPPORTED_PASSWORD_PROFILE;
             }
-            return (int) $match[1] >= 4 && (int) $match[1] <= 31
+            return (int) $match[1] >= 4 && (int) $match[1] <= self::MAX_BCRYPT_COST
                 ? json_encode([$prefixed, 'bcrypt', ['cost' => (int) $match[1]]])
                 : self::UNSUPPORTED_PASSWORD_PROFILE;
         }
@@ -329,7 +336,7 @@ final class Accounts
                 return self::UNSUPPORTED_PASSWORD_PROFILE;
             }
             $rounds = $match[2] === '' ? 5000 : (int) $match[2];
-            if ($rounds < 1000 || $rounds > 999999999 || strlen($match[3]) !== ($match[1] === '5' ? 43 : 86)) {
+            if ($rounds < 1000 || $rounds > self::MAX_SHA_CRYPT_ROUNDS || strlen($match[3]) !== ($match[1] === '5' ? 43 : 86)) {
                 return self::UNSUPPORTED_PASSWORD_PROFILE;
             }
             return json_encode([$prefixed, 'sha-crypt-' . $match[1], ['rounds' => $rounds]]);
@@ -347,9 +354,9 @@ final class Accounts
         $digest = base64_decode($match[6], true);
         if ($salt === false || strlen($salt) !== 16 || rtrim(base64_encode($salt), '=') !== $match[5]
             || $digest === false || strlen($digest) !== 32 || rtrim(base64_encode($digest), '=') !== $match[6]
-            || (int) $match[4] < 1 || (int) $match[4] > 16777215
-            || (int) $match[2] < 8 * (int) $match[4] || (int) $match[2] > 4294967295
-            || (int) $match[3] < 1 || (int) $match[3] > 4294967295) {
+            || (int) $match[4] < 1 || (int) $match[4] > self::MAX_ARGON_THREADS
+            || (int) $match[2] < 8 * (int) $match[4] || (int) $match[2] > self::MAX_ARGON_MEMORY_KIB
+            || (int) $match[3] < 1 || (int) $match[3] > self::MAX_ARGON_TIME) {
             return self::UNSUPPORTED_PASSWORD_PROFILE;
         }
         $info = password_get_info($encoded);
@@ -409,7 +416,12 @@ final class Accounts
         } else {
             // Complete inventories give every sign-in the same algorithm/cost schedule.
             foreach (get_option(self::PASSWORD_PROFILES) as $kind => $dummy) {
-                $actual = $user && $profile !== self::UNSUPPORTED_PASSWORD_PROFILE && $profile === $kind && self::passwordProfile($dummy) === $profile;
+                $dummyProfile = self::passwordProfile($dummy);
+                // Old inventory options must not replay costs rejected by the current policy.
+                if ($dummyProfile === self::UNSUPPORTED_PASSWORD_PROFILE) {
+                    continue;
+                }
+                $actual = $user && $profile !== self::UNSUPPORTED_PASSWORD_PROFILE && $profile === $kind && $dummyProfile === $profile;
                 $checked = wp_check_password($password, $actual ? $user->user_pass : $dummy, $actual ? $user->ID : 0);
                 if ($actual) {
                     $valid = $checked;

@@ -813,6 +813,11 @@ malformed encodings fail with the same generic refusal after the shared dummy
 schedule; they cannot replace a costly dummy with a fast rejection. Such users
 must reset their password to a supported WordPress encoding to use Identity
 password sign-in. Core WordPress authentication remains owned by WordPress.
+The [operational password ceilings](identity-security.md#password-verification-budgets)
+also apply to imports, both login schedules, and previously stored profiles.
+They cover plain bcrypt and WordPress's `$wp$2y$` SHA-384-prefixed format,
+phpass, SHA-crypt, and PHP Argon2. Over-budget profiles are never generated or
+verified; supported profiles remain even when their last user upgrades.
 
 Legacy importers can detect the registration capability with
 `is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])` and call

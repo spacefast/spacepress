@@ -31,6 +31,31 @@ An application sign-in is one refresh family. It lives until it is revoked (`/id
 
 Identity session secrets contain 256 random bits and are stored as domain-separated SHA-256 digests. They do not depend on WordPress salts. WordPress salts protect challenges and encrypted secrets (signing keys, MFA secrets, webhook secrets): **rotating the `SECURE_AUTH` salt makes them unreadable**. Back up salts with the database; fixing this with a sealed root key of the plugin's own is a follow-up.
 
+## Password verification budgets
+
+Identity password profiles have operational ceilings. They apply before dummy
+generation and in both verification schedules; older stored profiles above the
+ceilings are ignored. Above-budget credentials receive the generic sign-in
+refusal and require a password reset. They cannot increase other users' work.
+
+| Encoding | Maximum accepted cost | Basis |
+| --- | --- | --- |
+| Plain bcrypt and WordPress `$wp$2y$` | cost 15 | PHP defaults are 10 on PHP 8.2 and 12 since PHP 8.4. WordPress 6.8+ uses PHP's bcrypt default with SHA-384 pre-hashing and the `$wp` prefix. The ceiling allows eight times the work of cost 12. |
+| Portable phpass `$P$` | encoded exponent 16 (65,536 iterations) | WordPress's `PasswordHash(8, true)` emits exponent 13 (8,192 iterations); the ceiling allows eight times that work. |
+| SHA-256/SHA-512 crypt | 1,000,000 rounds | The crypt default is 5,000 rounds; this permits imported configurations up to 200 times that default. |
+| PHP Argon2i/Argon2id | memory 131,072 KiB (128 MiB), time 8, parallelism 2 | Each parameter is at most twice PHP's defaults: 65,536 KiB, time 4, parallelism 1. WordPress uses these defaults when configured for Argon. |
+
+Plain MD5 and MD5-crypt have no configurable work parameter. All formats must
+also pass encoding validation. Default-cost MD5, phpass and real WordPress 7.1
+`wp_hash_password()` output remain supported, including `$wp$2y$` verification
+with SHA-384 pre-hashing. Custom password settings must stay within these limits.
+
+Supported profiles remain after their last user upgrades or is deleted. This
+keeps the shared verification schedule stable without a second user-table scan
+or profile reference counts. The ceilings bound each profile, not total sign-in
+latency: heterogeneous sites still pay for each distinct supported profile.
+Inventory runs and raw-import registration cannot add an over-budget profile.
+
 ## Browser and protocol boundaries
 
 Cookie-authenticated writes require the canonical identity Origin or a registered application origin (`applications.origins`, an exact `scheme://host[:port]`). Other origins fail; WordPress's reflected credentialed CORS headers are replaced in this REST namespace by headers for registered origins only. The token and revoke endpoints answer CORS for registered origins without credentials. Sensitive writes use session CSRF tokens. Consent checks Origin and CSRF. `prompt=login`/`max_age` require a new browser sign-in before consent; silent `prompt=none` is not supported.

@@ -161,6 +161,17 @@ declare(strict_types=1);
     $assert(count($currentChecks) >= 1 && !wp_password_needs_rehash($currentDummy), 'absent schedule includes a fixed current-algorithm hash');
     require_once ABSPATH . WPINC . '/class-phpass.php';
     $legacyPassword = 'legacy profile password';
+    // Use WordPress's real default algorithm/options, without the harness's cheap-cost filter.
+    $hashOptions = $GLOBALS['wp_filter']['wp_hash_password_options'] ?? null;
+    unset($GLOBALS['wp_filter']['wp_hash_password_options']);
+    try {
+        $wordpressHash = wp_hash_password($legacyPassword);
+    } finally {
+        if ($hashOptions !== null) {
+            $GLOBALS['wp_filter']['wp_hash_password_options'] = $hashOptions;
+        }
+    }
+    $assert(str_starts_with($wordpressHash, '$wp$2y$') && wp_check_password($legacyPassword, $wordpressHash), 'WordPress 7.1 produces a supported SHA-384-prefixed bcrypt credential at its default cost');
     $legacyUsers = [];
     $legacyHashes = [
         md5($legacyPassword),
@@ -169,6 +180,7 @@ declare(strict_types=1);
         crypt($legacyPassword, '$1$saltsalt$'),
         crypt($legacyPassword, '$5$rounds=5000$saltsaltsalt$'),
         crypt($legacyPassword, '$6$rounds=5000$saltsaltsalt$'),
+        $wordpressHash,
     ];
     if (in_array('argon2id', password_algos(), true)) {
         $validArgon = password_hash($legacyPassword, 'argon2id', ['memory_cost' => 8192, 'time_cost' => 1, 'threads' => 1]);
@@ -250,6 +262,86 @@ declare(strict_types=1);
     foreach ($legacyUsers as $legacyId) {
         $assert($accounts->password(get_userdata($legacyId)->user_login, $legacyPassword) === $legacyId, 'legacy WordPress passwords still authenticate');
     }
+    // Observe real WordPress verification without ever executing hostile cost parameters.
+    $overBudget = [
+        str_replace('$2y$04$', '$2y$16$', $legacyHashes[2]),
+        str_replace('$2y$04$', '$2y$31$', $legacyHashes[2]),
+        substr_replace($wordpressHash, '16', 7, 2),
+        substr_replace($legacyHashes[1], 'F', 3, 1), // phpass exponent 17.
+        substr_replace($legacyHashes[1], 'S', 3, 1), // phpass exponent 30.
+        str_replace('rounds=5000', 'rounds=1000001', $legacyHashes[4]),
+        str_replace('rounds=5000', 'rounds=999999999', $legacyHashes[5]),
+    ];
+    if (isset($validArgon)) {
+        foreach (['m=8192' => ['m=131073', 'm=4294967295'], 't=1' => ['t=9', 't=4294967295'], 'p=1' => ['p=3']] as $parameter => $values) {
+            foreach ($values as $value) {
+                $overBudget[] = str_replace($parameter, $value, $validArgon);
+            }
+        }
+    }
+    $verifier = new class($overBudget) {
+        public array $hashes = [];
+        public function __construct(private array $forbidden) {}
+        public function CheckPassword($plain, $hash): bool
+        {
+            if (in_array($hash, $this->forbidden, true)) {
+                throw new RuntimeException('Over-budget hash reached the WordPress verifier');
+            }
+            $this->hashes[] = $hash;
+            global $wp_hasher;
+            $saved = $wp_hasher;
+            $wp_hasher = null;
+            try {
+                return wp_check_password($plain, $hash);
+            } finally {
+                $wp_hasher = $saved;
+            }
+        }
+    };
+    $profilesBeforeBudget = get_option('zero_identity_password_profiles');
+    $stateBeforeBudget = get_option($inventory);
+    $savedHasher = $GLOBALS['wp_hasher'] ?? null;
+    $GLOBALS['wp_hasher'] = $verifier;
+    $refuse = static function (string $login) use ($accounts, $assert, $verifier): array {
+        $verifier->hashes = [];
+        try {
+            $accounts->password($login, 'incorrect-password');
+            throw new RuntimeException('Over-budget or absent account authenticated');
+        } catch (\Zero\Identity\Failure $e) {
+            $assert($e->kind === 'invalid_credentials', 'over-budget accounts retain the generic refusal');
+        }
+        return $verifier->hashes;
+    };
+    try {
+        $baselineWork = $refuse('absent-budget-' . $tag);
+        $staleProfiles = $profilesBeforeBudget;
+        foreach ($overBudget as $i => $hash) {
+            $staleProfiles['previously-imported-' . $i] = $hash;
+        }
+        update_option('zero_identity_password_profiles', $staleProfiles, false);
+        $assert($refuse('absent-budget-' . $tag) === $baselineWork, 'previously stored extreme profiles add no verification work for absent accounts');
+        update_option('zero_identity_password_profiles', $profilesBeforeBudget, false);
+        $extremeId = $unsupportedUsers[0];
+        foreach ($overBudget as $hash) {
+            \Zero\Identity\Accounts::rememberPasswordHash($hash);
+            $assert(get_option('zero_identity_password_profiles') === $profilesBeforeBudget, 'extreme imports create no verification profile');
+            $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $extremeId]);
+            clean_user_cache($extremeId);
+            $assert($refuse(get_userdata($extremeId)->user_login) === $baselineWork, 'extreme imports are refused with the same bounded schedule as absent accounts');
+            update_option($inventory, ['after' => 0, 'complete' => false], false);
+            $fallbackWork = $refuse('absent-budget-' . $tag);
+            $assert($refuse(get_userdata($extremeId)->user_login) === $fallbackWork, 'incomplete inventory never verifies an over-budget credential');
+            \Zero\Identity\Accounts::inventoryPasswordHashes();
+            $assert(get_option('zero_identity_password_profiles') === $profilesBeforeBudget, 'background inventory never derives an extreme profile');
+            update_option($inventory, $stateBeforeBudget, false);
+        }
+        $assert($accounts->password('storage-' . $tag, $password) === $uid, 'extreme imports leave supported sign-in working');
+    } finally {
+        $GLOBALS['wp_hasher'] = $savedHasher;
+        update_option('zero_identity_password_profiles', $profilesBeforeBudget, false);
+        update_option($inventory, $stateBeforeBudget, false);
+    }
+    echo "PASS imported costs are bounded; default WordPress \$wp\$2y\$, phpass and MD5 authenticate\n";
     wp_set_password('replacement legacy password', $legacyUsers[0]);
     require_once ABSPATH . 'wp-admin/includes/user.php';
     wp_delete_user($legacyUsers[0]);

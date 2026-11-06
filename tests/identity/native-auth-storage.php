@@ -150,8 +150,17 @@ declare(strict_types=1);
         do_action('profile_update', $legacyId, $old);
         $legacyUsers[] = $legacyId;
     }
+    $unsupportedUsers = [];
+    foreach ([str_repeat('!', 60), '$2y$99$' . str_repeat('a', 53)] as $i => $hash) {
+        $invalidId = wp_create_user('disabled-' . $i . '-' . $tag, $legacyPassword);
+        $old = get_userdata($invalidId);
+        $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $invalidId]);
+        clean_user_cache($invalidId);
+        do_action('profile_update', $invalidId, $old);
+        $unsupportedUsers[] = $invalidId;
+    }
     $schedules = [];
-    foreach (array_merge([$uid], $legacyUsers, [0]) as $candidate) {
+    foreach (array_merge([$uid], $legacyUsers, $unsupportedUsers, [0]) as $candidate) {
         $profileChecks = [];
         $observeProfiles = static function ($valid, $plain, $hash) use (&$profileChecks) {
             $wp = str_starts_with($hash, '$wp');
@@ -171,7 +180,19 @@ declare(strict_types=1);
         sort($profileChecks);
         $schedules[] = $profileChecks;
     }
-    $assert(count($schedules[0]) >= 7 && array_filter($schedules, static fn ($checks) => $checks !== $schedules[0]) === [], 'known, absent, MD5, phpass, cheaper bcrypt and imported crypt accounts perform the same verification work');
+    $assert(count($schedules[0]) >= 7 && array_filter($schedules, static fn ($checks) => $checks !== $schedules[0]) === [], 'known, absent, MD5, phpass, cheaper bcrypt, imported crypt and disabled accounts perform the same verification work');
+    foreach ($unsupportedUsers as $invalidId) {
+        $acceptPluggable = static fn ($valid, $plain, $hash, $id) => $id === $invalidId ? true : $valid;
+        add_filter('check_password', $acceptPluggable, 10, 4);
+        try {
+            $accounts->password(get_userdata($invalidId)->user_login, $legacyPassword);
+            throw new RuntimeException('Unsupported password format accepted');
+        } catch (\Zero\Identity\Failure $e) {
+            $assert($e->kind === 'invalid_credentials', 'unsupported password formats fail closed without custom verification work');
+        } finally {
+            remove_filter('check_password', $acceptPluggable);
+        }
+    }
     foreach ($legacyUsers as $legacyId) {
         $assert($accounts->password(get_userdata($legacyId)->user_login, $legacyPassword) === $legacyId, 'legacy WordPress passwords still authenticate');
     }

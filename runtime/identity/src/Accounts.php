@@ -180,6 +180,7 @@ final class Accounts
     private const DUMMY_PASSWORD_HASH = "zero_identity_dummy_password_hash";
     private const PASSWORD_PROFILES = "zero_identity_password_profiles";
 
+    private const UNSUPPORTED_PASSWORD_PROFILE = 'unsupported';
     private const PASSWORD_INVENTORY = "zero_identity_password_inventory";
 
     /** Ordinary requests only provision fixed material and enqueue the background inventory. */
@@ -217,7 +218,12 @@ final class Accounts
                 $page = Plugin::$db->rows("SELECT ID,user_pass FROM {$wpdb->users} WHERE ID > %d ORDER BY ID LIMIT 1000", $state['after']);
                 foreach ($page as $row) {
                     $profile = self::passwordProfile($row['user_pass']);
-                    $profiles[$profile] ??= self::dummyPasswordHash($row['user_pass']);
+                    if ($profile !== self::UNSUPPORTED_PASSWORD_PROFILE && !isset($profiles[$profile])) {
+                        $dummy = self::dummyPasswordHash($row['user_pass']);
+                        if (self::passwordProfile($dummy) === $profile) {
+                            $profiles[$profile] = $dummy;
+                        }
+                    }
                     $state['after'] = (int) $row['ID'];
                 }
                 $state['complete'] = count($page) < 1000;
@@ -255,6 +261,9 @@ final class Accounts
     public static function rememberPasswordHash(string $hash): void
     {
         $profile = self::passwordProfile($hash);
+        if ($profile === self::UNSUPPORTED_PASSWORD_PROFILE) {
+            return;
+        }
         $profiles = get_option(self::PASSWORD_PROFILES, []);
         if (!isset($profiles[$profile])) {
             try {
@@ -263,7 +272,11 @@ final class Accounts
                     if (isset($profiles[$profile])) {
                         return;
                     }
-                    $profiles[$profile] = self::dummyPasswordHash($hash);
+                    $dummy = self::dummyPasswordHash($hash);
+                    if (self::passwordProfile($dummy) !== $profile) {
+                        return;
+                    }
+                    $profiles[$profile] = $dummy;
                     self::writePasswordOption(self::PASSWORD_PROFILES, $profiles);
                 });
             } finally {
@@ -283,7 +296,9 @@ final class Accounts
         $prefixed = str_starts_with($hash, '$wp');
         $encoded = $prefixed ? substr($hash, 3) : $hash;
         if (preg_match('/^\$2[abxy]\$(\d{2})\$[.\/A-Za-z0-9]{53}$/D', $encoded, $match)) {
-            return json_encode([$prefixed, 'bcrypt', ['cost' => (int) $match[1]]]);
+            return (int) $match[1] >= 4 && (int) $match[1] <= 31
+                ? json_encode([$prefixed, 'bcrypt', ['cost' => (int) $match[1]]])
+                : self::UNSUPPORTED_PASSWORD_PROFILE;
         }
         if (preg_match('/^\$([56])\$(?:rounds=(\d+)\$)?/', $encoded, $match)) {
             return json_encode([$prefixed, 'sha-crypt-' . $match[1], ['rounds' => (int) ($match[2] ?? 5000)]]);
@@ -292,9 +307,9 @@ final class Accounts
             return json_encode([$prefixed, 'md5-crypt']);
         }
         $info = password_get_info($encoded);
-        // Unknown pluggable formats still reach WordPress's verifier.
+        // Unknown formats have no reproducible verification cost and fail closed.
         return $info['algo'] === null
-            ? json_encode([$prefixed, 'opaque'])
+            ? self::UNSUPPORTED_PASSWORD_PROFILE
             : json_encode([$prefixed, $info['algoName'], $info['options']]);
     }
 
@@ -340,11 +355,13 @@ final class Accounts
             // While the inventory is incomplete, every attempt still pays current-algorithm work.
             $dummy = get_option(self::DUMMY_PASSWORD_HASH);
             wp_check_password($password, $dummy, 0);
-            $valid = wp_check_password($password, $user ? $user->user_pass : $dummy, $user ? $user->ID : 0);
+            $supported = $user && $profile !== self::UNSUPPORTED_PASSWORD_PROFILE;
+            $checked = wp_check_password($password, $supported ? $user->user_pass : $dummy, $supported ? $user->ID : 0);
+            $valid = $supported && $checked;
         } else {
             // Complete inventories give every sign-in the same algorithm/cost schedule.
             foreach (get_option(self::PASSWORD_PROFILES) as $kind => $dummy) {
-                $actual = $user && $profile === $kind;
+                $actual = $user && $profile !== self::UNSUPPORTED_PASSWORD_PROFILE && $profile === $kind && self::passwordProfile($dummy) === $profile;
                 $checked = wp_check_password($password, $actual ? $user->user_pass : $dummy, $actual ? $user->ID : 0);
                 if ($actual) {
                     $valid = $checked;

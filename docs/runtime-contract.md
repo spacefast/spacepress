@@ -791,7 +791,8 @@ Normal requests provision a fixed current-algorithm dummy hash and enqueue a
 one-minute WordPress cron event; they never enumerate user password hashes.
 Each background invocation reads at most 1,000 users in ascending `ID` order. An
 option row locked within the database transaction serializes workers. The
-profile map and cursor commit together, so an interrupted page is retried from
+profile map and cursor commit together without publishing uncommitted values to
+the shared option cache, so an interrupted page is retried from
 the previous committed cursor. Password-write hooks merge profiles under the
 same profile-map row lock. Stored profiles contain independent random-password
 hashes, never copies of user credentials.
@@ -805,3 +806,10 @@ substituting the user's hash in its matching slot. Retaining all profiles gives
 matching verification costs across heterogeneous legacy accounts; checking only
 the most expensive legacy profile would not give that property. Sites disabling
 WP-Cron must run the scheduled event through their external cron or WP-CLI.
+
+Identity password sign-in accepts encodings whose algorithm/cost can be
+reproduced with independent verification material. Unsupported pluggable or
+malformed encodings fail with the same generic refusal after the shared dummy
+schedule; they cannot replace a costly dummy with a fast rejection. Such users
+must reset their password to a supported WordPress encoding to use Identity
+password sign-in. Core WordPress authentication remains owned by WordPress.

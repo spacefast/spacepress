@@ -2191,6 +2191,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Undefined => Out::atom("\\Zero\\Js::undefined()", Ty::Undefined),
             ExprKind::Null => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => {
+                crate::builtins::check_regex(pattern, span)?;
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
                 Out::atom(
                     if javascript {
@@ -3834,10 +3835,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
         if let ExprKind::Ident(name) = &callee.kind
             && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
+            && (name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module))
         {
-            if name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module) {
-                self.builtin_args("constructor", name, args, span)?;
-            }
+            self.builtin_args("constructor", name, args, span)?;
         }
         if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"
@@ -4397,11 +4397,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let n = self.expr(len)?;
                 self.need_num(&n, len.span, "`length`")?;
                 let f = self.arg(args, 1, span, "a function")?;
-                let cb = self.callback(f, &[Ty::Null, Ty::Num])?;
+                let cb = self.callback(f, &[Ty::Undefined, Ty::Num])?;
                 let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                 let ret = (**ret).clone();
                 return Ok(Out::atom(
-                    format!("\\Zero\\Js::range((int) {}, {})", n.wrapped(), cb.php),
+                    format!("\\Zero\\Js::range({}, {})", n.php, cb.php),
                     Ty::Array(Box::new(ret)),
                 ));
             }
@@ -4641,6 +4641,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let family = match recv.ty.non_null() {
             t if t.is_num() => Some("number"),
+            t if t.is_str() => Some("string"),
+            Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => Some("array"),
             Ty::Date => Some("date"),
             Ty::Regex => Some("regex"),
             _ => None,
@@ -4649,10 +4651,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.builtin_args(family, m, args, span)?;
         }
         let mut recv = self.finish_value(recv, recv_span)?;
-        let javascript_string_replace = self.javascript_module(self.fx.as_ref().expect("fn").module)
-            && recv.ty.non_null().is_str()
-            && matches!(m, "replace" | "replaceAll");
-        if recv.ty == Ty::Dynamic || javascript_string_replace {
+        let javascript_instance = self.javascript_module(self.fx.as_ref().expect("fn").module) && family.is_some();
+        if recv.ty == Ty::Dynamic || javascript_instance {
             let argv = self.javascript_args(args)?;
             let receiver = if optional { self.tmp_var() } else { recv.php.clone() };
             let call = format!(
@@ -4668,15 +4668,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     call
                 },
-                if javascript_string_replace {
-                    if optional && recv.ty.is_nullable() {
-                        Ty::Str.nullable()
-                    } else {
-                        Ty::Str
-                    }
-                } else {
-                    Ty::Dynamic
-                },
+                Ty::Dynamic,
             ));
         }
         if recv.ty.is_nullable() && !optional {

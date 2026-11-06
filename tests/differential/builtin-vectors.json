@@ -118,5 +118,52 @@
     "name": "regexpConstructorCoercion",
     "expression": "[new RegExp(/a/g).test('a'), new RegExp(undefined).test(''), new RegExp().test('anything')]",
     "fold": false
+  },
+  {
+    "name": "errorUndefined",
+    "expression": "[Error(undefined).message, new Error(undefined).message, Error(null).message, TypeError().message, new RangeError('range').message]",
+    "fold": true
+  },
+  {
+    "name": "javascriptIgnoredArguments",
+    "expression": "(() => { let calls = 0; [1].pop(calls++); [1].reverse(calls++); return [calls, /undefined/.test()]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "javascriptArrayMissing",
+    "expression": "(() => { const a = [1, 2]; const r = a.splice(); return [r, a, typeof [].pop(), typeof [].shift()]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "minMaxZero",
+    "expression": "[String(1 / Math.min(-0, 0)), String(1 / Math.max(0, -0)), String(Math.min(NaN, 1)), String(Math.max(1, NaN))]",
+    "fold": true
+  },
+  {
+    "name": "powerSpecialCases",
+    "expression": "[String(Math.pow(1, Infinity)), String(Math.pow(-1, -Infinity)), String(Math.pow(NaN, 0)), String(1 ** Infinity), String((-1) ** Infinity), String(NaN ** 0)]",
+    "fold": true
+  },
+  {
+    "name": "mapLiveReads",
+    "expression": "(() => { const a = [1, 2]; return a.map((v, i) => { if (i === 0) a[1] = 7; return v; }); })()",
+    "fold": true
+  },
+  {
+    "name": "reduceLiveReads",
+    "expression": "(() => { const a = [1, 2]; return a.reduce((sum, v, i) => { if (i === 0) a[1] = 7; return sum + v; }, 0); })()",
+    "fold": true
+  },
+  {
+    "name": "fromMissingValues",
+    "expression": "Array.from({length: 2}, v => String(v))",
+    "fold": true
+  },
+  {
+    "name": "fromLiveReads",
+    "expression": "(() => { const a = [1, 2]; return Array.from(a, (v, i) => { if (i === 0) a[1] = 7; return v; }); })()",
+    "fold": true
   }
 ]

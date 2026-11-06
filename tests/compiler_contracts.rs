@@ -883,12 +883,18 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     let tmp = tempfile::tempdir().unwrap();
     let mut declarations = String::new();
     let mut actions = Vec::new();
+    let mut javascript = String::new();
     for v in vectors.as_array().unwrap() {
         let name = v["name"].as_str().unwrap();
         let expression = v["expression"].as_str().unwrap();
-        actions.push(format!(
-            "{name}: action({{ input: {{}}, handler: () => ({expression}) }})"
-        ));
+        let body = if v["javascript"] == true {
+            javascript.push_str(&format!("export const js_{name} = () => ({expression});\n"));
+            declarations.push_str(&format!("import {{js_{name}}} from './helper.js';\n"));
+            format!("js_{name}()")
+        } else {
+            expression.to_string()
+        };
+        actions.push(format!("{name}: action({{ input: {{}}, handler: () => ({body}) }})"));
         if v["fold"] == true {
             declarations.push_str(&format!("const folded_{name} = {expression};\n"));
             actions.push(format!(
@@ -896,6 +902,7 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
             ));
         }
     }
+    std::fs::write(tmp.path().join("helper.js"), javascript).unwrap();
     let entry = tmp.path().join("zero.config.ts");
     std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{name: 'builtinparity', actions: {{{}}}}});", actions.join(",\n"))).unwrap();
     let node = Command::new("node")
@@ -927,6 +934,7 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 #[test]
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
+        "'aba'.replace(/(a(b)?)+/, '[$2]')",
         "(1).toFixed(2, 3)",
         "new RegExp('a', '', 3)",
         "[2, 1].sort(...[(x: number, y: number) => y - x])",

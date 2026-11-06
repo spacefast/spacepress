@@ -330,23 +330,30 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
   assert.ok(Array.isArray(vectors));
   const declarations: string[] = [];
   const actions: string[] = [];
+  const javascript: string[] = [];
   function addVector(value: unknown) {
     assert.ok(value !== null && typeof value === "object");
     assert.ok("name" in value && typeof value.name === "string");
     assert.ok("expression" in value && typeof value.expression === "string");
     assert.ok("fold" in value && typeof value.fold === "boolean");
-    actions.push(`${value.name}: action({ input: {}, handler: () => (${value.expression}) })`);
+    let expression = value.expression;
+    if ("javascript" in value && value.javascript === true) {
+      javascript.push(`export const js_${value.name} = () => (${expression});`);
+      declarations.push(`import {js_${value.name}} from './helper.js';`);
+      expression = `js_${value.name}()`;
+    }
+    actions.push(`${value.name}: action({ input: {}, handler: () => (${expression}) })`);
     if (value.fold) {
       declarations.push(`const folded_${value.name} = ${value.expression};`);
       actions.push(`folded_${value.name}: action({ input: {}, handler: () => folded_${value.name} })`);
     }
   }
   vectors.forEach(addVector);
-  const files = { "zero.config.ts": `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});` };
+  const files = { "helper.js": javascript.join("\n"), "zero.config.ts": `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});` };
   const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
   mkdirSync(dir, { recursive: true });
   try {
-    writeFileSync(path.join(dir, "zero.config.ts"), files["zero.config.ts"]);
+    for (const [name, source] of Object.entries(files)) writeFileSync(path.join(dir, name), source);
     const { envelope, check, output } = browserCheck({ name: "builtinparity", files });
     assert.equal(envelope, nativeCheck(dir));
     assert.equal(check.ok, true);

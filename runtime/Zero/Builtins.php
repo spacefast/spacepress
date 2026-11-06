@@ -131,6 +131,23 @@ final class Builtins
         'map.get' => [0, 1],
         'map.has' => [0, 1],
         'map.set' => [0, 2],
+        'string.valueOf' => [0, PHP_INT_MAX],
+        'number.valueOf' => [0, PHP_INT_MAX],
+        'array.toString' => [0, PHP_INT_MAX],
+        'array.valueOf' => [0, PHP_INT_MAX],
+        'regex.toString' => [0, PHP_INT_MAX],
+        'regex.valueOf' => [0, PHP_INT_MAX],
+        'set.toString' => [0, PHP_INT_MAX],
+        'set.valueOf' => [0, PHP_INT_MAX],
+        'map.toString' => [0, PHP_INT_MAX],
+        'map.valueOf' => [0, PHP_INT_MAX],
+        'object.toString' => [0, PHP_INT_MAX],
+        'object.valueOf' => [0, PHP_INT_MAX],
+        'boolean.toString' => [0, PHP_INT_MAX],
+        'boolean.valueOf' => [0, PHP_INT_MAX],
+        'function.call' => [0, PHP_INT_MAX],
+        'function.apply' => [0, 2],
+        'function.valueOf' => [0, PHP_INT_MAX],
     ];
 
     public static function check(string $surface, string $name, int $count): void

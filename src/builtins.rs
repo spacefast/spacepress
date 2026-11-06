@@ -119,6 +119,17 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("set", &["add", "has"], overload("value: unknown", None, None, arity(0, 1))),
     ("map", &["get", "has"], overload("key: unknown", None, None, arity(0, 1))),
     ("map", &["set"], overload("key: unknown, value: unknown", None, None, arity(0, 2))),
+    ("string", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("number", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("array", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("regex", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("set", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("map", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("object", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("boolean", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("function", &["call"], overload("thisArg?: unknown, ...arguments: unknown[]", None, None, arity(0, VARIADIC))),
+    ("function", &["apply"], overload("thisArg?: unknown, arguments?: array-like", None, None, arity(0, 2))),
+    ("function", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
 ];
 
 pub fn contract(surface: &str, name: &str) -> Option<Contract> {
@@ -156,6 +167,49 @@ pub fn check(surface: &str, name: &str, count: usize, phase: Phase, span: Span) 
         format!("unsupported overload of `{surface}.{name}` ({count} arguments)")
     };
     Err(Diag::new(span, message).help(format!("accepted contract: {}", c.overload)))
+}
+
+/// Refuse engine-specific capture retention rather than emulate a regex engine.
+pub fn check_regex(pattern: &str, span: Span) -> Result<(), Diag> {
+    let bytes = pattern.as_bytes();
+    let mut stack = Vec::new();
+    let mut captures = 0;
+    let mut in_class = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1,
+            b'[' => in_class = true,
+            b']' => in_class = false,
+            b'(' if !in_class => {
+                let tail = &pattern[i + 1..];
+                let special = tail.starts_with('?');
+                let named = tail.starts_with("?<") && !tail.starts_with("?<=") && !tail.starts_with("?<!");
+                if special && !named && !["?:", "?=", "?!", "?<=", "?<!"].iter().any(|p| tail.starts_with(p)) {
+                    return Err(Diag::new(span, "this regex group syntax isn't supported")
+                        .help("use JavaScript capture, noncapturing or lookaround groups"));
+                }
+                stack.push(captures);
+                if !special || named {
+                    captures += 1;
+                }
+            }
+            b')' if !in_class => {
+                if let Some(before) = stack.pop()
+                    && captures > before
+                    && bytes.get(i + 1).is_some_and(|b| matches!(b, b'*' | b'+' | b'{'))
+                {
+                    return Err(
+                        Diag::new(span, "repeated regex groups containing captures aren't supported")
+                            .help("remove the capture or repeat the captured text outside the group"),
+                    );
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

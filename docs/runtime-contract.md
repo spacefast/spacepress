@@ -560,6 +560,9 @@ multiline mode, set operations or line terminators; other cases are refused
 instead of inheriting Rust regex semantics. String replacements have no such
 ASCII restriction. Replacement tokens implement GetSubstitution, including
 capture-number boundaries and named captures.
+Repeated groups containing captures are refused in every phase: Rust/PCRE
+retain captures from earlier iterations where JavaScript clears them. Regex
+literals receive located diagnostics; dynamically constructed patterns throw.
 Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 
@@ -605,8 +608,8 @@ Dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
 These support the small constructor/method subset exercised by imported
 helpers. RegExp exec tracks global `lastIndex` and exposes match index, input,
 groups and undefined captures. Dynamic string match/split/replace preserve
-these semantics. Literal regexes allocate distinct objects; typed `re` remains
-the state-free cached helper. `Array.from` interleaves reads with its mapper,
+these semantics. Literal regexes allocate distinct objects; captured regexes
+keep one instance for their shared state. `Array.from` interleaves reads with its mapper,
 and arrays use live length. The standard Math namespace has stable identity.
 
 This is not a JavaScript host. Node/browser APIs, arbitrary prototypes,
@@ -664,7 +667,7 @@ Every runtime and emitted `mb_*` call passes explicit encodings; Zero never
 depends on `mb_internal_encoding()`.
 
 RegExp:
-- `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
+- `re(string $source, string $flags): RegExp` — creates a fresh instance and translates the supported JS regex subset to UTF-aware, delimiter-safe PCRE. Accepts `g i m s u y`; `d` and `v` throw `JsError`.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`, `sticky`. `test` and checked `exec` share `execMatch`: global/sticky calls read and update UTF-16 `lastIndex`, reset it on failure, and keep it unchanged after an empty match. Literal evaluation creates fresh regex identity; a captured regex keeps its own instance. Sticky replacement is explicitly refused.
 - Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 

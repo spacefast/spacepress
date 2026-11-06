@@ -1397,11 +1397,13 @@ final class Js
         return is_float($x) && $x === 0.0 && fdiv(1, $x) < 0;
     }
 
-    public static function range(int $n, callable $f): JsArray
+    public static function range(int|float $n, callable $f): JsArray
     {
+        $n = max(0, self::toInteger($n));
+        if ($n > 5000000) { throw new JsError('Array.from result is too large', 'RangeError'); }
         $out = [];
         for ($i = 0; $i < $n; $i++) {
-            $out[] = $f(null, $i);
+            $out[] = $f(JsUndefined::Value, $i);
         }
 
         return new JsArray($out);

@@ -216,7 +216,8 @@ trait JsDynamic
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
             $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map',
-            default => '',
+            is_bool($receiver) => 'boolean', $receiver instanceof \Closure => 'function',
+            default => 'object',
         };
         Builtins::check($surface, $name, count($a));
         if ($receiver instanceof JsNamespace && in_array($name, self::DYNAMIC_MATH_METHODS, true)) { return self::dynamicStaticCall($receiver->name, $name, $args); }
@@ -288,7 +289,7 @@ trait JsDynamic
                 'at' => self::dynamicArrayAt($receiver, self::toNumber($get(0, 0))),
                 'indexOf', 'lastIndexOf', 'includes' => self::{$name}($receiver, $get(0), ...array_slice($a, 1, 1)),
                 'join' => self::join($receiver, $get(0) === JsUndefined::Value ? ',' : self::str($get(0))),
-                'splice' => count($a) < 2 ? self::splice($receiver, self::toNumber($get(0, 0))) : self::splice($receiver, self::toNumber($a[0]), self::toNumber($a[1]), ...array_slice($a, 2)),
+                'splice' => $a === [] ? new JsArray() : (count($a) < 2 ? self::splice($receiver, self::toNumber($get(0, 0))) : self::splice($receiver, self::toNumber($a[0]), self::toNumber($a[1]), ...array_slice($a, 2))),
                 default => throw new JsError($name . ' is not a function', 'TypeError'),
             };
         }

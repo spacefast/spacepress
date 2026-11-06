@@ -815,7 +815,10 @@ impl<'p> Evaluator<'p> {
             ExprKind::Bool(b) => Value::Bool(*b),
             ExprKind::Null => Value::Null,
             ExprKind::Undefined => Value::Undef,
-            ExprKind::Regex { pattern, flags } => Value::Regex(Rc::from(pattern.as_str()), Rc::from(flags.as_str())),
+            ExprKind::Regex { pattern, flags } => {
+                crate::builtins::check_regex(pattern, e.span).map_err(Ctl::Err)?;
+                Value::Regex(Rc::from(pattern.as_str()), Rc::from(flags.as_str()))
+            }
             ExprKind::Template(quasis, exprs) => {
                 let mut out = quasis[0].clone();
                 for (i, x) in exprs.iter().enumerate() {
@@ -1699,19 +1702,15 @@ impl<'p> Evaluator<'p> {
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         let num = |i: usize| to_number(&args.get(i).cloned().unwrap_or(Value::Undef));
         Ok(match (g, m) {
-            ("Math", "max") => Value::Num(args.iter().map(to_number).fold(f64::NEG_INFINITY, |a, b| {
-                if a.is_nan() || b.is_nan() { f64::NAN } else { a.max(b) }
-            })),
-            ("Math", "min") => Value::Num(args.iter().map(to_number).fold(f64::INFINITY, |a, b| {
-                if a.is_nan() || b.is_nan() { f64::NAN } else { a.min(b) }
-            })),
+            ("Math", "max") => Value::Num(args.iter().map(to_number).fold(f64::NEG_INFINITY, crate::num::max)),
+            ("Math", "min") => Value::Num(args.iter().map(to_number).fold(f64::INFINITY, crate::num::min)),
             ("Math", "floor") => Value::Num(num(0).floor()),
             ("Math", "ceil") => Value::Num(num(0).ceil()),
             ("Math", "round") => Value::Num(crate::num::round(num(0))),
             ("Math", "trunc") => Value::Num(num(0).trunc()),
             ("Math", "abs") => Value::Num(num(0).abs()),
             ("Math", "sqrt") => Value::Num(num(0).sqrt()),
-            ("Math", "pow") => Value::Num(num(0).powf(num(1))),
+            ("Math", "pow") => Value::Num(crate::num::pow(num(0), num(1))),
             ("Math", "random") => {
                 return err(
                     span,
@@ -1777,15 +1776,17 @@ impl<'p> Evaluator<'p> {
             ("Array", "isArray") => Value::Bool(matches!(arg(0), Value::Array(_))),
             ("Array", "from") => {
                 let f = arg(1);
-                let items: Vec<Value> = match arg(0) {
-                    Value::Array(a) => a.borrow().clone(),
-                    Value::Arguments(object) => arguments_items(&object, span)?,
-                    Value::Object(o) => {
-                        if let Some(length) = o.borrow().get("length") {
-                            require_static_data(length, span)?;
+                let source = arg(0);
+                let fixed_length = match &source {
+                    Value::Array(_) => None,
+                    Value::Object(o) | Value::Arguments(o) => {
+                        let length = o.borrow().get("length").cloned().unwrap_or(Value::Undef);
+                        require_static_data(&length, span)?;
+                        let length = to_number(&length).max(0.0).floor();
+                        if length > STEP_BUDGET as f64 {
+                            return err(span, "Array.from result is too large to evaluate at build time");
                         }
-                        let len = o.borrow().get("length").map(to_number).unwrap_or(0.0);
-                        vec![Value::Undef; len.max(0.0) as usize]
+                        Some(length as usize)
                     }
                     other => {
                         return err(
@@ -1794,15 +1795,34 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                 };
-                if matches!(f, Value::Undef) {
-                    Value::array(items)
-                } else {
-                    let mut out = Vec::new();
-                    for (i, x) in items.into_iter().enumerate() {
-                        out.push(self.call(&f, vec![x, Value::Num(i as f64)], span)?);
+                let mut out = Vec::new();
+                let mut i = 0;
+                loop {
+                    let length = fixed_length.unwrap_or_else(|| {
+                        if let Value::Array(a) = &source {
+                            a.borrow().len()
+                        } else {
+                            unreachable!()
+                        }
+                    });
+                    if i >= length {
+                        break;
                     }
-                    Value::array(out)
+                    let value = match &source {
+                        Value::Array(a) => a.borrow().get(i).cloned().unwrap_or(Value::Undef),
+                        Value::Object(o) | Value::Arguments(o) => {
+                            o.borrow().get(&i.to_string()).cloned().unwrap_or(Value::Undef)
+                        }
+                        _ => unreachable!(),
+                    };
+                    out.push(if matches!(f, Value::Undef) {
+                        value
+                    } else {
+                        self.call(&f, vec![value, Value::Num(i as f64)], span)?
+                    });
+                    i += 1;
                 }
+                Value::array(out)
             }
             ("Number", "isInteger") => {
                 Value::Bool(matches!(arg(0), Value::Num(n) if n.is_finite() && n.fract() == 0.0))
@@ -1865,7 +1885,14 @@ impl<'p> Evaluator<'p> {
         Ok(match m {
             "map" | "filter" | "find" | "findIndex" | "some" | "every" | "flatMap" | "forEach" => {
                 let mut out = Vec::new();
-                for (i, x) in items.iter().enumerate() {
+                for i in 0..items.len() {
+                    let x = a.borrow().get(i).cloned();
+                    let Some(x) = x.or_else(|| matches!(m, "find" | "findIndex").then_some(Value::Undef)) else {
+                        if m == "map" {
+                            return err(span, "map() cannot produce a sparse array at build time");
+                        }
+                        continue;
+                    };
                     let r = self.call(&f, vec![x.clone(), Value::Num(i as f64), Value::Array(a.clone())], span)?;
                     if matches!(m, "filter" | "find" | "findIndex" | "some" | "every") {
                         require_static_data(&r, span)?;
@@ -1902,8 +1929,11 @@ impl<'p> Evaluator<'p> {
                         None => return err(span, "reduce of an empty array with no initial value"),
                     }
                 };
-                for (i, x) in iter {
-                    acc = self.call(&f, vec![acc, x, Value::Num(i as f64), Value::Array(a.clone())], span)?;
+                for (i, _) in iter {
+                    let x = a.borrow().get(i).cloned();
+                    if let Some(x) = x {
+                        acc = self.call(&f, vec![acc, x, Value::Num(i as f64), Value::Array(a.clone())], span)?;
+                    }
                 }
                 acc
             }
@@ -2484,7 +2514,13 @@ fn error_object(name: &str, args: &[Value]) -> Value {
     map.insert("name".into(), Value::str(name));
     map.insert(
         "message".into(),
-        Value::str(&args.first().and_then(Value::to_js_string).unwrap_or_default()),
+        Value::str(
+            &args
+                .first()
+                .filter(|v| !matches!(v, Value::Undef))
+                .and_then(Value::to_js_string)
+                .unwrap_or_default(),
+        ),
     );
     Value::object(map)
 }
@@ -2925,7 +2961,7 @@ fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
         BinOp::Mul => Value::Num(to_number(a) * to_number(b)),
         BinOp::Div => Value::Num(to_number(a) / to_number(b)),
         BinOp::Rem => Value::Num(to_number(a) % to_number(b)),
-        BinOp::Exp => Value::Num(to_number(a).powf(to_number(b))),
+        BinOp::Exp => Value::Num(crate::num::pow(to_number(a), to_number(b))),
         BinOp::Eq => Value::Bool(a.strict_eq(b)),
         BinOp::Ne => Value::Bool(!a.strict_eq(b)),
         BinOp::LooseEq => Value::Bool(loose_eq(a, b, span)?),

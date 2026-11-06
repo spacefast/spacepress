@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Zero;
 
 /**
- * A JavaScript RegExp, translated to a PCRE pattern once (Js::re caches instances).
+ * A JavaScript RegExp, translated to a PCRE pattern per instance.
  *
  * PCRE always runs in UTF mode, so offsets are UTF-8 byte offsets internally and
  * `.`/classes consume whole code points. JS semantics kept explicitly: ASCII-only
@@ -65,6 +65,7 @@ final class RegExp implements \Stringable
         $this->multiline = in_array('m', $chars, true);
         $this->unicode = in_array('u', $chars, true);
 
+        self::checkCaptureContract($source);
         $this->src = $source;
         $this->pos = 0;
         $body = $this->translate();
@@ -234,6 +235,33 @@ final class RegExp implements \Stringable
     }
 
     // ---------------------------------------------------------------- translation
+
+    private static function checkCaptureContract(string $source): void
+    {
+        $stack = []; $captures = 0; $inClass = false;
+        for ($i = 0, $length = strlen($source); $i < $length; $i++) {
+            $c = $source[$i];
+            if ($c === '\\') { $i++; continue; }
+            if ($c === '[') { $inClass = true; continue; }
+            if ($c === ']') { $inClass = false; continue; }
+            if ($inClass) { continue; }
+            if ($c === '(') {
+                $tail = substr($source, $i + 1);
+                $special = str_starts_with($tail, '?');
+                $named = str_starts_with($tail, '?<') && !str_starts_with($tail, '?<=') && !str_starts_with($tail, '?<!');
+                if ($special && !$named && !preg_match('/^\?(?::|=|!|<=|<!)/', $tail)) {
+                    throw new JsError('This regex group syntax is not supported', 'SyntaxError');
+                }
+                $stack[] = $captures;
+                if (!$special || $named) { $captures++; }
+            } elseif ($c === ')' && $stack !== []) {
+                $before = array_pop($stack);
+                if ($captures > $before && in_array($source[$i + 1] ?? '', ['*', '+', '{'], true)) {
+                    throw new JsError('Repeated regex groups containing captures are not supported', 'SyntaxError');
+                }
+            }
+        }
+    }
 
     private function translate(): string
     {

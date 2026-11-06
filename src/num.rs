@@ -25,6 +25,44 @@ pub fn round(x: f64) -> f64 {
     if x - floor < 0.5 { floor } else { floor + 1.0 }
 }
 
+pub fn pow(a: f64, b: f64) -> f64 {
+    if b == 0.0 {
+        return 1.0;
+    }
+    if a.is_nan() || b.is_nan() || (a.abs() == 1.0 && b.is_infinite()) {
+        return f64::NAN;
+    }
+    a.powf(b)
+}
+
+pub fn min(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        return f64::NAN;
+    }
+    if a == 0.0 && b == 0.0 {
+        return if a.is_sign_negative() || b.is_sign_negative() {
+            -0.0
+        } else {
+            0.0
+        };
+    }
+    a.min(b)
+}
+
+pub fn max(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        return f64::NAN;
+    }
+    if a == 0.0 && b == 0.0 {
+        return if a.is_sign_positive() || b.is_sign_positive() {
+            0.0
+        } else {
+            -0.0
+        };
+    }
+    a.max(b)
+}
+
 /// ECMAScript WhiteSpace and LineTerminator (not Unicode's White_Space).
 pub fn is_js_whitespace(c: char) -> bool {
     matches!(c, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' |

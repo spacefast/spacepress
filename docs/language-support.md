@@ -236,7 +236,7 @@ Global isFinite accepts zero or one argument and applies numeric coercion; Numbe
 
 Status: **supported**.
 
-src/builtins.rs owns JavaScript built-in overloads, arity and phase support. Unsupported arguments are refused at the call site; runtime-only dynamic receivers throw a TypeError. Captured and runtime vectors compare UTF-16 ordering, replacement substitution, ECMAScript whitespace, modulo radix conversion and signed-zero rounding to Node. Positioned includes/startsWith/endsWith are refused in typed code and configuration evaluation; checked imported JavaScript implements those positions. Callback thisArg and nondecimal numeric toString are refused. JSON parsing/serialization and Error construction are runtime-only; configuration evaluation refuses them.
+src/builtins.rs owns JavaScript built-in overloads, arity and phase support. Unsupported arguments are refused at the call site; runtime-only dynamic receivers throw a TypeError. Captured and runtime vectors compare UTF-16 ordering, replacement substitution, ECMAScript whitespace, modulo radix conversion and signed-zero rounding to Node. Positioned includes/startsWith/endsWith are refused in typed code and configuration evaluation; checked imported JavaScript implements those positions. Callback thisArg and nondecimal numeric toString are refused. JSON parsing/serialization and Error construction are runtime-only; configuration evaluation refuses them. Custom object and function coercion are refused during configuration evaluation; handlers use the checked runtime conversion path.
 
 [Evidence](../tests/compiler_contracts.rs) (`builtin_vectors_agree_in_evaluation_generated_php_and_node`)
 

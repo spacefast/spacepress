@@ -256,7 +256,7 @@ trait JsDynamic
                 'toUpperCase' => mb_strtoupper($receiver, 'UTF-8'), 'toLowerCase' => mb_strtolower($receiver, 'UTF-8'),
                 'trim' => self::trim($receiver), 'trimStart' => self::trimStart($receiver), 'trimEnd' => self::trimEnd($receiver),
                 'charAt' => self::charAt($receiver, self::toNumber($get(0, 0))),
-                'at' => self::strAt($receiver, self::toNumber($get(0, 0))),
+                'at' => self::strAt($receiver, self::toNumber($get(0, 0))) ?? JsUndefined::Value,
                 'padStart', 'padEnd' => self::{$name}($receiver, self::toNumber($get(0)), $get(1) === JsUndefined::Value ? ' ' : self::str($get(1))),
                 'charCodeAt' => self::dynamicCharCodeAt($receiver, self::toNumber($get(0, 0))),
                 'slice' => self::slice($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
@@ -286,7 +286,7 @@ trait JsDynamic
                 'reduce' => count($a) < 2 ? self::reduce($receiver, self::dynamicCallback($get(0))) : self::reduce($receiver, self::dynamicCallback($get(0)), $a[1]),
                 'sort', 'toSorted' => self::{$name}($receiver, $get(0) === JsUndefined::Value ? null : self::dynamicCallback($get(0))),
                 'fill' => self::fill($receiver, $get(0), self::toNumber($get(1, 0)), $get(2) === JsUndefined::Value ? null : self::toNumber($get(2))),
-                'slice' => self::arrSlice($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
+                'slice' => self::dynamicBorrowedSlice($receiver, $args),
                 'at' => self::dynamicArrayAt($receiver, self::toNumber($get(0, 0))),
                 'indexOf', 'lastIndexOf', 'includes' => self::{$name}($receiver, $get(0), ...array_slice($a, 1, 1)),
                 'join' => self::join($receiver, $get(0) === JsUndefined::Value ? ',' : self::str($get(0))),
@@ -355,9 +355,10 @@ trait JsDynamic
 
     private static function dynamicSplit(string $source, mixed $separator, mixed $limit): JsArray
     {
-        if ($limit !== JsUndefined::Value && self::toUint32(self::toNumber($limit)) === 0) { return new JsArray(); }
+        $limit = $limit === JsUndefined::Value ? null : self::toUint32(self::toNumber($limit));
+        if ($limit === 0) { return new JsArray(); }
         if ($separator === JsUndefined::Value) { return new JsArray([$source]); }
-        $result = self::split($source, $separator instanceof RegExp ? $separator : self::str($separator), $limit === JsUndefined::Value ? null : self::toNumber($limit));
+        $result = self::split($source, $separator instanceof RegExp ? $separator : self::str($separator), $limit);
         $result->a = array_map(static fn ($value) => $value ?? JsUndefined::Value, $result->a);
         return $result;
     }

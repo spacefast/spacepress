@@ -32,7 +32,7 @@ final class Js
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
             $v instanceof JsArray => self::join($v),
-            $v instanceof JsObject => '[object Object]',
+            $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
             $v instanceof JsArguments, $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),

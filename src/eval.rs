@@ -75,6 +75,39 @@ fn require_static_data(value: &Value, span: Span) -> R<()> {
     visit(value, span, &mut HashSet::new())
 }
 
+/// Pure conversions do not execute user-defined ToPrimitive hooks.
+fn require_static_coercion(value: &Value, span: Span) -> R<()> {
+    require_static_data(value, span)?;
+    fn visit(value: &Value, span: Span, seen: &mut HashSet<usize>) -> R<()> {
+        match value {
+            Value::Array(a) if seen.insert(Rc::as_ptr(a) as usize) => {
+                for value in a.borrow().iter() {
+                    visit(value, span, seen)?;
+                }
+            }
+            Value::Object(o) | Value::Arguments(o)
+                if o.borrow().contains_key("valueOf") || o.borrow().contains_key("toString") =>
+            {
+                return err_help(
+                    span,
+                    "custom object coercion isn't supported during configuration evaluation",
+                    "pass a primitive value, or perform the conversion inside a handler",
+                );
+            }
+            Value::Closure(_) | Value::Builtin(_) | Value::Class(_) => {
+                return err_help(
+                    span,
+                    "function coercion isn't supported during configuration evaluation",
+                    "pass a primitive value, or perform the conversion inside a handler",
+                );
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    visit(value, span, &mut HashSet::new())
+}
+
 /// Names exported by `"zero"`.
 pub const ZERO_EXPORTS: &[&str] = &[
     "collection",
@@ -823,6 +856,7 @@ impl<'p> Evaluator<'p> {
                 let mut out = quasis[0].clone();
                 for (i, x) in exprs.iter().enumerate() {
                     let v = self.eval_static_data(x, scope)?;
+                    require_static_coercion(&v, x.span)?;
                     match v.to_js_string() {
                         Some(s) => out.push_str(&s),
                         None => return err(x.span, format!("can't put {} into a string", v.describe())),
@@ -912,6 +946,9 @@ impl<'p> Evaluator<'p> {
             })),
             ExprKind::Unary(op, x) => {
                 let v = self.eval_static_data(x, scope)?;
+                if matches!(op, UnOp::Neg | UnOp::Plus) {
+                    require_static_coercion(&v, e.span)?;
+                }
                 match op {
                     UnOp::Not => Value::Bool(!v.truthy()),
                     UnOp::Neg => Value::Num(-to_number(&v)),
@@ -976,7 +1013,9 @@ impl<'p> Evaluator<'p> {
                 new
             }
             ExprKind::Update { inc, prefix, target } => {
-                let old = to_number(&self.eval_static_data(target, scope)?);
+                let value = self.eval_static_data(target, scope)?;
+                require_static_coercion(&value, e.span)?;
+                let old = to_number(&value);
                 let new = if *inc { old + 1.0 } else { old - 1.0 };
                 self.assign(target, Value::Num(new), scope)?;
                 Value::Num(if *prefix { new } else { old })
@@ -1693,6 +1732,11 @@ impl<'p> Evaluator<'p> {
             }
         }
         crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
+        if g == "Math" {
+            for value in &args {
+                require_static_coercion(value, span)?;
+            }
+        }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         let num = |i: usize| to_number(&args.get(i).cloned().unwrap_or(Value::Undef));
         Ok(match (g, m) {
@@ -1740,7 +1784,7 @@ impl<'p> Evaluator<'p> {
                         };
                         let pair = pair.borrow();
                         let key = pair.first().cloned().unwrap_or(Value::Undef);
-                        require_static_data(&key, span)?;
+                        require_static_coercion(&key, span)?;
                         let Some(k) = key.to_js_string() else {
                             return err(
                                 span,
@@ -1888,6 +1932,15 @@ impl<'p> Evaluator<'p> {
         if matches!(m, "join" | "includes" | "indexOf" | "slice") {
             for value in &args {
                 require_static_data(value, span)?;
+            }
+        }
+        if m == "join" {
+            require_static_coercion(&Value::Array(a.clone()), span)?;
+        }
+        let numeric_start = if matches!(m, "includes" | "indexOf") { 1 } else { 0 };
+        if matches!(m, "slice" | "join" | "includes" | "indexOf") {
+            for value in args.iter().skip(numeric_start) {
+                require_static_coercion(value, span)?;
             }
         }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
@@ -2179,7 +2232,7 @@ fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
 
 fn array_like_length(object: &Obj, span: Span) -> R<usize> {
     let length = object.borrow().get("length").cloned().unwrap_or(Value::Undef);
-    require_static_data(&length, span)?;
+    require_static_coercion(&length, span)?;
     let length = to_number(&length).max(0.0).floor();
     if length > STEP_BUDGET as f64 {
         return err(span, "the arguments object is too large to evaluate at build time");
@@ -2246,6 +2299,14 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
     crate::builtins::check("global", g, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     for value in args {
         require_static_data(value, span)?;
+    }
+    if matches!(
+        g,
+        "String" | "Number" | "parseInt" | "parseFloat" | "isNaN" | "isFinite"
+    ) {
+        for value in args {
+            require_static_coercion(value, span)?;
+        }
     }
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
     Ok(match g {
@@ -2774,6 +2835,11 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
     crate::builtins::check("string", m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
     let str_arg = |i: usize| arg(i).to_js_string().unwrap_or_default();
+    if matches!(m, "slice" | "split" | "repeat" | "includes" | "startsWith" | "endsWith") {
+        for value in args {
+            require_static_coercion(value, span)?;
+        }
+    }
     if matches!(m, "includes" | "startsWith" | "endsWith") && matches!(arg(0), Value::Regex(..)) {
         return err(span, "string search needs a string, not a regular expression");
     }
@@ -2950,6 +3016,10 @@ fn loose_eq(a: &Value, b: &Value, span: Span) -> R<bool> {
 fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
     require_static_data(a, span)?;
     require_static_data(b, span)?;
+    if !matches!(op, BinOp::Eq | BinOp::Ne) {
+        require_static_coercion(a, span)?;
+        require_static_coercion(b, span)?;
+    }
     let prim = |v: &Value| -> R<Value> {
         match v {
             Value::Array(_) | Value::Object(_) | Value::Arguments(_) | Value::Regex(..) => {

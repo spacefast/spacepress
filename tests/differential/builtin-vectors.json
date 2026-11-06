@@ -222,5 +222,66 @@
     "expression": "[[[1]].flat(undefined), [[1]].flat(null)]",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "repeatCoercion",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['ab'.repeat(o), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptRepeatCoercion",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['ab'.repeat(o), n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "splitCoercionOnce",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['a,b,c'.split(',', o), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptSplitCoercionOnce",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['a,b,c'.split(',', o), n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "sliceLengthBeforeCoercion",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; return [a.slice(start), a]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptSliceLengthBeforeCoercion",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; return [a.slice(start), a]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "hasOwnKeyCoercion",
+    "expression": "(() => { let n = 0; const key = {toString: () => { n++; return 'a'; }}; return [Object.hasOwn({a: 1}, key), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptHasOwnKeyCoercion",
+    "expression": "(() => { let n = 0; const key = {toString: () => { n++; return 'a'; }}; return [Object.hasOwn({a: 1}, key), n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "spliceNullishCounts",
+    "expression": "(() => { const a = [1, 2]; const b = [1, 2]; return [a.splice(0, null), a, b.splice(0, undefined), b]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptSpliceNullishCounts",
+    "expression": "(() => { const a = [1, 2]; const b = [1, 2]; return [a.splice(0, null), a, b.splice(0, undefined), b]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "javascriptStringAtUndefined",
+    "expression": "['abc'.at(100) === undefined, 'abc'.at(-100) === undefined, 'abc'.at(1)]",
+    "fold": false,
+    "javascript": true
   }
 ]

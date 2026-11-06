@@ -1007,3 +1007,47 @@ fn unsupported_features_have_positions_and_actionable_help() {
         assert!(!d["help"].as_str().unwrap().is_empty(), "{report}");
     }
 }
+
+#[test]
+fn configuration_refuses_custom_coercion_at_the_call_site() {
+    for expression in [
+        "'ab'.repeat({valueOf: () => 2})",
+        "'abc'.slice({valueOf: () => 1})",
+        "'a,b,c'.split(',', {valueOf: () => 2})",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nconst result = {expression};\nexport default defineConfig({{name:'coercion',actions:{{probe:action({{input:{{}},handler:()=>result}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"]
+                .as_str()
+                .unwrap()
+                .contains("custom object coercion"),
+            "{report}"
+        );
+        assert_eq!(diagnostic["location"]["line"], 2);
+        assert!(diagnostic["help"].as_str().unwrap().contains("handler"));
+    }
+}
+
+#[test]
+fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
+    for method in ["findMany", "findFirst"] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig, table, id, db}} from 'zero';\nconst notes = table({{id:id()}});\nexport default defineConfig({{name:'queryarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"]
+                .as_str()
+                .unwrap()
+                .contains("at most one options argument"),
+            "{report}"
+        );
+        assert_eq!(diagnostic["location"]["line"], 3);
+        assert!(diagnostic["help"].as_str().unwrap().contains("one options object"));
+    }
+}

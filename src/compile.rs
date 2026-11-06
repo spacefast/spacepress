@@ -4896,7 +4896,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             "slice" | "substring" | "padStart" | "padEnd" | "repeat" | "charAt" => Out::atom(dispatch(), Ty::Str),
-            "at" => Out::atom(dispatch(), Ty::Str.nullable()),
+            "at" => Out::atom(
+                format!(
+                    "\\Zero\\Js::strAt({}, \\Zero\\Js::toNumber({}))",
+                    s.php,
+                    a(0).unwrap_or("0".into())
+                ),
+                Ty::Str.nullable(),
+            ),
             "split" => {
                 if let Some(separator) = argv.first()
                     && !(separator.ty.is_str() || separator.ty == Ty::Regex)
@@ -5119,7 +5126,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
-                    format!("\\Zero\\Js::splice({}, {})", a.php, extra.join(", ")),
+                    format!(
+                        "\\Zero\\Js::dynamicCallMethod({}, 'splice', new \\Zero\\JsArray([{}]))",
+                        a.php,
+                        extra.join(", ")
+                    ),
                     Ty::Array(Box::new(el)),
                 )
             }
@@ -5195,6 +5206,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 m_span,
                 format!("`db.query.<collection>` has no method `{m}`"),
                 "use findMany or findFirst",
+            );
+        }
+        if args.len() > 1 {
+            return err_help(
+                span,
+                format!("db.query.{table}.{m} accepts at most one options argument"),
+                "pass filters and ordering inside one options object",
             );
         }
         let (opts, row_ty) = match args.first() {

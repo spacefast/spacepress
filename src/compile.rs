@@ -3151,6 +3151,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             _ => format!("function ({params_php}){use_clause} {{\n{body}{}}}", pad(1)),
         };
+        let php = if let Some((keys, descending)) = crate::builtins::sort_key(f) {
+            let keys = keys.iter().map(|key| php_str(key)).collect::<Vec<_>>().join(", ");
+            format!(
+                "\\Zero\\Js::sortComparator({php}, [{keys}], {})",
+                if descending { "true" } else { "false" }
+            )
+        } else {
+            php
+        };
         Ok(Out::atom(
             php,
             Ty::Fn(callable_parameters(f, &param_tys), Box::new(ret)),
@@ -4737,6 +4746,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         if let Some(family) = family {
             self.builtin_args(family, m, args, span)?;
+        }
+        if (family == Some("array") || recv.ty == Ty::Dynamic) && matches!(m, "sort" | "toSorted") {
+            crate::builtins::check_sort_callback(args)?;
         }
         let mut recv = self.finish_value(recv, recv_span)?;
         let javascript_instance = self.javascript_module(self.fx.as_ref().expect("fn").module) && family.is_some();

@@ -617,7 +617,7 @@ Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 
 Rust and PHP trim and numeric parsers use the explicit ECMAScript WhiteSpace
-and LineTerminator set: BOM is whitespace; U+0085 is not. Unary negation and
+and LineTerminator set: BOM is whitespace; U+0085 is not. Unary negation performs ToNumber. JSON decoding preserves negative-zero tokens without rewriting quoted text.
 Math.round and multiplication preserve negative zero; round avoids the `floor(x + .5)` loss at
 large and adjacent-to-half boundaries.
 
@@ -752,7 +752,7 @@ Arrays (`JsArray`):
 - `arrSlice(JsArray $a, int|float $start = 0, int|float|null $end = null): JsArray`, `arrAt(JsArray $a, int|float $i): mixed`.
 - `splice(JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): JsArray`.
 - `push(JsArray $a, mixed ...$items): int`, `unshift(...)`: int; `pop(JsArray $a): mixed`, `shift(...)`: mixed.
-- `reverse(JsArray $a): JsArray`, `sort(JsArray $a, ?callable $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort is stable and retains a comparator-pushed tail; default comparison uses UTF-16 code units.
+- `reverse(JsArray $a): JsArray`, `sort(JsArray $a, ?callable $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort is stable; default comparison uses UTF-16 code units and refuses multiple object values. Custom comparators must be compiler-recognized numeric differences between the two parameters or matching property paths. The runtime sorts finite primitive keys; arbitrary or effectful comparator callbacks are refused before invocation.
 - `sorted(JsArray $a, ?callable $cmp = null): JsArray` (`toSorted`), `toReversed(JsArray $a): JsArray`, `with(JsArray $a, int|float $index, mixed $value): JsArray` return new handles.
 - `reduce(JsArray $a, callable $f, mixed ...$init): mixed` calls `(acc, value, index, array)`; empty without init throws `TypeError`.
 - `flat(JsArray $a, int|float $depth = 1): JsArray`, `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.

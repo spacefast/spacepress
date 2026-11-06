@@ -1438,3 +1438,30 @@ fn non_iso_date_literals_are_refused_at_the_call() {
         }
     }
 }
+
+#[test]
+fn effectful_sorting_is_refused_at_the_callback() {
+    for name in ["zero.config.ts", "helper.js"] {
+        let tmp = tempfile::tempdir().unwrap();
+        let expression = "(() => { let calls=0; [3,2,1].sort((a,b)=>{calls++;return a-b;}); return calls; })()";
+        let body = if name == "helper.js" {
+            std::fs::write(tmp.path().join(name), format!("export const probe=()=>{expression};")).unwrap();
+            "probe()"
+        } else {
+            expression
+        };
+        let import = if name == "helper.js" {
+            "import {probe} from './helper.js';"
+        } else {
+            ""
+        };
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{import}export default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        assert_eq!(
+            report["diagnostics"][0]["message"],
+            "sorting requires a numeric key-difference comparator"
+        );
+        assert_eq!(report["diagnostics"][0]["location"]["file"], name);
+    }
+}

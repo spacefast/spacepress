@@ -188,7 +188,7 @@ $cases = [
     ['[10, 9, 1].sort()', function () { $a = jsValue([10, 9, 1]); Js::sort($a); return $a; }],
     ['["b", "a", 10, 9, true, null, "B", "｡", "🙂"].sort()', function () { $a = jsValue(['b', 'a', 10, 9, true, null, 'B', "\u{ff61}", '🙂']); Js::sort($a); return $a; }],
     ['[[3, 1, 2].sort((a, b) => b - a), [0.3, 0.1, 0.2].sort((a, b) => a - b), [{k: 1, i: 0}, {k: 0, i: 1}, {k: 1, i: 2}, {k: 0, i: 3}].sort((a, b) => a.k - b.k).map(o => o.i)]',
-        fn () => [Js::sorted(jsValue([3, 1, 2]), fn ($a, $b) => $b - $a), Js::sorted(jsValue([0.3, 0.1, 0.2]), fn ($a, $b) => $a - $b), Js::map(Js::sorted(jsValue([['k' => 1, 'i' => 0], ['k' => 0, 'i' => 1], ['k' => 1, 'i' => 2], ['k' => 0, 'i' => 3]]), fn ($a, $b) => $a->p['k'] - $b->p['k']), fn ($row) => $row->p['i'])]],
+        fn () => [Js::sorted(jsValue([3, 1, 2]), Js::sortComparator(fn ($a, $b) => $b - $a, [], true)), Js::sorted(jsValue([0.3, 0.1, 0.2]), Js::sortComparator(fn ($a, $b) => $a - $b, [], false)), Js::map(Js::sorted(jsValue([['k' => 1, 'i' => 0], ['k' => 0, 'i' => 1], ['k' => 1, 'i' => 2], ['k' => 0, 'i' => 3]]), Js::sortComparator(fn ($a, $b) => $a->p['k'] - $b->p['k'], ['k'], false)), fn ($row) => $row->p['i'])]],
     ['(() => { const a = [1, 2, 3, 4, 5]; const r = a.splice(-2, 1, "x", "y"); return [a, r, a.slice(-2), a.slice(1, -10), a.at(-1), a.at(9)]; })()',
         function () { $a = jsValue([1, 2, 3, 4, 5]); $r = Js::splice($a, -2, 1, 'x', 'y'); return [$a, $r, Js::arrSlice($a, -2), Js::arrSlice($a, 1, -10), Js::arrAt($a, -1), Js::arrAt($a, 9)]; }],
     ['(() => { const a = [1, 2, 3]; a.splice(1); const b = [1, 2, 3, 4]; b.fill(0, -3, -1); const c = [1, 2]; c.reverse(); return [a, b, c]; })()',
@@ -289,10 +289,14 @@ $cases[] = ['(() => { const a = [1,2,3]; return a.some(v => { a.pop(); a.pop(); 
 $cases[] = ['(() => { const a = [1,2,3]; return a.findLast(v => { a.pop(); return false; }) ?? null; })()', static function () {
     $a = new JsArray([1, 2, 3]); return Js::findLast($a, static function () use ($a) { Js::pop($a); return false; });
 }];
-$cases[] = ['(() => { const a = [2,1]; let pushed = false; a.sort((x,y) => { if (!pushed) { a.push(9); pushed = true; } return x-y; }); return a; })()', static function () {
-    $a = new JsArray([2, 1]); $pushed = false;
-    return Js::sort($a, static function ($x, $y) use ($a, &$pushed) { if (!$pushed) { Js::push($a, 9); $pushed = true; } return $x - $y; });
-}];
+$deviations[] = ['effectful comparators are refused', static function () {
+    $calls = 0;
+    try { Js::sort(new JsArray([3, 2, 1]), static function ($x, $y) use (&$calls) { $calls++; return $x - $y; }); }
+    catch (JsError $e) { return [$e->jsName, $calls]; }
+    return ['accepted', $calls];
+}, ['TypeError', 0]];
+$deviations[] = ['nonfinite comparator keys are refused', fn () => Js::sort(new JsArray([1, NAN, 0]), Js::sortComparator(static fn ($x, $y) => $x - $y, [], false)), ['$err' => 'RangeError']];
+$deviations[] = ['borrowed methods cannot change families', fn () => Js::dynamicCallMethod(Js::dynamicGet(new JsArray(), 'includes'), 'call', new JsArray(['abc', 'ab'])), ['$err' => 'TypeError']];
 $cases[] = ['[Array.from("a🙂b"), [1,2].with(-1, 9), [1,2].toReversed()]', fn () => [Js::from('a🙂b'), Js::with(new JsArray([1, 2]), -1, 9), Js::toReversed(new JsArray([1, 2]))]];
 $cases[] = ['(() => { const a = [1]; const n = a.push(2); const x = a.pop(); const m = a.unshift(0); const y = a.shift(); return [n,x,m,y,a]; })()', static function () {
     $a = new JsArray([1]); $n = Js::push($a, 2); $x = Js::pop($a); $m = Js::unshift($a, 0); $y = Js::shift($a); return [$n, $x, $m, $y, $a];
@@ -303,7 +307,7 @@ $cases[] = ['(() => { const p = {x:1}; const a = [[p]]; const flat = a.flat(); f
     $p = new JsObject(['x' => 1]); $a = new JsArray([new JsArray([$p])]); $flat = Js::flat($a); $flat->a[0]->p['x'] = 2; return [$flat, $a];
 }];
 $cases[] = ['(() => { const a = [3,1,2]; return [a.toSorted((x,y) => x-y), a.concat([4],5), a]; })()', static function () {
-    $a = new JsArray([3, 1, 2]); return [Js::toSorted($a, static fn ($x, $y) => $x - $y), Js::concat($a, new JsArray([4]), 5), $a];
+    $a = new JsArray([3, 1, 2]); return [Js::toSorted($a, Js::sortComparator(static fn ($x, $y) => $x - $y, [], false)), Js::concat($a, new JsArray([4]), 5), $a];
 }];
 $cases[] = ['(() => { const p = {x:1}; const array = [p,p]; array.extra = p; const set = new Set([p]); set.add(set); const map = new Map([[p,set]]); map.set(map,p); const date = new Date(0); const source = {array,set,map,date,again:date}; const copy = structuredClone(source); copy.array[0].x = 2; copy.set.add("new"); copy.map.set("new",3); return [copy.array[0] === copy.array[1], copy.array.extra === copy.array[0], p.x, copy.array, set.size, copy.set.size, map.size, copy.map.size, copy.set.has(copy.set), copy.map.get(copy.array[0]) === copy.set, copy.map.get(copy.map) === copy.array[0], copy.date !== date, copy.date === copy.again, copy.date.getTime()]; })()', static function () {
     $p = new JsObject(['x' => 1]); $array = new JsArray([$p, $p]); $array->p['extra'] = $p;

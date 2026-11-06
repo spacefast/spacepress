@@ -38,7 +38,7 @@ trait JsDynamic
             $invoke = match (true) {
                 $owner === 'Array' && $name === 'slice' => self::dynamicBorrowedSlice(...),
                 $owner === 'Math' && Builtins::has('Math', $name) => static fn ($thisArg, JsArray $args) => self::dynamicStaticCall($owner, $name, $args),
-                default => static fn ($thisArg, JsArray $args) => self::dynamicCallMethod($thisArg, $name, $args, true),
+                default => static fn ($thisArg, JsArray $args) => self::dynamicBorrowedMethod($owner, $thisArg, $name, $args),
             };
             $function = static fn (...$args) => $invoke(JsUndefined::Value, new JsArray($args));
             self::$dynamicMethods[$key] = $function;
@@ -46,6 +46,20 @@ trait JsDynamic
             self::$dynamicMethodReceivers[$function] = $invoke;
         }
         return self::$dynamicMethods[$key];
+    }
+
+    private static function dynamicBorrowedMethod(string $owner, mixed $receiver, string $name, JsArray $args): mixed
+    {
+        $compatible = match ($owner) {
+            'Array' => $receiver instanceof JsArray, 'String' => is_string($receiver),
+            'Number' => is_int($receiver) || is_float($receiver), 'Boolean' => is_bool($receiver),
+            'RegExp' => $receiver instanceof RegExp, 'Date' => $receiver instanceof JsDate,
+            'Set' => $receiver instanceof JsSet, 'Map' => $receiver instanceof JsMap,
+            'Function' => $receiver instanceof \Closure, 'Object' => $receiver instanceof JsObject,
+            default => false,
+        };
+        if (!$compatible) { throw new JsError('Borrowing methods across builtin families is not supported', 'TypeError'); }
+        return self::dynamicCallMethod($receiver, $name, $args, true);
     }
 
     /** Array.prototype.slice borrowed by dense arrays or ordinary arguments. */

@@ -299,9 +299,9 @@ final class Js
         return self::num((float) self::n($a) * (float) self::n($b));
     }
 
-    public static function neg(int|float $a): int|float
+    public static function neg(mixed $a): int|float
     {
-        return -(float) self::n($a);
+        return -(float) self::toNumber($a);
     }
 
     /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
@@ -1346,6 +1346,15 @@ final class Js
 
     public static function toSorted(JsArray $a, ?callable $cmp = null): JsArray { return self::sorted($a, $cmp); }
 
+    private static ?\WeakMap $sortComparators = null;
+
+    public static function sortComparator(\Closure $callback, array $keys, bool $descending): \Closure
+    {
+        self::$sortComparators ??= new \WeakMap();
+        self::$sortComparators[$callback] = [$keys, $descending];
+        return $callback;
+    }
+
     public static function sorted(JsArray $a, ?callable $cmp = null): JsArray
     {
         $items = [];
@@ -1356,11 +1365,25 @@ final class Js
         }
         $tail = array_fill(0, $undefined, JsUndefined::Value);
         if ($cmp !== null) {
-            usort($items, static function (mixed $x, mixed $y) use ($cmp): int {
-                $r = self::toNumber($cmp($y, $x));
-                return $r > 0 ? -1 : ($r < 0 ? 1 : 0);
-            });
-            return new JsArray([...$items, ...$tail]);
+            if (!$cmp instanceof \Closure || !isset(self::$sortComparators[$cmp])) {
+                throw new JsError('Sorting requires a numeric key-difference comparator', 'TypeError');
+            }
+            [$keys, $descending] = self::$sortComparators[$cmp];
+            if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
+            $keyed = [];
+            foreach ($items as $item) {
+                $key = $item;
+                foreach ($keys as $property) {
+                    if ($key instanceof JsClass) { throw new JsError('Sorting class keys is not supported', 'TypeError'); }
+                    $key = self::dynamicGet($key, $property);
+                }
+                if (is_object($key)) { throw new JsError('Sorting requires finite primitive keys', 'TypeError'); }
+                $key = self::toNumber($key);
+                if (!is_finite((float) $key)) { throw new JsError('Sorting requires finite primitive keys', 'RangeError'); }
+                $keyed[] = [$key, $item];
+            }
+            usort($keyed, static fn (array $x, array $y): int => $descending ? $y[0] <=> $x[0] : $x[0] <=> $y[0]);
+            return new JsArray([...array_column($keyed, 1), ...$tail]);
         }
         if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
         foreach ($items as $item) {
@@ -1787,6 +1810,7 @@ final class Js
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
     {
+        $s = preg_replace('~"(?:[^"\\\\]|\\\\.)*"(*SKIP)(*F)|-0(?=[\s,\]}]|$)~', '-0.0', $s);
         try {
             return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
         } catch (\JsonException $e) {

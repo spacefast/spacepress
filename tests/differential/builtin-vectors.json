@@ -558,7 +558,7 @@
   },
   {
     "name": "sortUndefined",
-    "expression": "(() => { const a = [undefined, 'z', 'a']; let bad = false; const sorted = a.toSorted((x, y) => { bad = bad || x === undefined || y === undefined; return String(x) < String(y) ? -1 : 1; }); a.sort(); return [sorted, a, bad]; })()",
+    "expression": "(() => { const a = [undefined, 3, 1]; const sorted = a.toSorted((x, y) => x! - y!); a.sort(); return [sorted, a]; })()",
     "fold": false
   },
   {
@@ -675,6 +675,23 @@
   {
     "name": "singletonSortDoesNotCoerce",
     "expression": "(() => { let calls=0; const a=[{toString:()=>{calls++;return \"a\";}}]; a.sort(); a.toSorted(); return calls; })()",
+    "fold": false
+  },
+  {
+    "name": "dynamicUnaryMinus",
+    "expression": "(() => { const neg=x=>-x; return [String(neg('2')),String(neg('0')),String(neg(null)),String(neg(true)),String(neg(undefined)),String(1/neg('0'))]; })()",
+    "javascript": true,
+    "fold": true
+  },
+  {
+    "name": "jsonNegativeZero",
+    "expression": "[1/JSON.parse('-0')===-Infinity,1/JSON.parse('[-0,-0.0,-0e0]')[0]===-Infinity,1/JSON.parse('{\"x\":-0}').x===-Infinity,JSON.parse('\"-0\"'),JSON.parse('\"x -0 y\"')]",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "numericKeySorting",
+    "expression": "(() => { const a=[{k:2,i:0},{k:1,i:1},{k:2,i:2}]; return [a.toSorted((x,y)=>x.k-y.k).map(x=>x.i),a.toSorted((x,y)=>y.k-x.k).map(x=>x.i),[3,2,1].sort((a,b)=>a-b)]; })()",
     "fold": false
   }
 ]

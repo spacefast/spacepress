@@ -126,7 +126,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("array", &["concat", "push"], overload("...values: unknown[]", arity(0, VARIADIC), arity(0, VARIADIC), arity(0, VARIADIC))),
     ("array", &["unshift"], overload("...values: unknown[]", None, arity(0, VARIADIC), arity(0, VARIADIC))),
     ("array", &["pop", "shift", "reverse", "toReversed"], overload("no arguments; JavaScript dispatch ignores extra arguments", None, arity(0, 0), arity(0, VARIADIC))),
-    ("array", &["sort", "toSorted"], overload("compare?: function", None, arity(0, 1), arity(0, 1))),
+    ("array", &["sort", "toSorted"], overload("compare?: numeric key-difference function; finite primitive keys", None, arity(0, 1), arity(0, 1))),
     ("array", &["flat"], overload("depth?: number", None, arity(0, 1), arity(0, 1))),
     ("array", &["fill"], overload("value: unknown, start?: number, end?: number", None, arity(1, 3), arity(1, 3))),
     ("array", &["splice"], overload("start: number, deleteCount?: number, ...values: unknown[]", None, arity(1, VARIADIC), arity(0, VARIADIC))),
@@ -150,6 +150,68 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("function", &["apply"], overload("thisArg?: unknown, arguments?: array-like", None, None, arity(0, 2))),
     ("function", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
 ];
+
+/// Only a numeric key difference has engine-independent ordering without callback effects.
+pub fn sort_key(f: &crate::ir::Func) -> Option<(Vec<String>, bool)> {
+    use crate::ir::{BinOp, Expr, ExprKind, FnBody, Pat, Stmt};
+    fn path(e: &Expr) -> Option<(&str, Vec<String>)> {
+        match &e.kind {
+            ExprKind::Ident(name) => Some((name, Vec::new())),
+            ExprKind::Member {
+                obj,
+                prop,
+                optional: false,
+                ..
+            } => {
+                let (name, mut keys) = path(obj)?;
+                keys.push(prop.clone());
+                Some((name, keys))
+            }
+            ExprKind::As(e, _) | ExprKind::NonNull(e) => path(e),
+            _ => None,
+        }
+    }
+    if f.is_async || f.params.len() != 2 || f.params.iter().any(|p| p.default.is_some() || p.rest) {
+        return None;
+    }
+    let (Pat::Id(a, _), Pat::Id(b, _)) = (&f.params[0].pat, &f.params[1].pat) else {
+        return None;
+    };
+    let expr = match &f.body {
+        FnBody::Expr(e) => e,
+        FnBody::Block(stmts) => match stmts.as_slice() {
+            [Stmt::Return(Some(e), _)] => e,
+            _ => return None,
+        },
+    };
+    let ExprKind::Binary(BinOp::Sub, left, right) = &expr.kind else {
+        return None;
+    };
+    let (ln, lp) = path(left)?;
+    let (rn, rp) = path(right)?;
+    if lp != rp {
+        return None;
+    }
+    if ln == a && rn == b {
+        Some((lp, false))
+    } else if ln == b && rn == a {
+        Some((lp, true))
+    } else {
+        None
+    }
+}
+
+pub fn check_sort_callback(args: &[crate::ir::ArrEl]) -> Result<(), Diag> {
+    use crate::ir::{ArrEl, ExprKind};
+    if let Some(ArrEl::Item(e)) = args.first()
+        && let ExprKind::Func(f) = &e.kind
+        && sort_key(f).is_none()
+    {
+        return Err(Diag::new(e.span, "sorting requires a numeric key-difference comparator")
+            .help("use (a, b) => a - b or (a, b) => a.rank - b.rank; effectful and arbitrary comparators aren't supported"));
+    }
+    Ok(())
+}
 
 pub fn check_date_literal(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {
     use crate::ir::{ArrEl, ExprKind};

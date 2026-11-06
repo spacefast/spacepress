@@ -563,7 +563,7 @@
   },
   {
     "name": "computedPrototypeDataWrite",
-    "expression": "(() => { const o = {['__proto__']: 1}; o['__proto__'] = 2; return [Object.hasOwn(o, '__proto__'), o['__proto__']]; })()",
+    "expression": "(() => { const key = '__proto__'; const o: Record<string, number> = {[key]: 1}; o[key] = 2; return [Object.hasOwn(o, key), o[key]]; })()",
     "fold": true
   }
 ]

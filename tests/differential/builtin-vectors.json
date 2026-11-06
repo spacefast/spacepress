@@ -987,5 +987,21 @@
     "name": "captureAfterAuthoredShadowSlot",
     "expression": "(() => {const x=1;{let x=2;return (()=>{let x_1=3;return [x,x_1];})()}})()",
     "fold": true
+  },
+  {
+    "name": "loopClosuresKeepIterationBindings",
+    "expression": "(() => {const lexical:(()=>number)[]=[];for(let i=0;i<3;i++){lexical.push(()=>i);}const shared:(()=>number)[]=[];for(var j=0;j<3;j++){shared.push(()=>j);}return [lexical.map(f=>f()),shared.map(f=>f())];})()",
+    "fold": true
+  },
+  {
+    "name": "loopUpdateClosuresKeepIterationBindings",
+    "expression": "(() => {const fs:(()=>number)[]=[];for(let i=0;i<3;fs.push(()=>i),i++){if(i===1)continue;}return fs.map(f=>f());})()",
+    "fold": true
+  },
+  {
+    "name": "globalNamespaceKinds",
+    "declarations": "const foldedNamespaceKinds=[typeof JSON,typeof console];",
+    "expression": "[typeof Math,...foldedNamespaceKinds]",
+    "fold": true
   }
 ]

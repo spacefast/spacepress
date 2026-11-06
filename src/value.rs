@@ -245,6 +245,14 @@ impl Scope {
         })
     }
 
+    pub fn fork_bindings(&self) -> Rc<Scope> {
+        Rc::new(Self {
+            vars: RefCell::new(self.vars.borrow().clone()),
+            parent: self.parent.clone(),
+            module: self.module,
+        })
+    }
+
     pub fn lookup(&self, name: &str) -> Option<Binding> {
         if let Some(b) = self.vars.borrow().get(name) {
             return Some(b.clone());
@@ -287,6 +295,7 @@ impl Value {
             Value::Bool(_) => "boolean",
             Value::Num(_) => "number",
             Value::Str(_) => "string",
+            Value::Builtin(Builtin::Global("Math" | "JSON" | "console")) => "object",
             Value::Class(_) | Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
             _ => "object",
         }

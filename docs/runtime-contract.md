@@ -125,7 +125,8 @@ Captured bindings retain that JavaScript behavior, including arrays, open
 records and optional fields. Object spread/rest copies field values shallowly.
 Loop-local declarations receive a fresh binding on each execution, and a
 captured `for (let …)` header variable receives a fresh `Js::cell` per iteration.
-The cell copies its value; copying a handle preserves the referenced container.
+The evaluator also forks lexical header bindings before the first test and before
+each update. Copying a handle preserves the referenced container.
 
 Arrays remain dense. Indexed writes may replace an existing element or append
 at the current length; writes past the end throw a catchable `RangeError`.

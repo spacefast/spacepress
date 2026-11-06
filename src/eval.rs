@@ -706,9 +706,19 @@ impl<'p> Evaluator<'p> {
                 body,
                 span,
             } => {
-                let loop_scope = Scope::new(Some(scope.clone()), scope.module);
+                let mut loop_scope = Scope::new(Some(scope.clone()), scope.module);
+                let per_iteration = matches!(
+                    init.as_deref(),
+                    Some(Stmt::Decl {
+                        kind: DeclKind::Let,
+                        ..
+                    })
+                );
                 if let Some(init) = init {
                     self.exec(init, &loop_scope)?;
+                }
+                if per_iteration {
+                    loop_scope = loop_scope.fork_bindings();
                 }
                 loop {
                     self.tick(*span)?;
@@ -721,6 +731,9 @@ impl<'p> Evaluator<'p> {
                         Flow::Break => break,
                         Flow::Return(v) => return Ok(Flow::Return(v)),
                         _ => {}
+                    }
+                    if per_iteration {
+                        loop_scope = loop_scope.fork_bindings();
                     }
                     if let Some(u) = update {
                         self.eval(u, &loop_scope)?;
@@ -1038,7 +1051,19 @@ impl<'p> Evaluator<'p> {
                     UnOp::Not => Value::Bool(!v.truthy()),
                     UnOp::Neg => Value::Num(-to_number(&v)),
                     UnOp::Plus => Value::Num(to_number(&v)),
-                    UnOp::TypeOf => Value::str(v.type_of()),
+                    UnOp::TypeOf => {
+                        if let Value::Builtin(Builtin::Global(
+                            name @ ("process" | "require" | "globalThis" | "crypto"),
+                        )) = &v
+                        {
+                            return err_help(
+                                x.span,
+                                format!("typeof `{name}` depends on the host and isn't supported"),
+                                "use supported JavaScript values instead of host-global detection",
+                            );
+                        }
+                        Value::str(v.type_of())
+                    }
                 }
             }
             ExprKind::Binary(op, l, r) => {

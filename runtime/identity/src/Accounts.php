@@ -221,18 +221,23 @@ final class Accounts
                     $state['after'] = (int) $row['ID'];
                 }
                 $state['complete'] = count($page) < 1000;
-                if ($profiles !== $previousProfiles && !update_option(self::PASSWORD_PROFILES, $profiles, false)) {
-                    throw new Failure('storage_unavailable', 'Identity storage is unavailable. Please retry.', 503);
+                if ($profiles !== $previousProfiles) {
+                    self::writePasswordOption(self::PASSWORD_PROFILES, $profiles);
                 }
-                if (!update_option(self::PASSWORD_INVENTORY, $state, false)) {
-                    throw new Failure('storage_unavailable', 'Identity storage is unavailable. Please retry.', 503);
-                }
+                self::writePasswordOption(self::PASSWORD_INVENTORY, $state);
             });
         } finally {
             // A rollback (including a failed page commit) must discard uncommitted cached options.
             wp_cache_delete(self::PASSWORD_PROFILES, 'options');
             wp_cache_delete(self::PASSWORD_INVENTORY, 'options');
         }
+    }
+
+    /** Do not publish uncommitted state through update_option's shared-cache writes. */
+    private static function writePasswordOption(string $name, array $value): void
+    {
+        global $wpdb;
+        Plugin::$db->run("UPDATE {$wpdb->options} SET option_value=%s WHERE option_name=%s", serialize($value), $name);
     }
 
     /** Read from storage after acquiring the row lock, never from a pre-lock option cache. */
@@ -259,9 +264,7 @@ final class Accounts
                         return;
                     }
                     $profiles[$profile] = self::dummyPasswordHash($hash);
-                    if (!update_option(self::PASSWORD_PROFILES, $profiles, false)) {
-                        throw new Failure('storage_unavailable', 'Identity storage is unavailable. Please retry.', 503);
-                    }
+                    self::writePasswordOption(self::PASSWORD_PROFILES, $profiles);
                 });
             } finally {
                 wp_cache_delete(self::PASSWORD_PROFILES, 'options');

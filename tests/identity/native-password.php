@@ -12,11 +12,16 @@ require __DIR__.'/native-auth-storage.php';
 // Real process death rolls back only the interrupted page; concurrent workers share a row lock.
 $inventory = 'zero_identity_password_inventory';
 update_option($inventory, ['after' => 0, 'complete' => false], false);
-$worker = worker('password-inventory-worker.php', ['crash' => true]);
+$inventoryCache = tempnam(sys_get_temp_dir(), 'identity-inventory-cache-');
+unlink($inventoryCache);
+$worker = worker('password-inventory-worker.php', ['crash' => true, 'cache' => $inventoryCache]);
 fgets($worker[1][1]);
 [$out, $err, $code] = finish_worker($worker);
 wp_cache_delete($inventory, 'options');
 check($code === 9 && $err === '' && get_option($inventory) === ['after' => 0, 'complete' => false], 'process death leaves the inventory cursor uncommitted');
+$cachedInventory = is_file($inventoryCache) ? maybe_unserialize(unserialize(file_get_contents($inventoryCache), ['allowed_classes' => false])) : null;
+check($cachedInventory === null || $cachedInventory['complete'] === false, 'death after page writes never publishes uncommitted completion to shared cache');
+if (is_file($inventoryCache)) { unlink($inventoryCache); }
 $db = Plugin::$db;
 $db->run('START TRANSACTION');
 $db->row("SELECT option_value FROM {$db->wp->options} WHERE option_name=%s FOR UPDATE", $inventory);

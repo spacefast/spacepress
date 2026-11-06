@@ -44,15 +44,20 @@ declare(strict_types=1);
     $page();
     $first = get_option($inventory);
     $assert(is_array($first) && $first['after'] > 0 && !$first['complete'], 'first bounded page persists a resumable cursor');
-    $crash = static function () { throw new RuntimeException('simulated inventory crash'); };
-    add_filter('pre_update_option_' . $inventory, $crash);
+    $crash = static function ($sql) {
+        if (strtoupper(trim($sql)) === 'COMMIT') {
+            throw new RuntimeException('simulated inventory crash');
+        }
+        return $sql;
+    };
+    add_filter('query', $crash);
     try {
         $page();
         throw new RuntimeException('Inventory crash was not injected');
     } catch (RuntimeException $e) {
         $assert($e->getMessage() === 'simulated inventory crash', 'inventory interruption reached the page commit');
     } finally {
-        remove_filter('pre_update_option_' . $inventory, $crash);
+        remove_filter('query', $crash);
     }
     $assert(get_option($inventory) === $first, 'interrupted page preserves the last committed cursor');
     $page();

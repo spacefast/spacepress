@@ -732,5 +732,16 @@
     "expression": "(function(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}})()",
     "javascript": true,
     "fold": false
+  },
+  {
+    "name": "crossLanguageCapturedIdentity",
+    "expression": "readSharedCapture()",
+    "declarations": "import {readSharedCapture} from './parity-reader.ts';",
+    "files": {
+      "parity-state.ts": "export const sharedArray=[1]; export const sharedObject={n:1};",
+      "parity-mutator.js": "import {sharedArray,sharedObject} from './parity-state.ts'; export function mutateSharedCapture(){sharedArray[0]=2;sharedObject.n=2;return [sharedArray[0],sharedObject.n];}",
+      "parity-reader.ts": "import {sharedArray,sharedObject} from './parity-state.ts'; import {mutateSharedCapture} from './parity-mutator.js'; export function readSharedCapture(){sharedArray[0]=1;sharedObject.n=1;return [sharedArray[0],sharedObject.n,mutateSharedCapture(),sharedArray[0],sharedObject.n];}"
+    },
+    "fold": true
   }
 ]

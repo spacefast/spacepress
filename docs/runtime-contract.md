@@ -565,6 +565,8 @@ checked JavaScript string `at` returns undefined outside the string.
 `tests/differential/builtin-vectors.json` supplies the same expressions to
 Node, captured configuration evaluation and generated PHP. Regex state is
 runtime-only because the pure evaluator has no mutable RegExp execution model.
+Captured arrays and objects retain one identity across typed and imported
+JavaScript callers, including references nested in other captured data.
 Build-time regex replacement accepts ASCII text/patterns without escapes,
 nested character classes, multiline mode, set operations or line terminators;
 other cases are refused
@@ -572,7 +574,8 @@ instead of inheriting Rust regex semantics. String replacements have no such
 ASCII restriction. Replacement tokens implement GetSubstitution, including
 capture-number boundaries and named captures.
 Repeated groups containing captures are refused in every phase: Rust/PCRE
-retain captures from earlier iterations where JavaScript clears them. Regex
+retain captures from earlier iterations where JavaScript clears them. Capturing
+lookbehind is also refused because JavaScript matches its groups backward. Regex
 literals receive located diagnostics; dynamically constructed patterns throw.
 Large parseInt results are supported for base 10 and power-of-two bases; other
 radices require safe integer results to avoid engine-specific approximations.

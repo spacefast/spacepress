@@ -496,6 +496,10 @@ pub fn check_regex(pattern: &str, span: Span) -> Result<(), Diag> {
                 if let Some((before, start)) = stack.pop()
                     && captures > before
                 {
+                    if pattern[start + 1..].starts_with("?<=") || pattern[start + 1..].starts_with("?<!") {
+                        return Err(Diag::new(span, "capturing lookbehind isn't supported")
+                            .help("use noncapturing lookbehind or match the prefix outside the assertion"));
+                    }
                     if bytes.get(i + 1).is_some_and(|b| matches!(b, b'*' | b'+' | b'{')) {
                         return Err(
                             Diag::new(span, "repeated regex groups containing captures aren't supported")

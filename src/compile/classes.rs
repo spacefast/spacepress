@@ -345,7 +345,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         validate_captured_data(&static_data, c.span, &mut HashSet::new())?;
-        let data = self.captured_data(&static_data, false)?;
+        let data = self.captured_data(&static_data)?;
         let parent_php = parent
             .map(|id| format!("\\ZeroApp\\{}()", self.classes[&id].name))
             .unwrap_or("null".into());

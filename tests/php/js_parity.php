@@ -429,6 +429,7 @@ $deviations = array_merge($deviations, [
     ['non-Unicode source folding is refused', fn () => Js::re('K', 'i')->test('k'), ['$err' => 'RangeError']],
     ['non-Unicode escaped source folding is refused', fn () => Js::re('\\u212a', 'i')->test('k'), ['$err' => 'RangeError']],
     ['engine-dependent reciprocal powers are refused', fn () => Js::pow(45.29, -1), ['$err' => 'RangeError']],
+    ['capturing lookbehind is refused', fn () => Js::re('(?<=([ab]{1,2})([bc]{1,2}))$', ''), ['$err' => 'SyntaxError']],
     ['custom toJSON callbacks are refused', fn () => Js::jsonStringify(new JsObject(['toJSON' => static fn () => 42])), ['$err' => 'TypeError']],
     ['array prototype writes are refused', fn () => Js::dynamicSet(new JsArray(), '__proto__', 1), ['$err' => 'TypeError']],
     ['arguments prototype writes are refused', fn () => Js::dynamicSet(Js::arguments([]), '__proto__', 1), ['$err' => 'TypeError']],

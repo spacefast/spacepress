@@ -887,6 +887,12 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     for v in vectors.as_array().unwrap() {
         let name = v["name"].as_str().unwrap();
         let expression = v["expression"].as_str().unwrap();
+        if let Some(files) = v["files"].as_object() {
+            for (name, source) in files {
+                std::fs::write(tmp.path().join(name), source.as_str().unwrap()).unwrap();
+            }
+        }
+
         if let Some(source) = v["declarations"].as_str() {
             declarations.push_str(source);
             declarations.push('\n');
@@ -954,6 +960,8 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "45.29 ** -1",
         "10 ** -2",
         "Math.pow(1.3, 0.3)",
+        "'abc'.replace(/(?<=([ab]{1,2})([bc]{1,2}))$/, '[$1][$2]')",
+        "'abc'.replace(/(?<!([ab]{1,2})([bc]{1,2}))$/, '[$1][$2]')",
         "'aba'.replace(/(a(b)?)+/, '[$2]')",
         "'x'.replace(/(a*)?/, 'X')",
         r"'x'.replace(/(a*\b)?/, 'X')",

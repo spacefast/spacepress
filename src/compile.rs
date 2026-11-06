@@ -2836,15 +2836,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => inferred_binding_type(&ty_of_data(data), false),
                 };
                 let ty = self.effects.captured_data_type(data, &ty);
-                Ok(Out::atom(self.captured_data(data, javascript)?, ty))
+                Ok(Out::atom(self.captured_data(data)?, ty))
             }
         }
     }
 
-    fn captured_data(&mut self, value: &Value, javascript: bool) -> Result<String> {
+    fn captured_data(&mut self, value: &Value) -> Result<String> {
         let (key, array) = match value {
-            Value::Array(a) => ((if javascript { 3 } else { 0 }, Rc::as_ptr(a) as usize), true),
-            Value::Object(o) => ((if javascript { 4 } else { 1 }, Rc::as_ptr(o) as usize), false),
+            Value::Array(a) => ((0, Rc::as_ptr(a) as usize), true),
+            Value::Object(o) => ((1, Rc::as_ptr(o) as usize), false),
             _ => {
                 return Ok(match value {
                     Value::Undef => "\\Zero\\Js::undefined()".into(),
@@ -2877,7 +2877,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "function {name}(): \\Zero\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{class}();\n"
         );
         for (key, value) in fields {
-            let value = self.captured_data(&value, javascript)?;
+            let value = self.captured_data(&value)?;
             let _ = writeln!(body, "        $value->{storage}[{key}] = {value};");
         }
         body.push_str("    }\n    return $value;\n}\n\n");

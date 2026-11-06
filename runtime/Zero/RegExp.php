@@ -305,6 +305,9 @@ final class RegExp implements \Stringable
                 if (!$special || $named) { $captures++; }
             } elseif ($c === ')' && $stack !== []) {
                 [$before, $start] = array_pop($stack);
+                if ($captures > $before && in_array(substr($source, $start + 1, 3), ['?<=', '?<!'], true)) {
+                    throw new JsError('Capturing lookbehind is not supported', 'SyntaxError');
+                }
                 if ($captures > $before && in_array($source[$i + 1] ?? '', ['*', '+', '{'], true)) {
                     throw new JsError('Repeated regex groups containing captures are not supported', 'SyntaxError');
                 }

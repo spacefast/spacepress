@@ -3722,9 +3722,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ft
                 };
                 let place = o.place.as_ref().map(|p| format!("{p}->p[{}]", php_str(prop)));
+                let ty = self
+                    .path_of(obj)
+                    .and_then(|path| self.narrowed_path(&format!("{path}.{prop}")))
+                    .unwrap_or_else(|| suffix_null(ft));
                 Out {
                     php,
-                    ty: suffix_null(ft),
+                    ty,
                     place,
                     atomic: true,
                     helper: None,

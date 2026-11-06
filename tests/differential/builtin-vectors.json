@@ -758,5 +758,10 @@
     "name": "conditionalVarPresence",
     "expression": "(() => {if(false) var missing=1;var present=2;if(false)var present=3;return [typeof missing,String(missing),present];})()",
     "fold": true
+  },
+  {
+    "name": "optionalPropertyNarrowing",
+    "expression": "((input:{done?:boolean,score?:number})=>{const done:boolean=input.done===undefined?false:input.done;const score:number=input.score===undefined?2:input.score;return [done,score];})({})",
+    "fold": true
   }
 ]

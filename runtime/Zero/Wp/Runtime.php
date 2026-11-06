@@ -49,6 +49,11 @@ final class Runtime
                     \WP_CLI::line((string) \Zero\Js::jsonStringify(['error' => \Zero\App::problem(new \Zero\HttpError(503, 'unavailable', (string) self::$plugin->unavailable()))]));
                     \WP_CLI::halt(1);
                 }
+                if (($args[0] ?? '') === 'seed') {
+                    $code = \Zero\Sync\Seed::wpCli(self::$plugin, $args, $flags);
+                    $code === 0 || \WP_CLI::halt($code);
+                    return;
+                }
                 if (\Zero\Wp\Legacy\Module::handles($args)) {
                     $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
                     $code === 0 || \WP_CLI::halt($code);

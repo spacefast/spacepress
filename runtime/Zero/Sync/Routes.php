@@ -97,15 +97,46 @@ final class Routes
         return $row === null ? null : Wire::encode($collection, [$row])[0] + ['row' => $row];
     }
 
+    /** Trusted first-sync apply used by the publish seed; HTTP dispatch always supplies a viewer. */
+    public static function seedRecord(string $collection, array $spec, mixed $record): string
+    {
+        $record = \Zero\Seam::container($record);
+        if (!is_array($record) || !Uid::valid($record['uid'] ?? null)) {
+            throw HttpError::invalidInput('seed record.uid must match zr_ + 20 hex characters', '/uid');
+        }
+        unset($record['path']);
+        $uid = $record['uid'];
+        $current = self::current($collection, $uid, null);
+        if ($current === null && Trash::trashed($spec, $uid) !== null) {
+            return 'trashed_skipped';
+        }
+        if ($current !== null) {
+            $data = Wire::decode($collection, $record, false, current: $current['row']);
+            $same = true;
+            foreach ($data as $field => $value) {
+                $normalized = \Zero\Schema::normalize($spec['columns'][$field], $value, $field, '/fields' . HttpError::seg($field));
+                if (Canon::json($normalized) !== Canon::json($current['row'][$field] ?? null)) { $same = false; }
+            }
+            if ($same) { return 'unchanged'; }
+            if ($spec['editor'] ?? true) { return 'skipped_existing'; }
+        }
+        $decoded = ['record' => $record, 'expect' => $current['digest'] ?? 'absent'];
+        $result = self::apply($collection, $spec, \Zero\Seam::sync($collection, $decoded), $decoded, null);
+        if ($result instanceof Response || $result[0] >= 400) {
+            throw new HttpError(409, 'sync_stale', "Seed record $collection $uid changed while publishing; retry the publish.");
+        }
+        return $current === null ? 'created' : 'updated';
+    }
+
     // ================================================================ write
 
     /** One instant for the whole apply: the create rule previews the same `now` defaults the write stores. */
-    private static function apply(string $collection, array $spec, array $in, mixed $decoded, Viewer $viewer): array|Response
+    private static function apply(string $collection, array $spec, array $in, mixed $decoded, ?Viewer $viewer): array|Response
     {
         return Js::atInstant(static fn () => self::applyAt($collection, $spec, $in, $decoded, $viewer));
     }
 
-    private static function applyAt(string $collection, array $spec, array $in, mixed $decoded, Viewer $viewer): array|Response
+    private static function applyAt(string $collection, array $spec, array $in, mixed $decoded, ?Viewer $viewer): array|Response
     {
         $record = $in['record'] ?? null;
         if (!is_array($record) || ($record !== [] && array_is_list($record))) {
@@ -125,7 +156,7 @@ final class Routes
         $trashed = $current === null && $expect === 'absent' ? Trash::trashed($spec, $uid) : null;
         $op = $current === null && $trashed === null ? 'create' : 'update';
         // A rule that refuses this viewer whatever the values refuses before anything is looked up.
-        if (Access::isShorthand(Access::collectionRules($spec)[$op]) && Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op) === false) {
+        if ($viewer !== null && Access::isShorthand(Access::collectionRules($spec)[$op]) && Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op) === false) {
             throw Access::deny($viewer->user, "$op $collection rows");
         }
         // Reference lookups answer only after authorization, so they can't probe for uids either.
@@ -135,7 +166,7 @@ final class Routes
         // Every stale answer comes before the first write: a returned 409 still commits the request.
         if ($trashed !== null) {
             // A trashed post is outside every filter, so restoring it needs an update rule that allows every row.
-            if (Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', $data, $spec['columns'], $collection) !== true) {
+            if ($viewer !== null && Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', $data, $spec['columns'], $collection) !== true) {
                 throw Access::deny($viewer->user, "restore $collection rows");
             }
             self::raiseMissing($missing);
@@ -148,7 +179,9 @@ final class Routes
             // read-only one doesn't refuse the restore).
             $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null, $viewer);
         } elseif ($current === null) {
-            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($collection, $spec, ['uid' => $uid] + $data, $viewer), "create $collection rows", $spec['columns']);
+            if ($viewer !== null) {
+                Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($collection, $spec, ['uid' => $uid] + $data, $viewer), "create $collection rows", $spec['columns']);
+            }
             if ($expect !== 'absent') {
                 return self::stale($collection, $spec, $viewer, null, "$collection $uid is not on the site");
             }
@@ -269,9 +302,9 @@ final class Routes
      * Reading a collection as sync records (pull, conversions, the `current` record of a conflict) needs
      * its update rule to allow every row: true, not a filter. Writes are authorized row by row instead.
      */
-    private static function maySyncRead(string $collection, array $spec, Viewer $viewer): bool
+    private static function maySyncRead(string $collection, array $spec, ?Viewer $viewer): bool
     {
-        return Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', null, $spec['columns'], $collection) === true;
+        return $viewer === null || Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', null, $spec['columns'], $collection) === true;
     }
 
     private static function requireSyncRead(array $spec, Viewer $viewer, string $collection): void
@@ -285,8 +318,9 @@ final class Routes
      * The viewer may $op this existing row: its rule allows every row, or is a filter the row matches.
      * A row outside the filter is masked as 404, as phase-1 item routes do.
      */
-    private static function authorizeRow(string $collection, array $spec, string $op, Viewer $viewer, int|string $id, ?array $data): void
+    private static function authorizeRow(string $collection, array $spec, string $op, ?Viewer $viewer, int|string $id, ?array $data): void
     {
+        if ($viewer === null) { return; }
         $rule = Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op, $data, $spec['columns'], $collection);
         if ($rule === false) {
             throw Access::deny($viewer->user, "$op $collection rows");
@@ -339,7 +373,7 @@ final class Routes
      * 409 sync_stale with `current` (the record stored now, or null when absent) for callers who may
      * pull. $current false = changed after this request's snapshot: unknown here, so it is left out.
      */
-    private static function stale(string $collection, array $spec, Viewer $viewer, array|false|null $current, string $detail): Response
+    private static function stale(string $collection, array $spec, ?Viewer $viewer, array|false|null $current, string $detail): Response
     {
         $problem = App::problem(new HttpError(409, 'sync_stale', $detail));
         if ($current !== false && self::maySyncRead($collection, $spec, $viewer)) {

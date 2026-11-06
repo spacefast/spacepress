@@ -27,6 +27,8 @@ impl Span {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum Code {
+    #[serde(rename = "sync_files_too_large")]
+    SyncFilesTooLarge,
     #[serde(rename = "zero_source_needs_local_capture")]
     SourceNeedsLocalCapture,
     #[serde(rename = "Z0001")]

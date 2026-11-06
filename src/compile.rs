@@ -3452,13 +3452,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .unwrap_or(o.ty.clone())
                     .non_null()
                     .field(prop)
-                    .map(|(t, optional)| if optional { t.nullable() } else { t })
+                    .map(|(t, optional)| if optional { Ty::union([t, Ty::Undefined]) } else { t })
                     .unwrap_or(ft.clone());
                 let read_ty = self
                     .path_of(target)
                     .and_then(|path| self.narrowed_path(&path))
-                    .unwrap_or_else(|| if optional { ft.nullable() } else { ft });
-                let read = Out::atom(format!("({}->p[{}] ?? null)", o.wrapped(), php_str(prop)), read_ty);
+                    .unwrap_or_else(|| if optional { Ty::union([ft, Ty::Undefined]) } else { ft });
+                let read = Out::atom(format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)), read_ty);
                 Ok(AssignmentPlace {
                     constraint,
                     read,
@@ -3502,13 +3502,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 };
                 let read = Out::atom(
-                    format!(
-                        "\\Zero\\Js::{}({}, {})",
-                        if array { "get" } else { "prop" },
-                        o.php,
-                        i.php
-                    ),
-                    ty.nullable(),
+                    format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                    Ty::union([ty, Ty::Undefined]),
                 );
                 let key = if array {
                     i.php

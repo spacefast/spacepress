@@ -94,3 +94,10 @@ const nullishValue: string | undefined = nullishObject.value;
 // @ts-expect-error a nullish check retains the omitted parameter's undefined
 const requiredNullish: string = nullishObject.value;
 void [omittedNullish, nullishValue, requiredNullish];
+
+const omittedLogical: Actions["wireLogicalArrayObject"]["output"] = {};
+declare const logicalObject: Actions["wireLogicalArrayObject"]["output"];
+const logicalValue: string | undefined = logicalObject.value;
+// @ts-expect-error a missing logical-assignment operand stays optional on the wire
+const requiredLogical: string = logicalObject.value;
+void [omittedLogical, logicalValue, requiredLogical];

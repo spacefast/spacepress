@@ -92,7 +92,7 @@ final class RegExp implements \Stringable
         $out = '';
         $escaped = false;
         $inClass = false;
-        foreach (mb_str_split($source) as $char) {
+        foreach (mb_str_split($source, 1, 'UTF-8') as $char) {
             $line = match ($char) {
                 "\n" => '\\n', "\r" => '\\r', "\u{2028}" => '\\u2028', "\u{2029}" => '\\u2029', default => null,
             };

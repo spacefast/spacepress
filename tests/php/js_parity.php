@@ -184,6 +184,8 @@ $cases = [
     ['[/x/gimsu.flags, /x/.source, new RegExp("").source, /a/g.global]', fn () => [$re('x', 'usmig')->flags, $re('x', '')->source, $re('', '')->source, $re('a', 'g')->global]],
     ['new RegExp("(", "")', fn () => $re('(', '')],
 
+    ['[new RegExp("\\u2028").source, new RegExp("\\u2029").source]', fn () => [$re("\u{2028}", '')->source, $re("\u{2029}", '')->source]],
+
     // ---- sort / arrays
     ['[10, 9, 1].sort()', function () { $a = jsValue([10, 9, 1]); Js::sort($a); return $a; }],
     ['["b", "a", 10, 9, true, null, "B", "｡", "🙂"].sort()', function () { $a = jsValue(['b', 'a', 10, 9, true, null, 'B', "\u{ff61}", '🙂']); Js::sort($a); return $a; }],

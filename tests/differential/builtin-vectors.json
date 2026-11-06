@@ -693,5 +693,10 @@
     "name": "numericKeySorting",
     "expression": "(() => { const a=[{k:2,i:0},{k:1,i:1},{k:2,i:2}]; return [a.toSorted((x,y)=>x.k-y.k).map(x=>x.i),a.toSorted((x,y)=>y.k-x.k).map(x=>x.i),[3,2,1].sort((a,b)=>a-b)]; })()",
     "fold": false
+  },
+  {
+    "name": "logicalMissingAssignment",
+    "expression": "(() => { const a:string[]=[]; const x=(a[0]&&='x'); const o:Record<string,string>={}; const key='missing'; const y=(o[key]&&='y'); const p:{value?:string}={}; const z=(p.value&&='z'); return [x!==null?Boolean(x):true,y!==null?Boolean(y):true,z!==null?Boolean(z):true,typeof x,typeof y,typeof z]; })()",
+    "fold": true
   }
 ]

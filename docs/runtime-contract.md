@@ -669,8 +669,7 @@ and ambiguous regex class delimiters are refused during evaluation.
 runtime RangeError, avoiding engine-dependent transcendental rounding.
 
 String `lastIndexOf` accepts only literal number/null/undefined positions; a
-runtime position can hide the erased null/undefined distinction behind an alias,
-assertion or call. Omit the position or use a literal instead.
+runtime position coercion is outside this typed overload. Omit the position or use a literal instead.
 
 Conversions:
 - `str(mixed $v): string` — `String(v)`. null → `"null"`, bools → `"true"/"false"`, numbers → `numStr`, list → elements `str`'d joined by `,` with null as `""`, assoc → `"[object Object]"`, `RegExp` → `/src/flags`.
@@ -762,7 +761,7 @@ code with strict TypeScript as well as `zero check`.
 | Intersections | Partial | Named finite objects merge recursively; compatible scalar/literal intersections narrow. Optional properties include implicit `undefined` in overlapping value domains under strict TypeScript without `exactOptionalPropertyTypes`; required presence does not remove that value. Conflicting optional domains still allow absence. Impossible object intersections and function/array intersections are refused. |
 | Generic aliases/interfaces | Supported for concrete instantiations | Required arguments, scalar/array/finite-object structural constraints, defaults that reference earlier parameters, and nested applications. Constraint checks do not use PHP runtime conversions such as Date-to-number. Missing/extra arguments fail. PHP-reachable generic functions are refused, rather than compiling a signature widened to `unknown`. |
 | `keyof` | Supported for finite objects | Literal string keys; object unions retain only common keys. Open maps, arrays, primitive/prototype keys, numeric property names and symbols are refused. |
-| Indexed access types | Partial | String-key unions on finite objects, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`) with `[number]`, tuple numeric literals/unions and tuple `[number]`. A key missing from any union member fails. Optional reads include `undefined` during normalization and become nullable at the PHP boundary. |
+| Indexed access types | Partial | String-key unions on finite objects, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`) with `[number]`, tuple numeric literals/unions and tuple `[number]`. A key missing from any union member fails. Optional reads retain `undefined` at runtime. |
 | Dynamic property reads | Supported for finite string keys | `object[key]` works when every possible key belongs to the fixed object. Arbitrary string keys need `Record<string, T>`. This does not add dynamic writes to fixed objects. |
 | `Record<K, V>` | Partial | Finite string unions produce required fixed properties; `string` produces the existing open map. Numeric/symbol keys are refused. |
 | `Partial`, `Required`, `Readonly` | Partial | Finite objects and unions of finite objects. `Required` removes optional presence and its `undefined`, retaining explicit `null`. Readonly is type-only; PHP handles retain their existing identity/mutation semantics. Open-map and array utility transforms are refused. |
@@ -792,9 +791,8 @@ Their dependencies resolve
 independently of registry order. Recursive model dependencies and chains exceeding
 96 JSON annotations receive located refusals. Copying inferred model fields and
 cached JSON types also consumes the root's 16,384-step work budget, before cloning.
-PHP compilation and public client
-types apply null normalization after model expansion; generated backend query
-types retain the authored domain.
+PHP compilation, public client types and generated backend query types retain
+the authored null/undefined domain after model expansion.
 
 The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)
 imports its generic interfaces from a separate module. Its `typeReport` action
@@ -802,26 +800,26 @@ with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`
 emits this PHP/JSON result:
 
 ```json
-{"classView":{"entry":{"id":7,"title":"Hello","state":"draft","active":true},"missing":null,"label":"draft"},"labels":{},"intersected":{"note":null},"optionalConflict":{},"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","missing":null,"pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
+{"finiteChecks":[[false,false],[false,false],[false,true],[false,true],[false,true],[false,true],[false,false]],"finiteIdentity":true,"finiteCaptured":true,"pureFinite":[[false,false],[false,false],[false,true],[false,true],[false,true],[false,true],[false,false]],"scalarTypes":["8","HELLO","true","false","other"],"scalarFalseBranches":["6","hello","absent"],"guardedLabels":["found"],"guardedFind":"found","guardedBranch":"found","predicateMap":[false,true],"booleanFilter":["0","value"],"tupleLabels":["Left:L","Right:R"],"arrayPresence":{"tags":["present"]},"classView":{"entry":{"id":7,"title":"Hello","state":"draft","active":true},"label":"draft"},"labels":{},"intersected":{},"optionalConflict":{},"optionalSnapshot":{},"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
 ```
 
 The fixture also imports a derived class with public constructor parameter
 properties typed through `Projection`, a `Required` snapshot result, and an
 `undefined` field and `void` method. Its class reference is nested in a generic
 object alias before construction; this exercises class compilation reached
-from type normalization. The generated client exposes `classView.missing: null`
+from type normalization. The generated client exposes `classView.missing: undefined`
 and `classView.label: "draft"`, and omits class methods at the JSON boundary.
 
 It also captures `{ note: undefined }` under
 `{ note?: string } & { note: string | undefined }`. The required output property
-is `note: string | null`, including after `Required` because its presence was
+is `note: string | undefined`, including after `Required` because its presence was
 already required. In contrast, `Required<{ label?: string | undefined }>`
 removes optional undefined and keeps `label: string`. Direct mapped labels
 retain optional presence and return `{}`. Conflicting optional intersections
-also accept `{}` and admit only undefined (PHP null) when present.
+also accept `{}` and admit only undefined when present.
 
 The generated output type retains `state: "draft"`, `key: "common"`,
-`snapshot: { id: number; note: string | null }`, and `missing: string | null`.
+`snapshot: { id: number; note: string | null }`, and `missing: string | null | undefined`.
 The [client fixture](../tests/fixtures/type-semantics/client.ts) checks both
 accepted uses and rejected non-null/literal assumptions with strict TypeScript.
 JSON input annotations retain their existing compile-time role; this change
@@ -847,8 +845,8 @@ together at 0.152.0.
 
 This type-algebra work adds no JS built-in API. Arbitrary browser/Node APIs,
 symbols, generators and dynamic runtime type introspection remain outside the
-supported runtime. Package source resolution has its own [import contract](config-api.md). Existing documented PHP null/undefined and Unicode string
-semantics are unchanged. Class behavior has its own implementation contract.
+supported runtime. Package source resolution has its own [import contract](config-api.md). Runtime values preserve null and undefined separately; supported Unicode string
+semantics remain bounded by the contract above. Class behavior has its own implementation contract.
 
 ## Identity password verification inventory
 

@@ -181,7 +181,7 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
-    // Backend queries retain the authored JSON domain; wire types retain nulls.
+    // Backend queries and wire types retain the authored null/undefined domains.
     const storedSource = `import { table, group, json, text, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
@@ -214,11 +214,13 @@ export default defineConfig({ tables: { documents, source }, users: { members },
     const storedBuild = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(storedBuild.status, 0, storedBuild.stderr);
     writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
-const wire: Document["payload"] = { title: "wire", state: null, items: [{ label: null }] };
+const wire: Document["payload"] = { title: "wire", state: undefined, items: [{ label: undefined }] };
+// @ts-expect-error optional string values do not admit null
+const invalidWire: Document["payload"] = { title: "wire", items: [{ label: null }] };
 const selected: Document["selected"] = { id: 1, uid: "zr_12345678901234567890", slug: "first", body: wire, label: "first", details: null, locale: "en", translations: { de: 2 } };
 const inserted: Document["inserted"] = { body: wire, label: "second" };
 const translated: Document["inserted"] = { body: wire, translationOf: 1 };
-void selected; void inserted;`);
+void selected; void inserted; void invalidWire;`);
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] } },
       include: ["zero.config.ts", "zero.gen.ts", "stored-client.ts"],

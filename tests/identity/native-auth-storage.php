@@ -152,7 +152,13 @@ declare(strict_types=1);
         $old = get_userdata($legacyId);
         $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $legacyId]);
         clean_user_cache($legacyId);
-        do_action('profile_update', $legacyId, $old);
+        if ($i === 2) {
+            // A raw legacy import has no WordPress password-write hook (#118).
+            $assert(is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash']), 'legacy importer can detect the password-profile capability');
+            \Zero\Identity\Accounts::rememberPasswordHash($hash);
+        } else {
+            do_action('profile_update', $legacyId, $old);
+        }
         $legacyUsers[] = $legacyId;
     }
     $unsupportedUsers = [];

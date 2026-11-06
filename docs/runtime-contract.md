@@ -813,3 +813,13 @@ malformed encodings fail with the same generic refusal after the shared dummy
 schedule; they cannot replace a costly dummy with a fast rejection. Such users
 must reset their password to a supported WordPress encoding to use Identity
 password sign-in. Core WordPress authentication remains owned by WordPress.
+
+Legacy importers can detect the registration capability with
+`is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])` and call
+`\Zero\Identity\Accounts::rememberPasswordHash(string $hash): void` after a raw
+user import. The `zero_identity_password_profiles` option remains an associative
+map from algorithm/cost profile keys to independent random-password hash strings.
+Registration merges into that map using the importer's existing database
+transaction. Importers must include the option in their rollback cache cleanup.
+The initial inventory's background scheduling does not replace registration for
+imports performed after inventory completion.

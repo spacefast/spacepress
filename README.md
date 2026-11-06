@@ -290,7 +290,12 @@ and the build pins and ships them too.
 
 ## Deploy
 
-Zero apps can be deployed to [Spacefast](https://spacefast.com) natively.
+Deploy to [Spacefast](https://spacefast.com) with `sf publish` from a project
+containing `zero.config.ts`, or use the hosted MCP publish tool. Spacefast captures
+and compiles source on the host. REST endpoints and actions work on the Space
+hostname. Realtime is not supported, and Zero Pages are not hosted yet.
+See the [Spacefast deploy guide](docs/spacefast-deploy.md) and the
+[0.8 migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
 
 Anywhere else: the build is `.zero/wp-content/plugins/*.zip`, which you upload
 or copy like any plugin, and `.zero/wp-content/zero-manifest.json` records the

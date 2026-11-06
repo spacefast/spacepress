@@ -1,14 +1,122 @@
 # Migrating from Zero 0.8
 
-This guide moves a WordPress site built with the original `@spacefast/zero`
-0.8 (`capsule()` collections) onto the new Zero: the same posts, ids, fields,
-media, revisions and authors, now served by the `zero-app-<name>` plugin at
-`/wp-json/zero/v1`.
+Migrate a Spacefast app with the hosted operation below. It converts supported
+source, preserves content and user IDs, and carries existing logins into v2.
+Generated endpoints and actions work on Spacefast. Realtime is not supported.
+Pages are not hosted yet.
 
-It takes two commands. `zero migrate config` turns the capsule into a
-`zero.config.ts`, and `zero migrate site` moves the content in place. Both
-refuse anything they can't carry and name the exact spot, so nothing is
-silently dropped.
+For a standalone WordPress site, use the config and in-place data commands
+later in this guide. Both paths report unsupported behavior with pointers.
+
+## Migrate a Spacefast app
+
+Use this procedure for a user's Spacefast 0.8 app. The hosted operation converts
+source, copies scoped data, and commits the one-way transition together. The
+standalone in-place commands later in this guide target a different deployment.
+
+1. Record the Space ID and its live version. Keep a database backup and the
+   frozen source of that version. Check the Space's `zero.generation`; an
+   existing 0.8 app reports `legacy_0_8`.
+2. Inspect the capsule, frontend callers, content, and Space Users settings.
+   Identify custom endpoints, `pages/`, `layouts/`, and `islands/`. The converter
+   refuses these with pointers. Port endpoints to named v2 actions and replace
+   unsupported frontend code before continuing. Realtime declarations produce
+   a review hint and are removed. Realtime is not supported; Pages are not
+   hosted yet.
+3. Request the conversion report without changing the Space:
+
+   ```sh
+   sf zero migrate --space spc_example --dry-run --json
+   ```
+
+   The same operation is available through the MCP catalog tool
+   `migrateSpaceZero` with the Space ID and `dryRun: true`, or
+   `POST /v1/spaces/spc_example/zero/migration` with `{ "dryRun": true }`.
+   Read every `errors` pointer and `review` entry. A dry run stops after source
+   conversion and makes no publication or data changes.
+4. Resolve refusals and check the candidate's access rules. Conversion denies
+   content writes by default. Native posts become a `posts` collection with
+   their IDs and body intact. Auth or enabled Space Users adds a `members`
+   user projection. Retain `connector-roles.json` for the host; it carries role
+   mappings, never credentials or new grants.
+5. Start the real operation:
+
+   ```sh
+   sf zero migrate --space spc_example --json
+   ```
+
+   The operation advances through `precheck`, `convert`, `fence`, `publish`,
+   `data`, and `commit`. During the fence, other publishes are refused. The
+   host compiles and initializes the candidate, then copies the source Space's
+   data into its v2 prefix. Google provider credentials become managed
+   `ZERO_IDENTITY_GOOGLE_CLIENT_ID` and `ZERO_IDENTITY_GOOGLE_CLIENT_SECRET`
+   values; the host exposes them as identity constants. Preserve these values
+   without printing them or adding them to the repository.
+6. Wait until the report says `done` and the Space reports `zero.generation`
+   as `v2`. Verify the live hostname, a generated REST read, an action, content
+   IDs and authors, an existing login, and a fresh Google sign-in when enabled.
+   Check that the hosted repository now contains the converted v2 source.
+   Update frontend callers to the generated client and named action routes in
+   the [deploy guide](spacefast-deploy.md#call-a-rest-endpoint-or-action).
+
+If the operation fails before `data`, fix the reported refusal and retry. Once
+`data` starts, retry forward with the same migration operation. Keep the Space
+fenced until it finishes; never resume 0.8 writes after partial data copying.
+A completed table group has a durable receipt, so retrying cannot overwrite
+subsequent v2 edits. The source rows remain unchanged.
+
+After commit, 0.8 publish, promotion, and rollback are refused. Old immutable
+0.8 URLs return `410 zero_legacy_retired` and identify the live hostname. An
+older v2 version still shares the latest database schema; code rollback does
+not restore the database.
+
+### Convert source locally for review
+
+If you need to inspect or port a candidate before the hosted operation, run:
+
+```sh
+sf zero migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example --dry-run --json
+sf zero migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example
+sf zero check ./candidate
+```
+
+Add `--users` when Space Users is enabled without a capsule `auth` declaration.
+Each destination must be new. A dry run writes no candidate. Keep all generated
+source, the adoption snapshot, and `connector-roles.json` together. Submit a
+manual v2 port through the hosted migration operation so its data moves before
+the generation change. A normal v2 publish on a legacy Space is refused with
+`zero_migration_required`.
+
+### Copy data under the host's migration lock
+
+Host operators use this lower-level command after initializing the candidate.
+Bind WordPress to the target prefix before normal plugins load. Derive the
+prefix from the exact Space ID, then pass both prefixes explicitly:
+
+```sh
+space_id=spc_example
+target_prefix="$(SPACE_ID="$space_id" python3 -c 'import hashlib,os; print("sfz_"+hashlib.sha256(os.environ["SPACE_ID"].encode()).hexdigest()[:24]+"_")')"
+wp zero migrate-spacefast --space="$space_id" --source-prefix=wp_ --target-prefix="$target_prefix" --dry-run
+wp zero migrate-spacefast --space="$space_id" --source-prefix=wp_ --target-prefix="$target_prefix"
+```
+
+Run these inside the host's scoped bootstrap, with publication fenced. The
+command rejects a mismatched target or an unbound connection. It requires
+existing InnoDB source and target tables. A dry run checks actual writes inside
+transactions, rolls them back, and creates no migration tables.
+
+The command copies Space-fenced posts, revisions, attachments and metadata,
+terms and relationships, authors and app users, and identity accounts, emails,
+providers, and sessions. IDs remain unchanged. Scoped user role keys use the
+target prefix. Attachment files must remain available through the host's media
+binding; this command copies database rows, not file bytes. Existing app SQL
+tables use the source converter's `existingTable` adoption and are not copied.
+
+Each of the `posts`, `users`, and `sessions` groups has its own transaction and
+receipt in `<target-prefix>zero_spacefast_migrations`. A conflicting row refuses
+the group with `zero_spacefast_conflict` and rolls that group back. Earlier
+groups remain committed and are skipped on retry. On a completed rerun, each
+group reports `copied: 0` and `status: "already-migrated"`. Keep the receipts.
 
 ## Application source migration
 
@@ -101,12 +209,13 @@ payloads, including the monorepo's `zero-all-features` fixture, are not capsule
 source and are refused. No sources are inferred from those bundles.
 
 For local WordPress installation, `zero build ./migrated-app` emits PHP plugins.
-For hosted publication, submit compiler-readable app source and the separate
-vendor source bundle through the hosting integration. The server compiler emits
+For Spacefast publication, use `sf publish` or the hosted MCP publish tool.
+The CLI uploads captured app and vendor bundles. Hosted MCP can upload raw
+source using only relative imports and `zero`. The embedded server compiler emits
 PHP at finalize. Migration never requires uploading generated PHP. Published
 versions share the current database schema, so forward migrations can break older
-code; the command adds no schema versioning or down migrations. Preview approval,
-activation, hosted client URLs and realtime remain the hosting integration's work.
+code; the command adds no schema versioning or down migrations. Spacefast owns
+readiness, activation, and hosted client URLs. Realtime is not supported.
 
 The executable proof is `cargo test --test app_migrate` plus
 `tests/wp/app-migrate/run.sh`. The former compiles the generated apps with Zero
@@ -300,14 +409,16 @@ Fix the data in WordPress (or the new config), then run again.
 
 ## What stays manual
 
-The content-only config and site commands below do not move:
+The standalone content-only config and site commands do not move:
 
 - `blocks` (rich text) fields and multiple references. The importer refuses them.
-- Native `posts`, `pages` and `media` collections.
+- Native `posts`, `pages`, and `media` declarations in the content-only config importer.
+  Use the app migrator for native posts. Pages require a frontend port.
 - Application tables and handlers. Use the [app migrator](#application-source-migration)
   for its supported subset; endpoints, pages, islands, service calls and sync
   bindings still need an explicit port.
-- Sign-in providers and sessions of the original platform (app users themselves move with step 6).
+- Sign-in providers and sessions on standalone hosts. App users move with step 6;
+  the [Spacefast operation](#migrate-a-spacefast-app) also copies provider identities and sessions.
 - The original Space's routes, redirects and private file storage.
 
 The [compatibility inventory](zero-compatibility.md) tracks each of these.

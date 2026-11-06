@@ -605,7 +605,7 @@ export default defineConfig({
       "\r\n  $literal ${value} \"quote\" \\path\n",
       "aba".replaceAll("a", replacementOffset),
       "ab".replace(/b/, (match: string, offset: number, source: string) => `${match}:${offset}:${source}`),
-      "ab".replace(/(a)?b/, (_match, capture: string | null, offset: number) => `${capture ?? "missing"}:${offset}`),
+      "ab".replace(/(a)?b/, (_match, capture: string | undefined, offset: number) => `${capture ?? "missing"}:${offset}`),
       "Oat Milk".includes("Milk"),
       "Oat Milk".indexOf("Milk"),
     ]),

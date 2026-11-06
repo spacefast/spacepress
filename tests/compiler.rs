@@ -259,7 +259,7 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     );
     rejects(
         "reject-db-globals-patch",
-        "`stats` must be { visits: number } | null, not number",
+        "`stats` must be { visits: number } | null | undefined, not number",
         "zero.config.ts:4:",
     );
 }

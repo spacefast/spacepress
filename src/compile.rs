@@ -469,7 +469,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn resolve_json_column(&mut self, col: &Column) -> Result<()> {
-        let Some((ann, module)) = &col.ts_type else {
+        let Some((ann, module, span)) = &col.ts_type else {
             return Ok(());
         };
         let key = col as *const Column as usize;
@@ -477,25 +477,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(());
         }
         if self.resolving_json_types.len() >= 96 {
-            return err(
-                annotations::annotation_span(ann),
-                "JSON model expansion exceeds Zero's 96-level limit",
-            );
+            return err(*span, "JSON model expansion exceeds Zero's 96-level limit");
         }
         if !self.resolving_json_types.insert(key) {
-            return err(
-                annotations::annotation_span(ann),
-                "recursive JSON model annotations aren't supported",
-            );
+            return err(*span, "recursive JSON model annotations aren't supported");
         }
         let result = (|| {
             let authored = self.resolve_annotation_root(ann, *module)?;
             let ty = annotations::runtime_type(authored.clone());
             if classes::wire_type(&ty) != ty {
                 return err_help(
-                    annotations::annotation_span(ann),
+                    *span,
                     "JSON schemas cannot use class instance types",
                     "describe the stored own fields with an object type; JSON does not restore methods or instanceof identity",
+                );
+            }
+            if !assignable(&types::json_wire_type(&ty), &ty) {
+                return err_help(
+                    *span,
+                    "JSON schemas must accept their serialized values",
+                    "use null for undefined array slots, and optional properties for omitted values",
                 );
             }
             JSON_TYPES.with(|m| m.borrow_mut().insert(key, types::JsonType { authored, runtime: ty }));
@@ -2597,8 +2598,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // Js::add: operands and result as JS numbers (exact ints past ±2^53 round, as in JS).
                     Out::atom(format!("\\Zero\\Js::add({}, {})", a.php, b.php), Ty::Num)
                 } else if a.ty.is_str() || b.ty.is_str() {
-                    let (x, y) = (self.to_string_php(&a, span)?, self.to_string_php(&b, span)?);
-                    Out::new(format!("{x} . {y}"), Ty::Str)
+                    Out::atom(format!("\\Zero\\Js::dynamicBinary('+', {}, {})", a.php, b.php), Ty::Str)
                 } else {
                     return err_help(
                         span,
@@ -3155,6 +3155,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         span: Span,
         statement: bool,
     ) -> Result<Out> {
+        let prototype_receiver = match &target.kind {
+            ExprKind::Member { obj, prop, .. } if prop == "__proto__" => Some(obj),
+            ExprKind::Index { obj, index, .. } if matches!(&index.kind, ExprKind::Str(key) if key == "__proto__") => {
+                Some(obj)
+            }
+            _ => None,
+        };
+        if let Some(receiver) = prototype_receiver {
+            let own = self
+                .argument_constraint(receiver)
+                .is_some_and(|ty| matches!(ty.non_null(), Ty::Obj(fields) if fields.contains_key("__proto__")));
+            if !own {
+                return err_help(
+                    target.span,
+                    "prototype mutation isn't supported",
+                    "use an ordinary own data property",
+                );
+            }
+        }
         let place = self.place(target)?;
         if op.is_none()
             && !statement
@@ -4594,6 +4613,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Number", "parseInt") => Out::atom(format!("\\Zero\\Js::parseInt({})", php_args()), Ty::Num),
             ("Number", "parseFloat") => Out::atom(format!("\\Zero\\Js::parseFloat({})", php_args()), Ty::Num),
             ("JSON", "stringify") => {
+                if let Some(value) = a0 {
+                    crate::builtins::check_json_serialization_type(&value.ty, span)?;
+                }
                 let t = if a0.is_some_and(|value| {
                     value
                         .ty

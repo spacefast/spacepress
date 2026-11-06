@@ -151,6 +151,26 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("function", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
 ];
 
+pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Result<(), Diag> {
+    use crate::types::Ty;
+    fn custom(ty: &Ty) -> bool {
+        match ty {
+            Ty::Obj(fields) => fields.iter().any(|(key, (ty, _))| {
+                key == "toJSON" && !ty.all(|t| !matches!(t, Ty::Fn(..) | Ty::Unknown | Ty::Dynamic)) || custom(ty)
+            }),
+            Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Map(t) | Ty::Instance(_, t) => custom(t),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(custom),
+            _ => false,
+        }
+    }
+    if custom(ty) {
+        Err(Diag::new(span, "custom toJSON callbacks aren't supported")
+            .help("serialize the callback's result explicitly before passing data to JSON.stringify"))
+    } else {
+        Ok(())
+    }
+}
+
 pub const UNSAFE_RADIX: &str = "parseInt with this radix requires a safe integer result";
 
 pub fn check_parse_int_literals(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {

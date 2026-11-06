@@ -599,6 +599,12 @@ length before converting its separator. Function `apply` reads an array-like
 object, with primitive argument lists refused. Prototype setter literals and
 dynamic prototype access/mutation are refused; computed `__proto__` data keys
 remain ordinary own properties.
+Custom `toJSON` callbacks are refused at the source when known and explicitly
+at runtime otherwise. Serialize their result explicitly. JSON schemas must
+accept their serialized values; undefined array slots require null, and omitted
+properties must be optional. Addition and compound addition use default primitive
+conversion before string conversion. Sorting places undefined last without
+passing it to comparators.
 Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 
@@ -625,7 +631,10 @@ JSON arrays. This distinction does not change schema nullability. Public client
 result types describe serialization: undefined array slots become null, and
 properties whose values may be undefined become optional with undefined removed
 from the present value domain.
-Array and object destructuring retain undefined for absent entries. Optional/default parameters before rest parameters remain omittable.
+Array and object destructuring retain undefined for absent entries. Configuration
+for-of and array destructuring use live iterators, including permanent exhaustion
+after completion. Optional/default parameters before rest parameters remain
+omittable.
 Optional parameters accept undefined; null requires an explicit nullable type.
 Parameter and destructuring defaults run only for undefined. Typed object
 property reads distinguish missing properties from explicit null. Strict

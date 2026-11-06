@@ -1110,7 +1110,13 @@ final class Js
         if (self::isNullish($o)) {
             throw new JsError('Cannot set properties of null or undefined', 'TypeError');
         }
-        if ($o instanceof JsClass) { return $o->set($key, $value); }
+        if ($o instanceof JsClass) {
+            if ($key === '__proto__' && !$o->has($key)) { throw new JsError('Prototype mutation is not supported', 'TypeError'); }
+            return $o->set($key, $value);
+        }
+        if ($key === '__proto__' && !array_key_exists($key, $o->p)) {
+            throw new JsError('Prototype mutation is not supported', 'TypeError');
+        }
         $o->p[$key] = $value;
         return $value;
     }
@@ -1129,16 +1135,7 @@ final class Js
     /** += needs the actual primitive types, including an absent old property. */
     public static function plus(mixed $a, mixed $b, bool $missing): mixed
     {
-        if ($a instanceof JsArray || $a instanceof JsObject || $a instanceof RegExp) {
-            $a = self::str($a);
-        }
-        if ($b instanceof JsArray || $b instanceof JsObject || $b instanceof RegExp) {
-            $b = self::str($b);
-        }
-        if (is_string($a) || is_string($b)) {
-            return ($missing ? 'undefined' : self::str($a)) . self::str($b);
-        }
-        return self::add($missing ? NAN : self::toNumber($a), self::toNumber($b));
+        return self::dynamicBinary('+', $missing ? JsUndefined::Value : $a, $b);
     }
 
     /** A fixed-length walk may read only elements that still exist. */
@@ -1349,18 +1346,24 @@ final class Js
 
     public static function sorted(JsArray $a, ?callable $cmp = null): JsArray
     {
-        $items = $a->a;
+        $items = [];
+        $undefined = 0;
+        foreach ($a->a as $item) {
+            if ($item === JsUndefined::Value) { $undefined++; }
+            else { $items[] = $item; }
+        }
+        $tail = array_fill(0, $undefined, JsUndefined::Value);
         if ($cmp !== null) {
             usort($items, static function (mixed $x, mixed $y) use ($cmp): int {
                 $r = self::toNumber($cmp($y, $x));
                 return $r > 0 ? -1 : ($r < 0 ? 1 : 0);
             });
-            return new JsArray($items);
+            return new JsArray([...$items, ...$tail]);
         }
         $keyed = [];
         foreach ($items as $item) { $keyed[] = [mb_convert_encoding(self::str($item), 'UTF-16BE', 'UTF-8'), $item]; }
         usort($keyed, static fn (array $x, array $y): int => strcmp($x[0], $y[0]) <=> 0);
-        return new JsArray(array_column($keyed, 1));
+        return new JsArray([...array_column($keyed, 1), ...$tail]);
     }
 
     public static function with(JsArray $a, int|float $index, mixed $value): JsArray
@@ -1599,6 +1602,12 @@ final class Js
 
     private static function jsonValueTree(mixed $value, \SplObjectStorage $stack): mixed
     {
+        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments) {
+            $custom = array_key_exists('toJSON', $value->p)
+                ? $value->p['toJSON'] instanceof \Closure
+                : $value instanceof JsObject && ($value->class?->hasMethod('toJSON') ?? false);
+            if ($custom) { throw new JsError('Custom toJSON callbacks are not supported', 'TypeError'); }
+        }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError) { return new \stdClass(); }

@@ -715,3 +715,45 @@ pub fn with_relations(schema: &Schema, table: &str, base: Ty, rel: &str, nested:
     fields.insert(rel.to_string(), (t, false));
     Ty::Obj(fields)
 }
+fn wire_omits(t: &Ty) -> bool {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) | Ty::Unknown | Ty::Dynamic => true,
+        Ty::Union(items) => items.iter().any(wire_omits),
+        _ => false,
+    }
+}
+
+fn wire_present(t: &Ty) -> Ty {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) => Ty::Never,
+        Ty::Union(items) => Ty::union(items.iter().map(wire_present)),
+        _ => t.clone(),
+    }
+}
+
+/// JSON nulls array slots and omits object properties without serializable values.
+pub fn json_wire_type(t: &Ty) -> Ty {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) => Ty::Null,
+        Ty::NumLit(n) | Ty::FreshNumLit(n) if !n.is_finite() => Ty::Null,
+        Ty::Array(t) => Ty::Array(Box::new(json_wire_type(t))),
+        Ty::NonEmptyArray(t) => Ty::NonEmptyArray(Box::new(json_wire_type(t))),
+        Ty::Tuple(items) => Ty::Tuple(items.iter().map(json_wire_type).collect()),
+        Ty::ArrayLiteral(items) => Ty::ArrayLiteral(items.iter().map(json_wire_type).collect()),
+        Ty::Obj(fields) => Ty::Obj(
+            fields
+                .iter()
+                .map(|(key, (ty, optional))| {
+                    (
+                        key.clone(),
+                        (json_wire_type(&wire_present(ty)), *optional || wire_omits(ty)),
+                    )
+                })
+                .collect(),
+        ),
+        Ty::Map(t) => Ty::Map(Box::new(json_wire_type(&wire_present(t)))),
+        Ty::Union(items) => Ty::union(items.iter().map(json_wire_type)),
+        Ty::Instance(id, fields) => Ty::Instance(id.clone(), Box::new(json_wire_type(fields))),
+        _ => t.clone(),
+    }
+}

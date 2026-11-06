@@ -535,5 +535,35 @@
     "expression": "(() => { const m = 'ba'.match(/(?<x>a)/); return m === null ? null : [m.index, m.input, m.groups.x, Object.hasOwn(m, 'groups')]; })()",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "liveForOf",
+    "expression": "(() => { const a = [1, 2]; let text = ''; for (const value of a) { text += String(value); if (value === 2) a.push(3); } return [text, a]; })()",
+    "fold": true
+  },
+  {
+    "name": "liveDestructuring",
+    "expression": "(() => { const a = [undefined, 2]; const [x = (a[1] = 3), y] = a; return [x, y]; })()",
+    "fold": true
+  },
+  {
+    "name": "iteratorExhaustion",
+    "expression": "(() => { const a: number[] = []; const [x = (() => { a.push(2); return 1; })(), y] = a; return [x, typeof y, a]; })()",
+    "fold": true
+  },
+  {
+    "name": "defaultAdditionHint",
+    "expression": "(() => { let hint = ''; const o = {valueOf: () => { hint += 'v'; return 7; }, toString: () => { hint += 's'; return 'x'; }}; const first = '' + o; const box = {value: ''}; box.value += o; return [first, box.value, hint]; })()",
+    "fold": false
+  },
+  {
+    "name": "sortUndefined",
+    "expression": "(() => { const a = [undefined, 'z', 'a']; let bad = false; const sorted = a.toSorted((x, y) => { bad = bad || x === undefined || y === undefined; return String(x) < String(y) ? -1 : 1; }); a.sort(); return [sorted, a, bad]; })()",
+    "fold": false
+  },
+  {
+    "name": "computedPrototypeDataWrite",
+    "expression": "(() => { const o = {['__proto__']: 1}; o['__proto__'] = 2; return [Object.hasOwn(o, '__proto__'), o['__proto__']]; })()",
+    "fold": true
   }
 ]

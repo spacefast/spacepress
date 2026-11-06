@@ -120,7 +120,6 @@ trait JsDynamic
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
         $key = self::key($key);
         if ($target instanceof JsObject || $target instanceof JsClass) {
-            if ($target instanceof JsObject && $key === '__proto__' && !array_key_exists($key, $target->p)) { throw new JsError('Prototype mutation is not supported', 'TypeError'); }
             return self::set($target, $key, $value);
         }
         if ($target instanceof RegExp && $key === 'lastIndex') { $target->lastIndex = $value; return $value; }

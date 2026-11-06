@@ -412,6 +412,8 @@ $deviations = array_merge($deviations, [
     ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'RangeError']],
     ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
+    ['custom toJSON callbacks are refused', fn () => Js::jsonStringify(new JsObject(['toJSON' => static fn () => 42])), ['$err' => 'TypeError']],
+    ['prototype writes are refused by the shared setter', fn () => Js::set(new JsObject(), '__proto__', 1), ['$err' => 'TypeError']],
     ['function own properties are refused', fn () => Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([static fn () => 1, 'length'])), ['$err' => 'TypeError']],
     ['repeated captures are refused', fn () => Js::re('(a(b)?)+', ''), ['$err' => 'SyntaxError']],
     ['astral regex quantifiers need Unicode mode', fn () => Js::re('^😀+$', '')->test('😀😀'), ['$err' => 'RangeError']],

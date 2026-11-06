@@ -939,6 +939,8 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
         "(() => { const o = {n: 1}; Object.freeze(o); try {o.n = 2;} catch {} return o.n; })()",
+        "(() => { const o: Record<string, number> = {}; o['__proto__'] = 1; return Object.hasOwn(o, '__proto__'); })()",
+        "JSON.stringify({toJSON: () => 42})",
         "new Date(0).getTime(1)",
         "new Date(0).toISOString(1)",
         "new Date(0).toJSON(1)",
@@ -981,7 +983,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         for handler in [false, true] {
             // These contracts have different evaluator and emitter support.
             if handler
-                && (expression.starts_with("JSON.stringify")
+                && (expression.starts_with("JSON.stringify") && !expression.contains("toJSON")
                     || expression.starts_with("Error(")
                     || expression.starts_with("new Error(")
                     || expression.contains("[a[b]]")
@@ -1299,5 +1301,26 @@ fn configuration_refuses_unmodeled_inherited_properties() {
             "{report}"
         );
         assert_eq!(report["diagnostics"][0]["location"]["line"], 2);
+    }
+}
+
+#[test]
+fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
+    for annotation in [
+        "undefined[]",
+        "{ required: undefined }",
+        "{ nested: { values: undefined[] } }",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{json,action,defineConfig}} from 'zero';\nexport default defineConfig({{actions:{{probe:action({{input:{{values:json().$type<{annotation}>().notNull()}},handler:(input)=>input.values}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let d = &report["diagnostics"][0];
+        assert_eq!(
+            d["message"], "JSON schemas must accept their serialized values",
+            "{report}"
+        );
+        assert_eq!(d["location"]["line"], 2);
+        assert!(d["help"].as_str().unwrap().contains("null"));
     }
 }

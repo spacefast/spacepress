@@ -33,6 +33,53 @@ impl From<Diag> for Ctl {
 
 type R<T> = std::result::Result<T, Ctl>;
 
+struct ValueIterator {
+    source: Value,
+    index: usize,
+    done: bool,
+}
+
+impl ValueIterator {
+    fn new(source: Value, span: Span) -> R<Self> {
+        let source = match source {
+            Value::Array(_) | Value::Arguments(_) => source,
+            Value::Str(s) => Value::array(s.chars().map(|c| Value::str(&c.to_string())).collect()),
+            other => return err(span, format!("can't iterate {}", other.describe())),
+        };
+        Ok(Self {
+            source,
+            index: 0,
+            done: false,
+        })
+    }
+
+    fn next(&mut self, span: Span) -> R<Option<Value>> {
+        if self.done {
+            return Ok(None);
+        }
+        let item = match &self.source {
+            Value::Array(array) => array.borrow().get(self.index).cloned(),
+            Value::Arguments(object) => {
+                if self.index < array_like_length(object, span)? {
+                    Some(
+                        object
+                            .borrow()
+                            .get(&self.index.to_string())
+                            .cloned()
+                            .unwrap_or(Value::Undef),
+                    )
+                } else {
+                    None
+                }
+            }
+            _ => unreachable!("iterator source"),
+        };
+        self.done = item.is_none();
+        self.index += 1;
+        Ok(item)
+    }
+}
+
 enum Flow {
     Normal,
     Return(Value),
@@ -351,6 +398,13 @@ impl<'p> Evaluator<'p> {
                 span,
             )),
             Value::Object(map) | Value::Arguments(map) => {
+                if key == "__proto__" && !map.borrow().contains_key(key) {
+                    return err_help(
+                        span,
+                        "prototype mutation isn't supported",
+                        "use an ordinary own data property",
+                    );
+                }
                 if map.borrow_mut().insert(key.to_string(), value).is_some() {
                     self.record_duplicates(obj, vec![(key.to_string(), span)]);
                 }
@@ -555,18 +609,19 @@ impl<'p> Evaluator<'p> {
                 Ok(())
             }
             Pat::Arr { elems, rest, span } => {
-                let items = match &value {
-                    Value::Array(arr) => arr.borrow().clone(),
-                    Value::Arguments(object) => arguments_items(object, *span)?,
-                    other => return err(*span, format!("can't destructure {} as an array", other.describe())),
-                };
-                for (i, p) in elems.iter().enumerate() {
+                let mut items = ValueIterator::new(value, *span)?;
+                for p in elems {
+                    let item = items.next(*span)?.unwrap_or(Value::Undef);
                     if let Some(p) = p {
-                        self.initialize_pattern(p, items.get(i).cloned().unwrap_or(Value::Undef), scope, declaration)?;
+                        self.initialize_pattern(p, item, scope, declaration)?;
                     }
                 }
                 if let Some((name, _)) = rest {
-                    let tail = items.get(elems.len()..).map(<[Value]>::to_vec).unwrap_or_default();
+                    let mut tail = Vec::new();
+                    while let Some(item) = items.next(*span)? {
+                        self.tick(*span)?;
+                        tail.push(item);
+                    }
                     self.initialize_pattern(&Pat::Id(name.clone(), *span), Value::array(tail), scope, declaration)?;
                 }
                 Ok(())
@@ -673,13 +728,8 @@ impl<'p> Evaluator<'p> {
                 body,
                 span,
             } => {
-                let items = match self.eval(iter, scope)? {
-                    Value::Array(a) => a.borrow().clone(),
-                    Value::Arguments(object) => arguments_items(&object, iter.span)?,
-                    Value::Str(s) => s.chars().map(|c| Value::str(&c.to_string())).collect(),
-                    other => return err(iter.span, format!("can't loop over {}", other.describe())),
-                };
-                for item in items {
+                let mut items = ValueIterator::new(self.eval(iter, scope)?, iter.span)?;
+                while let Some(item) = items.next(iter.span)? {
                     self.tick(*span)?;
                     let iter_scope = Scope::new(Some(scope.clone()), scope.module);
                     self.initialize_pattern(
@@ -1105,7 +1155,7 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                     let mut c = (**c).clone();
-                    c.ts_type = Some((t.clone(), scope.module));
+                    c.ts_type = Some((t.clone(), scope.module, call_span));
                     return Ok(Value::Column(Rc::new(c)));
                 }
                 if let Value::Bound(receiver, method) = &f

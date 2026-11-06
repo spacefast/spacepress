@@ -108,7 +108,7 @@ pub struct ColBuilder {
     pub default: Option<DefaultVal>,
     pub on_update: Option<DefaultVal>,
     pub references: Option<RefBuilder>,
-    pub ts_type: Option<(TyAnn, usize)>,
+    pub ts_type: Option<(TyAnn, usize, Span)>,
     pub access: Option<Value>,
     pub show_if: Option<Value>,
     pub ui: Option<Value>,

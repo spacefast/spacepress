@@ -1720,7 +1720,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 #[test]
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'clear'),read([],'entries'),typeof get({},'missing'),get(a,'custom')];}").unwrap();
+    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'clear'),read([],'entries'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -1733,10 +1733,11 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     assert_eq!(
         result,
         json!([
-            ["TypeError", "Unsupported Set property clear"],
-            ["TypeError", "Unsupported Array property entries"],
+            ["TypeError", "Unsupported built-in set.clear"],
+            ["TypeError", "Unsupported built-in array.entries"],
             "undefined",
-            2
+            2,
+            "undefined"
         ])
     );
 }
@@ -1772,4 +1773,22 @@ export default defineConfig({name:'typeddatareads',actions:{probe:action({handle
             7
         ])
     );
+}
+
+#[test]
+fn native_method_inventory_requires_an_accepted_or_refused_contract() {
+    let node = Command::new("node").args(["-e", r#"
+const owners={object:Object,array:Array,string:String,number:Number,boolean:Boolean,regex:RegExp,date:Date,set:Set,map:Map,function:Function,Math:{prototype:Math}};
+const methods=Object.entries(owners).flatMap(([surface,owner])=>Object.entries(Object.getOwnPropertyDescriptors(owner.prototype)).filter(([name,descriptor])=>name!=='constructor'&&typeof descriptor.value==='function').map(([name])=>[surface,name]));
+process.stdout.write(JSON.stringify(methods));
+"#]).output().unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let methods: Vec<(String, String)> = serde_json::from_slice(&node.stdout).unwrap();
+    assert!(methods.len() > 100, "unexpected native inventory: {}", methods.len());
+    for (surface, name) in methods {
+        assert!(
+            zero::builtins::contract(&surface, &name).is_some(),
+            "native {surface}.{name} needs an accepted or explicitly refused shared contract"
+        );
+    }
 }

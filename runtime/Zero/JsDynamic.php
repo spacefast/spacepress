@@ -29,13 +29,11 @@ trait JsDynamic
         if ($receiver instanceof \Closure && in_array($name, ['bind', 'length', 'name', 'prototype', 'arguments', 'caller'], true)) {
             throw new JsError('Function metadata and binding are not supported', 'TypeError');
         }
-        if ($name === 'length') { return JsUndefined::Value; }
         if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date'], true)
             || $name === 'toString' && in_array($owner, ['Math', 'Set', 'Map'], true)) { $owner = 'Object'; }
         $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
             if (Builtins::has('object', $name)) { throw new JsError('Unsupported inherited method ' . $name, 'TypeError'); }
-            if (!$receiver instanceof JsObject && !$receiver instanceof JsArguments) { throw new JsError('Unsupported ' . $owner . ' property ' . $name, 'TypeError'); }
             return JsUndefined::Value;
         }
         $key = $owner . ':' . $name;
@@ -130,9 +128,7 @@ trait JsDynamic
             if (preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) && (float) $key < 4294967295) {
                 return array_key_exists((int) $key, $value->a) ? $value->a[(int) $key] : JsUndefined::Value;
             }
-            if (array_key_exists($key, $value->p)) { return $value->p[$key]; }
-            if (is_numeric($key) || in_array($key, ['NaN', 'Infinity', '-Infinity'], true)) { return JsUndefined::Value; }
-            return self::dynamicMethodValue($value, $key);
+            return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
         }
         if (is_string($value)) {
             if ($key === 'length') { return self::length($value); }

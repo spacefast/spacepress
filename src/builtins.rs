@@ -149,6 +149,16 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("function", &["call"], overload("thisArg?: unknown, ...arguments: unknown[]", None, None, arity(0, VARIADIC))),
     ("function", &["apply"], overload("thisArg?: unknown, arguments?: array-like", None, None, arity(0, 2))),
     ("function", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+
+    ("array", &["copyWithin", "keys", "entries", "values", "reduceRight", "toSpliced", "with", "toLocaleString"], overload("unimplemented native methods are refused", None, None, None)),
+    ("string", &["anchor", "big", "blink", "bold", "codePointAt", "fontcolor", "fontsize", "fixed", "isWellFormed", "italics", "link", "matchAll", "normalize", "search", "small", "strike", "sub", "substr", "sup", "toWellFormed", "trimLeft", "trimRight", "toLocaleLowerCase", "toLocaleUpperCase"], overload("unimplemented native methods are refused", None, None, None)),
+    ("number", &["toExponential", "toPrecision", "toLocaleString"], overload("unimplemented native methods are refused", None, None, None)),
+    ("regex", &["compile"], overload("unimplemented native methods are refused", None, None, None)),
+    ("date", &["toString", "toDateString", "toTimeString", "toUTCString", "toGMTString", "getDate", "setDate", "getDay", "getFullYear", "setFullYear", "getHours", "setHours", "getMilliseconds", "setMilliseconds", "getMinutes", "setMinutes", "getMonth", "setMonth", "getSeconds", "setSeconds", "setTime", "getTimezoneOffset", "getUTCDate", "setUTCDate", "getUTCDay", "getUTCFullYear", "setUTCFullYear", "getUTCHours", "setUTCHours", "getUTCMilliseconds", "setUTCMilliseconds", "getUTCMinutes", "setUTCMinutes", "getUTCMonth", "setUTCMonth", "getUTCSeconds", "setUTCSeconds", "getYear", "setYear", "toLocaleString", "toLocaleDateString", "toLocaleTimeString", "toTemporalInstant"], overload("unimplemented native methods are refused", None, None, None)),
+    ("set", &["delete", "difference", "clear", "entries", "forEach", "intersection", "isSubsetOf", "isSupersetOf", "isDisjointFrom", "symmetricDifference", "union", "values", "keys"], overload("unimplemented native methods are refused", None, None, None)),
+    ("map", &["delete", "clear", "entries", "forEach", "keys", "values", "getOrInsert", "getOrInsertComputed"], overload("unimplemented native methods are refused", None, None, None)),
+    ("function", &["bind", "toString"], overload("unimplemented native methods are refused", None, None, None)),
+    ("Math", &["acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2", "cbrt", "expm1", "clz32", "cos", "cosh", "fround", "hypot", "imul", "log1p", "log2", "log10", "sin", "sinh", "tan", "tanh", "f16round"], overload("unimplemented native methods are refused", None, None, None)),
 ];
 
 /// Only a numeric key difference has engine-independent ordering without callback effects.

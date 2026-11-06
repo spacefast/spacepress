@@ -788,11 +788,10 @@ method handles share identity across functions, arrays and other reference famil
 scalar and Date valueOf retain their own prototype methods. Inherited Object toString
 handles also share identity across Set, Map, Math and ordinary objects, while Error
 uses its own prototype method. Borrowed Object toString reports the receiver tag.
-Unregistered native-property reads refuse instead of fabricating undefined for
-unimplemented JavaScript methods. Missing ordinary-object and arguments-object fields
-remain undefined, and explicitly assigned array properties retain their values. Known absent native
-length fields remain undefined for array-like conversion; function metadata still refuses.
-Missing numeric array properties, including fractional, negative and NaN keys, remain undefined.
+Unimplemented native method names are explicitly refused in the shared built-in contract.
+Other absent properties remain undefined, including duck-typed reads such as string.flags,
+arguments-object fields, native length fields and fractional/negative/NaN array keys.
+Explicitly assigned array properties retain their values.
 
 Typed object/record reads accept own data fields. If an absent field resolves to an
 unmodeled Object prototype property, the read refuses before type-based optimizations

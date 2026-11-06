@@ -119,7 +119,7 @@ fn require_static_coercion(value: &Value, span: Span) -> R<()> {
                     "pass a primitive value, or perform the conversion inside a handler",
                 );
             }
-            Value::Closure(_) | Value::Builtin(_) | Value::Class(_) => {
+            Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) | Value::Class(_) => {
                 return err_help(
                     span,
                     "function coercion isn't supported during configuration evaluation",
@@ -1082,9 +1082,24 @@ impl<'p> Evaluator<'p> {
                     && &**m == "$type"
                     && let Value::Column(c) = recv.as_ref()
                 {
+                    crate::builtins::check(
+                        "column",
+                        "$type",
+                        argv.len(),
+                        crate::builtins::Phase::Evaluator,
+                        call_span,
+                    )
+                    .map_err(Ctl::Err)?;
                     let Some(t) = type_args.first() else {
                         return err(e.span, "`$type` needs a type argument: `json().$type<string[]>()`");
                     };
+                    if type_args.len() != 1 {
+                        return err_help(
+                            e.span,
+                            "$type takes exactly one type argument",
+                            "pass one type and no runtime arguments",
+                        );
+                    }
                     let mut c = (**c).clone();
                     c.ts_type = Some((t.clone(), scope.module));
                     return Ok(Value::Column(Rc::new(c)));
@@ -1094,11 +1109,20 @@ impl<'p> Evaluator<'p> {
             ExprKind::New { callee, args } => {
                 let f = self.eval(callee, scope)?;
                 let argv = self.eval_args(args, scope)?;
-                if let Value::Builtin(Builtin::Global(g)) = &f
-                    && *g != "Date"
-                {
-                    crate::builtins::check("constructor", g, argv.len(), crate::builtins::Phase::Evaluator, e.span)
-                        .map_err(Ctl::Err)?;
+                let constructor = match &f {
+                    Value::Builtin(Builtin::Global(g)) if *g != "Date" => Some(*g),
+                    Value::Builtin(Builtin::HttpError) => Some("HttpError"),
+                    _ => None,
+                };
+                if let Some(name) = constructor {
+                    crate::builtins::check(
+                        "constructor",
+                        name,
+                        argv.len(),
+                        crate::builtins::Phase::Evaluator,
+                        e.span,
+                    )
+                    .map_err(Ctl::Err)?;
                 }
                 match f {
                     Value::Class(_) => {
@@ -1106,16 +1130,6 @@ impl<'p> Evaluator<'p> {
                             e.span,
                             "class instances are only constructed inside compiled callbacks; configuration stays plain data",
                         );
-                    }
-                    Value::Builtin(Builtin::HttpError) => {
-                        let o = error_object("HttpError", argv.get(2..).unwrap_or(&[]));
-                        if let Value::Object(map) = &o {
-                            map.borrow_mut()
-                                .insert("status".into(), argv.first().cloned().unwrap_or(Value::Undef));
-                            map.borrow_mut()
-                                .insert("code".into(), argv.get(1).cloned().unwrap_or(Value::Undef));
-                        }
-                        o
                     }
                     Value::Builtin(Builtin::Global("Date")) => {
                         return err_help(
@@ -1369,12 +1383,26 @@ impl<'p> Evaluator<'p> {
     }
 
     fn call_builtin(&mut self, b: &Builtin, args: Vec<Value>, span: Span) -> R<Value> {
+        let name = match b {
+            Builtin::Collection(kind) => Some(kind.builder()),
+            Builtin::Id => Some("id"),
+            Builtin::DefineGlobal => Some("global"),
+            Builtin::DefineRelations => Some("defineRelations"),
+            Builtin::DefineConfig => Some("defineConfig"),
+            Builtin::Env => Some("env"),
+            Builtin::Files => Some("files"),
+            Builtin::Action => Some("action"),
+            Builtin::Job => Some("job"),
+            Builtin::RelFn(..) => Some("relation"),
+            _ => None,
+        };
+        if let Some(name) = name {
+            crate::builtins::check("zero", name, args.len(), crate::builtins::Phase::Evaluator, span)
+                .map_err(Ctl::Err)?;
+        }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
             Builtin::Collection(kind) => {
-                if args.len() > 2 {
-                    return err(span, format!("{}() takes fields and optional options", kind.builder()));
-                }
                 let cols_val = arg(0);
                 let Value::Object(cols) = &cols_val else {
                     return err(span, format!("{}() needs an object of fields first", kind.builder()));
@@ -1590,6 +1618,8 @@ impl<'p> Evaluator<'p> {
 
     /// `text()`, `email()`, `select({ options })`, `group({ fields })`, ...
     fn make_column(&self, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
+        crate::builtins::check("field", builder, args.len(), crate::builtins::Phase::Evaluator, span)
+            .map_err(Ctl::Err)?;
         let ty = match builder {
             "integer" => ColType::Integer,
             "real" => ColType::Real,
@@ -2377,6 +2407,7 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
 }
 
 fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
+    crate::builtins::check("column", m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     let mut c = (**c).clone();
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
     let closure_arg = || match arg(0) {
@@ -2937,11 +2968,12 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
                         || p.contains('\\')
                         || f.contains('m')
                         || s.contains(['\r', '\n'])
-                        || ["&&", "~~", "||"].iter().any(|token| p.contains(token))
+                        || ["&&", "~~", "||", "--"].iter().any(|token| p.contains(token))
                     {
-                        return err(
+                        return err_help(
                             span,
-                            "build-time regex replacement supports ASCII text and patterns without escapes, set operations, multiline mode or line terminators; move this replacement into a handler",
+                            "build-time regex replacement supports ASCII text and patterns without escapes, set operations, multiline mode or line terminators",
+                            "move this replacement into a handler",
                         );
                     }
                     let mut in_class = false;

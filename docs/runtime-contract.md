@@ -578,7 +578,8 @@ Large parseInt results are supported for base 10 and power-of-two bases; other
 radices require safe integer results to avoid engine-specific approximations.
 Known unsupported literals are refused at source; dynamic values throw explicitly.
 PHP and Rust power-of-two parsing round once from the significant bits.
-Database builder calls also use the shared source arity contract.
+Database builders, configuration/schema factories and column modifiers also use
+the shared source arity contract, including runtime arguments to `$type`.
 Callbacks are validated before empty-input shortcuts in configuration evaluation.
 `Object.fromEntries` follows live array/Set/Map/arguments iterators and reads both
 entry values before key coercion. String splitting and regex replacement retain

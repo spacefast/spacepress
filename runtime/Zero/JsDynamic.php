@@ -268,9 +268,7 @@ trait JsDynamic
                 'charCodeAt' => self::dynamicCharCodeAt($receiver, self::toNumber($get(0, 0))),
                 'slice' => self::slice($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
                 'substring' => self::substring($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
-                'includes' => str_contains(self::slice($receiver, max(0, self::toNumber($get(1, 0)))), self::str($get(0))),
-                'startsWith' => str_starts_with(self::slice($receiver, max(0, self::toNumber($get(1, 0)))), self::str($get(0))),
-                'endsWith' => str_ends_with($get(1) === JsUndefined::Value ? $receiver : self::slice($receiver, 0, max(0, self::toNumber($get(1)))), self::str($get(0))),
+                'includes', 'startsWith', 'endsWith' => self::dynamicStringSearch($receiver, $name, $get(0), $get(1)),
                 'indexOf' => self::indexOf($receiver, self::str($get(0)), self::toNumber($get(1, 0))),
                 'lastIndexOf' => count($a) < 2 ? self::lastIndexOf($receiver, self::str($get(0))) : self::lastIndexOf($receiver, self::str($get(0)), self::toNumber($get(1))),
                 'split' => self::dynamicSplit($receiver, $get(0), $get(1)),
@@ -394,6 +392,19 @@ trait JsDynamic
             for ($i = 0; $i < $length; $i++) { $value = self::dynamicGet($source, (string) $i); $result->a[] = $callback === null ? $value : $callback($value, $i); }
         }
         return $result;
+    }
+
+    private static function dynamicStringSearch(string $source, string $method, mixed $search, mixed $position): bool
+    {
+        if ($search instanceof RegExp) { throw new JsError($method . ' does not accept a RegExp', 'TypeError'); }
+        $search = self::str($search);
+        $position = $method === 'endsWith' && $position === JsUndefined::Value
+            ? self::length($source) : max(0, self::toNumber($position));
+        return match ($method) {
+            'includes' => str_contains(self::slice($source, $position), $search),
+            'startsWith' => str_starts_with(self::slice($source, $position), $search),
+            'endsWith' => str_ends_with(self::slice($source, 0, $position), $search),
+        };
     }
 
     private static function dynamicSplit(string $source, mixed $separator, mixed $limit): JsArray

@@ -49,6 +49,19 @@ const fn overload(
 // Columns: surface, names, overload, evaluator arity, emitter arity, runtime arity.
 #[rustfmt::skip]
 pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
+    ("zero", &["collection", "table", "userProjection"], overload("fields: object, options?: object", arity(1, 2), None, None)),
+    ("zero", &["global"], overload("name: string, fields: object, options?: object", arity(2, 3), None, None)),
+    ("zero", &["defineRelations"], overload("schema: object, relations: function", arity(2, 2), None, None)),
+    ("zero", &["defineConfig", "action", "job", "env"], overload("one configuration or environment name", arity(1, 1), None, None)),
+    ("zero", &["files"], overload("name: string, options: object", arity(2, 2), None, None)),
+    ("zero", &["id"], overload("no arguments", arity(0, 0), None, None)),
+    ("zero", &["relation"], overload("options?: object", arity(0, 1), None, None)),
+    ("field", &["integer", "real", "text", "boolean", "date", "timestamp", "json", "email", "url", "slug", "richText", "media"], overload("options?: object", arity(0, 1), None, None)),
+    ("field", &["file", "select", "group", "repeater", "blocks"], overload("options: object", arity(1, 1), None, None)),
+    ("column", &["localized", "notNull", "unique", "primaryKey", "defaultNow", "$type"], overload("no runtime arguments", arity(0, 0), None, None)),
+    ("column", &["access", "showIf", "ui", "min", "max", "pattern", "validate", "default", "$default", "$defaultFn", "$onUpdate", "$onUpdateFn"], overload("one value or callback", arity(1, 1), None, None)),
+    ("column", &["references"], overload("target: function, options?: object", arity(1, 2), None, None)),
+    ("constructor", &["HttpError"], overload("runtime-only status: number, code: string, message: string, details?: object", None, arity(3, 4), None)),
     ("db", &["insert", "update", "delete"], overload("collection: Collection", None, arity(1, 1), None)),
     ("db.builder", &["values", "set", "where"], overload("one values, changes or filter object", None, arity(1, 1), None)),
     ("db.builder", &["returning"], overload("no arguments", None, arity(0, 0), None)),

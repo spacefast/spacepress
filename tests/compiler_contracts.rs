@@ -935,6 +935,7 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
         "'aba'.replace(/(a(b)?)+/, '[$2]')",
+        "'x'.replace(/[a-z--x]/g, '!')",
         "Object.hasOwn(() => 1, 'length')",
         "JSON.stringify({x: undefined})",
         "Error(undefined)",
@@ -964,7 +965,8 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
                 && (expression.starts_with("JSON.stringify")
                     || expression.starts_with("Error(")
                     || expression.starts_with("new Error(")
-                    || expression.contains("[a[b]]"))
+                    || expression.contains("[a[b]]")
+                    || expression.contains("[a-z--x]"))
             {
                 continue;
             }
@@ -1011,9 +1013,12 @@ fn unsupported_features_have_positions_and_actionable_help() {
 }
 
 #[test]
-fn configuration_refuses_custom_coercion_at_the_call_site() {
+fn configuration_refuses_unsupported_coercion_at_the_call_site() {
     for expression in [
         "'ab'.repeat({valueOf: () => 2})",
+        "String(''.trim)",
+        "[''.trim].join(',')",
+        "'abc'.includes(''.trim)",
         "'abc'.slice({valueOf: () => 1})",
         "'a,b,c'.split(',', {valueOf: () => 2})",
     ] {
@@ -1022,13 +1027,7 @@ fn configuration_refuses_custom_coercion_at_the_call_site() {
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
-        assert!(
-            diagnostic["message"]
-                .as_str()
-                .unwrap()
-                .contains("custom object coercion"),
-            "{report}"
-        );
+        assert!(diagnostic["message"].as_str().unwrap().contains("coercion"), "{report}");
         assert_eq!(diagnostic["location"]["line"], 2);
         assert!(diagnostic["help"].as_str().unwrap().contains("handler"));
     }
@@ -1110,6 +1109,31 @@ fn configuration_validates_callbacks_before_empty_input_shortcuts() {
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
         assert_eq!(diagnostic["message"], "callback must be a function", "{report}");
+        assert_eq!(diagnostic["location"]["line"], 2, "{report}");
+    }
+}
+
+#[test]
+fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
+    for expression in [
+        "text({}, 1)",
+        "id(1)",
+        "text().notNull(false)",
+        "text().default('x', 1)",
+        "json().$type<string>(1)",
+        "defineConfig({}, 1)",
+        "action({handler:()=>1}, 1)",
+        "new HttpError(400, 'bad', 'message')",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{text, id, json, action, defineConfig, HttpError}} from 'zero';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains("unsupported overload"),
+            "{report}"
+        );
         assert_eq!(diagnostic["location"]["line"], 2, "{report}");
     }
 }

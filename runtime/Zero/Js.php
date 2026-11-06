@@ -927,7 +927,7 @@ final class Js
             } else {
                 $captures = $dynamic ? array_map(static fn ($value) => $value ?? JsUndefined::Value, $groups) : $groups;
                 $args = [...$captures, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s];
-                if ($dynamic && $named) { $args[] = new JsObject(array_map(static fn ($value) => $value ?? JsUndefined::Value, $names)); }
+                if ($named) { $args[] = new JsObject($dynamic ? array_map(static fn ($value) => $value ?? JsUndefined::Value, $names) : $names); }
                 $rep = self::str($replacement($matched, ...$args));
             }
             if ($between && $rep !== '') {

@@ -815,5 +815,10 @@
     "name": "consumingNoncapturingQuantifiers",
     "expression": "['baba'.replace(/(?:a|b)*/g,'X'),'abc'.replace(/(?:a|b)+/g,'X'),'bc'.replace(/(?:a|b)?/g,'X'),'baba'.replace(/(?:a|b){2}/g,'X')]",
     "fold": true
+  },
+  {
+    "name": "unicodeSurrogatePairAtoms",
+    "expression": "[/[\\uD83D\\uDE42]/u.test('🙂'), /[\\u{1F642}]/u.test('🙂'), /[^\\uD83D\\uDE42]/u.test('🙂'), /🙂?/u.test('a'), /\\uD83D\\uDE42?/u.test('a'), /[a-\\uD83D\\uDE42]/u.test('\\uE000'), /\\u{D800}/u.test('?')]",
+    "fold": false
   }
 ]

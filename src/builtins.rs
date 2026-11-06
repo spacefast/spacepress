@@ -489,6 +489,10 @@ pub fn check_regex_literals(args: &[crate::ir::ArrEl], span: Span) -> Result<(),
 
 /// Refuse engine-specific capture retention rather than emulate a regex engine.
 pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
+    if !flags.contains('u') && pattern.chars().any(|c| u32::from(c) > 0xffff) {
+        return Err(Diag::new(span, "astral regex literals require Unicode mode")
+            .help("add the u flag so each pattern atom is a Unicode code point"));
+    }
     if flags.contains('i') && !pattern.is_ascii() {
         return Err(Diag::new(span, "ignore-case regexes require ASCII source and input")
             .help("remove ignore-case matching or use ASCII source and input"));
@@ -518,6 +522,44 @@ pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
                         Diag::new(span, "character-class escapes adjacent to hyphens aren't supported")
                             .help("escape a literal hyphen with \\- or spell out the character range"),
                     );
+                }
+                if bytes.get(i + 1) == Some(&b'u') {
+                    let rest = &pattern[i + 2..];
+                    let braced = flags.contains('u') && rest.starts_with('{');
+                    let hex = if braced {
+                        rest.strip_prefix('{')
+                            .and_then(|s| s.split_once('}'))
+                            .map(|(hex, _)| hex)
+                    } else {
+                        rest.get(..4)
+                    };
+                    if let Some(cp) = hex.and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                        && (0xd800..=0xdfff).contains(&cp)
+                    {
+                        if !flags.contains('u') {
+                            return Err(Diag::new(span, "surrogate regex escapes require Unicode mode")
+                                .help("add the u flag or use a Unicode scalar character"));
+                        }
+                        if in_class {
+                            let paired = !braced
+                                && cp <= 0xdbff
+                                && pattern.get(i + 6..i + 8) == Some("\\u")
+                                && pattern
+                                    .get(i + 8..i + 12)
+                                    .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                                    .is_some_and(|lo| (0xdc00..=0xdfff).contains(&lo));
+                            if paired {
+                                i += 12;
+                                class_dash = false;
+                                continue;
+                            }
+                            return Err(Diag::new(
+                                span,
+                                "lone surrogate escapes in regex character classes aren't supported",
+                            )
+                            .help("use a Unicode scalar character or a valid surrogate pair with the u flag"));
+                        }
+                    }
                 }
                 class_dash = false;
                 if flags.contains('u') && bytes.get(i + 1).is_some_and(|c| matches!(c, b'p' | b'P')) {

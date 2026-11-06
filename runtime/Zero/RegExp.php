@@ -68,6 +68,9 @@ final class RegExp implements \Stringable
         if (str_contains($flags, 'i') && preg_match('/[^\\x00-\\x7f]/', $source) === 1) {
             throw new JsError('Ignore-case regexes require literal ASCII source', 'SyntaxError');
         }
+        if (!$this->unicode && preg_match('/[\\x{10000}-\\x{10FFFF}]/u', $source) === 1) {
+            throw new JsError('Astral regex literals require Unicode mode; add the u flag', 'SyntaxError');
+        }
         $this->checkCaptureContract($source);
         $this->src = $source;
         $this->pos = 0;
@@ -471,7 +474,7 @@ final class RegExp implements \Stringable
                 if ($this->unicode) { throw new JsError('Invalid Unicode hex escape', 'SyntaxError'); }
                 return 'x';
             case 'u':
-                return $this->unicodeEscape();
+                return $this->unicodeEscape($inClass);
             case 'k':
                 if ($inClass) {
                     if ($this->unicode) { throw new JsError('Invalid class escape \\k', 'SyntaxError'); }
@@ -543,10 +546,15 @@ final class RegExp implements \Stringable
         return '\\' . $c;
     }
 
-    private function unicodeEscape(): string
+    private function unicodeEscape(bool $inClass): string
     {
         if ($this->unicode && preg_match('/\G\{([0-9A-Fa-f]+)\}/A', $this->src, $m, 0, $this->pos)) {
             $this->pos += strlen($m[0]);
+            $cp = hexdec($m[1]);
+            if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                if ($inClass) { throw new JsError('Lone surrogate escapes in regex character classes are not supported', 'SyntaxError'); }
+                return '(?!)';
+            }
 
             return '\x{' . $m[1] . '}';
         }
@@ -556,11 +564,15 @@ final class RegExp implements \Stringable
         }
         $this->pos += 4;
         $cp = hexdec($m[0]);
+        if (!$this->unicode && $cp >= 0xD800 && $cp <= 0xDFFF) {
+            throw new JsError('Surrogate regex escapes require Unicode mode; add the u flag', 'SyntaxError');
+        }
         if ($cp >= 0xD800 && $cp <= 0xDBFF && preg_match('/\G\\\\u([dD][c-fC-F][0-9A-Fa-f]{2})/A', $this->src, $lo, 0, $this->pos)) {
             $this->pos += 6;
             $cp = 0x10000 + (($cp - 0xD800) << 10) + (hexdec($lo[1]) - 0xDC00);
             $this->requiresUnicodeOnAstral = true;
         } elseif ($cp >= 0xD800 && $cp <= 0xDFFF) {
+            if ($inClass) { throw new JsError('Lone surrogate escapes in regex character classes are not supported', 'SyntaxError'); }
             $this->requiresUnicodeOnAstral = true;
             return '(?!)'; // a lone surrogate can never occur in UTF-8 input
         }

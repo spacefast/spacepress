@@ -4358,6 +4358,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn builtin_args(&self, surface: &str, name: &str, args: &[ArrEl], span: Span) -> Result<()> {
+        if matches!(surface, "global" | "constructor") && name == "RegExp" {
+            crate::builtins::check_regex_literals(args, span)?;
+        }
         if args.iter().any(|arg| matches!(arg, ArrEl::Spread(_))) {
             if matches!(surface, "string" | "number" | "array" | "date" | "regex") {
                 return err_help(
@@ -5291,9 +5294,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         )
                     }
                     "flat" => {
-                        let inner = match el {
+                        let depth = match argv.first().map(|v| &v.ty) {
+                            None | Some(Ty::Undefined) => 1,
+                            Some(Ty::Null) => 0,
+                            Some(Ty::NumLit(n) | Ty::FreshNumLit(n)) if *n == 0.0 => 0,
+                            Some(Ty::NumLit(n) | Ty::FreshNumLit(n)) if *n == 1.0 => 1,
+                            _ => {
+                                return err_help(
+                                    span,
+                                    "typed flat() supports only depths 0 and 1",
+                                    "use a literal depth of 0 or 1, or flatten explicitly",
+                                );
+                            }
+                        };
+                        let flatten = |t| match t {
                             Ty::Array(t) | Ty::NonEmptyArray(t) => *t,
+                            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
                             t => t,
+                        };
+                        let inner = if depth == 0 {
+                            el
+                        } else {
+                            match el {
+                                Ty::Union(ts) => Ty::union(ts.into_iter().map(flatten)),
+                                t => flatten(t),
+                            }
                         };
                         Out::atom(dispatch(), Ty::Array(Box::new(inner)))
                     }

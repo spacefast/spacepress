@@ -1564,3 +1564,39 @@ fn undefined_cannot_be_narrowed_through_a_null_annotation_or_conditional_var() {
         assert!(diagnostic["location"].is_object(), "{body}: {report}");
     }
 }
+
+#[test]
+fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() {
+    for (source, message) in [
+        (
+            "return /\\p{Lu}/u.test('Ᲊ');",
+            "Unicode regex properties aren't supported",
+        ),
+        (
+            "return new RegExp('\\\\p{Lu}', 'u').test('ÀB');",
+            "Unicode regex properties aren't supported",
+        ),
+        (
+            "return RegExp('\\\\P{Ll}', 'u').test('A');",
+            "Unicode regex properties aren't supported",
+        ),
+        ("return [[1]].flat(2);", "typed flat() supports only depths 0 and 1"),
+        (
+            "return [[1]].flat({valueOf:()=>1});",
+            "typed flat() supports only depths 0 and 1",
+        ),
+        (
+            "const flatten=(depth:number)=>[[1]].flat(depth); return flatten(0);",
+            "typed flat() supports only depths 0 and 1",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nexport default defineConfig({{name:'boundaries',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+        let d = &report["diagnostics"][0];
+        assert!(d["message"].as_str().unwrap().contains(message), "{source}: {report}");
+        assert_eq!(d["location"]["file"], "zero.config.ts");
+        assert!(!d["help"].as_str().unwrap().is_empty(), "{report}");
+    }
+}

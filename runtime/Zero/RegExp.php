@@ -474,19 +474,9 @@ final class RegExp implements \Stringable
                 if ($this->unicode) { throw new JsError('Invalid Unicode named reference', 'SyntaxError'); }
                 return 'k';
             case 'p': case 'P':
-                if ($this->unicode && str_contains($this->flags, 'i')) {
-                    throw new JsError('Case-insensitive Unicode properties are not supported', 'SyntaxError');
+                if ($this->unicode) {
+                    throw new JsError('Unicode regex properties are not supported; use an explicit character class', 'SyntaxError');
                 }
-                if ($this->unicode && preg_match('/\G\{[^}]*\}/A', $this->src, $m, 0, $this->pos)) {
-                    if (!in_array(substr($m[0], 1, -1), Builtins::REGEX_CATEGORIES, true)) {
-                        throw new JsError('This Unicode property is not supported; use a short General_Category alias', 'SyntaxError');
-                    }
-                    $this->pos += strlen($m[0]);
-
-                    return '\\' . $c . $m[0];
-                }
-
-                if ($this->unicode) { throw new JsError('Invalid Unicode property escape', 'SyntaxError'); }
                 return $c;
         }
         if ($c === '0' && !ctype_digit($this->src[$this->pos] ?? '')) {

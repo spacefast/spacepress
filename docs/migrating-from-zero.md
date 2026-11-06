@@ -116,6 +116,27 @@ boolean predicates, safe BIGINT IDs, rollback and native password/PKCE sign-in.
 It also refuses a mismatched
 unique-index name, then adopts and removes the correctly named index.
 
+## Retire imported Spacefast sessions
+
+Spacefast's cross-prefix migration marks each imported session in
+`<target-prefix>zero_identity_legacy_sessions`. Only marked rows can use the
+0.8 HMAC lookup. A successful match replaces the hash with v2's domain-prefixed
+SHA-256 and clears the marker in one statement. The original expiry stays fixed.
+Logout and revocation also reject imported sessions before their first upgrade.
+
+Keep the original `wp_salt('auth')` while imported sessions remain valid. Enable
+`zero_identity_session_cookie_aliases` only inside the migrated Space's scope.
+The host uses `['__Host-sfi_session']`; successful alias authentication issues
+`zi_session` with the same expiry. Never log the cookie or provider secrets.
+
+To remove the compatibility code, stop all 0.8 imports first. Check every
+migrated Space's session table joined to its import-marker table. Wait until
+**every imported session's original `expires_at` is in the past**, including
+sessions already upgraded or revoked. Then remove
+`runtime/identity/src/Legacy/SessionUpgrade.php`, its call in `Sessions::find`,
+the cookie alias registration, and the import-marker tables. Keep migration
+receipts so old migration operations cannot copy sessions again.
+
 ## Before you start
 
 - Back up the database. The site migration runs in one transaction and rolls

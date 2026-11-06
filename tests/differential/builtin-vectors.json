@@ -837,5 +837,10 @@
     "expression": "(() => {const source={a:Math,b:Math};const c=structuredClone(source);c.a.x=1;return [c.a===Math,c.a===c.b,c.b.x,Object.keys(c.a),Object.keys(structuredClone(Math)),typeof structuredClone(Math).min,String(c.a)];})()",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "shortestDecimalBinaryBoundaries",
+    "expression": "[String(2 ** -24),String(-(2 ** -24)),String(2 ** -25),String(2 ** -24 - 2 ** -77),String(2 ** -24 + 2 ** -76),String(2 ** -24 - 2 ** -78),String(1e-7),String(1e21)]",
+    "fold": true
   }
 ]

@@ -103,14 +103,18 @@ final class Js
     {
         for ($p = 0; $p < 17; $p++) {
             $s = sprintf('%.' . $p . 'e', $x);
-            if ((float) $s === $x) {
-                break;
+            [$mantissa, $exp] = explode('e', $s);
+            $nearest = (int) str_replace('.', '', $mantissa);
+            $power = (int) $exp - $p;
+            // Binary boundaries have asymmetric rounding intervals.
+            foreach ([$nearest, $nearest - 1, $nearest + 1] as $candidate) {
+                if ((float) ($candidate . 'e' . $power) === $x) {
+                    $digits = (string) $candidate;
+                    return [rtrim($digits, '0'), strlen($digits) + $power];
+                }
             }
         }
-        [$mantissa, $exp] = explode('e', $s);
-        $digits = rtrim(str_replace('.', '', $mantissa), '0');
-
-        return [$digits === '' ? '0' : $digits, (int) $exp + 1];
+        throw new \LogicException('Finite double has no round-tripping decimal');
     }
 
     public static function toNumber(mixed $v): int|float

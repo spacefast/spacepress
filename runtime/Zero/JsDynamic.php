@@ -104,7 +104,12 @@ trait JsDynamic
         }
         if ($value instanceof JsClass) { return $value->get($key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
-            return match ($key) { 'PI' => M_PI, 'E' => M_E, default => self::dynamicMethodValue($value, $key) };
+            return match ($key) {
+                'PI' => M_PI, 'E' => M_E,
+                default => Builtins::has('Math', $key) || in_array($key, ['toString', 'valueOf'], true)
+                    ? self::dynamicMethodValue($value, $key)
+                    : throw new JsError('Unsupported Math property ' . $key, 'TypeError'),
+            };
         }
         if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'stack' => throw new JsError('Error stack metadata is not supported', 'TypeError'), default => self::dynamicMethodValue($value, $key) }; }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
@@ -539,12 +544,13 @@ trait JsDynamic
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
+            $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
+            $text = $message === JsUndefined::Value ? '' : self::str($message);
             $options = $a[1] ?? JsUndefined::Value;
             if (($options instanceof JsObject || $options instanceof JsArray || $options instanceof JsArguments) && array_key_exists('cause', $options->p)) {
                 throw new JsError('Error cause is not supported', 'TypeError');
             }
-            $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
-            return new JsError($message === JsUndefined::Value ? '' : self::str($message), $constructor, $message !== JsUndefined::Value);
+            return new JsError($text, $constructor, $message !== JsUndefined::Value);
         }
         if ($constructor === 'RegExp') {
             $source = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;

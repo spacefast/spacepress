@@ -1282,7 +1282,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let it = self.expr(iter)?;
                 let it = self.finish_value(it, iter.span)?;
                 let (el, src) = match &it.ty.non_null() {
-                    Ty::Dynamic => (Ty::Dynamic, format!("\\Zero\\Js::dynamicIterable({})", it.php)),
+                    Ty::Dynamic => (Ty::Dynamic, format!("\\Zero\\Js::dynamicIterator({})", it.php)),
                     Ty::Array(t) | Ty::NonEmptyArray(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
                     t if t.is_str() => (Ty::Str, format!("\\Zero\\Js::from({})", it.php)),
@@ -1301,11 +1301,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let source = self.tmp_var();
                 let index = self.tmp_var();
                 let value = self.tmp_var();
-                let _ = writeln!(
-                    out,
-                    "{p}{source} = {src};\n{p}for ({index} = 0; {index} < count({source}->a); {index}++) {{"
-                );
-                let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
+                if it.ty == Ty::Dynamic {
+                    let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
+                } else {
+                    let _ = writeln!(
+                        out,
+                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < count({source}->a); {index}++) {{"
+                    );
+                    let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
+                }
                 let mut previous = None;
                 if *kind == DeclKind::Var {
                     let Pat::Id(name, _) = pat else {

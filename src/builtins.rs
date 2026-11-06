@@ -163,6 +163,19 @@ pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Resul
             _ => false,
         }
     }
+    fn date(ty: &Ty) -> bool {
+        match ty {
+            Ty::Date => true,
+            Ty::Obj(fields) => fields.values().any(|(ty, _)| date(ty)),
+            Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Map(t) | Ty::Instance(_, t) => date(t),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(date),
+            _ => false,
+        }
+    }
+    if date(ty) {
+        return Err(Diag::new(span, "typed Dates require explicit JSON serialization")
+            .help("call toISOString() or toJSON() before passing a Date to JSON.stringify"));
+    }
     if custom(ty) {
         Err(Diag::new(span, "custom toJSON callbacks aren't supported")
             .help("serialize the callback's result explicitly before passing data to JSON.stringify"))
@@ -310,6 +323,44 @@ fn optional_capture_body(body: &str) -> bool {
         }
     }
     regex::Regex::new(body).is_ok_and(|re| !re.is_match(""))
+}
+
+/// ECMAScript EscapeRegExpPattern, used by source and string conversion.
+pub fn regex_source(pattern: &str) -> String {
+    if pattern.is_empty() {
+        return "(?:)".into();
+    }
+    let mut out = String::new();
+    let mut escaped = false;
+    let mut in_class = false;
+    for c in pattern.chars() {
+        let line = match c {
+            '\n' => Some("\\n"),
+            '\r' => Some("\\r"),
+            '\u{2028}' => Some("\\u2028"),
+            '\u{2029}' => Some("\\u2029"),
+            _ => None,
+        };
+        if let Some(line) = line {
+            if escaped {
+                out.pop();
+            }
+            out.push_str(line);
+            escaped = false;
+            continue;
+        }
+        if !escaped {
+            match c {
+                '[' => in_class = true,
+                ']' => in_class = false,
+                '/' if !in_class => out.push('\\'),
+                _ => {}
+            }
+        }
+        out.push(c);
+        escaped = c == '\\' && !escaped;
+    }
+    out
 }
 
 /// Refuse engine-specific capture retention rather than emulate a regex engine.

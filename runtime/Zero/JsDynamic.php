@@ -161,7 +161,7 @@ trait JsDynamic
         return new JsArray(iterator_to_array(self::dynamicIterator($value), false));
     }
 
-    private static function dynamicIterator(mixed $value): \Generator
+    public static function dynamicIterator(mixed $value): \Generator
     {
         if ($value instanceof JsArray) {
             for ($i = 0; $i < count($value->a); $i++) { yield $value->a[$i]; }

@@ -941,6 +941,9 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "(() => { const o = {n: 1}; Object.freeze(o); try {o.n = 2;} catch {} return o.n; })()",
         "(() => { const o: Record<string, number> = {}; o['__proto__'] = 1; return Object.hasOwn(o, '__proto__'); })()",
         "JSON.stringify({toJSON: () => 42})",
+        "JSON.stringify(new Date(0))",
+        "JSON.stringify({date: new Date(0)})",
+        "JSON.stringify(structuredClone({date: new Date(0)}))",
         "new Date(0).getTime(1)",
         "new Date(0).toISOString(1)",
         "new Date(0).toJSON(1)",
@@ -985,7 +988,9 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         for handler in [false, true] {
             // These contracts have different evaluator and emitter support.
             if handler
-                && (expression.starts_with("JSON.stringify") && !expression.contains("toJSON")
+                && (expression.starts_with("JSON.stringify")
+                    && !expression.contains("toJSON")
+                    && !expression.contains("Date")
                     || expression.starts_with("Error(")
                     || expression.starts_with("new Error(")
                     || expression.contains("[a[b]]")

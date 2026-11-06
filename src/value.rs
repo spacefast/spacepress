@@ -315,7 +315,7 @@ impl Value {
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
             Value::Global(g) => format!("global \"{}\"", g.name),
-            Value::Regex(p, f) => format!("/{p}/{f}"),
+            Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
         }
     }
 
@@ -343,7 +343,7 @@ impl Value {
             }
             Value::Object(_) => "[object Object]".into(),
             Value::Arguments(_) => "[object Arguments]".into(),
-            Value::Regex(p, f) => format!("/{p}/{f}"),
+            Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
             _ => return None,
         })
     }

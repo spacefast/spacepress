@@ -604,7 +604,11 @@ at runtime otherwise. Serialize their result explicitly. JSON schemas must
 accept their serialized values; undefined array slots require null, and omitted
 properties must be optional. Addition and compound addition use default primitive
 conversion before string conversion. Sorting places undefined last without
-passing it to comparators.
+passing it to comparators. Typed Dates require explicit `toISOString()` or
+`toJSON()` before JSON.stringify; typed dates use a numeric timestamp internally.
+Imported JavaScript for-of consumes live iterators. Regex source and string
+conversion escape delimiters and line terminators. Non-Unicode ignore-case
+matching on non-ASCII text throws explicitly; use the u flag.
 Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 

@@ -57,7 +57,7 @@ final class RegExp implements \Stringable
         $order = array_flip(['d', 'g', 'i', 'm', 's', 'u', 'v', 'y']);
         usort($chars, static fn ($a, $b) => $order[$a] <=> $order[$b]);
 
-        $this->source = $source === '' ? '(?:)' : $source;
+        $this->source = self::escapeSource($source);
         $this->flags = implode('', $chars);
         $this->global = in_array('g', $chars, true);
         $this->sticky = in_array('y', $chars, true);
@@ -84,6 +84,33 @@ final class RegExp implements \Stringable
         if (!$ok) {
             throw new JsError("Invalid regular expression: /$source/{$this->flags}: " . preg_last_error_msg(), 'SyntaxError');
         }
+    }
+
+    private static function escapeSource(string $source): string
+    {
+        if ($source === '') { return '(?:)'; }
+        $out = '';
+        $escaped = false;
+        $inClass = false;
+        foreach (mb_str_split($source) as $char) {
+            $line = match ($char) {
+                "\n" => '\\n', "\r" => '\\r', "\u{2028}" => '\\u2028', "\u{2029}" => '\\u2029', default => null,
+            };
+            if ($line !== null) {
+                if ($escaped) { $out = substr($out, 0, -1); }
+                $out .= $line;
+                $escaped = false;
+                continue;
+            }
+            if (!$escaped) {
+                if ($char === '[') { $inClass = true; }
+                elseif ($char === ']') { $inClass = false; }
+                elseif ($char === '/' && !$inClass) { $out .= '\\'; }
+            }
+            $out .= $char;
+            $escaped = $char === '\\' && !$escaped;
+        }
+        return $out;
     }
 
     public function __toString(): string
@@ -124,6 +151,10 @@ final class RegExp implements \Stringable
      */
     public function matchAt(string $s, int $offset, bool $anchored = false): ?array
     {
+        if (!$this->unicode && str_contains($this->flags, 'i')
+            && (preg_match('/[^\\x00-\\x7f]/', $s . $this->src) === 1 || preg_match('/\\\\[ux]/', $this->src) === 1)) {
+            throw new JsError('Case-insensitive RegExp on non-ASCII text requires the u flag', 'RangeError');
+        }
         $r = preg_match($anchored ? $this->anchoredPattern : $this->pattern, $s, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $offset);
         if ($r === false) {
             throw new JsError('RegExp execution failed: ' . preg_last_error_msg());

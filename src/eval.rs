@@ -80,6 +80,11 @@ impl ValueIterator {
     }
 }
 
+enum ValuePlace {
+    Binding(String),
+    Property(Value, Value),
+}
+
 enum Flow {
     Normal,
     Return(Value),
@@ -1068,15 +1073,17 @@ impl<'p> Evaluator<'p> {
                 value
             }
             ExprKind::Assign { op, target, value } => {
+                let place = self.capture_place(target, scope)?;
                 let new = match op {
                     None => self.eval(value, scope)?,
                     Some(AssignOp::Bin(b)) => {
-                        let cur = self.eval(target, scope)?;
+                        let cur = self.read_place(&place, scope, target.span)?;
                         let rhs = self.eval(value, scope)?;
                         binary(*b, &cur, &rhs, e.span)?
                     }
                     Some(AssignOp::Log(l)) => {
-                        let cur = self.eval_static_data(target, scope)?;
+                        let cur = self.read_place(&place, scope, target.span)?;
+                        require_static_data(&cur, target.span)?;
                         let keep = match l {
                             LogOp::And => !cur.truthy(),
                             LogOp::Or => cur.truthy(),
@@ -1088,15 +1095,17 @@ impl<'p> Evaluator<'p> {
                         self.eval(value, scope)?
                     }
                 };
-                self.assign(target, new.clone(), scope)?;
+                self.write_place(place, new.clone(), scope, target.span)?;
                 new
             }
             ExprKind::Update { inc, prefix, target } => {
-                let value = self.eval_static_data(target, scope)?;
+                let place = self.capture_place(target, scope)?;
+                let value = self.read_place(&place, scope, target.span)?;
+                require_static_data(&value, target.span)?;
                 require_static_coercion(&value, e.span)?;
                 let old = to_number(&value);
                 let new = if *inc { old + 1.0 } else { old - 1.0 };
-                self.assign(target, Value::Num(new), scope)?;
+                self.write_place(place, Value::Num(new), scope, target.span)?;
                 Value::Num(if *prefix { new } else { old })
             }
             ExprKind::Call {
@@ -1257,38 +1266,54 @@ impl<'p> Evaluator<'p> {
         Ok(out)
     }
 
-    fn assign(&mut self, target: &Expr, value: Value, scope: &Rc<Scope>) -> R<()> {
+    fn capture_place(&mut self, target: &Expr, scope: &Rc<Scope>) -> R<ValuePlace> {
         match &target.kind {
-            ExprKind::Ident(name) => self.assign_ident(name, value, scope, target.span),
-            ExprKind::Member { obj, prop, .. } => {
-                let o = self.eval(obj, scope)?;
-                self.set_key(&o, prop, value, target.span)
-            }
+            ExprKind::Ident(name) => Ok(ValuePlace::Binding(name.clone())),
+            ExprKind::Member { obj, prop, .. } => Ok(ValuePlace::Property(self.eval(obj, scope)?, Value::str(prop))),
             ExprKind::Index { obj, index, .. } => {
-                let o = self.eval(obj, scope)?;
-                let i = self.eval(index, scope)?;
-                match (&o, &i) {
-                    (Value::Array(a), Value::Num(n)) => {
-                        let n = *n;
-                        let mut a = a.borrow_mut();
-                        if n < 0.0 || n.fract() != 0.0 || n as usize > a.len() {
-                            return err(target.span, "array writes must be at an existing index or the end");
-                        }
-                        let n = n as usize;
-                        if n == a.len() {
-                            a.push(value)
-                        } else {
-                            a[n] = value
-                        }
-                        Ok(())
-                    }
-                    (_, Value::Str(k)) => self.set_key(&o, k, value, target.span),
-                    (_, Value::Num(n)) => self.set_key(&o, &js_number_to_string(*n), value, target.span),
-                    _ => err(target.span, format!("can't assign into {}", o.describe())),
-                }
+                let object = self.eval(obj, scope)?;
+                let index = self.eval(index, scope)?;
+                require_static_coercion(&index, target.span)?;
+                Ok(ValuePlace::Property(object, index))
             }
             _ => err(target.span, "can't assign to this"),
         }
+    }
+
+    fn read_place(&self, place: &ValuePlace, scope: &Rc<Scope>, span: Span) -> R<Value> {
+        match place {
+            ValuePlace::Binding(name) => self.lookup(name, scope, span),
+            ValuePlace::Property(object, index) => self.get_index(object, index, span),
+        }
+    }
+
+    fn write_place(&mut self, place: ValuePlace, value: Value, scope: &Rc<Scope>, span: Span) -> R<()> {
+        match place {
+            ValuePlace::Binding(name) => self.assign_ident(&name, value, scope, span),
+            ValuePlace::Property(object, index) => match (&object, &index) {
+                (Value::Array(array), Value::Num(n)) => {
+                    let mut array = array.borrow_mut();
+                    if *n < 0.0 || n.fract() != 0.0 || *n as usize > array.len() {
+                        return err(span, "array writes must be at an existing index or the end");
+                    }
+                    let n = *n as usize;
+                    if n == array.len() {
+                        array.push(value);
+                    } else {
+                        array[n] = value;
+                    }
+                    Ok(())
+                }
+                (_, Value::Str(key)) => self.set_key(&object, key, value, span),
+                (_, Value::Num(n)) => self.set_key(&object, &js_number_to_string(*n), value, span),
+                _ => err(span, format!("can't assign into {}", object.describe())),
+            },
+        }
+    }
+
+    fn assign(&mut self, target: &Expr, value: Value, scope: &Rc<Scope>) -> R<()> {
+        let place = self.capture_place(target, scope)?;
+        self.write_place(place, value, scope, target.span)
     }
 
     fn stored_property(&self, value: Value, span: Span) -> R<Value> {
@@ -1378,7 +1403,7 @@ impl<'p> Evaluator<'p> {
                 "length" => Ok(Value::Num(s.encode_utf16().count() as f64)),
                 _ => bound(),
             },
-            Value::Regex(p, _) if prop == "source" => Ok(Value::str(p)),
+            Value::Regex(p, _) if prop == "source" => Ok(Value::str(&crate::builtins::regex_source(p))),
             Value::Regex(_, f) if prop == "flags" => Ok(Value::str(f)),
             Value::Num(_) | Value::Column(_) | Value::Regex(..) => bound(),
             Value::Collection(c) => {

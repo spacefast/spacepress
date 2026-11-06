@@ -565,5 +565,47 @@
     "name": "computedPrototypeDataWrite",
     "expression": "(() => { const key = '__proto__'; const o: Record<string, number> = {[key]: 1}; o[key] = 2; return [Object.hasOwn(o, key), o[key]]; })()",
     "fold": true
+  },
+  {
+    "name": "capturedUpdateTarget",
+    "expression": "(() => { let i=0; const a=[1,2]; a[i++]++; return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "capturedCompoundTarget",
+    "expression": "(() => { let i=0; const a=[1,2]; a[i++] += 1; return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "capturedAssignmentTarget",
+    "expression": "(() => { let i=0; const a=[1,2]; a[i]=(i=1,3); return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "capturedLogicalTarget",
+    "expression": "(() => { let i=0; const a=[0,2]; a[i++] ||= 3; return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "liveImportedForOf",
+    "expression": "(() => { const a=[1,2]; let total=0; for (const v of a) { total += v; if (v===1) a.push(3); } return [total,a]; })()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "regexLiteralSource",
+    "expression": "[/a\\/b/.source, String(/a\\/b/), /[/]/.source, /(?:)/.source]",
+    "fold": true
+  },
+  {
+    "name": "regexConstructorSource",
+    "expression": "['a/b', '[/]', 'a\\\\/b', '\\n', '\\r', '\\u2028', '\\u2029', '\\\\\\n', ''].map(s => { const r=new RegExp(s); return [r.source,String(r)]; })",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "unicodeRegexCaseFolding",
+    "expression": "[/k/iu.test('K'), /s/iu.test('ſ'), /k/i.test('K'), /s/i.test('S')]",
+    "fold": false
   }
 ]

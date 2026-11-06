@@ -151,6 +151,17 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("function", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
 ];
 
+pub fn contains_typed_date(ty: &crate::types::Ty) -> bool {
+    use crate::types::Ty;
+    match ty {
+        Ty::Date => true,
+        Ty::Obj(fields) => fields.values().any(|(ty, _)| contains_typed_date(ty)),
+        Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Map(t) | Ty::Instance(_, t) => contains_typed_date(t),
+        Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(contains_typed_date),
+        _ => false,
+    }
+}
+
 pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Result<(), Diag> {
     use crate::types::Ty;
     fn custom(ty: &Ty) -> bool {
@@ -163,16 +174,7 @@ pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Resul
             _ => false,
         }
     }
-    fn date(ty: &Ty) -> bool {
-        match ty {
-            Ty::Date => true,
-            Ty::Obj(fields) => fields.values().any(|(ty, _)| date(ty)),
-            Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Map(t) | Ty::Instance(_, t) => date(t),
-            Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(date),
-            _ => false,
-        }
-    }
-    if date(ty) {
+    if contains_typed_date(ty) {
         return Err(Diag::new(span, "typed Dates require explicit JSON serialization")
             .help("call toISOString() or toJSON() before JSON.stringify or returning a Date from an action"));
     }

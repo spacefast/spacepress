@@ -87,3 +87,10 @@ declare const destructuredObject: Actions["wireDestructuredObject"]["output"];
 const omittedDestructured: Actions["wireDestructuredObject"]["output"] = {};
 const missingDestructured: undefined = destructuredObject.x;
 void [omittedDestructured, missingDestructured];
+
+const omittedNullish: Actions["wireNullishObject"]["output"] = {};
+declare const nullishObject: Actions["wireNullishObject"]["output"];
+const nullishValue: string | undefined = nullishObject.value;
+// @ts-expect-error a nullish check retains the omitted parameter's undefined
+const requiredNullish: string = nullishObject.value;
+void [omittedNullish, nullishValue, requiredNullish];

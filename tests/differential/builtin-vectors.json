@@ -639,5 +639,16 @@
     "expression": "(() => { let n=0; const o={x:1}; const key={toString(){n++; return 'x';}}; const before=o[key]++; const added=(o[key] += (n+=10, 2)); const assigned=(o[key] = (n+=100, 9)); return [n,before,added,assigned,o.x]; })()",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "cyclicArrayString",
+    "expression": "(() => { const a: unknown[]=[]; a.push(a); const b: unknown[]=[1,a,2]; a.push(b); return [String(a), String([b,b]), a.join(), a.join('|')]; })()",
+    "fold": true
+  },
+  {
+    "name": "functionMethodValues",
+    "expression": "(() => { const f=(x)=>x+1; const call=f.call; const apply=f.apply; const b=true; return [typeof call, typeof apply, call.call(f,null,2), apply.call(f,null,[3]), typeof b.toString, b.toString()]; })()",
+    "fold": false,
+    "javascript": true
   }
 ]

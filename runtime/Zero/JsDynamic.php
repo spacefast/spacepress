@@ -22,8 +22,12 @@ trait JsDynamic
             $receiver instanceof JsArray => 'Array', is_string($receiver) => 'String',
             $receiver instanceof RegExp => 'RegExp', $receiver instanceof JsDate => 'Date',
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map',
+            $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
             is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
         };
+        if ($receiver instanceof \Closure && in_array($name, ['bind', 'length', 'name', 'prototype', 'arguments', 'caller'], true)) {
+            throw new JsError('Function metadata and binding are not supported', 'TypeError');
+        }
         $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
             if (Builtins::has('object', $name)) { throw new JsError('Unsupported inherited method ' . $name, 'TypeError'); }
@@ -124,6 +128,9 @@ trait JsDynamic
         }
         if ($target instanceof RegExp && $key === 'lastIndex') { $target->lastIndex = $value; return $value; }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
+            if ($key === '__proto__' && !array_key_exists($key, $target->p)) {
+                throw new JsError('Prototype mutation is not supported', 'TypeError');
+            }
             if ($key === 'length') {
                 if ($target instanceof JsArguments) { $target->length = $value; return $value; }
                 $length = self::toNumber($value);

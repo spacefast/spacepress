@@ -1871,12 +1871,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
             ExprKind::IsNullish(inner, negated) => {
                 if let Some((n, t)) = self.path_ty(inner) {
-                    // `x == null` true → null branch; false → non-null.
+                    // `x == null` retains each nullish member, including undefined.
                     let is_null_branch = *negated == negate;
                     let (yes, no) = if is_null_branch {
-                        (Ty::Null, t.non_null())
+                        (t.nullish(), t.non_null())
                     } else {
-                        (t.non_null(), Ty::Null)
+                        (t.non_null(), t.nullish())
                     };
                     out.push((n, yes, no));
                 }
@@ -2558,9 +2558,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// The value as a PHP string expression, safe to join with `.`.
     fn to_string_php(&self, v: &Out, span: Span) -> Result<String> {
+        if crate::builtins::contains_typed_date(&v.ty) {
+            return err_help(
+                span,
+                "typed Date string coercion isn't supported",
+                "call toISOString() or toJSON() explicitly",
+            );
+        }
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
-            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
+            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\Zero\\Js::numStr({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
         })
@@ -5203,6 +5210,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "includes" => Out::atom(format!("\\Zero\\Js::includes({all})"), Ty::Bool),
                     "indexOf" | "lastIndexOf" => Out::atom(format!("\\Zero\\Js::{m}({all})"), Ty::Num),
                     "join" => {
+                        if crate::builtins::contains_typed_date(&a.ty) {
+                            return err_help(
+                                span,
+                                "typed Date string coercion isn't supported",
+                                "map Dates to toISOString() or toJSON() explicitly before joining",
+                            );
+                        }
                         if let Some(sep) = argv.first()
                             && !sep.ty.is_str()
                         {

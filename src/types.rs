@@ -189,6 +189,15 @@ impl Ty {
         }
     }
 
+    pub fn nullish(&self) -> Ty {
+        match self {
+            Ty::Union(items) => Ty::union(items.iter().map(Ty::nullish)),
+            Ty::Null | Ty::Undefined | Ty::Void => self.clone(),
+            Ty::Unknown | Ty::Dynamic => Ty::union([Ty::Null, Ty::Undefined]),
+            _ => Ty::Never,
+        }
+    }
+
     pub fn is_nullable(&self) -> bool {
         match self {
             Ty::Null | Ty::Undefined | Ty::Void | Ty::Unknown => true,

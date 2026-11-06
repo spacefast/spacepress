@@ -2223,17 +2223,7 @@ impl<'p> Evaluator<'p> {
                     Value::Undef => ",".to_string(),
                     v => v.to_js_string().unwrap_or_default(),
                 };
-                let parts: Vec<String> = items
-                    .iter()
-                    .map(|x| {
-                        if matches!(x, Value::Undef | Value::Null) {
-                            String::new()
-                        } else {
-                            x.to_js_string().unwrap_or_default()
-                        }
-                    })
-                    .collect();
-                Value::str(&parts.join(&sep))
+                Value::str(&Value::array_join(a, &sep).unwrap_or_default())
             }
             "slice" => {
                 let (s, e) = slice_bounds(items.len() as f64, &arg(0), &arg(1));

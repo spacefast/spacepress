@@ -672,7 +672,12 @@ This is not a JavaScript host. Node/browser APIs, arbitrary prototypes,
 accessors, custom iterators, sparse arrays and lone surrogates remain outside
 the supported subset. JSON replacers/revivers, Error cause options, Date component constructors,
 Date string coercion and nondecimal number formatting fail explicitly instead
-of ignoring arguments. See the [npm probes](../examples/npm-compat/README.md)
+of ignoring arguments. Typed Dates require explicit `toISOString()`/`toJSON()`
+before string conversion. Dynamic function `call`/`apply` property values use
+the function method family; unsupported metadata and `bind` access fail
+explicitly. Array string conversion and `join` suppress recursive array visits
+while expanding repeated nonrecursive references.
+See the [npm probes](../examples/npm-compat/README.md)
 for exact library exports and inputs qualified against Node.
 Object string formatting currently uses the default object tag without invoking
 an authored `toString` method. Pass primitive strings to formatting helpers;

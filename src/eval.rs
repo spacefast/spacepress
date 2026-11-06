@@ -48,6 +48,31 @@ fn err_help<T>(span: Span, msg: impl Into<String>, help: impl Into<String>) -> R
     Err(Ctl::Err(Diag::new(span, msg).help(help)))
 }
 
+fn require_callable(value: &Value, span: Span) -> R<()> {
+    let accepted = |surface, name| crate::builtins::contract(surface, name).is_some_and(|c| c.evaluator.is_some());
+    let callable = match value {
+        Value::Closure(_) => true,
+        Value::Builtin(Builtin::Global(name)) => accepted("global", name),
+        Value::Builtin(Builtin::Static(surface, name)) => accepted(surface, name),
+        Value::Bound(receiver, name) => match receiver.as_ref() {
+            Value::Array(_) => accepted("array", name),
+            Value::Str(_) => accepted("string", name),
+            Value::Num(_) => accepted("number", name),
+            _ => false,
+        },
+        _ => false,
+    };
+    if callable {
+        Ok(())
+    } else {
+        err_help(
+            span,
+            "callback must be a function",
+            "pass a callable callback, including for empty inputs",
+        )
+    }
+}
+
 /// Runtime tokens may be carried through config composition, but never consumed as build-time data.
 fn require_static_data(value: &Value, span: Span) -> R<()> {
     fn visit(value: &Value, span: Span, seen: &mut HashSet<usize>) -> R<()> {
@@ -1844,6 +1869,9 @@ impl<'p> Evaluator<'p> {
             ("Array", "isArray") => Value::Bool(matches!(arg(0), Value::Array(_))),
             ("Array", "from") => {
                 let f = arg(1);
+                if !matches!(f, Value::Undef) {
+                    require_callable(&f, span)?;
+                }
                 let source = arg(0);
                 let fixed_length = match &source {
                     Value::Array(_) | Value::Arguments(_) => None,
@@ -1946,6 +1974,12 @@ impl<'p> Evaluator<'p> {
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         let items = a.borrow().clone();
         let f = arg(0);
+        if matches!(
+            m,
+            "map" | "filter" | "find" | "findIndex" | "some" | "every" | "flatMap" | "forEach" | "reduce"
+        ) {
+            require_callable(&f, span)?;
+        }
         Ok(match m {
             "map" | "filter" | "find" | "findIndex" | "some" | "every" | "flatMap" | "forEach" => {
                 let mut out = Vec::new();

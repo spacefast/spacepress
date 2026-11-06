@@ -156,17 +156,24 @@ trait JsDynamic
 
     public static function dynamicIterable(mixed $value): JsArray
     {
-        if ($value instanceof JsArray) { return new JsArray($value->a); }
-        if ($value instanceof JsArguments) {
-            $result = new JsArray();
-            $length = max(0, self::toInteger(self::toNumber($value->length)));
-            for ($i = 0; $i < $length; $i++) { $result->a[] = self::dynamicGet($value, (string) $i); }
-            return $result;
+        return new JsArray(iterator_to_array(self::dynamicIterator($value), false));
+    }
+
+    private static function dynamicIterator(mixed $value): \Generator
+    {
+        if ($value instanceof JsArray) {
+            for ($i = 0; $i < count($value->a); $i++) { yield $value->a[$i]; }
+        } elseif ($value instanceof JsArguments) {
+            for ($i = 0; $i < max(0, self::toInteger(self::toNumber($value->length))); $i++) { yield self::dynamicGet($value, (string) $i); }
+        } elseif (is_string($value)) {
+            yield from self::from($value)->a;
+        } elseif ($value instanceof JsSet) {
+            for ($i = 0; $i < count($value->values); $i++) { yield $value->values[$i]; }
+        } elseif ($value instanceof JsMap) {
+            for ($i = 0; $i < count($value->entries); $i++) { yield new JsArray($value->entries[$i]); }
+        } else {
+            throw new JsError('Value is not iterable', 'TypeError');
         }
-        if (is_string($value)) { return self::from($value); }
-        if ($value instanceof JsSet) { return new JsArray($value->values); }
-        if ($value instanceof JsMap) { return new JsArray(array_map(static fn ($entry) => new JsArray($entry), $value->entries)); }
-        throw new JsError('Value is not iterable', 'TypeError');
     }
 
     public static function dynamicObjectTag(mixed $value): string
@@ -392,9 +399,10 @@ trait JsDynamic
     private static function dynamicSplit(string $source, mixed $separator, mixed $limit): JsArray
     {
         $limit = $limit === JsUndefined::Value ? null : self::toUint32(self::toNumber($limit));
+        if (!$separator instanceof RegExp && $separator !== JsUndefined::Value) { $separator = self::str($separator); }
         if ($limit === 0) { return new JsArray(); }
         if ($separator === JsUndefined::Value) { return new JsArray([$source]); }
-        $result = self::split($source, $separator instanceof RegExp ? $separator : self::str($separator), $limit);
+        $result = self::split($source, $separator, $limit);
         $result->a = array_map(static fn ($value) => $value ?? JsUndefined::Value, $result->a);
         return $result;
     }
@@ -435,7 +443,7 @@ trait JsDynamic
                 return in_array($key, self::dynamicKeys($source)->a, true);
             }
             if ($method === 'fromEntries') {
-                return self::fromEntries(self::dynamicIterable($source));
+                return self::fromEntries($source);
             }
         }
         if ($owner === 'Math') {

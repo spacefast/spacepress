@@ -1095,3 +1095,21 @@ fn dynamic_large_radix_values_fail_as_an_explicit_runtime_refusal() {
         serde_json::json!(["RangeError", "parseInt with this radix requires a safe integer result"])
     );
 }
+
+#[test]
+fn configuration_validates_callbacks_before_empty_input_shortcuts() {
+    for expression in [
+        "Array.from([], null)",
+        "[].map(null)",
+        "[].reduce(null, 0)",
+        "[].map(Math)",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nexport default defineConfig({{actions:{{probe:action({{input:{{}},handler:()=>value}})}}}});" )).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert_eq!(diagnostic["message"], "callback must be a function", "{report}");
+        assert_eq!(diagnostic["location"]["line"], 2, "{report}");
+    }
+}

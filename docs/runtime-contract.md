@@ -579,6 +579,10 @@ radices require safe integer results to avoid engine-specific approximations.
 Known unsupported literals are refused at source; dynamic values throw explicitly.
 PHP and Rust power-of-two parsing round once from the significant bits.
 Database builder calls also use the shared source arity contract.
+Callbacks are validated before empty-input shortcuts in configuration evaluation.
+`Object.fromEntries` follows live array/Set/Map/arguments iterators and reads both
+entry values before key coercion. String splitting and regex replacement retain
+conversion effects even when a zero limit or non-global pattern makes them inert.
 Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 

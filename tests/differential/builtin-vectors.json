@@ -331,5 +331,35 @@
     "expression": "(() => { let n = 0; const fill = {toString: () => { n++; return 'x'; }}; return ['abc'.padStart(0, fill), 'abc'.padEnd(3, fill), n, 'abc'.padStart(4, fill), n]; })()",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "entryValueBeforeKeyCoercion",
+    "expression": "(() => { const entry = [null, 1]; entry[0] = {toString: () => {entry[1] = 2; return 'x';}}; return Object.fromEntries([entry]); })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "liveEntryIteration",
+    "expression": "(() => { const entries = []; const key = {toString: () => {entries.push(['y', 2]); return 'x';}}; entries.push([key, 1]); return Object.fromEntries(entries); })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "zeroSplitCoercion",
+    "expression": "(() => { let n = 0; const result = 'abc'.split({toString: () => {n++; return ',';}}, 0); return [result, n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "replacementLastIndexCoercion",
+    "expression": "(() => { let n = 0; const re = /a/; re.lastIndex = {valueOf: () => {n++; return 0;}}; const result = 'a'.replace(re, 'x'); return [result, n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "liveMapEntries",
+    "expression": "(() => { const map = new Map(); const key = {toString: () => {map.set('y', 2); return 'x';}}; map.set(key, 1); return Object.fromEntries(map); })()",
+    "fold": false,
+    "javascript": true
   }
 ]

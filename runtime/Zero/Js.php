@@ -872,7 +872,7 @@ final class Js
         if ($pattern instanceof RegExp) {
             if ($pattern->sticky) { throw new JsError('Sticky replacement is not supported', 'TypeError'); }
             if ($pattern->global) { $pattern->lastIndex = 0; }
-            $matches = $pattern->global ? $pattern->matchAll($s) : array_filter([$pattern->matchAt($s, 0)]);
+            $matches = $pattern->global ? $pattern->matchAll($s) : array_filter([$pattern->execMatch($s)]);
 
             return self::applyReplacements($s, $matches, $replacement, $pattern->hasNamedGroups(), $dynamic);
         }
@@ -1466,12 +1466,14 @@ final class Js
         return new JsArray(array_map(static fn ($key) => new JsArray([(string) $key, $o->p[$key]]), self::ownKeys($o->p)));
     }
 
-    public static function fromEntries(JsArray $entries): JsObject
+    public static function fromEntries(mixed $entries): JsObject
     {
         $out = new JsObject();
-        foreach ($entries->a as $entry) {
+        foreach (self::dynamicIterator($entries) as $entry) {
             if (!$entry instanceof JsArray && !$entry instanceof JsObject) { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
-            $out->p[self::key(self::dynamicGet($entry, '0'))] = self::dynamicGet($entry, '1');
+            $key = self::dynamicGet($entry, '0');
+            $value = self::dynamicGet($entry, '1');
+            $out->p[self::key($key)] = $value;
         }
         return $out;
     }

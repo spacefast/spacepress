@@ -667,7 +667,10 @@ groups and undefined captures. Typed and dynamic non-global string match share t
 these semantics. Literal regexes allocate distinct objects; captured regexes
 keep one instance for their shared state. Errors inherit `name`; a defined message
 creates an own nonenumerable `message`, including an empty string. Cloning and
-receipt snapshots preserve message ownership. Stack metadata is refused.
+receipt snapshots preserve message ownership. Older Error snapshots retain their
+stored message as an own property. RegExp snapshots persist source, flags and
+lastIndex; restoration rebuilds translation caches, including for older snapshots.
+Stack metadata is refused.
 Configuration evaluation refuses restricted arguments access because it does
 not model native Error descriptors. `Array.from` interleaves reads with its mapper,
 and arrays use live length. The standard Math namespace has stable identity.

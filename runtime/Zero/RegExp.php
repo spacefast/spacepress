@@ -86,6 +86,20 @@ final class RegExp implements \Stringable
         }
     }
 
+    /** Persist source and observable state; regenerate translation caches when restoring. */
+    public function __serialize(): array
+    {
+        return ['source' => $this->src, 'flags' => $this->flags, 'lastIndex' => $this->lastIndex];
+    }
+
+    public function __unserialize(array $data): void
+    {
+        // Earlier receipts serialized private translation fields with PHP's mangled names.
+        $source = $data["\0" . self::class . "\0src"] ?? $data['source'];
+        $this->__construct($source, $data['flags']);
+        $this->lastIndex = $data['lastIndex'];
+    }
+
     private static function escapeSource(string $source): string
     {
         if ($source === '') { return '(?:)'; }

@@ -337,12 +337,21 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
   const declarations: string[] = [];
   const actions: string[] = [];
   const javascript: string[] = [];
+  const files: Request["files"] = {};
   function addVector(value: unknown) {
     assert.ok(value !== null && typeof value === "object");
     assert.ok("name" in value && typeof value.name === "string");
     assert.ok("expression" in value && typeof value.expression === "string");
     assert.ok("fold" in value && typeof value.fold === "boolean");
     let expression = value.expression;
+    if ("files" in value) {
+      assert.ok(value.files !== null && typeof value.files === "object" && !Array.isArray(value.files));
+      const entries: Array<[string, unknown]> = Object.entries(value.files);
+      for (const [name, source] of entries) {
+        assert.ok(typeof source === "string");
+        files[name] = source;
+      }
+    }
     if ("declarations" in value) {
       assert.ok(typeof value.declarations === "string");
       declarations.push(value.declarations);
@@ -359,7 +368,8 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
     }
   }
   vectors.forEach(addVector);
-  const files = { "helper.js": javascript.join("\n"), "zero.config.ts": `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});` };
+  files["helper.js"] = javascript.join("\n");
+  files["zero.config.ts"] = `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});`;
   const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
   mkdirSync(dir, { recursive: true });
   try {

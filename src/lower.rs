@@ -611,9 +611,16 @@ impl Lowerer {
             for element in &c.body.body {
                 match element {
                     a::ClassElement::PropertyDefinition(p) => {
-                        let Some(name) = p.key.static_name() else {
-                            return self.unsupported(p.span, "private class fields", "use public fields");
+                        let Some(name) = class_member_name(&p.key) else {
+                            return self.unsupported(p.span, "computed class fields", "use named fields");
                         };
+                        if name.starts_with('#') != p.key.is_private_identifier() {
+                            return self.unsupported(
+                                p.span,
+                                "quoted class member names starting with #",
+                                "rename the member",
+                            );
+                        }
                         if p.computed
                             || !p.decorators.is_empty()
                             || p.declare
@@ -626,7 +633,7 @@ impl Lowerer {
                             );
                         }
                         if matches!(
-                            name.as_ref(),
+                            name.as_str(),
                             "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
                         ) || !names.insert((p.r#static, name.to_string()))
                         {
@@ -649,9 +656,16 @@ impl Lowerer {
                         });
                     }
                     a::ClassElement::MethodDefinition(m) => {
-                        let Some(name) = m.key.static_name() else {
-                            return self.unsupported(m.span, "private class methods", "use public methods");
+                        let Some(name) = class_member_name(&m.key) else {
+                            return self.unsupported(m.span, "computed class methods", "use named methods");
                         };
+                        if name.starts_with('#') != m.key.is_private_identifier() {
+                            return self.unsupported(
+                                m.span,
+                                "quoted class member names starting with #",
+                                "rename the member",
+                            );
+                        }
                         if m.computed
                             || !m.decorators.is_empty()
                             || m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
@@ -797,7 +811,7 @@ impl Lowerer {
                             constructor = Some(f);
                         } else {
                             if matches!(
-                                name.as_ref(),
+                                name.as_str(),
                                 "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
                             ) || !names.insert((m.r#static, name.to_string()))
                             {
@@ -1287,6 +1301,18 @@ impl Lowerer {
                     "use a named module-level class declaration",
                 );
             }
+            E::PrivateInExpression(p) => self.mk(
+                p.span,
+                ExprKind::Call {
+                    callee: Box::new(self.mk(p.span, ExprKind::Ident(":private_in".into()))),
+                    args: vec![
+                        ArrEl::Item(self.mk(p.left.span, ExprKind::Str(format!("#{}", p.left.name)))),
+                        ArrEl::Item(self.expr(&p.right)?),
+                    ],
+                    optional: false,
+                    type_args: vec![],
+                },
+            ),
             E::YieldExpression(y) => return self.unsupported(y.span, "generators", ""),
             E::ImportExpression(i) => return self.unsupported(i.span, "dynamic `import()`", "use a static import"),
             E::Super(s) if self.class_context.get() => self.mk(s.span, ExprKind::Ident("super".into())),
@@ -1363,9 +1389,15 @@ impl Lowerer {
                     optional: c.optional,
                 },
             ),
-            a::MemberExpression::PrivateFieldExpression(p) => {
-                return self.unsupported(p.span, "private fields", "");
-            }
+            a::MemberExpression::PrivateFieldExpression(p) => self.mk(
+                p.span,
+                ExprKind::Member {
+                    obj: Box::new(self.expr(&p.object)?),
+                    prop: format!("#{}", p.field.name),
+                    optional: p.optional,
+                    prop_span: self.sp(p.field.span),
+                },
+            ),
         })
     }
 
@@ -1904,4 +1936,12 @@ fn check_parameter_defaults(parameters: &[Param], body: &FnBody) -> Result<()> {
         check_parameter_pattern(&parameter.pat, &uninitialized, allow_functions)?;
     }
     Ok(())
+}
+
+/// Class member names; private names keep their `#` so they can never collide with public keys.
+fn class_member_name(key: &a::PropertyKey<'_>) -> Option<String> {
+    match key {
+        a::PropertyKey::PrivateIdentifier(p) => Some(format!("#{}", p.name)),
+        other => other.static_name().map(|n| n.to_string()),
+    }
 }

@@ -286,7 +286,17 @@ trait JsDynamic
             return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
         }
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
-            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+            $class = $receiver->class;
+            return static fn (...$args) => $class->invokeOn($receiver, $name, $args, false);
+        }
+        if ($receiver instanceof JsClass) {
+            if ($receiver->has($name)) {
+                $method = $receiver->get($name);
+                return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+            }
+            if ($receiver->hasStaticMethod($name)) {
+                return static fn (...$args) => $receiver->invokeOn($receiver, $name, $args, true);
+            }
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) {
             return static fn (...$args) => self::dynamicCall(JsUndefined::Value, new JsArray($args));

@@ -939,7 +939,7 @@ fn host_globals_match_node_through_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     assert_eq!(expected["complete"], true);
     let mut expected = expected["cases"].clone();
-    assert_eq!(expected.as_object().unwrap().len(), 9, "{expected}");
+    assert_eq!(expected.as_object().unwrap().len(), 10, "{expected}");
     assert!(
         expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
         "{expected}"

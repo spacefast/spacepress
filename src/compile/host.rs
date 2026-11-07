@@ -832,7 +832,7 @@ fn init_key(key: &str, span: Span) -> Result<()> {
         ),
         _ => {
             let mut d = Diag::new(span, format!("fetch() init has no option `{key}` in Zero code"));
-            if let Some(s) = suggest(key, ["method", "headers", "body", "redirect"].into_iter()) {
+            if let Some(s) = suggest(key, ["method", "headers", "body", "redirect"]) {
                 d = d.help(format!("did you mean `{s}`?"));
             } else {
                 d = d.help("fetch() takes method, headers, body and redirect");

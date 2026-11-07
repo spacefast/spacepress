@@ -124,6 +124,16 @@ export default defineConfig({
         return [r.status, r.statusText, r.ok, await r.text()];
       },
     }),
+    shadowed: action({
+      input: {},
+      handler: () => {
+        // Local bindings named like host globals stay the author's, by ordinary scoping.
+        const crypto = { randomUUID: () => "local uuid" };
+        const process = { env: { HOST_SECRET: "local env" } };
+        const fetch = (url: string) => "local fetch " + url;
+        return [crypto.randomUUID(), process.env.HOST_SECRET, fetch("x")];
+      },
+    }),
     redirects: action({
       input: {},
       handler: async () => {

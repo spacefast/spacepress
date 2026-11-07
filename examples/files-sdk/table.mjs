@@ -4,6 +4,7 @@
 //
 //   ZERO_BIN=/abs/zero node table.mjs [--json out.json] [--label "main 15bea535"]
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,7 +61,7 @@ export function table(results, label) {
   return lines.join("\n");
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({ options: { json: { type: "string" }, label: { type: "string" } } });
   const zero = path.resolve(process.env.ZERO_BIN ?? path.join(root, "../../target/debug/zero"));
   const results = await measure(zero);

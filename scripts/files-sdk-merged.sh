@@ -39,9 +39,11 @@ cargo build --release --quiet --manifest-path "$scratch/Cargo.toml" --target-dir
 harness="$scratch/examples/files-sdk"
 mkdir -p "$harness"
 rsync -a --delete --exclude node_modules --exclude .work "$repo/examples/files-sdk/" "$harness/"
-[ -d "$harness/node_modules" ] || npm ci --prefix "$harness" --ignore-scripts --no-audit --no-fund --silent
-[ -d "$repo/examples/files-sdk/.work" ] && mkdir -p "$harness/.work" \
-  && cp -n "$repo"/examples/files-sdk/.work/files-sdk-*.tar.gz "$harness/.work/" 2>/dev/null || true
+[ -d "$harness/node_modules" ] || (cd "$harness" && npm ci --ignore-scripts --no-audit --no-fund --silent)
+mkdir -p "$harness/.work"
+for archive in "$repo"/examples/files-sdk/.work/files-sdk-*.tar.gz; do
+  [ -f "$archive" ] && cp -n "$archive" "$harness/.work/"
+done
 
 label="merged state: origin/main $(git -C "$repo" rev-parse --short origin/main) + ${#merged[@]} branches, $(date -u +%Y-%m-%dT%H:%MZ)"
 ZERO_BIN="$scratch/target/release/zero" node "$harness/table.mjs" --label "$label" --json "$scratch/files-sdk-table.json"

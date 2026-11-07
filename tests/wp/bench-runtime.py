@@ -22,7 +22,11 @@ def main():
     parser.add_argument("--requests", type=int, default=25)
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--adapter-before", type=Path, help="optional baseline MCP adapter tree")
+    parser.add_argument("--adapter-after", type=Path, help="optional candidate MCP adapter tree")
     args = parser.parse_args()
+    if bool(args.adapter_before) != bool(args.adapter_after):
+        parser.error("both adapter snapshots are required")
     here = Path(__file__).resolve().parent
     destination = args.content.resolve() / "plugins/zero-runtime/zero"
     for snapshot in [args.before, args.after, destination]:
@@ -36,13 +40,20 @@ def main():
     def harness(*command):
         return subprocess.check_output([str(here / "harness.sh"), *command], text=True)
 
-    def install(snapshot, phase):
+    def install(snapshot, phase, adapter=None):
         subprocess.run(["rsync", "-a", "--delete", str(snapshot.resolve()) + "/", str(destination) + "/"], check=True)
+        roots = [destination]
+        if adapter:
+            target = args.content.resolve() / "plugins/mcp-adapter"
+            assert (adapter / "mcp-adapter.php").is_file() and adapter.resolve() != target
+            subprocess.run(["rsync", "-a", "--delete", str(adapter.resolve()) + "/", str(target) + "/"], check=True)
+            roots.append(target)
         # Distinct old mtimes invalidate Apache's opcache without file_update_protection
         # excluding recently edited files. The harness uses revalidate_freq=0.
         stamp = int(time.time()) - 86400 + phase
-        for php in destination.rglob("*.php"):
-            os.utime(php, (stamp, stamp))
+        for root in roots:
+            for php in root.rglob("*.php"):
+                os.utime(php, (stamp, stamp))
 
     expected_digest = None
 
@@ -73,7 +84,7 @@ def main():
         # Profilers must be removed before this measurement.
         for run in range(args.runs):
             for side, snapshot in [("before", args.before), ("after", args.after)]:
-                install(snapshot, run * 2 + (side == "after"))
+                install(snapshot, run * 2 + (side == "after"), args.adapter_before if side == "before" else args.adapter_after)
                 for _ in range(args.warmup):
                     request()
                 samples = [request() for _ in range(args.requests)]
@@ -86,7 +97,7 @@ def main():
         results["errors"] += 1
         raise
     finally:
-        install(args.after, 2 * args.runs + 1)
+        install(args.after, 2 * args.runs + 1, args.adapter_after)
         harness("compose", "exec", "-T", "wordpress", "rm", "-f", probe)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(results, indent=2) + "\n")

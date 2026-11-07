@@ -11,6 +11,10 @@ export default capsule({
   },
   endpoints: {
     ping: endpoint({ method: "GET", path: "/api/ping" }, () => text("ok")),
+    banner: endpoint({ method: "GET", path: "/api/banner" }, (ctx) => {
+      ctx.log.info("banner", { served: true });
+      return text(ctx.env.LEGACY_BANNER ?? "unset");
+    }),
     count: endpoint({ method: "GET", path: "/api/notes/count" }, async (ctx) =>
       json({ count: (await ctx.db.notes.withIndex("by_creation").collect()).length })),
     note: endpoint({ method: "GET", path: "/api/notes/:id" }, async (ctx, request: EndpointRequest) => {

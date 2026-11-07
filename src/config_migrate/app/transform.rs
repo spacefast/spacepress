@@ -314,6 +314,9 @@ function __z08RequireIdentity(user: __z08User | null, subject: string | null) {
 }
 "#;
 
+/// v2 compiles `console.*` to the PHP error log; the declaration types it for editors.
+const LOG: &str = "declare const console: { debug(...values: unknown[]): void; info(...values: unknown[]): void; warn(...values: unknown[]): void; error(...values: unknown[]): void };\n";
+
 /// Index ranges keep 0.8's null rule: comparing against null is refused.
 const RANGE: &str = r#"function __z08PageOptions(options: { numItems: number; cursor?: string | null }): { numItems: number; cursor: string | null } { return { numItems: options.numItems, cursor: options.cursor ?? null }; }
 function __z08RangeText(value: string | null | undefined): string { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
@@ -720,7 +723,7 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, type InferSelectModel } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, env as __z08Env, type InferSelectModel } from \"zero\";\n",
     );
     if !routes.is_empty() || !responses.is_empty() {
         config.push_str(super::endpoints::PRELUDE);
@@ -746,8 +749,11 @@ pub(super) fn app(
         config.push_str(IDENTITY);
     }
     config.push_str(RANGE);
+    let mut emitted = BTreeSet::new();
     for h in &helpers {
-        config.push_str(h);
+        if emitted.insert(h.as_str()) {
+            config.push_str(h);
+        }
     }
     config.push_str("function __z08Key(id: string): number {\n  const n = Number(id);\n  if (!/^[1-9][0-9]*$/.test(id) || n > 9007199254740991) throw new __z08HttpError(422, \"legacy_id_range\", \"Expected a positive safe integer ID.\");\n  return n;\n}\n");
     config.push_str(&format!(
@@ -1030,6 +1036,7 @@ fn handler(
         request: None,
         returns: vec![],
         params: vec![],
+        logs: false,
         helpers: vec![],
         edits: vec![],
     };
@@ -1075,6 +1082,9 @@ fn handler(
         (true, false) => "const __z08subject = await __z08Subject(__z08ctx.user);\n",
         (true, true) => "const __z08subject: string = await __z08Subject(__z08ctx.user) ?? \"\";\n",
     };
+    if r.logs {
+        r.helpers.push(LOG.into());
+    }
     let code = format!(
         "{}: __z08Action({{ input: {{ {} }}, access: \"anyone\", agents: false, async handler(__z08input, __z08ctx) {{\n{gate}{subject}{bindings}{body}\n}} }})",
         q(name),
@@ -1119,6 +1129,7 @@ fn endpoint(
             .split('/')
             .filter_map(|s| s.strip_prefix(':').map(str::to_owned))
             .collect(),
+        logs: false,
         helpers: vec![],
         edits: vec![],
     };
@@ -1173,6 +1184,9 @@ fn endpoint(
         ""
     };
     let req = request.unwrap_or("__z08req");
+    if r.logs {
+        r.helpers.push(LOG.into());
+    }
     let code = format!(
         "{}: __z08Route({{ method: {}, path: {}, access: \"anyone\", async handler({req}, __z08ctx) {{\n{gate}{subject}{body}\n}} }})",
         q(name),
@@ -1199,6 +1213,8 @@ struct Rewrite<'a> {
     returns: Vec<Span>,
     /// The endpoint path's `:name` parameters.
     params: Vec<String>,
+    /// `ctx.log` became `console.*`, which v2 compiles to the PHP error log.
+    logs: bool,
     /// Module-level helpers generated for this handler (one per paginated call site).
     helpers: Vec<String>,
     edits: Vec<(Span, String)>,
@@ -1303,6 +1319,10 @@ impl Rewrite<'_> {
             self.uses_subject = true;
             self.edits
                 .push((e.span, "__z08Auth(__z08ctx.user, __z08subject)".into()));
+            return Ok(());
+        }
+        if let Some(text) = self.service(e)? {
+            self.edits.push((e.span, text));
             return Ok(());
         }
         if let E::Member { obj, prop, .. } = &e.kind
@@ -1760,6 +1780,55 @@ impl Rewrite<'_> {
             return refuse("value");
         }
         Ok(false)
+    }
+
+    /// Context services with a direct v2 counterpart:
+    /// - `ctx.env.NAME` / `ctx.env["NAME"]` → `env("NAME")`, the same process or wp-config value
+    ///   (0.8 withheld secret variables named as signing keys; v2 has no such keys to withhold);
+    /// - `ctx.log.info|warn|error|debug(...)` → `console.*`, written to the PHP error log.
+    ///
+    /// `ctx.invalidate` belongs to the realtime mapping.
+    fn service(&mut self, e: &Expr) -> Result<Option<String>, Failure> {
+        let ctx = self.ctx;
+        let is = |e: &Expr, name: &str| matches!(&e.kind, E::Member { obj, prop, .. } if prop == name && matches!(&obj.kind, E::Ident(n) if n == ctx));
+        match &e.kind {
+            E::Member { obj, prop, .. } if is(obj, "env") => {
+                ident(prop, &pointer(&pointer(self.at, "ctx"), "env"))?;
+                Ok(Some(format!("(__z08Env({}) ?? undefined)", q(prop))))
+            }
+            E::Index { obj, index, .. } if is(obj, "env") => {
+                let E::Str(name) = &index.kind else {
+                    return Err(fail(
+                        &pointer(&pointer(self.at, "ctx"), "env"),
+                        "env names must be literal",
+                    ));
+                };
+                Ok(Some(format!("(__z08Env({}) ?? undefined)", q(name))))
+            }
+            E::Call {
+                callee,
+                args,
+                optional: false,
+                ..
+            } => {
+                let E::Member { obj, prop, .. } = &callee.kind else {
+                    return Ok(None);
+                };
+                if is(obj, "log") && ["info", "warn", "error", "debug"].contains(&prop.as_str()) {
+                    let rendered = args
+                        .iter()
+                        .map(|a| match a {
+                            ArrEl::Item(e) => self.render(e),
+                            ArrEl::Spread(_) => Err(fail(self.at, "spread log arguments need a manual port")),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    self.logs = true;
+                    return Ok(Some(format!("console.{prop}({})", rendered.join(", "))));
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
     }
 
     fn page_sites(&self) -> usize {

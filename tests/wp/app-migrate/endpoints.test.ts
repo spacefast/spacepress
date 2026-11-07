@@ -10,6 +10,9 @@ test("0.8 endpoints answer at their original paths with 0.8 result rules", async
   assert.equal(ping.headers.get("content-type"), "text/plain; charset=utf-8");
   assert.equal(await ping.text(), "ok");
 
+  // ctx.env reads the same wp-config constant through env().
+  assert.equal(await (await at("/api/banner")).text(), "from wp-config");
+
   const count = await at("/api/notes/count");
   assert.equal(count.status, 200);
   assert.match(count.headers.get("content-type") ?? "", /^application\/json/);

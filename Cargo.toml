@@ -38,7 +38,8 @@ tempfile = "3.27.0"
 [features]
 default = ["cli"]
 # The commands: project I/O, plugin downloads, the embedded PHP runtime (build.rs).
-cli = ["dep:tempfile", "dep:ureq", "dep:zip", "dep:oxc_codegen", "dep:oxc_isolated_declarations", "dep:oxc_semantic", "dep:oxc_transformer"]
+host = ["dep:oxc_codegen", "dep:oxc_isolated_declarations", "dep:oxc_semantic", "dep:oxc_transformer"]
+cli = ["host", "dep:tempfile", "dep:ureq", "dep:zip"]
 
 [[bin]]
 name = "zero"

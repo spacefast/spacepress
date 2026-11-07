@@ -298,6 +298,8 @@ pub(super) fn app(
     path: &Path,
     source: &str,
     space: Option<&str>,
+    users: bool,
+    content_posts: bool,
     entries: &mut Vec<Entry>,
     errors: &mut Vec<Failure>,
 ) -> Result<Transformed, Failure> {
@@ -437,7 +439,10 @@ pub(super) fn app(
         }
     }
     let mut signed_in = false;
-    if let Some(auth) = root.get("auth") {
+    if let Some(auth) = root
+        .get("auth")
+        .filter(|auth| !matches!(literal(auth), Ok(Value::Bool(_))))
+    {
         for (key, e) in obj(auth, "/auth")? {
             match (key.as_str(), literal(e).ok()) {
                 ("requireSignIn", Some(Value::Bool(b))) => {
@@ -461,6 +466,7 @@ pub(super) fn app(
             "collections",
             "connectors",
             "auth",
+            "realtime",
         ]
         .contains(&key.as_str())
         {
@@ -480,6 +486,10 @@ pub(super) fn app(
             }
         }
     }
+    if root.contains_key("realtime") {
+        entries.push(entry("/realtime", "review", "Realtime is not supported on Spacefast v2. The declaration was dropped; replace subscriptions with explicit reads or polling."));
+    }
+    let mut native_posts = content_posts.then(|| json!({}));
     let content_config = if let Some(collections) = root.get("collections") {
         for name in obj(collections, "/collections")?.keys() {
             if tables.contains_key(name) {
@@ -494,7 +504,15 @@ pub(super) fn app(
             q(&name),
             raw(source, collections.span)
         );
-        match input::parse(path, &text, Source::Zero).and_then(|v| translate::config(v, Source::Zero, entries)) {
+        let input = input::parse(path, &text, Source::Zero).map(|mut v| {
+            if let Some(defs) = v["collections"].as_object_mut()
+                && let Some(posts) = defs.remove("posts")
+            {
+                native_posts = Some(posts);
+            }
+            v
+        });
+        match input.and_then(|v| translate::config(v, Source::Zero, entries)) {
             Ok(code) => Some(format!("{code}\nexport {{ collections, tables }};\n")),
             Err(e) => {
                 errors.push(e);
@@ -542,11 +560,20 @@ pub(super) fn app(
         }
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, type InferSelectModel } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, type InferSelectModel } from \"zero\";\n",
     );
     config.push_str(&prelude);
     if content_config.is_some() {
         config.push_str("import * as __z08Content from \"./__z08-content\";\n");
+    }
+    if let Some(posts) = native_posts.as_ref() {
+        if tables.contains_key("posts") {
+            errors.push(fail("/collections/posts", "posts collides with a schema table"));
+        }
+        match super::spacefast::posts(posts, entries) {
+            Ok(code) => config.push_str(&code),
+            Err(e) => errors.push(e),
+        }
     }
     for t in tables.values() {
         config.push_str(&table_code(t));
@@ -567,10 +594,29 @@ pub(super) fn app(
             .join(", ")
     ));
     if let Some(content) = &content_config {
-        config.push_str("collections: __z08Content.collections,");
+        config.push_str(if native_posts.is_some() {
+            "collections: {...__z08Content.collections, posts: __z08Posts},"
+        } else {
+            "collections: __z08Content.collections,"
+        });
         if content.contains("  relations,\n") {
             config.push_str("relations: __z08Content.relations,");
         }
+    }
+    if content_config.is_none() && native_posts.is_some() {
+        config.push_str("collections: {posts: __z08Posts},");
+    }
+    if users
+        || root
+            .get("auth")
+            .is_some_and(|auth| !matches!(literal(auth), Ok(Value::Bool(false))))
+    {
+        config.push_str("users: {members: __z08Users({email: __z08Email().notNull().unique().max(191), name: __z08Text().notNull()})},");
+        entries.push(entry(
+            "/auth",
+            "mapped",
+            "Project WordPress users as members; migrate Spacefast accounts and sessions before activation.",
+        ));
     }
     config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
     entries.push(entry("","review","Adoption requires the original MariaDB database and --space binding. IDs above Number.MAX_SAFE_INTEGER, existing sessions, client routes, realtime and deployment activation need separate validation. No deployment is performed."));

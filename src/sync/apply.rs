@@ -4,9 +4,10 @@
 use crate::sync::base::Bases;
 use crate::sync::client::{Client, Problem};
 use crate::sync::conflict::{self, Side};
-use crate::sync::front_matter;
+use crate::sync::files::{json_record, md_record};
 use crate::sync::plan::{self, Action, Item, Remote};
-use crate::sync::{Deferred, Report, uid_mint, write_atomic, yaml_out};
+use crate::sync::uid::{for_file, valid as valid_uid};
+use crate::sync::{Deferred, Report, write_atomic, yaml_out};
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
@@ -187,7 +188,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
         let uid = match front.shift_remove("uid") {
             Some(Value::String(u)) if valid_uid(&u) => u,
             None if !check => {
-                let uid = uid_mint();
+                let uid = for_file(&c.name, &path.file_name().unwrap_or_default().to_string_lossy());
                 let text = render(c, &uid, &front, body.as_deref());
                 // Never write over an edit (or recreate a deletion) made since the file was read.
                 if !unchanged(&path, Some(&bytes)) {
@@ -235,34 +236,6 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
         );
     }
     (out, clean)
-}
-
-fn valid_uid(u: &str) -> bool {
-    u.len() == 23 && u.starts_with("zr_") && u[3..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
-type Parsed = Result<(Map<String, Value>, Option<String>), (usize, String)>;
-
-fn md_record(text: &str) -> Parsed {
-    let doc = front_matter::parse_document(text).map_err(|e| (e.line, e.message))?;
-    Ok((doc.front, (!doc.body.is_empty()).then_some(doc.body)))
-}
-
-fn json_record(text: &str, content: bool) -> Parsed {
-    let value: Value = serde_json::from_str(text).map_err(|e| (e.line(), e.to_string()))?;
-    let Value::Object(mut map) = value else {
-        return Err((1, "a sync file holds one JSON object".into()));
-    };
-    // Without a content column, `body` is an ordinary field and stays among the fields.
-    if !content {
-        return Ok((map, None));
-    }
-    let body = match map.shift_remove("body") {
-        Some(Value::String(s)) if !s.is_empty() => Some(s),
-        None | Some(Value::Null) | Some(Value::String(_)) => None,
-        Some(_) => return Err((1, "body must be a string or null".into())),
-    };
-    Ok((map, body))
 }
 
 /// The file for a record, its fields in the collection's order.

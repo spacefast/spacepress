@@ -1,15 +1,19 @@
 //! One-time config import. This module never runs source CMS code or imports data.
-pub(crate) mod app;
+pub mod app;
 mod input;
 mod translate;
 
 use serde::Serialize;
+#[cfg(feature = "cli")]
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(feature = "cli")]
+use std::path::PathBuf;
+#[cfg(feature = "cli")]
 use std::process::ExitCode;
 
 #[derive(Clone, Copy)]
-pub(super) enum Source {
+pub enum Source {
     Emdash,
     Payload,
     Sanity,
@@ -17,7 +21,7 @@ pub(super) enum Source {
 }
 
 impl Source {
-    fn parse(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "emdash" => Self::Emdash,
             "payload" => Self::Payload,
@@ -29,7 +33,7 @@ impl Source {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct Failure {
+pub struct Failure {
     pointer: String,
     reason: String,
 }
@@ -46,7 +50,7 @@ pub(super) fn pointer(parent: &str, key: &str) -> String {
 }
 
 #[derive(Serialize)]
-pub(super) struct Entry {
+pub struct Entry {
     pointer: String,
     outcome: &'static str,
     reason: String,
@@ -60,6 +64,7 @@ pub(super) fn entry(at: &str, outcome: &'static str, reason: impl Into<String>) 
     }
 }
 
+#[cfg(feature = "cli")]
 #[derive(Serialize)]
 struct Report<'a> {
     version: u32,
@@ -69,9 +74,11 @@ struct Report<'a> {
     errors: Vec<Failure>,
 }
 
+#[cfg(feature = "cli")]
 const USAGE: &str =
     "usage: zero migrate config --from emdash|payload|sanity|zero <input.ts|input.json> --out <new/zero.config.ts>";
 
+#[cfg(feature = "cli")]
 struct Args {
     source: Source,
     name: String,
@@ -79,6 +86,7 @@ struct Args {
     out: PathBuf,
 }
 
+#[cfg(feature = "cli")]
 fn args() -> Result<Args, String> {
     let mut it = std::env::args().skip(2);
     if it.next().as_deref() != Some("config") {
@@ -105,6 +113,7 @@ fn args() -> Result<Args, String> {
     })
 }
 
+#[cfg(feature = "cli")]
 pub fn cli() -> ExitCode {
     let args = match args() {
         Ok(a) => a,
@@ -136,6 +145,7 @@ pub fn cli() -> ExitCode {
     }
 }
 
+#[cfg(feature = "cli")]
 fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
     if args.out.try_exists().map_err(|e| fail("", e.to_string()))? || std::fs::symlink_metadata(&args.out).is_ok() {
         return Err(fail(
@@ -143,20 +153,8 @@ fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
             "output already exists; choose a new path (original files are never overwritten)",
         ));
     }
-    let input = input::read(&args.input, args.source)?;
-    let config = translate::config(input, args.source, entries)?;
-    // Validate the emitted config through the same compiler as `zero build`.
-    let check = tempfile::tempdir().map_err(|e| fail("", e.to_string()))?;
-    std::fs::write(check.path().join("zero.config.ts"), &config).map_err(|e| fail("", e.to_string()))?;
-    crate::commands::validate_config(check.path()).map_err(|d| {
-        fail(
-            "",
-            format!(
-                "generated config cannot compile: {}",
-                crate::diag::render(&d, check.path())
-            ),
-        )
-    })?;
+    let text = std::fs::read_to_string(&args.input).map_err(|e| fail("", format!("cannot read input: {e}")))?;
+    let config = convert(args.source, &args.input, &text, entries)?;
     let parent = args
         .out
         .parent()
@@ -171,4 +169,20 @@ fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
         .persist_noclobber(&args.out)
         .map_err(|e| fail("", format!("cannot publish config without overwriting: {e}")))?;
     Ok(())
+}
+
+/// Translate declarations and compile the candidate entirely in memory.
+pub fn convert(source: Source, path: &Path, text: &str, entries: &mut Vec<Entry>) -> Result<String, Failure> {
+    let input = input::parse(path, text, source)?;
+    let config = translate::config(input, source, entries)?;
+    let response =
+        crate::wasm::compile(&serde_json::json!({"name":"candidate", "files":{"zero.config.ts":config}}).to_string());
+    let checked: serde_json::Value = serde_json::from_str(&response).expect("compiler response");
+    if checked["output"].is_null() {
+        return Err(fail(
+            "",
+            format!("generated config cannot compile: {}", checked["check"]),
+        ));
+    }
+    Ok(config)
 }

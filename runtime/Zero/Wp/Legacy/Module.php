@@ -14,6 +14,7 @@ use Zero\Wp\Plugin;
  * `wp zero migrate-legacy-users --space=<id> [--dry-run]` (Users), WordPress only. Site maintenance
  * commands like `wp zero migrate`: each runs in its own transaction, not the app CLI's, so nothing
  * else (scheduled promotion) commits alongside it, and a dry run rolls the whole transaction back.
+ * `migrate-spacefast` copies across prefixes with a transaction and durable receipt per table group.
  */
 final class Module
 {
@@ -23,24 +24,40 @@ final class Module
     /** @param list<string> $args the WP-CLI arguments after `zero` */
     public static function handles(array $args): bool
     {
-        return in_array($args[0] ?? '', ['migrate-legacy', 'migrate-legacy-users'], true);
+        return in_array($args[0] ?? '', ['migrate-legacy', 'migrate-legacy-users', 'migrate-spacefast'], true);
     }
 
     /** Runs the command and prints `{data}` / `{error}`; returns the exit code. */
     public static function wpCli(Plugin $plugin, array $args, array $flags): int
     {
         try {
-            $data = $args[0] === 'migrate-legacy-users'
-                ? self::users($plugin, array_slice($args, 1), $flags)
-                : self::run($plugin, array_slice($args, 1), $flags);
+            $data = match ($args[0]) {
+                'migrate-spacefast' => self::spacefast($plugin, array_slice($args, 1), $flags),
+                'migrate-legacy-users' => self::users($plugin, array_slice($args, 1), $flags),
+                default => self::run($plugin, array_slice($args, 1), $flags),
+            };
             \WP_CLI::line((string) Js::jsonStringify(['data' => $data]));
 
             return 0;
         } catch (\Throwable $e) {
-            \WP_CLI::line((string) Js::jsonStringify(['error' => App::problem($e)]));
+            \WP_CLI::line((string) Js::jsonStringify(['error' => App::problem($e) + ($e instanceof SpacefastDrift ? ['groups' => $e->groups] : [])]));
 
             return 1;
         }
+    }
+
+    private static function spacefast(Plugin $plugin, array $args, array $flags): array
+    {
+        $unknown = array_diff(array_keys($flags), ['space', 'source-prefix', 'target-prefix', 'dry-run', 'verify']);
+        if ($args !== [] || $unknown !== [] || (isset($flags['dry-run']) && $flags['dry-run'] !== true)
+            || (isset($flags['verify']) && ($flags['verify'] !== true || isset($flags['dry-run'])))) {
+            throw new HttpError(400, 'invalid_command', 'Usage: migrate-spacefast --space=<id> --source-prefix=<prefix> --target-prefix=<prefix> [--dry-run | --verify]');
+        }
+        foreach (['space', 'source-prefix', 'target-prefix'] as $key) {
+            if (!is_string($flags[$key] ?? null) || $flags[$key] === '') { throw new HttpError(400, 'invalid_command', "--$key is required", '/' . $key); }
+        }
+        $plugin->app();
+        return (new Spacefast($plugin->connection(), $plugin->schema))->run($flags['space'], $flags['source-prefix'], $flags['target-prefix'], isset($flags['dry-run']), isset($flags['verify']));
     }
 
     private static function run(Plugin $plugin, array $args, array $flags): array

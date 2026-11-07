@@ -1,101 +1,143 @@
-# Zero on Spacefast
+# Deploy Zero on Spacefast
 
-Zero compiles TypeScript to WordPress plugins on any host. Spacefast is an
-optional host integration. Its finalize process compiles source bundles inside
-the Atomic box; authors need neither PHP nor a Spacefast-specific Zero runtime.
+Publish a project containing `zero.config.ts` to run its collections, hooks,
+and actions on Spacefast's WordPress runtime. Spacefast compiles the source
+on the host and initializes the candidate before making it ready.
 
-| Decision | Mechanism |
-| --- | --- |
-| Upload | One `app.zero.json` and one `vendor.zero.json`, with a small `manifest.json`, under private `.zero-source/`, plus public assets. Bundles preserve original compiler-readable TS/JS, module paths, package exports/type metadata and canonical identities. They are deterministic JSON containers, not JavaScript bundler output or an expanded node_modules upload. App and vendor have independent SHA-256 identities. |
-| Compile | The native finalizer invokes the engine release's pinned Zero executable through `compile-sources` and generates `.zero-compiled/` outside the public catalog. Sources, their hashes, compiler version and exact source revision remain with the version. There is no npm install, plugin download or author PHP execution. Both upload and finalize reject author PHP and the reserved output prefix. |
-| Version selection | Resolve Space and version before WordPress boot. Mount that version's runtime and app only, from immutable paths. Saved-code restore and immutable URLs retain both trees. Engine/compiler upgrades never recompile an ordinary old-version request. A separate refresh publication may create a new version without changing the original. |
-| Initialization | After platform plugins load, explicitly mount and initialize the candidate before readiness, without globally activating its plugins. Managed visitor requests never run migrations or rewrite schema hashes. Initialization and forward migration need a Space-scoped lock spanning baseline selection through readiness. |
-| Database | Every version in an environment uses its latest configured schema. Migrations only go forward. Old code may break against the new schema. No historical database snapshots or downgrade framework. |
-| Platform | Check actual WordPress/PHP and active plugin versions before readiness. SCF 6.9.7+, Action Scheduler 4.2.0+, MCP Adapter 0.7.1+, and Polylang 3.9+ for localized apps. Missing requirements block publication. |
-| Browser client | Compose the version's generated app exports with the engine-owned shared exports at `/__spacefast/client.js` and `/__spacefast/client.d.ts`. The stable generated app companion `/__spacefast/zero/client.js` and its `client.d.ts` use the selected version. `loadSpacefastClient()` imports the canonical shared module on demand. Shared Access/connectors/collaboration remain engine-owned; never substitute a global latest app. JavaScript contains contracts, never visitor credentials. Local builds emit browser JavaScript and types from the same client source. HTML, React and Gutenberg consume the same contracts. Editor product work is separate. |
-| Accounts | Spacefast Access, wp-admin login and session loading are optional bootstrap overlays. Zero core does not require Spacefast accounts. Reuse host admission/principal resolution and the existing WordPress role/session integration only after Space scope is established. |
-| Background work | Unscoped cron/WP-CLI mounts no app. A job must carry an explicit Space, environment and version and enter the same database/cache/identity scope as its HTTP request. |
-| Release | One `spacefast` npm release includes the 0.8 transition and direct `@spacefast/zero-bin-<platform>` optional dependencies. `packages/cli/zero-compiler.json` pins compiler source separately from the npm CLI version. No additional wrapper package. |
+Generated REST endpoints and actions work on the Space hostname. Realtime is
+not supported. Zero Pages are not hosted yet. Keep your frontend in public
+assets or publish it separately.
 
-CAS deduplicates within a Space. An app-only edit changes the app blob; the
-unchanged vendor blob is reused. The manifest changes only when its independent
-hashes or metadata change. Source files and generated PHP are private, while
-public assets use the usual public file catalog.
+## Publish an app
 
-The app bundle also retains committed `zero/migrations` SQL and its snapshot as
-private source metadata. The host archives those bytes outside the executable
-plugin migrations. It generates executable plans from the compiled schema and
-its own previous compiled version, so uploaded SQL never selects the database
-baseline or executes during initialization.
+1. Install the `spacefast` CLI and authenticate with `sf login`.
+2. Check the project from its root:
 
-## Shared MySQL binding
+   ```sh
+   sf zero check
+   ```
 
-The host binds a Space to its own WordPress table prefix before normal plugins,
-roles, sessions, Action Scheduler and Zero bootstrap. Core posts/options and
-users/usermeta use that binding, as do Zero and Action Scheduler tables. The host
-namespaces every object-cache group, including global user groups. Cache flushes
-invalidate only the selected Space. Media and request origins reuse the existing
-Spacefast content scope. Additional database environments are a later binding
-overlay; immutable versions on the selected box share its latest MySQL schema.
+3. Publish to your Space:
 
-A local WordPress 7.1.4/MariaDB proof publishes two versions and a second Space
-into one installation. It checks independent options, posts, product rows, users,
-job storage, cache groups and private-media bindings. Both immutable clients and
-saved-code rollback retain their original code after the forward schema change.
-Config-only publication takes the same migration lock as a source publication.
-A migrated table must match the host's existing Space/collection ownership rule.
+   ```sh
+   sf publish --space spc_example
+   ```
 
-This does not qualify an Atomic installation. Its MU-plugin order and persistent
-cache drop-in must meet the binding contract. Bootstrap refuses identity that
-loaded too early and refuses multisite. Unscoped cron/WP-CLI loads no app;
-site-wide async job spawning is disabled. Autonomous scoped job dispatch,
-wp-admin/account overlays and Atomic SQLite are not implemented. Hosting remains
-explicitly enabled until those deployment prerequisites are qualified.
+   The CLI captures `.zero-source/app.zero.json`, `vendor.zero.json`, and
+   `manifest.json`, then uploads those private bundles and the public assets.
+   Capture, check, and source migration use the CLI's bundled WebAssembly
+   compiler. Publishing does not need a native Zero executable.
 
-## SQLite for staging and tests, design only
+4. Wait for the publish receipt to report readiness. Open its Space URL and
+   exercise a collection read and an action before handing the app back.
 
-A database binding belongs to a Space environment, not an immutable version.
-Otherwise rollback would silently switch data. Resolve an explicit environment
-binding first, then the app's configured binding, then the host's environment
-default. An explicit MySQL production binding must never fall back to SQLite.
-Bind before WordPress constructs `$wpdb`; request-time switching is too late.
+The hosted MCP publish tool also accepts raw `zero.config.ts`, relative `.ts`
+modules, and `public/`. The host captures raw source when `.zero-source/` is
+absent. Host capture resolves relative imports and the `zero` module.
 
-An SQLite binding owns a persistent private directory outside version artifacts,
-for example `spaces/<space>/databases/<binding>/wordpress.sqlite`. Bindings are
-server-validated identifiers, never author-supplied filesystem paths. Versions
-share this environment file and its latest forward schema. Retention and deletion
-follow the binding lifecycle, not version cleanup. Never upload, serve, or copy
-this file into immutable public artifacts.
+If host capture reports `zero_source_needs_local_capture`, an import needs
+local package resolution. Install the project's dependencies locally and publish
+with `sf publish`. The CLI captures supported installed package sources into
+the vendor bundle. The host never runs npm install.
 
-Use SQLite WAL only on a qualified local filesystem, bounded busy timeout,
-short transactions and one migration writer per binding. Verify PDO SQLite,
-locking across FPM workers, journal permissions, backup consistency and recovery
-before enabling it. Export would use the SQLite backup API or a coordinated
-checkpoint/snapshot, not copy a live database file. Future CLI access/export must
-require the environment's database capability and an audited short-lived stream;
-there is no implementation or live mutation in this change.
+Use `sf zero build` to emit local WordPress plugins and `sf zero dev` to run
+WordPress Studio. These two commands use the native optional platform package
+shipped with the CLI. See the [local development guide](../CONTRIBUTING.md#the-commands).
 
-The inspected SQLite Database Integration 3.1.2 archive supplies `db.copy`,
-which becomes the `db.php` drop-in. It selects `DB_ENGINE=sqlite`, requires
-`pdo` and `pdo_sqlite`, and supports an explicit private `DB_PATH`. Local PHP
-has PDO SQLite; that says nothing about Atomic. The drop-in must run before
-WordPress database bootstrap. On Atomic, ownership of that drop-in, host database
-bootstrap, available PDO extensions and filesystem policy must be qualified.
-Installing a normal plugin after WordPress loads cannot select SQLite. Native
-SQLite integration on Atomic remains unproven; do not advertise support.
+## Call a REST endpoint or action
 
-Endpoint/page compilation remains a separate migration gap for 0.8 apps. Existing
-PHP Functions accept uploaded PHP outside v2. Whether that exception remains is
-an open user-policy decision; this work does not delete it.
+Collections use `/wp-json/zero/v1/<collection>`. An action named `hello` uses
+`POST /wp-json/zero/v1/actions/hello` on the Space hostname:
 
-The host engine carries a separate native compiler executable from the same
-immutable source pin and verified artifacts as the CLI. Native runtime Cargo
-builds have no private Git dependency. The compiler build checks out the pin with
-a short-lived read token and records source identity and notices in its archive.
-No npm or compiler release is published by this integration.
+```sh
+curl --fail-with-body 'https://your-space.example/wp-json/zero/v1/actions/hello' \
+	-H 'Content-Type: application/json' \
+	--data '{"name":"Sam"}'
+```
 
-The separate 0.8 migration work must land before its adopted-table sources are
-included in the compiler pin and exercised through hosted publication. Its
-standalone acceptance does not establish the host's table ownership or retained
-migration behavior. Endpoint/page compilation, legacy identity continuity and
-realtime migration remain outside that accepted subset.
+Use the action's declared input and access rule. A successful call returns
+`{ "data": ... }`. The generated client supplies the same contracts at
+`/__spacefast/client.js` and `/__spacefast/client.d.ts`. The version-specific
+app companion is `/__spacefast/zero/client.js` with its `client.d.ts`.
+
+Port a 0.8 custom method/path endpoint to a named action and update its callers.
+The source migrator refuses old `endpoints` declarations with a pointer.
+Generated v2 endpoints and actions need no additional Spacefast route setup.
+
+## Migrate an existing 0.8 Space
+
+Follow [Migrate a Spacefast app](migrating-from-zero.md#migrate-a-spacefast-app).
+Run `sf zero migrate --space spc_example --dry-run --json` first. The report
+names unsupported source with RFC 6901 pointers. Resolve every refusal before
+starting the real operation.
+
+The migration preserves supported content and user IDs. Imported logins keep
+their original expiry through an isolated legacy-session upgrade. Google
+provider values become managed variables of the candidate version. Never copy
+those values into project source or print them in a report.
+
+The transition to v2 is one-way. After it commits, Spacefast refuses 0.8
+publication and promotion. Old immutable 0.8 URLs return
+`410 zero_legacy_retired` with the live hostname. Restoring older v2 code still
+uses the environment's latest database schema.
+
+## Prepare the WordPress host
+
+This section is for host operators. Ordinary publication uses the CLI or MCP.
+
+Bind the Space before WordPress loads normal plugins, roles, identity, or Action
+Scheduler. The table prefix is `sfz_<first 24 hex digits of SHA-256(space ID)>_`,
+including `users`, `usermeta`, posts, options, identity, and job tables. Namespace
+all object-cache groups, including WordPress's global user groups. A cache flush
+must affect only the selected Space.
+
+Initialize the selected candidate explicitly under the Space's migration lock.
+Managed visitor requests must not apply migrations. Check the installed
+WordPress, PHP, and plugin versions before readiness. Required plugins include
+SCF 6.9.7+, Action Scheduler 4.2.0+, and MCP Adapter 0.7.1+; localized apps also
+need Polylang 3.9+.
+
+The native finalizer embeds the pinned Zero Rust crate with its `host` feature.
+It runs source capture and `compile_sources` in process. The engine ships one
+native runtime executable. Its compiler source revision also pins the CLI's
+wasm and native assets. No private Git dependency is needed to build the runtime.
+
+Keep `.zero-source/` and `.zero-compiled/` private. Reject author PHP and uploads
+to reserved compiler output paths. Retain source hashes and compiler revision
+with each immutable version. Mount that version's runtime and app before
+WordPress bootstrap; never substitute the newest app during an old-version
+request.
+
+Archive uploaded `zero/migrations` SQL and snapshots as source metadata. Generate
+executable migrations from the candidate schema and the host's trusted previous
+compiled schema. Uploaded SQL must never select the baseline or execute during
+initialization.
+
+Versions in one environment share its latest forward schema. Bind media and
+request origins to that Space. Preserve the original auth salt during a 0.8
+migration so pending imported sessions can authenticate once and upgrade.
+
+Unscoped cron and WP-CLI must load no app. Each scoped job needs the Space,
+environment, and version before entering the same database and cache scope as
+HTTP. Multisite, hosted Pages, realtime, and Atomic SQLite are outside this
+hosting contract. Qualify MU-plugin ordering, persistent object-cache isolation,
+auth-salt continuity, and action routing on the actual provider before rollout.
+
+## Verify the compiler and migration
+
+In the Zero repository, run the targeted host and data proofs:
+
+```sh
+cargo test --no-default-features --features host --test host_feature
+cargo build --no-default-features --features host --target x86_64-unknown-linux-musl
+cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
+node --test tests/wasm/host.test.mjs
+ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+```
+
+The host-feature test compares pantry capture against native `zero sources`
+byte for byte. The WordPress/MariaDB proof covers cross-prefix copying,
+dry-run and conflict rollback, repeat execution, scoped cookies, lazy session
+upgrade, expiry, forgery rejection, and revocation. It uses disposable local
+credentials intentionally tracked only for isolated test infrastructure. It does
+not qualify a production provider or exchange a real Google authorization code.

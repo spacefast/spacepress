@@ -127,6 +127,22 @@ impl Memory {
 }
 
 impl Fs for Memory {
+    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
+        let key = self.canonicalize(path)?;
+        if !self.is_dir(&key) {
+            return Err(std::io::Error::other("not a directory"));
+        }
+        let mut entries = std::collections::BTreeSet::new();
+        for file in self.files.keys() {
+            if let Ok(relative) = file.strip_prefix(&key)
+                && let Some(component) = relative.components().next()
+            {
+                entries.insert(key.join(component));
+            }
+        }
+        Ok(entries.into_iter().collect())
+    }
+
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         let key = self.resolve(path).ok_or_else(not_found)?;
         if let Some(source) = self.files.get(&key) {
@@ -211,6 +227,120 @@ fn compile_request(request: Request) -> String {
     serde_json::to_string(&response).expect("response serializes")
 }
 
+/// Filesystem operations accept either an absolute `project` on the host or a `files`
+/// map relative to it. Migration returns a candidate file map; the caller owns writes.
+pub fn operation(operation: &str, request: &str) -> String {
+    diag::isolated(|| {
+        let result = (|| -> Result<serde_json::Value, String> {
+            let request: serde_json::Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
+            let project = PathBuf::from(request["project"].as_str().unwrap_or("/project"));
+            if !project.has_root() {
+                return Err("project must be absolute".into());
+            }
+            let fs: Rc<dyn Fs> = if let Some(files) = request.get("files") {
+                let files: BTreeMap<String, String> =
+                    serde_json::from_value(files.clone()).map_err(|e| e.to_string())?;
+                let mut absolute = BTreeMap::new();
+                for (path, text) in files {
+                    if Path::new(&path).has_root()
+                        || path.split('/').any(|p| p == ".." || p.is_empty())
+                        || path.contains('\\')
+                    {
+                        return Err("invalid relative source path".into());
+                    }
+                    absolute.insert(project.join(path), text);
+                }
+                Rc::new(Memory::new(absolute))
+            } else {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Rc::new(crate::wasm_host_fs::Host)
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    Rc::new(loader::Disk)
+                }
+            };
+            match operation {
+                "sources" => {
+                    match crate::bundle::capture(fs, &project, request["packages"].as_bool().unwrap_or(true)) {
+                        Ok(output) => Ok(serde_json::to_value(output).unwrap()),
+                        Err(d) => Ok(serde_json::json!({"check":diag::envelope(&[d], &project), "output":null})),
+                    }
+                }
+                "migrateApp" => Ok(serde_json::to_value(crate::config_migrate::app::migrate(
+                    fs,
+                    &project,
+                    request["space"].as_str(),
+                    request["users"].as_bool().unwrap_or(false),
+                ))
+                .unwrap()),
+                "migrateConfig" => {
+                    let source = crate::config_migrate::Source::parse(request["source"].as_str().unwrap_or("zero"))
+                        .ok_or("unknown source CMS")?;
+                    let path = project.join(request["input"].as_str().unwrap_or("capsule.ts"));
+                    let text = fs.read_to_string(&path).map_err(|e| e.to_string())?;
+                    let mut entries = vec![];
+                    Ok(
+                        match crate::config_migrate::convert(source, &path, &text, &mut entries) {
+                            Ok(config) => {
+                                serde_json::json!({"status":"candidate", "entries":entries,"errors":[],"files":{"zero.config.ts":config}})
+                            }
+                            Err(e) => {
+                                serde_json::json!({"status":"refused", "entries":entries,"errors":[e],"files":{}})
+                            }
+                        },
+                    )
+                }
+                "check" => {
+                    let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
+                    let previous = root.join("zero/migrations/snapshot.json");
+                    let built = loader::load_from(fs.clone(), &root.join("zero.config.ts")).and_then(|program| {
+                        pipeline::build(
+                            &root,
+                            &program,
+                            || {
+                                let snapshot = if fs.exists(&previous) {
+                                    Some(
+                                        serde_json::from_str(
+                                            &fs.read_to_string(&previous)
+                                                .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?,
+                                        )
+                                        .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?,
+                                    )
+                                } else {
+                                    None
+                                };
+                                let dir = root.join("zero/migrations");
+                                let paths = if fs.is_dir(&dir) {
+                                    fs.read_dir(&dir)
+                                        .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?
+                                } else {
+                                    vec![]
+                                };
+                                let names: Vec<_> = paths
+                                    .iter()
+                                    .map(|p| p.file_name().unwrap_or_default().to_string_lossy())
+                                    .collect();
+                                pipeline::Previous::from_project(snapshot, names.iter().map(|s| s.as_ref()))
+                            },
+                            |_| None,
+                        )
+                        .map_err(|d| vec![d])
+                    });
+                    let diagnostics = built.err().unwrap_or_default();
+                    Ok(serde_json::json!({"check":diag::envelope(&diagnostics, &root)}))
+                }
+                _ => Err("unknown operation".into()),
+            }
+        })();
+        match result {
+            Ok(value) => value.to_string(),
+            Err(error) => serde_json::json!({"error":error}).to_string(),
+        }
+    })
+}
+
 /// The C ABI the browser glue uses: a request buffer in, a length-prefixed response buffer out.
 #[cfg(target_arch = "wasm32")]
 mod abi {
@@ -240,10 +370,14 @@ mod abi {
     /// `ptr..ptr+len` must be a `zero_alloc(len)` buffer the caller has filled.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn zero_compile(ptr: *mut u8, len: usize) -> *mut u8 {
+        unsafe { respond(ptr, len, super::compile) }
+    }
+
+    unsafe fn respond(ptr: *mut u8, len: usize, run: impl FnOnce(&str) -> String) -> *mut u8 {
         let request = unsafe { Vec::from_raw_parts(ptr, len, len) };
         let response = match std::str::from_utf8(&request) {
-            Ok(request) => super::compile(request),
-            Err(_) => serde_json::json!({ "error": "request is not UTF-8" }).to_string(),
+            Ok(request) => run(request),
+            Err(_) => serde_json::json!({"error":"request is not UTF-8"}).to_string(),
         };
         let mut out = Vec::with_capacity(4 + response.len());
         out.extend_from_slice(&(response.len() as u32).to_le_bytes());
@@ -252,6 +386,20 @@ mod abi {
         std::mem::forget(out);
         ptr
     }
+    macro_rules! operation {
+        ($name:ident, $operation:literal) => {
+            /// # Safety
+            /// The input must be an owned `zero_alloc(len)` buffer.
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn $name(ptr: *mut u8, len: usize) -> *mut u8 {
+                unsafe { respond(ptr, len, |request| super::operation($operation, request)) }
+            }
+        };
+    }
+    operation!(zero_sources, "sources");
+    operation!(zero_check, "check");
+    operation!(zero_migrate_app, "migrateApp");
+    operation!(zero_migrate_config, "migrateConfig");
 }
 
 #[cfg(test)]

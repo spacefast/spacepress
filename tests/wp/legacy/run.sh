@@ -49,3 +49,14 @@ fi
 docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" cp "$here/content-model.php" cli:/tmp/zero-legacy-release.php >/dev/null 2>&1
 ZERO_WP_HARNESS="$wp/.harness-legacy.json" ZERO_LEGACY_SITE="$wp/.legacy-site.json" ZERO_BIN="$zero" \
   node --test --test-concurrency=1 "$here/legacy.test.ts"
+# Native posts are adopted only for the named Space, retaining IDs and their native body.
+mkdir -p "$app/native/server"
+cat > "$app/native/server/index.ts" <<'TS'
+import { capsule } from '@spacefast/zero/server';
+export default capsule({collections:{posts:{publicRead:true}}});
+TS
+"$zero" migrate app --from zero-0.8 "$app/native" --out "$app/native-out" >/dev/null
+"$zero" build "$app/native-out" --quiet >/dev/null
+docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" cp "$app/native-out/.zero/wp-content/plugins/zero-app-migrated-app/zero/app/schema.php" cli:/tmp/zero-native-posts-schema.php >/dev/null 2>&1
+docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" cp "$here/native.php" cli:/tmp/zero-native-posts-proof.php >/dev/null 2>&1
+"$wp/harness.sh" wp eval-file /tmp/zero-native-posts-proof.php

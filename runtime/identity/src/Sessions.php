@@ -7,7 +7,28 @@ namespace Zero\Identity;
 final class Sessions
 {
     public const COOKIE = "zi_session";
-    public function __construct(private DB $db, private Security $security) {}
+    public function __construct(private DB $db, private Security $security) {
+        // A migrated host explicitly opts its scoped REST surface into identity cookies.
+        add_filter('rest_authentication_errors', function ($result) {
+            if (is_wp_error($result) || is_user_logged_in() || ($result !== null && $result !== true)
+                || apply_filters('zero_identity_session_cookie_aliases', []) === []) { return $result; }
+            $route = (string) ($GLOBALS['wp']->query_vars['rest_route'] ?? '');
+            if (!str_starts_with($route, '/zero/v1/')) { return $result; }
+            $secret = (string) ($_COOKIE[self::COOKIE] ?? '');
+            try {
+                $session = $this->find($secret);
+            } catch (Failure $e) {
+                return new \WP_Error($e->kind, $e->getMessage(), ['status' => $e->status]);
+            }
+            if (!$session) { return $result; }
+            $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+            if (!in_array($method, ['GET', 'HEAD', 'OPTIONS'], true) && !hash_equals((string) $session['csrf'], (string) ($_SERVER['HTTP_X_IDENTITY_CSRF'] ?? ''))) {
+                return new \WP_Error('invalid_csrf', 'Refresh the page and try again.', ['status' => 403]);
+            }
+            wp_set_current_user((int) $session['wp_user_id']);
+            return true;
+        }, 110);
+    }
     public function create(int $uid): array
     {
         return $this->db->transaction(function () use ($uid) {
@@ -40,17 +61,36 @@ final class Sessions
     }
     public function find(string $secret): ?array
     {
+        $alias = false;
+        if ($secret === '') {
+            foreach (apply_filters('zero_identity_session_cookie_aliases', []) as $name) {
+                if (is_string($name) && is_string($_COOKIE[$name] ?? null) && $_COOKIE[$name] !== '') {
+                    $secret = $_COOKIE[$name];
+                    $alias = true;
+                    break;
+                }
+            }
+        }
         if ($secret === "" || strlen($secret) > 512) {
             return null;
         }
-        if (preg_match("/\A[A-Za-z0-9_]{1,56}\z/", $this->db->prefix) !== 1) {
+        if (preg_match("/\\A[A-Za-z0-9_]{1,56}\\z/", $this->db->prefix) !== 1) {
             throw new \InvalidArgumentException("Invalid identity table prefix");
         }
-        return $this->db->row(
+        $session = $this->db->row(
             "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.secret_hash=%s AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
             self::digest($secret),
             time(),
         );
+        if ($session && !hash_equals((string) $session['secret_hash'], self::digest($secret))) {
+            $session = null;
+        }
+        $session ??= Legacy\SessionUpgrade::find($this->db, $secret);
+        if ($alias && $session) {
+            self::cookie($secret, (int) $session['expires_at']);
+            $_COOKIE[self::COOKIE] = $secret;
+        }
+        return $session;
     }
     public function require(?string $csrf = null): array
     {

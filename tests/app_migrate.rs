@@ -355,7 +355,7 @@ fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
 fn endpoints_become_routes_and_unroutable_ones_refuse() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("endpoints");
-    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test"]);
+    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test", "--users"]);
     assert!(ok, "{report:#}");
     let routes: Vec<_> = report["entries"]
         .as_array()
@@ -377,6 +377,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "GET /go/home",
             "GET /api/tags",
             "GET /api/files/*splat",
+            "POST /api/marks",
             "GET /api/total"
         ]
     );
@@ -461,8 +462,8 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     }
     let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
     assert!(
-        pricing.starts_with("import { plans } from \"../../shared/plans\";"),
-        "{pricing}"
+        pricing.contains("import { plans } from '../../shared/plans';"),
+        "a single-quoted relative import moves with the page: {pricing}"
     );
     // Interactive starters keep a pointer per page saying what to port.
     let (ok, refused) = migrate(
@@ -578,7 +579,7 @@ fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool
     let output = command
         .arg("--out")
         .arg(out)
-        .args(["--dry-run", "--space", "spc_migrate_test"])
+        .args(["--dry-run", "--space", "spc_migrate_test", "--users"])
         .output()
         .unwrap();
     let report = serde_json::from_slice(&output.stdout)

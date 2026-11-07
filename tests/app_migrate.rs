@@ -119,7 +119,6 @@ fn reports_all_unsupported_features_and_never_writes_a_refused_app() {
         [
             "/pages/index.tsx",
             "/auth/onGuestUpgrade",
-            "/endpoints/status",
             "/queries/email/ctx/email",
             "/queries/identity/ctx/auth/userId",
             "/queries/pages/ctx/db/tasks"
@@ -332,5 +331,74 @@ fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
             .as_str()
             .unwrap()
             .contains("optional field tag")
+    );
+}
+
+#[test]
+fn endpoints_become_routes_and_unroutable_ones_refuse() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("endpoints");
+    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    let routes: Vec<_> = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["reason"].as_str().unwrap().strip_prefix("v2 route "))
+        .map(|r| r.split(" with ").next().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        routes,
+        [
+            "GET /api/ping",
+            "GET /api/notes/count",
+            "GET /api/notes/:id",
+            "POST /api/search",
+            "PUT /api/notes",
+            "DELETE /api/notes/:id",
+            "GET /go/home",
+            "GET /api/total"
+        ]
+    );
+    build(&out);
+    let root = temp.path().join("refused");
+    project(
+        &root,
+        r#"{endpoints:{
+          head:endpoint({method:"HEAD",path:"/x"},()=>text("")),
+          rest:endpoint({method:"GET",path:"/files/*rest"},()=>text("")),
+          admin:endpoint({method:"GET",path:"/wp-admin/x"},()=>text("")),
+          root:endpoint({method:"GET",path:"/"},()=>text("")),
+          hit:endpoint({method:"GET",path:"/hit",readOnly:false},()=>text("")),
+          url:endpoint({method:"GET",path:"/url"},(_ctx, req)=>text(req.url)),
+          bytes:endpoint({method:"POST",path:"/bytes"},async (_ctx, req)=>text(String((await req.bytes()).length))),
+          one:endpoint({method:"GET",path:"/a/:x"},()=>text("")),
+          two:endpoint({method:"GET",path:"/a/:y"},()=>text(""))
+        }}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("no"), &[]);
+    assert!(!ok);
+    let pointers: Vec<_> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        pointers,
+        [
+            "/endpoints/head/method",
+            "/endpoints/rest/path",
+            "/endpoints/admin/path",
+            "/endpoints/root/path",
+            "/endpoints/hit",
+            "/endpoints/url/request/url",
+            "/endpoints/bytes/request/bytes",
+            "/endpoints/two"
+        ]
     );
 }

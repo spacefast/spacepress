@@ -337,6 +337,7 @@ pub(super) fn app(
     errors: &mut Vec<Failure>,
 ) -> Result<Transformed, Failure> {
     let body = parse(path, source)?;
+    let mut responses = String::new();
     let mut aliases = BTreeMap::new();
     let mut prelude = String::new();
     let mut root = None;
@@ -358,6 +359,9 @@ pub(super) fn app(
                     // Structural 0.8 types the migrated handlers still name.
                     if let Some(shape) = legacy_type(name) {
                         prelude.push_str(&format!("type {} = {shape};\n", s.local));
+                    }
+                    if let Some(helper) = super::endpoints::helper(&s.local, name) {
+                        responses.push_str(&helper);
                     }
                     aliases.insert(s.local.clone(), name.clone());
                 }
@@ -512,6 +516,7 @@ pub(super) fn app(
             "connectors",
             "auth",
             "realtime",
+            "endpoints",
         ]
         .contains(&key.as_str())
         {
@@ -607,6 +612,7 @@ pub(super) fn app(
                             writes: section == "mutations",
                             signed_in,
                             subjects: users,
+                            route: None,
                         },
                     )
                 })();
@@ -624,7 +630,89 @@ pub(super) fn app(
             }
         }
     }
-    if handlers.iter().any(|h| h.contains("__z08Subject(")) {
+    let mut routes = Vec::new();
+    if let Some(group) = root.get("endpoints") {
+        let mut seen = BTreeSet::new();
+        for (name, e) in obj(group, "/endpoints")? {
+            let at = pointer("/endpoints", &name);
+            let result = (|| {
+                ident(&name, &at)?;
+                let (c, a) = args(e).map_err(|_| fail(&at, "expected endpoint({ method, path }, handler)"))?;
+                if !matches!(&c.kind,E::Ident(n) if aliases.get(n).map(String::as_str)==Some("endpoint"))
+                    || a.len() != 2
+                {
+                    return Err(fail(&at, "expected endpoint({ method, path }, handler)"));
+                }
+                let options = obj(a[0], &at)?;
+                for key in options.keys() {
+                    if !["method", "path", "readOnly", "mode"].contains(&key.as_str()) {
+                        return Err(fail(&pointer(&at, key), "unknown endpoint option"));
+                    }
+                }
+                let method = options
+                    .get("method")
+                    .map(|e| string(e, &pointer(&at, "method")))
+                    .transpose()?
+                    .ok_or_else(|| fail(&at, "endpoint needs a literal method"))?;
+                let path = options
+                    .get("path")
+                    .map(|e| string(e, &pointer(&at, "path")))
+                    .transpose()?
+                    .ok_or_else(|| fail(&at, "endpoint needs a literal path"))?;
+                let read_only = match options.get("readOnly").map(|e| literal(e)) {
+                    None => None,
+                    Some(Ok(Value::Bool(b))) => Some(b),
+                    Some(_) => return Err(fail(&pointer(&at, "readOnly"), "readOnly must be a literal boolean")),
+                };
+                let route = super::endpoints::route(&method, &path, read_only, &at)?;
+                let shape = route
+                    .path
+                    .split('/')
+                    .map(|s| if s.starts_with(':') { ":" } else { s })
+                    .collect::<Vec<_>>()
+                    .join("/");
+                if !seen.insert((route.method.clone(), shape)) {
+                    return Err(fail(&at, "two endpoints share a method and path shape"));
+                }
+                if names.contains(&name) {
+                    return Err(fail(&at, "endpoint name collides with a query, mutation or action"));
+                }
+                let E::Func(f) = &a[1].kind else {
+                    return Err(fail(&at, "handler must be an inline function"));
+                };
+                handler(
+                    source,
+                    f,
+                    &tables,
+                    &at,
+                    &name,
+                    Mode {
+                        writes: route.writes,
+                        signed_in,
+                        subjects: users,
+                        route: Some(&route),
+                    },
+                )
+                .map(|h| (h, route))
+            })();
+            match result {
+                Ok(((code, generated), route)) => {
+                    helpers.extend(generated);
+                    routes.push(code);
+                    entries.push(entry(
+                        &at,
+                        "mapped",
+                        format!(
+                            "v2 route {} {} with 0.8's result rules; callers keep the URL. Unsafe methods authenticate with an X-WP-Nonce header, otherwise run anonymously",
+                            route.method, route.path
+                        ),
+                    ));
+                }
+                Err(e) => errors.push(e),
+            }
+        }
+    }
+    if handlers.iter().chain(&routes).any(|h| h.contains("__z08Subject(")) {
         entries.push(entry(
             "/auth",
             "review",
@@ -632,8 +720,12 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, type InferSelectModel } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, type InferSelectModel } from \"zero\";\n",
     );
+    if !routes.is_empty() || !responses.is_empty() {
+        config.push_str(super::endpoints::PRELUDE);
+        config.push_str(&responses);
+    }
     config.push_str(&prelude);
     if content_config.is_some() {
         config.push_str("import * as __z08Content from \"./__z08-content\";\n");
@@ -692,6 +784,9 @@ pub(super) fn app(
             "mapped",
             "Project WordPress users as members; migrate Spacefast accounts and sessions before activation.",
         ));
+    }
+    if !routes.is_empty() {
+        config.push_str(&format!("routes: {{\n{}\n}},", routes.join(",\n")));
     }
     config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
     entries.push(entry("","review","Adoption requires the original MariaDB database and --space binding. IDs above Number.MAX_SAFE_INTEGER, existing sessions, client routes, realtime and deployment activation need separate validation. No deployment is performed."));
@@ -867,10 +962,12 @@ fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Resul
 
 /// How a generated action runs: its write mode and identity sources.
 #[derive(Clone, Copy)]
-struct Mode {
+struct Mode<'a> {
     writes: bool,
     signed_in: bool,
     subjects: bool,
+    /// Set for a 0.8 endpoint, which becomes a v2 route at the same method and path.
+    route: Option<&'a super::endpoints::Route>,
 }
 
 fn handler(
@@ -885,7 +982,11 @@ fn handler(
         writes,
         signed_in,
         subjects,
+        route,
     } = mode;
+    if route.is_some() {
+        return endpoint(source, f, tables, at, name, mode);
+    }
     let Some(first) = f.params.first() else {
         return Err(fail(at, "handler must declare its context parameter"));
     };
@@ -926,6 +1027,9 @@ fn handler(
         subjects,
         uses_subject: false,
         action: name,
+        request: None,
+        returns: vec![],
+        params: vec![],
         helpers: vec![],
         edits: vec![],
     };
@@ -979,6 +1083,105 @@ fn handler(
     Ok((code, r.helpers))
 }
 
+/// A 0.8 endpoint as a v2 route: `(ctx, req)` becomes `(req, __z08ctx)` and every return goes
+/// through 0.8's result rules.
+fn endpoint(
+    source: &str,
+    f: &Func,
+    tables: &BTreeMap<String, Table>,
+    at: &str,
+    name: &str,
+    mode: Mode,
+) -> Result<(String, Vec<String>), Failure> {
+    let route = mode.route.expect("route");
+    let ctx = match f.params.first().map(|p| &p.pat) {
+        None => "__z08unused",
+        Some(Pat::Id(ctx, _)) => ctx.as_str(),
+        Some(_) => return Err(fail(at, "context destructuring requires a manual port")),
+    };
+    let request = super::endpoints::request_name(f, at)?;
+    if f.params.len() > 2 {
+        return Err(fail(at, "endpoint handlers take (ctx, request)"));
+    }
+    let mut r = Rewrite {
+        source,
+        ctx,
+        tables,
+        at,
+        writes: route.writes,
+        subjects: mode.subjects,
+        uses_subject: false,
+        action: name,
+        request,
+        returns: vec![],
+        params: route
+            .path
+            .split('/')
+            .filter_map(|s| s.strip_prefix(':').map(str::to_owned))
+            .collect(),
+        helpers: vec![],
+        edits: vec![],
+    };
+    for span in super::endpoints::returns(f) {
+        r.returns.push(span);
+    }
+    let body = match &f.body {
+        FnBody::Expr(e) => {
+            r.expr(e)?;
+            format!("return __z08EndpointValue({});", r.apply(e.span))
+        }
+        FnBody::Block(stmts) => {
+            for s in stmts {
+                r.stmt(s)?;
+            }
+            let arena = Allocator::default();
+            let expression = Parser::new(&arena, raw(source, f.span), SourceType::ts())
+                .parse_expression()
+                .map_err(|_| fail(at, "cannot locate handler body"))?;
+            use oxc_ast::ast::Expression;
+            let body = match &expression {
+                Expression::ArrowFunctionExpression(f) => f.get_function_body(),
+                Expression::FunctionExpression(f) => f.body.as_deref(),
+                _ => None,
+            }
+            .ok_or_else(|| fail(at, "expected handler body"))?;
+            // A block that falls off the end returned undefined: 0.8 answered 204.
+            let falls_off = !matches!(stmts.last(), Some(Stmt::Return(..) | Stmt::Throw(_)));
+            format!(
+                "{}{}",
+                r.apply(Span {
+                    start: f.span.start + body.span.start + 1,
+                    end: f.span.start + body.span.end - 1,
+                    ..f.span
+                }),
+                if falls_off {
+                    "\nreturn __z08EndpointValue(null);"
+                } else {
+                    ""
+                }
+            )
+        }
+    };
+    let subject = if r.uses_subject {
+        "const __z08subject = await __z08Subject(__z08ctx.user);\n"
+    } else {
+        ""
+    };
+    let gate = if mode.signed_in {
+        "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
+    } else {
+        ""
+    };
+    let req = request.unwrap_or("__z08req");
+    let code = format!(
+        "{}: __z08Route({{ method: {}, path: {}, access: \"anyone\", async handler({req}, __z08ctx) {{\n{gate}{subject}{body}\n}} }})",
+        q(name),
+        q(&route.method),
+        q(&route.path),
+    );
+    Ok((code, r.helpers))
+}
+
 struct Rewrite<'a> {
     source: &'a str,
     ctx: &'a str,
@@ -990,6 +1193,12 @@ struct Rewrite<'a> {
     uses_subject: bool,
     /// The generated action's name, which keeps helper names and cursor sites unique.
     action: &'a str,
+    /// An endpoint handler's request parameter, rewritten to the v2 route request.
+    request: Option<&'a str>,
+    /// Return-expression spans of an endpoint body, wrapped in 0.8's result rules.
+    returns: Vec<Span>,
+    /// The endpoint path's `:name` parameters.
+    params: Vec<String>,
     /// Module-level helpers generated for this handler (one per paginated call site).
     helpers: Vec<String>,
     edits: Vec<(Span, String)>,
@@ -1020,6 +1229,9 @@ impl Rewrite<'_> {
             && name.starts_with("__z08")
         {
             return Err(fail(self.at, "reserved generated identifier"));
+        }
+        if self.request.is_some() && self.request_use(e)? {
+            return Ok(());
         }
         if let E::Await(inner) = &e.kind
             && let Some(text) = self.db(inner)?
@@ -1203,7 +1415,18 @@ impl Rewrite<'_> {
                 }
             }
             Stmt::Expr(e) | Stmt::Throw(e) | Stmt::ExportDefault(e) => self.expr(e)?,
-            Stmt::Return(Some(e), _) => self.expr(e)?,
+            Stmt::Return(Some(e), _) => {
+                self.expr(e)?;
+                if self.returns.contains(&e.span) {
+                    let text = self.apply(e.span);
+                    self.edits
+                        .retain(|(s, _)| !(s.start >= e.span.start && s.end <= e.span.end));
+                    self.edits.push((e.span, format!("__z08EndpointValue({text})")));
+                }
+            }
+            Stmt::Return(None, span) if self.returns.contains(span) => {
+                self.edits.push((*span, "return __z08EndpointValue(null);".into()));
+            }
             Stmt::If(e, a, b) => {
                 self.expr(e)?;
                 for s in a {
@@ -1444,6 +1667,99 @@ impl Rewrite<'_> {
         let mut call = vec![format!("__z08PageOptions({options})")];
         call.extend(params.iter().map(|(_, _, _, _, v)| v.clone()));
         Ok(format!("(await {helper}({}))", call.join(", ")))
+    }
+
+    /// 0.8's request API on a v2 route request (`{ method, path, params, query, headers, body }`).
+    /// Returns `true` when `e` was rewritten as a whole.
+    fn request_use(&mut self, e: &Expr) -> Result<bool, Failure> {
+        let req = self.request.expect("request");
+        let is_req = |e: &Expr| matches!(&e.kind, E::Ident(n) if n == req);
+        let at = pointer(self.at, "request");
+        let refuse = |what: &str| -> Result<bool, Failure> {
+            Err(fail(
+                &pointer(&at, what),
+                "this request API has no v2 route equivalent; port it explicitly",
+            ))
+        };
+        let (inner, awaited) = match &e.kind {
+            E::Await(inner) => (inner.as_ref(), true),
+            _ => (e, false),
+        };
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &inner.kind
+            && let E::Member {
+                obj,
+                prop,
+                optional: false,
+                ..
+            } = &callee.kind
+        {
+            if is_req(obj) {
+                let text = match (prop.as_str(), args.is_empty(), awaited) {
+                    ("text", true, true) => format!("{req}.body"),
+                    ("json", true, true) => {
+                        format!("(JSON.parse({req}.body === \"\" ? \"null\" : {req}.body) as unknown)")
+                    }
+                    _ => return refuse(prop),
+                };
+                self.edits.push((e.span, text));
+                return Ok(true);
+            }
+            if let E::Member {
+                obj: base, prop: part, ..
+            } = &obj.kind
+                && is_req(base)
+                && (part == "headers" || part == "query")
+                && !awaited
+            {
+                let [ArrEl::Item(arg)] = args.as_slice() else {
+                    return refuse(&format!("{part}.{prop}"));
+                };
+                let key = self.render(arg)?;
+                let key = if part == "headers" {
+                    format!("String({key}).toLowerCase()")
+                } else {
+                    format!("String({key})")
+                };
+                let text = match prop.as_str() {
+                    "get" => format!("({req}.{part}[{key}] ?? null)"),
+                    "has" => format!("({req}.{part}[{key}] !== undefined)"),
+                    _ => return refuse(&format!("{part}.{prop}")),
+                };
+                self.edits.push((e.span, text));
+                return Ok(true);
+            }
+        }
+        // `req.params.<name>`: decoded on both sides, and always present once the route matched.
+        if let E::Member { obj, prop: param, .. } = &e.kind
+            && let E::Member { obj, prop, .. } = &obj.kind
+            && is_req(obj)
+            && prop == "params"
+        {
+            if !self.params.contains(param) {
+                return refuse(&format!("params.{param}"));
+            }
+            self.edits
+                .push((e.span, format!("({req}.params[{}] ?? \"\")", q(param))));
+            return Ok(true);
+        }
+        if let E::Member { obj, prop, .. } = &e.kind
+            && is_req(obj)
+        {
+            return match prop.as_str() {
+                // Uppercase on both sides.
+                "method" => Ok(true),
+                other => refuse(other),
+            };
+        }
+        if is_req(e) {
+            return refuse("value");
+        }
+        Ok(false)
     }
 
     fn page_sites(&self) -> usize {

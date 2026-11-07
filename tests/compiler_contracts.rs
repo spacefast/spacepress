@@ -1254,7 +1254,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
             "`any` isn't allowed",
         ),
         ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
-        ("return fetch('https://example.com');", "fetch"),
+        ("return process.cwd();", "isn't available on `process`"),
         ("return new Map<string, number>();", "new Map"),
         (
             "const f=(value:string)=>typeof value; return f();",

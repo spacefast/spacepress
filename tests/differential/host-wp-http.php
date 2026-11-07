@@ -5,8 +5,16 @@
 
 declare(strict_types=1);
 
-function add_action(string $hook, callable $fn, int $priority = 10): void {}
-function remove_action(string $hook, callable $fn, int $priority = 10): void {}
+/** @var array<string, list<callable>> */
+$GLOBALS['host_actions'] = [];
+function add_action(string $hook, callable $fn, int $priority = 10): void
+{
+    $GLOBALS['host_actions'][$hook][] = $fn;
+}
+function remove_action(string $hook, callable $fn, int $priority = 10): void
+{
+    $GLOBALS['host_actions'][$hook] = array_values(array_filter($GLOBALS['host_actions'][$hook] ?? [], static fn ($f) => $f !== $fn));
+}
 function apply_filters(string $hook, mixed $value, mixed ...$args): mixed
 {
     // origin.example resolves to a public address, so the address check passes; the transport
@@ -26,6 +34,13 @@ function wp_remote_request(string $url, array $args): array|false
     $message = '';
     $out = [];
     $curl = curl_init($target);
+    // As WordPress's cURL transport does: Zero\Fetch pins the checked address here. The local
+    // origin is then reached with the pin replaced, which the stub owns, not the policy.
+    foreach ($GLOBALS['host_actions']['http_api_curl'] ?? [] as $fn) {
+        $fn($curl);
+    }
+    curl_setopt($curl, CURLOPT_RESOLVE, []);
+    curl_setopt($curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
     curl_setopt_array($curl, [
         CURLOPT_CUSTOMREQUEST => $args['method'],
         CURLOPT_HTTPHEADER => $headers,

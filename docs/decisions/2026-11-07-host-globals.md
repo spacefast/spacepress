@@ -33,6 +33,8 @@ capability check has one place to hook.
 - Values: `Ty::Host(HostTy::{Response, Headers, SearchParams})`, nominal, with
   members and methods in `host_property` / `host_method`. Runtime classes are
   `Zero\FetchResponse`, `Zero\FetchHeaders`, `Zero\SearchParams`.
+- Writes: `Compiler::host_place` refuses assignments to `process.env` and the
+  other host objects.
 
 ## Decisions
 
@@ -69,4 +71,9 @@ capability check has one place to hook.
 - `zero migrate app` maps 0.8's global `fetch` with no rewrite, `ctx.env.X`
   to `process.env["X"]`, and `ctx.crypto.*` to `node:crypto`.
 - Types come from the standard declarations (`@types/node`, which declares
-  `fetch`, `crypto`, `process`, `Buffer`, `Headers`, `URLSearchParams`).
+  `fetch`, `crypto`, `process`, `Buffer`, `Headers`, `URLSearchParams`). New
+  projects install it; `tests/host-types` pins it for CI.
+- Reading `process`, `fetch`, `crypto` or `Buffer` while the config is
+  evaluated is refused: settings that WordPress resolves later use `env()`.
+- Local bindings named `fetch`, `crypto` or `process` shadow the globals by
+  ordinary scoping; `host.rs` only matches names that resolve to the global.

@@ -371,6 +371,12 @@ impl<'p> Evaluator<'p> {
         self.program
     }
 
+    /// Evaluates another entry module (a `wp-hooks/` file) and returns its exports.
+    pub fn run_module(&mut self, module: usize) -> Result<IndexMap<String, Value>, Diag> {
+        self.eval_module(module).map_err(uncaught)?;
+        Ok(self.exports[module].clone())
+    }
+
     pub fn module_scope(&self, module: usize) -> Option<Rc<Scope>> {
         self.module_scopes[module].clone()
     }
@@ -2435,7 +2441,18 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
 /// Names exported by `"php/wordpress"`.
 pub const WORDPRESS_EXPORTS: &[&str] = &["abilities"];
 /// Type-only exports of `"php/wordpress"`: importable, erased.
-const WORDPRESS_TYPES: &[&str] = &["Abilities", "AbilityName", "AbilityInput", "AbilityOutput"];
+const WORDPRESS_TYPES: &[&str] = &[
+    "Abilities",
+    "AbilityName",
+    "AbilityInput",
+    "AbilityOutput",
+    "Hooks",
+    "HookName",
+    "Handler",
+    "WP_Post",
+    "WP_User",
+    "WP_Query",
+];
 
 fn wordpress_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {

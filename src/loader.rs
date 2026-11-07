@@ -153,9 +153,8 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
             "wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
         )
     };
-    let ts = |p: &Path| {
-        p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p)
-    };
+    let ts =
+        |p: &Path| p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p);
     let mut out = Vec::new();
     for path in listing(dir)? {
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -179,7 +178,10 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
     for (hook, _, path) in &out {
         let parent = path.parent().expect("listed under wp-hooks/");
         if seen.insert(hook, parent).is_some_and(|p| p != parent) {
-            return Err(refuse(path, &format!("`{hook}` is both a file and a directory; keep one")));
+            return Err(refuse(
+                path,
+                &format!("`{hook}` is both a file and a directory; keep one"),
+            ));
         }
     }
     Ok(out)

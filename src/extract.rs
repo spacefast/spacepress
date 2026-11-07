@@ -15,15 +15,40 @@ use std::rc::Rc;
 /// Where a compiled function's PHP name goes once it's known.
 #[derive(Debug, Clone)]
 pub enum Slot {
-    Hook { table: String, kind: HookKind },
-    Default { at: ColPath },
-    OnUpdate { at: ColPath },
-    Validate { at: ColPath },
-    ActionHandler { action: String },
-    Access { owner: Owner, op: String },
-    FieldAccess { at: ColPath, op: String },
-    JobHandler { job: String },
-    RouteHandler { route: String },
+    Hook {
+        table: String,
+        kind: HookKind,
+    },
+    Default {
+        at: ColPath,
+    },
+    OnUpdate {
+        at: ColPath,
+    },
+    Validate {
+        at: ColPath,
+    },
+    ActionHandler {
+        action: String,
+    },
+    Access {
+        owner: Owner,
+        op: String,
+    },
+    FieldAccess {
+        at: ColPath,
+        op: String,
+    },
+    JobHandler {
+        job: String,
+    },
+    RouteHandler {
+        route: String,
+    },
+    /// A `wp-hooks/` handler; `index` is its place in `Schema::wp_hooks`.
+    WpHook {
+        index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]

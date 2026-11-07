@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Count `zero migrate app --from zero-0.8` outcomes over a corpus of 0.8 projects.
 
-Usage: scripts/migrate-census.py [--zero target/debug/zero] [--json] [corpus-dir ...]
+Usage: scripts/migrate-census.py [--zero target/debug/zero] [--json] [--flag <converter flag>]... [corpus-dir ...]
 
 The default corpus is tests/fixtures/app-migrate/corpus plus the three app-migrate
 fixtures (board, content, refused). Each immediate subdirectory is one 0.8 project.
@@ -13,7 +13,8 @@ Formula (the same one docs/zero-08-parity.md reports):
                     (the reason text for pointer-less errors)
   count(category) = number of refused apps with at least one error in that category
 Each app is counted once per category, so category counts can sum to more than the
-number of refused apps.
+number of refused apps. An app may carry `census.json` with `{"flags": [...]}`, the
+converter flags its Space needs (for example `--users` when Space Users is on).
 """
 import json
 import os
@@ -74,11 +75,19 @@ def projects(paths):
                 yield child
 
 
-def run(zero, project, scratch):
+def flags(project):
+    path = os.path.join(project, "census.json")
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        return list(json.load(f).get("flags", []))
+
+
+def run(zero, project, scratch, extra):
     out = os.path.join(scratch, os.path.basename(project))
     proc = subprocess.run(
         [zero, "migrate", "app", "--from", "zero-0.8", project, "--out", out,
-         "--space", "spc_census", "--dry-run", "--json"],
+         "--space", "spc_census", "--dry-run", "--json", *sorted(set(flags(project) + extra))],
         capture_output=True, text=True,
     )
     try:
@@ -91,6 +100,7 @@ def run(zero, project, scratch):
 def main(argv):
     zero = os.path.join(ROOT, "target/debug/zero")
     as_json = False
+    extra = []
     paths = []
     it = iter(argv)
     for arg in it:
@@ -98,12 +108,14 @@ def main(argv):
             zero = next(it)
         elif arg == "--json":
             as_json = True
+        elif arg == "--flag":
+            extra.append(next(it))
         else:
             paths.append(os.path.abspath(arg))
     apps = []
     with tempfile.TemporaryDirectory() as scratch:
         for project in projects(paths or DEFAULT):
-            report = run(zero, project, scratch)
+            report = run(zero, project, scratch, extra)
             errors = report.get("errors", [])
             cats = sorted({category(e) for e in errors})
             apps.append({
@@ -119,6 +131,7 @@ def main(argv):
             counts[c] = counts.get(c, 0) + 1
     only = lambda want: sum(1 for a in refused if set(a["categories"]) & {"pages", "endpoints"} == want)
     summary = {
+        "flags": extra,
         "apps": len(apps),
         "accepted": len(apps) - len(refused),
         "refused": len(refused),

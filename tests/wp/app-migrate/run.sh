@@ -41,3 +41,12 @@ docker compose -p "$ZERO_WP_PROJECT" exec -T db mariadb -uroot -pzero-test-root 
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/content/.zero/wp-content" > "$work/content-harness.json"
 ZERO_WP_HARNESS="$work/content-harness.json" node --test "$here/identity.test.ts"
+# Paginated reads over retained rows, walked page by page through the migrated actions.
+"$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/feed --out "$work/feed" --space spc_migrate_test > "$work/feed-report.json"
+"$zero" build "$work/feed" --quiet >/dev/null
+"$wp/harness.sh" down >/dev/null
+"$wp/harness.sh" up --wp-content "$work/feed/.zero/wp-content" --bare > "$work/feed-bare.json"
+docker compose -p "$ZERO_WP_PROJECT" cp "$here/feed-seed.php" cli:/tmp/zero-app-migrate-feed-seed.php >/dev/null 2>&1
+"$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-feed-seed.php >/dev/null
+"$wp/harness.sh" up --wp-content "$work/feed/.zero/wp-content" > "$work/feed-harness.json"
+ZERO_WP_HARNESS="$work/feed-harness.json" node --test "$here/feed.test.ts"

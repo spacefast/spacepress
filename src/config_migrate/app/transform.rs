@@ -315,7 +315,8 @@ function __z08RequireIdentity(user: __z08User | null, subject: string | null) {
 "#;
 
 /// Index ranges keep 0.8's null rule: comparing against null is refused.
-const RANGE: &str = r#"function __z08RangeText(value: string | null | undefined): string { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
+const RANGE: &str = r#"function __z08PageOptions(options: { numItems: number; cursor?: string | null }): { numItems: number; cursor: string | null } { return { numItems: options.numItems, cursor: options.cursor ?? null }; }
+function __z08RangeText(value: string | null | undefined): string { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
 function __z08RangeReal(value: number | null | undefined): number { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
 function __z08RangeBoolean(value: boolean | null | undefined): boolean { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
 "#;
@@ -353,6 +354,10 @@ pub(super) fn app(
                     };
                     if s.local.starts_with("__z08") || s.local == "InferSelectModel" {
                         return Err(fail("", "reserved generated import binding"));
+                    }
+                    // Structural 0.8 types the migrated handlers still name.
+                    if let Some(shape) = legacy_type(name) {
+                        prelude.push_str(&format!("type {} = {shape};\n", s.local));
                     }
                     aliases.insert(s.local.clone(), name.clone());
                 }
@@ -562,6 +567,7 @@ pub(super) fn app(
     } else {
         None
     };
+    let mut helpers: Vec<String> = Vec::new();
     let has_users = users
         || root
             .get("auth")
@@ -605,7 +611,11 @@ pub(super) fn app(
                     )
                 })();
                 match result {
-                    Ok(h) => {
+                    Ok((h, generated)) => {
+                        if generated.iter().any(|g| g.contains("__z08page_")) {
+                            entries.push(entry(&at, "mapped", "paginate keeps 0.8's index order, numItems clamp and { page, isDone, continueCursor } result; cursors are new opaque strings, so clients restart from the first page after cutover"));
+                        }
+                        helpers.extend(generated);
                         handlers.push(h);
                         entries.push(entry(&at,"mapped","v2 action with named input properties and legacy row results; REST URL/envelope and error transport follow v2"));
                     }
@@ -644,6 +654,9 @@ pub(super) fn app(
         config.push_str(IDENTITY);
     }
     config.push_str(RANGE);
+    for h in &helpers {
+        config.push_str(h);
+    }
     config.push_str("function __z08Key(id: string): number {\n  const n = Number(id);\n  if (!/^[1-9][0-9]*$/.test(id) || n > 9007199254740991) throw new __z08HttpError(422, \"legacy_id_range\", \"Expected a positive safe integer ID.\");\n  return n;\n}\n");
     config.push_str(&format!(
         "export default __z08Config({{ name: {}, tables: {{ {} {} }},",
@@ -816,6 +829,15 @@ fn table_code(t: &Table) -> String {
     out
 }
 
+/// 0.8 SDK types with a structural v2 meaning.
+fn legacy_type(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "PaginationOptions" => "{ numItems: number; cursor: string | null }",
+        "Id" => "string",
+        _ => return None,
+    })
+}
+
 fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Result<String, Failure> {
     let (base, nullable) = match ty {
         TyAnn::Str => ("__z08Text()".into(), false),
@@ -858,7 +880,7 @@ fn handler(
     at: &str,
     name: &str,
     mode: Mode,
-) -> Result<String, Failure> {
+) -> Result<(String, Vec<String>), Failure> {
     let Mode {
         writes,
         signed_in,
@@ -903,6 +925,8 @@ fn handler(
         writes,
         subjects,
         uses_subject: false,
+        action: name,
+        helpers: vec![],
         edits: vec![],
     };
     let body = match &f.body {
@@ -947,11 +971,12 @@ fn handler(
         (true, false) => "const __z08subject = await __z08Subject(__z08ctx.user);\n",
         (true, true) => "const __z08subject: string = await __z08Subject(__z08ctx.user) ?? \"\";\n",
     };
-    Ok(format!(
+    let code = format!(
         "{}: __z08Action({{ input: {{ {} }}, access: \"anyone\", agents: false, async handler(__z08input, __z08ctx) {{\n{gate}{subject}{bindings}{body}\n}} }})",
         q(name),
         input.join(", ")
-    ))
+    );
+    Ok((code, r.helpers))
 }
 
 struct Rewrite<'a> {
@@ -963,6 +988,10 @@ struct Rewrite<'a> {
     /// A `members` projection carries each user's 0.8 Space subject.
     subjects: bool,
     uses_subject: bool,
+    /// The generated action's name, which keeps helper names and cursor sites unique.
+    action: &'a str,
+    /// Module-level helpers generated for this handler (one per paginated call site).
+    helpers: Vec<String>,
     edits: Vec<(Span, String)>,
 }
 impl Rewrite<'_> {
@@ -1269,6 +1298,158 @@ impl Rewrite<'_> {
         }
         Ok(())
     }
+    /// `.paginate({ numItems, cursor })` keeps 0.8's keyset contract: the index order, then
+    /// `createdAt` and `id`; `numItems` clamped to 1..1000; `{ page, isDone, continueCursor }`; and
+    /// a cursor that only this call site accepts. The helper takes every range value as a
+    /// parameter, so it captures nothing from the handler.
+    #[allow(clippy::too_many_arguments)]
+    fn paginate(
+        &mut self,
+        at: &str,
+        t: &Table,
+        index: &str,
+        columns: &[String],
+        direction: &str,
+        params: &[(String, String, &str, &str, String)],
+        options: &str,
+    ) -> Result<String, Failure> {
+        let field = |c: &str| t.fields.iter().find(|f| f.name == c);
+        if let Some(c) = columns.iter().find(|c| field(c).is_some_and(|f| f.optional)) {
+            return Err(fail(
+                at,
+                format!("pagination over optional field {c} needs a manual port; 0.8 cursors order NULL keys"),
+            ));
+        }
+        let name = &t.name;
+        let helper = format!("__z08page_{}_{}", self.action, self.page_sites());
+        let site = format!("{}:{}:{name}:{index}:{direction}", self.action, self.page_sites());
+        // Cursor keys: one per ordered column, encoded as strings so the cursor stays plain text.
+        let kinds: Vec<&str> = columns
+            .iter()
+            .map(|c| match field(c).map(Field::ty) {
+                Some("number") => "number",
+                Some("boolean") => "boolean",
+                _ if c == "id" => "number",
+                _ => "string",
+            })
+            .collect();
+        let cmp = if direction == "desc" { "lt" } else { "gt" };
+        let range = params
+            .iter()
+            .enumerate()
+            .map(|(i, (f, op, kind, _, _))| {
+                if op == "eq" {
+                    format!("{{ {}: {{ eq: p{i} as {} }} }}", q(f), params[i].3)
+                } else {
+                    format!("{{ {}: {{ {op}: __z08Range{kind}(p{i}) }} }}", q(f))
+                }
+            })
+            .collect::<Vec<_>>();
+        let branches = (0..columns.len())
+            .map(|i| {
+                let mut parts = (0..i)
+                    .map(|j| format!("{{ {}: {{ eq: k{j} }} }}", q(&columns[j])))
+                    .collect::<Vec<_>>();
+                parts.push(format!("{{ {}: {{ {cmp}: k{i} }} }}", q(&columns[i])));
+                format!("{{ AND: [{}] }}", parts.join(", "))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let order = columns
+            .iter()
+            .map(|c| format!("{}: {}", q(c), q(direction)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let signature = params
+            .iter()
+            .enumerate()
+            .map(|(i, (_, _, _, ty, _))| format!("p{i}: {ty} | null | undefined"))
+            .collect::<Vec<_>>();
+        let decode = kinds
+            .iter()
+            .enumerate()
+            .map(|(i, k)| match *k {
+                "number" => format!("k{i} = Number(parts[{i}] ?? \"\"); if (!Number.isFinite(k{i})) throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\");"),
+                "boolean" => format!("if (parts[{i}] !== \"1\" && parts[{i}] !== \"0\") throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\"); k{i} = parts[{i}] === \"1\";"),
+                _ => format!("k{i} = parts[{i}] ?? \"\";"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n    ");
+        let initial = kinds
+            .iter()
+            .enumerate()
+            .map(|(i, k)| match *k {
+                "number" => format!("let k{i} = 0;"),
+                "boolean" => format!("let k{i} = false;"),
+                _ => format!("let k{i} = \"\";"),
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let encode = columns
+            .iter()
+            .zip(&kinds)
+            .map(|(c, k)| match *k {
+                "boolean" => format!("(last.{c} ? \"1\" : \"0\")"),
+                "string" => format!("last.{c}"),
+                _ => format!("String(last.{c})"),
+            })
+            .collect::<Vec<_>>()
+            .join(" + \"\\u0000\" + ");
+        let filter = |extra: Option<String>| {
+            let mut all = range.clone();
+            all.extend(extra);
+            format!("where: {{ AND: [{}] }}, ", all.join(", "))
+        };
+        let scope = (0..params.len())
+            .map(|i| format!("p{i} ?? null"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut sig = vec!["options: { numItems: number; cursor: string | null }".to_string()];
+        sig.extend(signature);
+        // Columns read from the last raw row are typed by the table, so `last.<c>` is defined.
+        self.helpers.push(format!(
+            "async function {helper}({}) {{
+  const size = Math.max(1, Math.min(1000, Number(options.numItems) || 0));
+  const cursor = options.cursor;
+  // Like 0.8's query fingerprint, a cursor only continues the same filter values.
+  const scope = JSON.stringify([{scope}]) ?? \"\";
+  {initial} let after = false;
+  if (cursor !== null && cursor !== \"\") {{
+    let parsed: {{ site?: unknown; scope?: unknown; keys?: unknown }} = {{}};
+    try {{ parsed = JSON.parse(cursor) as {{ site?: unknown; scope?: unknown; keys?: unknown }}; }} catch (e) {{ throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\"); }}
+    const site = parsed.site;
+    const keys = parsed.keys;
+    if (site !== {} || parsed.scope !== scope || typeof keys !== \"string\") throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\");
+    const parts = keys.split(\"\\u0000\");
+    if (parts.length !== {}) throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\");
+    {decode}
+    after = true;
+  }}
+  const rows = after
+    ? await __z08Db.query.{name}.findMany({{ {}orderBy: {{ {order} }}, limit: size + 1 }})
+    : await __z08Db.query.{name}.findMany({{ {}orderBy: {{ {order} }}, limit: size + 1 }});
+  const items = rows.slice(0, size);
+  const last = items[items.length - 1];
+  const isDone = rows.length <= size;
+  return {{ page: items.map(__z08_{name}_row), isDone, continueCursor: isDone || last == null ? null : JSON.stringify({{ site: {}, scope, keys: {encode} }}) }};
+}}
+",
+            sig.join(", "),
+            q(&site),
+            columns.len(),
+            filter(Some(format!("{{ OR: [{branches}] }}"))),
+            filter(None),
+            q(&site),
+        ));
+        let mut call = vec![format!("__z08PageOptions({options})")];
+        call.extend(params.iter().map(|(_, _, _, _, v)| v.clone()));
+        Ok(format!("(await {helper}({}))", call.join(", ")))
+    }
+
+    fn page_sites(&self) -> usize {
+        self.helpers.len()
+    }
+
     fn db(&mut self, e: &Expr) -> Result<Option<String>, Failure> {
         let mut cursor = e;
         let mut chain = Vec::new();
@@ -1350,6 +1531,7 @@ impl Rewrite<'_> {
                     fields
                 };
                 let mut filters = Vec::new();
+                let mut params: Vec<(String, String, &str, &str, String)> = Vec::new();
                 if let Some(range) = a.get(1) {
                     let E::Func(f) = &range.kind else {
                         return Err(fail(&at, "index range must be an arrow function"));
@@ -1423,6 +1605,7 @@ impl Rewrite<'_> {
                         } else {
                             format!("{{ {}: {{ {op}: __z08Range{kind}({value}) }} }}", q(&field))
                         });
+                        params.push((field.clone(), op.to_string(), kind, ty, value));
                     }
                 }
                 let mut direction = "asc".to_string();
@@ -1444,6 +1627,7 @@ impl Rewrite<'_> {
                         }
                         "collect" | "count" | "first" if a.is_empty() => end = Some((*method, None)),
                         "take" if a.len() == 1 => end = Some(("take", Some(self.render(a[0])?))),
+                        "paginate" if a.len() == 1 => end = Some(("paginate", Some(self.render(a[0])?))),
                         _ => {
                             return Err(fail(
                                 &at,
@@ -1455,8 +1639,17 @@ impl Rewrite<'_> {
                     }
                 }
                 let Some((terminal, limit)) = end else {
-                    return Err(fail(&at, "database query must end with collect, count, first or take"));
+                    return Err(fail(
+                        &at,
+                        "database query must end with collect, count, first, take or paginate",
+                    ));
                 };
+                if terminal == "paginate" {
+                    let options = limit.expect("paginate options");
+                    return Ok(Some(
+                        self.paginate(&at, t, &index, &columns, &direction, &params, &options)?,
+                    ));
+                }
                 let order = columns
                     .iter()
                     .map(|n| format!("{}: {}", q(n), q(&direction)))

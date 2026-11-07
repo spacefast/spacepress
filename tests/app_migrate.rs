@@ -298,3 +298,39 @@ fn space_user_subjects_back_owner_scoped_handlers() {
     );
     build(&out);
 }
+
+#[test]
+fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("feed");
+    let (ok, report) = migrate(&fixture("feed"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    let paginated: Vec<_> = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["reason"].as_str().unwrap().starts_with("paginate keeps"))
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    assert_eq!(paginated, ["/queries/latest", "/queries/channel"]);
+    build(&out);
+    let root = temp.path().join("optional");
+    project(
+        &root,
+        r#"{schema:{notes:table({tag:string().optional()}).index("by_tag",["tag"])},queries:{page:query(async (ctx, options: PaginationOptions) => ctx.db.notes.withIndex("by_tag").paginate(options))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts")).unwrap().replace(
+        "import { capsule }",
+        "import { capsule, query, string, table, type PaginationOptions }",
+    );
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("refused"), &["--space", "spc_migrate_test"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/queries/page/ctx/db/notes");
+    assert!(
+        refused["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("optional field tag")
+    );
+}

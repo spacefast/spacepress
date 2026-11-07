@@ -31,6 +31,8 @@ $wp = wpSite('blog', [
 ]);
 $app = $wp->app();
 $db = \Zero\db();
+eq('WordPress and the request pipeline share the validated schema', $app->schema === \Zero\Wp\Runtime::plugin()->schema, true);
+eq('the database uses the validated schema', $db->schema() === $app->schema, true);
 $anonymous = new \Zero\Viewer(null);
 eq('an unprotected collection retains unrestricted storage visibility', $db->store()->readGuards('openNotes', $anonymous), []);
 $openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true, $anonymous)[0];

@@ -27,6 +27,11 @@ JSON flags and failure behavior are preserved. There is no temporary change to
 own encoding policies. The pre-existing Sync canonical and Js encoders continue
 to own their explicit number spelling.
 
+The offline deploy adapter is also runnable without bootstrap or an autoloader.
+Its entry point explicitly requires Json.php, and the Rust CLI includes that file
+beside Artifact.php and Local.php in its temporary standalone bundle. The source
+entry point and extracted CLI bundle run the same artifact success/refusal tests.
+
 The bootstrap behavior test sets deliberately restrictive numeric precision and
 distinct diagnostic settings before loading Zero. It verifies that bootstrap,
 successful and failed native JSON, nested serializer exceptions, Js serialization

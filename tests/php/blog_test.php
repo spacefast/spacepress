@@ -118,6 +118,10 @@ eq('native editor can still load protected content for editing', [$nativeEdited-
 $wp->actAs(null);
 wp_update_post(['ID' => $protected['id'], 'post_password' => '0']);
 eq('WordPress empty-password semantics remain public', [post_password_required($protected['id']), $db->findFirst('posts', ['where' => $protectedWhere], $anon)['body'] ?? null], [false, $protected['body']]);
+foreach (['0 ', ' ', 'Native-secret', 'native-secret '] as $password) {
+    wp_update_post(['ID' => $protected['id'], 'post_password' => $password]);
+    eq('only exact empty passwords are public: ' . json_encode($password), $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
+}
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
 $coreRead = static function () use ($protected) {
     return rest_do_request(new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $protected['id']));
@@ -195,6 +199,7 @@ $page = $db->findMany('posts', ['where' => ['id' => ['in' => array_merge($protec
 $firstQueries = $wpdb->num_queries - $queries;
 eq('batch visibility preserves a full public page', array_column($page, 'id'), [$pub['id']]);
 check('protected visibility primes forty posts in a bounded query count', $firstQueries <= 5, $firstQueries);
+eq('anonymous pagination never primes unrelated protected posts', wp_cache_get($protectedIds[0], 'posts'), false);
 $proofChecks = 0;
 $countCapabilities = static function ($caps) use (&$proofChecks) { $proofChecks++; return $caps; };
 add_filter('map_meta_cap', $countCapabilities, 1);
@@ -214,7 +219,7 @@ $failPostLookup = static function (string $sql) use ($wpdb): string {
 add_filter('query', $failPostLookup);
 $suppressed = $wpdb->suppress_errors(true);
 try {
-    problem('unresolved protected posts refuse anonymous reads', fn () => $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $anon), 503, 'storage_unavailable');
+    eq('SQL policy still hides protected rows when the WP post-cache lookup fails', $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $anon), []);
     problem('unresolved protected posts refuse editor reads', fn () => $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $viewer), 503, 'storage_unavailable');
 } finally {
     remove_filter('query', $failPostLookup);

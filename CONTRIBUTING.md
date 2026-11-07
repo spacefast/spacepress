@@ -62,7 +62,7 @@ zero check [dir] [--json]                               compile; write nothing
 zero dev [dir] [--port <n>] [--no-watch] [--allow-destructive]  start WordPress Studio and watch sources
 zero dev stop [dir]                                    stop the local site, preserving data
 zero dev status [dir]                                  report the local site
-zero dev wp [dir] -- <args>                             run WP-CLI on the local site
+zero wp --site [dir] <args>                             run WP-CLI on the local site
 zero doctor [dir] [--out <dir>] [--site <url> --token <t>]   check a build, and a running site
 zero sync [status|resolve <uid>] [dir] --site <url> <credential>
 zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <id>] [--dry-run] [--json]
@@ -91,7 +91,7 @@ startup. Different project directories have independent sites. Create API
 credentials explicitly with WP-CLI:
 
 ```sh
-zero dev wp [dir] -- user application-password create admin zero-local --porcelain
+zero wp --site [dir] user application-password create admin zero-local --porcelain
 ```
 
 ## The blog tour

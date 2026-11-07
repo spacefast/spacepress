@@ -60,9 +60,9 @@ register the page with zero-identity:
 node examples/blog/build-client.mjs
 ./target/release/zero build examples/blog        # ships public/client/ with the plugin
 ./target/release/zero dev examples/blog --no-watch
-./target/release/zero dev wp examples/blog -- zero-identity app add --name=Blog --id=app_blog \
+./target/release/zero wp --site examples/blog zero-identity app add --name=Blog --id=app_blog \
   --redirect=http://localhost:8787/wp-content/plugins/zero-app-blog/public/ --origin=http://localhost:8787
-./target/release/zero dev wp examples/blog -- user application-password create admin zero-sync --porcelain
+./target/release/zero wp --site examples/blog user application-password create admin zero-sync --porcelain
 ```
 
 These commands assume Studio printed `http://localhost:8787`; substitute its

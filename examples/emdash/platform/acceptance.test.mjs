@@ -41,7 +41,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
     if (args[0] !== 'dev' || !args.includes('application-password')) records.push({ command: ['zero', ...args], stdout: result.stdout, stderr: result.stderr });
     return result.stdout.trim();
   };
-  const wp = (...args) => command(['dev', 'wp', project, '--', ...args]);
+  const wp = (...args) => command(['wp', '--site', project, ...args]);
   const hit = [];
   const receiver = createServer(async (request, response) => {
     const chunks = [];

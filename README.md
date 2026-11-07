@@ -145,7 +145,7 @@ To leave the site running without watching, use `--no-watch`:
 ```sh
 ./target/release/zero dev examples/pantry --no-watch
 ./target/release/zero dev status examples/pantry
-./target/release/zero dev wp examples/pantry -- user application-password create admin zero-local --porcelain
+./target/release/zero wp --site examples/pantry user application-password create admin zero-local --porcelain
 ```
 
 Use the returned application password for API writes. Public reads need no
@@ -191,7 +191,7 @@ config as `journal/zero.config.ts`, then
 
 ```sh
 ./target/release/zero dev journal --no-watch      # builds the client and starts WordPress
-./target/release/zero dev wp journal -- user application-password create admin zero-client --porcelain
+./target/release/zero wp --site journal user application-password create admin zero-client --porcelain
 ```
 
 Node 22.18+ runs this as-is from the `journal` directory, with the admin

@@ -26,6 +26,16 @@ probe = """    // Probes: undefined optional fields, and once() keyed to the req
     probeLiteral: route({ method: "GET", path: "/api/probe/feed.json", access: "anyone", handler() {
       return { body: "probe literal" };
     } }),
+    // Catch-all: `*path` takes one or more decoded segments, below literals and :params.
+    probeRest: route({ method: "GET", path: "/files/*path", access: "anyone", handler(req) {
+      return { body: "rest " + req.params["path"] };
+    } }),
+    probeRestParam: route({ method: "GET", path: "/files/:bucket/latest", access: "anyone", handler(req) {
+      return { body: "latest " + req.params["bucket"] };
+    } }),
+    probeRestLiteral: route({ method: "GET", path: "/files/readme.txt", access: "anyone", handler() {
+      return { body: "readme" };
+    } }),
     // The query as URLSearchParams reads it.
     probeQuery: route({ method: "GET", path: "/api/probe-query", access: "anyone", handler(req) {
       return { headers: { "content-type": "application/json" }, body: JSON.stringify({

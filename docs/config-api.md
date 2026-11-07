@@ -348,8 +348,11 @@ export default defineConfig({
   route also answers `HEAD`. A path that a route serves with another method
   answers `405`.
 - `path` starts with `/`. Each segment is literal (`A-Z a-z 0-9 . _ ~ -`) or
-  `:name`, which matches one segment. A trailing slash matches. Two routes with
-  the same method and shape are refused. So is a first segment WordPress or Zero
+  `:name`, which matches one segment. The last segment may be `*name`, which
+  matches one or more segments; `req.params.name` is them decoded and joined
+  with `/`. An encoded `/` or a `.`/`..` segment never matches. A trailing
+  slash matches. Two routes with the same method and shape are refused. So is
+  a first segment WordPress or Zero
   owns (`wp-admin`, `wp-json`, `wp-content`, `feed`, `zero-admin`, `auth`,
   `__spacefast`, `.well-known`, ...), and so is a URL that a
   [TSX page](pages.md) serves.
@@ -366,8 +369,9 @@ export default defineConfig({
   `a_b` and keep only the last value.
 - When several routes match, the most specific one wins, whatever their order
   in the config. Segments are compared from the left, and a literal segment
-  beats a `:param`: `/api/feed.json` wins over `/api/:id`, and
-  `/api/probe/:id` wins over `/api/:kind/:id`.
+  beats a `:param`, which beats a `*rest`: `/api/feed.json` wins over
+  `/api/:id`, `/api/probe/:id` wins over `/api/:kind/:id`, and
+  `/files/:bucket/latest` wins over `/files/*path`.
 - The handler returns `{ status?, headers?, body? }`. `status` defaults to
   `200`, `body` to `""`, and `Content-Type` to `text/plain; charset=utf-8`. Header
   names are case-insensitive, so the handler's `content-type` replaces the

@@ -81,13 +81,13 @@ Zero watching and rebuilding sources in the foreground.
 cargo test                     # compiler; the pantry and blog examples built and run on WordPress-on-SQLite
 tests/php/run.sh               # the PHP runtime, on an in-process WordPress
 tests/wp/run.sh                # the runtime on real WordPress (Docker)
-tests/system/run.sh            # examples/site on WordPress, a 0.8 site migration, the blog's sync
+tests/system/run.sh            # examples/site on WordPress, a site migration, the blog's sync
 ```
 
 `tests/system/run.sh` boots three fresh WordPress sites, one at a time:
 
 1. `examples/site`, installed as a site owner would and walked through the
    whole journey, then upgraded, deactivated and reinstalled.
-2. An original Zero 0.8 site, moved over as
-   [migrating from Zero 0.8](migrating-from-zero.md) describes.
+2. A site built with an earlier Zero, moved over as
+   [migrating from Zero](migrating-from-zero.md) describes.
 3. `examples/blog`, whose committed Markdown posts sync in.

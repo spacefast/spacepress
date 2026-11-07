@@ -79,6 +79,21 @@ fn fetch_is_an_explicit_zero_import_with_string_bodies() {
 }
 
 #[test]
+fn a_catch_all_route_segment_comes_last() {
+    rejects(
+        "reject-route-catchall-middle",
+        "has a *catch-all that is not the last segment",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/route-catchall"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",

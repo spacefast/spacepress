@@ -12,8 +12,14 @@
  * 4. Execute each route once with symbolic request data (render.ts) and
  *    serialize its document with Zero Blocks' pinned serializer.
  * 5. Bundle CSS, file assets and island client modules into hashed files.
- * 6. Write `plugins/zero-pages-<app>/` to a sibling temp directory and swap
- *    it in. On any error nothing is written and the previous output stays.
+ * 6. Write the render artifact, `zero/pages.json`: the manifest bytes, every
+ *    template, body and asset, the schema the pages were rendered against and
+ *    a hash of each text input. It holds no PHP. `zero sources` captures it and
+ *    the host compiler (`compile-sources`) validates it and emits the same
+ *    plugin from it, so a hosted app needs no JavaScript on the server.
+ * 7. Write `plugins/zero-pages-<app>/` from that artifact to a sibling temp
+ *    directory and swap it in. On any error nothing is written and the
+ *    previous output stays.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { access, cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -34,6 +40,11 @@ import { ASSET_TOKEN, TOKEN_END, TOKEN_START, type BuildInput, type CollectionIn
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
+/** The plugin's PHP: `wp/` in a packed package, `runtime/pages/` (which the Zero compiler embeds) in a checkout. */
+const wpRuntime = async (): Promise<string> => {
+  const packed = path.join(packageRoot, "wp");
+  return (await exists(packed)) ? packed : path.resolve(packageRoot, "../../runtime/pages");
+};
 const moduleExtension = path.extname(fileURLToPath(import.meta.url));
 const blocksRoot = path.dirname(fileURLToPath(import.meta.resolve("@spacefast/zero-blocks/package.json")));
 const SELF = /^@spacefast\/zero-pages(?:\/(jsx-runtime|jsx-dev-runtime))?$/;
@@ -52,7 +63,28 @@ export interface BuildResult {
   diagnostics: PagesDiagnostic[];
   plugin?: string;
   manifest?: Manifest;
+  /** The project's `zero/pages.json`. */
+  artifact?: string;
 }
+
+/**
+ * `zero/pages.json`: everything the plugin needs except its PHP, which the
+ * installer (this package, or Zero's host compiler) supplies itself.
+ * `manifest` is the exact text of the plugin's manifest.json; `files` are
+ * base64, keyed by their path inside the plugin.
+ */
+export interface Artifact {
+  format: "zero.pages.v1";
+  app: string;
+  /** The compiled schema the pages were rendered against, as read from `zero build` output. */
+  schema: AppSchema;
+  /** Project-relative text inputs (routes, layouts, components, islands, CSS) → SHA-256 of their bytes. */
+  inputs: Record<string, string>;
+  manifest: string;
+  files: Record<string, string>;
+}
+
+export const ARTIFACT_FILE = "zero/pages.json";
 
 export interface ManifestRoute {
   id: string;
@@ -97,7 +129,7 @@ function error(code: PagesDiagnostic["code"], message: string, file?: string, hi
 // ---------------------------------------------------------------------------
 // 1. Schema
 
-interface AppSchema {
+export interface AppSchema {
   app: string;
   schema: SchemaInfo;
   postTypes: Record<string, string>;
@@ -161,6 +193,8 @@ interface Bundle {
   css: string | null;
   files: OutputFile[];
   inputs: string[];
+  /** Every text file the bundle read, inside the project: the inputs a stale artifact is detected by. */
+  texts: string[];
 }
 
 const FILE_LOADERS = Object.fromEntries([".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".woff", ".woff2"].map((ext) => [ext, "file" as const]));
@@ -202,6 +236,7 @@ async function bundleRoute(root: string, entry: string, scratch: string): Promis
       css: cssFile?.text ?? null,
       files: result.outputFiles.filter((file) => !/route\.(js|css)(\.map)?$/.test(path.basename(file.path))),
       inputs: projectInputs(root, result.metafile),
+      texts: projectTexts(root, result.metafile),
     };
   } catch (failure) {
     const messages = (failure as { errors?: { text: string; location?: { file: string; line: number; column: number } | null }[] }).errors ?? [];
@@ -220,6 +255,17 @@ function projectInputs(root: string, metafile: Metafile): string[] {
     .map((input) => path.resolve(root, input))
     .filter((file) => !file.startsWith(`${packageRoot}${path.sep}`) && !file.startsWith(`${blocksRoot}${path.sep}`)
       && path.basename(file) !== "zero-pages-route.ts" && /\.(?:[cm]?[jt]sx?)$/.test(file));
+}
+
+/** Every text an esbuild route or island bundle can inline: code, CSS, JSON and imported SVG. */
+const TEXT_INPUT = /\.(?:[cm]?[jt]sx?|css|json|svg)$/;
+
+/** Authored text files a bundle read inside the project; the pinned Pages and Blocks code is not an input. */
+function projectTexts(root: string, metafile: Metafile): string[] {
+  return Object.keys(metafile.inputs)
+    .map((input) => path.resolve(root, input))
+    .filter((file) => file.startsWith(`${root}${path.sep}`) && !file.startsWith(`${packageRoot}${path.sep}`) && !file.startsWith(`${blocksRoot}${path.sep}`)
+      && path.basename(file) !== "zero-pages-route.ts" && TEXT_INPUT.test(file));
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +366,7 @@ class Assets {
   }
 }
 
-async function bundleIsland(root: string, file: string): Promise<{ code: string } | PagesDiagnostic[]> {
+async function bundleIsland(root: string, file: string): Promise<{ code: string; texts: string[] } | PagesDiagnostic[]> {
   try {
     const result = await esbuild({
       entryPoints: [file],
@@ -331,10 +377,11 @@ async function bundleIsland(root: string, file: string): Promise<{ code: string 
       target: "es2022",
       external: ["@wordpress/interactivity"],
       write: false,
+      metafile: true,
       logLevel: "silent",
       tsconfigRaw: {},
     });
-    return { code: result.outputFiles[0]!.text };
+    return { code: result.outputFiles[0]!.text, texts: projectTexts(root, result.metafile) };
   } catch (failure) {
     const messages = (failure as { errors?: { text: string; location?: { file: string; line: number; column: number } | null }[] }).errors ?? [];
     return messages.map((message) => {
@@ -397,6 +444,7 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
       entries.push({ route: { pattern: "/404", param: null, file: found.notFound, layouts: rootLayouts.filter((file) => path.dirname(file) === pagesDir), segments: [] }, notFound: true });
     }
     const checked = new Set<string>();
+    const textInputs = new Set<string>();
     for (const [index, entry] of entries.entries()) {
       const dir = path.join(scratch, `r${index}`);
       await mkdir(dir);
@@ -405,6 +453,7 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
         diagnostics.push(...bundle);
         continue;
       }
+      for (const file of bundle.texts) textInputs.add(file);
       for (const input of bundle.inputs) {
         if (checked.has(input)) continue;
         checked.add(input);
@@ -488,6 +537,7 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
             diagnostics.push(...bundled);
             continue;
           }
+          for (const text of bundled.texts) textInputs.add(text);
           const file = assets.add(`island-${sha(bundled.code).slice(0, 16)}.js`, bundled.code);
           islands[region.namespace] = { namespace: region.namespace, file, actions: [...region.actions] };
           islandSources.set(region.namespace, source);
@@ -534,8 +584,22 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
     }
 
     const manifest: Manifest = { version: 1, app: app.app, digest: "", routes, notFound, islands };
-    const plugin = await writePlugin(options.out, manifest, assets);
-    return { ok: true, pages: true, diagnostics, plugin, manifest };
+    const files = pluginFiles(manifest, assets);
+    const inputs: Record<string, string> = {};
+    for (const file of [...textInputs].sort()) inputs[path.relative(project, file).split(path.sep).join("/")] = sha(await readFile(file));
+    const artifact: Artifact = {
+      format: "zero.pages.v1",
+      app: app.app,
+      schema: app,
+      inputs: Object.fromEntries(Object.entries(inputs).sort(([a], [b]) => (a < b ? -1 : 1))),
+      manifest: `${JSON.stringify(manifest, null, 2)}\n`,
+      files: Object.fromEntries([...files].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, contents]) => [name, Buffer.from(contents).toString("base64")])),
+    };
+    const text = `${JSON.stringify(artifact, null, 2)}\n`;
+    await mkdir(path.join(project, "zero"), { recursive: true });
+    await writeFile(path.join(project, ARTIFACT_FILE), text);
+    const plugin = await installPlugin(options.out, text);
+    return { ok: true, pages: true, diagnostics, plugin, manifest, artifact: text };
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
@@ -549,38 +613,48 @@ function assertTokens(markup: string, route: ManifestRoute): void {
   }
 }
 
-async function writePlugin(out: string, manifest: Manifest, assets: Assets): Promise<string> {
-  const slug = `zero-pages-${manifest.app}`;
+/** Templates, bodies and assets by plugin path; fills in the manifest digest. */
+function pluginFiles(manifest: Manifest, assets: Assets): Map<string, string | Uint8Array> {
+  const files = new Map<string, string | Uint8Array>();
+  const hashes: string[] = [];
+  for (const route of [...manifest.routes, ...(manifest.notFound === null ? [] : [manifest.notFound])]) {
+    const withMarkup = route as ManifestRoute & { markup?: { document: string; body: string | null } };
+    const markup = withMarkup.markup!;
+    delete withMarkup.markup;
+    assertTokens(markup.document, route);
+    files.set(route.template, markup.document);
+    hashes.push(sha(markup.document));
+    if (route.body !== null && markup.body !== null) {
+      assertTokens(markup.body, route);
+      files.set(route.body, markup.body);
+    }
+  }
+  for (const [name, contents] of [...assets.files].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    files.set(`assets/${name}`, contents);
+    hashes.push(`${name}:${sha(contents)}`);
+  }
+  manifest.digest = sha(JSON.stringify({ ...manifest, digest: "" }) + hashes.join("\n"));
+  return files;
+}
+
+/**
+ * Write `plugins/zero-pages-<app>/` from an artifact's text. Zero's host
+ * compiler writes the same bytes from the same artifact (src/pages.rs).
+ */
+export async function installPlugin(out: string, artifactText: string): Promise<string> {
+  const artifact = JSON.parse(artifactText) as Artifact;
+  const slug = `zero-pages-${artifact.app}`;
   const plugins = path.join(path.resolve(out), "plugins");
   await mkdir(plugins, { recursive: true });
   const target = path.join(plugins, slug);
   const stage = path.join(plugins, `.${slug}-${randomUUID()}`);
   await mkdir(stage);
   try {
-    await mkdir(path.join(stage, "templates"));
-    await mkdir(path.join(stage, "content"));
-    await mkdir(path.join(stage, "assets"));
-    await cp(path.join(packageRoot, "wp"), path.join(stage, "zero-pages"), { recursive: true });
-    const hashes: string[] = [];
-    for (const route of [...manifest.routes, ...(manifest.notFound === null ? [] : [manifest.notFound])]) {
-      const withMarkup = route as ManifestRoute & { markup?: { document: string; body: string | null } };
-      const markup = withMarkup.markup!;
-      delete withMarkup.markup;
-      assertTokens(markup.document, route);
-      await writeFile(path.join(stage, route.template), markup.document);
-      hashes.push(sha(markup.document));
-      if (route.body !== null && markup.body !== null) {
-        assertTokens(markup.body, route);
-        await writeFile(path.join(stage, route.body), markup.body);
-      }
-    }
-    for (const [name, contents] of [...assets.files].sort(([a], [b]) => (a < b ? -1 : 1))) {
-      await writeFile(path.join(stage, "assets", name), contents);
-      hashes.push(`${name}:${sha(contents)}`);
-    }
-    manifest.digest = sha(JSON.stringify({ ...manifest, digest: "" }) + hashes.join("\n"));
-    await writeFile(path.join(stage, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-    await writeFile(path.join(stage, `${slug}.php`), bootstrap(manifest.app));
+    for (const directory of ["templates", "content", "assets"]) await mkdir(path.join(stage, directory));
+    await cp(await wpRuntime(), path.join(stage, "zero-pages"), { recursive: true });
+    for (const [name, contents] of Object.entries(artifact.files)) await writeFile(path.join(stage, name), Buffer.from(contents, "base64"));
+    await writeFile(path.join(stage, "manifest.json"), artifact.manifest);
+    await writeFile(path.join(stage, `${slug}.php`), bootstrap(artifact.app));
     const backup = `${stage}.previous`;
     const had = await exists(target);
     if (had) await rename(target, backup);

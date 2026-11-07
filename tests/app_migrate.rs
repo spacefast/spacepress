@@ -117,9 +117,8 @@ fn reports_all_unsupported_features_and_never_writes_a_refused_app() {
     assert_eq!(
         pointers,
         [
-            "/pages/index.tsx",
+            "/pages/live.tsx",
             "/auth/onGuestUpgrade",
-            "/endpoints/status",
             "/queries/email/ctx/email",
             "/queries/identity/ctx/auth/userId",
             "/queries/pages/ctx/db/tasks"
@@ -202,6 +201,12 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
         std::fs::create_dir_all(root.join(dir)).unwrap();
         std::fs::write(root.join(dir).join("index.tsx"), "export default () => null;").unwrap();
     }
+    // A static page maps; one that keeps state in the browser does not.
+    std::fs::write(
+        root.join("pages/counter.tsx"),
+        "import { useState } from \"preact/hooks\";\nexport default () => { const [n] = useState(0); return <p>{n}</p>; };",
+    )
+    .unwrap();
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(!ok);
@@ -214,13 +219,328 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
     assert_eq!(
         pointers,
         [
-            "/pages/index.tsx",
             "/islands/index.tsx",
             "/layouts/index.tsx",
+            "/pages/counter.tsx",
             "/endpoints/health"
         ]
     );
     assert!(!out.exists());
+}
+
+fn corpus(name: &str) -> PathBuf {
+    fixture("corpus").join(name)
+}
+
+/// Copies a corpus project without the parts a test does not exercise.
+fn trimmed(name: &str, root: &Path, drop: &[&str], edit: impl Fn(String) -> String) {
+    let from = corpus(name);
+    for entry in walk(&from) {
+        let relative = entry.strip_prefix(&from).unwrap();
+        if drop.iter().any(|d| relative.starts_with(d)) {
+            continue;
+        }
+        let target = root.join(relative);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        let text = std::fs::read_to_string(&entry).unwrap();
+        let text = if relative == Path::new("server/index.ts") {
+            edit(text)
+        } else {
+            text
+        };
+        std::fs::write(target, text).unwrap();
+    }
+}
+
+fn walk(dir: &Path) -> Vec<PathBuf> {
+    let mut out = vec![];
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            out.extend(walk(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out
+}
+
+fn without_endpoints(text: String) -> String {
+    let start = text.find("  endpoints: {").expect("endpoints");
+    let end = start + text[start..].find("\n  },\n").expect("end") + 5;
+    format!("{}{}", &text[..start], &text[end..])
+}
+
+#[test]
+fn space_user_subjects_back_owner_scoped_handlers() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("todo");
+    trimmed("starter-todo", &root, &["pages", "client"], without_endpoints);
+    let out = temp.path().join("candidate");
+    // Without Space Users there is no subject to carry, so userId stays refused.
+    let (ok, refused) = migrate(&root, &out, &["--space", "spc_migrate_test", "--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/queries/todos/ctx/auth/userId");
+    let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test", "--users"]);
+    assert!(ok, "{report:#}");
+    let entries = report["entries"].as_array().unwrap();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["pointer"] == "/name" && e["reason"].as_str().unwrap().contains("\"todo\""))
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["pointer"] == "/auth" && e["outcome"] == "review")
+    );
+    let snapshot: Value =
+        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+    assert_eq!(
+        snapshot["tables"]["members"]["columns"]["spacefastSubject"]["type"], "text",
+        "{:#}",
+        snapshot["tables"]["members"]
+    );
+    build(&out);
+}
+
+#[test]
+fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("feed");
+    let (ok, report) = migrate(&fixture("feed"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    let paginated: Vec<_> = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["reason"].as_str().unwrap().starts_with("paginate keeps"))
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    assert_eq!(paginated, ["/queries/latest", "/queries/channel"]);
+    build(&out);
+    let root = temp.path().join("optional");
+    project(
+        &root,
+        r#"{schema:{notes:table({tag:string().optional()}).index("by_tag",["tag"])},queries:{page:query(async (ctx, options: PaginationOptions) => ctx.db.notes.withIndex("by_tag").paginate(options))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts")).unwrap().replace(
+        "import { capsule }",
+        "import { capsule, query, string, table, type PaginationOptions }",
+    );
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("refused"), &["--space", "spc_migrate_test"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/queries/page/ctx/db/notes");
+    assert!(
+        refused["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("optional field tag")
+    );
+}
+
+#[test]
+fn endpoints_become_routes_and_unroutable_ones_refuse() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("endpoints");
+    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    let routes: Vec<_> = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["reason"].as_str().unwrap().strip_prefix("v2 route "))
+        .map(|r| r.split(" with ").next().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        routes,
+        [
+            "GET /api/ping",
+            "GET /api/banner",
+            "GET /api/notes/:id",
+            "GET /api/notes/count",
+            "POST /api/search",
+            "PUT /api/notes",
+            "DELETE /api/notes/:id",
+            "GET /go/home",
+            "GET /api/tags",
+            "GET /api/files/*path",
+            "GET /api/total"
+        ]
+    );
+    build(&out);
+    let root = temp.path().join("refused");
+    project(
+        &root,
+        r#"{endpoints:{
+          head:endpoint({method:"HEAD",path:"/x"},()=>text("")),
+          rest:endpoint({method:"GET",path:"/*rest"},()=>text("")),
+          admin:endpoint({method:"GET",path:"/wp-admin/x"},()=>text("")),
+          root:endpoint({method:"GET",path:"/"},()=>text("")),
+          hit:endpoint({method:"GET",path:"/hit",readOnly:false},()=>text("")),
+          url:endpoint({method:"GET",path:"/url"},(_ctx, req)=>text(req.url)),
+          bytes:endpoint({method:"POST",path:"/bytes"},async (_ctx, req)=>text(String((await req.bytes()).length))),
+          one:endpoint({method:"GET",path:"/a/:x"},()=>text("")),
+          two:endpoint({method:"GET",path:"/a/:y"},()=>text(""))
+        }}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("no"), &[]);
+    assert!(!ok);
+    let pointers: Vec<_> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        pointers,
+        [
+            "/endpoints/head/method",
+            "/endpoints/rest/path",
+            "/endpoints/admin/path",
+            "/endpoints/root/path",
+            "/endpoints/hit",
+            "/endpoints/url/request/url",
+            "/endpoints/bytes/request/bytes",
+            "/endpoints/two"
+        ]
+    );
+}
+
+#[test]
+fn env_and_log_services_map_to_v2_builtins() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("services");
+    let (ok, report) = migrate(&fixture("services"), &out, &[]);
+    assert!(ok, "{report:#}");
+    build(&out);
+}
+
+#[test]
+fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("site");
+    let (ok, report) = migrate(&fixture("site"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    for file in [
+        "pages/page.tsx",
+        "pages/pricing/page.tsx",
+        "pages/docs/page.tsx",
+        "pages/layout.tsx",
+        "shared/plans.ts",
+    ] {
+        assert!(out.join(file).is_file(), "{file}");
+    }
+    let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
+    assert!(
+        pricing.starts_with("import { plans } from \"../../shared/plans\";"),
+        "{pricing}"
+    );
+    // Interactive starters keep a pointer per page saying what to port.
+    let (ok, refused) = migrate(
+        &corpus("starter-todo"),
+        &temp.path().join("todo"),
+        &["--users", "--space", "s", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = refused["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 2);
+    assert_eq!(errors[0]["pointer"], "/pages/index.tsx");
+    let reason = errors[0]["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("live queries") && reason.contains("mutations") && reason.contains("docs/pages.md"),
+        "{reason}"
+    );
+}
+
+#[test]
+fn the_configured_server_entry_is_read_from_sf_jsonc() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    std::fs::create_dir_all(root.join("server")).unwrap();
+    std::fs::write(
+        root.join("sf.jsonc"),
+        "{\n  // the 0.8 runtime block\n  \"runtime\": { \"kind\": \"zero\", \"server\": \"server/app.ts\", },\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("server/app.ts"),
+        "import { capsule, query } from '@spacefast/zero/server'; export default capsule({ name: 'Entry App', queries: { hi: query(async () => 'hi') } });",
+    )
+    .unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(ok, "{report:#}");
+    assert!(out.join("server/index.ts").is_file());
+    assert!(!out.join("server/app.ts").exists());
+    build(&out);
+    // JSX in a server entry is ImageResponse; v2 server code has no renderer for it.
+    let (ok, refused) = migrate(&corpus("compile-notes"), &temp.path().join("notes"), &["--dry-run"]);
+    assert!(!ok);
+    assert!(
+        refused["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("JSX on the server")
+    );
+}
+
+#[test]
+fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(
+        &root,
+        r#"{endpoints:{note:endpoint({method:"GET",path:"/api/notes/:id"},(_ctx, req)=>text(req.params.id)),count:endpoint({method:"GET",path:"/api/notes/count"},()=>text("count")),tag:endpoint({method:"GET",path:"/api/tag"},(_ctx, req)=>text(req.query.get("user.id") ?? ""))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    std::fs::create_dir_all(root.join("pages/docs")).unwrap();
+    std::fs::write(root.join("pages/docs/data.ts"), "export const title = \"Docs\";\n").unwrap();
+    std::fs::write(
+        root.join("pages/docs/index.tsx"),
+        "import { title } from \"./data\";\nexport default function Docs() { return <h1>{title}</h1>; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("pages/docs/guide.tsx"),
+        "import { title } from \"./data\";\nexport default function Guide() { return <h1>{title} guide</h1>; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("pages/keys.tsx"),
+        "export default function Keys() { return <input onKeyDown={() => undefined} />; }\n",
+    )
+    .unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(report["errors"].as_array().unwrap().len(), 1, "{report:#}");
+    assert_eq!(report["errors"][0]["pointer"], "/pages/keys.tsx");
+    std::fs::remove_file(root.join("pages/keys.tsx")).unwrap();
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(ok, "{report:#}");
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    // RouteQuery keeps URLSearchParams names byte for byte, so `user.id` passes through unchanged.
+    assert!(config.contains("req.query.get(\"user.id\")"), "{config}");
+    assert!(
+        std::fs::read_to_string(out.join("pages/docs/page.tsx"))
+            .unwrap()
+            .contains("from \"./data\"")
+    );
+    assert!(
+        std::fs::read_to_string(out.join("pages/docs/guide/page.tsx"))
+            .unwrap()
+            .contains("from \"../data\"")
+    );
+    assert!(out.join("pages/docs/data.ts").is_file());
 }
 
 #[test]
@@ -231,5 +551,6 @@ fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
     assert!(ok, "{report:#}");
     let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
     assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
+    assert!(config.contains("__z08EndpointValue(await response.json())"), "{config}");
     build(&out);
 }

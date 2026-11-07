@@ -1,0 +1,249 @@
+# Zero 0.8 parity
+
+This page tracks what stands between each live Zero 0.8 Space on Spacefast and
+Zero v2. For each 0.8 capability, in the SDK (`@spacefast/zero` 0.8.1) and the
+engine (`runtime/engine/legacy/zero-0.8`), it gives:
+
+- the v2 equivalent, or **missing**;
+- what `zero migrate app --from zero-0.8` does with it;
+- what still needs a person.
+
+v2 runs only PHP at request time. Anything 0.8 did in its JavaScript isolate,
+Preact client or Rust runner either has a PHP counterpart or is listed as
+missing. [Migrate from Zero](migrating-from-zero.md) has the procedure.
+
+Sources read: `spacefast/monorepo` branch `zero-v2-cutover` at `0cc0293a04`:
+`legacy/zero-0.8/packages/{zero,zero-compile}/src`,
+`runtime/engine/legacy/zero-0.8`, `crates/stattic-zero-runner/src/legacy/zero-0.8`
+and `packages/cli/src/zero-commands.ts`.
+
+## Census
+
+`scripts/migrate-census.py` runs the converter over a corpus and counts
+refusal reasons. Rerun it with:
+
+```sh
+cargo build
+scripts/migrate-census.py --flag --users          # this branch
+scripts/migrate-census.py --zero <old>/zero --flag --users   # a baseline binary
+scripts/migrate-census.py --json                  # per-app detail
+```
+
+**Formula.** An app is *accepted* when the dry run exits 0 with status
+`dry-run`; otherwise it is *refused*. Each error is assigned the first
+category whose pattern matches its pointer, or its reason when the pointer is
+empty (the table is in the script). `count(category)` is the number of refused
+apps with at least one error in that category. An app counts once per
+category, so the counts can sum to more than the number of refused apps.
+"Pages only", "endpoints only" and "both" partition the refused apps by
+whether `pages` and/or `endpoints` are among their categories.
+
+**Corpus.** The production replica is not reachable from the dev box, and the
+public API cannot serve 0.8 capsule source at all:
+
+- `GET /v1/spaces/{id}/versions/{versionId}/files?view=uploaded` lists what
+  the publisher uploaded. For a 0.8 Space (`start-map-studio`,
+  `ver_cb889f98…`) that is the built shell, `client.js` and platform chunks:
+  the 0.8 CLI compiles before uploading, and `isZeroProjectOnlyPath`
+  (`zero-compile/src/capsule.ts`) excludes every `.ts`/`.tsx` file and
+  `server/`, `shared/` and `pages/` sources from the upload.
+- `GET /v1/spaces/{id}/source/archive` serves a hosted or connected
+  repository. Of the account's three runtime Spaces only `batuhan-tasks` has
+  one, and it is a Functions app (`functions/api/v1/*.js`), not a capsule.
+  Versions published from a local checkout record only the commit
+  (`source.kind: "git"`, `commit`, `repository`), which needs access to that
+  repository, not to Spacefast.
+- What the finalizer keeps (`sourceMetadata.statticZero.finalize`) is the
+  compiled endpoint and run bundles, not capsule source; the converter refuses
+  those, as the `zero-all-features` fixture shows.
+
+So the census can only cover sources that exist outside Spacefast. Counting
+the live set needs one of these, read-only and scoped like the copier:
+
+1. **Capture source at 0.8 publish time** from now on: upload the capsule tree
+   (`server/`, `shared/`, `pages/`, `client/`, `content/`, `sf.jsonc`) as a
+   private version artifact, as v2 already does with `.zero-source/`. This does
+   nothing for versions already live.
+2. **An internal endpoint** for the migration operation,
+   `GET /v1/internal/spaces/{id}/versions/{versionId}/zero-source`, returning
+   the capsule tree for versions whose `source.kind` is `git` with a
+   repository the control plane can read (GitHub App installations), or a
+   hosted repository at the version's commit. Spaces published from an
+   unconnected local checkout have no recoverable source; their owners must
+   publish once from source, or the census counts them as unknown.
+
+The corpus here is therefore the eight 0.8 projects in
+[`tests/fixtures/app-migrate/corpus`](../tests/fixtures/app-migrate/corpus):
+the four `sf init --runtime zero` starters, `start-map-studio`, the dashboard's
+`/push/new-repo` capsule, the compiler test's "Notes" capsule and the MCP test's
+contact capsule. Its README lists where each came from. Converter fixtures
+built for one mapping each are not counted.
+
+The prod census from 2026-11-07 (758 live Spaces: 512 with pages, 462 with
+custom endpoints) is not reproduced here. Rerun the script over real sources
+once they can be read safely; the formula does not change.
+
+Both columns use `--users`, as a Space with Space Users enabled would. Without
+it, `starter-todo` and `starter-guestbook` also refuse `ctx.auth.userId` on both
+binaries.
+
+| | #118 (`138bfe46`) | This branch |
+| --- | --- | --- |
+| Accepted | 0 of 8 | 1 of 8 (`mcp-contact`) |
+| Refused | 8 | 7 |
+| Refused with a `pages` error | 5 | 4 |
+| Refused with an `endpoints` error | 3 | 0 |
+| Refused with an `auth-identity` error | 2 | 0 |
+| Refused for another reason | 4 | 4 |
+| Pages only / endpoints only / both | 2 / 0 / 3 | 4 / 0 / 0 |
+
+The four apps refused for another reason are the same before and after. Each
+now has a specific reason:
+
+- `starter-context`: native `pages` content;
+- `dashboard-push`: a `declare const` build global (before: a generic
+  statement refusal);
+- `compile-notes`: JSX on the server (before: the converter ignored
+  `sf.jsonc`'s server entry and found no `server/index.ts`);
+- `start-map-studio`: a copied helper uses the `in` operator.
+
+With `--users`, every remaining refusal in the corpus is an interactive page
+(`useQuery`, `useMutation`, `useState`, event handlers or the 0.8 kit) or one of
+those four. No refused corpus app is blocked by endpoints any more.
+
+## Capability table
+
+"Auto" means `zero migrate app` maps it and a fixture proves it compiles.
+**WP** means a WordPress/MariaDB lane proves the behavior
+(`tests/wp/app-migrate/run.sh`, `tests/wp/legacy/spacefast-run.sh`).
+
+### Capsule and data
+
+| 0.8 capability | v2 equivalent | Converter | Needs a person |
+| --- | --- | --- | --- |
+| `capsule({ name })` | `defineConfig({ name })`; display titles become plugin slugs | Auto | — |
+| Server entry from `sf.jsonc` `runtime.server` (and its aliases) | `server/index.ts` in the candidate | Auto | An executable `spacefast.config.ts`; an entry nested below `server/` (its relative imports would move) |
+| `table()` with `string`, `number`, `boolean`, `id`, `userId`, `.optional()`, `.default()` | `table()` over the existing `sf_<space>_<table>_<hash>` table with `existingTable`; string IDs over `BIGINT` | Auto, **WP** | IDs above `Number.MAX_SAFE_INTEGER` |
+| `.index(name, fields)`, `by_creation` | Index order plus `createdAt`, `id`, as 0.8 ordered | Auto, **WP** | — |
+| `ctx.db.<t>.get/insert/update/delete` | Generated row helpers keeping 0.8's string ids, defaults and optional omission | Auto, **WP** | — |
+| `withIndex(...).order().collect/take/first/count` | `db.query.<t>.findMany` with the same order; `eq: null` matches `IS NULL` | Auto, **WP** | — |
+| `withIndex(...).paginate({ numItems, cursor })` | A keyset helper per call site: same order, `numItems` clamp 1–1000, `{ page, isDone, continueCursor }`; the cursor carries its call site and filter values | Auto, **WP** | Clients restart from page one after cutover (old cursors are refused); optional index fields |
+| Range on an optional field, `.where()`, `.orderBy()`, `.limit()`, `.offset()` | `db.query` filters exist; not mapped | Refused | Port the query |
+| `query()`, `mutation()`, `action()` | `action()` at `POST /wp-json/zero/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
+| `type PaginationOptions`, `Id<T>` | Structural types in the candidate | Auto | — |
+| `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto, **WP** | Native `pages` and `media` collections; rich blocks; multiple references |
+| `sync` declarations | `zero sync` (local) | Dropped with review | Hosted edits do not rebuild a frontend |
+| `connectors` | `connector-roles.json` overlay | Role map only | Connector calls (`ctx.connectors`) |
+| `favicon` | **missing** in config | Refused | Ship the file under `public/` |
+| Pure helpers, classes, local `shared/` modules | Copied | Auto | Helpers outside the v2 subset (for example `in`, `URL`) |
+| `declare const NAME` build globals | `env("NAME")` | Refused, names the fix | Replace the global |
+
+### Identity
+
+| 0.8 capability | v2 equivalent | Converter | Needs a person |
+| --- | --- | --- | --- |
+| `auth.requireSignIn` | A 401 gate on every generated action and route | Auto, **WP** | — |
+| `auth.onGuestUpgrade` | `zero_identity_guest_upgraded` (keeps the same user id) | Refused | Usually unnecessary: v2 guests keep their id on upgrade |
+| `ctx.auth.isSignedIn`, `isAuthenticated`, `isGuest`, `displayName` | `ctx.user` and its role | Auto | — |
+| `ctx.auth.userId` with Space Users | The member's hidden `spacefastSubject`, which `migrate-spacefast` copies from `spacefast_app_subject_<id>_<space>` | Auto with `--users`, **WP** | New users answer `wp:<id>`; rows owned by `guest:<id>` or `account:<id>` principals have no v2 user |
+| `ctx.auth.requireSignedIn()`, `requireIdentity()` | Same refusal (401), same returned fields | Auto with `--users` | — |
+| `ctx.auth.userId` without Space Users (Spacefast accounts, guests) | **missing**: v2 users are WordPress users | Refused | Map principals to users explicitly |
+| `ctx.auth.email`, `picture`, `provider`, `subject`, `identityAliases` | **missing** in handler context | Refused | Read the member row, or port |
+| Users, passwords, sessions, Google bindings, Space Users subjects | `wp zero migrate-spacefast`; a users receipt without the candidate's subjects refuses (`zero_spacefast_subjects_missing`) and `--verify` reports `incomplete` | Data command, **WP** | Original auth salt and cookie alias on the host |
+| `verifyUser()` (server SDK) | `GET /wp-json/zero-identity/v1/account` | Not applicable (runs outside the capsule) | Port callers |
+
+### Context services
+
+| 0.8 capability | v2 equivalent | Converter | Needs a person |
+| --- | --- | --- | --- |
+| `ctx.env.NAME` | `env("NAME")`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables; a name 0.8 left unset may now resolve to a host constant |
+| `ctx.log.info/warn/error/debug` | `console.*` to the PHP error log | Auto | — |
+| `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
+| `ctx.email.send` | `mail.send` from `"zero"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `zero_mail_transport` to the Space sender (#5063) |
+| `ctx.spam.check/reportSpam/reportHam` | **missing** | Refused | **Gap** |
+| `ctx.gravatar` | **missing** | Refused | **Gap** (small: an HTTP GET with the email hash) |
+| `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `crypto` from `"zero"` (#132), byte for byte 0.8's output | Auto once #132 lands | — |
+| `ctx.jwt.sign` | **missing** | Refused | **Gap** |
+| `ctx.storage.list/get/delete` | [files](config-api.md#files) buckets | Refused | Port to file buckets |
+| `ctx.connectors.<role>.<tool>()` | **missing** | Refused | **Gap** (needs the connector broker in PHP) |
+| `fetch()` in actions | `fetch` from `"zero"` (#131): HTTPS only, private and special-purpose addresses refused after every redirect, 10 s, 1 MiB | Auto once #131 lands | — |
+
+### HTTP
+
+| 0.8 capability | v2 equivalent | Converter | Needs a person |
+| --- | --- | --- | --- |
+| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path; v2 prefers literal segments over `:params`, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
+| `json()`, `text()`, `empty()`, `redirect()`, plain values, `undefined` → 204 | The same status, headers and body | Auto, **WP** | — |
+| `request.text()`, `json()`, `headers.get/has`, `query.get/getAll/has`, `params`, `method` | `req.body`, `req.headers`, `req.query` (URLSearchParams semantics: first value, byte-exact names), `req.params` | Auto, **WP** | — |
+| `request.url`, `bytes()`, `arrayBuffer()`, `headers.entries` | **missing** on `RouteRequest` | Refused with pointer | Port |
+| `HEAD`, `OPTIONS` endpoints | GET answers HEAD; **missing** OPTIONS | Refused | Port |
+| `:param` segments | `:param` | Auto, **WP** | — |
+| `*rest` catch-all segments | `*rest` (#134): one or more decoded segments joined with `/` | Auto, **WP** | — |
+| A writing `GET` (`readOnly: false`) | **missing** by design: GET routes take cookies without a nonce | Refused | Move to POST |
+| Paths under `wp-*`, `feed`, `auth`, `__zero`, … | Owned by WordPress or Zero | Refused | Move the endpoint |
+| `ImageResponse` | **missing** (PHP has no JSX renderer) | Refused | Pre-render the image |
+| `/llms.txt`, `/api/ping` defaults | Not converter work | — | The host serves them |
+
+### Pages and client
+
+| 0.8 capability | v2 equivalent | Converter | Needs a person |
+| --- | --- | --- | --- |
+| Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `pages/<path>/page.tsx`, rendered at capture, served by WordPress; relative imports are adjusted for the move | Auto, **WP** (hosted compile) | Run `zero-pages build` and commit `zero/pages.json` |
+| `client/index.tsx` static `Layout` | `pages/layout.tsx` | Auto, **WP** | — |
+| `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | `load()` reads as the visitor, plus `<Island>` with an Interactivity store calling actions | Refused, lists what each page uses | Port each page |
+| `usePaginatedQuery` | An island over the paginated action | Refused | Port |
+| `@spacefast/zero/kit` components | **missing**: plain markup and CSS | Refused | Restyle |
+| `@spacefast/zero/charts` | **missing** | Refused | **Gap** |
+| `@spacefast/zero/context` (`ContextPage`, editor) | **missing** | Refused | **Gap** |
+| `@spacefast/zero/content` blocks (`PostLoop`, …) | `content.query` in `load()` | Refused | Port |
+| Islands (`client/` components in document pages) | `<Island>` with an Interactivity API module | Refused | Port |
+| `pages/[param].tsx` | `collectionPage()` for collection items | Refused | Port |
+| `pages/*.md`, `pages/*.html` documents | **missing** (content-owned pages are not in this release) | Refused | Move the text into a TSX page or a collection |
+| `_pages/` system pages (404, access gate) | The host's own pages | Refused | — |
+| Tailwind `zero.css` | **missing** | Not converted | Ship CSS through the page imports |
+| Live updates, realtime | `watch()` in the v2 client (#128) | Owned by #128 | Replace subscriptions |
+| `Link`, `navigate`, `Router` | Plain links; WordPress routes the page | Refused with the page | Port |
+
+### Engine routes
+
+| 0.8 route | v2 equivalent | Notes |
+| --- | --- | --- |
+| `/__zero/run` | `/wp-json/zero/v1/actions/<name>` | Clients change |
+| `/__zero/config` | `/__spacefast/client.js` | Clients change |
+| `/__zero/auth/start`, `/sign-out` | `/wp-json/zero-identity/v1/*` | Identity plugin |
+| `/__zero/realtime/*` | #128 transport | |
+| `/__spacefast/zero/connectors/<role>/*` | **missing** | With `ctx.connectors` |
+
+## v2 runtime gaps
+
+Each gap below is a missing v2 runtime feature, not converter work. They are
+ordered by how many 0.8 capsules need them, roughly. Each one goes in its own
+PR stacked on #118, implemented in PHP:
+
+1. **Outbound HTTP in handlers** (`fetch`): done in #131.
+2. **Hashing builtins** (`ctx.crypto`): done in #132.
+3. **Free-form email from handlers** (`ctx.email.send`): done in #133. The
+   Spacefast engine still has to connect its sender (see #133).
+4. **Catch-all route segments** (`*rest`): done in #134.
+5. **`RouteRequest.url` and raw bytes**. Small, but the route request belongs to
+   #129, so it is left to that PR.
+6. **Gravatar, spam and JWT services**. Each is small to medium. Spam needs a
+   provider decision first.
+7. **Connector calls**. Large: the broker, tokens and approval states.
+8. **Kit, charts and the context editor** for pages. Large and product-shaped,
+   so they are not converter work.
+
+Items 1–4 each have their own PR. The converter maps the 0.8 calls once those
+land; the rest remain open.
+
+## Executable evidence
+
+| Claim | Proof |
+| --- | --- |
+| Candidates compile and type-check | `cargo test --test app_migrate` (12 tests, `tsc` on each candidate) |
+| Retained rows, generated actions, rollback | `tests/wp/app-migrate/run.sh`: `adoption.test.ts` |
+| Pagination order, clamp, cursor scoping | `tests/wp/app-migrate/run.sh`: `feed.test.ts` |
+| Endpoints at their original paths, `ctx.env` from wp-config | `tests/wp/app-migrate/run.sh`: `endpoints.test.ts` |
+| Static pages served from the hosted compile | `tests/wp/app-migrate/run.sh`: `site.test.ts` |
+| Space Users subjects copied and masked | `tests/wp/legacy/spacefast-run.sh` (`copied` phase) |
+| Census | `scripts/migrate-census.py` |

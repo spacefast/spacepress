@@ -400,6 +400,10 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   drains its queue; rollback discards it. Outside a transaction it runs
   immediately. Nested transactions join without savepoints. A callback that
   throws propagates after commit, without rollback cleanup or callback replay.
+- `Realtime\Module` collects `onWritten` per transaction while a `Publisher` is
+  registered or `zero_realtime_changes` has a listener, and emits one id-only
+  notice after the outermost commit (see [Live updates](realtime.md)). Rollback
+  discards the batch. Publishers run in order; one that throws is logged.
 - `route(prefix, handler)` receives `(method, fullDecodedSegments, query,
   rawBody, viewer, files, form)` and returns `[status, data]` or `Response`. One
   complete first segment is matched before built-ins and collections. Thus the

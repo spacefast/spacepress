@@ -25,8 +25,8 @@ before activating an app.
 | Google sign-in | Copies provider subject bindings to the same user IDs; host projects Google client values into managed identity configuration | Verify a fresh Google sign-in on the deployed host; never put provider secrets in source or reports |
 | Connector roles | Emits `connector-roles.json`; maps `owner` to `personal` and retains `team` and `visitor` | The overlay grants no credentials or permissions; old connector calls require a port |
 | REST endpoints and actions | Generated collection endpoints and `POST /wp-json/zero/v1/actions/<name>` work on Spacefast | Old custom method/path `endpoints` declarations are refused; port them to actions |
-| Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
-| Realtime | Unsupported; source conversion drops the declaration with a review hint | Replace subscription-dependent behavior before cutover |
+| Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls |
+| Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
 | Pages, layouts, and islands | Old declarations and project directories are refused with pointers | Pages are not hosted on Spacefast yet; optional standalone [Zero Pages](pages.md) has its own compiler and limits |
 | Content sync | Local `zero sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |

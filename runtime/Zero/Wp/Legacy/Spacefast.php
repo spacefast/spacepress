@@ -95,7 +95,7 @@ final class Spacefast
                     return ['status' => $status, 'stored' => $fingerprint, 'current' => $current];
                 }
                 if ($missing !== []) {
-                    throw new HttpError(409, 'zero_spacefast_subjects_missing', 'Users were copied before this candidate carried Space Users subjects; restore the target users from the receipt-free copy and rerun.', '/users/' . $missing[0]);
+                    throw new HttpError(409, 'zero_spacefast_subjects_missing', "Users were copied before this candidate carried Space Users subjects. Restore the target's users and usermeta from the backup taken before the copy, delete the `$receipts` row for space_id '$space' and table_group 'users', and rerun.", '/users/' . $missing[0]);
                 }
                 if ($stored !== []) {
                     return ['copied' => 0, 'status' => 'already-migrated'];

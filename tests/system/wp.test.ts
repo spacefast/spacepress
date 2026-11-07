@@ -199,7 +199,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
 
   // The site's frontend signs readers in through zero-identity's screens: register it once.
   frontend.redirectUri = `${receipt.url}/signed-in`;
-  wp("zero-identity", "app", "add", "--name=The Zero Review", `--redirect=${frontend.redirectUri}`, `--origin=${receipt.url}`, `--id=${frontend.clientId}`);
+  wp("zero", "identity", "app", "add", "--name=The Zero Review", `--redirect=${frontend.redirectUri}`, `--origin=${receipt.url}`, `--id=${frontend.clientId}`);
 
   // The journey's author writes as an authors row the admin creates over the API.
   const userId = receipt.users.author.id;

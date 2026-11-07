@@ -366,7 +366,7 @@ async function main() {
     }
     await runStudio(['wp', 'eval-file', join(here, 'setup.php'), join(managed.state, 'setup.json'), '--use-include']);
     await runStudio(['wp', 'zero', 'migrate']);
-    await runStudio(['wp', 'zero-identity', 'app', 'add', '--name=Zero development', '--id=app_zero_dev',
+    await runStudio(['wp', 'zero', 'identity', 'app', 'add', '--name=Zero development', '--id=app_zero_dev',
       `--redirect=${siteUrl}/auth/callback`, `--origin=${siteUrl}`]);
     for (const slug of retired) await rm(join(managed.owner.site, 'wp-content/plugins', slug), { recursive: true });
     managed.owner.generated = Object.keys(manifest.plugins);

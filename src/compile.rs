@@ -1920,8 +1920,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Pat::Arr { elems, rest, span } => {
                 let source = self.tmp_var();
-                let _ = writeln!(out, "{p}{source} = {src};");
+                if ty == Ty::Dynamic {
+                    // JavaScript destructures through the iterator protocol: take exactly the
+                    // elements the pattern names (all of them for a rest), then close it.
+                    let take = if rest.is_some() {
+                        "null".to_string()
+                    } else {
+                        elems.len().to_string()
+                    };
+                    let _ = writeln!(out, "{p}{source} = \\Zero\\Js::destructure({src}, {take});");
+                } else {
+                    let _ = writeln!(out, "{p}{source} = {src};");
+                }
                 let src = &source;
+                let ty = if ty == Ty::Dynamic {
+                    Ty::Array(Box::new(Ty::Dynamic))
+                } else {
+                    ty
+                };
+                let constraint = if constraint == Ty::Dynamic {
+                    Ty::Array(Box::new(Ty::Dynamic))
+                } else {
+                    constraint
+                };
                 if ty.is_nullable() {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
@@ -2415,7 +2436,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => tys.extend(ts),
                                 t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) => {
                                     if v.ty.is_nullable() {
-                                        return err(x.span, format!("can't spread {}: it might be null", v.ty.describe()));
+                                        return err(
+                                            x.span,
+                                            format!("can't spread {}: it might be null", v.ty.describe()),
+                                        );
                                     }
                                     tys.push(self.iterable_element(&t).expect("collection element"));
                                     parts.push(format!("...(\\Zero\\Js::iterArray({}))->a", v.php));
@@ -2662,7 +2686,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Call {
                 callee, args, optional, ..
             } => self.call(callee, args, *optional, span)?,
-            ExprKind::New { callee, args, type_args } => self.new_expr(callee, args, type_args, span)?,
+            ExprKind::New {
+                callee,
+                args,
+                type_args,
+            } => self.new_expr(callee, args, type_args, span)?,
             ExprKind::Member {
                 obj,
                 prop,
@@ -4225,7 +4253,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Ok(v)
         };
-        let iter = |kind: &str, el: Ty| Out::atom(format!("new \\Zero\\JsIterator({r}->{kind}Iterator(), {})", php_str(if set { "Set Iterator" } else { "Map Iterator" })), Ty::Iter(Box::new(el)));
+        let iter = |kind: &str, el: Ty| {
+            Out::atom(
+                format!(
+                    "new \\Zero\\JsIterator({r}->{kind}Iterator(), {})",
+                    php_str(if set { "Set Iterator" } else { "Map Iterator" })
+                ),
+                Ty::Iter(Box::new(el)),
+            )
+        };
         Ok(match (set, m) {
             (false, "get") => {
                 let k = arg(self, 0, &key, "a key")?;
@@ -4272,7 +4308,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             declared.push(self.resolve_runtime_ann(a, module)?);
         }
         if !declared.is_empty() && declared.len() != if map { 2 } else { 1 } {
-            return err(span, format!("`{what}` takes {} type argument{}", if map { 2 } else { 1 }, if map { "s" } else { "" }));
+            return err(
+                span,
+                format!(
+                    "`{what}` takes {} type argument{}",
+                    if map { 2 } else { 1 },
+                    if map { "s" } else { "" }
+                ),
+            );
         }
         let source = match args.first() {
             None => None,
@@ -4284,7 +4327,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None
                 } else {
                     let el = self.iterable_element(&v.ty).ok_or_else(|| {
-                        Diag::new(x.span, format!("`new {what}` needs an iterable, not {}", v.ty.describe()))
+                        Diag::new(
+                            x.span,
+                            format!("`new {what}` needs an iterable, not {}", v.ty.describe()),
+                        )
                     })?;
                     Some((v, el, x.span))
                 }
@@ -4304,7 +4350,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let elem = |el: &Ty, at: Span| -> Result<(Ty, Ty)> {
             entry(el).ok_or_else(|| {
-                Diag::new(at, format!("Map entries must be [key, value] pairs, not {}", el.describe()))
+                Diag::new(
+                    at,
+                    format!("Map entries must be [key, value] pairs, not {}", el.describe()),
+                )
             })
         };
         let ty = match (map, declared.as_slice(), &source) {
@@ -4312,7 +4361,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some((_, el, at)) = src {
                     let (ek, ev) = elem(el, *at)?;
                     if !assignable(&ek, k) || !assignable(&ev, v) {
-                        return err(*at, format!("these entries don't fit Map<{}, {}>", k.describe(), v.describe()));
+                        return err(
+                            *at,
+                            format!("these entries don't fit Map<{}, {}>", k.describe(), v.describe()),
+                        );
                     }
                 }
                 Ty::MapOf(Box::new(k.clone()), Box::new(v.clone()))
@@ -4334,7 +4386,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(
                     span,
                     format!("an empty `new {what}()` needs type arguments"),
-                    if map { "write `new Map<string, number>()`" } else { "write `new Set<string>()`" },
+                    if map {
+                        "write `new Map<string, number>()`"
+                    } else {
+                        "write `new Set<string>()`"
+                    },
                 );
             }
         };
@@ -4927,7 +4983,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Ty::Array(ret.clone()),
                     ));
                 }
-                return Ok(Out::atom(format!("\\Zero\\Js::iterArray({})", v.php), Ty::Array(Box::new(el))));
+                return Ok(Out::atom(
+                    format!("\\Zero\\Js::iterArray({})", v.php),
+                    Ty::Array(Box::new(el)),
+                ));
             }
             if matches!(v.ty, Ty::Dynamic | Ty::Arguments) {
                 let mut element = if v.ty == Ty::Arguments {

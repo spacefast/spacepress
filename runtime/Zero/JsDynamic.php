@@ -221,6 +221,19 @@ trait JsDynamic
         return new JsArray(iterator_to_array(self::dynamicIterator($value), false));
     }
 
+    /** Array-pattern destructuring of a JavaScript value: the first $count iterated values (all when null). */
+    public static function destructure(mixed $value, ?int $count): JsArray
+    {
+        if (self::isNullish($value)) { throw new JsError('Cannot destructure ' . self::str($value) . ' as it is not iterable', 'TypeError'); }
+        $out = new JsArray();
+        if ($count === 0) { return $out; }
+        foreach (self::dynamicIterator($value) as $item) {
+            $out->a[] = $item;
+            if ($count !== null && count($out->a) >= $count) { break; }
+        }
+        return $out;
+    }
+
     public static function dynamicIterator(mixed $value): \Generator
     {
         if ($value instanceof JsArray) {

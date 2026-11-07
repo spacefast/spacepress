@@ -215,6 +215,13 @@
       "guidance": "Global isFinite accepts zero or one argument and applies numeric coercion; Number.isFinite checks numbers without coercion. Number.isFinite is available as a stable function value, including local and captured aliases and feature detection. The differential numeric owner compares NaN, infinities, numbers, strings, null, booleans and arrays in pure configuration evaluation and PHP. Missing reads, built-in results and explicit undefined preserve their identity separately from null."
     },
     {
+      "id": "map-set-collections",
+      "status": "supported",
+      "evidence": "tests/compiler.rs",
+      "test": "compiled_php_matches_node_on_every_differential_case",
+      "guidance": "Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\\JsMap`/`Zero\\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused."
+    },
+    {
       "id": "builtin-overloads",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",

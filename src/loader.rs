@@ -601,10 +601,11 @@ impl CommonJsScope {
                 scope.expression(iter)?;
                 scope.block(body)?;
             }
-            Stmt::While(test, body) => {
+            Stmt::While(test, body) | Stmt::DoWhile(body, test) => {
                 self.expression(test)?;
                 self.block(body)?;
             }
+            Stmt::Labeled(_, body, _) => self.block(std::slice::from_ref(body))?,
             Stmt::Try {
                 block,
                 param,
@@ -647,8 +648,8 @@ impl CommonJsScope {
             | Stmt::ExportNames { .. }
             | Stmt::ExportAll { .. }
             | Stmt::TypeAlias { .. }
-            | Stmt::Break(_)
-            | Stmt::Continue(_) => {}
+            | Stmt::Break(..)
+            | Stmt::Continue(..) => {}
         }
         Ok(())
     }

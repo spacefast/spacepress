@@ -265,8 +265,11 @@ struct FnCtx {
     captures: Option<Vec<(String, bool)>>,
     outer: Option<Box<FnCtx>>,
     tmp: usize,
-    /// Switches between the current statement and the nearest loop (PHP counts them for `continue`).
-    switch_depth: usize,
+    /// Enclosing loops, switches and labeled blocks, innermost last. PHP's `break N` and
+    /// `continue N` count each of them as one level.
+    jumps: Vec<JumpTarget>,
+    /// Labels for the next statement compiled, when it is a loop or switch.
+    pending_labels: Vec<String>,
     conditional_depth: usize,
     /// Access rules can't query (§1.6): `db` is rejected inside them and their closures.
     no_db: bool,
@@ -718,7 +721,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: None,
             outer: None,
             tmp: 0,
-            switch_depth: 0,
+            jumps: Vec::new(),
+            pending_labels: Vec::new(),
             conditional_depth: 0,
             no_db,
             access: match slot {
@@ -1205,7 +1209,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             out.push_str(&self.stmt(s, indent)?);
             terminated = matches!(
                 s,
-                Stmt::Return(..) | Stmt::Throw(_) | Stmt::Break(_) | Stmt::Continue(_)
+                Stmt::Return(..) | Stmt::Throw(_) | Stmt::Break(..) | Stmt::Continue(..)
             );
         }
         Ok(out)
@@ -1221,6 +1225,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn stmt(&mut self, s: &Stmt, indent: usize) -> Result<String> {
         let p = pad(indent);
         let mut out = String::new();
+        // Labels written directly on this statement (only a loop or switch receives them).
+        let labels = std::mem::take(&mut self.fx().pending_labels);
         match s {
             Stmt::Decl {
                 kind,
@@ -1445,7 +1451,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .collect::<Vec<_>>()
                     .join(", ");
                 let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
@@ -1505,7 +1511,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.bind_pattern(pat, &value, &el, mutable, &mut out, indent + 1)?;
                 }
                 self.invalidate_loop(*span);
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
@@ -1584,7 +1590,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         },
                     );
                 }
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
@@ -1597,19 +1603,65 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.invalidate_loop(test.span);
                 let t = self.cond(test)?;
                 let _ = writeln!(out, "{p}while ({t}) {{");
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
             }
-            Stmt::Break(_) => {
-                let _ = writeln!(out, "{p}break;");
+            Stmt::Break(label, span) => {
+                let level = self.jump_level(label.as_deref(), false, *span)?;
+                let _ = writeln!(
+                    out,
+                    "{p}break{};",
+                    if level == 1 { String::new() } else { format!(" {level}") }
+                );
             }
-            Stmt::Continue(_) => {
-                // In PHP a `switch` counts as a loop level for `continue`.
-                match self.fx().switch_depth {
-                    0 => writeln!(out, "{p}continue;"),
-                    n => writeln!(out, "{p}continue {};", n + 1),
+            Stmt::Continue(label, span) => {
+                let level = self.jump_level(label.as_deref(), true, *span)?;
+                let _ = writeln!(
+                    out,
+                    "{p}continue{};",
+                    if level == 1 { String::new() } else { format!(" {level}") }
+                );
+            }
+            Stmt::DoWhile(body, test) => {
+                self.invalidate_loop(test.span);
+                let _ = writeln!(out, "{p}do {{");
+                out.push_str(&self.loop_body(body, indent + 1, labels)?);
+                let t = self.cond(test)?;
+                let _ = writeln!(out, "{p}}} while ({t});");
+            }
+            Stmt::Labeled(label, body, _) => {
+                let mut labels = labels;
+                labels.push(label.clone());
+                let mut body = &**body;
+                while let Stmt::Labeled(label, inner, _) = body {
+                    labels.push(label.clone());
+                    body = inner;
                 }
-                .ok();
+                if matches!(
+                    body,
+                    Stmt::While(..)
+                        | Stmt::DoWhile(..)
+                        | Stmt::For { .. }
+                        | Stmt::ForOf { .. }
+                        | Stmt::ForIn { .. }
+                        | Stmt::Switch { .. }
+                ) {
+                    self.fx().pending_labels = labels;
+                    out.push_str(&self.stmt(body, indent)?);
+                } else {
+                    // A labeled block is left by `break label`: PHP gets a one-pass loop to break.
+                    self.fx().jumps.push(JumpTarget {
+                        kind: JumpKind::Block,
+                        labels,
+                    });
+                    let _ = writeln!(out, "{p}do {{");
+                    self.fx().conditional_depth += 1;
+                    let inner = self.stmts(std::slice::from_ref(body), indent + 1);
+                    self.fx().conditional_depth -= 1;
+                    self.fx().jumps.pop();
+                    out.push_str(&inner?);
+                    let _ = writeln!(out, "{p}}} while (false);");
+                }
             }
             Stmt::Throw(e) => {
                 let v = self.throw_value(e)?;
@@ -1672,11 +1724,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let _ = writeln!(out, "{p}    default:");
                         }
                     }
-                    self.fx().switch_depth += 1;
+                    self.fx().jumps.push(JumpTarget {
+                        kind: JumpKind::Switch,
+                        labels: labels.clone(),
+                    });
                     self.fx().conditional_depth += 1;
                     let inner = self.block(body, indent + 2);
                     self.fx().conditional_depth -= 1;
-                    self.fx().switch_depth -= 1;
+                    self.fx().jumps.pop();
                     out.push_str(&inner?);
                 }
                 if switch_is_exhaustive(&d.ty, &case_types) {
@@ -1708,8 +1763,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn loop_body(&mut self, body: &[Stmt], indent: usize) -> Result<String> {
-        let saved = std::mem::take(&mut self.fx().switch_depth);
+    /// PHP's level for `break` / `continue` (optionally to a label): the number of enclosing
+    /// loops, switches and labeled blocks up to and including the target.
+    fn jump_level(&mut self, label: Option<&str>, is_continue: bool, span: Span) -> Result<usize> {
+        let jumps = &self.fx().jumps;
+        let target = jumps.iter().rposition(|target| match label {
+            Some(label) => target.labels.iter().any(|l| l == label),
+            None if is_continue => target.kind == JumpKind::Loop,
+            None => target.kind != JumpKind::Block,
+        });
+        let Some(index) = target else {
+            return err(span, "this jump has no enclosing target");
+        };
+        if is_continue && jumps[index].kind != JumpKind::Loop {
+            return err(span, "`continue` must name a loop");
+        }
+        Ok(jumps.len() - index)
+    }
+
+    fn loop_body(&mut self, body: &[Stmt], indent: usize, labels: Vec<String>) -> Result<String> {
+        self.fx().jumps.push(JumpTarget {
+            kind: JumpKind::Loop,
+            labels,
+        });
         let saved_bindings = self.fx().loop_bindings.clone();
         let bindings: Vec<_> = self
             .fx()
@@ -1722,7 +1798,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let r = self.block(body, indent);
         self.fx().conditional_depth -= 1;
         self.fx().loop_bindings = saved_bindings;
-        self.fx().switch_depth = saved;
+        self.fx().jumps.pop();
         r
     }
 
@@ -3431,7 +3507,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: Some(Vec::new()),
             outer: None,
             tmp: 0,
-            switch_depth: 0,
+            jumps: Vec::new(),
+            pending_labels: Vec::new(),
             conditional_depth: 0,
             no_db: self.fx().no_db,
             access: None,
@@ -7316,8 +7393,9 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
 
 fn stmt_span(s: &Stmt) -> Span {
     match s {
-        Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(span) | Stmt::Continue(span) => *span,
-        Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) => e.span,
+        Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(_, span) | Stmt::Continue(_, span) => *span,
+        Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) | Stmt::DoWhile(_, e) => e.span,
+        Stmt::Labeled(_, _, span) => *span,
         Stmt::For { span, .. } | Stmt::ForOf { span, .. } | Stmt::Switch { span, .. } => *span,
         Stmt::Func(f) => f.span,
         _ => Span::NONE,
@@ -7327,8 +7405,21 @@ fn stmt_span(s: &Stmt) -> Span {
 fn ends_with_exit(stmts: &[Stmt]) -> bool {
     matches!(
         stmts.last(),
-        Some(Stmt::Return(..) | Stmt::Throw(_) | Stmt::Continue(_) | Stmt::Break(_))
+        Some(Stmt::Return(..) | Stmt::Throw(_) | Stmt::Continue(..) | Stmt::Break(..))
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JumpKind {
+    Loop,
+    Switch,
+    Block,
+}
+
+#[derive(Debug, Clone)]
+struct JumpTarget {
+    kind: JumpKind,
+    labels: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -7337,6 +7428,8 @@ enum Completion {
     Return,
     Throw,
     Break,
+    /// `break label`: only the labeled statement it names completes normally on it.
+    BreakLabel,
     Continue,
 }
 
@@ -7395,8 +7488,9 @@ fn stmt_completions(
         }
         Stmt::Return(..) => HashSet::from([Return]),
         Stmt::Throw(_) => HashSet::from([Throw]),
-        Stmt::Break(_) => HashSet::from([Break]),
-        Stmt::Continue(_) => HashSet::from([Continue]),
+        Stmt::Break(None, _) => HashSet::from([Break]),
+        Stmt::Break(Some(_), _) => HashSet::from([BreakLabel]),
+        Stmt::Continue(..) => HashSet::from([Continue]),
         Stmt::Block(body) => block_completions(body, diverging, exhaustive_switches),
         Stmt::If(test, yes, no) => {
             let yes = block_completions(yes, diverging, exhaustive_switches);
@@ -7471,6 +7565,25 @@ fn stmt_completions(
             flow.remove(&Break);
             flow.remove(&Continue);
             flow.insert(Normal);
+            flow
+        }
+        // The test runs only after the body completes normally or continues.
+        Stmt::DoWhile(body, test) => {
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
+            let breaks = flow.remove(&Break);
+            let tested = flow.remove(&Normal) | flow.remove(&Continue);
+            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) {
+                flow.insert(Normal);
+            }
+            flow
+        }
+        // `break label` completes the labeled statement normally. Labels are not tracked here,
+        // so any break in the body is read as one (which only adds reachable paths).
+        Stmt::Labeled(_, body, _) => {
+            let mut flow = stmt_completions(body, diverging, exhaustive_switches);
+            if flow.remove(&BreakLabel) {
+                flow.insert(Normal);
+            }
             flow
         }
         _ => HashSet::from([Normal]),

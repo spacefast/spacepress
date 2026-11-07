@@ -219,8 +219,14 @@ pub enum Stmt {
         span: Span,
     },
     While(Expr, Vec<Stmt>),
-    Break(Span),
-    Continue(Span),
+    /// `do { body } while (test)`: the body runs before the first test.
+    DoWhile(Vec<Stmt>, Expr),
+    /// `label: statement`. `break label` leaves it; `continue label` needs a loop body.
+    Labeled(String, P<Stmt>, Span),
+    /// An unlabeled `break` leaves the innermost loop or switch.
+    Break(Option<String>, Span),
+    /// An unlabeled `continue` continues the innermost loop.
+    Continue(Option<String>, Span),
     Throw(Expr),
     Try {
         block: Vec<Stmt>,

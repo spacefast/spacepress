@@ -1202,6 +1202,75 @@ export type JobsApi = [RegisteredJobs] extends [never]
   : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };
 export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
+
+export type MailAddress = string | { email: string; name?: string };
+export interface MailMessage {
+  /** Defaults to `noreply@` the site's host. On Spacefast it must use the Space's sending domain. */
+  from?: MailAddress;
+  to: MailAddress | MailAddress[];
+  subject: string;
+  text?: string;
+  html?: string;
+  cc?: MailAddress | MailAddress[];
+  bcc?: MailAddress | MailAddress[];
+  replyTo?: MailAddress;
+  headers?: Record<string, string>;
+}
+/**
+ * Email from hooks, actions, routes and jobs. `send` queues the message in the handler's
+ * transaction and hands it to the site's mail transport after commit, retrying a refusal; a
+ * rollback sends nothing. It resolves to the queued delivery's id.
+ */
+export declare const mail: {
+  send(message: MailMessage): Promise<{ id: string }>;
+};
+
+/** What `fetch()` resolves to: the parts of a WHATWG Response a handler reads. */
+export interface FetchResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  /** The final URL after redirects. */
+  readonly url: string;
+  readonly redirected: boolean;
+  readonly headers: { get(name: string): string | null; has(name: string): boolean };
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+export interface FetchInit {
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
+  headers?: Record<string, string>;
+  /** Send JSON as `JSON.stringify(value)` with a `content-type` header. */
+  body?: string;
+}
+/**
+ * Outbound HTTPS from hooks, actions, routes and jobs, through the WordPress HTTP API. Refuses
+ * non-HTTPS URLs, URL credentials, and any private, loopback, link-local or special-purpose
+ * address, before and after each of at most three redirects. 10 s per call, 1 MiB each way. A
+ * refused or failed call throws an HttpError 502 with a `zero_fetch_*` code; a non-2xx answer is
+ * a response.
+ */
+export declare function fetch(url: string, init?: FetchInit): Promise<FetchResponse>;
+/**
+ * Digests, MACs, comparison and random values for hooks, actions, routes and jobs. Results are
+ * lowercase hex over the UTF-8 bytes of the input. Inputs are capped at 1 MiB.
+ */
+export declare const crypto: {
+  sha256(data: string): string;
+  sha512(data: string): string;
+  sha1(data: string): string;
+  md5(data: string): string;
+  /**
+   * `key` names an environment variable (read trimmed; a missing or blank one throws
+   * `crypto_key_unavailable`) or is `{ value }` for a key that is not a secret.
+   */
+  hmacSha256(options: { key: string | { value: string }; data: string }): string;
+  /** Constant time over equal lengths; values of different lengths are unequal. */
+  timingSafeEqual(a: string, b: string): boolean;
+  /** `bytes` (1 to 1024) random bytes as hex. */
+  randomHex(bytes: number): string;
+  /** A random RFC 4122 version 4 UUID. */
+  randomUUID(): string;
+};
 export interface EnvValue { readonly [envBrand]: true }
 export declare function env(name: string): EnvValue;
 export interface Webhook { url: EnvValue | string; secret: EnvValue; events: WebhookEvent[] }

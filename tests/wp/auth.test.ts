@@ -105,6 +105,14 @@ test("an opted-in host's identity cookie works on /zero/v1 from its own pages on
     assert.equal((await write({ origin: site })).status, 201, "the app's own pages write as the member");
     const forged = await write({});
     assert.deepEqual([forged.status, (await forged.json()).code], [403, "invalid_csrf"], "a write without Origin needs the session's CSRF token");
+    // A cross-site GET navigation carries a Lax cookie; WordPress would dispatch it as the overridden method.
+    for (const [path, headers] of [
+      ["/reviews?_method=POST", {}],
+      ["/reviews", { "x-http-method-override": "POST" }],
+    ] as const) {
+      const overridden = await fetch(`${api}${path}`, { headers: { cookie, ...headers } });
+      assert.deepEqual([overridden.status, (await overridden.json()).code], [403, "invalid_csrf"], `a method override is judged as a write: ${path}`);
+    }
   } finally {
     wp("option", "delete", "zero_test_rest_cookie_auth");
   }

@@ -39,12 +39,16 @@ final class Sessions
             }
             if (!$session) { return $result; }
             // A write proves intent by coming from the site's own pages or by the session's CSRF token.
-            $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+            // WordPress applies `?_method=` and X-HTTP-Method-Override after authentication, so the
+            // method that decides is the one the request will dispatch as.
+            $method = strtoupper((string) ($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? $_GET['_method'] ?? $_SERVER['REQUEST_METHOD'] ?? 'GET'));
             if (!in_array($method, ['GET', 'HEAD', 'OPTIONS'], true) && $origin === ''
                 && !hash_equals((string) $session['csrf'], (string) ($_SERVER['HTTP_X_IDENTITY_CSRF'] ?? ''))) {
                 return new \WP_Error('invalid_csrf', 'Refresh the page and try again.', ['status' => 403]);
             }
             wp_set_current_user((int) $session['wp_user_id']);
+            // A page cache keyed only on the URL (Batcache) must never store this user's answer.
+            if (function_exists('batcache_cancel')) { batcache_cancel(); }
             return true;
         }, 110);
         // A response to a request carrying the session cookie is that user's: never a shared copy.

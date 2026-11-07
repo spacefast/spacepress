@@ -92,47 +92,6 @@ if ($phase === 'seed') {
     proof($wpdb->last_error === '', 'legacy rows and empty scoped tables seeded');
     return;
 }
-// Users-only: a second Space whose app user has an identity account, a linked provider, a
-// session and a Space-scoped subject, plus a post. Raw SQL, so it lands in the site tables.
-$usersTarget = 'sfz_' . substr(hash('sha256', 'users-space'), 0, 24) . '_';
-if ($phase === 'users-only-seed') {
-    $wpdb->insert('wp_users', ['user_login'=>'users-only-member','user_pass'=>wp_hash_password('disposable-users-only'),'user_email'=>'stale@example.test','display_name'=>'Users Only','user_registered'=>gmdate('Y-m-d H:i:s')]);
-    $uid = (int) $wpdb->insert_id;
-    foreach (['_spacefast_app_user'=>'users-space','_spacefast_space_id'=>'users-space','wp_capabilities'=>serialize(['subscriber'=>true])] as $key=>$value) {
-        $wpdb->insert('wp_usermeta', ['user_id'=>$uid,'meta_key'=>$key,'meta_value'=>$value]);
-    }
-    $wpdb->insert('wp_options', ['option_name'=>"spacefast_app_subject_{$uid}_users-space",'option_value'=>'usr_'.str_repeat('d',64),'autoload'=>'off']);
-    $now = time();
-    $wpdb->insert('wp_sfi_emails', ['id'=>301,'wp_user_id'=>$uid,'normalized'=>'users-only@example.test','verified_at'=>$now,'method'=>'email_code']);
-    $wpdb->insert('wp_sfi_accounts', ['wp_user_id'=>$uid,'status'=>'active','primary_email_id'=>301,'created_at'=>$now]);
-    $wpdb->insert('wp_sfi_providers', ['id'=>401,'identity_key'=>hash('sha256', "https://api.spacefast.com/v1/auth\0users-only-subject"),'issuer'=>'https://api.spacefast.com/v1/auth','subject'=>'users-only-subject','wp_user_id'=>$uid,'created_at'=>$now]);
-    $wpdb->insert('wp_sfi_sessions', ['id'=>str_repeat('9',32),'wp_user_id'=>$uid,'secret_hash'=>hash_hmac('sha256','users-only-token',wp_salt('auth')),'csrf'=>str_repeat('9',64),'created_at'=>$now,'expires_at'=>$now+3600,'verified_at'=>$now,'label'=>'Users-only fixture']);
-    $wpdb->insert('wp_posts', ['post_title'=>'Users-only post','post_type'=>'post','post_status'=>'publish','post_author'=>$uid,'post_content'=>'','post_excerpt'=>'','to_ping'=>'','pinged'=>'','post_content_filtered'=>'','post_date'=>gmdate('Y-m-d H:i:s'),'post_date_gmt'=>gmdate('Y-m-d H:i:s'),'post_modified'=>gmdate('Y-m-d H:i:s'),'post_modified_gmt'=>gmdate('Y-m-d H:i:s')]);
-    $wpdb->insert('wp_postmeta', ['post_id'=>$wpdb->insert_id,'meta_key'=>'_spacefast_space_id','meta_value'=>'users-space']);
-    foreach ($wpdb->get_col("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND LEFT(TABLE_NAME,3)='wp_'") as $table) {
-        if (str_starts_with($table, 'wp_sfi_') || (str_starts_with($table, 'wp_zero_') && !str_starts_with($table, 'wp_zero_identity_'))) { continue; }
-        $wpdb->query("CREATE TABLE `" . $usersTarget . substr($table,3) . "` LIKE `$table`");
-    }
-    $wpdb->query("INSERT INTO `{$usersTarget}options` SELECT * FROM wp_options WHERE option_name NOT LIKE 'spacefast\\_app\\_subject\\_%'");
-    $wpdb->query($wpdb->prepare("UPDATE `{$usersTarget}options` SET option_name=%s WHERE option_name='wp_user_roles'", $usersTarget.'user_roles'));
-    file_put_contents('/tmp/spacefast-users-only.json', json_encode(['uid'=>$uid]));
-    proof($wpdb->last_error === '', 'users-only Space seeded in the site tables');
-    return;
-}
-if ($phase === 'users-only') {
-    $uid = json_decode(file_get_contents('/tmp/spacefast-users-only.json'), true)['uid'];
-    proof($wpdb->prefix === $usersTarget, 'bound to the users-only Space');
-    $user = get_userdata($uid);
-    proof($user && $user->display_name === 'Users Only' && $user->user_email === 'users-only@example.test' && wp_check_password('disposable-users-only', $user->user_pass, $uid), 'app user keeps its ID, name, password and verified email');
-    proof($user->roles === ['subscriber'] && get_user_meta($uid, '_spacefast_app_user', true) === '', 'scoped role retained, Space marker not copied');
-    proof(get_option("spacefast_app_subject_{$uid}_users-space") === 'usr_'.str_repeat('d',64), 'Space-scoped app subject retained');
-    proof(Plugin::$accounts->owner('users-only@example.test') === $uid && Plugin::$accounts->status($uid) === 'active', 'identity account and verified email copied');
-    proof(Plugin::$accounts->provider('https://api.spacefast.com/v1/auth', 'users-only-subject', null, 'Users Only') === $uid, 'linked provider resolves to the same account');
-    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$usersTarget}zero_identity_sessions") === 0 && Plugin::$sessions->find('users-only-token') === null, 'no session copied: the user signs in again');
-    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$usersTarget}posts WHERE post_type<>'auto-draft'") === 0, 'no posts copied');
-    proof(!$wpdb->get_var($wpdb->prepare('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s', $usersTarget.'zero_identity_legacy_sessions')), 'no imported-session table created');
-    return;
-}
 $f = json_decode(file_get_contents('/tmp/spacefast-fixture.json'), true);
 extract($f, EXTR_SKIP);
 proof(wp_salt('auth') === $salt, 'auth salt retained across prefix bind');

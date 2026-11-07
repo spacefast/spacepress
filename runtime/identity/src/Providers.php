@@ -71,9 +71,10 @@ final class Providers
             $binding,
             300,
         );
-        setcookie("zi_oidc", $id . "." . $binding, [
+        // Path=/ so the __Host- prefix applies over HTTPS: a sibling host cannot plant it.
+        setcookie(Sessions::cookieName("zi_oidc"), $id . "." . $binding, [
             "expires" => time() + 300,
-            "path" => Plugin::path() . "/provider/callback",
+            "path" => "/",
             "secure" => is_ssl(),
             "httponly" => true,
             "samesite" => "Lax",
@@ -84,7 +85,7 @@ final class Providers
     public function callback(string $name): array
     {
         [$id, $binding] = array_pad(
-            explode(".", (string) ($_COOKIE["zi_oidc"] ?? ""), 2),
+            explode(".", (string) ($_COOKIE[Sessions::cookieName("zi_oidc")] ?? ""), 2),
             2,
             "",
         );

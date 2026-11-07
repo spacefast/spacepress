@@ -2071,3 +2071,45 @@ fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
         ])
     );
 }
+
+#[test]
+fn mutable_named_exports_refuse_before_imports_can_snapshot_them() {
+    for (file, source, import) in [
+        (
+            "counter.js",
+            "export let value=0;export function inc(){value++;}",
+            "import {value,inc} from './counter.js';",
+        ),
+        (
+            "counter.ts",
+            "let counter=0;export {counter as value};export function inc(){counter++;}",
+            "import {value,inc} from './counter.ts';",
+        ),
+        (
+            "counter.js",
+            "export var value=0;export function inc(){value++;}",
+            "import * as counter from './counter.js';const {value,inc}=counter;",
+        ),
+        (
+            "counter.js",
+            "let value=0;export {value as default};export function inc(){value++;}",
+            "import value,{inc} from './counter.js';",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(file), source).unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{import}inc();const folded=value;export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert_eq!(
+            diagnostic["message"], "mutable named exports aren't supported",
+            "{report}"
+        );
+        assert_eq!(diagnostic["location"]["file"], file, "{report}");
+        assert!(
+            diagnostic["help"].as_str().is_some_and(|help| help.contains("const")),
+            "{report}"
+        );
+    }
+}

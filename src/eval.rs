@@ -463,6 +463,15 @@ impl<'p> Evaluator<'p> {
                     source, specs, span, ..
                 } => self.bind_imports(id, source, specs, *span, &scope)?,
                 Stmt::Exported(inner) => {
+                    if let Stmt::Decl { kind, span, .. } = inner.as_ref()
+                        && *kind != DeclKind::Const
+                    {
+                        return err_help(
+                            *span,
+                            "mutable named exports aren't supported",
+                            "export a const value or pure function; live import bindings aren't modeled",
+                        );
+                    }
                     self.exec(inner, &scope)?;
                     let mut names = Vec::new();
                     match inner.as_ref() {
@@ -479,6 +488,13 @@ impl<'p> Evaluator<'p> {
                     for (local, exported) in names {
                         let v = match from {
                             None => match scope.lookup(local) {
+                                Some(b) if b.mutable => {
+                                    return err_help(
+                                        *span,
+                                        "mutable named exports aren't supported",
+                                        "export a const value or pure function; live import bindings aren't modeled",
+                                    );
+                                }
                                 Some(b) if b.initialized => b.value,
                                 Some(_) => return err(*span, format!("`{local}` isn't initialized")),
                                 None => return err(*span, format!("can't export `{local}`: it isn't defined")),

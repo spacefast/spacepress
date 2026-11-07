@@ -279,6 +279,7 @@ pub struct Compiler<'a, 'p> {
     /// Compiled module-level helpers, separated by whether database access is forbidden.
     helpers: HashMap<(usize, bool), String>,
     helper_values: HashMap<usize, String>,
+    helper_closures: HashMap<usize, Rc<Closure>>,
     helper_types: HashMap<usize, Ty>,
     data_helpers: HashMap<(u8, usize), String>,
     effects: effects::Effects,
@@ -293,7 +294,7 @@ pub struct Compiler<'a, 'p> {
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
-    Rc::as_ptr(&c.func) as *const () as usize
+    Rc::as_ptr(c) as usize
 }
 
 impl<'a, 'p> Compiler<'a, 'p> {
@@ -321,6 +322,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             async_callback: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
+            helper_closures: HashMap::new(),
             helper_types: HashMap::new(),
             data_helpers: HashMap::new(),
             effects: effects::Effects::default(),
@@ -600,6 +602,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         slot: Option<&Slot>,
         no_db: bool,
     ) -> Result<()> {
+        // Keep identity keys alive while helper signatures and wrappers refer to them.
+        self.helper_closures
+            .entry(closure_key(closure))
+            .or_insert_with(|| closure.clone());
         let f = closure.func.clone();
         if matches!(slot, Some(Slot::FieldAccess { .. })) && f.is_async {
             return err_help(

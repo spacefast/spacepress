@@ -172,6 +172,8 @@ pub fn build(
             }
         }
     }
+    schema.wp_views =
+        !wordpress_uses.is_empty() && wordpress_uses.iter().any(|u| u.kind != compile::WordPressKind::Ability);
     // Hooks run in a fixed order per collection; sort for stable output.
     for c in schema.collections.values_mut() {
         c.hooks

@@ -61,6 +61,35 @@ QUERY_METHODS = {
     "set": {"params": [{"name": "query_var", "type": "string"}, {"name": "value", "type": "string | number | boolean | string[] | number[]"}], "returns": "void"},
     "is_main_query": {"params": [], "returns": "boolean"},
 }
+# Core functions callable from "php/wordpress". Each lists the parameters an author may pass (a
+# prefix of the PHP signature: later optional ones keep their PHP defaults) and, where phpdoc is wider
+# than the call can produce with those arguments, the narrowed result. `wpError: true` marks a result
+# that can be a WP_Error, which the runtime throws as an HttpError. Echoing template tags (`the_*`),
+# by-reference parameters and functions reading request globals are not admitted: the generator
+# refuses a by-reference parameter outright.
+SELECT_FUNCTIONS = {
+    "get_option": {"params": ["option"], "returns": "unknown", "why": "default_value omitted: a missing option reads as false"},
+    "update_option": {"params": ["option", "value"]},
+    "delete_option": {"params": ["option"]},
+    "get_post": {"params": ["post"], "paramTypes": {"post": "number"}, "returns": "WP_Post | null",
+                 "why": "output stays OBJECT, so the result is a WP_Post view or null"},
+    "wp_insert_post": {"params": ["postarr"], "fixed": {"wp_error": True}, "returns": "number", "wpError": True,
+                       "paramTypes": {"postarr": "{ post_title?: string; post_content?: string; post_excerpt?: string; post_status?: string; post_type?: string; post_name?: string; post_author?: number; post_parent?: number; menu_order?: number }"},
+                       "why": "wp_error is always true, so a failure throws instead of returning 0"},
+    "current_user_can": {"params": ["capability"]},
+    "is_user_logged_in": {"params": []},
+    "get_current_user_id": {"params": []},
+    "get_userdata": {"params": ["user_id"], "returns": "WP_User | false"},
+    "get_permalink": {"params": ["post"], "paramTypes": {"post": "number"}},
+    "home_url": {"params": ["path"]},
+    "sanitize_text_field": {"params": ["str"]},
+    "sanitize_title": {"params": ["title"]},
+    "esc_html": {"params": ["text"]},
+    "esc_attr": {"params": ["text"]},
+    "esc_url": {"params": ["url"]},
+    "wp_strip_all_tags": {"params": ["text"]},
+}
+
 # Hook parameters whose documented type is a shape the docblock spells out in prose; typed here by
 # hand from that docblock (the generator checks the docblock still says `array`).
 SHAPES = {
@@ -97,6 +126,10 @@ def ty(php, where):
             out.append("number")
         elif p in ("bool", "boolean"):
             out.append("boolean")
+        elif p == "false":
+            out.append("false")
+        elif p == "mixed":
+            out.append("unknown")
         elif p == "null":
             out.append("null")
         elif p == "string[]":
@@ -152,8 +185,7 @@ def raise_(message):
 
 
 def classes():
-    archive = zipfile.ZipFile(io.BytesIO(fetch("stubs")))
-    stubs = archive.read("wordpress-stubs-7.1.2/wordpress-stubs.php").decode()
+    stubs = stubs_text()
     out = {}
     for cls, props in SELECT_CLASSES.items():
         m = re.search(r"\n    (?:final )?class " + cls + r"\b[^\n]*\n    \{(.*?)\n    \}\n", stubs, re.S)
@@ -176,12 +208,51 @@ def classes():
     return out
 
 
+def stubs_text():
+    archive = zipfile.ZipFile(io.BytesIO(fetch("stubs")))
+    return archive.read("wordpress-stubs-7.1.2/wordpress-stubs.php").decode()
+
+
+def functions():
+    stubs = stubs_text()
+    out = {}
+    for name, spec in SELECT_FUNCTIONS.items():
+        m = re.search(r"\n    /\*\*((?:(?!\n    /\*\*).)*?)\*/\n    function " + name + r"\(([^)]*)\)", stubs, re.S)
+        if not m:
+            raise SystemExit(f"function {name} is not in the pinned stubs")
+        doc, signature = m.group(1), m.group(2)
+        php_params = [p.strip() for p in signature.split(",") if p.strip()]
+        if any("&" in p for p in php_params):
+            raise SystemExit(f"{name}: a by-reference parameter has no sound TypeScript call")
+        names = [re.match(r"(?:\.\.\.)?\$(\w+)", p).group(1) for p in php_params]
+        if names[: len(spec["params"])] != spec["params"]:
+            raise SystemExit(f"{name}: the allowlist's parameters {spec['params']} are not a prefix of {names}")
+        for later in php_params[len(spec["params"]):]:
+            if "=" not in later and not later.startswith("..."):
+                raise SystemExit(f"{name}: `{later}` is required but not admitted")
+        doc_types = {v: t for t, v in re.findall(r"@param\s+(\S+)\s+(?:\.\.\.)?\$(\w+)", doc)}
+        params = []
+        for p in spec["params"]:
+            t = spec.get("paramTypes", {}).get(p) or ty(doc_types[p], f"{name}(${p})")
+            params.append({"name": p, "type": t})
+        ret = re.search(r"@return\s+(\S+)", doc)
+        returns = spec.get("returns") or ty(ret.group(1), f"{name}() return")
+        out[name] = {
+            "params": params,
+            "returns": returns,
+            "fixed": spec.get("fixed", {}),
+            "wpError": spec.get("wpError", False),
+        }
+    return out
+
+
 def render():
     return json.dumps({
         "version": 1,
         "sources": {k: v["url"] for k, v in PINS.items()},
         "classes": classes(),
         "hooks": hooks(),
+        "functions": functions(),
     }, indent=2) + "\n"
 
 

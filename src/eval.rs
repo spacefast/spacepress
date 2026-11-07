@@ -1802,13 +1802,17 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail | Builtin::Abilities => {
-                err_help(
-                    span,
-                    "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
-                    "move the call into a handler",
-                )
-            }
+            Builtin::Once
+            | Builtin::Jobs
+            | Builtin::Fetch
+            | Builtin::Crypto
+            | Builtin::Mail
+            | Builtin::Abilities
+            | Builtin::WpFunction(_) => err_help(
+                span,
+                "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "move the call into a handler",
+            ),
             Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
@@ -2457,12 +2461,23 @@ const WORDPRESS_TYPES: &[&str] = &[
 fn wordpress_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
         "abilities" => Builtin::Abilities,
+        n if crate::wordpress::function(n).is_some() => Builtin::WpFunction(n.into()),
         n if WORDPRESS_TYPES.contains(&n) => return Ok(Value::Undef),
         _ => {
             let mut d = Diag::new(span, format!("\"php/wordpress\" has no export named `{name}`"));
-            if let Some(s) = suggest(name, WORDPRESS_EXPORTS.iter().copied()) {
-                d = d.help(format!("did you mean `{s}`?"));
-            }
+            d = match suggest(
+                name,
+                WORDPRESS_EXPORTS
+                    .iter()
+                    .copied()
+                    .chain(crate::wordpress::function_names()),
+            ) {
+                Some(s) => d.help(format!("did you mean `{s}`?")),
+                None => d.help(format!(
+                    "WordPress functions are admitted one by one when they map soundly to TypeScript; available: {}",
+                    crate::wordpress::function_names().collect::<Vec<_>>().join(", ")
+                )),
+            };
             return Err(Ctl::Err(d));
         }
     }))

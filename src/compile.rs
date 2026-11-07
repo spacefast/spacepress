@@ -305,6 +305,8 @@ pub enum WordPressKind {
     Ability,
     /// A `wp-hooks/<hook>` handler.
     Hook,
+    /// A WordPress function called from TypeScript.
+    Function,
 }
 
 /// One use of a WordPress feature, located at the source that makes it.
@@ -3001,6 +3003,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "`mail` can't be used as a value",
                 "call `mail.send({ to, subject, text })` directly",
             ),
+            Value::Builtin(Builtin::WpFunction(name)) => err_help(
+                span,
+                format!("`{name}` from \"php/wordpress\" can't be used as a value"),
+                format!("call it directly: `{name}(...)`"),
+            ),
             Value::Builtin(Builtin::Abilities) => err_help(
                 span,
                 "`abilities` can't be used as a value",
@@ -4414,7 +4421,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         | Builtin::Fetch
                         | Builtin::Crypto
                         | Builtin::Mail
-                        | Builtin::Abilities),
+                        | Builtin::Abilities
+                        | Builtin::WpFunction(_)),
                     ),
                     _,
                 ) => Some(b),
@@ -4425,6 +4433,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
                 Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
+                Some(Builtin::WpFunction(name)) => self.wp_function_call(&name, args, span).map(Some),
                 Some(Builtin::Env) => {
                     let name = self.arg(args, 0, span, "an environment variable name")?;
                     match &name.kind {
@@ -4770,6 +4779,57 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             format!("\\Zero\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
             Ty::Promise(Box::new(output_ty)),
+        ))
+    }
+
+    /// A catalog WordPress function: arguments checked against the catalog's types, called through
+    /// `Zero\Wp\Functions::call` with the catalog's fixed arguments appended.
+    fn wp_function_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let f = crate::wordpress::function(name).expect("only catalog functions are imported");
+        if self.fx().no_db {
+            return err_help(
+                span,
+                format!("access rules can't call `{name}`"),
+                "move the call into a hook, action, route or job",
+            );
+        }
+        if args.len() > f.params.len() {
+            return err_help(
+                span,
+                format!("`{name}` takes {} argument(s) from TypeScript", f.params.len()),
+                "Zero admits the arguments that map soundly; later PHP parameters keep their defaults",
+            );
+        }
+        let mut php = Vec::new();
+        for (i, (param, want)) in f.params.iter().enumerate() {
+            let Some(_) = args.get(i) else {
+                return err_help(
+                    span,
+                    format!("`{name}` needs `{param}` ({})", want.describe()),
+                    format!("pass {} argument(s)", f.params.len()),
+                );
+            };
+            let e = self.arg(args, i, span, param)?;
+            let v = self.expr(e)?;
+            let v = self.finish_value(v, e.span)?;
+            if !assignable(&v.ty, want) {
+                return err_help(
+                    e.span,
+                    format!(
+                        "`{name}` takes `{param}` as {}, not {}",
+                        want.describe(),
+                        v.ty.describe()
+                    ),
+                    "the type comes from WordPress's own documentation of the function",
+                );
+            }
+            php.push(v.php);
+        }
+        php.extend(f.fixed.iter().map(php_json));
+        self.use_wordpress(WordPressKind::Function, name, span);
+        Ok(Out::atom(
+            format!("\\Zero\\Wp\\Functions::call({}, [{}])", php_str(name), php.join(", ")),
+            f.returns,
         ))
     }
 

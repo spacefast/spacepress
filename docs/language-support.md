@@ -231,3 +231,27 @@ Status: **supported**.
 Global isFinite accepts zero or one argument and applies numeric coercion; Number.isFinite checks numbers without coercion. Number.isFinite is available as a stable function value, including local and captured aliases and feature detection. The differential numeric owner compares NaN, infinities, numbers, strings, null, booleans and arrays in pure configuration evaluation and PHP. Typed missing values retain the documented nullable boundary; explicit undefined is distinct from null.
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
+
+## plugin-narrowed-write
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+
+[Evidence](../tests/fixtures/reject-plugin-write)
+
+## plugin-static-host
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop.
+
+[Evidence](../tests/fixtures/reject-plugin-http)
+
+## plugin-cross-import
+
+Status: **refused**. Diagnostic: `Z1201`.
+
+A plugin package imports its own modules, "zero" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+
+[Evidence](../tests/fixtures/reject-plugin-isolation)

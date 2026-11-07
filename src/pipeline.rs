@@ -20,6 +20,8 @@ pub struct Built {
     pub gen_ts: String,
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
+    /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
+    pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
 }
 
@@ -215,8 +217,10 @@ pub fn build(
     }
     let client_files = client::files(&schema, &action_results, runtime);
     let gen_ts = schema_php::gen_ts(&schema);
+    let unsupported_plugins = ext.plugins.as_ref().map(wp_plugins::unsupported).unwrap_or_default();
     Ok(Built {
         plugins: ext.plugins,
+        unsupported_plugins,
         client_files,
         schema,
         functions_php,

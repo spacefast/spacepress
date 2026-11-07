@@ -66,4 +66,16 @@ final class JsSet
     {
         foreach ($this->iterate() as $value) { $callback($value, $value, $this); }
     }
+
+    /** Receipts persist the live values; object ids are per-process, so the index is rebuilt. */
+    public function __serialize(): array { return ['values' => $this->values()]; }
+
+    /** Also reads receipts written before the index existed (the same public `values` list). */
+    public function __unserialize(array $data): void
+    {
+        $this->slots = [];
+        $this->index = [];
+        $this->live = 0;
+        foreach ($data['values'] ?? [] as $value) { $this->add($value); }
+    }
 }

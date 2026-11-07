@@ -16,3 +16,23 @@ migrator must refuse it rather than fabricate a capsule or rename its columns.
 
 `tests/app_migrate.rs` owns CLI generation, dry runs and refusals.
 `tests/wp/app-migrate/run.sh` owns existing MariaDB rows and action behavior.
+
+`corpus/` holds 0.8 projects taken from `spacefast/monorepo` branch
+`zero-v2-cutover` at `0cc0293a04`, unchanged except as noted, for
+`scripts/migrate-census.py`:
+
+- `starter-todo`, `starter-guestbook`, `starter-contact`, `starter-context`: the
+  four `sf init --runtime zero` templates in `packages/cli/src/zero-commands.ts`,
+  with `${input.title}` set to the template name.
+- `start-map-studio`: `legacy/zero-0.8/apps/start-map-studio` server, shared
+  helpers and `sf.jsonc`; its client is reduced to a stub (the census reads only
+  server source and `pages/`).
+- `dashboard-push`: `apps/my/server/index.ts`, with its `./legacy-zero` adapter
+  import pointed back at `@spacefast/zero/server`.
+- `compile-notes`: the "Notes" capsule in
+  `legacy/zero-0.8/packages/zero-compile/src/compile.test.ts`, with the test's
+  `sf.jsonc` runtime.
+- `mcp-contact`: the contact capsule in `packages/mcp/src/tools.test.ts`.
+
+The purpose-built fixtures beside `corpus/` (board, content, refused, feed,
+endpoints, services, site) exercise one mapping each and are not counted.

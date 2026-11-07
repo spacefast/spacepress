@@ -153,7 +153,7 @@ pub fn main() -> ExitCode {
                 Some(name) => match usage(&rest.join(" ")).or_else(|| usage(name)) {
                     Some(text) => println!("{text}"),
                     None => {
-                        eprintln!("no command {name}\n{}", help());
+                        eprint!("no command {name}\n{}", help());
                         return ExitCode::from(2);
                     }
                 },
@@ -204,7 +204,7 @@ pub fn main() -> ExitCode {
                 }
             },
             None => {
-                eprintln!("no command {command}\n{}", help());
+                eprint!("no command {command}\n{}", help());
                 ExitCode::from(2)
             }
         },

@@ -231,7 +231,7 @@ test("the site journey on WordPress", async (t) => {
       async runJobs() {
         wp("action-scheduler", "run", "--hooks=zero_job");
       },
-      sync: (dir) => sync(dir, ["--site", receipt.url, "--app-password", `editor:${receipt.users.editor.appPassword}`]),
+      sync: (dir) => sync(dir, receipt.url, `editor:${receipt.users.editor.appPassword}`),
       async runRetries() {
         // A retry is a pending Action Scheduler action dated at the job's backoff: run each one now.
         for (const id of sql("SELECT action_id FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND status = 'pending'")) {

@@ -263,7 +263,7 @@ boot on a site that misses any of them and names each one;
 - **Localization** with Polylang: one row per locale, shared fields kept equal,
   a generated `wpml-config.xml`.
 - **Migrations in**: `zero migrate config` imports EmDash, Payload or Sanity
-  schemas, and `zero migrate site` moves a site built with the
+  schemas, and `zero migrate-legacy` moves a site built with the
   [original Zero](docs/migrating-from-zero.md).
 
 ## Alongside WordPress

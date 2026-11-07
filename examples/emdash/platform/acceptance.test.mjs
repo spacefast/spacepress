@@ -205,8 +205,8 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
   await step('CLI sync pushes a Markdown draft and pulls a native WordPress edit without a commit', async () => {
     const login = `admin:${adminPassword}`;
     const sync = async () => {
-      const value = await exec(zero, ['sync', project, '--site', base, '--app-password', login, '--no-commit', '--json'], { cwd: repo, timeout: 180000 }).catch((error) => { throw new Error(String(error.message).replaceAll(login, '[redacted]')); });
-      records.push({ command: ['zero', 'sync', project, '--site', base, '--app-password', '[redacted]', '--no-commit', '--json'], stdout: value.stdout, stderr: value.stderr });
+      const value = await exec(zero, ['sync', project, '--site', base, '--no-commit', '--json'], { cwd: repo, timeout: 180000, env: { ...process.env, ZERO_APP_PASSWORD: login } }).catch((error) => { throw new Error(String(error.message).replaceAll(login, '[redacted]')); });
+      records.push({ command: ['ZERO_APP_PASSWORD=[redacted]', 'zero', 'sync', project, '--site', base, '--no-commit', '--json'], stdout: value.stdout, stderr: value.stderr });
     };
     await sync();
     const guides = await api('/guides'); const guide = guides[0];

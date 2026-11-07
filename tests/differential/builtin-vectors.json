@@ -1077,5 +1077,14 @@
     "declarations": "import {replaceArrayMethod} from './array-method-order.js';",
     "expression": "(() => {const a=[1,2];const b=[1,2];const c=[1,2];const ar=a.slice(replaceArrayMethod(a,'slice'));const br=b.splice(replaceArrayMethod(b,'splice'),1);const cr=c.fill(9,replaceArrayMethod(c,'fill'),2);return [ar,br,b,cr];})()",
     "fold": false
+  },
+  {
+    "name": "forInSkipsDeletedArrayKeys",
+    "files": {
+      "for-in-live.js": "export function deletedArrayKeys(){const a=[1,2],seen=[];for(const k in a){seen.push(k);a.pop();}return seen;}"
+    },
+    "declarations": "import {deletedArrayKeys} from './for-in-live.js';",
+    "expression": "[deletedArrayKeys(), (() => {const a=[1,2];const seen=[];for(const k in a){seen.push(k);a.pop();}return seen;})()]",
+    "fold": false
   }
 ]

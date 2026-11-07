@@ -692,13 +692,17 @@ Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
 does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
 calls, constructors, iteration and primitive operations against the supported
 value model; unknown methods and unsupported signatures throw `JsError`
-TypeError. Calls resolve an own method before evaluating arguments, including
-typed array dispatch. Extracted supported builtin methods retain the receiver
-passed through `call`/`apply`.
+TypeError. Checked JavaScript calls resolve an own method before evaluating
+arguments. Typed array calls require the native method and explicitly refuse an
+own override before evaluating arguments; native return-type inference does not
+describe arbitrary overrides. Call such methods inside checked JavaScript.
+Extracted supported builtin methods retain the receiver passed through
+`call`/`apply`.
 Ordinary functions receive `JsArguments` (numeric properties, independent
 non-enumerable length); arrows inherit the surrounding arguments. Parameters
 are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,
-loose equality and own-key `for…in` share the evaluator's lowering.
+loose equality and own-key `for…in` share the evaluator's lowering. Runtime
+`for…in` snapshots the original keys and skips keys deleted before their turn.
 
 Typed and dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
 These support the small constructor/method subset exercised by imported

@@ -1075,6 +1075,14 @@ final class Js
         return self::isInteger($i) && $i >= 0 && $i <= 4294967294 ? (int) $i : null;
     }
 
+    public static function nativeArrayReceiver(JsArray $receiver, string $method): JsArray
+    {
+        if (array_key_exists($method, $receiver->p)) {
+            throw new JsError('Own array method overrides are not supported by typed calls', 'TypeError');
+        }
+        return $receiver;
+    }
+
     public static function get(?JsArray $a, int|float $i): mixed
     {
         if ($a === null) {

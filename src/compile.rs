@@ -1460,7 +1460,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let _ = writeln!(
                     out,
-                    "{p}{source} = \\Zero\\Js::dynamicKeys({});\n{p}foreach ({source}->a as {index}) {{",
+                    "{p}{source} = \\Zero\\Js::dynamicForIn({});\n{p}foreach ({source} as {index}) {{",
                     value.php
                 );
                 if matches!(kind, Some(DeclKind::Let | DeclKind::Const)) {
@@ -5211,6 +5211,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         m_span: Span,
     ) -> Result<Out> {
         self.builtin_args("array", m, args, span)?;
+        let a = Out {
+            php: format!("\\Zero\\Js::nativeArrayReceiver({}, {})", a.php, php_str(m)),
+            ..a.clone()
+        };
         let el = match a.ty.non_null() {
             Ty::Array(t) | Ty::NonEmptyArray(t) => *t,
             Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
@@ -5247,7 +5251,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::Fn(_, r) => (**r).clone(),
             _ => Ty::Unknown,
         };
-        // In-place mutators need an assignable variable.
         Ok(match m {
             "map" => {
                 let f = cb(self, &[])?;

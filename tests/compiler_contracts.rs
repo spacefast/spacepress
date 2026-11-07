@@ -2113,3 +2113,37 @@ fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
         );
     }
 }
+
+#[test]
+fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("array-overrides.js"),
+        "export function installArrayOverrides(a,b){a.map=()=>[99];b.join=()=>'own';}",
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {installArrayOverrides} from './array-overrides.js';export default defineConfig({name:'arraynative',actions:{test:action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let app = content.join("plugins/zero-app-arraynative/zero/app");
+    let actual = php(
+        r#"
+        require $argv[1];
+        require $argv[2] . '/functions.php';
+        echo \Zero\Js::jsonStringify(\ZeroApp\action__test());
+    "#,
+        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+    );
+    assert_eq!(
+        actual,
+        json!([
+            [
+                "TypeError",
+                "Own array method overrides are not supported by typed calls"
+            ],
+            [
+                "TypeError",
+                "Own array method overrides are not supported by typed calls"
+            ]
+        ])
+    );
+}

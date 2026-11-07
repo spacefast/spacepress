@@ -206,6 +206,16 @@ trait JsDynamic
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
 
+    public static function dynamicForIn(mixed $value): \Generator
+    {
+        foreach (self::dynamicKeys($value)->a as $key) {
+            if (($value instanceof JsArray || $value instanceof JsArguments)
+                && !array_key_exists($key, $value->a) && !array_key_exists($key, $value->p)) { continue; }
+            if ($value instanceof JsObject && !array_key_exists($key, $value->p)) { continue; }
+            yield $key;
+        }
+    }
+
     public static function dynamicIterable(mixed $value): JsArray
     {
         return new JsArray(iterator_to_array(self::dynamicIterator($value), false));

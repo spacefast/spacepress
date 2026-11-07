@@ -61,7 +61,7 @@ jobs:
       - name: Zero 0.8 census tool
         env:
           ZERO_BIN: ${{ github.workspace }}/target/debug/zero
-        run: node --test scripts/census-08/census.test.mjs
+        run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
       - name: Docker-free local development acceptance
         run: node --test scripts/dev/acceptance.test.mjs
       - name: Offline deployment and recovery acceptance

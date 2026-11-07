@@ -21,6 +21,12 @@ pub struct Built {
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
     pub hints: Vec<String>,
+    /// `zero/plugins.lock.json` as this build settled it (None without plugins or a lock).
+    pub plugin_lock: Option<serde_json::Value>,
+    /// What changed in the lock, one line each, for the command line.
+    pub plugin_changes: Vec<String>,
+    /// Each plugin's locked and inferred grant and read→send flows, for `zero check --json`.
+    pub plugin_report: serde_json::Value,
 }
 
 /// The last build, as the next one needs it: its snapshot and the number the next migration file gets.
@@ -28,6 +34,10 @@ pub struct Built {
 pub struct Previous {
     pub snapshot: serde_json::Value,
     pub next_migration: u32,
+    /// The committed `zero/plugins.lock.json`, the grant every plugin compiles against.
+    pub plugin_lock: Option<serde_json::Value>,
+    /// Refuse any plugin grant the lock doesn't already hold (CI, `--frozen`).
+    pub frozen: bool,
 }
 
 impl Previous {
@@ -81,6 +91,8 @@ impl Previous {
         Ok(Previous {
             snapshot,
             next_migration,
+            plugin_lock: None,
+            frozen: false,
         })
     }
 }
@@ -111,23 +123,66 @@ pub fn build(
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
-    let (functions, slots) = {
+    let mut hooks: indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<usize>, String)>> = indexmap::IndexMap::new();
+    let previous_value;
+    let (functions, slots, settled) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
         c.resolve_json_types().map_err(|d| d.phase(diag::Code::Compile))?;
         let slots = c.compile_roots(&roots).map_err(|d| d.phase(diag::Code::Compile))?;
         action_results = std::mem::take(&mut c.action_results);
-        (std::mem::take(&mut c.output), slots)
+        for ((slot, name), root) in slots.iter().zip(&roots) {
+            if let Slot::Hook { table, kind } = slot {
+                hooks.entry((table.clone(), *kind)).or_default().push((root.plugin, name.clone()));
+            }
+        }
+        // Plugins first, in `use` order, then the app's own hook.
+        for ((table, kind), list) in &mut hooks {
+            list.sort_by_key(|(plugin, _)| plugin.unwrap_or(usize::MAX));
+            if list.len() > 1 {
+                let names: Vec<String> = list.iter().map(|(_, n)| n.clone()).collect();
+                let chain = c.chain(table, *kind, &names);
+                *list = vec![(None, chain)];
+            }
+        }
+        // The lock settles before anything is emitted, so a refused plugin generates nothing.
+        let mut handlers = Vec::new();
+        for ((_, name), root) in slots.iter().zip(&roots) {
+            if let Some(plugin) = root.plugin {
+                let mut reached = std::collections::BTreeSet::from([name.clone()]);
+                let mut stack = vec![name.clone()];
+                while let Some(f) = stack.pop() {
+                    for callee in c.calls.get(&f).into_iter().flatten() {
+                        if reached.insert(callee.clone()) {
+                            stack.push(callee.clone());
+                        }
+                    }
+                }
+                handlers.push((plugin, name.clone(), reached));
+            }
+        }
+        let prev = previous()?;
+        let settled = crate::plugins::settle(&ext.uses, &c.uses, &handlers, prev.plugin_lock.as_ref(), prev.frozen)
+            .map_err(|d| d.phase(diag::Code::Compile))?;
+        previous_value = prev;
+        for ((_, hosts), function) in settled.hosts.iter().zip(&c.host_functions) {
+            let value = match hosts {
+                None => "null".to_string(),
+                Some(hosts) => format!(
+                    "[{}]",
+                    hosts.iter().map(|h| compile::php_str(h)).collect::<Vec<_>>().join(", ")
+                ),
+            };
+            c.output.push_str(&format!("function {function}(): ?array\n{{\n    return {value};\n}}\n\n"));
+        }
+        (std::mem::take(&mut c.output), slots, settled)
     };
+    for ((table, kind), list) in hooks {
+        let (_, name) = list.into_iter().next().expect("one hook per kind");
+        schema.collections.get_mut(&table).expect("collection").hooks.insert(kind, name);
+    }
     for (slot, name) in slots {
         match slot {
-            Slot::Hook { table, kind } => {
-                schema
-                    .collections
-                    .get_mut(&table)
-                    .expect("collection")
-                    .hooks
-                    .insert(kind, name);
-            }
+            Slot::Hook { .. } => {}
             Slot::Default { at } => schema.column_mut(&at).default = Some(DefaultKind::Fn(name)),
             Slot::OnUpdate { at } => schema.column_mut(&at).on_update = Some(DefaultKind::Fn(name)),
             Slot::Validate { at } => schema.column_mut(&at).rules.validate = Some(name),
@@ -174,7 +229,7 @@ pub fn build(
         functions + &services_php
     );
     let snapshot = migrate::snapshot(&schema);
-    let previous = previous()?;
+    let previous = previous_value;
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
             if let Some(next) = snapshot["tables"].get(stored)
@@ -225,6 +280,9 @@ pub fn build(
         gen_ts,
         warnings,
         hints: ext.hints,
+        plugin_lock: settled.lock,
+        plugin_changes: settled.changes,
+        plugin_report: settled.report,
     })
 }
 

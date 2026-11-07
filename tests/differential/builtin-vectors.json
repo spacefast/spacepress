@@ -1068,5 +1068,14 @@
     "declarations": "import capturedDefault,{state as constantExportState,current as currentConstantExport} from './constant-exports.js';import {read as readConstantExport} from './constant-export-reader.js';",
     "expression": "[constantExportState===readConstantExport(),constantExportState.n,capturedDefault,currentConstantExport()]",
     "fold": true
+  },
+  {
+    "name": "typedArrayMethodsResolveBeforeArguments",
+    "files": {
+      "array-method-order.js": "export function replaceArrayMethod(a,name){a[name]=()=>['wrong'];return 0;}"
+    },
+    "declarations": "import {replaceArrayMethod} from './array-method-order.js';",
+    "expression": "(() => {const a=[1,2];const b=[1,2];const c=[1,2];const ar=a.slice(replaceArrayMethod(a,'slice'));const br=b.splice(replaceArrayMethod(b,'splice'),1);const cr=c.fill(9,replaceArrayMethod(c,'fill'),2);return [ar,br,b,cr];})()",
+    "fold": false
   }
 ]

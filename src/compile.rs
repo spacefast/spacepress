@@ -5385,11 +5385,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
-                    format!(
-                        "\\Zero\\Js::dynamicCallMethod({}, 'splice', new \\Zero\\JsArray([{}]))",
-                        a.php,
-                        extra.join(", ")
-                    ),
+                    format!("(\\Zero\\Js::dynamicMethod({}, 'splice'))({})", a.php, extra.join(", ")),
                     Ty::Array(Box::new(el)),
                 )
             }
@@ -5402,7 +5398,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .join(", ");
                 let dispatch = || {
                     format!(
-                        "\\Zero\\Js::dynamicCallMethod({}, {}, new \\Zero\\JsArray([{}]))",
+                        "(\\Zero\\Js::dynamicMethod({}, {}))({})",
                         a.php,
                         php_str(m),
                         extra.join(", ")

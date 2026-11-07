@@ -692,8 +692,9 @@ Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
 does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
 calls, constructors, iteration and primitive operations against the supported
 value model; unknown methods and unsupported signatures throw `JsError`
-TypeError. Calls resolve an own method before evaluating arguments. Extracted
-supported builtin methods retain the receiver passed through `call`/`apply`.
+TypeError. Calls resolve an own method before evaluating arguments, including
+typed array dispatch. Extracted supported builtin methods retain the receiver
+passed through `call`/`apply`.
 Ordinary functions receive `JsArguments` (numeric properties, independent
 non-enumerable length); arrows inherit the surrounding arguments. Parameters
 are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,

@@ -63,6 +63,11 @@ pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
             "zero-runtime/readme.txt".into(),
             Cow::Owned(readme("zero-runtime").into_bytes()),
         ),
+        // The build store's loader: a must-use plugin on plain sites, required by hosts.
+        (
+            "zero-loader.php".into(),
+            Cow::Borrowed(runtime_file("wp-plugin/zero-loader.php").expect("embedded loader")),
+        ),
     ];
     for (rel, bytes) in runtime_files::FILES {
         if let Some(rest) = rel.strip_prefix("Zero/") {
@@ -104,7 +109,7 @@ pub(crate) fn emit_generated(
     if runtime {
         for (rel, bytes) in runtime_tree() {
             // The optional admin screens: only when the config opted in.
-            if built.schema.admin || !rel.starts_with("zero-admin/") {
+            if rel != "zero-loader.php" && (built.schema.admin || !rel.starts_with("zero-admin/")) {
                 write(&plugins.join(rel), bytes)?;
             }
         }

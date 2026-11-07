@@ -1,7 +1,7 @@
 //! The build store: immutable, content-addressed compiled builds on disk.
 //!
 //! ```text
-//! <root>/runtime/<revision>/   zero-runtime/, zero-identity/, zero-admin/  (once per runtime)
+//! <root>/runtime/<revision>/   zero-loader.php, zero-runtime/, zero-identity/, zero-admin/
 //! <root>/app/<hash>/           the app tree compile_sources writes, minus the runtime plugins
 //! <root>/build/<id>.json       BuildManifest; <id> is the SHA-256 of these bytes
 //! <root>/ready/<id>.json       written by the loader once the build initialized on this site

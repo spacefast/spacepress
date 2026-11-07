@@ -65,14 +65,19 @@ final class Runtime
         do_action('zero_runtime_loaded');
     }
 
-    /** Mount exactly one version after platform plugins load. Visitors never migrate managed apps. */
-    public static function mount(string $runtimeFile, string $appDir, array $variables = []): Plugin
+    /**
+     * Mount exactly one version after platform plugins load. Visitors never migrate managed apps.
+     * Null variables keep standalone lookup (environment and wp-config constants) for plain sites.
+     */
+    public static function mount(string $runtimeFile, string $appDir, ?array $variables = []): Plugin
     {
         if (self::$booted && !self::$managed) {
             throw new \RuntimeException('A site-wide Zero runtime is already loaded');
         }
         self::$managed = true;
-        \Zero\Env::isolate($variables);
+        if ($variables !== null) {
+            \Zero\Env::isolate($variables);
+        }
         self::boot($runtimeFile);
         $plugin = self::app($appDir, $appDir . '/' . basename($appDir) . '.php');
         if ($plugin === null) {

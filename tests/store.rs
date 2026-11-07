@@ -52,6 +52,7 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
     let runtime = root.join("runtime").join(&first.runtime_revision);
     assert!(runtime.join("zero-runtime/zero-runtime.php").is_file());
     assert!(runtime.join("zero-identity/zero-identity.php").is_file());
+    assert!(runtime.join("zero-loader.php").is_file());
     let app = root.join("app").join(&first.app_hash);
     assert!(app.join("plugins/zero-app-pantry/zero/app/functions.php").is_file());
     assert!(

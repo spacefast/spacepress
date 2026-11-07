@@ -20,24 +20,36 @@ branches=$(git -C "$repo" for-each-ref --sort=committerdate --format='%(refname:
   | grep -E "$pattern" || true)
 
 if [ -e "$scratch/.git" ]; then
+  # The scratch worktree is this script's own; drop the harness copy from the last run.
   git -C "$scratch" merge --abort 2>/dev/null || true
+  git -C "$scratch" reset --quiet --hard
   git -C "$scratch" checkout --quiet --detach origin/main
-  git -C "$scratch" reset --quiet --hard origin/main
 else
   git -C "$repo" worktree add --quiet --detach "$scratch" origin/main
 fi
 
-merged=() conflicts=()
+# Generated docs and the compatibility registry don't change what the compiler does, so a
+# conflict only there is resolved by keeping the scratch side; the run lists it.
+docs_only='^(docs/language-support\.md|tests/compatibility/registry\.json)$'
+merged=() conflicts=() docs_resolved=()
 for branch in $branches; do
   sha=$(git -C "$repo" rev-parse --short "origin/$branch")
   pr=$(gh pr list -R spacefast/zero --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
   label="$branch@$sha${pr:+ (#$pr)}"
   if git -C "$scratch" merge --quiet --no-edit "origin/$branch" >/dev/null 2>&1; then
     merged+=("$label")
+    continue
+  fi
+  unmerged=$(git -C "$scratch" diff --name-only --diff-filter=U)
+  if [ -n "$unmerged" ] && ! grep -vqE "$docs_only" <<<"$unmerged"; then
+    git -C "$scratch" checkout --quiet --ours -- $unmerged
+    git -C "$scratch" add -- $unmerged
+    git -C "$scratch" commit --quiet --no-edit
+    merged+=("$label")
+    docs_resolved+=("$label: $(paste -sd, - <<<"$unmerged" | sed 's/,/, /g')")
   else
-    files=$(git -C "$scratch" diff --name-only --diff-filter=U | paste -sd, - | sed 's/,/, /g')
     git -C "$scratch" merge --abort
-    conflicts+=("$label: ${files:-merge failed}")
+    conflicts+=("$label: $(paste -sd, - <<<"${unmerged:-merge failed}" | sed 's/,/, /g')")
   fi
 done
 
@@ -55,10 +67,12 @@ done
 label="merged state: origin/main $(git -C "$repo" rev-parse --short origin/main) + ${#merged[@]} branches, $(date -u +%Y-%m-%dT%H:%MZ)"
 ZERO_BIN="$scratch/target/release/zero" node "$harness/table.mjs" --probes --label "$label" --json "$scratch/files-sdk-table.json"
 echo
-echo "Merged (oldest first):"
-for entry in "${merged[@]}"; do echo "- $entry"; done
-[ ${#merged[@]} -eq 0 ] && echo "- none"
-echo
-echo "Conflicts with the merge so far (left out of this run):"
-for entry in "${conflicts[@]}"; do echo "- $entry"; done
-[ ${#conflicts[@]} -eq 0 ] && echo "- none"
+list() {
+  local title=$1; shift
+  echo "$title"
+  if [ $# -eq 0 ]; then echo "- none"; else printf -- '- %s\n' "$@"; fi
+  echo
+}
+list "Merged (oldest first):" "${merged[@]}"
+list "Merged with generated docs/registry conflicts kept from the scratch side (no compiler effect):" "${docs_resolved[@]}"
+list "Conflicts with the merge so far (left out of this run, owners please merge origin/main or the conflicting branch):" "${conflicts[@]}"

@@ -7,7 +7,9 @@ import { spawnSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-// [name, typed TS body, JS body]. Each body returns a string, number or boolean.
+// [name, typed TS body, JS body, module-scope declarations]. Each body returns a
+// string, number or boolean. Declarations are shared by both variants and sit at
+// module scope, so a class probe measures the class, not "class inside a function".
 export const PROBES = [
   ["Symbol", 'const k = Symbol("k"); return String(k.description) + typeof k;', 'const k = Symbol("k"); return String(k.description) + typeof k;'],
   ["Symbol.for / well-known", 'return Symbol.for("a") === Symbol.for("a") && typeof Symbol.iterator === "symbol";', 'return Symbol.for("a") === Symbol.for("a") && typeof Symbol.iterator === "symbol";'],
@@ -16,8 +18,8 @@ export const PROBES = [
   ["Promise.all", "const r = await Promise.all([Promise.resolve(1), Promise.resolve(2)]); return r.length;", "return Promise.all([Promise.resolve(1), Promise.resolve(2)]).then((r) => r.length);"],
   ["new Promise", "const v = await new Promise<number>((resolve) => resolve(3)); return v;", "return new Promise((resolve) => resolve(3));"],
   ["for await", "let n = 0; for await (const x of [1, 2]) n += x; return n;", "return (async () => { let n = 0; for await (const x of [1, 2]) n += x; return n; })();"],
-  ["async generator", "async function* g() { yield 1; yield 2; } let n = 0; for await (const x of g()) n += x; return n;", "async function* g() { yield 1; yield 2; } return (async () => { let n = 0; for await (const x of g()) n += x; return n; })();"],
-  ["generator", "function* g() { yield 1; yield 2; } let n = 0; for (const x of g()) n += x; return n;", "function* g() { yield 1; yield 2; } let n = 0; for (const x of g()) n += x; return n;"],
+  ["async generator", "let n = 0; for await (const x of g()) n += x; return n;", "return (async () => { let n = 0; for await (const x of g()) n += x; return n; })();", "async function* g() { yield 1; yield 2; }"],
+  ["generator", "let n = 0; for (const x of g()) n += x; return n;", "let n = 0; for (const x of g()) n += x; return n;", "function* g() { yield 1; yield 2; }"],
   ["URL", 'return new URL("https://x.test/a?b=1").pathname;', 'return new URL("https://x.test/a?b=1").pathname;'],
   ["AbortController", "const c = new AbortController(); c.abort(); return c.signal.aborted;", "const c = new AbortController(); c.abort(); return c.signal.aborted;"],
   ["ReadableStream", "const s = new ReadableStream<Uint8Array>({ start(c) { c.close(); } }); return typeof s;", "const s = new ReadableStream({ start(c) { c.close(); } }); return typeof s;"],
@@ -26,8 +28,9 @@ export const PROBES = [
   ["Response / Headers", 'const h = new Headers(); h.set("a", "b"); return h.get("a") ?? "";', 'const h = new Headers(); h.set("a", "b"); return h.get("a");'],
   ["setTimeout", "await new Promise<void>((r) => setTimeout(r, 1)); return 1;", "return new Promise((r) => setTimeout(() => r(1), 1));"],
   ["Map / Set", 'const m = new Map<string, number>([["a", 1]]); const s = new Set<number>([1]); return (m.get("a") ?? 0) + s.size;', 'const m = new Map([["a", 1]]); const s = new Set([1]); return m.get("a") + s.size;'],
-  ["private fields", "class A { #x = 1; #y() { return this.#x; } get() { return this.#y(); } } return new A().get();", "class A { #x = 1; #y() { return this.#x; } get() { return this.#y(); } } return new A().get();"],
-  ["class extends Error", 'class E extends Error { code = "c"; } let caught = false; try { throw new E("m"); } catch (e) { caught = e instanceof E; } return caught;', 'class E extends Error { constructor(m) { super(m); this.code = "c"; } } try { throw new E("m"); } catch (e) { return e instanceof E; }'],
+  ["private fields", "return new A().get();", "return new A().get();", "class A { #x = 1; #y() { return this.#x; } get() { return this.#y(); } }"],
+  ["getters / setters", "const o = new A(); o.v = 2; return o.v;", "const o = new A(); o.v = 2; return o.v;", "class A { _v = 0; get v() { return this._v; } set v(x) { this._v = x * 2; } }"],
+  ["class extends Error", "let caught = false; try { throw new E(\"m\"); } catch (e) { caught = e instanceof E; } return caught;", "try { throw new E(\"m\"); } catch (e) { return e instanceof E; }", 'class E extends Error { code = "c"; }'],
   ["class inside a function", "function make() { class A { v() { return 1; } } return new A(); } return make().v();", "function make() { class A { v() { return 1; } } return new A(); } return make().v();"],
 ];
 
@@ -54,18 +57,18 @@ function verdict(zero, dir) {
 export async function runProbes(zero, work) {
   await rm(work, { recursive: true, force: true });
   const rows = [];
-  for (const [index, [name, ts, js]] of PROBES.entries()) {
+  for (const [index, [name, ts, js, declarations = ""]] of PROBES.entries()) {
     const tsDir = path.join(work, `${index}-ts`);
     await mkdir(tsDir, { recursive: true });
     // The body runs directly in the handler, so only the API itself is measured.
     await writeFile(
       path.join(tsDir, "zero.config.ts"),
-      config({ handler: ts.replace(/return ([^;]+);(?![\s\S]*return )/, "return { v: String($1) };") }),
+      config({ imports: declarations, handler: ts.replace(/return ([^;]+);(?![\s\S]*return )/, "return { v: String($1) };") }),
     );
     const jsDir = path.join(work, `${index}-js`);
     await mkdir(path.join(jsDir, "node_modules/probe-lib"), { recursive: true });
     await writeFile(path.join(jsDir, "node_modules/probe-lib/package.json"), '{"name":"probe-lib","type":"module","exports":"./index.js"}');
-    await writeFile(path.join(jsDir, "node_modules/probe-lib/index.js"), `export function run(s) { ${js} }\n`);
+    await writeFile(path.join(jsDir, "node_modules/probe-lib/index.js"), `${declarations}\nexport function run(s) { ${js} }\n`);
     await writeFile(
       path.join(jsDir, "zero.config.ts"),
       config({

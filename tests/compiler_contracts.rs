@@ -326,7 +326,11 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
     );
     assert_eq!(
         order,
-        json!([["a", 1010, 1015, "b", 1020, "c", 1020, "RangeError"], true, "TimeoutError"])
+        json!([
+            ["a", 1010, 1015, "b", 1020, "c", 1020, "RangeError"],
+            true,
+            "TimeoutError"
+        ])
     );
 }
 

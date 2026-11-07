@@ -60,6 +60,10 @@ pub enum Ty {
     SetOf(Box<Ty>),
     /// A built-in iterator (`map.keys()`, `array.entries()`, ...) yielding T, consumed once.
     Iter(Box<Ty>),
+    /// DOM `AbortController` (`Zero\JsAbortController`).
+    AbortController,
+    /// DOM `AbortSignal` (`Zero\JsAbortSignal`).
+    AbortSignal,
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
     /// Callable parameter metadata; inner type is the rest binding's array.
@@ -276,6 +280,8 @@ impl Ty {
             Ty::MapOf(k, v) => format!("Map<{}, {}>", k.describe(), v.describe()),
             Ty::SetOf(t) => format!("Set<{}>", t.describe()),
             Ty::Iter(t) => format!("IterableIterator<{}>", t.describe()),
+            Ty::AbortController => "AbortController".into(),
+            Ty::AbortSignal => "AbortSignal".into(),
             Ty::Union(ts) => ts.iter().map(Ty::describe).collect::<Vec<_>>().join(" | "),
             Ty::Fn(..) => "a function".into(),
             Ty::Rest(t) => format!("...{}", t.describe()),

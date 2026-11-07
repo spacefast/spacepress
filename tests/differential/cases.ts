@@ -2,7 +2,7 @@
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
 import { job, jobs, once, env } from "zero"; // lane D
-import { jsAbort, jsCollections, jsPendingTimer } from "./stdlib.js";
+import { jsAbort, jsCollections } from "./stdlib.js";
 
 const n = table({ id: id() });
 
@@ -925,6 +925,27 @@ function stdlibActions() {
     }),
     jsCollections: run(() => jsCollections()),
     jsAbort: run(() => jsAbort()),
+    typedAbort: run(() => {
+      const order: string[] = [];
+      const c = new AbortController();
+      const signal: AbortSignal = c.signal;
+      const once = () => { order.push("once"); };
+      const kept = () => { order.push("kept"); };
+      const removed = () => { order.push("removed"); };
+      signal.addEventListener("abort", once, { once: true });
+      signal.addEventListener("abort", kept);
+      signal.addEventListener("abort", kept);
+      signal.addEventListener("abort", removed);
+      signal.removeEventListener("abort", removed);
+      const before = signal.aborted;
+      c.abort(new Error("stop"));
+      c.abort(new Error("again"));
+      let thrown = "none";
+      try { signal.throwIfAborted(); } catch (e) { thrown = e.message; }
+      const timer = setTimeout(() => { order.push("never"); }, 10);
+      clearTimeout(timer);
+      return [before, signal.aborted, order, thrown, signal.reason === undefined];
+    }),
     moduleCollections: run(() => [NOT_FOUND.has(404), NOT_FOUND.has(500), NOT_FOUND.size, OPS.get("put") ?? "none", [...OPS.keys()]]),
     setOps: run(() => {
       const s = new Set([3, 1, 3, 2]);

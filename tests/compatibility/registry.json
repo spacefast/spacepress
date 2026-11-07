@@ -222,6 +222,13 @@
       "guidance": "Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\\JsMap`/`Zero\\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused."
     },
     {
+      "id": "abort-signals-and-timers",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler",
+      "guidance": "`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for \"abort\" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `Zero\\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`ZERO_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with ZERO_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. The differential cases in tests/differential/cases.ts (jsAbort, typedAbort) compare abort ordering with Node."
+    },
+    {
       "id": "builtin-overloads",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",

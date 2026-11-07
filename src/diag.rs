@@ -139,7 +139,9 @@ pub fn site(span: Span) -> String {
             return String::new();
         };
         let (line, col) = line_col(src, span.start as usize);
-        let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         format!("{name}:{line}:{col}")
     })
 }

@@ -63,6 +63,17 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     assert!(ok, "{written:#}");
     assert_eq!(written["status"], "written");
     assert_eq!(dry["adoption_sql"], written["adoption_sql"]);
+    // Realtime maps: v2 announces every committed write, so the declaration and ctx.invalidate go.
+    assert!(
+        written["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped"),
+        "{written:#}"
+    );
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(!config.contains("invalidate"), "{config}");
     let snapshot: Value =
         serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(snapshot["tables"]["tasks"]["columns"]["id"]["autoIncrement"], true);
@@ -146,7 +157,7 @@ fn project(root: &Path, capsule: &str) {
 }
 
 #[test]
-fn spacefast_content_only_root_adopts_native_posts_and_drops_realtime() {
+fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("source");
     project(&root, r#"{name:"spacefast-posts", realtime:{enabled:true}}"#);
@@ -163,7 +174,7 @@ fn spacefast_content_only_root_adopts_native_posts_and_drops_realtime() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "review")
+            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped")
     );
     assert_eq!(
         serde_json::from_slice::<Value>(&std::fs::read(out.join("connector-roles.json")).unwrap()).unwrap(),

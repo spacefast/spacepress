@@ -38,9 +38,8 @@ final class App
     }
 
     /** Boot an app root (`zero/app/{schema.php,functions.php}`) on the services the plugin provides. */
-    public static function boot(string $appRoot, Store $store, Auth $auth, Media $media): self
+    public static function boot(string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media): self
     {
-        $schema = Schema::load($appRoot . '/zero/app/schema.php');
         $functions = $appRoot . '/zero/app/functions.php';
         if (is_file($functions)) {
             require_once $functions;
@@ -90,6 +89,16 @@ final class App
      */
     public function matchRoute(string $method, string $path): ?array
     {
+        return self::routeFor($this->schema, $method, $path);
+    }
+
+    /**
+     * matchRoute() from the schema alone, so a request can be matched before storage is usable.
+     *
+     * @return ?array{name: string, route: array, params: array<string, string>}
+     */
+    public static function routeFor(Schema $schema, string $method, string $path): ?array
+    {
         $method = $method === 'HEAD' ? 'GET' : $method;
         $segments = explode('/', trim($path, '/'));
         foreach ($segments as $segment) {
@@ -108,7 +117,7 @@ final class App
         // exact ties, which the compiler refuses anyway.
         $best = null;
         $bestRank = null;
-        foreach ($this->schema->routes() as $name => $route) {
+        foreach ($schema->routes() as $name => $route) {
             if ($route['method'] !== $method) {
                 continue;
             }
@@ -168,8 +177,14 @@ final class App
     /** Whether any route claims this path for some method (a 405 rather than a 404 for the others). */
     public function routePathKnown(string $path): bool
     {
+        return self::routePathFor($this->schema, $path);
+    }
+
+    /** routePathKnown() from the schema alone. */
+    public static function routePathFor(Schema $schema, string $path): bool
+    {
         foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
-            if ($this->matchRoute($method, $path) !== null) {
+            if (self::routeFor($schema, $method, $path) !== null) {
                 return true;
             }
         }

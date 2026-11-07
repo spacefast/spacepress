@@ -1,13 +1,14 @@
 # Deploy Zero on Spacefast
 
 Publish a project containing `zero.config.ts` to run its collections, hooks,
-actions, HTTP routes and TSX pages on Spacefast's WordPress runtime. Spacefast
+actions and HTTP routes on Spacefast's WordPress runtime. Spacefast
 compiles the source on the host and initializes the candidate before making it
 ready. Each immutable version runs its own compiled code.
 
 Generated REST endpoints, actions, [HTTP routes](config-api.md#http-routes)
-and [TSX pages](pages.md) work on the Space hostname. Realtime is not
-supported. Static files in `public/` are published as they are.
+and [live updates](#live-updates) work on the Space hostname. TSX pages are not
+hosted yet: keep your frontend in public assets or publish it separately.
+Static files in `public/` are published as they are.
 
 ## Publish an app
 
@@ -88,8 +89,25 @@ A custom method and path, such as `GET /api/feed.json` or a
 curl --fail-with-body 'https://your-space.example/api/feed.json'
 ```
 
-Generated endpoints, actions, routes and pages need no additional Spacefast
-route setup.
+Generated endpoints, actions and routes need no additional Spacefast route
+setup.
+
+## Live updates
+
+`watch` works with no setup on Spacefast:
+
+```ts
+import { createClient } from "/__spacefast/client.js";
+
+createClient().todos.watch({ where: { done: false } }, (todos) => render(todos));
+```
+
+Spacefast registers a Publisher that sends each commit's change notice to the
+Space's realtime room. The `/__spacefast/client.js` bundle registers the
+matching Cast transport, so every client on the page uses it. Without a live
+connection, watched reads poll. See [Live updates](realtime.md) for the API.
+
+## Migrate an existing 0.8 Space
 
 To move an existing Space from an earlier Zero, follow
 [Migrate a Spacefast app](migrating-from-zero.md#migrate-a-spacefast-app).
@@ -140,7 +158,8 @@ paths to WordPress rather than answering 404 at the edge. Serve the plugin's
 
 Unscoped cron and WP-CLI must load no app. Each scoped job needs the Space,
 environment, and version before entering the same database and cache scope as
-HTTP. Multisite, realtime, and Atomic SQLite are outside this hosting contract. Qualify MU-plugin ordering, persistent object-cache isolation,
+HTTP. Multisite, hosted Pages, and Atomic SQLite are outside this
+hosting contract. Qualify MU-plugin ordering, persistent object-cache isolation,
 auth-salt continuity, and action routing on the actual provider before rollout.
 
 ## Verify the compiler and migration

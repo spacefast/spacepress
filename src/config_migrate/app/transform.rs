@@ -573,7 +573,7 @@ pub(super) fn app(
         }
     }
     if root.contains_key("realtime") {
-        entries.push(entry("/realtime", "review", "Realtime is not supported on Spacefast v2. The declaration was dropped; replace subscriptions with explicit reads or polling."));
+        entries.push(entry("/realtime", "mapped", "v2 announces every committed write as a change notice, so the declaration is no longer needed; Spacefast delivers notices over Cast. Replace client useQuery subscriptions with watch(client, [\"<table>\"], read, onResult) from the generated client."));
     }
     let mut native_posts = content_posts.then(|| json!({}));
     let content_config = if let Some(collections) = root.get("collections") {
@@ -1366,6 +1366,22 @@ impl Rewrite<'_> {
             return Err(fail(self.at, "reserved generated identifier"));
         }
         if self.request.is_some() && self.request_use(e)? {
+            return Ok(());
+        }
+        // `ctx.invalidate(...)` named the live queries a mutation refreshed. v2 announces every
+        // committed write by table, so the call has no work left; it becomes a no-op.
+        if let E::Call { callee, .. } = &e.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && prop == "invalidate"
+            && matches!(&obj.kind, E::Ident(n) if n == self.ctx)
+        {
+            if !self.writes {
+                return Err(fail(
+                    &pointer(&pointer(self.at, "ctx"), "invalidate"),
+                    "invalidate is only available in legacy mutations",
+                ));
+            }
+            self.edits.push((e.span, "undefined".into()));
             return Ok(());
         }
         if let E::Await(inner) = &e.kind

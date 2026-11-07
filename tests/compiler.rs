@@ -1665,7 +1665,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     let refused = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("unknown flag --target"), "{stderr}");
+    assert!(stderr.contains("unknown option --target for zero build"), "{stderr}");
     let config = std::fs::read_to_string(tmp.join("zero.config.ts")).unwrap();
     std::fs::write(
         tmp.join("zero.config.ts"),

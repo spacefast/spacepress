@@ -27,6 +27,10 @@ mb_internal_encoding('ISO-8859-1');
 $re = Js::re(...);
 
 $cases = [
+    ['[(255).toString(16), (-255).toString(2), (0).toString(36), (35).toString(36), (9007199254740991).toString(36), (10).toString(10)]',
+        fn () => array_map(static fn ($pair) => Js::dynamicCallMethod($pair[0], 'toString', new JsArray([$pair[1]])), [[255, 16], [-255, 2], [0, 36], [35, 36], [9007199254740991, 36], [10, 10]])],
+    ['(() => { try { (1).toString(1); return "no"; } catch (e) { return e.name; } })()',
+        function () { try { Js::dynamicCallMethod(1, 'toString', new JsArray([1])); return 'no'; } catch (JsError $e) { return $e->jsName; } }],
     ['(() => { const groups = /(?<x>a)/.exec("a").groups; groups.__proto__ = "own"; return [typeof groups.toString, typeof structuredClone(groups).toString, JSON.stringify(groups)]; })()',
         function () { $groups = Js::dynamicGet(Js::dynamicRegExpExec(new \Zero\RegExp('(?<x>a)'), 'a'), 'groups'); Js::dynamicSet($groups, '__proto__', 'own'); $snapshot = Js::detach($groups); return [Js::typeOf(Js::dynamicGet($snapshot, 'toString')), Js::typeOf(Js::dynamicGet(Js::clone($groups), 'toString')), Js::jsonStringify($snapshot)]; }],
     // Imported JS values use checked dynamic operations, with undefined distinct from null.
@@ -244,7 +248,8 @@ $deviations = [
     ['dynamic JSON reviver fails explicitly', fn () => Js::dynamicStaticCall('JSON', 'parse', new JsArray(['{}', static fn ($k, $v) => $v])), ['$err' => 'TypeError']],
     ['dynamic Date component overload fails explicitly', fn () => Js::dynamicConstruct('Date', new JsArray([2020, 0])), ['$err' => 'TypeError']],
     ['dynamic Date string coercion fails explicitly through array join', fn () => Js::dynamicCallMethod(new JsArray([new \Zero\JsDate(0)]), 'join', new JsArray()), ['$err' => 'TypeError']],
-    ['dynamic nondecimal number formatting fails explicitly', fn () => Js::dynamicCallMethod(255, 'toString', new JsArray([16])), ['$err' => 'TypeError']],
+    ['dynamic nondecimal fraction formatting fails explicitly', fn () => Js::dynamicCallMethod(2.5, 'toString', new JsArray([16])), ['$err' => 'TypeError']],
+    ['dynamic nondecimal formatting of unsafe integers fails explicitly', fn () => Js::dynamicCallMethod(2 ** 60, 'toString', new JsArray([2])), ['$err' => 'TypeError']],
     ['dynamic Error cause fails explicitly', fn () => Js::dynamicConstruct('Error', new JsArray(['message', new JsObject(['cause' => Js::undefined()])])), ['$err' => 'TypeError']],
     ['an undefined operation result retains its success envelope', fn () => \Zero\Response::json(Js::undefined())->http()[2], '{"data":null}'],
     ['negative zero Date year is refused', fn () => Js::date('-000000-01-01'), ['$err' => 'RangeError']],

@@ -12,6 +12,8 @@ pub(super) struct CompiledClass {
     methods: HashMap<(bool, String), (String, Ty)>,
     fields: String,
     _static_data: Value,
+    /// Kept alive with the class: captured-data helpers are cached by allocation address.
+    _private_static_data: Option<Value>,
     /// Private field types by (static, `#name`); private state never joins the instance shape.
     privates: HashMap<(bool, String), Ty>,
     /// Classes from imported JavaScript use checked dynamic receivers, arguments and fields.
@@ -151,6 +153,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             Value::object(public_static_data)
         };
+        let private_static_data = (!private_static_data.is_empty()).then(|| Value::object(private_static_data));
         let ancestors = match parent.map(|id| self.classes[&id].instance.clone()) {
             Some(Ty::Instance(identity, _)) => std::iter::once(identity.id).chain(identity.ancestors).collect(),
             _ => Vec::new(),
@@ -168,6 +171,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 methods: HashMap::new(),
                 fields: fields_name.clone(),
                 _static_data: static_data.clone(),
+                _private_static_data: private_static_data.clone(),
                 privates: HashMap::new(),
                 javascript,
             },
@@ -415,12 +419,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         validate_captured_data(&static_data, c.span, &mut HashSet::new())?;
         let data = self.captured_data(&static_data)?;
-        let private_statics = if private_static_data.is_empty() {
-            "null".to_string()
-        } else {
-            let value = Value::object(private_static_data);
-            validate_captured_data(&value, c.span, &mut HashSet::new())?;
-            self.captured_data(&value)?
+        let private_statics = match &private_static_data {
+            None => "null".to_string(),
+            Some(value) => {
+                validate_captured_data(value, c.span, &mut HashSet::new())?;
+                self.captured_data(value)?
+            }
         };
         let parent_php = parent
             .map(|id| format!("\\ZeroApp\\{}()", self.classes[&id].name))

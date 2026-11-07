@@ -40,6 +40,6 @@ class ViramaDataBuilder extends Builder {
 		}
 
 		fclose( $handle );
-		file_put_contents( $output . ZERO_VENDOR_DS . 'virama.php', "<?php\n\nreturn " . var_export( $virama, true ) . ";\n" );
+		file_put_contents( $output . DS . 'virama.php', "<?php\n\nreturn " . var_export( $virama, true ) . ";\n" );
 	}
 }

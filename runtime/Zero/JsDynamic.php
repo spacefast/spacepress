@@ -28,6 +28,7 @@ trait JsDynamic
             $receiver instanceof JsError => 'Error',
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map', $receiver instanceof JsIterator => 'Iterator',
             $receiver instanceof JsAbortSignal => 'AbortSignal', $receiver instanceof JsAbortController => 'AbortController',
+            $receiver instanceof JsUrl => 'URL', $receiver instanceof JsUrlSearchParams => 'URLSearchParams',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
             is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
         };
@@ -72,6 +73,7 @@ trait JsDynamic
             'Error' => $receiver instanceof JsError,
             'Set' => $receiver instanceof JsSet, 'Map' => $receiver instanceof JsMap,
             'AbortSignal' => $receiver instanceof JsAbortSignal, 'AbortController' => $receiver instanceof JsAbortController,
+            'URL' => $receiver instanceof JsUrl, 'URLSearchParams' => $receiver instanceof JsUrlSearchParams,
             'Function' => $receiver instanceof \Closure, 'Object' => $receiver instanceof JsObject,
             default => false,
         };
@@ -156,9 +158,10 @@ trait JsDynamic
                 'sticky' => $value->sticky, 'lastIndex' => $value->lastIndex, 'hasIndices', 'unicodeSets' => false, default => self::dynamicMethodValue($value, $key),
             };
         }
-        if ($key === 'size' && ($value instanceof JsSet || $value instanceof JsMap)) {
+        if ($key === 'size' && ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsUrlSearchParams)) {
             return $value->size();
         }
+        if ($value instanceof JsUrl && ($key === 'searchParams' || in_array($key, JsUrl::PROPERTIES, true))) { return $value->get($key); }
         return self::dynamicMethodValue($value, $key);
     }
 
@@ -182,6 +185,7 @@ trait JsDynamic
         if ($target instanceof RegExp && $key === 'lastIndex') { $target->lastIndex = $value; return $value; }
         if ($target instanceof JsAbortSignal && $key === 'onabort') { $target->setOnabort($value); return $value; }
         if ($target instanceof JsAbortSignal || $target instanceof JsAbortController) { throw new JsError('Cannot assign to ' . $key . ' on an abort object', 'TypeError'); }
+        if ($target instanceof JsUrl) { $target->set($key, $value); return $value; }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
             if ($key === '__proto__' && !array_key_exists($key, $target->p)) {
                 throw new JsError('Prototype mutation is not supported', 'TypeError');
@@ -214,7 +218,7 @@ trait JsDynamic
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
-        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsAbortSignal || $value instanceof JsAbortController || $value instanceof JsTimeout || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
+        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsAbortSignal || $value instanceof JsAbortController || $value instanceof JsTimeout || $value instanceof JsUrl || $value instanceof JsUrlSearchParams || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
 
@@ -260,6 +264,8 @@ trait JsDynamic
             yield from $value->entriesIterator();
         } elseif ($value instanceof JsIterator) {
             yield from $value->rest();
+        } elseif ($value instanceof JsUrlSearchParams) {
+            yield from $value->entriesIterator();
         } else {
             throw new JsError('Value is not iterable', 'TypeError');
         }
@@ -275,6 +281,7 @@ trait JsDynamic
             $value instanceof JsIterator => $value->tag,
             $value instanceof JsAbortSignal => 'AbortSignal', $value instanceof JsAbortController => 'AbortController',
             $value instanceof JsTimeout => 'Timeout',
+            $value instanceof JsUrl => 'URL', $value instanceof JsUrlSearchParams => 'URLSearchParams',
             $value instanceof JsNamespace => $value->name,
             $value instanceof JsError => 'Error',
             $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
@@ -337,6 +344,7 @@ trait JsDynamic
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
             $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map', $receiver instanceof JsIterator => 'iterator',
             $receiver instanceof JsAbortSignal => 'abortsignal', $receiver instanceof JsAbortController => 'abortcontroller',
+            $receiver instanceof JsUrl => 'url', $receiver instanceof JsUrlSearchParams => 'urlsearchparams',
             is_bool($receiver) => 'boolean', $receiver instanceof \Closure => 'function',
             default => 'object',
         };
@@ -350,6 +358,7 @@ trait JsDynamic
                 return self::dynamicCallMethod($receiver, 'join', new JsArray());
             }
             if ($receiver instanceof JsArguments || $receiver instanceof JsObject || $receiver instanceof JsSet || $receiver instanceof JsMap || $receiver instanceof JsNamespace) { return self::dynamicObjectTag($receiver); }
+            if ($receiver instanceof JsUrl || $receiver instanceof JsUrlSearchParams) { return $receiver->toString(); }
             return self::str($receiver);
         }
         if ($name === 'valueOf') { return $receiver instanceof JsDate ? $receiver->milliseconds : $receiver; }
@@ -395,6 +404,22 @@ trait JsDynamic
         }
         if ($receiver instanceof JsAbortController) {
             return match ($name) { 'abort' => $receiver->abort($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+        }
+        if ($receiver instanceof JsUrl) {
+            return match ($name) { 'toString' => $receiver->toString(), 'toJSON' => $receiver->toJSON(), default => throw new JsError($name . ' is not a function', 'TypeError') };
+        }
+        if ($receiver instanceof JsUrlSearchParams) {
+            return match ($name) {
+                'append' => $receiver->append($get(0), $get(1)), 'set' => $receiver->set($get(0), $get(1)),
+                'delete' => $receiver->delete($get(0), $get(1)), 'has' => $receiver->has($get(0), $get(1)),
+                'get' => $receiver->get($get(0)), 'getAll' => $receiver->getAll($get(0)), 'sort' => $receiver->sort(),
+                'toString' => $receiver->toString(),
+                'forEach' => $get(1) !== JsUndefined::Value ? throw new JsError('forEach thisArg is not supported', 'TypeError') : $receiver->forEach(self::dynamicCallback($get(0))),
+                'keys' => new JsIterator($receiver->keysIterator(), 'URLSearchParams Iterator'),
+                'values' => new JsIterator($receiver->valuesIterator(), 'URLSearchParams Iterator'),
+                'entries' => new JsIterator($receiver->entriesIterator(), 'URLSearchParams Iterator'),
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
         }
         if ($receiver instanceof JsIterator) {
             return match ($name) { 'next' => $receiver->next(), default => throw new JsError($name . ' is not a function', 'TypeError') };
@@ -606,6 +631,9 @@ trait JsDynamic
                 default => throw new JsError('AbortSignal.' . $method . ' is not a function', 'TypeError'),
             };
         }
+        if ($owner === 'URL') {
+            return match ($method) { 'canParse' => JsUrl::canParse($get(0), $get(1)), 'parse' => JsUrl::parse($get(0), $get(1)), default => throw new JsError('URL.' . $method . ' is not a function', 'TypeError') };
+        }
         if ($owner === 'Array') {
             if ($method === 'isArray') { return $get(0) instanceof JsArray; }
             if ($method === 'from') {
@@ -726,6 +754,8 @@ trait JsDynamic
             }
             return $result;
         }
+        if ($constructor === 'URL') { return JsUrl::construct($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
+        if ($constructor === 'URLSearchParams') { return JsUrlSearchParams::construct($a[0] ?? JsUndefined::Value); }
         throw new JsError('Value is not a supported constructor', 'TypeError');
     }
 

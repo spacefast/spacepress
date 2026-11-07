@@ -312,6 +312,8 @@ pub const GLOBALS: &[&str] = &[
     "clearTimeout",
     "AbortController",
     "AbortSignal",
+    "URL",
+    "URLSearchParams",
 ];
 
 pub struct Evaluator<'p> {

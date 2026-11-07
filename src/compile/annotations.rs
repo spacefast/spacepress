@@ -188,6 +188,8 @@ impl Compiler<'_, '_> {
                     ("RegExp", []) => Ty::Regex,
                     ("AbortController", []) => Ty::AbortController,
                     ("AbortSignal", []) => Ty::AbortSignal,
+                    ("URL", []) => Ty::Url,
+                    ("URLSearchParams", []) => Ty::UrlParams,
                     ("Error", []) => Ty::Error,
                     ("Record", [k, v]) => {
                         let keys = self.resolve_ann(k, module, generics)?;

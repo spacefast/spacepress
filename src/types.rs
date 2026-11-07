@@ -64,6 +64,10 @@ pub enum Ty {
     AbortController,
     /// DOM `AbortSignal` (`Zero\JsAbortSignal`).
     AbortSignal,
+    /// A WHATWG `URL` (`Zero\JsUrl`).
+    Url,
+    /// A WHATWG `URLSearchParams` (`Zero\JsUrlSearchParams`).
+    UrlParams,
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
     /// Callable parameter metadata; inner type is the rest binding's array.
@@ -282,6 +286,8 @@ impl Ty {
             Ty::Iter(t) => format!("IterableIterator<{}>", t.describe()),
             Ty::AbortController => "AbortController".into(),
             Ty::AbortSignal => "AbortSignal".into(),
+            Ty::Url => "URL".into(),
+            Ty::UrlParams => "URLSearchParams".into(),
             Ty::Union(ts) => ts.iter().map(Ty::describe).collect::<Vec<_>>().join(" | "),
             Ty::Fn(..) => "a function".into(),
             Ty::Rest(t) => format!("...{}", t.describe()),

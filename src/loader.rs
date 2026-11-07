@@ -161,13 +161,11 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
     for path in listing(dir)? {
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
         if fs.is_dir(&path) {
-            let mut order = 0;
-            for file in listing(&path)? {
+            for (order, file) in listing(&path)?.into_iter().enumerate() {
                 if !ts(&file) {
                     return Err(refuse(&file, "not a .ts handler file"));
                 }
                 out.push((name.clone(), order, file));
-                order += 1;
             }
         } else if ts(&path) {
             out.push((name.trim_end_matches(".ts").to_string(), 0, path));

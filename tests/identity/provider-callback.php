@@ -7,7 +7,13 @@ require __DIR__ . '/bootstrap.php';
 ob_start();
 use Zero\Identity\{Plugin, Providers, Security, Failure};
 
-add_filter('zero_identity_providers', static fn () => ['google' => ['issuer' => 'http://oidc:8080', 'client_id' => 'contract-client', 'secret' => 'disposable-secret']]);
+add_filter('zero_identity_providers', static fn () => [
+    'google' => ['issuer' => 'http://oidc:8080', 'client_id' => 'contract-client', 'secret' => 'disposable-secret'],
+    // An EdDSA public client whose authorization starts at a host-chosen URL; the other endpoints
+    // still come from the issuer's discovery document.
+    'platform' => ['issuer' => 'http://oidc:8080/ed', 'client_id' => 'public-client', 'secret' => '', 'alg' => 'EdDSA',
+        'discovery' => ['authorization_endpoint' => 'http://oidc:8080/ed/start']],
+]);
 $p = new Providers(Plugin::$security, Plugin::$accounts, Plugin::$sessions);
 $uid = Plugin::$accounts->emailLogin('provider-' . bin2hex(random_bytes(4)) . '@example.test');
 $session = Plugin::$sessions->create($uid);
@@ -44,7 +50,31 @@ foreach ([...array_keys($expected), 'valid'] as $fault) {
     }
 }
 rejects(fn () => $p->callback('google'), 'invalid_challenge', 'a provider callback cannot be replayed');
-check(Providers::continuation('https://evil.example/') === '' && Providers::continuation('/authorize?x=1') === '/authorize?x=1', 'only a pending authorization is a continuation');
+
+// The EdDSA public client: the override picks the start URL, the code exchange sends no secret,
+// and an email-less identity signs in to the account its host names for it.
+$hosted = Plugin::$accounts->emailLogin('hosted-' . bin2hex(random_bytes(4)) . '@example.test');
+$named = [];
+add_filter('zero_identity_provider_account', static function (int $uid, string $issuer, string $subject) use ($hosted, &$named): int {
+    $named[] = [$issuer, $subject];
+    return $issuer === 'http://oidc:8080/ed' ? $hosted : $uid;
+}, 10, 3);
+$platformCallback = static function () use ($p, $follow): array {
+    $url = $p->start('platform');
+    parse_str((string) parse_url($url, PHP_URL_QUERY), $request);
+    $row = Plugin::$db->row('SELECT id FROM ' . Plugin::$db->prefix . "challenges WHERE purpose='oidc' AND payload LIKE %s", '%' . Plugin::$db->wp->esc_like($request['state']) . '%');
+    $binding = Security::token();
+    Plugin::$db->run('UPDATE ' . Plugin::$db->prefix . 'challenges SET secret_hash=%s WHERE id=%s', Security::hash($binding), $row['id']);
+    $_COOKIE['zi_oidc'] = $row['id'] . '.' . $binding;
+    $_GET = $follow($url);
+    return [$url, $p->callback('platform')];
+};
+[$url, $signedIn] = $platformCallback();
+check(str_starts_with($url, 'http://oidc:8080/ed/start?'), 'a discovery override replaces only the authorization endpoint');
+check($signedIn['uid'] === $hosted && $named === [['http://oidc:8080/ed', 'platform-subject']], 'an EdDSA ID token from a public client signs in to the host-named account');
+check((int) Plugin::$db->row('SELECT wp_user_id FROM ' . Plugin::$db->prefix . 'providers WHERE issuer=%s AND subject=%s', 'http://oidc:8080/ed', 'platform-subject')['wp_user_id'] === $hosted, 'the platform subject is linked for later sign-ins');
+remove_all_filters('zero_identity_provider_account');
+check($platformCallback()[1]['uid'] === $hosted, 'a linked platform subject keeps its account without the host lookup');
 
 // A WordPress in a subdirectory: cookie paths and continuations derive from the issuer's path.
 add_filter('home_url', static fn ($url, $path) => 'http://127.0.0.1:8814/blog/' . ltrim((string) $path, '/'), 10, 2);

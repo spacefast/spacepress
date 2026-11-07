@@ -7,7 +7,7 @@
 
 use crate::diag::{Diag, Span, suggest};
 use crate::ir::*;
-use crate::loader::{Program, ZERO_MODULE};
+use crate::loader::{Program, WORDPRESS_MODULE, ZERO_MODULE};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
@@ -224,6 +224,9 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "env",
     "once",
     "jobs",
+    "fetch",
+    "crypto",
+    "mail",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
 const ZERO_TYPES: &[&str] = &[
@@ -368,6 +371,12 @@ impl<'p> Evaluator<'p> {
         self.program
     }
 
+    /// Evaluates another entry module (a `wp-hooks/` file) and returns its exports.
+    pub fn run_module(&mut self, module: usize) -> Result<IndexMap<String, Value>, Diag> {
+        self.eval_module(module).map_err(uncaught)?;
+        Ok(self.exports[module].clone())
+    }
+
     pub fn module_scope(&self, module: usize) -> Option<Rc<Scope>> {
         self.module_scopes[module].clone()
     }
@@ -453,7 +462,7 @@ impl<'p> Evaluator<'p> {
             if let Stmt::Import { source, .. }
             | Stmt::ExportNames { from: Some(source), .. }
             | Stmt::ExportAll { from: source, .. } = stmt
-                && source != ZERO_MODULE
+                && !crate::loader::builtin_module(source)
                 && let Some(&target) = self.program.resolved.get(&(id, source.clone()))
             {
                 self.eval_module(target)?;
@@ -482,6 +491,18 @@ impl<'p> Evaluator<'p> {
                 }
                 Stmt::ExportNames { names, from, span } => {
                     for (local, exported) in names {
+                        let erased = module.dynamic
+                            && match from {
+                                Some(source) => self
+                                    .program
+                                    .resolved
+                                    .get(&(id, source.clone()))
+                                    .is_some_and(|&target| self.erased_type_export(target, local, 0)),
+                                None => scope.lookup(local).is_none() && self.erased_type_import(id, local, 0),
+                            };
+                        if erased {
+                            continue;
+                        }
                         let v = match from {
                             None => match scope.lookup(local) {
                                 Some(b) if b.initialized => b.value,
@@ -522,13 +543,62 @@ impl<'p> Evaluator<'p> {
         Ok(())
     }
 
+    /// Whether `name` is a type that a dynamic module erased, directly or through re-exports.
+    fn erased_type_export(&self, module: usize, name: &str, depth: usize) -> bool {
+        let m = &self.program.modules[module];
+        if depth > 64 || !m.dynamic || self.exports[module].contains_key(name) {
+            return false;
+        }
+        if m.type_names.contains(name) {
+            return true;
+        }
+        let target = |source: &str| self.program.resolved.get(&(module, source.to_string())).copied();
+        m.body.iter().any(|stmt| match stmt {
+            Stmt::ExportNames { names, from, .. } => names.iter().any(|(local, exported)| {
+                exported == name
+                    && match from {
+                        Some(source) => target(source).is_some_and(|t| self.erased_type_export(t, local, depth + 1)),
+                        None => self.erased_type_import(module, local, depth),
+                    }
+            }),
+            Stmt::ExportAll { from, .. } => target(from).is_some_and(|t| self.erased_type_export(t, name, depth + 1)),
+            _ => false,
+        })
+    }
+
+    fn erased_type_import(&self, module: usize, local: &str, depth: usize) -> bool {
+        let m = &self.program.modules[module];
+        m.type_names.contains(local)
+            || m.body.iter().any(|stmt| {
+                let Stmt::Import { source, specs, .. } = stmt else {
+                    return false;
+                };
+                specs.iter().any(
+                    |spec| match (&spec.imported, self.program.resolved.get(&(module, source.clone()))) {
+                        (ImportName::Named(imported), Some(&t)) if spec.local == local => {
+                            self.erased_type_export(t, imported, depth + 1)
+                        }
+                        _ => false,
+                    },
+                )
+            })
+    }
+
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
         if source == ZERO_MODULE {
             return zero_export(name, span);
         }
+        if source == WORDPRESS_MODULE {
+            return wordpress_export(name, span);
+        }
         let target = self.program.resolved[&(from, source.to_string())];
         match self.exports[target].get(name) {
             Some(v) => Ok(v.clone()),
+            None if self.erased_type_export(target, name, 0) => err_help(
+                span,
+                format!("`{name}` comes from an installed package or JavaScript module, whose types Zero erases"),
+                "describe the value with a local type, or narrow it with `typeof`/`instanceof` at the call site",
+            ),
             None => {
                 let mut d = Diag::new(span, format!("\"{source}\" has no export named `{name}`"));
                 if let Some(s) = suggest(name, self.exports[target].keys().map(String::as_str)) {
@@ -544,19 +614,34 @@ impl<'p> Evaluator<'p> {
             if spec.type_only {
                 continue;
             }
+            // TypeScript elides imports that only name types.
+            if let ImportName::Named(name) = &spec.imported
+                && self.program.modules[id].dynamic
+                && let Some(&target) = self.program.resolved.get(&(id, source.to_string()))
+                && self.erased_type_export(target, name, 0)
+            {
+                continue;
+            }
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
                 ImportName::Default => {
-                    if source == ZERO_MODULE {
+                    if crate::loader::builtin_module(source) {
                         return err_help(
                             spec.span,
-                            "\"zero\" has no default export",
-                            "import names: `import { collection } from \"zero\"`",
+                            format!("\"{source}\" has no default export"),
+                            format!("import names: `import {{ ... }} from \"{source}\"`"),
                         );
                     }
                     self.import_value(id, source, "default", spec.span)?
                 }
                 ImportName::Namespace => {
+                    if source == WORDPRESS_MODULE {
+                        return err_help(
+                            spec.span,
+                            "\"php/wordpress\" can't be imported as a namespace",
+                            "import the names you use: `import { abilities } from \"php/wordpress\"`",
+                        );
+                    }
                     if source == ZERO_MODULE {
                         let mut map = IndexMap::new();
                         for n in ZERO_EXPORTS {
@@ -994,6 +1079,75 @@ impl<'p> Evaluator<'p> {
                 }))
             }
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
+            ExprKind::Delete(target) => {
+                let inner = match &target.kind {
+                    ExprKind::Chain(inner) => inner,
+                    _ => target,
+                };
+                let (object, key) = match &inner.kind {
+                    ExprKind::Member {
+                        obj, prop, optional, ..
+                    } => {
+                        let object = self.eval(obj, scope)?;
+                        if *optional && matches!(object, Value::Null | Value::Undef) {
+                            return Ok(Value::Bool(true));
+                        }
+                        (object, prop.clone())
+                    }
+                    ExprKind::Index { obj, index, optional } => {
+                        let object = self.eval(obj, scope)?;
+                        if *optional && matches!(object, Value::Null | Value::Undef) {
+                            return Ok(Value::Bool(true));
+                        }
+                        let key = self.eval(index, scope)?;
+                        require_static_data(&key, e.span)?;
+                        require_static_coercion(&key, e.span)?;
+                        let Some(key) = key.to_js_string() else {
+                            return err(e.span, "`delete` at build time needs a primitive property key");
+                        };
+                        (object, key)
+                    }
+                    _ => return err(e.span, "`delete` needs an object property"),
+                };
+                match &object {
+                    Value::Object(o) => {
+                        o.borrow_mut().shift_remove(&key);
+                    }
+                    Value::Array(a) => {
+                        let in_range = key
+                            .parse::<usize>()
+                            .is_ok_and(|i| i.to_string() == key && i < a.borrow().len());
+                        if key == "length" || in_range {
+                            return err_help(
+                                e.span,
+                                "`delete` would leave a hole in a dense Zero array",
+                                "use splice to remove elements",
+                            );
+                        }
+                    }
+                    Value::Null | Value::Undef => {
+                        return err(e.span, "`delete` on null or undefined throws a TypeError");
+                    }
+                    _ => {
+                        return err_help(
+                            e.span,
+                            "`delete` at build time removes only plain object properties",
+                            "move the deletion into a handler",
+                        );
+                    }
+                }
+                Value::Bool(true)
+            }
+            ExprKind::In(key, object) => {
+                let key = self.eval(key, scope)?;
+                let object = self.eval(object, scope)?;
+                require_static_data(&key, e.span)?;
+                require_static_coercion(&key, e.span)?;
+                let Some(key) = key.to_js_string() else {
+                    return err(e.span, "`in` at build time needs a primitive property key");
+                };
+                Value::Bool(build_time_in(&key, &object, e.span)?)
+            }
             ExprKind::Num(n) => Value::Num(*n),
             ExprKind::Str(s) => Value::str(s),
             ExprKind::Bool(b) => Value::Bool(*b),
@@ -1097,13 +1251,14 @@ impl<'p> Evaluator<'p> {
             })),
             ExprKind::Unary(op, x) => {
                 let v = self.eval_static_data(x, scope)?;
-                if matches!(op, UnOp::Neg | UnOp::Plus) {
+                if matches!(op, UnOp::Neg | UnOp::Plus | UnOp::BitNot) {
                     require_static_coercion(&v, e.span)?;
                 }
                 match op {
                     UnOp::Not => Value::Bool(!v.truthy()),
                     UnOp::Neg => Value::Num(-to_number(&v)),
                     UnOp::Plus => Value::Num(to_number(&v)),
+                    UnOp::BitNot => Value::Num(f64::from(!crate::num::to_int32(to_number(&v)))),
                     UnOp::TypeOf => {
                         if let Value::Builtin(Builtin::Global(
                             name @ ("process" | "require" | "globalThis" | "crypto"),
@@ -1783,11 +1938,13 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs => err_help(
-                span,
-                "once() and jobs only work inside hooks, actions and jobs, which run in PHP at request time",
-                "move the call into a handler",
-            ),
+            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail | Builtin::Abilities => {
+                err_help(
+                    span,
+                    "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                    "move the call into a handler",
+                )
+            }
             Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
@@ -2392,6 +2549,9 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "route" => Builtin::Route,
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
+        "fetch" => Builtin::Fetch,
+        "crypto" => Builtin::Crypto,
+        "mail" => Builtin::Mail,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
         "group" => Builtin::Field("group"),
@@ -2407,6 +2567,36 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         _ => {
             let mut d = Diag::new(span, format!("\"zero\" has no export named `{name}`"));
             if let Some(s) = suggest(name, ZERO_EXPORTS.iter().copied()) {
+                d = d.help(format!("did you mean `{s}`?"));
+            }
+            return Err(Ctl::Err(d));
+        }
+    }))
+}
+
+/// Names exported by `"php/wordpress"`.
+pub const WORDPRESS_EXPORTS: &[&str] = &["abilities"];
+/// Type-only exports of `"php/wordpress"`: importable, erased.
+const WORDPRESS_TYPES: &[&str] = &[
+    "Abilities",
+    "AbilityName",
+    "AbilityInput",
+    "AbilityOutput",
+    "Hooks",
+    "HookName",
+    "Handler",
+    "WP_Post",
+    "WP_User",
+    "WP_Query",
+];
+
+fn wordpress_export(name: &str, span: Span) -> R<Value> {
+    Ok(Value::Builtin(match name {
+        "abilities" => Builtin::Abilities,
+        n if WORDPRESS_TYPES.contains(&n) => return Ok(Value::Undef),
+        _ => {
+            let mut d = Diag::new(span, format!("\"php/wordpress\" has no export named `{name}`"));
+            if let Some(s) = suggest(name, WORDPRESS_EXPORTS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(Ctl::Err(d));
@@ -3006,6 +3196,93 @@ fn slice_bounds(len: f64, start: &Value, end: &Value) -> (usize, usize) {
     (clamp(start, 0.0), clamp(end, len))
 }
 
+/// Own string names of Object.prototype and Array.prototype, as Node reports them.
+const OBJECT_PROTOTYPE: &[&str] = &[
+    "constructor",
+    "__defineGetter__",
+    "__defineSetter__",
+    "hasOwnProperty",
+    "__lookupGetter__",
+    "__lookupSetter__",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toString",
+    "valueOf",
+    "__proto__",
+    "toLocaleString",
+];
+const ARRAY_PROTOTYPE: &[&str] = &[
+    "length",
+    "constructor",
+    "at",
+    "concat",
+    "copyWithin",
+    "fill",
+    "find",
+    "findIndex",
+    "findLast",
+    "findLastIndex",
+    "lastIndexOf",
+    "pop",
+    "push",
+    "reverse",
+    "shift",
+    "unshift",
+    "slice",
+    "sort",
+    "splice",
+    "includes",
+    "indexOf",
+    "join",
+    "keys",
+    "entries",
+    "values",
+    "forEach",
+    "filter",
+    "flat",
+    "flatMap",
+    "map",
+    "every",
+    "some",
+    "reduce",
+    "reduceRight",
+    "toReversed",
+    "toSorted",
+    "toSpliced",
+    "with",
+    "toLocaleString",
+    "toString",
+];
+
+/// `key in object` during configuration evaluation, for the plain data values the evaluator
+/// models. Runtime `Js::hasProperty` covers every runtime value.
+fn build_time_in(key: &str, object: &Value, span: Span) -> R<bool> {
+    let index_below = |length: usize| key.parse::<usize>().is_ok_and(|i| i.to_string() == key && i < length);
+    Ok(match object {
+        Value::Object(o) => o.borrow().contains_key(key) || OBJECT_PROTOTYPE.contains(&key),
+        Value::Arguments(o) => {
+            o.borrow().contains_key(key) || matches!(key, "length" | "callee") || OBJECT_PROTOTYPE.contains(&key)
+        }
+        Value::Array(a) => {
+            index_below(a.borrow().len()) || ARRAY_PROTOTYPE.contains(&key) || OBJECT_PROTOTYPE.contains(&key)
+        }
+        Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_) => {
+            return err_help(
+                span,
+                "`in` needs an object on its right side; JavaScript throws a TypeError here",
+                "check `typeof value === \"object\" && value !== null` first",
+            );
+        }
+        _ => {
+            return err_help(
+                span,
+                "`in` at build time inspects only plain objects, arrays and arguments",
+                "move the check into a handler",
+            );
+        }
+    })
+}
+
 fn build_regex(pattern: &str, flags: &str, span: Span) -> R<regex::Regex> {
     let mut prefix = String::new();
     for f in flags.chars() {
@@ -3333,6 +3610,10 @@ fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
         BinOp::Ne => Value::Bool(!a.strict_eq(b)),
         BinOp::LooseEq => Value::Bool(loose_eq(a, b, span)?),
         BinOp::LooseNe => Value::Bool(!loose_eq(a, b, span)?),
+        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr | BinOp::UShr => {
+            let (a, b) = (to_number(&prim(a)?), to_number(&prim(b)?));
+            Value::Num(crate::num::bitwise(op, a, b))
+        }
         BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
             let (a, b) = (prim(a)?, prim(b)?);
             let ord = match (&a, &b) {

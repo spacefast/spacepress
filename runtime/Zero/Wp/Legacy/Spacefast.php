@@ -72,9 +72,16 @@ final class Spacefast
                 $stored = $this->exists($receipts) ? $this->db->run("SELECT fingerprint FROM `$receipts` WHERE space_id=? AND table_group=?" . ($verify ? '' : ' FOR UPDATE'), [$space, $group]) : [];
                 [$posts, $ids, $users] = $this->scope($space, $source);
                 $current = $this->fingerprint($group, $space, $source, $ids, $users);
+                // A users receipt written before the candidate carried subjects would otherwise hide
+                // that no subject was copied, and every ctx.auth.userId would silently read wp:<id>.
+                $missing = $group === 'users' && $stored !== [] ? $this->uncopiedSubjects($space, $source, $target, $users) : [];
                 if ($verify) {
                     $fingerprint = $stored[0]['fingerprint'] ?? null;
-                    return ['status' => $fingerprint === null ? 'missing' : (hash_equals($fingerprint, $current) ? 'verified' : 'drifted'), 'stored' => $fingerprint, 'current' => $current];
+                    $status = $fingerprint === null ? 'missing' : (!hash_equals($fingerprint, $current) ? 'drifted' : ($missing !== [] ? 'incomplete' : 'verified'));
+                    return ['status' => $status, 'stored' => $fingerprint, 'current' => $current];
+                }
+                if ($missing !== []) {
+                    throw new HttpError(409, 'zero_spacefast_subjects_missing', 'Users were copied before this candidate carried Space Users subjects; restore the target users from the receipt-free copy and rerun.', '/users/' . $missing[0]);
                 }
                 if ($stored !== []) {
                     return ['copied' => 0, 'status' => 'already-migrated'];
@@ -293,6 +300,18 @@ final class Spacefast
         }
         ksort($out);
         return $out;
+    }
+
+    /** User IDs whose source subject is absent from the target, when the candidate carries subjects. */
+    private function uncopiedSubjects(string $space, string $source, string $target, array $ids): array
+    {
+        if (!$this->carriesSubjects()) { return []; }
+        $missing = [];
+        foreach ($this->subjects($source, $space, $ids) as $id => $subject) {
+            $stored = $this->db->run("SELECT meta_value FROM `{$target}usermeta` WHERE user_id=? AND meta_key=?", [$id, self::SUBJECT_META]);
+            if ($stored === [] || (string) $stored[0]['meta_value'] !== $subject) { $missing[] = $id; }
+        }
+        return $missing;
     }
 
     /** True when the candidate's member projection declares the migrated subject column. */

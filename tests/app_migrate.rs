@@ -487,3 +487,66 @@ fn the_configured_server_entry_is_read_from_sf_jsonc() {
             .contains("JSX on the server")
     );
 }
+
+#[test]
+fn literal_routes_precede_parameter_routes_and_nested_pages_keep_imports() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(
+        &root,
+        r#"{endpoints:{note:endpoint({method:"GET",path:"/api/notes/:id"},(_ctx, req)=>text(req.params.id)),count:endpoint({method:"GET",path:"/api/notes/count"},()=>text("count")),tag:endpoint({method:"GET",path:"/api/tag"},(_ctx, req)=>text(req.query.get("user.id") ?? ""))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("refused"), &["--dry-run"]);
+    assert!(!ok);
+    // PHP renames `.` in query names, so the name cannot keep its 0.8 meaning.
+    assert_eq!(refused["errors"][0]["pointer"], "/endpoints/tag/request/query-name");
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("user.id", "user_id");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    std::fs::create_dir_all(root.join("pages/docs")).unwrap();
+    std::fs::write(root.join("pages/docs/data.ts"), "export const title = \"Docs\";\n").unwrap();
+    std::fs::write(
+        root.join("pages/docs/index.tsx"),
+        "import { title } from \"./data\";\nexport default function Docs() { return <h1>{title}</h1>; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("pages/docs/guide.tsx"),
+        "import { title } from \"./data\";\nexport default function Guide() { return <h1>{title} guide</h1>; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("pages/keys.tsx"),
+        "export default function Keys() { return <input onKeyDown={() => undefined} />; }\n",
+    )
+    .unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(report["errors"].as_array().unwrap().len(), 1, "{report:#}");
+    assert_eq!(report["errors"][0]["pointer"], "/pages/keys.tsx");
+    std::fs::remove_file(root.join("pages/keys.tsx")).unwrap();
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(ok, "{report:#}");
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(
+        config.find("\"count\": __z08Route").unwrap() < config.find("\"note\": __z08Route").unwrap(),
+        "{config}"
+    );
+    assert!(
+        std::fs::read_to_string(out.join("pages/docs/page.tsx"))
+            .unwrap()
+            .contains("from \"./data\"")
+    );
+    assert!(
+        std::fs::read_to_string(out.join("pages/docs/guide/page.tsx"))
+            .unwrap()
+            .contains("from \"../data\"")
+    );
+    assert!(out.join("pages/docs/data.ts").is_file());
+}

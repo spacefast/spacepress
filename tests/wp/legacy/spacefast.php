@@ -298,6 +298,10 @@ if ($phase === 'nested') {
     $wpdb->insert($target.'zero_identity_sessions', ['id'=>str_repeat('e',32),'wp_user_id'=>$uid,'secret_hash'=>hash_hmac('sha256','native-legacy-shaped',wp_salt('auth')),'csrf'=>str_repeat('e',64),'created_at'=>$now,'expires_at'=>$now+3600,'verified_at'=>$now,'label'=>'Unmarked row']);
     Plugin::$sessions->revoke($uid,str_repeat('c',32));
     proof(Plugin::$sessions->find('revoke-token')===null, 'revocation rejects a never-upgraded imported session');
+} elseif ($phase === 'drop-subject') {
+    proof(delete_user_meta($uid, 'zero_spacefastSubject'), 'copied subject removed after the users receipt');
+} elseif ($phase === 'restore-subject') {
+    proof(add_user_meta($uid, 'zero_spacefastSubject', $subject, true) !== false, 'copied subject restored');
 } elseif ($phase === 'authenticated') {
     $s = $wpdb->get_row("SELECT * FROM {$target}zero_identity_sessions WHERE id='".str_repeat('a',32)."'", ARRAY_A);
     proof(hash_equals(Sessions::digest('old-token'),$s['secret_hash']) && (int)$s['expires_at']===$now+3600, 'old cookie upgraded to v2 hash without extending expiry');

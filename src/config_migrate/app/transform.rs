@@ -666,7 +666,7 @@ pub(super) fn app(
             }
         }
     }
-    let mut routes = Vec::new();
+    let mut routes: Vec<(String, String)> = Vec::new();
     if let Some(group) = root.get("endpoints") {
         let mut seen = BTreeSet::new();
         for (name, e) in obj(group, "/endpoints")? {
@@ -734,21 +734,31 @@ pub(super) fn app(
             match result {
                 Ok(((code, generated), route)) => {
                     helpers.extend(generated);
-                    routes.push(code);
+                    routes.push((route.path.clone(), code));
                     entries.push(entry(
                         &at,
                         "mapped",
                         format!(
-                            "v2 route {} {} with 0.8's result rules; callers keep the URL. Unsafe methods authenticate with an X-WP-Nonce header, otherwise run anonymously",
+                            "v2 route {} {} with 0.8's result rules; callers keep the URL",
                             route.method, route.path
                         ),
                     ));
+                    let identity = routes.last().is_some_and(|(_, c): &(String, String)| {
+                        c.contains("__z08subject") || c.contains("__z08ctx.user")
+                    });
+                    if route.method != "GET" && (signed_in || identity) {
+                        entries.push(entry(&at, "review", "a signed-in caller of an unsafe-method route must send X-WP-Nonce; without it the request runs anonymously"));
+                    }
                 }
                 Err(e) => errors.push(e),
             }
         }
     }
-    if handlers.iter().chain(&routes).any(|h| h.contains("__z08Subject(")) {
+    if handlers
+        .iter()
+        .chain(routes.iter().map(|(_, c)| c))
+        .any(|h| h.contains("__z08Subject("))
+    {
         entries.push(entry(
             "/auth",
             "review",
@@ -825,6 +835,10 @@ pub(super) fn app(
         ));
     }
     if !routes.is_empty() {
+        // v2 matches routes in declaration order; 0.8 preferred literal segments over `:params`
+        // at each position, so emit them in that order.
+        routes.sort_by_key(|(path, _)| route_rank(path));
+        let routes: Vec<&str> = routes.iter().map(|(_, code)| code.as_str()).collect();
         config.push_str(&format!("routes: {{\n{}\n}},", routes.join(",\n")));
     }
     config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
@@ -834,6 +848,14 @@ pub(super) fn app(
         content_config,
         connector_roles: Value::Object(connector_roles),
     })
+}
+
+/// Sort key: per segment, literals (0) before `:params` (1), then longer paths; stable otherwise.
+fn route_rank(path: &str) -> Vec<u8> {
+    path.split('/')
+        .filter(|s| !s.is_empty())
+        .map(|s| u8::from(s.starts_with(':')))
+        .collect()
 }
 
 /// Names declared with `declare const|let|var` at module level.
@@ -1798,6 +1820,20 @@ impl Rewrite<'_> {
                 let [ArrEl::Item(arg)] = args.as_slice() else {
                     return refuse(&format!("{part}.{prop}"));
                 };
+                // v2 reads the query through PHP, which renames `.` and space to `_` and turns
+                // `[` into arrays. Only names both sides decode alike are mapped.
+                if part == "query" {
+                    let E::Str(name) = &arg.kind else {
+                        return refuse("query-name");
+                    };
+                    if name.is_empty()
+                        || !name
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+                    {
+                        return refuse("query-name");
+                    }
+                }
                 let key = self.render(arg)?;
                 let key = if part == "headers" {
                     format!("String({key}).toLowerCase()")

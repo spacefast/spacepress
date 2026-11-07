@@ -15,6 +15,17 @@ function processCalls(string $php): array
         if ($token === '`') {
             $calls[] = 'backtick';
         }
+        // `use function shell_exec as run;` makes `run(...)` a process call under another name.
+        if (is_array($token) && $token[0] === T_USE && is_array($tokens[$i + 1] ?? null) && $tokens[$i + 1][0] === T_FUNCTION) {
+            for ($j = $i + 2; isset($tokens[$j]) && $tokens[$j] !== ';'; $j++) {
+                $imported = $tokens[$j];
+                $alias = is_array($tokens[$j - 1]) && $tokens[$j - 1][0] === T_AS;
+                if (is_array($imported) && !$alias && in_array($imported[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)
+                    && in_array($name = strtolower(ltrim($imported[1], '\\')), $blocked, true)) {
+                    $calls[] = 'use function ' . $name;
+                }
+            }
+        }
         if (!is_array($token) || !in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)
             || ($tokens[$i + 1] ?? null) !== '(') {
             continue;
@@ -47,6 +58,15 @@ eq('process scanner finds global calls and command interpolation', processCalls(
 PROC_OPEN('example', [], $pipes);
 $out = `example`;
 PHP), ['shell_exec', 'proc_open', 'backtick', 'backtick']);
+eq('process scanner finds imported and aliased process functions', processCalls(<<<'PHP'
+<?php
+use function shell_exec as run, \proc_open;
+use function Vendor\Lib\system;
+use function strlen as exec_free;
+use Thing;
+$fn = function () use ($x) {};
+run('example');
+PHP), ['use function shell_exec', 'use function proc_open']);
 
 $root = realpath(__DIR__ . '/../../runtime');
 $offline = 'Zero/Deployment/Local.php';

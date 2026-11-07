@@ -41,11 +41,14 @@ final class JsDataView
 
     public function call(string $name, array $a): mixed
     {
-        if (preg_match('/^(get|set)Big(?:Int|Uint)64$/D', $name)) { throw new JsError('BigInt DataView accessors are not supported', 'TypeError'); }
-        if (!self::method($name)) { throw new JsError($name . ' is not a function', 'TypeError'); }
-        $kind = self::TYPES[substr($name, 3)];
+        $kind = self::TYPES[substr($name, 3)] ?? null;
+        if ($kind === null || !self::method($name)) {
+            if ($name === 'toString' || $name === 'valueOf') { return JsBinary::call($this, $name, $a); }
+            if (preg_match('/^(get|set)Big(?:Int|Uint)64$/D', $name)) { throw new JsError('BigInt DataView accessors are not supported', 'TypeError'); }
+            throw new JsError($name . ' is not a function', 'TypeError');
+        }
         $size = JsTypedArray::KINDS[$kind][0];
-        $index = JsArrayBuffer::byteCount($a[0] ?? JsUndefined::Value);
+        $index = is_int($a[0] ?? null) && $a[0] >= 0 ? $a[0] : JsArrayBuffer::byteCount($a[0] ?? JsUndefined::Value);
         $write = str_starts_with($name, 'set');
         $number = $write ? Js::toNumber($a[1] ?? JsUndefined::Value) : 0;
         $little = Js::truthy($a[$write ? 2 : 1] ?? JsUndefined::Value);
@@ -56,6 +59,8 @@ final class JsDataView
             $this->buffer->bytes = substr_replace($this->buffer->bytes, $little ? $bytes : strrev($bytes), $at, $size);
             return JsUndefined::Value;
         }
+        if ($kind === 'Uint32Array' && $little) { return unpack('V', $this->buffer->bytes, $at)[1]; }
+        if ($kind === 'Uint8Array') { return ord($this->buffer->bytes[$at]); }
         $bytes = substr($this->buffer->bytes, $at, $size);
         return JsTypedArray::decode($kind, $little ? $bytes : strrev($bytes));
     }

@@ -286,6 +286,7 @@ final class JsTypedArray
 
     public function call(string $name, array $a): mixed
     {
+        if ($name === 'valueOf') { return $this; }
         $get = static fn (int $i): mixed => array_key_exists($i, $a) ? $a[$i] : JsUndefined::Value;
         $callback = static function (mixed $f): \Closure {
             if (!$f instanceof \Closure) { throw new JsError('Callback is not a function', 'TypeError'); }

@@ -118,6 +118,8 @@ trait JsDynamic
 
     public static function dynamicGet(mixed $value, mixed $key): mixed
     {
+        // Typed array element reads are the hot path of byte algorithms (hashes, codecs).
+        if (is_int($key) && $value instanceof JsTypedArray) { return $key >= 0 && $key < $value->length ? $value->at($key) : JsUndefined::Value; }
         if (self::isNullish($value)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
         $key = self::key($key);
         if ($value instanceof JsObject) {
@@ -174,6 +176,11 @@ trait JsDynamic
 
     public static function dynamicSet(mixed $target, mixed $key, mixed $value): mixed
     {
+        if (is_int($key) && $target instanceof JsTypedArray) {
+            $number = self::toNumber($value);
+            if ($key >= 0 && $key < $target->length) { $target->put($key, $number); }
+            return $value;
+        }
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
         $key = self::key($key);
         if ($target instanceof JsObject || $target instanceof JsClass) {
@@ -290,6 +297,10 @@ trait JsDynamic
     /** Resolve the callee before evaluating arguments, including an own method override. */
     public static function dynamicMethod(mixed $receiver, mixed $name): \Closure
     {
+        if ($receiver instanceof JsDataView || $receiver instanceof JsTypedArray) {
+            $name = self::key($name);
+            return static fn (...$args) => $receiver->call($name, $args);
+        }
         self::requirePresent($receiver);
         $name = self::key($name);
         $properties = match (true) {

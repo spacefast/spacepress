@@ -899,6 +899,9 @@ function laneSActions() {
 
 // ---- standard objects: Map and Set in typed code (docs/decisions/2026-11-07-stdlib-objects.md).
 type Entry = { n: number };
+// Module-level collections are built once at configuration time and captured as one runtime handle.
+const NOT_FOUND = new Set([404, 410]);
+const OPS = new Map<string, "read" | "write">([["get", "read"], ["put", "write"]]);
 function stdlibActions() {
   return {
     mapOrder: run(() => {
@@ -921,6 +924,7 @@ function stdlibActions() {
       return [byObj.get(k) ?? "none", byObj.has({ n: 9 }), nums.get(NaN) ?? "", nums.get(-0) ?? "", nums.size, 1 / ([...nums.keys()][1] ?? 1), mixed.get("1"), mixed.get(1), mixed.get(null), mixed.size];
     }),
     jsCollections: run(() => jsCollections()),
+    moduleCollections: run(() => [NOT_FOUND.has(404), NOT_FOUND.has(500), NOT_FOUND.size, OPS.get("put") ?? "none", [...OPS.keys()]]),
     setOps: run(() => {
       const s = new Set([3, 1, 3, 2]);
       const deleted = [s.delete(1), s.delete(1)];

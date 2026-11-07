@@ -3026,6 +3026,55 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
             ),
+            Value::Coll(c) => {
+                let key = (3, Rc::as_ptr(c) as *const () as usize);
+                let name = if let Some(name) = self.data_helpers.get(&key) {
+                    name.clone()
+                } else {
+                    let name = self.unique_name("captured_collection");
+                    self.data_helpers.insert(key, name.clone());
+                    let mut body = format!(
+                        "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
+                        if c.set { "JsSet" } else { "JsMap" }
+                    );
+                    for (k, v) in &c.entries {
+                        validate_captured_data(k, span, &mut HashSet::new())?;
+                        validate_captured_data(v, span, &mut HashSet::new())?;
+                        let k = self.captured_data(k)?;
+                        if c.set {
+                            let _ = writeln!(body, "        $value->add({k});");
+                        } else {
+                            let v = self.captured_data(v)?;
+                            let _ = writeln!(body, "        $value->set({k}, {v});");
+                        }
+                    }
+                    body.push_str("    }\n    return $value;\n}\n\n");
+                    self.output.push_str(&body);
+                    name
+                };
+                let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+                let ty = match &b.ann {
+                    _ if javascript => Ty::Dynamic,
+                    Some((ann, module)) => self.resolve_runtime_ann(ann, *module)?,
+                    None => {
+                        let keys = Ty::union(c.entries.iter().map(|(k, _)| widen_fresh_literals(&ty_of_data(k))));
+                        let values = Ty::union(c.entries.iter().map(|(_, v)| widen_fresh_literals(&ty_of_data(v))));
+                        if c.entries.is_empty() {
+                            return err_help(
+                                span,
+                                format!("`{n}` is an empty collection without a type"),
+                                "annotate it, for example `const seen: Set<string> = new Set()`",
+                            );
+                        }
+                        if c.set {
+                            Ty::SetOf(Box::new(keys))
+                        } else {
+                            Ty::MapOf(Box::new(keys), Box::new(values))
+                        }
+                    }
+                };
+                Ok(Out::atom(format!("\\ZeroApp\\{name}()"), ty))
+            }
             Value::Regex(p, f) => {
                 let key = (2, Rc::as_ptr(p) as *const () as usize);
                 let name = if let Some(name) = self.data_helpers.get(&key) {

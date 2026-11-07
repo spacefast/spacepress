@@ -42,6 +42,16 @@ pub enum Value {
     Env(Rc<str>),
     Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
+    /// A module-level `new Map(entries)` / `new Set(values)`: build-time contents in insertion
+    /// order. Configuration reads them; compiled code captures one shared runtime collection.
+    Coll(Rc<CollVal>),
+}
+
+#[derive(Debug)]
+pub struct CollVal {
+    pub set: bool,
+    /// (key, value); a Set stores each value as its key.
+    pub entries: Vec<(Value, Value)>,
 }
 
 #[derive(Debug)]
@@ -334,6 +344,7 @@ impl Value {
             Value::Env(n) => format!("env({n:?})"),
             Value::Global(g) => format!("global \"{}\"", g.name),
             Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
+            Value::Coll(c) => (if c.set { "a Set" } else { "a Map" }).into(),
         }
     }
 
@@ -394,6 +405,7 @@ impl Value {
             (Value::Closure(a), Value::Closure(b)) => Rc::ptr_eq(a, b),
             (Value::Regex(a, af), Value::Regex(b, bf)) => Rc::ptr_eq(a, b) && Rc::ptr_eq(af, bf),
             (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
+            (Value::Coll(a), Value::Coll(b)) => Rc::ptr_eq(a, b),
             (Value::Builtin(a), Value::Builtin(b)) => a == b,
             _ => false,
         }

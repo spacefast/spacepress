@@ -32,6 +32,7 @@ Both use the same `app/` and the same locked dependencies (`picomatch`,
 | `table.mjs` | `zero check --json` on both variants, counted by code and message, as a Markdown table (`--json` for raw data) |
 | `verify.mjs` | checks installed hashes, prints the table, then runs each action under Node and through `run-php.php` and compares the JSON strings byte for byte |
 | `run-php.php` | loads the generated runtime and calls one action handler; no WordPress, database or network |
+| `probes.mjs` | one small app per host API (Symbol, Promise, streams, Blob, …), in typed TS and imported JS; `table.mjs --probes` adds it as a second section |
 | `sources.mjs` | the files the dist probe reaches (static imports and relative `require`) |
 | `provenance.mjs` / `provenance.json` | registry integrity, the upstream tag, commit and tarball hash, and SHA-256 of every reached file |
 
@@ -47,6 +48,8 @@ warning annotation and exits 0. The PR that makes every action match removes
 
 ## Merged state
 
-`scripts/files-sdk-merged.sh` merges every open files-sdk branch into a local
-scratch worktree (never pushed), builds it, and prints the same table. The
-harness PR carries the latest one as a comment.
+`scripts/files-sdk-merged.sh` merges every pushed `origin/` branch of the
+files-sdk effort, with or without a PR, into a local scratch worktree (never
+pushed), oldest commit first. It builds the compiler and prints both tables,
+then lists the merged branches and each conflicting branch with its files. The
+harness PR carries the latest run as a comment.

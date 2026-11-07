@@ -2,7 +2,10 @@
 // stable Markdown table: count per (code, message), largest first. Locations
 // are left out so two runs diff cleanly.
 //
-//   ZERO_BIN=/abs/zero node table.mjs [--json out.json] [--label "main 15bea535"]
+//   ZERO_BIN=/abs/zero node table.mjs [--probes] [--json out.json] [--label "main 15bea535"]
+//
+// --probes adds a second section: one small app per host API (probes.mjs), in
+// typed TS and in imported JS, because the syntax pass hides that layer.
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -10,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { buildRawSrc } from "./raw-src.mjs";
+import { probeTable, runProbes } from "./probes.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,8 +40,8 @@ const cell = (text) => text.replaceAll("|", "\\|").replaceAll("\n", " ");
 
 export function table(results, label) {
   const rows = new Map();
-  for (const [variant, result] of Object.entries(results))
-    for (const diagnostic of result.diagnostics) {
+  for (const variant of ["dist", "raw"])
+    for (const diagnostic of results[variant].diagnostics) {
       const key = `${diagnostic.code}\u0000${diagnostic.message}`;
       const row = rows.get(key) ?? { code: diagnostic.code, message: diagnostic.message, dist: 0, raw: 0 };
       row[variant] += 1;
@@ -62,9 +66,13 @@ export function table(results, label) {
 }
 
 if (realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { values } = parseArgs({ options: { json: { type: "string" }, label: { type: "string" } } });
+  const { values } = parseArgs({
+    options: { json: { type: "string" }, label: { type: "string" }, probes: { type: "boolean", default: false } },
+  });
   const zero = path.resolve(process.env.ZERO_BIN ?? path.join(root, "../../target/debug/zero"));
   const results = await measure(zero);
+  if (values.probes) results.probes = await runProbes(zero, path.join(root, ".work/probes"));
   if (values.json) await writeFile(values.json, JSON.stringify(results, null, 2) + "\n");
   console.log(table(results, values.label ?? `zero ${results.dist.compilerVersion}`));
+  if (results.probes) console.log(`\n**Host APIs** (one probe app each, \`zero check\`)\n\n${probeTable(results.probes)}`);
 }

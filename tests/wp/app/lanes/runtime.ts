@@ -38,6 +38,15 @@ export const relations = (r: any) => ({
   tours: { legs: r.many.legs({ from: r.tours.id, to: r.legs.tourId }) },
 });
 export const actions = {
+  nativeHandler: action({
+    input: { title: text().notNull(), count: integer().notNull() },
+    access: "anyone", agents: false,
+    handler(input) {
+      input.title = input.title.trim();
+      input.count += 1;
+      return { title: input.title, count: input.count };
+    },
+  }),
   // Arithmetic in compiled code on a stored integer and on an input one, past 2^53. The stored row
   // is still found by its exact value.
   bigMath: action({

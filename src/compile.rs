@@ -4587,7 +4587,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t => t,
         };
         Ok(Out::atom(
-            format!("\\Zero\\Jobs\\Receipts::once('fn', {}, {})", key.php, cb.php),
+            // Receipts are shared storage: each plugin keeps its own `once` keys.
+            format!(
+                "\\Zero\\Jobs\\Receipts::once({}, {}, {})",
+                php_str(&self.plugin.as_ref().map_or("fn".to_string(), |(_, p)| format!("plugin:{p}"))),
+                key.php,
+                cb.php
+            ),
             Ty::Promise(Box::new(classes::wire_type(&ret))),
         ))
     }

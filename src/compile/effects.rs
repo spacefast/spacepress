@@ -78,24 +78,17 @@ pub(super) struct Effects {
     write_events: HashMap<Span, HashSet<Place>>,
     expression_writes: HashMap<Span, HashSet<Place>>,
     loop_writes: HashMap<Span, HashSet<Place>>,
-    /// Every reachable write, by the binding it starts from, and the bindings that escape.
+    /// Every reachable write, by the binding it starts from.
     binding_writes: HashMap<Span, HashSet<Vec<Step>>>,
-    escaped: HashSet<(Span, Vec<Step>)>,
 }
 
 impl Effects {
-    /// Paths written below `binding` anywhere reachable (helpers, callbacks, aliases). A path
-    /// that escapes to code the analysis can't see counts as written, with its descendants.
+    /// Paths written below `binding` anywhere reachable. Calls carry a helper's writes back to
+    /// the argument it was given, and copies carry them across aliases, so this covers writes
+    /// through helpers, closures and other names for the same value. Every callee in compiled
+    /// code is itself compiled, so an argument passed to a call has no unseen writer.
     pub fn writes_below(&self, binding: Span) -> Vec<Vec<Step>> {
-        let mut paths: Vec<_> = self.binding_writes.get(&binding).into_iter().flatten().cloned().collect();
-        for (b, path) in &self.escaped {
-            if *b == binding {
-                let mut path = path.clone();
-                path.push(Step::Descendants);
-                paths.push(path);
-            }
-        }
-        paths
+        self.binding_writes.get(&binding).into_iter().flatten().cloned().collect()
     }
 
     pub fn captured(&self, binding: Span) -> bool {
@@ -1998,10 +1991,8 @@ impl Graph {
                 }
             }
         }
-        let escaped = self.escaped.iter().map(|p| (p.binding, p.path.clone())).collect();
         let mut effects = Effects {
             binding_writes,
-            escaped,
             captured: self.captured,
             captured_data: self.captured_data,
             numeric: HashMap::new(),

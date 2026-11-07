@@ -392,12 +392,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             for path in self.effects.writes_below(p.pat.span()) {
                 match path.as_slice() {
                     [] => {}
-                    // A scalar passed to a function is a copy; the call can't write the row.
-                    [effects::Step::Field(name), effects::Step::Descendants]
-                        if columns.get(name).is_some_and(|c| {
-                            c.fields.is_none() && c.layouts.is_none() && !matches!(c.ty, ColType::Json)
-                        }) => {}
-                    [effects::Step::Field(name), ..] => {
+                    [effects::Step::Field(name), ..] if columns.contains_key(name) => {
                         fields.insert(name.clone());
                     }
                     _ => {

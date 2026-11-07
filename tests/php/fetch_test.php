@@ -72,4 +72,17 @@ eq('request shape is checked before any network work',
     ['fetch() needs a URL string', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
         'fetch() header names and values must be valid strings', 'zero_fetch_payload_too_large']);
 
+// Location resolution, RFC 3986 §5.2: query-only and fragment-only references keep the base path.
+foreach ([
+    ['https://api.example/items/42', '?page=2', 'https://api.example/items/42?page=2'],
+    ['https://api.example/items/42?x=1', '#frag', 'https://api.example/items/42?x=1'],
+    ['https://api.example/a/b/c', '../d', 'https://api.example/a/d'],
+    ['https://api.example/a/b/c', './d?q', 'https://api.example/a/b/d?q'],
+    ['https://api.example/a/b', '../../../x', 'https://api.example/x'],
+    ['https://api.example:8443/a/b', '/c', 'https://api.example:8443/c'],
+    ['https://api.example/a', '//other.example/x', 'https://other.example/x'],
+] as [$base, $location, $expected]) {
+    eq("Location $location against $base", Fetch::resolveUrl($base, $location), $expected);
+}
+
 finish('fetch');

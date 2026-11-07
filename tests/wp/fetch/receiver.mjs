@@ -4,7 +4,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { createServer } from "node:https";
 
-const [key, cert, log] = process.argv.slice(2);
+const [key, cert, log, other = ""] = process.argv.slice(2);
 const server = createServer({ key: readFileSync(key), cert: readFileSync(cert) }, (req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -21,6 +21,17 @@ const server = createServer({ key: readFileSync(key), cert: readFileSync(cert) }
         return res.writeHead(302, { location: "/json" }).end();
       case "/see-other":
         return res.writeHead(303, { location: "/json" }).end();
+      // Same host, another port: another origin, so credentials must not follow.
+      case "/to-other-port":
+        return res.writeHead(302, { location: `https://fetch-origin.test:${other}/echo` }).end();
+      case "/echo":
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ path: url.pathname + url.search, authorization: req.headers["authorization"] ?? null, cookie: req.headers["cookie"] ?? null }));
+      // A query-only reference keeps the whole current path.
+      case "/items/42":
+        if (url.search === "") return res.writeHead(302, { location: "?page=2" }).end();
+        res.writeHead(200, { "content-type": "text/plain" });
+        return res.end(url.pathname + url.search);
       case "/loop":
         return res.writeHead(302, { location: "/loop" }).end();
       case "/to-loopback":

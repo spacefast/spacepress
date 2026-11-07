@@ -573,7 +573,7 @@ pub(super) fn app(
         }
     }
     if root.contains_key("realtime") {
-        entries.push(entry("/realtime", "review", "Realtime is not supported on Spacefast v2. The declaration was dropped; replace subscriptions with explicit reads or polling."));
+        entries.push(entry("/realtime", "mapped", "v2 announces every committed write as a change notice, so the declaration is no longer needed; Spacefast delivers notices over Cast. Replace client useQuery subscriptions with watch(client, [\"<table>\"], read, onResult) from the generated client."));
     }
     let mut native_posts = content_posts.then(|| json!({}));
     let content_config = if let Some(collections) = root.get("collections") {
@@ -1330,15 +1330,19 @@ fn endpoint(
             )
         }
     };
-    let subject = if r.uses_subject {
-        "const __z08subject = await __z08Subject(__z08ctx.user);\n"
+    let gate = if mode.signed_in {
+        "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
+    } else if r.uses_subject && route.writes {
+        // As for actions: 0.8 gave every visitor a guest identity; a v2 client starts one on this 401.
+        "if (__z08ctx.user === null) throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
     } else {
         ""
     };
-    let gate = if mode.signed_in {
-        "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
-    } else {
-        ""
+    // A writing route runs behind the gate above, so its subject is never null, as for actions.
+    let subject = match (r.uses_subject, route.writes || mode.signed_in) {
+        (false, _) => "",
+        (true, false) => "const __z08subject = await __z08Subject(__z08ctx.user);\n",
+        (true, true) => "const __z08subject: string = await __z08Subject(__z08ctx.user) ?? \"\";\n",
     };
     let req = request.unwrap_or("__z08req");
     if r.logs {
@@ -1420,6 +1424,22 @@ impl Rewrite<'_> {
             return Err(fail(self.at, "reserved generated identifier"));
         }
         if self.request.is_some() && self.request_use(e)? {
+            return Ok(());
+        }
+        // `ctx.invalidate(...)` named the live queries a mutation refreshed. v2 announces every
+        // committed write by table, so the call has no work left; it becomes a no-op.
+        if let E::Call { callee, .. } = &e.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && prop == "invalidate"
+            && matches!(&obj.kind, E::Ident(n) if n == self.ctx)
+        {
+            if !self.writes {
+                return Err(fail(
+                    &pointer(&pointer(self.at, "ctx"), "invalidate"),
+                    "invalidate is only available in legacy mutations",
+                ));
+            }
+            self.edits.push((e.span, "undefined".into()));
             return Ok(());
         }
         if let E::Await(inner) = &e.kind
@@ -1856,7 +1876,7 @@ impl Rewrite<'_> {
                 _ => format!("String(last.{c})"),
             })
             .collect::<Vec<_>>()
-            .join(" + \"\\u0000\" + ");
+            .join(", ");
         let filter = |extra: Option<String>| {
             let mut all = range.clone();
             all.extend(extra);
@@ -1882,7 +1902,12 @@ impl Rewrite<'_> {
     const site = parsed.site;
     const keys = parsed.keys;
     if (site !== {} || parsed.scope !== scope || typeof keys !== \"string\") throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\");
-    const parts = keys.split(\"\\u0000\");
+    // The key tuple is a JSON array of strings, so a key may hold any character.
+    let decoded: unknown = null;
+    try {{ decoded = JSON.parse(keys) as unknown; }} catch (e) {{ throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\"); }}
+    if (!Array.isArray(decoded)) throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\");
+    const parts: string[] = [];
+    for (const part of decoded as unknown[]) {{ if (typeof part !== \"string\") throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\"); parts.push(part); }}
     if (parts.length !== {}) throw new __z08HttpError(400, \"invalid_cursor\", \"Invalid Zero pagination cursor.\");
     {decode}
     after = true;
@@ -1893,7 +1918,7 @@ impl Rewrite<'_> {
   const items = rows.slice(0, size);
   const last = items[items.length - 1];
   const isDone = rows.length <= size;
-  return {{ page: items.map(__z08_{name}_row), isDone, continueCursor: isDone || last == null ? null : JSON.stringify({{ site: {}, scope, keys: {encode} }}) }};
+  return {{ page: items.map(__z08_{name}_row), isDone, continueCursor: isDone || last == null ? null : JSON.stringify({{ site: {}, scope, keys: JSON.stringify([{encode}]) ?? \"\" }}) }};
 }}
 ",
             sig.join(", "),

@@ -1,0 +1,1110 @@
+[
+  {
+    "name": "stringOrder",
+    "expression": "['😀' < '\\uE000', '😀' <= '\\uE000', '😀' > '\\uE000', '😀' >= '\\uE000', 'ab' < 'aba']",
+    "fold": true
+  },
+  {
+    "name": "regexState",
+    "expression": "(() => { const re = /a/g; return [re.test('a'), re.test('a'), re.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "regexSticky",
+    "expression": "(() => { const re = /a/y; return [re.test('ba'), re.test('a'), re.test('a'), re.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "regexZeroLength",
+    "expression": "(() => { const re = /a*/g; return [re.test('b'), re.test('b'), re.test(''), re.test('a'), re.test(''), re.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "regexFresh",
+    "expression": "[1, 2, 3].map(() => /a/g.test('a'))",
+    "fold": false
+  },
+  {
+    "name": "regexIndependent",
+    "expression": "(() => { const a = /a/g; const b = /a/g; return [a.test('a'), b.test('a'), a.test('a'), b.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "buildReplace",
+    "expression": "['abc'.replace('b', '$&'), 'abc'.replace('b', \"$$|$&|$`|$'|$0|$1|$01|$10|$99|$<x>\"), 'abc'.replace(/(b)/, \"$1|$01|$10|$12|$00|$02|$99|$$&\"), 'b'.replace(/(a)?b/, '$1x'), 'ab'.replace(/(a)(b)/, '$2$1$02$20$03'), 'abab'.replaceAll(/(a)b/g, '$1$&'), 'aba'.replaceAll('a', \"$`-$'\"), 'ab'.replaceAll('', '-')]",
+    "fold": true
+  },
+  {
+    "name": "replacementCaptureBoundaries",
+    "expression": "'abcdefghijk'.replace(/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)/, '$1|$10|$11|$12|$99|$09|$00|$01|$0|$$1')",
+    "fold": true
+  },
+  {
+    "name": "buildTrim",
+    "expression": "['\\uFEFFhello\\uFEFF'.trim(), '\\u0085hello\\u0085'.trim(), '\\uFEFF x\\u0085'.trimStart(), '\\u0085x \\uFEFF'.trimEnd()]",
+    "fold": true
+  },
+  {
+    "name": "numericWhitespace",
+    "expression": "[String(Number('\\uFEFF42\\uFEFF')), String(Number('\\u008542')), String(parseFloat('\\uFEFF3.5x')), String(parseFloat('\\u00853.5')), String(parseInt('\\uFEFF10')), String(parseInt('\\u008510'))]",
+    "fold": true
+  },
+  {
+    "name": "allWhitespace",
+    "expression": "['\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000\\u2001\\u2002\\u2003\\u2004\\u2005\\u2006\\u2007\\u2008\\u2009\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff'.trim(), '\\u0085\\u180e\\u200b'.trim()]",
+    "fold": true
+  },
+  {
+    "name": "buildRadix",
+    "expression": "[String(parseInt('10', 4294967298)), String(parseInt('10', -4294967294)), String(parseInt('10', 4294967296)), String(parseInt('10', -2)), String(parseInt('10', Infinity)), String(parseInt('10', NaN)), String(parseInt('10', -0)), String(parseInt('10', 2.9))]",
+    "fold": true
+  },
+  {
+    "name": "signedZero",
+    "expression": "[String(1 / -0), String(1 / Math.round(-0.1)), String(1 / Math.round(-0.5)), String(1 / Math.round(-0)), String(Math.round(4503599627370497)), String(Math.round(0.49999999999999994)), String(Math.round(-1.5)), String(Math.round(Infinity)), String(Math.round(NaN))]",
+    "fold": true
+  },
+  {
+    "name": "runtimeNeg",
+    "expression": "[0, -0, 1, -1].map(n => String(1 / -n))",
+    "fold": false
+  },
+  {
+    "name": "literalTypeEffects",
+    "expression": "(() => { let calls = 0; const value = (): 0 => { calls++; return 0; }; const result = String(1 / -value()); return [result, calls]; })()",
+    "fold": false
+  },
+  {
+    "name": "replacementNames",
+    "expression": "'ab'.replace(/(?<first>a)(b)/, '$<first>|$<missing>|$1|$2')",
+    "fold": true
+  },
+  {
+    "name": "numericConstructors",
+    "expression": "[String(), String(Number()), String(Boolean()), String(isNaN()), String(Number('0b10')), String(Number('0o10')), String(Number('0xFFFFFFFFFFFFFFFF'))]",
+    "fold": true
+  },
+  {
+    "name": "regexMatchResets",
+    "expression": "(() => { const re = /a/g; return [re.test('a'), 'a'.match(re), re.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "radixRounding",
+    "expression": "[String(Number('0x1000000000000081')), String(Number('0o3777777777777777777')), String(Number('0b100000000000000000000000000000000000000000000000000010000001')), String(parseInt('1000000000000081', 16))]",
+    "fold": true
+  },
+  {
+    "name": "emptyRegexReplacement",
+    "expression": "['a'.replace(/a*/g, 'x'), 'a'.replaceAll(/a*/g, 'x'), 'ab'.replace(/a|$/g, 'x'), ''.replace(/a*/g, 'x')]",
+    "fold": true
+  },
+  {
+    "name": "integerMissing",
+    "expression": "[Number.isInteger(), Number.isFinite()]",
+    "fold": true
+  },
+  {
+    "name": "stickyStringMatch",
+    "expression": "['ba'.match(/a/y), 'aba'.match(/a/gy)]",
+    "fold": false
+  },
+  {
+    "name": "numberParsingOverloads",
+    "expression": "[parseInt('10', undefined), Number.parseInt('10', 4294967298), Number.parseFloat('3.5x'), 'ab'.split(), (1.25).toFixed(1)]",
+    "fold": false
+  },
+  {
+    "name": "regexpConstructorCoercion",
+    "expression": "[new RegExp(/a/g).test('a'), new RegExp(undefined).test(''), new RegExp().test('anything')]",
+    "fold": false
+  },
+  {
+    "name": "errorUndefined",
+    "expression": "[Error(undefined).message, new Error(undefined).message, Error(null).message, TypeError().message, new RangeError('range').message]",
+    "fold": false
+  },
+  {
+    "name": "javascriptIgnoredArguments",
+    "expression": "(() => { let calls = 0; [1].pop(calls++); [1].reverse(calls++); return [calls, /undefined/.test()]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "javascriptArrayMissing",
+    "expression": "(() => { const a = [1, 2]; const r = a.splice(); return [r, a, typeof [].pop(), typeof [].shift()]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "minMaxZero",
+    "expression": "[String(1 / Math.min(-0, 0)), String(1 / Math.max(0, -0)), String(Math.min(NaN, 1)), String(Math.max(1, NaN))]",
+    "fold": true
+  },
+  {
+    "name": "powerSpecialCases",
+    "expression": "[String(Math.pow(1, Infinity)), String(Math.pow(-1, -Infinity)), String(Math.pow(NaN, 0)), String(1 ** Infinity), String((-1) ** Infinity), String(NaN ** 0)]",
+    "fold": true
+  },
+  {
+    "name": "mapLiveReads",
+    "expression": "(() => { const a = [1, 2]; return a.map((v, i) => { if (i === 0) a[1] = 7; return v; }); })()",
+    "fold": true
+  },
+  {
+    "name": "reduceLiveReads",
+    "expression": "(() => { const a = [1, 2]; return a.reduce((sum, v, i) => { if (i === 0) a[1] = 7; return sum + v; }, 0); })()",
+    "fold": true
+  },
+  {
+    "name": "fromMissingValues",
+    "expression": "Array.from({length: 2}, v => String(v))",
+    "fold": true
+  },
+  {
+    "name": "fromLiveReads",
+    "expression": "(() => { const a = [1, 2]; return Array.from(a, (v, i) => { if (i === 0) a[1] = 7; return v; }); })()",
+    "fold": true
+  },
+  {
+    "name": "jsonArgumentEffects",
+    "expression": "(() => { let calls = 0; const effect = (): undefined => { calls++; return undefined; }; const text = JSON.stringify({n: 1}, effect()); const value = JSON.parse(text, effect()); return [text, value, calls]; })()",
+    "fold": false
+  },
+  {
+    "name": "jsonSerialization",
+    "expression": "[String(JSON.stringify(undefined)), JSON.stringify({a: undefined}), JSON.stringify(-0), JSON.stringify(100000000000000000000), JSON.stringify(/a/g)]",
+    "fold": false
+  },
+  {
+    "name": "fromArgumentsLiveLength",
+    "expression": "(function (first: number, second: number) { const source = arguments; return Array.from(source, (v, i) => { if (i === 0) source.length = 1; return v; }); })(1, 2)",
+    "fold": true
+  },
+  {
+    "name": "hasOwnReceivers",
+    "expression": "[Object.hasOwn([1], '0'), Object.hasOwn([1], 'length'), Object.hasOwn('x', '0'), Object.hasOwn('🙂', '1'), Object.hasOwn('x', 'length'), Object.hasOwn(3, '0'), Object.hasOwn(/a/, 'lastIndex')]",
+    "fold": true
+  },
+  {
+    "name": "objectTagArgumentEffects",
+    "expression": "(() => { let n = 0; const tag = ({}).toString.call({}, n++); return [tag, n]; })()",
+    "fold": false
+  },
+  {
+    "name": "sliceNullishBounds",
+    "expression": "['abcd'.slice(1, null), 'abcd'.slice(undefined, 2), 'abcd'.slice(1, undefined), [1, 2].slice(1, null), [1, 2].slice(undefined, 1)]",
+    "fold": true
+  },
+  {
+    "name": "splitNullishLimits",
+    "expression": "['a,b'.split(',', null), 'a,b'.split(',', undefined)]",
+    "fold": true
+  },
+  {
+    "name": "stringNumericCoercion",
+    "expression": "['abcd'.substring(1, null), 'abcd'.substring(undefined, 2), 'ab'.repeat(undefined), 'ab'.charAt(undefined), 'ab'.padStart(null), 'ab'.at(null)]",
+    "fold": false
+  },
+  {
+    "name": "fromEmptyEntry",
+    "expression": "Object.keys(Object.fromEntries([[]]))",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "flatNullishDepth",
+    "expression": "[[[1]].flat(undefined), [[1]].flat(null)]",
+    "fold": false
+  },
+  {
+    "name": "javascriptFlatNullishDepth",
+    "expression": "[[[1]].flat(undefined), [[1]].flat(null)]",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "repeatCoercion",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['ab'.repeat(o), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptRepeatCoercion",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['ab'.repeat(o), n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "splitCoercionOnce",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['a,b,c'.split(',', o), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptSplitCoercionOnce",
+    "expression": "(() => { let n = 0; const o = {valueOf: () => { n++; return 2; }}; return ['a,b,c'.split(',', o), n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "sliceLengthBeforeCoercion",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; return [a.slice(start), a]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptSliceLengthBeforeCoercion",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; return [a.slice(start), a]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "hasOwnKeyCoercion",
+    "expression": "(() => { let n = 0; const key = {toString: () => { n++; return 'a'; }}; return [Object.hasOwn({a: 1}, key), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptHasOwnKeyCoercion",
+    "expression": "(() => { let n = 0; const key = {toString: () => { n++; return 'a'; }}; return [Object.hasOwn({a: 1}, key), n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "spliceNullishCounts",
+    "expression": "(() => { const a = [1, 2]; const b = [1, 2]; return [a.splice(0, null), a, b.splice(0, undefined), b]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptSpliceNullishCounts",
+    "expression": "(() => { const a = [1, 2]; const b = [1, 2]; return [a.splice(0, null), a, b.splice(0, undefined), b]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "javascriptStringAtUndefined",
+    "expression": "['abc'.at(100) === undefined, 'abc'.at(-100) === undefined, 'abc'.at(1)]",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "arrayIndexCoercionOrder",
+    "expression": "(() => { const a = [1, 2, 3]; const b = [1, 2, 3]; const c = [1, 2, 3]; const x = {valueOf: () => { a.push(4); return -1; }}; const y = {valueOf: () => { b.push(4); return -1; }}; const z = {valueOf: () => { c.push(4); return -1; }}; return [a.indexOf(4, x), b.lastIndexOf(4, y), c.at(z)]; })()",
+    "fold": false
+  },
+  {
+    "name": "emptyArraySearchCoercion",
+    "expression": "(() => { let n = 0; const position = {valueOf: () => { n++; return 0; }}; return [[].includes(1, position), [].indexOf(1, position), [].lastIndexOf(1, position), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "arrayMutationCoercionOrder",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; const removed = a.splice(start, 1); const b = [1, 2, 3]; const fillStart = {valueOf: () => { b.push(4); return -1; }}; b.fill(9, fillStart); return [removed, a, b]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptArrayMutationCoercionOrder",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; const removed = a.splice(start, 1); const b = [1, 2, 3]; const fillStart = {valueOf: () => { b.push(4); return -1; }}; b.fill(9, fillStart); const c = [[1]]; const depth = {valueOf: () => { c.push([2]); return 1; }}; const flat = c.flat(depth); return [removed, a, b, flat, c]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "powerRadixRounding",
+    "expression": "[String(Number('0x8000000000000401')), String(parseInt('8000000000000401', 16)), String(parseInt('1307241560772262162000771522276664', 8)), String(parseInt('17b3revv1th40667rv0', 32)), String(parseInt('1000000000000081', 16)), String(parseInt('20000000000001', 16)), String(parseInt('20000000000003', 16)), String(Number('0x' + 'f'.repeat(256)))]",
+    "fold": true
+  },
+  {
+    "name": "safeNonBinaryRadix",
+    "expression": "[parseInt('1000000000000000000000000000000', 3), parseInt('zzzzzzzzzz', 36), parseInt('10', 4294967299)]",
+    "fold": true
+  },
+  {
+    "name": "lazyPaddingCoercion",
+    "expression": "(() => { let n = 0; const fill = {toString: () => { n++; return 'x'; }}; return ['abc'.padStart(0, fill), 'abc'.padEnd(3, fill), n, 'abc'.padStart(4, fill), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "nonGlobalRegexCoercion",
+    "expression": "(() => { let n = 0; const r = /a/; r.lastIndex = {valueOf: () => { n++; return 99; }}; return [r.test('a'), n, 'a'.match(r) !== null, n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "javascriptLazyPaddingCoercion",
+    "expression": "(() => { let n = 0; const fill = {toString: () => { n++; return 'x'; }}; return ['abc'.padStart(0, fill), 'abc'.padEnd(3, fill), n, 'abc'.padStart(4, fill), n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "entryValueBeforeKeyCoercion",
+    "expression": "(() => { const entry = [null, 1]; entry[0] = {toString: () => {entry[1] = 2; return 'x';}}; return Object.fromEntries([entry]); })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "liveEntryIteration",
+    "expression": "(() => { const entries = []; const key = {toString: () => {entries.push(['y', 2]); return 'x';}}; entries.push([key, 1]); return Object.fromEntries(entries); })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "zeroSplitCoercion",
+    "expression": "(() => { let n = 0; const result = 'abc'.split({toString: () => {n++; return ',';}}, 0); return [result, n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "replacementLastIndexCoercion",
+    "expression": "(() => { let n = 0; const re = /a/; re.lastIndex = {valueOf: () => {n++; return 0;}}; const result = 'a'.replace(re, 'x'); return [result, n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "liveMapEntries",
+    "expression": "(() => { const map = new Map(); const key = {toString: () => {map.set('y', 2); return 'x';}}; map.set(key, 1); return Object.fromEntries(map); })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "searchCoercionOrder",
+    "expression": "['includes', 'startsWith', 'endsWith'].map(method => { let n = 0; const search = {toString: () => {n = n * 10 + 1; return 'a';}}; const position = {valueOf: () => {n = n * 10 + 2; return 0;}}; return ['ab'[method](search, position), n]; })",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "searchRejectsRegex",
+    "expression": "['includes', 'startsWith', 'endsWith'].map(method => { try { 'ab'[method](/a/); return false; } catch (error) { return error.name === 'TypeError'; } })",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "namedReplacementCallbackArguments",
+    "expression": "['a'.replace(/(?<x>a)/, function () { return String(arguments.length); }), 'a'.replaceAll(/(?<x>a)/g, function () { return String(arguments.length); })]",
+    "fold": false
+  },
+  {
+    "name": "regexSubtractionSyntax",
+    "expression": " 'x'.replace(/[a-z--x]/g, '!') ",
+    "fold": false
+  },
+  {
+    "name": "joinSeparatorCoercion",
+    "expression": "[(() => {const a=[1,2]; return a.join({toString:()=>{a.push(3);return '-';}});})(), (() => {const a=[1,2]; return a.join({toString:()=>{a.pop();return '-';}});})()]",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "arrayPrimitiveOverrides",
+    "expression": "(() => { const a=[1,2]; a.toString=()=> 'OWN'; a.valueOf=()=>9; const b=[3]; b.join=()=> 'JOIN'; return [String(a), Number(a), String([a]), ''+a, a==9, String(b), [b].join(',')]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "applyUsesArrayLikeData",
+    "expression": "(() => {const f=(a,b)=>[a,b]; let errorName=''; try { f.apply(null,'ab'); } catch(error) {errorName=error.name;} return [errorName, f.apply(null,{length:2,0:'a',1:'b'}), f.apply(null,new Set([1,2]))];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "computedProtoDataProperty",
+    "expression": "Object.hasOwn({['__proto__']:null}, '__proto__')",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "capturedUndefinedIdentity",
+    "declarations": "const capturedUndefinedScalar=undefined; const capturedUndefinedArray=[undefined]; const capturedUndefinedObject={value:undefined}; const capturedUndefinedFolded=typeof capturedUndefinedScalar;",
+    "expression": "[capturedUndefinedFolded, typeof capturedUndefinedScalar, typeof capturedUndefinedArray[0], typeof capturedUndefinedObject.value, capturedUndefinedScalar === null]",
+    "fold": false
+  },
+  {
+    "name": "unmatchedReplacementCaptures",
+    "expression": "['b'.replace(/(a)?b/, (m,g) => typeof g), 'b'.replaceAll(/(a)?b/g, (m,g) => String(g)), 'b'.replace(/(a)?b/, (m,g='fallback') => g), 'b'.replace(/(?<x>a)?b/, function() { return typeof arguments[1] + ':' + JSON.stringify(arguments[4]); })]",
+    "fold": false
+  },
+  {
+    "name": "dynamicMethodValues",
+    "expression": "(() => { const get=()=>''; const s=get(); const a=[]; const pad=s.padStart; const fill=a.fill; const math=Math; const log=math.log; return [typeof s.padStart, typeof s.padEnd, typeof s.at, typeof a.fill, typeof /x/.exec, typeof /x/.test, typeof math.log, typeof math.exp, typeof math.random, pad.call('x',3,'0'), fill.call([1,2],3), log(1)]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "replaceAllRejectsBeforeCoercion",
+    "expression": "(() => {let n=0; try {'x'.replaceAll(/x/,{toString:()=>{n++;return 'y';}});} catch(e) {} return n;})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "forEachResult",
+    "expression": "(() => {let n=0; const result=[1,2].forEach(x=>{n+=x;}); return [typeof result, result===undefined, result===null, n];})()",
+    "fold": true
+  },
+  {
+    "name": "typedUndefinedResults",
+    "expression": "[typeof [1].find(x=>false), typeof [1].findLast(x=>false), typeof [1].at(2), typeof 'x'.at(2), typeof [].pop(), typeof [].shift(), [null].find(x=>true)===null, [null].at(0)===null, typeof [][0], typeof 'x'[4]]",
+    "fold": false
+  },
+  {
+    "name": "unmatchedRegexResults",
+    "expression": "(() => {const m='b'.match(/(a)?b/); return [m===null ? 'no match' : typeof m[1], typeof 'ab'.split(/(x)?/)[1]];})()",
+    "fold": false
+  },
+  {
+    "name": "stickySurrogateBoundaries",
+    "expression": "['x😀'.match(/\\B/gy), '😀x'.match(/^|x/gy), '😀x'.match(/(?:)|x/gy), 'x😀'.match(/\\B/g), '😀'.match(/\\B/gy)]",
+    "fold": false
+  },
+  {
+    "name": "deterministicPowers",
+    "expression": "[String(Math.pow(3, 20)), String(Math.pow(2, 1024)), String(Math.pow(2, -1074)), String(Math.pow(2, -1075)), String(Math.pow(0.5, -4)), String(Math.pow(-2, 3)), String(Math.pow(1.3, 2)), String(Math.pow(4, -1)), String(Math.pow(2, 0.5)), String(1 / Math.pow(-0, 3)), String(Math.pow(-0, -3)), String(Math.pow(-3, 0.4)), String(Math.pow(-Infinity, 3)), String(Math.pow(-2, Infinity))]",
+    "fold": true
+  },
+  {
+    "name": "typedParameterDefaults",
+    "declarations": "function parityDefault(v: number | null = 4) { return v; } function parityOptional(v?: number) { return v; }",
+    "expression": "[parityDefault(null), parityDefault(undefined), parityDefault(), typeof parityOptional(), parityOptional() === undefined]",
+    "fold": true
+  },
+  {
+    "name": "typedDestructuringDefaults",
+    "expression": "(() => {const [a=4,b=5]=[null,undefined]; const {x=6,y=7}={x:null,y:undefined}; let n=0; const f=(v: number|null=(n++,4))=>v; return [a,b,x,y,f(null),n,f(),n];})()",
+    "fold": true
+  },
+  {
+    "name": "implicitUndefinedReturns",
+    "expression": "(() => { const bare=()=>{return;}; const empty=()=>{}; const branch=(flag:boolean)=>{if(flag)return 3;}; return [typeof bare(),bare()===undefined,typeof empty(),empty()===undefined,typeof branch(false),branch(false)===undefined,branch(true)]; })()",
+    "fold": true
+  },
+  {
+    "name": "multiplicationSignedZero",
+    "expression": "[String(1/(0 * -1)), String(1/(-1 * 0)), String(1/(-0 * -1)), String(1/(-0 * 1))]",
+    "fold": true
+  },
+  {
+    "name": "mathExactIdentities",
+    "expression": "[String(Math.log(1)),String(Math.log(0)),String(Math.log(-1)),String(Math.log(Infinity)),String(Math.log(NaN)),String(Math.exp(0)),String(Math.exp(-Infinity)),String(Math.exp(Infinity)),String(Math.exp(NaN))]",
+    "fold": false
+  },
+  {
+    "name": "runtimeUnmatchedClassDelimiter",
+    "expression": "'a]'.replace(/[^]]/, 'X')",
+    "fold": false
+  },
+  {
+    "name": "uninitializedClassFields",
+    "declarations": "class ParityEmpty { value: number; static item: number; }",
+    "expression": "(() => { const value=new ParityEmpty(); return [typeof value.value, value.value===undefined, Object.hasOwn(value, \"value\"), typeof ParityEmpty.item, ParityEmpty.item===undefined]; })()",
+    "fold": false
+  },
+  {
+    "name": "atMutationDuringCoercion",
+    "expression": "(() => { const a=[1,2]; const index={valueOf:()=>{a.pop();return 1;}}; const result=a.at(index); return [typeof result,result===undefined,result===null,a]; })()",
+    "fold": false
+  },
+  {
+    "name": "omissionWithUndefinedDomain",
+    "declarations": "function parityUndefinedDomain(value: string | undefined) {return typeof value;}",
+    "expression": "[parityUndefinedDomain(),parityUndefinedDomain(undefined),parityUndefinedDomain('x')]",
+    "fold": true
+  },
+  {
+    "name": "uninitializedTypedLocal",
+    "expression": "(() => { let value: number | undefined; const {value: fallback = 42} = {value}; return [typeof value, String(value), value === undefined, fallback]; })()",
+    "fold": true
+  },
+  {
+    "name": "nonemptyOptionalCaptures",
+    "expression": "['x'.replace(/(a|bc)?/, '[$1]'), 'ab'.replace(/([^}]+)?/, '$1!'), 'b'.replace(/(a?b)?/, '[$1]') ]",
+    "fold": true
+  },
+  {
+    "name": "restParameterDefaults",
+    "declarations": "function parityRestDefault(value: number = 1, ...rest: number[]) { return [value, rest.length]; }",
+    "expression": "[parityRestDefault(), parityRestDefault(undefined, 2), ((value?: number, ...rest: number[]) => [typeof value, rest.length])()]",
+    "fold": true
+  },
+  {
+    "name": "destructuredUndefined",
+    "expression": "(() => { const [value] = []; return [typeof value, {value}]; })()",
+    "fold": true
+  },
+  {
+    "name": "matchMetadata",
+    "expression": "(() => { const m = 'a'.match(/(a)/); const g = 'a'.match(/a/g); return m === null ? false : [Object.hasOwn(m, 'index'), Object.hasOwn(m, 'input'), Object.hasOwn(m, 'groups'), g === null ? true : Object.hasOwn(g, 'index')]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptMatchMetadata",
+    "expression": "(() => { const m = 'ba'.match(/(?<x>a)/); return m === null ? null : [m.index, m.input, m.groups.x, Object.hasOwn(m, 'groups')]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "liveForOf",
+    "expression": "(() => { const a = [1, 2]; let text = ''; for (const value of a) { text += String(value); if (value === 2) a.push(3); } return [text, a]; })()",
+    "fold": true
+  },
+  {
+    "name": "liveDestructuring",
+    "expression": "(() => { const a = [undefined, 2]; const [x = (a[1] = 3), y] = a; return [x, y]; })()",
+    "fold": true
+  },
+  {
+    "name": "iteratorExhaustion",
+    "expression": "(() => { const a: number[] = []; const [x = (() => { a.push(2); return 1; })(), y] = a; return [x, typeof y, a]; })()",
+    "fold": true
+  },
+  {
+    "name": "defaultAdditionHint",
+    "expression": "(() => { let hint = ''; const o = {valueOf: () => { hint += 'v'; return 7; }, toString: () => { hint += 's'; return 'x'; }}; const first = '' + o; const box = {value: ''}; box.value += o; return [first, box.value, hint]; })()",
+    "fold": false
+  },
+  {
+    "name": "sortUndefined",
+    "expression": "(() => { const a = [undefined, 3, 1]; const sorted = a.toSorted((x, y) => x! - y!); a.sort(); return [sorted, a]; })()",
+    "fold": false
+  },
+  {
+    "name": "computedPrototypeDataWrite",
+    "expression": "(() => { const key = '__proto__'; const o: Record<string, number> = {[key]: 1}; o[key] = 2; return [Object.hasOwn(o, key), o[key]]; })()",
+    "fold": true
+  },
+  {
+    "name": "capturedUpdateTarget",
+    "expression": "(() => { let i=0; const a=[1,2]; a[i++]++; return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "capturedCompoundTarget",
+    "expression": "(() => { let i=0; const a=[1,2]; a[i++] += 1; return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "capturedAssignmentTarget",
+    "expression": "(() => { let i=0; const a=[1,2]; a[i]=(i=1,3); return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "capturedLogicalTarget",
+    "expression": "(() => { let i=0; const a=[0,2]; a[i++] ||= 3; return [i,a]; })()",
+    "fold": true
+  },
+  {
+    "name": "liveImportedForOf",
+    "expression": "(() => { const a=[1,2]; let total=0; for (const v of a) { total += v; if (v===1) a.push(3); } return [total,a]; })()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "regexLiteralSource",
+    "expression": "[/a\\/b/.source, String(/a\\/b/), /[/]/.source, /(?:)/.source]",
+    "fold": true
+  },
+  {
+    "name": "regexConstructorSource",
+    "expression": "['a/b', '[/]', 'a\\\\/b', '\\n', '\\r', '\\u2028', '\\u2029', '\\\\\\n', ''].map(s => { const r=new RegExp(s); return [r.source,String(r)]; })",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "asciiRegexCaseFolding",
+    "expression": "[/k/iu.test('K'), /s/iu.test('S'), /k/i.test('K'), /s/i.test('S')]",
+    "fold": false
+  },
+  {
+    "name": "overwrittenObjectKeyOrder",
+    "expression": "[Object.keys({...{a:1,b:2},a:3}), Object.keys({a:1,b:2,...{a:3}})]",
+    "fold": true
+  },
+  {
+    "name": "javascriptNumericUpdates",
+    "expression": "(() => { let x='1'; let y={valueOf:()=>4}; const o={n:'2'}; return [x++, x, --x, y++, y, o.n++, o.n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "typedDateJSON",
+    "expression": "[new Date(NaN).toJSON(),new Date(0).toJSON()]",
+    "fold": false
+  },
+  {
+    "name": "unicodeRegexSplit",
+    "expression": "['😀'.split(/(?:)/u), 'a😀b'.split(/(?:)/u)]",
+    "fold": false
+  },
+  {
+    "name": "numberStringTies",
+    "expression": "[String(1000000000000000.25), String(-1000000000000000.25), String(1e21), String(1e-7), Object.keys({[1000000000000000.25]:1})]",
+    "fold": true
+  },
+  {
+    "name": "computedWriteKey",
+    "expression": "(() => { let n=0; const o={x:1}; const key={toString(){n++; return 'x';}}; const before=o[key]++; const added=(o[key] += (n+=10, 2)); const assigned=(o[key] = (n+=100, 9)); return [n,before,added,assigned,o.x]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "cyclicArrayString",
+    "expression": "(() => { const a: unknown[]=[]; a.push(a); const b: unknown[]=[1,a,2]; a.push(b); return [String(a), String([b,b]), a.join(), a.join('|')]; })()",
+    "fold": true
+  },
+  {
+    "name": "functionMethodValues",
+    "expression": "(() => { const f=(x)=>x+1; const call=f.call; const apply=f.apply; const b=true; return [typeof call, typeof apply, call.call(f,null,2), apply.call(f,null,[3]), typeof b.toString, b.toString()]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "dateArgumentCoercion",
+    "expression": "(() => { let calls=0; const value={valueOf:()=>{calls++; return 0;}}; const d=new Date(value); return [String(d.getTime()),calls]; })()",
+    "fold": false
+  },
+  {
+    "name": "dynamicDateArgumentCoercion",
+    "expression": "(() => { let calls=0; const value={valueOf:()=>{calls++; return 0;}}; const d=new Date(value); return [String(d.getTime()),calls]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "optionalBuiltinProperties",
+    "expression": "(() => { function readError(e:Error|null){return [e?.message===undefined,e?.name===undefined];} function readRegex(r:RegExp|null){return [r?.source===undefined,r?.flags===undefined];} return [readError(null),readError(new Error('bad')),readRegex(null),readRegex(/a/g)]; })()",
+    "fold": false
+  },
+  {
+    "name": "typedDateIdentity",
+    "expression": "(() => { function numeric(v:unknown){return Number(v);} const a=new Date(0); const b=new Date(0); const alias=a; const copy=new Date(a); return [a===b,a===alias,a===copy,numeric(a),Boolean(a),typeof a,a.getTime(),copy.getTime(),Number.isFinite(a),Number.isInteger(a)]; })()",
+    "fold": false
+  },
+  {
+    "name": "singletonSortDoesNotCoerce",
+    "expression": "(() => { let calls=0; const a=[{toString:()=>{calls++;return \"a\";}}]; a.sort(); a.toSorted(); return calls; })()",
+    "fold": false
+  },
+  {
+    "name": "dynamicUnaryMinus",
+    "expression": "(() => { const neg=x=>-x; return [String(neg('2')),String(neg('0')),String(neg(null)),String(neg(true)),String(neg(undefined)),String(1/neg('0'))]; })()",
+    "javascript": true,
+    "fold": true
+  },
+  {
+    "name": "jsonNegativeZero",
+    "expression": "[1/JSON.parse('-0')===-Infinity,1/JSON.parse('[-0,-0.0,-0e0]')[0]===-Infinity,1/JSON.parse('{\"x\":-0}').x===-Infinity,JSON.parse('\"-0\"'),JSON.parse('\"x -0 y\"'),JSON.parse('1e-0'),JSON.parse('1E-0'),JSON.parse('[1e-0,-0,0e-0,-0e-0]')]",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "numericKeySorting",
+    "expression": "(() => { const a=[{k:2,i:0},{k:1,i:1},{k:2,i:2}]; return [a.toSorted((x,y)=>x.k-y.k).map(x=>x.i),a.toSorted((x,y)=>y.k-x.k).map(x=>x.i),[3,2,1].sort((a,b)=>a-b)]; })()",
+    "fold": false
+  },
+  {
+    "name": "logicalMissingAssignment",
+    "expression": "(() => { const a:string[]=[]; const x=(a[0]&&='x'); const o:Record<string,string>={}; const key='missing'; const y=(o[key]&&='y'); const p:{value?:string}={}; const z=(p.value&&='z'); return [x!==null?Boolean(x):true,y!==null?Boolean(y):true,z!==null?Boolean(z):true,typeof x,typeof y,typeof z]; })()",
+    "fold": true
+  },
+  {
+    "name": "legacyControlClass",
+    "expression": "[/[\\c_]/.test('\\x1f'),/[\\c0]/.test('\\x10'),/[\\c9]/.test('\\x19')]",
+    "fold": false
+  },
+  {
+    "name": "regexpFlagMetadata",
+    "expression": "[/a/.hasIndices===false,/a/.unicodeSets===false,/a/g.hasIndices===false]",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "runtimeMethodIdentity",
+    "expression": "(() => { const a=[1]; const b=[2]; return [a.map===a.map,a.map===b.map,a.map===a.filter]; })()",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "computedBuiltinCall",
+    "expression": "(() => { const s=' hi '; return s['trim'](); })()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "errorPropertyOwnership",
+    "expression": "[Object.hasOwn(new Error('x'),'message'),Object.hasOwn(new Error(),'message'),Object.hasOwn(new Error(undefined),'message'),Object.hasOwn(new Error(''),'message'),Object.hasOwn(new Error(null),'message'),Object.hasOwn(new TypeError('x'),'name'),Object.hasOwn(structuredClone(new Error()),'message'),Object.hasOwn(structuredClone(new Error('x')),'message')]",
+    "fold": false
+  },
+  {
+    "name": "caughtErrorDescriptors",
+    "expression": "(function(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}})()",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "crossLanguageCapturedIdentity",
+    "expression": "readSharedCapture()",
+    "declarations": "import {readSharedCapture} from './parity-reader.ts';",
+    "files": {
+      "parity-state.ts": "export const sharedArray=[1]; export const sharedObject={n:1};",
+      "parity-mutator.js": "import {sharedArray,sharedObject} from './parity-state.ts'; export function mutateSharedCapture(){sharedArray[0]=2;sharedObject.n=2;return [sharedArray[0],sharedObject.n];}",
+      "parity-reader.ts": "import {sharedArray,sharedObject} from './parity-state.ts'; import {mutateSharedCapture} from './parity-mutator.js'; export function readSharedCapture(){sharedArray[0]=1;sharedObject.n=1;return [sharedArray[0],sharedObject.n,mutateSharedCapture(),sharedArray[0],sharedObject.n];}"
+    },
+    "fold": true
+  },
+  {
+    "name": "legacyNamedClassEscape",
+    "expression": "[/[\\k<a>]/.test('a'),/[\\k<a>]/.test('<'),/[\\k<a>]/.test('k'),/[\\k<a>]/.test('z')]",
+    "fold": false
+  },
+  {
+    "name": "optionalMethodUndefined",
+    "expression": "((s: string|null, a: number[]|null) => {const r=s?.trim();const n=a?.indexOf(1);return [r!==null&&Boolean(r),r===undefined,n!==null&&Boolean(n),n===undefined];})(null,null)",
+    "fold": true
+  },
+  {
+    "name": "conditionalVarPresence",
+    "expression": "(() => {if(false) var missing=1;var present=2;if(false)var present=3;return [typeof missing,String(missing),present];})()",
+    "fold": true
+  },
+  {
+    "name": "optionalPropertyNarrowing",
+    "expression": "((input:{done?:boolean,score?:number})=>{const done:boolean=input.done===undefined?false:input.done;const score:number=input.score===undefined?2:input.score;return [done,score];})({})",
+    "fold": true
+  },
+  {
+    "name": "legacyRegexBraces",
+    "expression": "['a'.replace(/a{,2}/,'X'),'a{,2}'.replace(/a{,2}/,'X'),'aa'.replace(/a{2}/,'X'),'a{'.replace(/a{/,'X'),'a}'.replace(/a}/,'X'),'aaa'.replace(/a{2,3}/,'X')]",
+    "fold": false
+  },
+  {
+    "name": "classOptionalArity",
+    "declarations": "class ParityOptionalArity {constructor(x?:number|null){} read(x?:number|null){return x===undefined;} static read(x?:number|null){return x===undefined;}} class ParityNullableDefault {constructor(x:number|null=null){} read(x:number|null=null){return x===null;}}",
+    "expression": "[new ParityOptionalArity() instanceof ParityOptionalArity,new ParityOptionalArity(null).read(),ParityOptionalArity.read(),new ParityNullableDefault().read()]",
+    "fold": false
+  },
+  {
+    "name": "unicodeEscapeErrors",
+    "expression": "[ ['\\\\x','\\\\u','\\\\u{','\\\\q','\\\\-','[\\\\B]','\\\\p','\\\\k','\\\\é','\\\\p{Xan}','\\\\p{Yi}','\\\\p{L&}'].map(pattern=>{try{return new RegExp(pattern,'u').test('x');}catch(e){return e.name;}}), ['\\\\x','\\\\u','\\\\q','\\\\-','[\\\\B]','\\\\p','\\\\k'].map(pattern=>new RegExp(pattern).test('xuq-Bpk')), ['', 'u'].map(flags=>{try{new RegExp('\\\\',flags);return 'accepted';}catch(e){return e.name;}}) ]",
+    "javascript": true,
+    "fold": false
+  },
+  {
+    "name": "flatZeroDepth",
+    "expression": "(() => {const a:number[][]=[[1],[2]];return a.flat(0).map(v=>String(v));})()",
+    "fold": false
+  },
+  {
+    "name": "flatOneDepthUnion",
+    "expression": "(() => {const a:(number|number[])[]=[1,[2,3]];return [a.flat().map(v=>String(v)),a.flat(1).map(v=>String(v))];})()",
+    "fold": false
+  },
+  {
+    "name": "numericComparisonOperandOrder",
+    "expression": "(() => {let a=1;let b=1;let c=1;let d=1;return [a<(a=2),b<=(b=2),c>(c=2),d>=(d=2)];})()",
+    "fold": true
+  },
+  {
+    "name": "stringSearchReceiverOrder",
+    "expression": "(() => {let a='a';let b='a';let c='a';return [a.startsWith(a='b'),b.includes(b='b'),c.endsWith(c='b')];})()",
+    "fold": true
+  },
+  {
+    "name": "escapedClassHyphens",
+    "expression": "[/[\\w\\-a]/.test('-'), /[a\\-\\w]/.test('`'), /[\\s\\-z]/.test('-'), /[\\d\\-a]/.test('5'), /[\\w]/.test('_')]",
+    "fold": false
+  },
+  {
+    "name": "constructedUnicodeClosingBracket",
+    "expression": "['u',''].map(flags=>{try{return new RegExp(']',flags).test(']');}catch(e){return e.name;}})",
+    "fold": false
+  },
+  {
+    "name": "consumingNoncapturingQuantifiers",
+    "expression": "['baba'.replace(/(?:a|b)*/g,'X'),'abc'.replace(/(?:a|b)+/g,'X'),'bc'.replace(/(?:a|b)?/g,'X'),'baba'.replace(/(?:a|b){2}/g,'X')]",
+    "fold": true
+  },
+  {
+    "name": "unicodeSurrogatePairAtoms",
+    "expression": "[/[\\uD83D\\uDE42]/u.test('🙂'), /[\\u{1F642}]/u.test('🙂'), /[^\\uD83D\\uDE42]/u.test('🙂'), /🙂?/u.test('a'), /\\uD83D\\uDE42?/u.test('a'), /[a-\\uD83D\\uDE42]/u.test('\\uE000'), /\\u{D800}/u.test('?')]",
+    "fold": false
+  },
+  {
+    "name": "templateOperandSnapshots",
+    "expression": "(() => {let s='x';let n=1;return [`${s}${s='y'}`,`${n}${n=2}`,`${s}${s='z'}${s}`];})()",
+    "fold": true
+  },
+  {
+    "name": "templateCoercionOrder",
+    "expression": "(() => {let s='x';const value={toString:()=>{s='y';return 'o';}};return [`${s}${value}${s}`,s];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "clonedNamespaceIdentity",
+    "expression": "(() => {const source={a:Math,b:Math};const c=structuredClone(source);c.a.x=1;return [c.a===Math,c.a===c.b,c.b.x,Object.keys(c.a),Object.keys(structuredClone(Math)),typeof structuredClone(Math).min,String(c.a)];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "shortestDecimalBinaryBoundaries",
+    "expression": "[String(2 ** -24),String(-(2 ** -24)),String(2 ** -25),String(2 ** -24 - 2 ** -77),String(2 ** -24 + 2 ** -76),String(2 ** -24 - 2 ** -78),String(1e-7),String(1e21)]",
+    "fold": true
+  },
+  {
+    "name": "concatNullishElementTypes",
+    "expression": "(() => {const get=(flag:boolean):string[]|null=>flag?['b']:null;return [['a'].concat(null).map(x=>Boolean(x)),['a'].concat(undefined).map(x=>Boolean(x)),['a'].concat(get(false)).map(x=>Boolean(x)),['a'].concat(get(true)).map(x=>Boolean(x))];})()",
+    "fold": true
+  },
+  {
+    "name": "namespacePropertyOwnership",
+    "expression": "[Object.hasOwn(Math,'PI'),Object.hasOwn(Math,'E'),Object.hasOwn(Math,'min'),Object.hasOwn(Math,'random'),Object.hasOwn(Math,'toString'),Object.hasOwn(Math,'valueOf'),Object.keys(Math),Object.hasOwn(structuredClone(Math),'PI')]",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "computedObjectValueTypes",
+    "expression": "(() => {const key='x';const o={[key]:1};const spread={...o};let k='old';const ordered={[k]: (k='new',2)};return [o[key],typeof o[key],typeof spread[key],typeof ordered.old,k];})()",
+    "fold": true
+  },
+  {
+    "name": "optionalGuardedSteps",
+    "expression": "(() => {let n=0;const a=null;const b={child:{value:2}};return [a?.child?.[n++],b?.child?.value,n,(b?.child).value];})()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "undefinedNumericArgumentConversions",
+    "expression": "(() => {function f(v:number|null|undefined){return v===null?'null':typeof Number(v);}const a:number[]=[];const m:Record<string,number>={};return [f(a[0]),f(m.x),f(null)];})()",
+    "fold": true
+  },
+  {
+    "name": "destructuringDefaultMutationTypes",
+    "expression": "(() => {const a:[number|undefined,number]=[undefined,2];const [x=(a.pop(),1),y]=a;return [x,typeof Number(y),String(Number(y))];})()",
+    "fold": false
+  },
+  {
+    "name": "inheritedValueOfIdentity",
+    "expression": "(() => {const f=()=>1;const o={};const a=[];const d=new Date(0);const math=Math;return [f.valueOf===o.valueOf,a.valueOf===o.valueOf,math.valueOf===o.valueOf,/x/.valueOf===o.valueOf,new Set().valueOf===o.valueOf,new Map().valueOf===o.valueOf,d.valueOf===o.valueOf,f.valueOf.call(f)===f,o.valueOf.call(a)===a,o.valueOf.call(d)===d];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "inheritedToStringIdentity",
+    "expression": "(() => {const o={};const s=new Set();const m=new Map();const math=Math;const e=new Error('x');const t=new TypeError('y');const tag=o.toString;return [s.toString===o.toString,m.toString===o.toString,math.toString===o.toString,e.toString===o.toString,e.toString===t.toString,e.valueOf===o.valueOf,tag.call(s),tag.call(e),tag.call(null),tag.call(undefined),tag.call(3),e.toString.call(e),t.toString.call(t)];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "typedOwnPrototypeNames",
+    "expression": "(() => {const o:Record<string,undefined>={toString:undefined};const key='toString';const {toString}=o;return [typeof o.toString,typeof o[key],typeof toString];})()",
+    "fold": true
+  },
+  {
+    "name": "storedNativeMethodsKeepReceivers",
+    "expression": "(() => {const f=getNativeMethod({},'toString');const o={f};return [o.f(),storedNativeProbe()];})()",
+    "fold": false,
+    "declarations": "import {getNativeMethod,storedNativeProbe} from './stored-native.js';",
+    "files": {
+      "stored-native.js": "export function getNativeMethod(o,k){return o[k];}export function storedNativeProbe(){const tag=getNativeMethod({},'toString');const o={f:tag};const a=[];a.f=tag;const text={toString:tag};const n={valueOf:getNativeMethod({},'valueOf'),toString:()=> '2'};return [o.f(),a.f(),String(text),Number(n)];}"
+    }
+  },
+  {
+    "name": "dynamicMissingStringCompoundAssignment",
+    "expression": "(() => {function update(o){const v=(o.x+=1);return [String(v),`${v}`];}return update({});})()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "parameterDefaultsUseEarlierBindings",
+    "expression": "(() => {function f(a:number=1,b:number=a+1){return [a,b];}return [f(),f(4)];})()",
+    "fold": true
+  },
+  {
+    "name": "dynamicMissingStringArrayCompoundAssignment",
+    "expression": "(() => {const o=[];const v=(o[0]+=1);return [String(v),`${v}`,String(o[0])];})()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "parameterDefaultClosuresUseEarlierBindings",
+    "expression": "(() => {function f(a:number,write:(()=>void)|null=()=>{a++;}){if(write!==null)write();return a;}return [f(1),f(1,null)];})()",
+    "fold": true
+  },
+  {
+    "name": "dynamicArrayLengthNumericConversion",
+    "expression": "(() => {const result=[];for(const n of [1,1.0,'1',null,false,-0,1.5,-1,Infinity]){const a=[1,2,3];try{const value=(a.length=n);result.push([String(value),a]);}catch(e){result.push(e.name);}}const a=[1,2,3];let calls=0;a.length={valueOf:()=>{calls++;return 1;}};return [result,a,calls];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "emptyObjectDestructuringChecksNullish",
+    "expression": "[null,undefined,{},0,'',false].map(value=>{try{const {}=value;return 'ok';}catch(e){return e.name;}})",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "ownPrototypeDestructuringDefaults",
+    "expression": "(() => {const own={toString:undefined};const {toString='fallback'}=own;return toString;})()",
+    "fold": true
+  },
+  {
+    "name": "namedCaptureGroupsHaveNullPrototype",
+    "expression": "(() => {const groups=/(?<x>a)/.exec('a').groups;const result=[typeof groups.toString,typeof groups.valueOf,typeof groups.__proto__,Object.keys(groups)];try{result.push(String(groups));}catch(e){result.push(e.name);}try{result.push(Number(groups));}catch(e){result.push(e.name);}try{result.push(groups.toString());}catch(e){result.push(e.name);}groups.extra='own';const copy=structuredClone(groups);return [result,Object.hasOwn(groups,'extra'),groups.extra,typeof copy.toString,copy.x];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "namedReplacementGroupsHaveNullPrototype",
+    "expression": "['a'.replace(/(?<x>a)/,(match,x,offset,input,groups)=>typeof groups.toString),'a'.replaceAll(/(?<x>a)/g,(match,x,offset,input,groups)=>typeof groups.valueOf)]",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "defaultParametersOwnArgumentsBeforeInitialization",
+    "expression": "(function(a,b){const f=function(x=arguments.length){return x;};return [f(),arguments.length,arguments[0],arguments[1]];})(1,2)",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "typedDefaultParametersOwnArgumentsBeforeInitialization",
+    "expression": "(function(a:number,b:number){const f=function(x:number=arguments.length){return x;};return [f(),arguments.length,arguments[0],arguments[1]];})(1,2)",
+    "fold": true
+  },
+  {
+    "name": "parameterDefaultCaptureSlots",
+    "expression": "(() => {let x=1;const f=(a=x)=>{var x=2;return a;};const first=[f(),x];const y=3;const g=function(a=y){var y=4;return a;};return [first,g(),y];})()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "authoredTemporarySlots",
+    "expression": "(() => {let __t1=5;const before=__t1++;return [before,__t1];})()",
+    "fold": true
+  },
+  {
+    "name": "parameterTemporarySlots",
+    "expression": "[destructureSlots(7,{x:9}),restSlots(7,8,9)]",
+    "fold": true,
+    "declarations": "import {destructureSlots,restSlots} from './parameter-slots.ts';",
+    "files": {
+      "parameter-slots.ts": "export function destructureSlots(__arg1:number,{x}:{x:number}){return [__arg1,x]}export function restSlots(__rest1:number,...tail:number[]){return [__rest1,tail.length]}"
+    }
+  },
+  {
+    "name": "captureAfterAuthoredShadowSlot",
+    "expression": "(() => {const x=1;{let x=2;return (()=>{let x_1=3;return [x,x_1];})()}})()",
+    "fold": true
+  },
+  {
+    "name": "loopClosuresKeepIterationBindings",
+    "expression": "(() => {const lexical:(()=>number)[]=[];for(let i=0;i<3;i++){lexical.push(()=>i);}const shared:(()=>number)[]=[];for(var j=0;j<3;j++){shared.push(()=>j);}return [lexical.map(f=>f()),shared.map(f=>f())];})()",
+    "fold": true
+  },
+  {
+    "name": "loopUpdateClosuresKeepIterationBindings",
+    "expression": "(() => {const fs:(()=>number)[]=[];for(let i=0;i<3;fs.push(()=>i),i++){if(i===1)continue;}return fs.map(f=>f());})()",
+    "fold": true
+  },
+  {
+    "name": "globalNamespaceKinds",
+    "declarations": "import {db as namespaceDb,jobs as namespaceJobs} from 'zero'; const foldedNamespaceKinds=[typeof JSON,typeof console,typeof namespaceDb,typeof namespaceJobs];",
+    "expression": "[typeof Math,...foldedNamespaceKinds]",
+    "fold": true
+  },
+  {
+    "name": "dollarBindingsUseLiteralPhpNames",
+    "expression": "(() => {const $a=1,$b=2,a$b=3;const __zero_local_2461=4;const $sum=($n:number)=>$n+$a;const café=6;return [$a,$b,a$b,__zero_local_2461,$sum(5),café];})()",
+    "fold": true
+  },
+  {
+    "name": "phpSuperglobalNamesStayLocal",
+    "expression": "(() => {let GLOBALS=1;const _GET=2;const read=(_POST:number)=>{const _SERVER=3;return [GLOBALS,_GET,_POST,_SERVER];};return [GLOBALS,_GET,read(4)];})()",
+    "fold": true
+  },
+  {
+    "name": "omittedCallbackParameterStaysUndefined",
+    "expression": "(() => {function cb(x:number,i:number,a:number[],missing:undefined){return String(missing);}return [1].map(cb);})()",
+    "fold": true
+  },
+  {
+    "name": "initializedLexicalShadowCapturesLocal",
+    "expression": "(() => {const x=1;const read=()=>{const x=2;const f=()=>x;return f();};return [x,read()];})()",
+    "fold": true
+  },
+  {
+    "name": "optionalObjectMethodsGuardReceiverAndArguments",
+    "expression": "(() => {let calls=0;let args=0;const get=(live:boolean):{f:(v:number)=>number}|null=>{calls++;return live?{f:(v:number)=>v}:null;};const a=typeof get(false)?.f(++args);const b=get(true)?.f(++args);return [a,b,calls,args];})()",
+    "fold": true
+  },
+  {
+    "name": "omittedCatchBindingKeepsAuthoredLocals",
+    "expression": "(() => {const __e=1;let caught=0;try{throw new Error('x');}catch{caught++;}try{throw new Error('y');}catch{caught++;}return [typeof __e,__e,caught];})()",
+    "fold": false
+  },
+  {
+    "name": "computedPcreVerbsHaveJavascriptSyntaxErrors",
+    "expression": "['(*ACCEPT)','(*FAIL)','(*SKIP)','(*MARK:x)'].map(pattern=>{try{new RegExp(pattern);return 'accepted';}catch(e){return e.name;}})",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "bracedSwitchCasesPreserveOuterBindings",
+    "expression": "(() => {let x='outer';let result='';switch(1){case 1:{let x='inner';result=x;}case 2:result+=x;}return [x,result];})()",
+    "fold": true
+  },
+  {
+    "name": "loopSourcesKeepDistinctOuterBindingsAndVarSharing",
+    "expression": "(() => {const values=[7];const keys={key:1};const out=[];for(const item of values)out.push(item);for(const key in keys)out.push(key);var x=8;for(var x of [x])out.push(x);return out;})()",
+    "fold": true
+  },
+  {
+    "name": "capturedFactoryClosuresKeepEnvironmentAndIdentity",
+    "files": {
+      "closure-factory.js": "function make(n){return()=>n;}const a=make(1),b=make(2);export function read(){return [a(),b(),a===b,a===a];}var stableAlias=read;export {stableAlias};"
+    },
+    "declarations": "import {read as readFactoryClosures,stableAlias as stableFactoryAlias} from './closure-factory.js'; function makeFactoryClosure(n:number){return()=>n;}const factoryA=makeFactoryClosure(1),factoryB=makeFactoryClosure(2);",
+    "expression": "[factoryA(),factoryB(),factoryA===factoryB,factoryA===factoryA,readFactoryClosures(),readFactoryClosures===stableFactoryAlias]",
+    "fold": true
+  },
+  {
+    "name": "constantExportsShareIdentityAndDefaultExpressionsSnapshot",
+    "files": {
+      "constant-exports.js": "export const state={n:1};let value=0;export default value;value=1;export function current(){return value;}",
+      "constant-export-reader.js": "import {state} from './constant-exports.js';export function read(){return state;}"
+    },
+    "declarations": "import capturedDefault,{state as constantExportState,current as currentConstantExport} from './constant-exports.js';import {read as readConstantExport} from './constant-export-reader.js';",
+    "expression": "[constantExportState===readConstantExport(),constantExportState.n,capturedDefault,currentConstantExport()]",
+    "fold": true
+  },
+  {
+    "name": "typedArrayMethodsResolveBeforeArguments",
+    "files": {
+      "array-method-order.js": "export function replaceArrayMethod(a,name){a[name]=()=>['wrong'];return 0;}"
+    },
+    "declarations": "import {replaceArrayMethod} from './array-method-order.js';",
+    "expression": "(() => {const a=[1,2];const b=[1,2];const c=[1,2];const ar=a.slice(replaceArrayMethod(a,'slice'));const br=b.splice(replaceArrayMethod(b,'splice'),1);const cr=c.fill(9,replaceArrayMethod(c,'fill'),2);return [ar,br,b,cr];})()",
+    "fold": false
+  },
+  {
+    "name": "forInSkipsDeletedArrayKeys",
+    "files": {
+      "for-in-live.js": "export function deletedArrayKeys(){const a=[1,2],seen=[];for(const k in a){seen.push(k);a.pop();}return seen;}"
+    },
+    "declarations": "import {deletedArrayKeys} from './for-in-live.js';",
+    "expression": "[deletedArrayKeys(), (() => {const a=[1,2];const seen=[];for(const k in a){seen.push(k);a.pop();}return seen;})()]",
+    "fold": false
+  },
+  {
+    "name": "loopDestructuringDefaultsInitializeInOrder",
+    "expression": "(() => {const rows:number[][]=[[]];const out=[];for(const [a=1,b=a] of rows)out.push([a,b]);return out;})()",
+    "fold": true
+  },
+  {
+    "name": "computedDataCallsKeepReceiverAndLookupOrder",
+    "files": {
+      "native-method.js": "export function nativeMethod(){const object={};return object.toString;}"
+    },
+    "declarations": "import {nativeMethod} from './native-method.js';",
+    "expression": "(() => {const obj={f:nativeMethod()};const typed:{f:()=>string}={f:()=> 'typed'};const slots=[nativeMethod()];let receivers=0;let keys=0;const get=()=>{receivers++;return obj;};const key=():'f'=>{keys++;return 'f';};const ordered:{f:(x:undefined)=>string}={f:(x:undefined)=>'first'};const change=()=>{ordered.f=(x:undefined)=>'second';return undefined;};return [obj.f(),obj['f'](),typed['f'](),slots[0](),get()[key()](),receivers,keys,ordered['f'](change()),ordered.f(undefined)];})()",
+    "fold": false
+  },
+  {
+    "name": "functionDeclarationsAndAnonymousExpressionsKeepScope",
+    "declarations": "function namedScopeProbe():string{return typeof namedScopeProbe;}",
+    "expression": "[namedScopeProbe(),(function(){return 'anonymous';})()]",
+    "fold": true
+  }
+]

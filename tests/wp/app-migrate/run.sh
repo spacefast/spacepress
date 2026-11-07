@@ -61,7 +61,12 @@ docker compose -p "$ZERO_WP_PROJECT" cp "$here/endpoints-seed.php" cli:/tmp/zero
 "$wp/harness.sh" wp config set LEGACY_BANNER "from wp-config" >/dev/null
 ZERO_WP_HARNESS="$work/endpoints-harness.json" node --test "$here/endpoints.test.ts"
 # Converted static pages, published through the hosted path: zero-pages render, capture with
-# `zero sources`, delete the project, and install only `zero compile-sources` output.
+# `zero sources`, delete the project, and install only `zero compile-sources` output. The pages
+# renderer is the repo's own package, built here so the lane does not depend on CI step order.
+if [[ ! -f "$repo/packages/blocks/dist/index.js" || ! -f "$repo/packages/pages/dist/cli.js" ]]; then
+  (cd "$repo/packages/blocks" && pnpm install --frozen-lockfile >/dev/null && pnpm build >/dev/null)
+  (cd "$repo/packages/pages" && pnpm install --frozen-lockfile >/dev/null && pnpm build >/dev/null)
+fi
 "$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/site --out "$work/site" --space spc_migrate_test > "$work/site-report.json"
 sed -e "s|\"\.\./\.\./|\"$repo/|g" -e "s|\"\./islands/interactivity\.d\.ts\"|\"$repo/examples/full-site/islands/interactivity.d.ts\"|" "$repo/examples/full-site/tsconfig.json" > "$work/site/tsconfig.json"
 "$zero" build "$work/site" --quiet >/dev/null

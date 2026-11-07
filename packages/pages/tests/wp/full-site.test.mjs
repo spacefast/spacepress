@@ -85,7 +85,7 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
   await run(['dev', project, '--port', String(await freePort()), '--no-watch']);
   const status = JSON.parse(await run(['dev', 'status', project]));
   const base = status.siteUrl.replace(/\/$/, '');
-  const wp = (...args) => run(['dev', 'wp', project, '--', ...args]);
+  const wp = (...args) => run(['wp', '--site', project, ...args]);
   const built = await buildPages({ project, out: content });
   assert.deepEqual(built.diagnostics.filter((d) => d.severity === 'error'), []);
   const pagesPlugin = join(content, 'plugins/zero-pages-fullsite');

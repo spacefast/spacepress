@@ -36,8 +36,9 @@ trait JsDynamic
             throw new JsError('Function metadata and binding are not supported', 'TypeError');
         }
         if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date'], true)
-            || $name === 'toString' && in_array($owner, ['Math', 'Set', 'Map'], true)) { $owner = 'Object'; }
-        $static = $receiver instanceof JsNamespace;
+            || $name === 'toString' && in_array($owner, ['Math', 'AbortSignal', 'Set', 'Map'], true)) { $owner = 'Object'; }
+        // Namespaces (Math, AbortSignal) expose static functions; inherited Object methods stay shared.
+        $static = $receiver instanceof JsNamespace && $owner !== 'Object';
         $surface = $static ? $owner : match ($owner) { 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
             if (Builtins::has('object', $name)) { throw new JsError('Unsupported inherited method ' . $name, 'TypeError'); }

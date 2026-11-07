@@ -203,11 +203,14 @@ snapshots outside the mounted directory. Build and start with:
 ```sh
 cargo build --locked
 target/debug/zero build tests/wp/app --quiet
+mkdir -p /tmp/runtime-baseline /tmp/runtime-candidate
+git archive 138bfe46510c6b6d96af527ecae56e88765902b4 runtime/Zero | tar -x -C /tmp/runtime-baseline
+git archive audit/php-native runtime/Zero | tar -x -C /tmp/runtime-candidate
 export ZERO_WP_PROJECT=zero-php-native ZERO_WP_PORT=8872
 tests/wp/harness.sh up --wp-content tests/wp/app/.zero/wp-content
 tests/wp/harness.sh wp eval '$db = Zero\Wp\Runtime::plugin()->app()->db; for ($i = 0; $i < 25; $i++) { $db->insert("posts", ["title" => "Benchmark " . $i, "status" => "published"], true); }'
 python3 tests/wp/bench-runtime.py \
-  --before /tmp/baseline-Zero --after /tmp/candidate-Zero \
+  --before /tmp/runtime-baseline/runtime/Zero --after /tmp/runtime-candidate/runtime/Zero \
   --content tests/wp/app/.zero/wp-content \
   --url 'http://127.0.0.1:8872/wp-json/zero/v1/posts?limit=25&orderBy=id' \
   --output /tmp/runtime-results.json
@@ -221,3 +224,6 @@ plugins must be removed first. Schema/loader snapshots retain all other runtime
 files from the baseline. Tests additionally exercise native/host capture,
 wasm/native capture, compiled callback contracts, WordPress/SQLite pipeline
 behavior, and real WordPress/MariaDB REST, abilities, MCP and sync behavior.
+For the loader experiment, archive `audit/php-native-autoload` as the candidate
+instead. The sample body hash naturally changes when a fresh database assigns
+new timestamps; the runner requires identical bodies within an experiment.

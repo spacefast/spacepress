@@ -26,30 +26,11 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
         program,
         || {
             let mut previous = read_previous(project)?;
-            previous.plugin_lock = read_plugin_lock(project)?;
             previous.frozen = frozen;
             Ok(previous)
         },
         runtime_file,
     )
-}
-
-/// The committed plugin grant; absent until the first build with plugins.
-fn read_plugin_lock(project: &Path) -> Result<Option<serde_json::Value>, Diag> {
-    let path = project.join(crate::plugins::LOCK_PATH);
-    match std::fs::read_to_string(&path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(Diag::new(
-            Span::NONE,
-            format!("can't read {}: {e}", crate::plugins::LOCK_PATH),
-        )),
-        Ok(text) => serde_json::from_str(&text).map(Some).map_err(|e| {
-            Diag::new(
-                Span::NONE,
-                format!("{} is not valid JSON: {e}", crate::plugins::LOCK_PATH),
-            )
-        }),
-    }
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
@@ -388,6 +369,9 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     };
     for line in &built.plugin_changes {
         eprintln!("{line}");
+    }
+    for w in &built.unsupported_plugins {
+        eprintln!("warning: {w}");
     }
     if args.command == "check" {
         if !args.quiet {

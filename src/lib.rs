@@ -27,6 +27,7 @@ pub mod types;
 pub mod uri;
 pub mod value;
 pub mod wasm;
+pub mod wordpress;
 pub mod wp_plugins;
 pub mod wpml_config;
 

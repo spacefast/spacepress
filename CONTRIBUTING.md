@@ -65,6 +65,7 @@ zero dev status [dir]                                  report the local site
 zero dev wp [dir] -- <args>                             run WP-CLI on the local site
 zero doctor [dir] [--out <dir>] [--site <url> --token <t>]   check a build, and a running site
 zero sync [status|resolve <uid>] [dir] --site <url> <credential>
+zero abilities pull [dir] --site <url> [--only vendor/*]  lock a site's abilities (ZERO_APP_PASSWORD)
 zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <id>] [--dry-run] [--json]
 zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>
 zero migrate site <content-model.php> [--dry-run]

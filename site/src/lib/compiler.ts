@@ -11,9 +11,7 @@ export interface Request {
   previous?: unknown;
   /** The file names beside that snapshot; they number the next migration like `zero build` does. */
   migrationFiles?: string[];
-  /** The committed `zero/plugins.lock.json`: the grant each plugin package compiles against. */
-  pluginLock?: unknown;
-  /** Refuse plugin grants beyond `pluginLock`, like `zero check --frozen` and CI. */
+  /** Refuse plugin grants beyond `zero/plugins.lock.json` in `files`, like `zero check --frozen` and CI. */
   frozen?: boolean;
 }
 

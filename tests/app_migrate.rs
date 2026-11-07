@@ -365,17 +365,27 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "DELETE /api/notes/:id",
             "GET /go/home",
             "GET /api/tags",
-            "GET /api/files/*path",
+            "GET /api/files/*splat",
             "GET /api/total"
         ]
     );
+    // 0.8's `/api/files/:splat` also answered `/api/files`; v2 needs a second route for it.
+    assert!(report["entries"].as_array().unwrap().iter().any(|e| {
+        e["pointer"] == "/endpoints/file"
+            && e["reason"]
+                .as_str()
+                .unwrap()
+                .starts_with("GET /api/files also reaches this handler")
+    }));
     build(&out);
     let root = temp.path().join("refused");
     project(
         &root,
         r#"{endpoints:{
           head:endpoint({method:"HEAD",path:"/x"},()=>text("")),
-          rest:endpoint({method:"GET",path:"/*rest"},()=>text("")),
+          rest:endpoint({method:"GET",path:"/:splat"},()=>text("")),
+          star:endpoint({method:"GET",path:"/a/*rest"},()=>text("")),
+          mid:endpoint({method:"GET",path:"/a/:splat/b"},()=>text("")),
           admin:endpoint({method:"GET",path:"/wp-admin/x"},()=>text("")),
           root:endpoint({method:"GET",path:"/"},()=>text("")),
           hit:endpoint({method:"GET",path:"/hit",readOnly:false},()=>text("")),
@@ -402,6 +412,8 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
         [
             "/endpoints/head/method",
             "/endpoints/rest/path",
+            "/endpoints/star/path",
+            "/endpoints/mid/path",
             "/endpoints/admin/path",
             "/endpoints/root/path",
             "/endpoints/hit",
@@ -553,4 +565,110 @@ fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
     assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
     assert!(config.contains("__z08EndpointValue(await response.json())"), "{config}");
     build(&out);
+}
+
+/// A run from a stored 0.8 finalize payload (`--manifest`), as a production census drives it.
+fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool, Value) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_zero"));
+    command
+        .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
+        .arg(manifest);
+    if let Some(source) = source {
+        command.arg(source);
+    }
+    let output = command
+        .arg("--out")
+        .arg(out)
+        .args(["--dry-run", "--space", "spc_migrate_test"])
+        .output()
+        .unwrap();
+    let report = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&output.stderr)));
+    (output.status.success(), report)
+}
+
+#[test]
+fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest = fixture("manifest/finalize.json");
+    let errors = |report: &Value| -> Vec<(String, String)> {
+        report["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| {
+                (
+                    e["pointer"].as_str().unwrap().into(),
+                    e["reason"].as_str().unwrap().into(),
+                )
+            })
+            .collect()
+    };
+    // Only the manifest: the bundled JavaScript is not the authored TypeScript, so never accepted.
+    let (ok, report) = migrate_manifest(&manifest, None, &temp.path().join("a"));
+    assert!(!ok);
+    assert_eq!(report["status"], "refused");
+    let only = errors(&report);
+    assert_eq!(only.len(), 1, "{only:?}");
+    assert_eq!(only[0].0, "/source");
+    assert!(only[0].1.starts_with("source not recoverable"));
+
+    // The source at the published commit: every recorded hash matches, so it converts.
+    let source = temp.path().join("source");
+    std::fs::create_dir_all(source.join("server")).unwrap();
+    std::fs::create_dir_all(source.join("client")).unwrap();
+    std::fs::copy(fixture("endpoints/server/index.ts"), source.join("server/index.ts")).unwrap();
+    std::fs::write(
+        source.join("client/main.tsx"),
+        "export default function App() { return null; }\n",
+    )
+    .unwrap();
+    let (ok, report) = migrate_manifest(&manifest, Some(&source), &temp.path().join("b"));
+    assert!(ok, "{report:#}");
+    assert_eq!(report["status"], "dry-run");
+
+    // A later edit is not the published version.
+    std::fs::write(source.join("server/index.ts"), "// edited\n").unwrap();
+    let (ok, report) = migrate_manifest(&manifest, Some(&source), &temp.path().join("c"));
+    assert!(!ok);
+    assert_eq!(
+        errors(&report),
+        [(
+            "/source".to_string(),
+            "source differs from the published version: server/index.ts (changed)".to_string()
+        )]
+    );
+
+    // What the manifest alone decides is refused with pointers, ahead of the source refusal.
+    let mut payload: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    let artifact = &mut payload["artifact"];
+    artifact["server"]["endpoints"].as_array_mut().unwrap().extend([
+        serde_json::json!({"mode": "read", "method": "GET", "path": "/wp-admin/x"}),
+        serde_json::json!({"mode": "write", "method": "GET", "path": "/hit"}),
+    ]);
+    artifact["server"]["sockets"] = serde_json::json!(["chat"]);
+    artifact["pages"] = serde_json::json!([
+        {"id": "pg_about", "file": "pages/about.md", "path": "/about", "render": "document", "params": [], "bindingId": "bnd_about"}
+    ]);
+    let edited = temp.path().join("refusing.json");
+    std::fs::write(&edited, payload.to_string()).unwrap();
+    let (ok, report) = migrate_manifest(&edited, None, &temp.path().join("d"));
+    assert!(!ok);
+    let pointers: Vec<_> = errors(&report).into_iter().map(|(p, _)| p).collect();
+    assert_eq!(
+        pointers,
+        [
+            "/sockets/chat",
+            "/endpoints/GET ~1wp-admin~1x/path",
+            "/endpoints/GET ~1hit",
+            "/pages/0",
+            "/source"
+        ]
+    );
+
+    // Not a 0.8 artifact at all.
+    std::fs::write(temp.path().join("other.json"), r#"{"artifact":{"format":"other"}}"#).unwrap();
+    let (ok, report) = migrate_manifest(&temp.path().join("other.json"), None, &temp.path().join("e"));
+    assert!(!ok);
+    assert_eq!(report["errors"][0]["pointer"], "/artifact/format");
 }

@@ -1,5 +1,6 @@
 #![cfg(feature = "cli")]
 use serde_json::Value;
+use sha2::Digest;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -626,6 +627,57 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     let (ok, report) = migrate_manifest(&manifest, Some(&source), &temp.path().join("b"));
     assert!(ok, "{report:#}");
     assert_eq!(report["status"], "dry-run");
+
+    // Files the publish did not record are not part of the published version: a page added later
+    // and an sf.jsonc naming another entry are both ignored, so the candidate is the publish's.
+    std::fs::create_dir_all(source.join("pages")).unwrap();
+    std::fs::write(
+        source.join("pages/added.tsx"),
+        "export default function Added() { return <p>later</p>; }\n",
+    )
+    .unwrap();
+    std::fs::write(source.join("sf.jsonc"), r#"{"runtime":{"server":"server/other.ts"}}"#).unwrap();
+    let out = temp.path().join("b2");
+    let output = Command::new(env!("CARGO_BIN_EXE_zero"))
+        .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
+        .arg(&manifest)
+        .arg(&source)
+        .arg("--out")
+        .arg(&out)
+        .args(["--space", "spc_migrate_test", "--users"])
+        .output()
+        .unwrap();
+    let written: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(output.status.success(), "{written:#}");
+    assert!(
+        !out.join("pages/added/page.tsx").exists(),
+        "an unrecorded page reached the candidate"
+    );
+    assert!(!out.join("pages").exists());
+    std::fs::remove_dir_all(source.join("pages")).unwrap();
+    std::fs::remove_file(source.join("sf.jsonc")).unwrap();
+
+    // A recorded sf.jsonc that names another entry than the publish compiled is refused.
+    let mut renamed: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    let config = r#"{"runtime":{"server":"server/main.ts"}}"#;
+    std::fs::write(source.join("sf.jsonc"), config).unwrap();
+    renamed["artifact"]["sourceManifest"]["files"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"path": "sf.jsonc", "size": config.len(), "sha256": sha2::Sha256::digest(config.as_bytes()).iter().map(|b| format!("{b:02x}")).collect::<String>()}));
+    let renamed_path = temp.path().join("renamed.json");
+    std::fs::write(&renamed_path, renamed.to_string()).unwrap();
+    let (ok, report) = migrate_manifest(&renamed_path, Some(&source), &temp.path().join("b3"));
+    assert!(!ok);
+    assert_eq!(report["errors"][0]["pointer"], "/source");
+    assert!(
+        report["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("the publish compiled server/index.ts"),
+        "{report:#}"
+    );
+    std::fs::remove_file(source.join("sf.jsonc")).unwrap();
 
     // A later edit is not the published version.
     std::fs::write(source.join("server/index.ts"), "// edited\n").unwrap();

@@ -591,7 +591,18 @@ pub(super) fn app(
                     let E::Func(f) = &a[0].kind else {
                         return Err(fail(&at, "handler must be an inline function"));
                     };
-                    handler(source, f, &tables, &at, &name, section == "mutations", signed_in, users)
+                    handler(
+                        source,
+                        f,
+                        &tables,
+                        &at,
+                        &name,
+                        Mode {
+                            writes: section == "mutations",
+                            signed_in,
+                            subjects: users,
+                        },
+                    )
                 })();
                 match result {
                     Ok(h) => {
@@ -832,16 +843,27 @@ fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Resul
     ))
 }
 
+/// How a generated action runs: its write mode and identity sources.
+#[derive(Clone, Copy)]
+struct Mode {
+    writes: bool,
+    signed_in: bool,
+    subjects: bool,
+}
+
 fn handler(
     source: &str,
     f: &Func,
     tables: &BTreeMap<String, Table>,
     at: &str,
     name: &str,
-    writes: bool,
-    signed_in: bool,
-    subjects: bool,
+    mode: Mode,
 ) -> Result<String, Failure> {
+    let Mode {
+        writes,
+        signed_in,
+        subjects,
+    } = mode;
     let Some(first) = f.params.first() else {
         return Err(fail(at, "handler must declare its context parameter"));
     };

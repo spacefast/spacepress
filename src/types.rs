@@ -652,8 +652,67 @@ pub fn user() -> Ty {
 }
 
 /// `ctx` for hooks and actions (§1.7).
+/// What `await fetch(...)` returns: the parts of a WHATWG Response a handler reads.
+pub fn fetch_response() -> Ty {
+    obj(&[
+        ("status", Ty::Num),
+        ("ok", Ty::Bool),
+        ("url", Ty::Str),
+        ("redirected", Ty::Bool),
+        (
+            "headers",
+            obj(&[
+                ("get", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str.nullable()))),
+                ("has", Ty::Fn(vec![Ty::Str], Box::new(Ty::Bool))),
+            ]),
+        ),
+        // Promises, as in JavaScript; PHP reads the body before the call returns.
+        ("text", Ty::Fn(vec![], Box::new(Ty::Promise(Box::new(Ty::Str))))),
+        ("json", Ty::Fn(vec![], Box::new(Ty::Promise(Box::new(Ty::Unknown))))),
+    ])
+}
+
 pub fn hook_ctx() -> Ty {
     obj(&[("user", user().nullable())])
+}
+
+/// A route handler's first argument: the request as received, the body as raw text.
+pub fn route_request() -> Ty {
+    obj(&[
+        ("method", Ty::Str),
+        ("path", Ty::Str),
+        ("params", Ty::Map(Box::new(Ty::Str))),
+        ("query", route_query()),
+        ("headers", Ty::Map(Box::new(Ty::Str))),
+        ("body", Ty::Str),
+    ])
+}
+
+/// `req.query`: URLSearchParams' read methods over the raw query string, names byte-exact and every
+/// value kept in order (runtime/Zero/QueryString.php).
+pub fn route_query() -> Ty {
+    obj(&[
+        ("get", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str.nullable()))),
+        ("getAll", Ty::Fn(vec![Ty::Str], Box::new(Ty::Array(Box::new(Ty::Str))))),
+        ("has", Ty::Fn(vec![Ty::Str], Box::new(Ty::Bool))),
+        (
+            "entries",
+            Ty::Fn(vec![], Box::new(Ty::Array(Box::new(Ty::Tuple(vec![Ty::Str, Ty::Str]))))),
+        ),
+    ])
+}
+
+/// What a route handler returns: `{ status?, headers?, body? }`.
+pub fn route_response() -> Ty {
+    Ty::Obj(
+        [
+            ("status".to_string(), (Ty::Num, true)),
+            ("headers".to_string(), (Ty::Map(Box::new(Ty::Str)), true)),
+            ("body".to_string(), (Ty::Str, true)),
+        ]
+        .into_iter()
+        .collect(),
+    )
 }
 
 pub fn job_ctx() -> Ty {

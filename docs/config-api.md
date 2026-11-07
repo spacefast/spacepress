@@ -179,8 +179,8 @@ compiler's names, columns, uniqueness and reference actions. Prefix-only unique
 indexes are refused. Other existing indexes are retained and remain unmanaged.
 This keeps later constraint removals consistent with the committed snapshot. Database
 engine checks include these tables. Uninstall retains their rows like normal tables.
-Use [app migration](migrating-from-zero.md#application-source-migration) for Zero 0.8
-TEXT/DOUBLE storage and string response IDs.
+An [adopted application table](migrating-from-zero.md#application-source-migration)
+keeps its TEXT/DOUBLE storage and string response IDs.
 
 ### Upgrading authoring
 
@@ -259,7 +259,7 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
-jobs?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
+jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `zero-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `zero-admin`; by default the build emits none.
@@ -306,6 +306,178 @@ Throwing anything aborts the request and rolls back every write in it.
   `zero` also checks a timestamp so old deliveries are refused.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
+
+## HTTP routes
+
+`routes` serves your own method and path on the site, outside `/wp-json`: a
+feed, a sitemap, a payment provider's webhook, anything that is not a JSON
+action call.
+
+```ts
+import { defineConfig, route, env, db } from "zero";
+
+export default defineConfig({
+  routes: {
+    feed: route({
+      method: "GET",
+      path: "/api/feed.json",
+      access: "anyone",
+      async handler(req) {
+        const limit = Number(req.query.get("limit") ?? "20");
+        const notes = await db.query.notes.findMany({ where: { status: "published" }, limit });
+        return {
+          headers: { "content-type": "application/feed+json" },
+          body: JSON.stringify({ version: "https://jsonfeed.org/version/1.1", items: notes.map((n) => ({ id: String(n.id), title: n.title })) }),
+        };
+      },
+    }),
+    stripe: route({
+      method: "POST",
+      path: "/webhooks/stripe",
+      signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" },
+      handler(req) {
+        const event = JSON.parse(req.body) as { type: string };
+        return { status: 202, body: "ok " + event.type };
+      },
+    }),
+  },
+});
+```
+
+- `method`: `GET`, `POST`, `PUT`, `PATCH` or `DELETE`, one per route. A `GET`
+  route also answers `HEAD`. A path that a route serves with another method
+  answers `405`.
+- `path` starts with `/`. Each segment is literal (`A-Z a-z 0-9 . _ ~ -`) or
+  `:name`, which matches one segment. The last segment may be `*name`, which
+  matches one or more segments; `req.params.name` is them decoded and joined
+  with `/`. An encoded `/` or a `.`/`..` segment never matches. A trailing
+  slash matches. Two routes with the same method and shape are refused. So is
+  a first segment WordPress or Zero
+  owns (`wp-admin`, `wp-json`, `wp-content`, `feed`, `zero-admin`, `auth`,
+  `__spacefast`, `.well-known`, ...), and so is a URL that a
+  [TSX page](pages.md) serves.
+- Pass exactly one of `access` or `signature`; there is no default. `access`
+  takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
+  boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
+  body, as on [actions](#actions). The verified caller is then anonymous.
+- `req` is `{ method, path, params, query, headers, body }`. Header names are
+  lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
+- `req.query` reads the raw query string the way `URLSearchParams` does:
+  `get(name)` (the first value, or `null`), `getAll(name)`, `has(name)` and
+  `entries()`. Names are kept exactly (`a.b`, `x[]`), `+` is a space, and a
+  repeated name keeps every value in order. PHP's `$_GET` would rename `a.b` to
+  `a_b` and keep only the last value.
+- When several routes match, the most specific one wins, whatever their order
+  in the config. Segments are compared from the left, and a literal segment
+  beats a `:param`, which beats a `*rest`: `/api/feed.json` wins over
+  `/api/:id`, `/api/probe/:id` wins over `/api/:kind/:id`, and
+  `/files/:bucket/latest` wins over `/files/*path`.
+- The handler returns `{ status?, headers?, body? }`. `status` defaults to
+  `200`, `body` to `""`, and `Content-Type` to `text/plain; charset=utf-8`. Header
+  names are case-insensitive, so the handler's `content-type` replaces the
+  default. Responses send `Cache-Control: private, no-store` unless the handler
+  sets its own. Any other return type is a compile error.
+- The handler runs in one transaction. A throw rolls it back, and
+  `throw new HttpError(status, code, message)` answers with a problem+json
+  document. `db`, `jobs` and `once` work as they do in actions.
+- Cookie sessions authenticate `GET` and `HEAD` routes. On other methods a
+  signed-in visitor counts only with a valid `X-WP-Nonce` (`wp_rest`) header;
+  otherwise the request runs anonymously, so another site cannot post as your
+  visitor. Keep `GET` handlers free of writes for the same reason. Application
+  passwords are not accepted here; use actions for API clients.
+
+Routes are WordPress front-controller requests: no theme or template renders
+for them, and they need no rewrite rules or permalink flush.
+
+## Outbound HTTP
+
+`fetch(url, init?)` from `"zero"` calls another service from a hook, action,
+route or job, through the WordPress HTTP API:
+
+```ts
+import { action, defineConfig, env, fetch, HttpError, text } from "zero";
+
+export default defineConfig({
+  actions: {
+    weather: action({
+      input: { city: text().notNull() },
+      access: "anyone",
+      async handler({ city }) {
+        const response = await fetch("https://api.example.com/v1/weather?q=" + encodeURIComponent(city), {
+          headers: { authorization: "Bearer " + (env("WEATHER_KEY") ?? "") },
+        });
+        if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
+        return (await response.json()) as { temperature: number };
+      },
+    }),
+  },
+});
+```
+
+- `init` takes `method`, `headers` (an object of strings) and `body` (a string;
+  use `JSON.stringify`). The response has `status`, `ok`, `url`, `redirected`,
+  `headers.get/has` and `text()`/`json()`.
+- Only `https:` URLs without credentials are fetched. The host must not be
+  `localhost` or a platform host, and every address it resolves to must be
+  public: private, loopback, link-local (including `169.254.169.254`), CGNAT,
+  documentation, multicast and other special-purpose IPv4 and IPv6 ranges are
+  refused, as are IPv4-mapped and 6to4 forms of them. The connection is pinned
+  to the checked address.
+- Redirects are followed up to three times, and each hop is checked again. 303,
+  and 301/302 after a POST, become a GET without a body; `authorization` and
+  `cookie` headers are dropped when the origin changes.
+- Each call has 10 s and 1 MiB for the request body and the response.
+  `connection`, `host` and other hop-by-hop request headers are ignored, and
+  `set-cookie` is never returned.
+- A refused or failed call throws `HttpError(502)` with a code:
+  `zero_fetch_scheme_denied`, `zero_fetch_credentials_denied`,
+  `zero_fetch_host_denied`, `zero_fetch_address_denied`,
+  `zero_fetch_method_denied`, `zero_fetch_payload_too_large`,
+  `zero_fetch_response_too_large`, `zero_fetch_too_many_redirects`,
+  `zero_fetch_timeout` or `zero_fetch_upstream_unavailable`. A non-2xx answer
+  is a response, not an error.
+- A handler that fetches holds its transaction open while it waits. Keep calls
+  in actions short, or enqueue a job for slow ones.
+
+A site plugin can open one internal target with the
+`zero_fetch_allow_address` filter (`$open, $address, $host, $port`), and
+answer for a privately resolved name with `zero_fetch_resolve`
+(`$answer, $host`). Request input never reaches either.
+
+## Hashing and random values
+
+`crypto` from `"zero"` hashes, signs and compares in hooks, actions, routes and
+jobs. Every call is synchronous:
+
+```ts
+import { action, crypto, defineConfig, text } from "zero";
+
+export default defineConfig({
+  actions: {
+    verify: action({
+      input: { body: text().notNull(), signature: text().notNull() },
+      access: "anyone",
+      handler({ body, signature }) {
+        const expected = crypto.hmacSha256({ key: "WEBHOOK_SECRET", data: body });
+        return crypto.timingSafeEqual(expected, signature);
+      },
+    }),
+  },
+});
+```
+
+| Function | Result |
+| --- | --- |
+| `sha256(data)`, `sha512(data)`, `sha1(data)`, `md5(data)` | Lowercase hex digest of the UTF-8 bytes |
+| `hmacSha256({ key, data })` | Lowercase hex HMAC-SHA-256. `key` is an environment variable name, read like `env()` and trimmed, or `{ value }` for a key that is not a secret |
+| `timingSafeEqual(a, b)` | `true` when equal, compared in constant time; different lengths are unequal |
+| `randomHex(bytes)` | `bytes` (1 to 1024) random bytes from `random_bytes`, as hex |
+| `randomUUID()` | A random version 4 UUID |
+
+Inputs are capped at 1 MiB (`413 crypto_input_too_large`). A named key that is
+unset or blank throws `500 crypto_key_unavailable`, so a missing secret never
+signs with an empty key. For inbound webhooks, prefer an action's or route's
+`signature` option, which also checks timestamps.
 
 ## Email
 

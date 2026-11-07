@@ -526,6 +526,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 self.action_results.insert(action.clone(), ret);
             }
+            if let Slot::RouteHandler { route } = &root.slot {
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => match &**ret {
+                        Ty::Promise(t) => (**t).clone(),
+                        t => t.clone(),
+                    },
+                    _ => Ty::Unknown,
+                };
+                if !assignable(&ret, &types::route_response()) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("routes.{route} returns {}, not a route response", ret.describe()),
+                        "return { status?: number, headers?: Record<string, string>, body?: string }",
+                    );
+                }
+            }
             self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());
             out.push((root.slot.clone(), name));
         }
@@ -558,6 +574,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 types::job_ctx(),
             ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
+            Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,
@@ -578,7 +595,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Owner::Global(name) => &self.schema.globals[name].fields,
                     Owner::Action(name) => &self.schema.actions[name].input,
                     Owner::Job(name) => &self.schema.jobs[name].input,
-                    Owner::FileBucket(_) => unreachable!("file buckets have no validator fields"),
+                    Owner::FileBucket(_) | Owner::Route(_) => {
+                        unreachable!("file buckets and routes have no validator fields")
+                    }
                 };
                 vec![
                     types::col_base(col, &types::json_ty, false),
@@ -2766,10 +2785,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Env::get({})", php_str(name)),
                 Ty::Str.nullable(),
             )),
-            Value::Builtin(Builtin::Env | Builtin::Once) => err_help(
+            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
+            ),
+            Value::Builtin(Builtin::Crypto) => err_help(
+                span,
+                "`crypto` can't be used as a value",
+                "call its functions directly: `crypto.sha256(text)`",
             ),
             Value::Builtin(Builtin::Mail) => err_help(
                 span,
@@ -2791,6 +2815,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Relation(_)
             | Value::Action(_)
             | Value::Job(_)
+            | Value::Route(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,
@@ -4064,7 +4089,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
                 Resolved::Value(
-                    Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env | Builtin::Mail)),
+                    Value::Builtin(
+                        b @ (Builtin::Once
+                        | Builtin::Jobs
+                        | Builtin::Env
+                        | Builtin::Fetch
+                        | Builtin::Crypto
+                        | Builtin::Mail),
+                    ),
                     _,
                 ) => Some(b),
                 _ => None,
@@ -4073,6 +4105,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &callee.kind {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
+                Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
                 Some(Builtin::Env) => {
                     let name = self.arg(args, 0, span, "an environment variable name")?;
                     match &name.kind {
@@ -4089,6 +4122,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 _ => Ok(None),
             },
+            // Only a name that resolves to the imported `crypto` is ours; `super`, unbound and
+            // shadowed names fall through to ordinary member calls.
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Crypto) =>
+            {
+                self.crypto_call(prop, args, span).map(Some)
+            }
             ExprKind::Member { obj, prop, .. }
                 if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
                     && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
@@ -4105,6 +4146,133 @@ impl<'a, 'p> Compiler<'a, 'p> {
             },
             _ => Ok(None),
         }
+    }
+
+    /// `fetch(url, { method?, headers?, body? })` → `Promise<FetchResponse>`, see `types::fetch_response`.
+    fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't use fetch()",
+                "move it into a hook, action or route",
+            );
+        }
+        if args.is_empty() || args.len() > 2 {
+            return err_help(
+                span,
+                "fetch() takes a URL and optional init",
+                "write fetch(url, { method, headers, body })",
+            );
+        }
+        let url_expr = self.arg(args, 0, span, "a URL")?;
+        let url = self.expr(url_expr)?;
+        let url = self.finish_value(url, url_expr.span)?;
+        if !url.ty.is_str() || url.ty.is_nullable() {
+            return err_help(url_expr.span, "fetch() needs a URL string", "pass the URL as a string");
+        }
+        let init = match args.get(1) {
+            None => "null".to_string(),
+            Some(_) => {
+                let init_expr = self.arg(args, 1, span, "init")?;
+                let init = self.expr(init_expr)?;
+                let init = self.finish_value(init, init_expr.span)?;
+                let ok = match &init.ty {
+                    Ty::Obj(fields) => fields.iter().all(|(k, (t, _))| match k.as_str() {
+                        "method" | "body" => t.all(|t| t.is_str() || matches!(t, Ty::Null | Ty::Undefined)),
+                        "headers" => t.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Null | Ty::Undefined)),
+                        _ => false,
+                    }),
+                    _ => false,
+                };
+                if !ok {
+                    return err_help(
+                        init_expr.span,
+                        format!(
+                            "fetch() init must be {{ method?, headers?, body? }} with strings, not {}",
+                            init.ty.describe()
+                        ),
+                        "stringify JSON bodies with JSON.stringify(...)",
+                    );
+                }
+                init.php
+            }
+        };
+        Ok(Out::atom(
+            format!("\\Zero\\Fetch::call({}, {init})", url.php),
+            Ty::Promise(Box::new(types::fetch_response())),
+        ))
+    }
+
+    /// `crypto.<fn>(...)`: synchronous digests and comparisons over `Zero\Crypto`. Every result is
+    /// lowercase hex (or a boolean / UUID), matching the original runtime's `ctx.crypto`.
+    fn crypto_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let (arity, ret, php) = match name {
+            "sha256" | "sha1" | "sha512" | "md5" => (1, Ty::Str, name),
+            "hmacSha256" => (1, Ty::Str, "hmacSha256"),
+            "timingSafeEqual" => (2, Ty::Bool, "timingSafeEqual"),
+            "randomHex" => (1, Ty::Str, "randomHex"),
+            "randomUUID" => (0, Ty::Str, "randomUUID"),
+            _ => {
+                let mut d = Diag::new(span, format!("`crypto` has no function `{name}`"));
+                let names = [
+                    "sha256",
+                    "sha1",
+                    "sha512",
+                    "md5",
+                    "hmacSha256",
+                    "timingSafeEqual",
+                    "randomHex",
+                    "randomUUID",
+                ];
+                if let Some(s) = suggest(name, names.iter().copied()) {
+                    d = d.help(format!("did you mean `crypto.{s}`?"));
+                }
+                return Err(d);
+            }
+        };
+        if args.len() != arity {
+            return err(
+                span,
+                format!(
+                    "crypto.{name}() takes {arity} argument{}",
+                    if arity == 1 { "" } else { "s" }
+                ),
+            );
+        }
+        let mut argv = Vec::new();
+        for i in 0..arity {
+            let e = self.arg(args, i, span, "an argument")?;
+            let v = self.expr(e)?;
+            let v = self.finish_value(v, e.span)?;
+            let ok = match (name, i) {
+                ("randomHex", _) => v.ty.is_num() && !v.ty.is_nullable(),
+                ("hmacSha256", _) => match &v.ty {
+                    Ty::Obj(f) => {
+                        f.keys().all(|k| k == "key" || k == "data")
+                            && f.get("data").is_some_and(|(t, opt)| !opt && t.is_str() && !t.is_nullable())
+                            && f.get("key").is_some_and(|(t, opt)| {
+                                !opt && (t.is_str() && !t.is_nullable()
+                                    || matches!(t, Ty::Obj(k) if k.len() == 1 && k.get("value").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())))
+                            })
+                    }
+                    _ => false,
+                },
+                _ => v.ty.is_str() && !v.ty.is_nullable(),
+            };
+            if !ok {
+                return err_help(
+                    e.span,
+                    format!("crypto.{name}() can't take {}", v.ty.describe()),
+                    match name {
+                        "hmacSha256" => "pass { key: \"VAR_NAME\" | { value }, data: string }",
+                        "randomHex" => "pass a number of bytes",
+                        _ => "pass a string",
+                    },
+                );
+            }
+            argv.push(v.php);
+        }
+        Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
     }
 
     /// `mail.send(message)`: queues inside the handler's transaction, hands off after commit.

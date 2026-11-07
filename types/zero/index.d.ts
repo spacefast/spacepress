@@ -1095,6 +1095,8 @@ export interface ConfigInput<
   /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
   hooks?: NoInfer<Hooks<TSchema>>;
   actions?: Record<string, AnyAction>;
+  /** Custom HTTP endpoints on the site's own paths, outside `/wp-json`. */
+  routes?: Record<string, Route>;
   jobs?: TJobs;
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
@@ -1152,6 +1154,45 @@ export declare function job<TInput extends ColumnsConfig>(definition: {
   handler: (input: InferActionInput<TInput>, ctx: JobCtx) => Awaitable<void>;
 }): Job<TInput>;
 export interface EnqueueOptions { delay?: number; key?: string }
+
+declare const routeBrand: unique symbol;
+/** A custom HTTP endpoint: `routes: { feed: route({ ... }) }`. */
+export interface Route { readonly [routeBrand]: true }
+/** The request a route handler receives. Header names are lowercase; the body is the raw text. */
+export interface RouteRequest {
+  method: string;
+  path: string;
+  /** `:name` segments of the route path, decoded. */
+  params: Record<string, string>;
+  /**
+   * The query string as URLSearchParams reads it: names byte-exact (`a.b`, `x[]`), every value
+   * kept in order. `get` answers the first value or null.
+   */
+  query: RouteQuery;
+  headers: Record<string, string>;
+  body: string;
+}
+export interface RouteQuery {
+  get(name: string): string | null;
+  getAll(name: string): string[];
+  has(name: string): boolean;
+  entries(): [string, string][];
+}
+/** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
+export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
+type RoutePath = `/${string}`;
+/**
+ * One method and path served by a compiled handler, in one transaction (`docs/config-api.md#http-routes`).
+ * Exactly one of `access` (who may call) or `signature` (an HMAC over the raw body; the caller is anonymous).
+ */
+export declare function route(definition: {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: RoutePath;
+  handler: (req: RouteRequest, ctx: HookCtx) => Awaitable<RouteResponse>;
+} & (
+  | { access: GateRule<Record<string, never>>; signature?: never }
+  | { signature: { secret: EnvValue; header: string; scheme: "zero" | "hmac-sha256" }; access?: never }
+)): Route;
 export interface JobHandle<TInput> {
   enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }
@@ -1182,6 +1223,53 @@ export interface MailMessage {
  */
 export declare const mail: {
   send(message: MailMessage): Promise<{ id: string }>;
+};
+
+/** What `fetch()` resolves to: the parts of a WHATWG Response a handler reads. */
+export interface FetchResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  /** The final URL after redirects. */
+  readonly url: string;
+  readonly redirected: boolean;
+  readonly headers: { get(name: string): string | null; has(name: string): boolean };
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+export interface FetchInit {
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
+  headers?: Record<string, string>;
+  /** Send JSON as `JSON.stringify(value)` with a `content-type` header. */
+  body?: string;
+}
+/**
+ * Outbound HTTPS from hooks, actions, routes and jobs, through the WordPress HTTP API. Refuses
+ * non-HTTPS URLs, URL credentials, and any private, loopback, link-local or special-purpose
+ * address, before and after each of at most three redirects. 10 s per call, 1 MiB each way. A
+ * refused or failed call throws an HttpError 502 with a `zero_fetch_*` code; a non-2xx answer is
+ * a response.
+ */
+export declare function fetch(url: string, init?: FetchInit): Promise<FetchResponse>;
+/**
+ * Digests, MACs, comparison and random values for hooks, actions, routes and jobs. Results are
+ * lowercase hex over the UTF-8 bytes of the input. Inputs are capped at 1 MiB.
+ */
+export declare const crypto: {
+  sha256(data: string): string;
+  sha512(data: string): string;
+  sha1(data: string): string;
+  md5(data: string): string;
+  /**
+   * `key` names an environment variable (read trimmed; a missing or blank one throws
+   * `crypto_key_unavailable`) or is `{ value }` for a key that is not a secret.
+   */
+  hmacSha256(options: { key: string | { value: string }; data: string }): string;
+  /** Constant time over equal lengths; values of different lengths are unequal. */
+  timingSafeEqual(a: string, b: string): boolean;
+  /** `bytes` (1 to 1024) random bytes as hex. */
+  randomHex(bytes: number): string;
+  /** A random RFC 4122 version 4 UUID. */
+  randomUUID(): string;
 };
 export interface EnvValue { readonly [envBrand]: true }
 export declare function env(name: string): EnvValue;

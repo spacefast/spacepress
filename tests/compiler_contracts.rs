@@ -876,3 +876,63 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
     }
 }
+
+/// `zero check --json` reports each plugin's package, integrity, locked and inferred grant, and
+/// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
+#[test]
+fn check_reports_plugin_grants_and_read_to_send_flows() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("node_modules/zero-plugin-sync/src")).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { collection, defineConfig, id, text } from "zero";
+import sync from "zero-plugin-sync";
+const posts = collection({ id: id(), title: text().notNull() }, { title: "title" });
+export default defineConfig({ name: "flows", collections: { posts }, use: [sync()] });"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("node_modules/zero-plugin-sync/package.json"),
+        r#"{ "name": "zero-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
+        r#"import { action, db, definePlugin, env, fetch } from "zero";
+async function push(body: string) {
+  await fetch("https://hooks.example.com/in", { method: "POST", body, headers: { authorization: env("SYNC_KEY") ?? "" } });
+}
+export default () => definePlugin({
+  name: "sync",
+  actions: {
+    export: action({ input: {}, async handler() { await push(JSON.stringify(await db.query.posts.findMany())); return true; } }),
+    count: action({ input: {}, async handler() { return (await db.query.posts.findMany()).length; } }),
+  },
+});"#,
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert!(out.status.success(), "{report}");
+    let plugin = &report["plugins"][0];
+    assert_eq!(plugin["package"], "zero-plugin-sync");
+    assert_eq!(plugin["version"], "3.1.0");
+    assert!(plugin["integrity"].as_str().unwrap().starts_with("sha256-"));
+    assert_eq!(plugin["status"], "added");
+    assert_eq!(plugin["inferred"]["read"], json!(["posts"]));
+    assert_eq!(plugin["inferred"]["http"], json!(["hooks.example.com"]));
+    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
+    assert_eq!(plugin["inferred"]["actions"], json!(["sync_count", "sync_export"]));
+    for reserved in ["abilities", "wpHooks", "php"] {
+        assert_eq!(plugin["inferred"][reserved], json!([]));
+    }
+    // Only the handler that reads and then sends, through its helper, is flagged.
+    assert_eq!(
+        plugin["flows"],
+        json!([{
+            "handler": "plugin_sync__action__sync_export",
+            "reads": ["env: SYNC_KEY", "read: posts"],
+            "sends": ["http: hooks.example.com"],
+        }])
+    );
+    assert!(!tmp.path().join("zero").exists(), "check writes no lock");
+}

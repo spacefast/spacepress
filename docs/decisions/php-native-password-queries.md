@@ -73,24 +73,25 @@ Raw samples: [100 protected](../benchmarks/php-native-password-100.json) and
 
 | Protected rows | Before HTTP ms | After HTTP ms | Before / after peak used bytes |
 | ---: | ---: | ---: | ---: |
-| 100 | 41.337 (40.871–41.770) | 40.438 (40.380–41.716) | 37,767,776 / 37,568,896 |
-| 10,000 | 94.721 (92.647–95.694) | 44.405 (43.983–45.161) | 65,158,128 / 37,568,896 |
+| 100 | 43.039 (41.733–44.953) | 41.932 (41.316–42.395) | 37,770,600 / 37,571,720 |
+| 10,000 | 93.786 (92.941–100.938) | 45.625 (44.634–48.243) | 65,169,144 / 37,571,720 |
 
 | Protected rows | Before PHP ms | After PHP ms | Before / after peak allocated bytes |
 | ---: | ---: | ---: | ---: |
-| 100 | 37.360 (37.266–38.009) | 36.840 (36.709–38.106) | 39,845,888 / 39,845,888 |
-| 10,000 | 90.680 (88.699–91.861) | 40.853 (40.456–41.526) | 67,108,864 / 41,943,040 |
+| 100 | 38.766 (38.060–40.919) | 38.163 (37.634–38.232) | 39,845,888 / 39,845,888 |
+| 10,000 | 89.282 (88.898–96.995) | 41.523 (40.919–43.458) | 67,108,864 / 41,943,040 |
 
 Increasing the protected inventory by `10,000 - 100 = 9,900` rows adds
-`94.720766 - 41.336987 = 53.383779 ms` before versus
-`44.405036 - 40.437721 = 3.967315 ms` after. At 10,000 rows the HTTP reduction is
-`(94.720766 - 44.405036) / 94.720766 × 100 = 53.12%`. Peak used reduction is
-`65,158,128 - 37,568,896 = 27,589,232 bytes`, or
-`27,589,232 / 1,048,576 = 26.31 MiB`. At 100 rows the ranges overlap; do not
+`93.786072 - 43.039361 = 50.746711 ms` before versus
+`45.625079 - 41.932287 = 3.692792 ms` after. At 10,000 rows the HTTP reduction is
+`(93.786072 - 45.625079) / 93.786072 × 100 = 51.35%`. Peak used reduction is
+`65,169,144 - 37,571,720 = 27,597,424 bytes`, or
+`27,597,424 / 1,048,576 = 26.32 MiB`. At 100 rows the ranges overlap; do not
 claim a latency win for small inventories. These are warm request measurements,
 not throughput or cold startup. The shared host reports 24 logical CPUs via
-`nproc`; the one-minute load was 4.02 after the runs. No local compilation or
-verification ran during these measurements; other agents were left running.
+`nproc`; one-minute load was 2.96 before and 2.54 after the runs. No local
+compilation or verification ran during these refreshed measurements, which include
+the unrestricted-visibility existence probe; other agents were left running.
 
 Reproduction uses the snapshot runner from #124, with runtime snapshots instead
 of adapter snapshots. Build and start the fixture as in tests/wp/run.sh. Copy

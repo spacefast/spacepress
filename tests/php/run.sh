@@ -14,7 +14,9 @@ suites=("$@")
 for s in "${suites[@]}"; do
   case "$s" in
     js) "$PHP" -d zend.assertions=1 js_parity.php || status=1 ;;
-    env|query|schema|sql|images|legacy|boundary) "$PHP" -d zend.assertions=1 "${s}_test.php" || status=1 ;;
+    env) "$PHP" -d zend.assertions=1 bootstrap_test.php || status=1
+         "$PHP" -d zend.assertions=1 env_test.php || status=1 ;;
+    query|schema|sql|images|legacy|boundary) "$PHP" -d zend.assertions=1 "${s}_test.php" || status=1 ;;
     db|blog|auth|jobs|webhooks|realtime|services|files|media|locales|sync) "$PHP" -d zend.assertions=1 -d memory_limit=512M "${s}_test.php" || status=1 ;;
     vendor)
       "$PHP" -d zend.assertions=1 vendor_drift.php || status=1

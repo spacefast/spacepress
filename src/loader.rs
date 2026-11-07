@@ -116,13 +116,15 @@ fn load_module(
     let file = diag::register_file(path, &source);
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
-    let body = parse(fs, &source, path, file, id, diagnostics)?;
+    let (body, type_names) = parse(fs, &source, path, file, id, diagnostics)?;
     let imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     program.modules.push(Rc::new(Module {
         id,
         file,
         path: path.to_path_buf(),
         body,
+        dynamic: crate::ir::dynamic_source(path),
+        type_names,
     }));
     for (spec, span) in imports {
         if spec == ZERO_MODULE {
@@ -173,7 +175,7 @@ fn parse(
     file: u32,
     module: usize,
     diagnostics: &mut Vec<Diag>,
-) -> Result<Vec<Stmt>> {
+) -> Result<(Vec<Stmt>, std::collections::HashSet<String>)> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
     if source_type.is_jsx() {
@@ -203,20 +205,22 @@ fn parse(
         diagnostics.push(Diag::new(span, format!("syntax error: {}", err.message)).code(diag::Code::Syntax));
     }
     if syntax_failed {
-        return Ok(Vec::new());
+        return Ok(Default::default());
     }
-    let (mut body, errors) = Lowerer {
+    let lowerer = Lowerer {
         file,
         module,
         class_context: std::cell::Cell::new(false),
         super_call: std::cell::Cell::new(false),
-    }
-    .program_diagnostics(&ret.program);
+        erase_types: source_type.is_typescript() && crate::ir::dynamic_source(path),
+        erased_types: Default::default(),
+    };
+    let (mut body, errors) = lowerer.program_diagnostics(&ret.program);
     if errors.is_empty() {
         normalize_commonjs(fs, path, &mut body)?;
     }
     diagnostics.extend(errors);
-    Ok(body)
+    Ok((body, lowerer.erased_types.into_inner()))
 }
 
 fn commonjs_error(span: Span, reason: &str) -> Diag {
@@ -998,6 +1002,64 @@ mod tests {
             })
             .collect();
         assert_eq!(actual, [7.0, 10.0, 5.0]);
+    }
+
+    #[test]
+    fn installed_typescript_erases_types_and_elides_type_only_imports_and_re_exports() {
+        let fs = memory(&[
+            (
+                "/p/zero.config.ts",
+                "import { scale, Factor } from 'typed'; import { typeOnly } from './local'; export default [scale(2), typeOnly];",
+            ),
+            (
+                "/p/local.ts",
+                "export type Local = { n: number }; export const typeOnly = 1;",
+            ),
+            (
+                "/p/node_modules/typed/package.json",
+                r#"{"exports":{".":"./src/index.ts"}}"#,
+            ),
+            (
+                "/p/node_modules/typed/src/index.ts",
+                "export { scale } from './scale.js'; export type { Factor } from './types.js'; export { Shape } from './types.js'; export * from './types.js';",
+            ),
+            (
+                "/p/node_modules/typed/src/types.ts",
+                "export interface Shape { (n: number): number; new (n: number): object } export type Factor = <T>(value: T, ...rest: unknown[]) => T;",
+            ),
+            (
+                "/p/node_modules/typed/src/scale.ts",
+                "import { Shape } from './types.js'; declare const brand: unique symbol; export function scale<T extends number>(this: void, value: T, by?: number): number { assert(value); return (value as number) * (by ?? 3)!; } function assert(value: unknown): asserts value is number {}",
+            ),
+        ]);
+        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let package: Vec<_> = program.modules.iter().filter(|m| m.dynamic).collect();
+        assert_eq!(package.len(), 3);
+        assert!(package.iter().any(|m| m.type_names.contains("Factor")));
+        assert!(!program.modules[program.entry].dynamic);
+        // Authored modules keep their static type layer; only the app's lookup of a package type fails.
+        let error = crate::eval::Evaluator::new(&program).run().unwrap_err();
+        assert!(
+            error.message.contains("`Factor` comes from an installed package"),
+            "{error:?}"
+        );
+        let fs = memory(&[
+            (
+                "/p/zero.config.ts",
+                "import { scale } from 'typed'; export default scale(2);",
+            ),
+            (
+                "/p/node_modules/typed/package.json",
+                r#"{"exports":{".":"./index.ts"}}"#,
+            ),
+            (
+                "/p/node_modules/typed/index.ts",
+                "export function scale<T>(value: T & number, by?: number): number { return value * (by ?? 3); }",
+            ),
+        ]);
+        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let result = crate::eval::Evaluator::new(&program).run().unwrap();
+        assert!(matches!(result, crate::value::Value::Num(n) if n == 6.0), "{result:?}");
     }
 
     #[test]

@@ -170,6 +170,17 @@ impl Compiler<'_, '_> {
                     self.imported_type(module, name)
                 };
                 if let Some((owner, local)) = alias {
+                    if self.ev_program().modules[owner].dynamic
+                        && !self.type_aliases.contains_key(&(owner, local.clone()))
+                    {
+                        return err_help(
+                            *span,
+                            format!(
+                                "`{name}` comes from an installed package or JavaScript module, whose types Zero erases"
+                            ),
+                            "describe the value with a local type, or narrow it with `typeof`/`instanceof`",
+                        );
+                    }
                     return self.instantiate_alias(name, (owner, &local), args, *span, module, generics);
                 }
                 match (name.as_str(), args.as_slice()) {

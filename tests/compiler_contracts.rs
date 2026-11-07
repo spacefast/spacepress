@@ -898,6 +898,165 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
 }
 
 #[test]
+fn installed_package_typescript_is_type_erased_like_javascript_and_matches_node() {
+    let tmp = tempfile::tempdir().unwrap();
+    let package = tmp.path().join("node_modules/typed-lib");
+    std::fs::create_dir_all(package.join("src")).unwrap();
+    std::fs::write(
+        package.join("package.json"),
+        r#"{"name":"typed-lib","type":"module","exports":{".":{"types":"./src/index.d.ts","import":"./src/index.ts"}}}"#,
+    )
+    .unwrap();
+    // Every type-level construct here is refused in authored code or exceeds Zero's type subset.
+    std::fs::write(
+        package.join("src/index.ts"),
+        r#"import type { Shape } from "./shape.js";
+import { Named, describe } from "./shape.js";
+
+export type Mapper = <T>(value: T, index?: number, ...rest: unknown[]) => T;
+interface Callable { (input: string): string; new (input: string): object; readonly [key: string]: unknown }
+declare const brand: unique symbol;
+type Branded = { readonly [brand]: true };
+type Keys<T> = { [K in keyof T as `get${string & K}`]: () => T[K] };
+
+export function assertText(value: unknown): asserts value is string {
+  if (typeof value !== "string") throw new TypeError("expected text");
+}
+
+function identity<T>(value: T): T { return value; }
+const map: Mapper = (value) => value;
+
+abstract class Base<T> {
+  abstract label(): string;
+  declare readonly hidden: number;
+  protected readonly unit: string = "item";
+  push(this: Base<T>, item: T | string = ""): string { return `${this.unit}+${item}`; }
+  size(): string { return this.unit; }
+}
+
+export class Box extends Base<string> implements Named {
+  name = "box";
+  label(): string { return `${this.name}:${this.size()}`; }
+  overloaded(value: string): string;
+  overloaded(value: number): string;
+  overloaded(value: string | number = 0): string { return String(value); }
+}
+
+export function run(input: string): Record<string, unknown> {
+  assertText(input);
+  const tools: { shape(this: void, text: string): string; count: (...items: string[]) => number } = {
+    shape(text) { return `[${text}]`; },
+    count: (...items) => items.length,
+  };
+  const box = new Box();
+  const pushed = identity<string>(input) + (map(input) as string);
+  const shape = { kind: "circle", radius: 2 } satisfies Shape;
+  const value = <number>shape.radius!;
+  return { boxed: box instanceof Box, described: describe(shape), value, pushed, shaped: tools.shape(input), counted: tools.count("a", "b") };
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/shape.ts"),
+        r#"export interface Named { name: string }
+export type Shape = { kind: "circle"; radius: number } | { kind: "square"; side: number };
+export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=${shape.radius}` : `s=${shape.side}`);
+"#,
+    )
+    .unwrap();
+    // The oracle is the same source with types stripped by tsc, run under Node.
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(package.join("src/index.ts"))
+        .arg(package.join("src/shape.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&transpiled.stdout)
+    );
+    std::fs::write(js.join("package.json"), r#"{"type":"module"}"#).unwrap();
+    let node = Command::new("node")
+        .current_dir(&js)
+        .args([
+            "--input-type=module",
+            "-e",
+            "import { run } from './index.js'; process.stdout.write(JSON.stringify(run('hi')));",
+        ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"
+import { action, defineConfig, text } from 'zero';
+import { run } from 'typed-lib';
+export default defineConfig({ name: 'typed-lib', actions: {
+  probe: action({ input: { key: text().notNull() }, handler: (input) => run(input.key) }),
+} });
+"#,
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+$input = new \Zero\JsObject();
+$input->p['key'] = 'hi';
+echo \Zero\Js::jsonStringify($fn($input, new \Zero\JsObject()));
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-typed-lib/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+
+    // The app's own code stays statically checked: package values are JavaScript values,
+    // and package types are not silently trusted.
+    for (source, message) in [
+        (
+            "import { run } from 'typed-lib'; const read = (key: string): string => { const value: string = run(key); return value; };",
+            "a JavaScript value isn't assignable to string",
+        ),
+        (
+            "import { run, Mapper } from 'typed-lib'; const read = (key: string) => run(key);",
+            "`Mapper` comes from an installed package or JavaScript module, whose types Zero erases",
+        ),
+        (
+            "import { run, type Mapper } from 'typed-lib'; const read = (key: string) => { const map: Mapper | null = null; return run(key); };",
+            "`Mapper` comes from an installed package or JavaScript module, whose types Zero erases",
+        ),
+    ] {
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!(
+                "import {{ action, defineConfig, text }} from 'zero'; {source} export default defineConfig({{ actions: {{ probe: action({{ input: {{ key: text().notNull() }}, handler: (input) => read(input.key) }}) }} }});"
+            ),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["message"].as_str().unwrap().contains(message)),
+            "{source}: {report}"
+        );
+    }
+}
+
+#[test]
 fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefined() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(

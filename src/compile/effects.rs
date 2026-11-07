@@ -93,13 +93,7 @@ impl Effects {
         let javascript_modules = program
             .modules
             .iter()
-            .filter(|module| {
-                module
-                    .path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| matches!(extension, "js" | "mjs" | "cjs"))
-            })
+            .filter(|module| module.dynamic)
             .map(|module| module.id)
             .collect();
         let mut graph = Graph {

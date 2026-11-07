@@ -40,6 +40,25 @@ using PHP `version_compare` ordering, including WordPress beta/RC/pl suffixes.
 The exact header version is checked against the declaration; numeric trailing
 zero differences are accepted (the Polylang 3.9 archive declares 3.9.0).
 
+## Supported plugins
+
+Zero doesn't support every WordPress plugin. The plugins and version ranges the
+Zero team tests are listed in
+[`src/wp_plugins/supported.json`](../src/wp_plugins/supported.json): a minimum
+version (inclusive) and an optional `below` bound (exclusive), compared with PHP
+`version_compare`. The platform pins above are always on that list.
+
+Any other plugin or version still installs. `zero check` and `zero build` print a
+warning for it, and the wasm compiler returns the same text in
+`unsupportedPlugins`:
+
+```text
+warning: plugin hello-dolly 1.7.2 is not supported by the Zero team. Zero installs it, but doesn't test it; Zero doesn't support every WordPress plugin. To ask for support, open an issue: https://github.com/spacefast/zero/issues
+```
+
+To get a plugin supported, open an issue with its slug, the version you need,
+and what you use it for.
+
 ## Resources and explicit dependencies
 
 The package key is the sole installation identity. An exact version string uses

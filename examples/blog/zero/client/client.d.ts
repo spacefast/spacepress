@@ -1197,6 +1197,11 @@ export interface RealtimeOptions {
 	transport?: RealtimeTransport | false;
 	/** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
 	pollMs?: number | false;
+	/**
+	* A slow safety refresh while the transport is live, covering a notice the transport lost.
+	* Default 60000 with up to ±20% jitter per refresh; `false` turns it off.
+	*/
+	livePollMs?: number | false;
 }
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
 export declare function registerRealtimeTransport(transport: RealtimeTransport): void;

@@ -849,7 +849,7 @@ test("watch re-runs the access-checked list on a matching notice, never trusting
   let n = 0;
   reply = (s) => ok([{ id: 1, title: `v${++n}` }])();
   const transport = fakeTransport();
-  const zero = mod.createClient({ url, realtime: { transport, pollMs: false } });
+  const zero = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
   const got: unknown[] = [];
   const stop = zero.posts.watch({ where: { title: { like: "%v%" } }, with: { author: true } }, (rows: unknown) => got.push(rows));
   await tick();
@@ -890,7 +890,7 @@ test("watch coalesces a burst into one extra read and reports read errors", asyn
     return fetch(input, init);
   };
   const transport = fakeTransport();
-  const zero = mod.createClient({ url, fetch: slowFetch, realtime: { transport, pollMs: false } });
+  const zero = mod.createClient({ url, fetch: slowFetch, realtime: { transport, pollMs: false, livePollMs: false } });
   const stop = zero.posts.watch(undefined, () => {});
   await tick();
   transport.push(notice("posts"));
@@ -913,7 +913,7 @@ test("watch coalesces a burst into one extra read and reports read errors", asyn
 test("without a live transport, watch polls; a transport registered later is picked up", async () => {
   reply = () => ok([])();
   seen = [];
-  const zero = mod.createClient({ url, realtime: { pollMs: 30 } });
+  const zero = mod.createClient({ url, realtime: { pollMs: 30, livePollMs: false } });
   const stop = zero.posts.watch(undefined, () => {});
   await new Promise((r) => setTimeout(r, 100));
   const polled = seen.length;
@@ -926,7 +926,7 @@ test("without a live transport, watch polls; a transport registered later is pic
   await tick();
   const atLive = seen.length;
   await new Promise((r) => setTimeout(r, 100));
-  assert.equal(seen.length, atLive, "polling stops while live");
+  assert.equal(seen.length, atLive, "the fast poll stops while live");
   transport.set("down");
   await new Promise((r) => setTimeout(r, 100));
   assert.ok(seen.length > atLive, "and resumes when the transport goes down");
@@ -945,4 +945,36 @@ test("without a live transport, watch polls; a transport registered later is pic
     stop2();
     delete (globalThis as Record<string, unknown>).__zeroRealtime;
   }
+});
+
+test("while live, a slow jittered safety poll still recovers a notice the transport lost", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 1); // the latest the jitter allows: 60 s × 1.2
+  const transport = fakeTransport();
+  const refreshes: number[] = [];
+  const zero = mod.createClient({
+    url,
+    // Count reads without the network: only the timers decide when a refresh happens.
+    fetch: async () => (refreshes.push(refreshes.length), new Response('{"data":[]}', { status: 200 })),
+    realtime: { transport, pollMs: false },
+  });
+  const stop = zero.posts.watch(undefined, () => {});
+  transport.set("live"); // initial read + one catch-up read on going live
+  // setImmediate is not mocked: one turn of it drains every promise a refresh queued.
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  await settle();
+  const base = refreshes.length;
+  t.mock.timers.tick(71_999);
+  await settle();
+  assert.equal(refreshes.length, base, "no refresh before 60 s × 1.2");
+  t.mock.timers.tick(1);
+  await settle();
+  assert.equal(refreshes.length, base + 1, "the safety poll refreshes once a lost notice could have gone missing");
+  t.mock.timers.tick(72_000);
+  await settle();
+  assert.equal(refreshes.length, base + 2, "and keeps refreshing while live");
+  stop();
+  t.mock.timers.tick(200_000);
+  await settle();
+  assert.equal(refreshes.length, base + 2, "no poll after the last watcher stops");
 });

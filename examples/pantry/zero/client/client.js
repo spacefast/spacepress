@@ -521,22 +521,34 @@ export function createClient(options = {}) {
 	// One transport connection per client while anything is watched; polling while it is not live.
 	const rtOpts = options.realtime ?? {};
 	const pollMs = rtOpts.pollMs === undefined ? 3e4 : rtOpts.pollMs;
+	const livePollMs = rtOpts.livePollMs === undefined ? 6e4 : rtOpts.livePollMs;
 	const listeners = new Set();
 	let disconnect = null;
 	let live = false;
+	// One timer: `pollMs` while down, `livePollMs` (jittered) while live. Rearmed after each refresh.
 	let poller = null;
+	let pollerLive = false;
 	const dispatch = (notice) => {
 		for (const l of [...listeners]) {
 			if (notice === null || notice.changes.some((c) => l.collections.has(c.collection))) l.onChange(notice);
 		}
 	};
 	const syncPolling = () => {
-		const want = listeners.size > 0 && !live && pollMs !== false;
-		if (want && poller === null) poller = setInterval(() => dispatch(null), pollMs);
-		if (!want && poller !== null) {
-			clearInterval(poller);
+		const every = live ? livePollMs : pollMs;
+		const want = listeners.size > 0 && every !== false;
+		if (poller !== null && (!want || pollerLive !== live)) {
+			clearTimeout(poller);
 			poller = null;
 		}
+		if (!want || poller !== null) return;
+		pollerLive = live;
+		// Jitter only the live safety poll: every tab of a busy page must not refresh at once.
+		const delay = live ? Math.round(every * (.8 + Math.random() * .4)) : every;
+		poller = setTimeout(() => {
+			poller = null;
+			dispatch(null);
+			syncPolling();
+		}, delay);
 	};
 	const connect = () => {
 		if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;

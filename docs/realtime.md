@@ -33,8 +33,8 @@ watch(zero, ["todos"], () => zero.actions.openCount(), (count) => badge(count));
 ## Transports
 
 Zero ships no realtime transport. Without one, watched reads poll every 30
-seconds. A host delivers notices with a transport, and polling pauses while it
-is live.
+seconds. A host delivers notices with a transport. While it is live, reads
+refresh on notices plus a slow safety poll.
 
 ```ts
 import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./zero/client/index.ts";
@@ -54,9 +54,11 @@ registerRealtimeTransport(transport);        // every client on the page, includ
 ```
 
 `realtime.pollMs` sets the polling interval while no transport is live; `false`
-turns polling off. `realtime.transport: false` turns the transport off. A client
-connects its transport only while something is watched. When the transport goes
-from down to live, watched reads refresh once to catch up.
+turns polling off. While the transport is live, watched reads still refresh about
+once a minute (`realtime.livePollMs`, default 60000, jittered ±20%), so a notice
+lost in transit costs at most that delay. `realtime.transport: false` turns the
+transport off. A client connects its transport only while something is watched.
+When the transport goes from down to live, watched reads refresh once to catch up.
 
 [Spacefast](spacefast-deploy.md#live-updates) registers its Cast transport
 automatically, so apps on Spacefast write no setup.
@@ -76,9 +78,10 @@ add_action('zero_realtime_changes', static function (array $notice): void {
 
 Every pipeline write reports: REST and action writes, hooks, jobs, the CLI and
 wp-admin saves. A rolled-back transaction reports nothing. `collection` is the
-schema key the client uses (`client.<key>`). `ids` becomes `null` when one
-transaction changes more than 100 rows of a collection. Notices never carry
-row values.
+schema key the client uses (`client.<key>`). A collection's `ids` becomes `null`
+when one transaction changes more than 100 of its rows, or any of its ids is longer
+than 191 characters. A transaction touching more than 64 collections is announced
+as several notices. Notices never carry row values.
 
 A host can register a transport in PHP instead of hooking the action:
 

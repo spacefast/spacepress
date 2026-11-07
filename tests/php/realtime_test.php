@@ -82,6 +82,29 @@ $db->transaction(static function () use ($db, $post): void {
 });
 eq('past MAX_IDS a collection is listed without ids', $sent[0]['changes'] ?? null, [['collection' => 'comments', 'ops' => ['create'], 'ids' => null]]);
 
+// Notices stay inside what a receiver can be told to accept: an id longer than MAX_ID_LENGTH
+// lists its collection without ids, and a transaction over MAX_COLLECTIONS is several notices.
+$sent = [];
+$db->transaction(static function () use ($db): void {
+    \Zero\Realtime\Module::written('create', 'comments', ['id' => str_repeat('k', Realtime::MAX_ID_LENGTH + 1)], null);
+});
+eq('an over-long id lists its collection without ids', $sent[0]['changes'] ?? null, [['collection' => 'comments', 'ops' => ['create'], 'ids' => null]]);
+$wide = $schema;
+foreach (range(1, Realtime::MAX_COLLECTIONS + 1) as $n) {
+    $wide['collections']["c$n"] = ['key' => "c$n", 'primaryKey' => 'id'] + $schema['collections']['comments'];
+}
+$wideDb = new \Zero\Db($db->store(), new \Zero\Schema($wide), $db->media());
+$sent = [];
+$wideDb->transaction(static function () use ($wideDb): void {
+    $wideDb->current(static function (): void {
+        foreach (range(1, Realtime::MAX_COLLECTIONS + 1) as $n) {
+            \Zero\Realtime\Module::written('create', "c$n", ['id' => $n], null);
+        }
+    });
+});
+eq('a transaction over MAX_COLLECTIONS is announced in two notices', array_map(static fn ($n) => count($n['changes']), $sent), [Realtime::MAX_COLLECTIONS, 1]);
+eq('every collection is announced exactly once', count(array_unique(array_merge(...array_map(static fn ($n) => array_column($n['changes'], 'collection'), $sent)))), Realtime::MAX_COLLECTIONS + 1);
+
 // The WordPress action fires once per commit with the same notice.
 $actions = [];
 add_action(Realtime::ACTION, static function (array $notice) use (&$actions): void {

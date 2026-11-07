@@ -26,6 +26,10 @@ final class Module
     public const ACTION = 'zero_realtime_changes';
     /** Ids per collection in one notice. Past this, the collection is listed without ids ("refetch all"). */
     public const MAX_IDS = 100;
+    /** Longest id a notice carries. A collection with a longer id is listed without ids. */
+    public const MAX_ID_LENGTH = 191;
+    /** Collections per notice. A transaction touching more is announced as several notices. */
+    public const MAX_COLLECTIONS = 64;
 
     /** @var list<Publisher> */
     private static array $publishers = [];
@@ -66,6 +70,10 @@ final class Module
         $entry = &self::$pending[$collection];
         $entry ??= ['ops' => [], 'ids' => [], 'overflow' => false];
         $entry['ops'][$op] = true;
+        if (is_string($id) && strlen($id) > self::MAX_ID_LENGTH) {
+            $entry['overflow'] = true;
+            $entry['ids'] = [];
+        }
         if (!$entry['overflow'] && (is_int($id) || is_string($id))) {
             $entry['ids'][(string) $id] = $id;
             if (count($entry['ids']) > self::MAX_IDS) {
@@ -106,8 +114,14 @@ final class Module
             $changes[$key] = ['collection' => $key, 'ops' => $ops, 'ids' => $entry['overflow'] ? null : array_values($entry['ids'])];
         }
         ksort($changes);
-        $changes = array_values($changes);
-        $notice = ['id' => bin2hex(random_bytes(12)), 'at' => Js::iso(Js::now()), 'changes' => $changes];
+        $at = Js::iso(Js::now());
+        foreach (array_chunk(array_values($changes), self::MAX_COLLECTIONS) as $chunk) {
+            self::emit(['id' => bin2hex(random_bytes(12)), 'at' => $at, 'changes' => $chunk]);
+        }
+    }
+
+    private static function emit(array $notice): void
+    {
         if (function_exists('do_action')) {
             do_action(self::ACTION, $notice);
         }

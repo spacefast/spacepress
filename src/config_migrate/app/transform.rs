@@ -15,6 +15,23 @@ pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
     let arena = Allocator::default();
     let parsed = Parser::new(&arena, text, SourceType::ts()).parse();
     if let Some(d) = parsed.diagnostics.errors().next() {
+        // JSX in server code drew 0.8 ImageResponse elements; v2 server code is plain TypeScript.
+        if path.extension().is_some_and(|e| e == "tsx")
+            && Parser::new(&arena, text, SourceType::tsx())
+                .parse()
+                .diagnostics
+                .errors()
+                .next()
+                .is_none()
+        {
+            return Err(fail(
+                "",
+                format!(
+                    "{} uses JSX on the server (ImageResponse); render the image ahead of time or port it to a route that returns stored bytes",
+                    path.display()
+                ),
+            ));
+        }
         return Err(fail("", format!("invalid TypeScript: {}", d.message)));
     }
     let file = diag::register_file(path, text);
@@ -1035,11 +1052,11 @@ fn handler(
     if route.is_some() {
         return endpoint(source, f, tables, at, name, mode);
     }
-    let Some(first) = f.params.first() else {
-        return Err(fail(at, "handler must declare its context parameter"));
-    };
-    let Pat::Id(ctx, _) = &first.pat else {
-        return Err(fail(at, "context destructuring requires a manual port"));
+    // A handler that ignores its context may omit it; no input then follows.
+    let ctx = match f.params.first().map(|p| &p.pat) {
+        None => "__z08unused",
+        Some(Pat::Id(ctx, _)) => ctx.as_str(),
+        Some(_) => return Err(fail(at, "context destructuring requires a manual port")),
     };
     let mut input = vec![];
     let mut bindings = String::new();

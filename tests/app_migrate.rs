@@ -455,3 +455,35 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
         "{reason}"
     );
 }
+
+#[test]
+fn the_configured_server_entry_is_read_from_sf_jsonc() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    std::fs::create_dir_all(root.join("server")).unwrap();
+    std::fs::write(
+        root.join("sf.jsonc"),
+        "{\n  // the 0.8 runtime block\n  \"runtime\": { \"kind\": \"zero\", \"server\": \"server/app.ts\", },\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("server/app.ts"),
+        "import { capsule, query } from '@spacefast/zero/server'; export default capsule({ name: 'Entry App', queries: { hi: query(async () => 'hi') } });",
+    )
+    .unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(ok, "{report:#}");
+    assert!(out.join("server/index.ts").is_file());
+    assert!(!out.join("server/app.ts").exists());
+    build(&out);
+    // JSX in a server entry is ImageResponse; v2 server code has no renderer for it.
+    let (ok, refused) = migrate(&corpus("compile-notes"), &temp.path().join("notes"), &["--dry-run"]);
+    assert!(!ok);
+    assert!(
+        refused["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("JSX on the server")
+    );
+}

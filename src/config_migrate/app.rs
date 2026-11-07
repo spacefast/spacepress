@@ -152,7 +152,7 @@ fn convert(
     files: &mut BTreeMap<String, String>,
 ) -> Result<(), Failure> {
     let root = fs.canonicalize(input).map_err(io)?;
-    let entry = PathBuf::from("server/index.ts");
+    let entry = server_entry(fs.as_ref(), &root, report)?;
     let mut sources = BTreeMap::new();
     collect_sources(&*fs, &root, &entry, &mut sources, &mut BTreeSet::new())?;
     for dir in ["islands", "layouts", "_pages"] {
@@ -176,7 +176,17 @@ fn convert(
     if sources.contains_key(Path::new("zero.config.ts")) || sources.contains_key(Path::new("server/__z08-content.ts")) {
         return Err(fail("", "input imports a reserved generated config path"));
     }
-    sources.insert(entry, transformed.config);
+    let canonical = PathBuf::from("server/index.ts");
+    if entry != canonical {
+        if sources.contains_key(&canonical) {
+            return Err(fail(
+                "",
+                "server/index.ts exists beside the configured server entry; rename one",
+            ));
+        }
+        sources.remove(&entry);
+    }
+    sources.insert(canonical, transformed.config);
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }
@@ -303,6 +313,98 @@ fn collect_sources(
     }
     out.insert(relative, source);
     Ok(())
+}
+
+/// 0.8 config files in the finalizer's precedence order (`SPACE_CONFIG_PRECEDENCE`).
+const CONFIG_FILES: &[&str] = &[
+    "sf.jsonc",
+    "spacefast.jsonc",
+    "spacefast.json",
+    "sf.json",
+    ".sf/sf.json",
+    ".sf/config.jsonc",
+    ".sf/config.json",
+];
+
+/// The capsule's server module: `runtime.server` of the selected 0.8 config, else
+/// `server/index.ts`. It is renamed to `server/index.ts` in the candidate.
+fn server_entry(fs: &dyn Fs, root: &Path, report: &mut Report) -> Result<PathBuf, Failure> {
+    if fs.is_file(&root.join("spacefast.config.ts")) {
+        return Err(fail(
+            "/spacefast.config.ts",
+            "an executable Spacefast config needs a manual port; write its runtime as sf.jsonc",
+        ));
+    }
+    let Some(name) = CONFIG_FILES.iter().find(|f| fs.is_file(&root.join(f))) else {
+        return Ok(PathBuf::from("server/index.ts"));
+    };
+    let text = fs.read_to_string(&root.join(name)).map_err(io)?;
+    let config: serde_json::Value = serde_json::from_str(&strip_jsonc(&text))
+        .map_err(|e| fail(&format!("/{name}"), format!("cannot read {name}: {e}")))?;
+    let Some(server) = config.pointer("/runtime/server").and_then(serde_json::Value::as_str) else {
+        return Ok(PathBuf::from("server/index.ts"));
+    };
+    let server = server.trim_start_matches("./");
+    if server != "server/index.ts" {
+        report.entries.push(super::entry(
+            &format!("/{name}/runtime/server"),
+            "mapped",
+            format!("server entry {server} becomes server/index.ts"),
+        ));
+    }
+    if !server.starts_with("server/") || !(server.ends_with(".ts") || server.ends_with(".tsx")) {
+        return Err(fail(
+            &format!("/{name}/runtime/server"),
+            "the server entry must be a server/*.ts or server/*.tsx module",
+        ));
+    }
+    Ok(PathBuf::from(server))
+}
+
+/// JSONC → JSON: comments and trailing commas outside strings.
+fn strip_jsonc(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut string = false;
+    while let Some(c) = chars.next() {
+        if string {
+            out.push(c);
+            if c == '\\' {
+                out.extend(chars.next());
+            } else if c == '"' {
+                string = false;
+            }
+            continue;
+        }
+        match (c, chars.peek()) {
+            ('"', _) => {
+                string = true;
+                out.push(c);
+            }
+            ('/', Some('/')) => {
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
+            }
+            ('/', Some('*')) => {
+                chars.next();
+                let mut last = ' ';
+                for c in chars.by_ref() {
+                    if last == '*' && c == '/' {
+                        break;
+                    }
+                    last = c;
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    // Trailing commas: a comma followed only by whitespace before } or ].
+    let re = regex::Regex::new(r",(\s*[}\]])").expect("regex");
+    re.replace_all(&out, "$1").into_owned()
 }
 
 /// Static 0.8 pages and the client `Layout` become v2 TSX pages. Interactive ones are refused.

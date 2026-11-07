@@ -3,8 +3,10 @@
 
 Usage: scripts/migrate-census.py [--zero target/debug/zero] [--json] [--flag <converter flag>]... [corpus-dir ...]
 
-The default corpus is tests/fixtures/app-migrate/corpus plus the three app-migrate
-fixtures (board, content, refused). Each immediate subdirectory is one 0.8 project.
+The default corpus is tests/fixtures/app-migrate/corpus: 0.8 projects copied from
+spacefast/monorepo (see its README). The purpose-built converter fixtures beside it are not
+counted, so the census does not grade the converter on its own tests. Each immediate
+subdirectory is one 0.8 project.
 
 Formula (the same one docs/zero-08-parity.md reports):
   accepted(app)   = the dry run exits 0 with status "dry-run"
@@ -24,12 +26,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT = [
-    os.path.join(ROOT, "tests/fixtures/app-migrate/corpus"),
-    os.path.join(ROOT, "tests/fixtures/app-migrate/board"),
-    os.path.join(ROOT, "tests/fixtures/app-migrate/content"),
-    os.path.join(ROOT, "tests/fixtures/app-migrate/refused"),
-]
+DEFAULT = [os.path.join(ROOT, "tests/fixtures/app-migrate/corpus")]
 
 # Ordered: the first match wins.
 CATEGORIES = [
@@ -46,7 +43,8 @@ CATEGORIES = [
     ("capsule-option", r"^/[^/]+$"),
 ]
 REASON_CATEGORIES = [
-    ("source-entry", r"server/index\.ts|cannot read capsule source|finalize payload"),
+    ("server-jsx", r"uses JSX on the server"),
+    ("source-entry", r"server/index\.ts|cannot read capsule source|finalize payload|server entry"),
     ("npm-import", r"needs a manual port; only local TypeScript"),
     ("build-global", r"names a build-time global"),
     # A helper the app copies verbatim uses JavaScript the v2 subset does not compile.

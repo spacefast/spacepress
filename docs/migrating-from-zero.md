@@ -2,8 +2,12 @@
 
 Migrate a Spacefast app with the hosted operation below. It converts supported
 source, preserves content and user IDs, and carries existing logins into v2.
-Generated endpoints, actions, [HTTP routes](config-api.md#http-routes) and
-[TSX pages](pages.md) work on Spacefast. Realtime is not supported.
+Generated endpoints, actions and [HTTP routes](config-api.md#http-routes) work
+on Spacefast. [TSX pages](pages.md) do not yet: the Spacefast host mounts the
+runtime, the app and identity for a v2 version, but not the compiled pages
+plugin, and it does not serve its assets. Until it does, keep any 0.8 Space
+whose visitors depend on its pages on 0.8; this guide's commit step retires
+the 0.8 site. Realtime is not supported.
 
 The baseline is `@spacefast/zero` and `@spacefast/zero-compile` 0.8.1. A
 successful source conversion proves that the candidate compiles. Complete the
@@ -27,9 +31,20 @@ standalone in-place commands later in this guide target a different deployment.
    Identify custom endpoints, `pages/`, `layouts/`, and `islands/`. The converter
    refuses these with pointers. Port each method/path endpoint to a v2
    [route](config-api.md#http-routes) (or a named action when its callers can
-   change), and port pages, layouts and islands to [TSX pages](pages.md) before
-   continuing. Realtime declarations produce a review hint and are removed.
-   Realtime is not supported.
+   change). A route segment is literal or `:name`, which matches exactly one
+   segment, so a 0.8 catch-all endpoint (a final `:splat`, which took the rest
+   of the path) has no route form: move its callers to fixed paths or to a
+   query parameter, or to an action. Realtime declarations produce a review
+   hint and are removed. Realtime is not supported.
+
+   Pages, layouts and islands need a [TSX page](pages.md) port, and that port
+   cannot go into the 0.8 project: the converter refuses any `pages/`,
+   `layouts/` or `islands/` it finds there and writes no candidate. Remove them
+   from the converter input, write the TSX pages in a separate directory, and
+   add them to the converted candidate after step 3 (`pages/` beside its
+   `zero.config.ts`, rendered with `zero-pages build` and committed as
+   `zero/pages.json`). Spacefast does not host TSX pages yet, so only Spaces
+   that can go without their pages should continue.
 3. Request the conversion report without changing the Space:
 
    ```sh
@@ -450,10 +465,10 @@ before activating an app.
 | Sessions | Copies imported sessions with markers; accepts the old cookie and upgrades a valid legacy hash once, preserving expiry | Requires original auth salt and an explicitly scoped cookie alias; native v2 rows never get legacy fallback |
 | Google sign-in | Copies provider subject bindings to the same user IDs; host projects Google client values into managed identity configuration | Verify a fresh Google sign-in on the deployed host; never put provider secrets in source or reports |
 | Connector roles | Emits `connector-roles.json`; maps `owner` to `personal` and retains `team` and `visitor` | The overlay grants no credentials or permissions; old connector calls require a port |
-| REST endpoints and actions | Generated collection endpoints and `POST /wp-json/zero/v1/actions/<name>` work on Spacefast | Old custom method/path `endpoints` declarations are refused with a pointer; port each to a v2 [route](config-api.md#http-routes) at the same method and path, or to an action |
+| REST endpoints and actions | Generated collection endpoints and `POST /wp-json/zero/v1/actions/<name>` work on Spacefast | Old custom method/path `endpoints` declarations are refused with a pointer; port each to a v2 [route](config-api.md#http-routes) at the same method and path, or to an action. A catch-all (`:splat`) endpoint has no route form: its callers must change |
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Unsupported; source conversion drops the declaration with a review hint | Replace subscription-dependent behavior before cutover |
-| Pages, layouts, and islands | Old declarations and project directories are refused with pointers | Port them to [TSX pages](pages.md), which Spacefast hosts from the committed render artifact; the pages subset has its own limits |
+| Pages, layouts, and islands | Old declarations and project directories are refused with pointers | Port them to [TSX pages](pages.md) outside the converter input and add them to the candidate. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over; the pages subset has its own limits |
 | Content sync | Local `zero sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |
 | Publication and rollback | Spacefast migration commits a one-way transition to v2 | 0.8 publication and promotion are refused after commit; immutable 0.8 URLs return `410 zero_legacy_retired`; older v2 code still shares the latest schema |

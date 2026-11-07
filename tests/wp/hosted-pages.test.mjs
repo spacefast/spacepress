@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHmac } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { appendFileSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -167,4 +167,55 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   assert.equal((await http('/unclaimed/other.json')).status, 404);
   assert.equal((await http('/api/a/b/c')).status, 404, 'no route has three segments under /api');
   assert.equal((await http('/wp-json/zero/v1/notes')).status, 200);
+});
+
+test('a route sees the caller WordPress REST would: Bearer always, cookie on GET or with a nonce, never an application password', { timeout: 120000 }, async () => {
+  const id = site.users.editor.id;
+  const who = async (method, headers = {}) => (await http('/api/probe-who', { method, headers })).text;
+  // Application passwords are refused as a route credential on every method.
+  assert.equal(await who('GET', { authorization: editor }), 'anonymous');
+  assert.equal(await who('POST', { authorization: editor }), 'anonymous');
+  // A WordPress login cookie: GET authenticates; an unsafe method needs the REST nonce.
+  const login = await wp('user', 'get', String(id), '--field=user_login');
+  const password = 'hosted-route-cookie-pass';
+  await wp('user', 'update', String(id), `--user_pass=${password}`);
+  const form = await fetch(`${base}/wp-login.php`, { method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'wordpress_test_cookie=WP%20Cookie%20check' },
+    body: new URLSearchParams({ log: login, pwd: password, testcookie: '1' }) });
+  const cookie = form.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const nonce = await (await fetch(`${base}/wp-admin/admin-ajax.php?action=rest-nonce`, { headers: { cookie } })).text();
+  assert.equal(await who('GET', { cookie }), `user ${id}`);
+  assert.equal(await who('POST', { cookie }), 'anonymous', 'no nonce: a cross-site form runs anonymously');
+  assert.equal(await who('POST', { cookie, 'x-wp-nonce': nonce }), `user ${id}`);
+  // A zero-identity Bearer token is the caller's chosen credential on every method, with no nonce.
+  if (site.identity !== null) {
+    const token = await wp('eval', `echo (new \\Zero\\Identity\\OAuth(\\Zero\\Identity\\Plugin::$db, \\Zero\\Identity\\Plugin::$accounts))->issueForUser(${id}, ${JSON.stringify(site.identity.clientId)})['access_token'];`);
+    assert.equal(await who('GET', { authorization: `Bearer ${token}` }), `user ${id}`);
+    assert.equal(await who('POST', { authorization: `Bearer ${token}` }), `user ${id}`);
+    assert.equal((await http('/api/probe-who', { method: 'POST', headers: { authorization: 'Bearer a.b.c' } })).status, 401, 'a bad token is refused, not anonymous');
+  }
+});
+
+test('while storage is behind, a claimed route path answers 503 instead of falling through to WordPress', { timeout: 120000 }, async () => {
+  const appDir = join(app, 'content/plugins/zero-app-fullsite/zero/app/');
+  const schema = readFileSync(appDir + 'schema.php');
+  writeFileSync(appDir + 'migrations/9997_route_probe.sql', 'INSERT INTO `{prefix}missing_route_probe` (`n`) VALUES (1);\n');
+  appendFileSync(appDir + 'schema.php', '\n// route upgrade probe\n');
+  try {
+    const deadline = Date.now() + 30000;
+    let feed;
+    while ((feed = await http('/api/feed.json')).status !== 503) {
+      assert.ok(Date.now() < deadline, `the upgrade never refused the route (${feed.status})`);
+    }
+    assert.equal(feed.headers.get('retry-after'), '5');
+    assert.equal(JSON.parse(feed.text).code, 'unavailable');
+    assert.equal((await http('/webhooks/stripe', { method: 'POST', body: '{}' })).status, 503, 'a webhook sender is told to retry');
+    assert.equal((await http('/api/probe/42')).status, 503, 'parameter routes too');
+    assert.equal((await http('/unclaimed/other.json')).status, 404, 'paths no route claims still belong to WordPress');
+  } finally {
+    rmSync(appDir + 'migrations/9997_route_probe.sql');
+    writeFileSync(appDir + 'schema.php', schema);
+  }
+  const deadline = Date.now() + 30000;
+  while ((await http('/api/feed.json')).status !== 200) assert.ok(Date.now() < deadline, 'routes came back after the upgrade cleared');
 });

@@ -5,6 +5,31 @@ import { job, jobs, once, env } from "zero"; // lane D
 
 const n = table({ id: id() });
 
+// These named helpers have enforced PHP object parameters. Alias mutation and missing
+// properties must keep their JavaScript behavior when reads/writes use native PHP.
+function nativeParameter(input: { n: number; label: string | null; optional?: string }) {
+  const alias = input;
+  alias.n = 4;
+  const assigned = (input.n = input.n + 1);
+  input.n += 2;
+  const old = input.n++;
+  return [assigned, old, input.n, input.label, input.optional ?? "absent"];
+}
+function nativeMissing(input: { n: number }) {
+  const before = input.n;
+  input.n += 1;
+  return [before, input.n];
+}
+function reboundParameter(input: { n: number }) {
+  const replace = () => { input = { n: 9 }; };
+  replace();
+  input.n = 10;
+  return input.n;
+}
+function nullableParameter(input: { n: number } | null) {
+  return input ? input.n : "null";
+}
+
 // Access rules run once per ctx below; validators once per value (with VALIDATE_CTX).
 export const ACCESS_CTXS = [
   { user: null },
@@ -425,6 +450,14 @@ const laneRefs = {
 export default defineConfig({
   collections: { docs }, tables: { n, field_docs: fieldDocs() },
   actions: {
+    nativeObjectParameters: run(() => [
+      nativeParameter({ n: 1, label: null }),
+      nativeParameter({ n: 2, label: "kept", optional: "present" }),
+      nativeMissing(JSON.parse("{}") as { n: number }),
+      nativeMissing({ n: 9007199254740991 }),
+      reboundParameter({ n: 1 }),
+      nullableParameter(null), nullableParameter({ n: 3 }),
+    ]),
     ...laneRefs,
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),

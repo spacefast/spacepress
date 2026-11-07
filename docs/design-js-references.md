@@ -532,7 +532,7 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
 - **Array literal.** `[a, b, ...$s]` → `new \Zero\JsArray([a, b, ...$s->a])`.
   List spread of a PHP list is safe (it renumbers, which is what a list is)
   and `$s->a` snapshots at its source position for the same reason.
-- **Member read.** Object property reads use `\Zero\Js::prop(<o>, <k>)`,
+- **Member read.** By default object property reads use `\Zero\Js::prop(<o>, <k>)`,
   including static keys, so a missing receiver throws a catchable JS `TypeError`.
   Arguments preserve receiver-before-key order (`o[key()]` where `key`
   reassigns `o` reads the old object). Optional chains keep the
@@ -540,6 +540,11 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
   reads use `\Zero\Js::get($a, $i)` with the same checked receiver semantics.
   The original direct member-read benchmark below is historical and does not
   measure the guarded helper path.
+  A required constant-key read from an enforced, non-null PHP `JsObject`
+  parameter whose binding is never reassigned may instead use
+  `($o->p['key'] ?? null)`. The proof includes writes from captured closures;
+  a TypeScript shape or assertion alone is insufficient. See the
+  [native handler decision](decisions/php-native-handlers.md).
 - **Member write.** `Js::write($root, [$k1, $k2], $v)` → the receiver and
   key are read before the right-hand side runs, because JS evaluates the
   reference first and the value second and a right-hand side can replace the
@@ -569,7 +574,9 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
     Statement position emits separate statements. Expression position uses
     the compiler's in-place sequencing array, so conditional branches stay
     conditional and assignments on the right side update the enclosing scope.
-    No thunk or hoisting is used. All writes go through `Js::set` / `Js::setAt`.
+    No thunk or hoisting is used. The same stable PHP object-parameter proof
+    permits native `R->p[K] = value` after capturing the receiver and key.
+    Other writes go through `Js::set` / `Js::setAt`.
   - `a[i] = v` → `\Zero\Js::setAt(<a>, <i>, <v>)` in both positions (a
     helper already).
 - **Destructuring.** The source is **always** captured in a temporary before

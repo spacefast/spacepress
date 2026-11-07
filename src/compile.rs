@@ -131,8 +131,47 @@ fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> R
         _ => err_help(
             span,
             format!("captured data contains {}, which can't be used in PHP", v.describe()),
-            "capture plain data instead",
+            "capture plain data, or call and read the members of an object that holds functions directly (`ns.fn(x)`)",
         ),
+    }
+}
+
+/// A build-time object or function that has no PHP form, so compiled code may only follow
+/// member chains through it: an object holding code (functions, classes, regexes, env tokens)
+/// or a function with own properties. Plain data keeps its runtime singleton.
+fn is_static_namespace(v: &Value) -> bool {
+    fn holds_env(v: &Value, seen: &mut HashSet<usize>) -> bool {
+        match v {
+            Value::Env(_) => true,
+            Value::Array(a) if seen.insert(Rc::as_ptr(a) as usize) => a.borrow().iter().any(|v| holds_env(v, seen)),
+            Value::Object(o) if seen.insert(Rc::as_ptr(o) as usize) => o.borrow().values().any(|v| holds_env(v, seen)),
+            _ => false,
+        }
+    }
+    match v {
+        // env() tokens keep their own diagnostic: read them where they're used.
+        Value::Object(_) => {
+            validate_captured_data(v, Span::NONE, &mut HashSet::new()).is_err() && !holds_env(v, &mut HashSet::new())
+        }
+        Value::Closure(c) => c.has_props(),
+        _ => false,
+    }
+}
+
+/// The first member of a static namespace that has no PHP data form, as `name.key`.
+fn namespace_example(name: &str, v: &Value) -> String {
+    let Value::Object(o) = v else {
+        return format!("{name}.member");
+    };
+    let o = o.borrow();
+    let key = o
+        .iter()
+        .find(|(_, v)| matches!(v, Value::Closure(_)))
+        .or_else(|| o.iter().next())
+        .map_or("member", |(k, _)| k.as_str());
+    match o.get(key) {
+        Some(Value::Closure(_)) => format!("{name}.{key}(...)"),
+        _ => format!("{name}.{key}"),
     }
 }
 
@@ -2887,6 +2926,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// A name captured from the config's build-time scope.
     fn captured(&mut self, n: &str, v: Value, b: &Binding, span: Span) -> Result<Out> {
+        self.captured_use(n, v, b, span, false, false)
+    }
+
+    /// `callee`: the value is called directly, so a function's own properties don't matter.
+    /// `member`: the value was read through a static member chain (`ns.a.b`), so its type
+    /// is the widened property type rather than a `const` binding's literal.
+    fn captured_use(&mut self, n: &str, v: Value, b: &Binding, span: Span, callee: bool, member: bool) -> Result<Out> {
         if b.mutable && b.module_level && !self.javascript_module(self.fx.as_ref().expect("fn").module) {
             return err_help(
                 span,
@@ -2896,6 +2942,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         match &v {
             Value::Class(class) => self.class_value(class),
+            Value::Closure(c) if c.has_props() && !callee => err_help(
+                span,
+                format!("`{n}` is a function with properties, which can't be used as a value in PHP"),
+                format!(
+                    "call it (`{n}(...)`) or read its properties directly (`{n}.{}`); a PHP closure can't carry properties",
+                    c.props.borrow().keys().next().map_or("prop", String::as_str)
+                ),
+            ),
             Value::Closure(c) => {
                 let key = closure_key(c);
                 let helper_key = (key, self.fx().no_db);
@@ -3005,17 +3059,92 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ))
             }
             data => {
+                if is_static_namespace(data) {
+                    return err_help(
+                        span,
+                        format!(
+                            "`{n}` holds functions, so it exists only while the config is built and can't be used as a value in PHP"
+                        ),
+                        format!(
+                            "call or read its members directly, e.g. `{}`; it can't be passed, stored, spread, iterated or written",
+                            namespace_example(n, data)
+                        ),
+                    );
+                }
                 validate_captured_data(data, span, &mut HashSet::new())?;
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
                 let ty = match &b.ann {
                     _ if javascript => Ty::Dynamic,
                     Some((ann, module)) => self.resolve_runtime_ann(ann, *module)?,
-                    None => inferred_binding_type(&ty_of_data(data), false),
+                    None => inferred_binding_type(&ty_of_data(data), member),
                 };
                 let ty = self.effects.captured_data_type(data, &ty);
                 Ok(Out::atom(self.captured_data(data)?, ty))
             }
         }
+    }
+
+    /// The build-time value at the end of `e` when `e` is a captured binding or a static
+    /// member chain from one. Locals and other expressions are None.
+    fn static_receiver(&mut self, e: &Expr) -> Result<Option<(String, Value, Binding)>> {
+        match &e.kind {
+            ExprKind::Ident(n) => Ok(match self.resolve(n, e.span) {
+                Ok(Resolved::Value(v, b)) => Some((n.clone(), v, b)),
+                _ => None,
+            }),
+            ExprKind::Member {
+                obj, prop, prop_span, ..
+            } => self.static_member(obj, prop, *prop_span),
+            _ => Ok(None),
+        }
+    }
+
+    /// `obj.prop` resolved at compile time when `obj` is a static namespace (see
+    /// `is_static_namespace`). The namespace is never built in PHP, so its members are constant.
+    fn static_member(&mut self, obj: &Expr, prop: &str, prop_span: Span) -> Result<Option<(String, Value, Binding)>> {
+        let Some((path, receiver, binding)) = self.static_receiver(obj)? else {
+            return Ok(None);
+        };
+        if !is_static_namespace(&receiver) {
+            return Ok(None);
+        }
+        let path = format!("{path}.{prop}");
+        let (own, function) = match &receiver {
+            Value::Object(o) => (o.borrow().get(prop).cloned(), false),
+            Value::Closure(c) => (c.props.borrow().get(prop).cloned(), true),
+            _ => unreachable!("static namespaces are objects or functions"),
+        };
+        let value = match own {
+            Some(value) => value,
+            None if function && crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&prop) => {
+                return err_help(
+                    prop_span,
+                    format!("`{path}` isn't supported on a function with properties"),
+                    "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled; read a property you assigned",
+                );
+            }
+            None if !function && crate::builtins::contract("object", prop).is_some() => {
+                return err_help(
+                    prop_span,
+                    format!("`{path}` reads an inherited property, which isn't supported"),
+                    "read an own property of the object",
+                );
+            }
+            None if !self.javascript_module(self.fx.as_ref().expect("fn").module) => {
+                let keys: Vec<String> = match &receiver {
+                    Value::Object(o) => o.borrow().keys().cloned().collect(),
+                    Value::Closure(c) => c.props.borrow().keys().cloned().collect(),
+                    _ => unreachable!(),
+                };
+                let mut d = Diag::new(prop_span, format!("`{path}` doesn't exist"));
+                if let Some(s) = suggest(prop, keys.iter().map(String::as_str)) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                }
+                return Err(d);
+            }
+            None => Value::Undef,
+        };
+        Ok(Some((path, value, Binding { ann: None, ..binding })))
     }
 
     fn captured_data(&mut self, value: &Value) -> Result<String> {
@@ -3772,6 +3901,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
         }
+        if let Some((path, value, binding)) = self.static_member(obj, prop, prop_span)? {
+            return self.captured_use(&path, value, &binding, span, false, true);
+        }
         let o = self.expr(obj)?;
         if matches!(o.ty.non_null(), Ty::Instance(..) | Ty::Class(_)) {
             if optional {
@@ -4314,6 +4446,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     return self.static_call(g, prop, args, span);
                 }
+                // `ns.f(x)` on a build-time namespace calls the resolved function directly.
+                // Zero refuses `this` outside classes, so the receiver is unobservable.
+                if let Some((path, value, binding)) = self.static_member(obj, prop, *prop_span)? {
+                    let f = self.captured_use(&path, value, &binding, callee.span, true, true)?;
+                    return self.call_value(f, args, span, callee.span);
+                }
                 let recv = self.expr(obj)?;
                 self.method_call(recv, obj, prop, *opt, *prop_span, args, span)
             }
@@ -4362,10 +4500,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ok(out)
             }
             ExprKind::Ident(n) => {
-                if let Resolved::Global(g) = self.resolve(n, callee.span)? {
-                    return self.global_call(g, args, span);
-                }
-                let f = self.ident(n, callee.span)?;
+                let f = match self.resolve(n, callee.span)? {
+                    Resolved::Global(g) => return self.global_call(g, args, span),
+                    Resolved::Value(v @ Value::Closure(_), b) => {
+                        self.captured_use(n, v, &b, callee.span, true, false)?
+                    }
+                    _ => self.ident(n, callee.span)?,
+                };
                 self.call_value(f, args, span, callee.span)
             }
             _ => {

@@ -271,3 +271,27 @@ Status: **supported**.
 undefined denotes the built-in missing value. Runtime bindings named undefined are refused at source, including function/class names, parameters, local declarations, imports, catch variables, loop variables and rest/destructuring bindings. Use a different local name.
 
 [Evidence](../tests/compiler_contracts.rs) (`undefined_bindings_are_located_refusals_in_all_runtime_binding_forms`)
+
+## build-time-namespaces
+
+Status: **supported**.
+
+A member chain rooted at a module-level object that holds functions (`import * as ns`, `const o = { f }`, `export default { f }`) resolves at compile time: functions compile to helpers and data to the shared captured singleton for that sub-value. Functions may carry own properties set with `f.x = v` or build-time `Object.assign(f, ...)`; they are called and their properties are read the same way. The differential cases `namespaceImport`, `namespaceLocal`, `namespaceDefault`, `functionProperties` and `functionAssign` run in Node and PHP.
+
+[Evidence](../tests/compiler_contracts.rs) (`build_time_namespaces_resolve_members_and_refuse_whole_values`)
+
+## namespace-value
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+An object that holds functions has no PHP form. Call or read its members directly (`ns.fn(x)`, `ns.value`) instead of passing, storing, spreading, iterating or writing the object.
+
+[Evidence](../tests/fixtures/reject-namespace-value)
+
+## function-properties-value
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value.
+
+[Evidence](../tests/fixtures/reject-function-properties-value)

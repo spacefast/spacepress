@@ -443,6 +443,8 @@ struct Graph {
     javascript_functions: HashSet<Span>,
     scalar_functions: HashSet<Span>,
     classes: HashSet<usize>,
+    /// Functions with own properties whose properties are already in the graph.
+    closures: HashSet<usize>,
     methods: HashSet<Span>,
     captured: HashSet<Span>,
     roots: HashSet<Span>,
@@ -699,11 +701,33 @@ impl Graph {
             _ => unreachable!(),
         };
         for (step, value) in children {
-            if let Some(child) = self.data_place(&value) {
+            if let Some(child) = self.value_place(&value) {
                 self.copies.insert((child, place.at(step), Span::NONE));
             }
         }
         Some(place)
+    }
+
+    /// Captured build-time values, including functions held by build-time namespaces and the
+    /// own properties of functions, which compiled code reaches through static member chains.
+    fn value_place(&mut self, value: &Value) -> Option<Place> {
+        match value {
+            Value::Class(c) => Some(self.class_place(c)),
+            Value::Closure(c) => {
+                let place = self.function(&c.func, &[], &c.env);
+                if c.has_props() && self.closures.insert(Rc::as_ptr(c) as usize) {
+                    let props: Vec<_> = c.props.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                    for (key, value) in props {
+                        if let Some(child) = self.value_place(&value) {
+                            self.copies.insert((child, place.at(Step::Field(key)), Span::NONE));
+                        }
+                    }
+                }
+                Some(place)
+            }
+            Value::Array(_) | Value::Object(_) => self.data_place(value),
+            _ => None,
+        }
     }
 
     fn ident(&mut self, name: &str, names: &Names, env: &Rc<Scope>) -> Option<Place> {
@@ -713,12 +737,7 @@ impl Graph {
             }
             return Some(p.clone());
         }
-        match env.lookup(name)?.value {
-            Value::Class(c) => Some(self.class_place(&c)),
-            Value::Closure(c) => Some(self.function(&c.func, &[], &c.env)),
-            value @ (Value::Array(_) | Value::Object(_)) => self.data_place(&value),
-            _ => None,
-        }
+        self.value_place(&env.lookup(name)?.value)
     }
 
     fn class_place(&mut self, class: &Rc<ClassValue>) -> Place {

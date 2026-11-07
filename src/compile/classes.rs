@@ -262,10 +262,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(_) => {
                     let helper = self.unique_name(&format!("{}_init_{}", c.name, field.name));
                     let f = field.initializer(class.env.module).expect("initialized field");
-                    let closure = Rc::new(Closure {
-                        func: f,
-                        env: constructing_env.clone(),
-                    });
+                    let closure = Rc::new(Closure::new(f, constructing_env.clone()));
                     let initializing = initializing_instance(&instance);
                     self.compile_function(&closure, &helper, Some(vec![initializing]), None, no_db)?;
                     let Ty::Fn(_, result) = &self.helper_types[&closure_key(&closure)] else {
@@ -294,10 +291,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let Ty::Fn(params, _) = self.classes[&id].constructor.clone() else {
                 unreachable!()
             };
-            let closure = Rc::new(Closure {
-                func: f.clone(),
-                env: constructing_env.clone(),
-            });
+            let closure = Rc::new(Closure::new(f.clone(), constructing_env.clone()));
             self.compile_function(
                 &closure,
                 &helper,
@@ -315,10 +309,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let (helper, signature) = self.classes[&id].methods[&(*is_static, member.clone())].clone();
             let Ty::Fn(params, _) = signature else { unreachable!() };
             let receiver = if *is_static { Ty::Class(id) } else { instance.clone() };
-            let closure = Rc::new(Closure {
-                func: f.clone(),
-                env: env.clone(),
-            });
+            let closure = Rc::new(Closure::new(f.clone(), env.clone()));
             self.compile_function(
                 &closure,
                 &helper,

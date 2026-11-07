@@ -2,6 +2,8 @@
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
 import { job, jobs, once, env } from "zero"; // lane D
+import * as ns from "./namespace.mjs";
+import picoish from "./namespace.mjs";
 
 const n = table({ id: id() });
 
@@ -273,6 +275,14 @@ class LanguageDraftView extends LanguageView {
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
+// Build-time namespaces: objects holding functions, and functions with own properties,
+// are resolved member by member at compile time; they never exist in PHP.
+const local = { twice: (n: number) => n * 2, deep: { label: (s: string) => `<${s}>`, size: 4 }, list: ["a", "b"] };
+function tagged(s: string) { return `#${s}`; }
+tagged.prefix = "p";
+tagged.upper = (s: string) => s.toUpperCase();
+Object.assign(tagged, { count: 2, nested: { flag: true } });
+
 
 // Each action is independent: Node shares one module; PHP starts a process per case.
 const sharedCaptured = { n: 0 };
@@ -457,6 +467,16 @@ export default defineConfig({
       nullableParameter(null), nullableParameter({ n: 3 }),
     ]),
     ...laneRefs,
+    namespaceImport: run(() => {
+      const record = { count: 1 };
+      return [ns.shout("hi"), ns.touch(record), record.count, ns.utils.isObject({}), ns.utils.isObject([]), ns.utils.join("a", "b"),
+        ns.constants.SEP, ns.constants.limits.depth, ns.constants.REGEX_DOTS.source];
+    }),
+    namespaceLocal: run(() => [local.twice(3), local.deep.label("x"), local.deep.size + 1, local.list.length, local.list[1]]),
+    namespaceDefault: run(() => [picoish.count, picoish.utils.join("x", "y"), picoish.matcher("*.md")("*.md"), picoish.matcher("b", { prefix: "a" })("ab")]),
+    functionProperties: run(() => [tagged("x"), tagged.prefix, tagged.upper("y"), tagged.count, tagged.nested.flag]),
+    functionAssign: run(() => [picoish.matcher.version, picoish.matcher.test("a", "a"), picoish.matcher.test("a", "b").isMatch,
+      picoish.matcher.makeRe("a.b").source, picoish.matcher.makeRe("a..b").test("a.b"), picoish.matcher.scan("src/*.ts"), picoish.matcher.constants.SEP]),
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
     argumentSerialization: run(() => argumentSerialization("original", "tail")),

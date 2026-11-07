@@ -28,13 +28,25 @@ existing `JsMap`/`JsSet` runtime classes give JavaScript semantics directly:
 - SameValueZero keys (`NaN` equals `NaN`, `-0` is normalized to `+0`);
 - object keys by handle identity.
 
-The compiler gains `Ty::JsMap(K, V)` and `Ty::JsSet(T)` from `Map<K,V>`, `Set<T>`,
+The compiler gains `Ty::MapOf(K, V)`, `Ty::SetOf(T)` and `Ty::Iter(T)` from `Map<K,V>`, `Set<T>`,
 `ReadonlyMap` and `ReadonlySet` annotations and from `new Map<K,V>(iterable?)`. The
 typed methods are `get` (returns `V | undefined`), `set`, `has`, `delete`, `clear`,
 `size`, `forEach`, `keys`/`values`/`entries`, `for…of`, spread and `Array.from`.
 They compile to direct method calls on the runtime classes. Untyped `new Map()`
 with no type arguments and no entries is refused with a fix ("add type arguments").
-That is the single exception to inference.
+That is the single exception to inference. Type arguments are invariant
+(`Set<number>` isn't assignable to `Set<number | string>`): both are mutable handles,
+and TypeScript's covariance here is unsound for writes.
+
+Module-level constants such as `const NOT_FOUND = new Set([404])` are built once by
+the configuration evaluator as a read-only `Value::Coll` (has/get/size), and compiled
+code captures one runtime collection per request, the way captured arrays are.
+
+Checked JavaScript also gains Map/Set/array `keys`/`values`/`entries` iterators
+(`Zero\JsIterator`, live, with `next()`), and array-pattern destructuring of an
+iterable (`const [first, ...rest] = map.keys()`), which takes exactly the elements
+the pattern names. Receipts serialize the live entries and rebuild the index on
+unserialize, because `spl_object_id` is per-process.
 
 The runtime gains `delete`, `clear`, `forEach`, live iterators and an O(1) lookup
 index. Scalar keys go through a hash table. Object keys go through `spl_object_id`
@@ -55,11 +67,21 @@ and adds no package.
 
 `Zero\JsUrl` and `Zero\JsUrlSearchParams` wrap the vendored classes and expose
 JavaScript property and method names. Parse failures throw `TypeError`, matching
-`new URL`'s error, and `URL.canParse` / `URL.parse` exist. The differential suite
-runs a committed subset of WPT `urltestdata.json`, and the PR reports the pass count.
+`new URL`'s error, and `URL.canParse` / `URL.parse` exist. The contract test runs
+every case in WPT `urltestdata.json` (886, at a pinned revision) and compares each
+one with Node 22. All 886 match. Against WPT's own expectations, rowbot and Node
+both pass 879: the seven they share as failures are newer spec changes (opaque
+path trailing spaces, and `^` in paths).
 
-`fetch(string | URL)` belongs to the host-globals thread. `JsUrl` implements
-`__toString` returning `href`, which is the seam it needs.
+One rowbot defect diverged from Node: its percent-encoder used `rawurlencode()`,
+which leaves `~` alone although the form-urlencoded set contains it. Vendoring now
+patches that line (`scripts/vendor-metadata.php`), and generation fails if the line
+changes upstream.
+
+`fetch(string | URL)` belongs to the host-globals thread (#147, agreed with it).
+`JsUrl` and `JsUrlSearchParams` implement `\Stringable` (href and the
+serialization), so fetch reads both. #147's own `Zero\SearchParams` goes away, so
+there is one implementation.
 
 ## AbortController and AbortSignal
 
@@ -108,16 +130,19 @@ is the only point where it can run.
   discarded. A still-pending user `setTimeout` is a runtime `Error` naming its
   creation site: in Node it would fire after the response, and in PHP the
   request would end first. That's a divergence we refuse.
-- Until agent 4's queue lands, this branch emits `setTimeout` and `clearTimeout`
-  against `Zero\Timers`. The typed sleep shape
-  `await new Promise<void>((r) => setTimeout(r, ms))` is the one pattern
-  files-sdk's backoff uses. A follow-up PR wires it once `new Promise` exists.
+- `setTimeout` returns an opaque `Zero\JsTimeout` handle, as Node's Timeout
+  object, and `clearTimeout` accepts it. `Timers::run()` wraps every action, route
+  and job handler, and nested handlers share the outermost timer list.
+- `new Promise` is agent 4's, so there is no interim await shape here. Until their
+  queue lands, a timer can only be created, cleared and checked at handler end.
+  That covers files-sdk's per-attempt timeout (`mergeSignals` + `cleanup`). Its
+  backoff sleep needs `new Promise` and arrives with agent 4's queue.
 
-Capability: timers are recorded as a `timers` kind at the single
-`Compiler::uses(kind, value, span)` recognition point that
-`feat/plugin-capabilities` reads (`src/plugins.rs` `KINDS`). That's one row there
-and one call where `setTimeout`/`AbortSignal.timeout` compile. If that branch
-hasn't merged when this lands, the row is added by whichever PR merges second.
+Capability: `setTimeout` and `AbortSignal.timeout` call
+`Compiler::uses("timers", ..)`, the recognition point `feat/plugin-capabilities`
+(#142) defines. Until #142 lands, `uses` is a no-op stub with #142's signature.
+Whichever PR merges second keeps #142's body and adds a `("timers", "sets timers
+with")` row to `src/plugins.rs` `KINDS`.
 
 ## Date, Math, JSON
 
@@ -127,7 +152,12 @@ supported. (`Math.sin` appears only in a comment: `md5.ts` writes its table out.
 
 ## PRs
 
-1. Map/Set in typed TS (+ runtime delete/clear/forEach/live iteration).
-2. URL/URLSearchParams (+ vendor `DS` fix, WPT subset).
-3. AbortController/AbortSignal + timers (stacked on 1 for listener sets).
-4. Date/Math/JSON gaps, from the merged-state table.
+A stack: each one needs the one below it.
+
+1. `feat/stdlib-objects`: Map/Set in typed TS, runtime delete/clear/forEach/live
+   iteration, iterators, module-level constants.
+2. `feat/stdlib-url`: URL/URLSearchParams, the vendor `DS` fix and `~` patch, and WPT.
+3. `feat/stdlib-abort`: AbortController/AbortSignal and timers.
+4. Date/Math/JSON gaps, from the merged-state table. None are exposed yet: the core
+   path's `Date.now`, `Math.min/max/floor/ceil/trunc` and `JSON.stringify` of
+   string arrays are already supported.

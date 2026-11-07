@@ -358,12 +358,13 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
         [
             "GET /api/ping",
             "GET /api/banner",
-            "GET /api/notes/count",
             "GET /api/notes/:id",
+            "GET /api/notes/count",
             "POST /api/search",
             "PUT /api/notes",
             "DELETE /api/notes/:id",
             "GET /go/home",
+            "GET /api/tags",
             "GET /api/total"
         ]
     );
@@ -489,7 +490,7 @@ fn the_configured_server_entry_is_read_from_sf_jsonc() {
 }
 
 #[test]
-fn literal_routes_precede_parameter_routes_and_nested_pages_keep_imports() {
+fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("source");
     project(
@@ -499,14 +500,6 @@ fn literal_routes_precede_parameter_routes_and_nested_pages_keep_imports() {
     let source = std::fs::read_to_string(root.join("server/index.ts"))
         .unwrap()
         .replace("import { capsule }", "import { capsule, endpoint, text }");
-    std::fs::write(root.join("server/index.ts"), source).unwrap();
-    let (ok, refused) = migrate(&root, &temp.path().join("refused"), &["--dry-run"]);
-    assert!(!ok);
-    // PHP renames `.` in query names, so the name cannot keep its 0.8 meaning.
-    assert_eq!(refused["errors"][0]["pointer"], "/endpoints/tag/request/query-name");
-    let source = std::fs::read_to_string(root.join("server/index.ts"))
-        .unwrap()
-        .replace("user.id", "user_id");
     std::fs::write(root.join("server/index.ts"), source).unwrap();
     std::fs::create_dir_all(root.join("pages/docs")).unwrap();
     std::fs::write(root.join("pages/docs/data.ts"), "export const title = \"Docs\";\n").unwrap();
@@ -534,10 +527,8 @@ fn literal_routes_precede_parameter_routes_and_nested_pages_keep_imports() {
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
     let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
-    assert!(
-        config.find("\"count\": __z08Route").unwrap() < config.find("\"note\": __z08Route").unwrap(),
-        "{config}"
-    );
+    // RouteQuery keeps URLSearchParams names byte for byte, so `user.id` passes through unchanged.
+    assert!(config.contains("req.query.get(\"user.id\")"), "{config}");
     assert!(
         std::fs::read_to_string(out.join("pages/docs/page.tsx"))
             .unwrap()

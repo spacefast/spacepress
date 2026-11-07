@@ -144,10 +144,10 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path; literal segments are declared before `:params`, as 0.8 matched them | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
+| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path; v2 prefers literal segments over `:params`, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
 | `json()`, `text()`, `empty()`, `redirect()`, plain values, `undefined` → 204 | The same status, headers and body | Auto, **WP** | — |
-| `request.text()`, `json()`, `headers.get/has`, `query.get/has`, `params`, `method` | `req.body`, `req.headers`, `req.query`, `req.params` | Auto, **WP** | Query names other than `[A-Za-z0-9_-]+` literals are refused, because PHP renames `.` and spaces and arrays `[]`; a repeated name reads its last value, where 0.8 read the first |
-| `request.url`, `bytes()`, `arrayBuffer()`, `query.getAll`, `headers.entries` | **missing** on `RouteRequest` | Refused with pointer | Port |
+| `request.text()`, `json()`, `headers.get/has`, `query.get/getAll/has`, `params`, `method` | `req.body`, `req.headers`, `req.query` (URLSearchParams semantics: first value, byte-exact names), `req.params` | Auto, **WP** | — |
+| `request.url`, `bytes()`, `arrayBuffer()`, `headers.entries` | **missing** on `RouteRequest` | Refused with pointer | Port |
 | `HEAD`, `OPTIONS` endpoints | GET answers HEAD; **missing** OPTIONS | Refused | Port |
 | `:param` segments | `:param` | Auto, **WP** | — |
 | `*rest` catch-all segments | **missing** | Refused | **Gap** |

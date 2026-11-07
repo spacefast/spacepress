@@ -746,6 +746,26 @@ fn compiled_php_matches_node_on_every_differential_case() {
         .expect("the app plugin");
     let runtime = plugins.join("zero-runtime");
 
+    let functions = std::fs::read_to_string(app.join("zero/app/functions.php")).unwrap();
+    let body = |name: &str| {
+        functions
+            .split(&format!("function {name}("))
+            .nth(1)
+            .expect("differential helper is emitted")
+            .split("\nfunction ")
+            .next()
+            .unwrap()
+    };
+    assert!(body("nativeParameter").contains("$input->p['n'] ?? null"));
+    assert!(
+        body("nativeParameter")
+            .lines()
+            .any(|line| line.contains("->p[") && line.contains("] = "))
+    );
+    assert!(!body("nativeMissing").contains("\\Zero\\Js::prop("));
+    assert!(body("reboundParameter").contains("\\Zero\\Js::prop($input, 'n')"));
+    assert!(body("nullableParameter").contains("\\Zero\\Js::prop($input, 'n')"));
+
     let mut mismatches = Vec::new();
     for (name, want) in expected.as_object().unwrap() {
         let parts: Vec<&str> = name.split(':').collect();

@@ -96,10 +96,12 @@ def main():
         return [elapsed, metrics["php_ms"], metrics["peak_bytes"], metrics["allocated_bytes"], metrics["included_files"]]
 
     results = {
-        "url": args.url, "rows": args.rows, "warmup_per_phase": args.warmup,
+        "url": args.url, "rows": None if args.expected else args.rows, "warmup_per_phase": args.warmup,
         "columns": ["http_ms", "php_ms", "peak_bytes", "allocated_bytes", "included_files"],
         "runs": [], "errors": 0,
     }
+    if args.expected:
+        results.update({"method": "POST" if request_body else "GET", "expected_response": expected})
     probe = "/var/www/html/wp-content/mu-plugins/zero-runtime-bench.php"
     harness("compose", "cp", str(here / "fixtures/runtime-metrics.php"), "wordpress:" + probe)
     try:

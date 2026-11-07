@@ -617,6 +617,35 @@ pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     }
 }
 
+/// `zero compile-to-store <sources> <store> <assets> [previous-build]`: prints the build receipt.
+#[cfg(feature = "cli")]
+pub(crate) fn compile_to_store_cli(args: &[String]) -> std::process::ExitCode {
+    let result = match args {
+        [source, root, assets] => {
+            crate::store::compile_to_store(Path::new(source), Path::new(root), Path::new(assets), None)
+        }
+        [source, root, assets, previous] => {
+            crate::store::compile_to_store(Path::new(source), Path::new(root), Path::new(assets), Some(previous))
+        }
+        _ => Err(failure(
+            "usage: zero compile-to-store <sources> <store> <assets> [previous-build]",
+        )),
+    };
+    match result {
+        Ok(build) => {
+            println!(
+                "{}",
+                serde_json::json!({"build": build.build_id, "runtime": build.runtime_revision, "app": build.app_hash})
+            );
+            std::process::ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{}", crate::diag::render(&e, Path::new(".")));
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
 /// Native hosts pass private input/output directories, never author PHP.
 #[cfg(feature = "cli")]
 pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {

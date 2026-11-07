@@ -327,21 +327,139 @@ final class Loader
             return $url . '/' . $dir . ($path !== '' ? '/' . ltrim($path, '/') : '');
         }, 10, 3);
     }
+
+    /** The plain-site store root: ZERO_BUILD_STORE, else wp-content/zero/builds. */
+    public static function root(): string
+    {
+        return defined('ZERO_BUILD_STORE') ? rtrim((string) constant('ZERO_BUILD_STORE'), '/') : WP_CONTENT_DIR . '/zero/builds';
+    }
+}
+
+/** `wp zero`: build commands on plain sites; everything else goes to the mounted app. */
+final class Cli
+{
+    private static bool $registered = false;
+
+    public static function register(): void
+    {
+        if (self::$registered || !defined('WP_CLI') || !WP_CLI) {
+            return;
+        }
+        self::$registered = true;
+        \WP_CLI::add_command('zero', [self::class, 'run']);
+    }
+
+    /** The build a plain-site `wp zero deploy <id>` names; it mounts instead of the current one. */
+    public static function deploying(): ?string
+    {
+        if (!defined('WP_CLI') || !WP_CLI || !class_exists(\WP_CLI::class)) {
+            return null;
+        }
+        $args = \WP_CLI::get_runner()->arguments;
+        return ($args[0] ?? null) === 'zero' && ($args[1] ?? null) === 'deploy' && Store::validId($args[2] ?? null) ? $args[2] : null;
+    }
+
+    public static function run(array $args, array $flags): void
+    {
+        $command = $args[0] ?? '';
+        if (!in_array($command, ['deploy', 'rollback', 'gc', 'builds'], true)) {
+            if (!class_exists(\Zero\Wp\Runtime::class, false)) {
+                \WP_CLI::error('No Zero build is loaded.');
+            }
+            \Zero\Wp\Runtime::cli($args, $flags);
+            return;
+        }
+        if (defined('ZERO_BUILD_HOST')) {
+            \WP_CLI::error('The host selects and collects Zero builds on this site.');
+        }
+        $root = Loader::root();
+        try {
+            $out = match ($command) {
+                'deploy' => self::deploy($root, $args[1] ?? ''),
+                'rollback' => self::rollback($root, $args[1] ?? null),
+                'gc' => self::gc($root, $flags),
+                'builds' => self::builds($root),
+            };
+        } catch (\Throwable $error) {
+            \WP_CLI::line((string) json_encode(['error' => ['code' => 'zero_build_failed', 'message' => $error->getMessage()]], JSON_UNESCAPED_SLASHES));
+            \WP_CLI::halt(1);
+        }
+        \WP_CLI::line((string) json_encode(['data' => $out], JSON_UNESCAPED_SLASHES));
+    }
+
+    /** Initialize the build on this site, then point `current` at it. */
+    private static function deploy(string $root, string $build): array
+    {
+        if (defined('ZERO_BUILD') && constant('ZERO_BUILD') !== $build) {
+            throw new \RuntimeException('ZERO_BUILD pins this site to ' . constant('ZERO_BUILD'));
+        }
+        $receipt = Loader::initialize($root, $build);
+        Store::locked($root, static function () use ($root, $build): void {
+            $current = Store::current($root);
+            $history = $current === null ? [] : array_merge([$current['build']], $current['history']);
+            $history = array_values(array_filter(array_unique($history), static fn (string $id): bool => $id !== $build));
+            Store::writeJson($root, 'current.json', ['build' => $build, 'history' => $history]);
+        });
+        return ['build' => $build] + $receipt + ['current' => Store::current($root)];
+    }
+
+    /** Point `current` at an earlier initialized build (default: the previous one). No migrations run. */
+    private static function rollback(string $root, ?string $build): array
+    {
+        return Store::locked($root, static function () use ($root, $build): array {
+            $current = Store::current($root) ?? throw new \RuntimeException('Nothing is deployed');
+            $build ??= $current['history'][0] ?? throw new \RuntimeException('No earlier build to roll back to');
+            Store::manifest($root, $build);
+            if (Store::receipt($root, $build) === null) {
+                throw new \RuntimeException("Build $build never initialized here; deploy it instead");
+            }
+            $history = array_values(array_filter($current['history'], static fn (string $id): bool => $id !== $build));
+            Store::writeJson($root, 'current.json', ['build' => $build, 'history' => $history]);
+            return ['build' => $build, 'from' => $current['build'], 'current' => Store::current($root)];
+        });
+    }
+
+    /** Keep the current build, the newest `--history` (default 5) earlier ones and any `--keep=<id,...>`. */
+    private static function gc(string $root, array $flags): array
+    {
+        $history = (int) ($flags['history'] ?? 5);
+        $current = Store::current($root);
+        $keep = $current === null ? [] : array_slice($current['history'], 0, max(0, $history));
+        foreach (array_filter(explode(',', (string) ($flags['keep'] ?? ''))) as $id) {
+            $keep[] = $id;
+        }
+        return ['removed' => Store::gc($root, $keep, isset($flags['dry-run'])), 'dryRun' => isset($flags['dry-run'])];
+    }
+
+    private static function builds(string $root): array
+    {
+        $builds = [];
+        foreach (glob($root . '/build/*.json') ?: [] as $file) {
+            $id = basename($file, '.json');
+            if (Store::validId($id)) {
+                $manifest = Store::manifest($root, $id);
+                $builds[] = ['build' => $id, 'name' => $manifest['name'], 'compiler' => $manifest['compiler'], 'runtime' => $manifest['runtime'], 'app' => $manifest['app'], 'ready' => Store::receipt($root, $id) !== null];
+            }
+        }
+        return ['root' => $root, 'current' => Store::current($root), 'loaded' => Loader::loaded()['build'] ?? null, 'builds' => $builds];
+    }
 }
 
 }
+
+Cli::register();
 
 // Plain WordPress: this file is the must-use plugin. Hosts define ZERO_BUILD_HOST and call load() themselves.
 if (!defined('ZERO_BUILD_HOST')) {
     (static function (): void {
-        $root = defined('ZERO_BUILD_STORE') ? (string) constant('ZERO_BUILD_STORE') : WP_CONTENT_DIR . '/zero/builds';
+        $root = Loader::root();
         $notice = static function (string $problem): void {
             add_action('admin_notices', static fn () => current_user_can('manage_options')
                 && printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('Zero: ' . $problem)));
         };
         try {
-            $current = Store::current($root);
-            $build = defined('ZERO_BUILD') ? (string) constant('ZERO_BUILD') : ($current['build'] ?? null);
+            $deploying = Cli::deploying();
+            $build = $deploying ?? (defined('ZERO_BUILD') ? (string) constant('ZERO_BUILD') : (Store::current($root)['build'] ?? null));
             if ($build === null) {
                 return;
             }
@@ -351,12 +469,14 @@ if (!defined('ZERO_BUILD_HOST')) {
                     return;
                 }
             }
-            if (Store::receipt($root, $build) === null) {
+            // Visitors only reach builds this site initialized; `wp zero deploy` initializes first.
+            if ($deploying === null && Store::receipt($root, $build) === null) {
                 $notice("build $build is not initialized; run wp zero deploy $build.");
                 return;
             }
-            $url = str_starts_with(wp_normalize_path($root) . '/', wp_normalize_path(WP_CONTENT_DIR) . '/')
-                ? content_url(substr(wp_normalize_path($root), strlen(wp_normalize_path(WP_CONTENT_DIR)) + 1))
+            $content = wp_normalize_path(WP_CONTENT_DIR) . '/';
+            $url = str_starts_with(wp_normalize_path($root) . '/', $content)
+                ? content_url(substr(wp_normalize_path($root), strlen($content)))
                 : null;
             Loader::load($root, $build, ['variables' => null, 'url' => $url]);
         } catch (\Throwable $error) {

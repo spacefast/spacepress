@@ -96,6 +96,7 @@ pub fn main() -> ExitCode {
     match lifecycle.as_deref() {
         Some("sources") => return crate::bundle::sources_cli(&lifecycle_args),
         Some("compile-sources") => return crate::bundle::compile_cli(&lifecycle_args),
+        Some("compile-to-store") => return crate::bundle::compile_to_store_cli(&lifecycle_args),
         Some("deploy") => return crate::commands::deploy::cli(&lifecycle_args),
         Some("abilities") => return crate::commands::abilities::cli(&lifecycle_args),
         Some("publish" | "backup" | "restore") => {

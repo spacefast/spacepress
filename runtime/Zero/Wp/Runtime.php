@@ -38,31 +38,36 @@ final class Runtime
             };
             self::$unavailable = Migrator::upgrade(new Connection($wpdb), 'zero_runtime_tables', $current, [self::class, 'applySystemTables']);
         }, 1);
-        if (defined('WP_CLI') && WP_CLI) {
-            \WP_CLI::add_command('zero', static function (array $args, array $flags): void {
-                if (self::$plugin === null) {
-                    \WP_CLI::error('No compatible Zero app is active.');
-                }
-                // While storage is behind, only `migrate` runs; every other command (legacy migration
-                // included) would write against tables that don't match the build.
-                if (($args[0] ?? '') !== 'migrate' && self::$plugin->unavailable() !== null) {
-                    \WP_CLI::line((string) \Zero\Js::jsonStringify(['error' => \Zero\App::problem(new \Zero\HttpError(503, 'unavailable', (string) self::$plugin->unavailable()))]));
-                    \WP_CLI::halt(1);
-                }
-                if (($args[0] ?? '') === 'seed') {
-                    $code = \Zero\Sync\Seed::wpCli(self::$plugin, $args, $flags);
-                    $code === 0 || \WP_CLI::halt($code);
-                    return;
-                }
-                if (\Zero\Wp\Legacy\Module::handles($args)) {
-                    $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
-                    $code === 0 || \WP_CLI::halt($code);
-                    return;
-                }
-                self::$plugin->cli($args, $flags);
-            });
+        // The build loader owns `wp zero` when present and forwards app commands to cli().
+        if (defined('WP_CLI') && WP_CLI && !class_exists(\Zero\Loader\Loader::class, false)) {
+            \WP_CLI::add_command('zero', [self::class, 'cli']);
         }
         do_action('zero_runtime_loaded');
+    }
+
+    /** `wp zero <command>` for the active app. */
+    public static function cli(array $args, array $flags): void
+    {
+        if (self::$plugin === null) {
+            \WP_CLI::error('No compatible Zero app is active.');
+        }
+        // While storage is behind, only `migrate` runs; every other command (legacy migration
+        // included) would write against tables that don't match the build.
+        if (($args[0] ?? '') !== 'migrate' && self::$plugin->unavailable() !== null) {
+            \WP_CLI::line((string) \Zero\Js::jsonStringify(['error' => \Zero\App::problem(new \Zero\HttpError(503, 'unavailable', (string) self::$plugin->unavailable()))]));
+            \WP_CLI::halt(1);
+        }
+        if (($args[0] ?? '') === 'seed') {
+            $code = \Zero\Sync\Seed::wpCli(self::$plugin, $args, $flags);
+            $code === 0 || \WP_CLI::halt($code);
+            return;
+        }
+        if (\Zero\Wp\Legacy\Module::handles($args)) {
+            $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
+            $code === 0 || \WP_CLI::halt($code);
+            return;
+        }
+        self::$plugin->cli($args, $flags);
     }
 
     /**

@@ -1,4 +1,5 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
+mod endpoints;
 mod spacefast;
 mod transform;
 

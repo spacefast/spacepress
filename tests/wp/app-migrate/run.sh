@@ -50,3 +50,12 @@ docker compose -p "$ZERO_WP_PROJECT" cp "$here/feed-seed.php" cli:/tmp/zero-app-
 "$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-feed-seed.php >/dev/null
 "$wp/harness.sh" up --wp-content "$work/feed/.zero/wp-content" > "$work/feed-harness.json"
 ZERO_WP_HARNESS="$work/feed-harness.json" node --test "$here/feed.test.ts"
+# 0.8 endpoints served as v2 routes at their original paths, over retained rows.
+"$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/endpoints --out "$work/endpoints" --space spc_migrate_test > "$work/endpoints-report.json"
+"$zero" build "$work/endpoints" --quiet >/dev/null
+"$wp/harness.sh" down >/dev/null
+"$wp/harness.sh" up --wp-content "$work/endpoints/.zero/wp-content" --bare > "$work/endpoints-bare.json"
+docker compose -p "$ZERO_WP_PROJECT" cp "$here/endpoints-seed.php" cli:/tmp/zero-app-migrate-endpoints-seed.php >/dev/null 2>&1
+"$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-endpoints-seed.php >/dev/null
+"$wp/harness.sh" up --wp-content "$work/endpoints/.zero/wp-content" > "$work/endpoints-harness.json"
+ZERO_WP_HARNESS="$work/endpoints-harness.json" node --test "$here/endpoints.test.ts"

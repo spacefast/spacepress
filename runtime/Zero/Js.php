@@ -32,7 +32,8 @@ final class Js
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
             $v instanceof JsArray, $v instanceof JsArguments, $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
-            $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace, $v instanceof JsWeakMap, $v instanceof JsWeakSet => self::dynamicObjectTag($v),
+            $v instanceof JsSymbol => throw new JsError('Cannot convert a Symbol value to a string', 'TypeError'),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
@@ -120,6 +121,7 @@ final class Js
     public static function toNumber(mixed $v): int|float
     {
         if ($v instanceof JsDate) { return $v->milliseconds; }
+        if ($v instanceof JsSymbol) { throw new JsError('Cannot convert a Symbol value to a number', 'TypeError'); }
         if ($v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
         if (is_int($v)) {
             return self::n($v);
@@ -470,8 +472,15 @@ final class Js
             is_int($v), is_float($v) => 'number',
             is_bool($v) => 'boolean',
             $v instanceof \Closure, $v instanceof JsClass => 'function',
+            $v instanceof JsSymbol => 'symbol',
             default => 'object',
         };
+    }
+
+    /** Explicit `String(value)`: unlike implicit conversion, a symbol has a string form. */
+    public static function stringOf(mixed $v): string
+    {
+        return $v instanceof JsSymbol ? $v->descriptiveString() : self::str($v);
     }
 
     public static function strictEq(mixed $a, mixed $b): bool
@@ -1589,6 +1598,10 @@ final class Js
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
+        if ($value instanceof JsSymbol || $value instanceof JsWeakMap || $value instanceof JsWeakSet) {
+            if ($structured) { throw new JsError(($value instanceof JsSymbol ? $value->descriptiveString() : self::dynamicObjectTag($value)) . ' could not be cloned', 'DataCloneError'); }
+            return $value;
+        }
         if ($value instanceof JsNamespace) {
             if (!$structured) { return $value; }
             if ($seen->offsetExists($value)) { return $seen[$value]; }
@@ -1660,7 +1673,8 @@ final class Js
         }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
-        if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError) { return new \stdClass(); }
+        if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError || $value instanceof JsWeakMap || $value instanceof JsWeakSet) { return new \stdClass(); }
+        if ($value instanceof JsSymbol) { return null; }
         if (is_float($value)) { return !is_finite($value) ? null : ($value == 0.0 ? 0 : $value); }
         if ($value instanceof \Closure) { return null; }
         if ($value instanceof RegExp) { return new \stdClass(); }
@@ -1688,7 +1702,7 @@ final class Js
             $out = [];
             $nulKey = false;
             foreach (self::ownKeys($items) as $key) {
-                if ($items[$key] instanceof \Closure || $items[$key] === JsUndefined::Value) { continue; }
+                if ($items[$key] instanceof \Closure || $items[$key] === JsUndefined::Value || $items[$key] instanceof JsSymbol) { continue; }
                 $nulKey = $nulKey || str_starts_with((string) $key, "\0");
                 $out[$key] = self::jsonValueTree($items[$key], $stack);
             }
@@ -1747,7 +1761,7 @@ final class Js
 
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
-        if ($v instanceof \Closure || $v === JsUndefined::Value) {
+        if ($v instanceof \Closure || $v === JsUndefined::Value || $v instanceof JsSymbol) {
             return null;
         }
         $v = self::jsonTree($v);

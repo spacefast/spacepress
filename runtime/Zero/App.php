@@ -104,8 +104,8 @@ final class App
             }
         }
         // Most specific wins, whatever the declaration order: compared segment by segment from the
-        // left, a literal beats a `:param`. Declaration order breaks only exact ties, which the
-        // compiler refuses anyway.
+        // left, a literal beats a `:param`, which beats a `*rest`. Declaration order breaks only
+        // exact ties, which the compiler refuses anyway.
         $best = null;
         $bestRank = null;
         foreach ($this->schema->routes() as $name => $route) {
@@ -113,13 +113,19 @@ final class App
                 continue;
             }
             $pattern = explode('/', trim($route['path'], '/'));
-            if (count($pattern) !== count($decoded)) {
+            $rest = str_starts_with((string) end($pattern), '*');
+            $fixed = $rest ? count($pattern) - 1 : count($pattern);
+            // `*rest` takes one or more segments, never none, like the original runtime's matcher.
+            if ($rest ? count($decoded) <= $fixed : count($decoded) !== $fixed) {
                 continue;
             }
             $params = [];
             $rank = [];
             foreach ($pattern as $i => $part) {
-                if (str_starts_with($part, ':')) {
+                if (str_starts_with($part, '*')) {
+                    $params[substr($part, 1)] = implode('/', array_slice($decoded, $i));
+                    $rank[] = 2;
+                } elseif (str_starts_with($part, ':')) {
                     $params[substr($part, 1)] = $decoded[$i];
                     $rank[] = 1;
                 } elseif ($part !== $decoded[$i]) {
@@ -128,13 +134,35 @@ final class App
                     $rank[] = 0;
                 }
             }
-            if ($bestRank === null || $rank < $bestRank) {
+            if ($bestRank === null || self::moreSpecific($rank, $bestRank)) {
                 $best = ['name' => $name, 'route' => $route, 'params' => $params];
                 $bestRank = $rank;
             }
         }
 
         return $best;
+    }
+
+    /**
+     * Left to right, the first differing segment decides: literal (0) before `:param` (1) before
+     * `*rest` (2). PHP's own array `<` compares lengths first, which would rank `/a/*rest` above
+     * `/a/:b/c` for being shorter.
+     *
+     * @param list<int> $a
+     * @param list<int> $b
+     */
+    private static function moreSpecific(array $a, array $b): bool
+    {
+        foreach ($a as $i => $kind) {
+            if (!isset($b[$i])) {
+                return false;
+            }
+            if ($kind !== $b[$i]) {
+                return $kind < $b[$i];
+            }
+        }
+
+        return count($a) > count($b);
     }
 
     /** Whether any route claims this path for some method (a 405 rather than a 404 for the others). */

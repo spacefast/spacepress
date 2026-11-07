@@ -2696,7 +2696,15 @@ fn routes(cfg: &IndexMap<String, Value>, span: Span, out: &mut Extracted) -> Res
         let path = route_path(&string(o.get("path"), r.span, "route path")?, r.span)?;
         let shape = path
             .split('/')
-            .map(|s| if s.starts_with(':') { ":" } else { s })
+            .map(|s| {
+                if s.starts_with(':') {
+                    ":"
+                } else if s.starts_with('*') {
+                    "*"
+                } else {
+                    s
+                }
+            })
             .collect::<Vec<_>>()
             .join("/");
         if let Some((other, ..)) = shapes.iter().find(|(_, m, s)| *m == method && *s == shape) {
@@ -2762,7 +2770,7 @@ const RESERVED_ROUTE_FIRST: &[&str] = &[
 fn route_path(path: &str, span: Span) -> Result<String> {
     let bad = |why: &str| {
         Diag::new(span, format!("route path {path:?} {why}")).help(
-            "write an absolute path of literal segments and :name parameters, like /api/feed.json or /hooks/:provider",
+            "write an absolute path of literal segments, :name parameters and an optional last *rest, like /api/feed.json, /hooks/:provider or /files/*path",
         )
     };
     let Some(rest) = path.strip_prefix('/') else {
@@ -2773,8 +2781,17 @@ fn route_path(path: &str, span: Span) -> Result<String> {
         return Err(bad("cannot be the site root; the root belongs to pages or the theme"));
     }
     let mut params = std::collections::HashSet::new();
-    for segment in rest.split('/') {
-        if let Some(param) = segment.strip_prefix(':') {
+    let segments: Vec<&str> = rest.split('/').collect();
+    for (i, &segment) in segments.iter().enumerate() {
+        if let Some(param) = segment.strip_prefix('*') {
+            // `*name` takes the rest of the path: one or more segments, so it must come last.
+            if i + 1 != segments.len() {
+                return Err(bad("has a *catch-all that is not the last segment"));
+            }
+            if !valid_ident(param) || !params.insert(param) {
+                return Err(bad("has an invalid or repeated *catch-all name"));
+            }
+        } else if let Some(param) = segment.strip_prefix(':') {
             if !valid_ident(param) || !params.insert(param) {
                 return Err(bad("has an invalid or repeated :parameter"));
             }
@@ -2790,6 +2807,7 @@ fn route_path(path: &str, span: Span) -> Result<String> {
     }
     let first = rest.split('/').next().unwrap_or_default().to_ascii_lowercase();
     if first.starts_with(':')
+        || first.starts_with('*')
         || crate::pages::RESERVED_FIRST.contains(&first.as_str())
         || RESERVED_ROUTE_FIRST.contains(&first.as_str())
     {

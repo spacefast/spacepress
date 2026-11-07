@@ -117,6 +117,12 @@ receipt in `<target-prefix>zero_spacefast_migrations`. A conflicting row refuses
 the group with `zero_spacefast_conflict` and rolls that group back. Earlier
 groups remain committed and are skipped on retry. On a completed rerun, each
 group reports `copied: 0` and `status: "already-migrated"`. Keep the receipts.
+Each receipt holds a digest of the source rows its group copied. `--verify`
+reports a group as `drifted` when any of those rows changed afterwards,
+including edits that keep row counts and IDs, such as a changed email,
+password hash, metadata value or session secret. Receipts written before
+content digests (bare 64-hex values) are still checked with the earlier
+count-based digest, so they keep verifying while the source is unchanged.
 
 ## Application source migration
 

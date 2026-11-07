@@ -2816,29 +2816,7 @@ fn route_path(path: &str, span: Span) -> Result<String> {
     Ok(format!("/{rest}"))
 }
 
-fn kebab(name: &str) -> String {
-    let mut s = String::new();
-    let chars: Vec<char> = name.chars().collect();
-    for (i, c) in chars.iter().enumerate() {
-        if *c == '_' || *c == '-' {
-            if !s.ends_with('-') {
-                s.push('-');
-            }
-        } else {
-            if c.is_uppercase()
-                && i > 0
-                && !s.ends_with('-')
-                && (chars[i - 1].is_lowercase()
-                    || chars[i - 1].is_ascii_digit()
-                    || chars.get(i + 1).is_some_and(|c| c.is_lowercase()))
-            {
-                s.push('-');
-            }
-            s.extend(c.to_lowercase());
-        }
-    }
-    s
-}
+use crate::abilities::kebab;
 
 fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
     if let Some(v) = cfg.get("globals") {

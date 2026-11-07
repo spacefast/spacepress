@@ -58,6 +58,10 @@ jobs:
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
           ZERO_BIN="$GITHUB_WORKSPACE/target/debug/zero" node examples/npm-compat/verify.mjs --isolated
       - run: target/debug/zero check examples/showcase
+      - name: Zero 0.8 census tool
+        env:
+          ZERO_BIN: ${{ github.workspace }}/target/debug/zero
+        run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
       - name: Docker-free local development acceptance
         run: node --test scripts/dev/acceptance.test.mjs
       - name: Offline deployment and recovery acceptance

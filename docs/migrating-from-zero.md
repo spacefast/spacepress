@@ -135,6 +135,12 @@ zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_exam
 zero check ./migrated-app
 ```
 
+To start from what a 0.8 publish stored instead, pass its finalize payload:
+`--manifest finalize.json ./old-app` checks that every source file matches the
+published SHA-256 before converting, and `--manifest finalize.json` alone
+reports the manifest's own refusals and then refuses at `/source`, because the
+stored bundles are compiled JavaScript, not source.
+
 The input may be a Spacefast 0.8 project root with `sf.jsonc`, a server entry
 and `content/`. The server entry is `sf.jsonc`'s `runtime.server`, or
 `server/index.ts`; the candidate names it `server/index.ts`. Local TypeScript
@@ -461,7 +467,7 @@ before activating an app.
 | Sessions | Copies imported sessions with markers; accepts the old cookie and upgrades a valid legacy hash once, preserving expiry | Requires original auth salt and an explicitly scoped cookie alias; native v2 rows never get legacy fallback |
 | Google sign-in | Copies provider subject bindings to the same user IDs; host projects Google client values into managed identity configuration | Verify a fresh Google sign-in on the deployed host; never put provider secrets in source or reports |
 | Connector roles | Emits `connector-roles.json`; maps `owner` to `personal` and retains `team` and `visitor` | The overlay grants no credentials or permissions; old connector calls require a port |
-| REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | HEAD/OPTIONS, catch-all paths, writing GETs, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
+| REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | HEAD/OPTIONS, a `:splat` that is not last, writing GETs, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Unsupported; source conversion drops the declaration with a review hint | Replace subscription-dependent behavior before cutover |
 | Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `zero-pages build` and commit `zero/pages.json` |

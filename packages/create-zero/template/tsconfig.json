@@ -6,7 +6,7 @@
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": [],
+    "types": ["node"],
     "paths": { "zero": ["./node_modules/@spacefast/zero-cli/types/index.d.ts"] }
   },
   "include": ["zero.config.ts", "zero.gen.ts", "client.ts", "zero/client/**/*.ts"]

@@ -912,7 +912,9 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions:
         .get("module")
         .and_then(|value| value.as_str())
         .filter(|_| conditions == Conditions::Import);
-    let legacy_main = manifest.get("exports").is_none() && subpath == "." && module_entry.is_none();
+    // Without an export map, `require("pkg/sub")` probes like Node's CommonJS resolver.
+    let legacy_main = manifest.get("exports").is_none()
+        && ((subpath == "." && module_entry.is_none()) || conditions == Conditions::Require);
     let target =
         if let Some(exports) = manifest.get("exports") {
             let entry = if exports
@@ -963,8 +965,9 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions:
         ));
     }
     let path = package.join(&target);
-    // Node's legacy `main` field can omit .js or name a directory. Explicit exports and source
-    // `module` targets stay exact; no probing may bypass an export map's selected target.
+    // Node's legacy `main` field, and CommonJS subpaths of a package without an export map, can
+    // omit .js or name a directory. Explicit exports and source `module` targets stay exact; no
+    // probing may bypass an export map's selected target.
     let path = if legacy_main && !fs.is_file(&path) {
         let mut with_js = path.clone().into_os_string();
         with_js.push(".js");

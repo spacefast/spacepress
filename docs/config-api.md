@@ -621,10 +621,16 @@ Imports: `"zero"`, relative TypeScript/ESM JavaScript sources, and locally insta
 source packages. Package imports search the nearest `node_modules`, support scoped
 names and exact subpath exports, and select `import`/`default` export conditions,
 an explicit `module` entry, or a supported `main`/index entry. `.mjs`, `.ts` and `.mts` identify
-source directly. A narrow CommonJS subset supports one top-level
-`module.exports = function` or assignment of a local function. `require`, named
-CommonJS exports, mixed ESM/CommonJS and implicit sloppy-mode `arguments` are
-refused. Export patterns, Node built-ins,
+source directly. A `.cjs` source, or a `.js` source with no ESM syntax outside a
+`"type": "module"` package, is static CommonJS. It runs once at build time, like
+Node's module cache: top-level `require("<literal>")` of relative files and
+CommonJS packages (resolved with the `require`/`default` conditions), and
+`module.exports = …` or `exports.name = …` outside functions. ESM importers get
+`module.exports` as the default export, plus the statically assigned names as
+named exports. Dynamic `require`, `require` inside a function, `require` of an ES
+module, `require` cycles, writes to `module` or `exports` inside a function,
+other `module` properties, mixed ESM/CommonJS and implicit sloppy-mode
+`arguments` are refused. Export patterns, Node built-ins,
 package aliases and declaration-only targets are refused. Package entry targets
 must name existing files inside the package; the compiler does not install them.
 Relative `.js` imports can resolve to their TypeScript source counterparts.

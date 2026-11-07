@@ -39,6 +39,10 @@ Every Zero file starts with `declare(strict_types=1);`. Namespace `Zero`.
 sets `ini_set('precision', '-1')`, `ini_set('serialize_precision', '-1')`,
 registers an autoloader for `Zero\*` from its own directory, and registers the
 ordered feature modules through `Features::register()` (once per process).
+The bundled Composer loader and its autoloaded function files load on the first
+`Zero\Vendor\*` or `Zero_Vendor_*` class use. Ordinary requests do not load the
+optional Markdown, merge or S3 dependencies. Both scoped namespace and global
+class names use the same authoritative Composer map.
 
 The signing key for private-file URLs is the `zero_runtime_secret` option,
 minted on activation.

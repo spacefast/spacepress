@@ -1103,7 +1103,16 @@ impl Lowerer {
                 self.mk(span, ExprKind::Object(props))
             }
             E::ArrowFunctionExpression(f) => self.mk(span, ExprKind::Func(self.arrow(f)?)),
-            E::FunctionExpression(f) => self.mk(span, ExprKind::Func(self.function(f)?)),
+            E::FunctionExpression(f) => {
+                if f.id.is_some() {
+                    return self.unsupported(
+                        f.span,
+                        "named function expressions",
+                        "use an anonymous function expression or a function declaration",
+                    );
+                }
+                self.mk(span, ExprKind::Func(self.function(f)?))
+            }
             E::ParenthesizedExpression(p) => self.expr(&p.expression)?,
             E::UnaryExpression(u) => {
                 let op = match u.operator {

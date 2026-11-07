@@ -1091,5 +1091,20 @@
     "name": "loopDestructuringDefaultsInitializeInOrder",
     "expression": "(() => {const rows:number[][]=[[]];const out=[];for(const [a=1,b=a] of rows)out.push([a,b]);return out;})()",
     "fold": true
+  },
+  {
+    "name": "computedDataCallsKeepReceiverAndLookupOrder",
+    "files": {
+      "native-method.js": "export function nativeMethod(){const object={};return object.toString;}"
+    },
+    "declarations": "import {nativeMethod} from './native-method.js';",
+    "expression": "(() => {const obj={f:nativeMethod()};const typed:{f:()=>string}={f:()=> 'typed'};const slots=[nativeMethod()];let receivers=0;let keys=0;const get=()=>{receivers++;return obj;};const key=():'f'=>{keys++;return 'f';};const ordered:{f:(x:undefined)=>string}={f:(x:undefined)=>'first'};const change=()=>{ordered.f=(x:undefined)=>'second';return undefined;};return [obj.f(),obj['f'](),typed['f'](),slots[0](),get()[key()](),receivers,keys,ordered['f'](change()),ordered.f(undefined)];})()",
+    "fold": false
+  },
+  {
+    "name": "functionDeclarationsAndAnonymousExpressionsKeepScope",
+    "declarations": "function namedScopeProbe():string{return typeof namedScopeProbe;}",
+    "expression": "[namedScopeProbe(),(function(){return 'anonymous';})()]",
+    "fold": true
   }
 ]

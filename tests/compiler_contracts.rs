@@ -2168,3 +2168,30 @@ fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
         "{report}"
     );
 }
+
+#[test]
+fn named_function_expressions_refuse_with_a_source_position() {
+    for declaration in [
+        "const x=7;const folded=(function x(){return typeof x;})();",
+        "const x=7;const folded=()=> (function x(){return typeof x;})();",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert_eq!(diagnostic["code"], "Z1002", "{report}");
+        assert!(
+            diagnostic["message"]
+                .as_str()
+                .unwrap()
+                .contains("named function expressions"),
+            "{report}"
+        );
+        assert!(diagnostic["location"].is_object(), "{report}");
+        assert_eq!(
+            diagnostic["help"], "use an anonymous function expression or a function declaration",
+            "{report}"
+        );
+    }
+}

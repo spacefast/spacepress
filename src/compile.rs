@@ -4269,8 +4269,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Ty::Dynamic,
                     ));
                 }
-                let f = self.expr(callee)?;
-                self.call_value(f, args, span, callee.span)
+                let mut f = self.expr(callee)?;
+                let key = self.expr(index)?;
+                let receiver = if *opt && recv.ty.is_nullable() {
+                    self.tmp_var()
+                } else {
+                    recv.php.clone()
+                };
+                // Retain the indexed callee's type checks, but bind its receiver before
+                // evaluating arguments, just as for a direct data-property call.
+                f.php = format!("\\Zero\\Js::dataMethod({receiver}, {})", key.php);
+                f.helper = None;
+                let mut out = self.call_value(f, args, span, callee.span)?;
+                if *opt && recv.ty.is_nullable() {
+                    out.php = format!(
+                        "(\\Zero\\Js::isNullish({receiver} = {}) ? \\Zero\\Js::undefined() : {})",
+                        recv.php, out.php
+                    );
+                }
+                Ok(out)
             }
             ExprKind::Ident(n) => {
                 if let Resolved::Global(g) = self.resolve(n, callee.span)? {

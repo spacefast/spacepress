@@ -60,3 +60,22 @@ docker compose -p "$ZERO_WP_PROJECT" cp "$here/endpoints-seed.php" cli:/tmp/zero
 "$wp/harness.sh" up --wp-content "$work/endpoints/.zero/wp-content" > "$work/endpoints-harness.json"
 "$wp/harness.sh" wp config set LEGACY_BANNER "from wp-config" >/dev/null
 ZERO_WP_HARNESS="$work/endpoints-harness.json" node --test "$here/endpoints.test.ts"
+# Converted static pages, published through the hosted path: zero-pages render, capture with
+# `zero sources`, delete the project, and install only `zero compile-sources` output.
+"$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/site --out "$work/site" --space spc_migrate_test > "$work/site-report.json"
+sed -e "s|\"\.\./\.\./|\"$repo/|g" -e "s|\"\./islands/interactivity\.d\.ts\"|\"$repo/examples/full-site/islands/interactivity.d.ts\"|" "$repo/examples/full-site/tsconfig.json" > "$work/site/tsconfig.json"
+"$zero" build "$work/site" --quiet >/dev/null
+node "$repo/packages/pages/bin/zero-pages.mjs" build "$work/site" >/dev/null
+"$zero" sources "$work/site" --out "$work/site-source"
+mkdir -p "$work/site-content/plugins"
+cp "$work/site/.zero/wp-content/zero-manifest.json" "$work/site-content/"
+"$zero" compile-sources "$work/site-source" "$work/site-compiled" "$work/site-source"
+rsync -a "$work/site-compiled/plugins/" "$work/site-content/plugins/"
+"$wp/harness.sh" down >/dev/null
+"$wp/harness.sh" up --wp-content "$work/site-content" --bare > "$work/site-bare.json"
+docker compose -p "$ZERO_WP_PROJECT" cp "$here/site-seed.php" cli:/tmp/zero-app-migrate-site-seed.php >/dev/null 2>&1
+"$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-site-seed.php >/dev/null
+"$wp/harness.sh" up --wp-content "$work/site-content" > "$work/site-harness.json"
+"$wp/harness.sh" wp zero migrate >/dev/null
+"$wp/harness.sh" wp plugin activate zero-pages-legacy-site >/dev/null
+ZERO_WP_HARNESS="$work/site-harness.json" node --test "$here/site.test.ts"

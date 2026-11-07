@@ -117,7 +117,7 @@ fn reports_all_unsupported_features_and_never_writes_a_refused_app() {
     assert_eq!(
         pointers,
         [
-            "/pages/index.tsx",
+            "/pages/live.tsx",
             "/auth/onGuestUpgrade",
             "/queries/email/ctx/email",
             "/queries/identity/ctx/auth/userId",
@@ -201,6 +201,12 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
         std::fs::create_dir_all(root.join(dir)).unwrap();
         std::fs::write(root.join(dir).join("index.tsx"), "export default () => null;").unwrap();
     }
+    // A static page maps; one that keeps state in the browser does not.
+    std::fs::write(
+        root.join("pages/counter.tsx"),
+        "import { useState } from \"preact/hooks\";\nexport default () => { const [n] = useState(0); return <p>{n}</p>; };",
+    )
+    .unwrap();
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(!ok);
@@ -213,9 +219,9 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
     assert_eq!(
         pointers,
         [
-            "/pages/index.tsx",
             "/islands/index.tsx",
             "/layouts/index.tsx",
+            "/pages/counter.tsx",
             "/endpoints/health"
         ]
     );
@@ -411,4 +417,41 @@ fn env_and_log_services_map_to_v2_builtins() {
     let (ok, report) = migrate(&fixture("services"), &out, &[]);
     assert!(ok, "{report:#}");
     build(&out);
+}
+
+#[test]
+fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("site");
+    let (ok, report) = migrate(&fixture("site"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    for file in [
+        "pages/page.tsx",
+        "pages/pricing/page.tsx",
+        "pages/docs/page.tsx",
+        "pages/layout.tsx",
+        "shared/plans.ts",
+    ] {
+        assert!(out.join(file).is_file(), "{file}");
+    }
+    let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
+    assert!(
+        pricing.starts_with("import { plans } from \"../../shared/plans\";"),
+        "{pricing}"
+    );
+    // Interactive starters keep a pointer per page saying what to port.
+    let (ok, refused) = migrate(
+        &corpus("starter-todo"),
+        &temp.path().join("todo"),
+        &["--users", "--space", "s", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = refused["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 2);
+    assert_eq!(errors[0]["pointer"], "/pages/index.tsx");
+    let reason = errors[0]["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("live queries") && reason.contains("mutations") && reason.contains("docs/pages.md"),
+        "{reason}"
+    );
 }

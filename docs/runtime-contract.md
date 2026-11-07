@@ -460,8 +460,9 @@ operation or replace an already-started response.
 
 ## class App (HTTP)
 
-`App::boot(string $appRoot, Store $store, Auth $auth, Media $media): App` loads
-`zero/app/schema.php` and requires `zero/app/functions.php`; the plugin passes
+`App::boot(string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media): App`
+uses the validated schema passed by the WordPress registry and requires
+`zero/app/functions.php`; the plugin passes
 its store, authentication and media services, and migrates on activation and
 on the first request after an update (`Wp\Plugin`).
 

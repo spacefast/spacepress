@@ -545,7 +545,7 @@ final class Plugin
                     [$resumeId, $resumeSecret] = array_pad(
                         explode(
                             ".",
-                            (string) ($_COOKIE["zi_reauth"] ?? ""),
+                            (string) ($_COOKIE[Sessions::cookieName("zi_reauth")] ?? ""),
                             2,
                         ),
                         2,
@@ -591,7 +591,7 @@ final class Plugin
                     exit();
                 }
                 $session = self::$sessions->find(
-                    (string) ($_COOKIE[Sessions::COOKIE] ?? ""),
+                    (string) ($_COOKIE[Sessions::cookieName()] ?? ""),
                 );
                 if (
                     $_SERVER["REQUEST_METHOD"] === "GET" &&
@@ -613,9 +613,9 @@ final class Plugin
                         ],
                         $binding,
                     );
-                    setcookie("zi_reauth", $resumeId . "." . $binding, [
+                    setcookie(Sessions::cookieName("zi_reauth"), $resumeId . "." . $binding, [
                         "expires" => time() + 300,
-                        "path" => self::path(),
+                        "path" => "/",
                         "secure" => is_ssl(),
                         "httponly" => true,
                         "samesite" => "Lax",

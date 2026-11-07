@@ -24,6 +24,8 @@ $open['hooks'] = $open['relations'] = [];
 $open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'anyone']);
 $open['wp'] = ['postType' => 'zero_open_notes', 'groupKey' => 'group_zero_open_notes', 'metaPrefix' => 'zero_', 'fieldKeyPrefix' => 'field_zero_open_notes_'];
 $schema['collections']['openNotes'] = $open;
+// Signed-in-only action: on a site without zero-identity, only WordPress itself can sign anyone in.
+$schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated'], 'handler' => 'action__publishedCount'] + $schema['actions']['publishedCount'];
 $wp = wpSite('blog', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),
@@ -114,6 +116,12 @@ eq('shorthand read + drafts: anonymous sees published authors only', array_colum
 eq('… editors see every status', array_column(req('GET', '/authors', as: 'ed', query: ['orderBy' => 'id'])[1], 'name'), ['Alice', 'Ghost']);
 eq('… authors are below editor', array_column(req('GET', '/authors', as: 'alice')[1], 'name'), ['Alice']);
 eq('GET /me', [req('GET', '/me')[1], req('GET', '/me', as: 'alice')[1]], [null, $users['alice']]);
+// No identity plugin: there is no issuer, and the only signed-in viewer is a WordPress user.
+eq('without zero-identity, Zero has no issuer and no guests', [class_exists(\Zero\Identity\Plugin::class, false), req('GET', '/auth/config')[1]], [false, ['issuer' => null, 'guests' => false]]);
+isProblem('without zero-identity, there are no guest sessions', req('POST', '/auth/guest', []), 404, 'not_found');
+eq('without zero-identity, an "anyone" action runs anonymously', req('POST', '/actions/publishedCount')[0], 200);
+isProblem('without zero-identity, an "authenticated" action refuses anonymous', req('POST', '/actions/signedInCount'), 401, 'unauthenticated');
+eq('without zero-identity, a WordPress user is authenticated', req('POST', '/actions/signedInCount', as: 'sub')[0], 200);
 
 // Native post passwords constrain every viewer-bound read before selection, not just its rendered body.
 $protected = $db->insert('posts', ['title' => 'Protected native post', 'body' => '<p>native-password-secret</p>'], true)[0];

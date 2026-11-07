@@ -178,6 +178,8 @@ jobs:
           node-version: '22'
       - run: npm install --global typescript@5.9.3
       - run: tsc -p types/zero/tests
+      # The WordPress hook catalog and its declarations match the pinned sources.
+      - run: python3 scripts/wordpress-catalog.py --check
       - run: tsc -p examples/pantry
       - run: tsc -p examples/blog
       - run: tsc -p examples/showcase

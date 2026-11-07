@@ -7,7 +7,7 @@ licensing and scope decisions in §1 and §9 govern the import PR (§8, PR 2).
 The ask: bring Spacefast's earlier WordPress admin work into Zero as an
 optional plugin that `zero build` can ship next to `zero-runtime`,
 `zero-identity` and `zero-app-<name>`. It is an admin UI for Zero apps on
-WordPress. It is not a capsule frontend and it is not an embed for another
+WordPress. It is not an app frontend and it is not an embed for another
 dashboard.
 
 Conventions: "the source" = Spacefast's earlier WordPress admin work, an
@@ -515,7 +515,7 @@ Node is a dev dependency of this repository already (`runtime/identity/apps`,
 Keep if it (a) works on Zero's model (CPT + SCF, `/_schema`, `/zero/v1`) or
 can be rewired to it, and (b) adds something plain wp-admin does not have for
 a Zero app. Drop if it duplicates wp-admin with no Zero gain, depends on the
-the content kernel Zero v2 replaces, or is capsule/host-specific.
+the content kernel Zero v2 replaces, or is host-specific.
 
 ### 4.2 Routes
 

@@ -540,6 +540,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::builtins::check_json_serialization_type(&ret, root.closure.func.span)?;
                 self.action_results.insert(action.clone(), ret);
             }
+            if let Slot::RouteHandler { route } = &root.slot {
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => match &**ret {
+                        Ty::Promise(t) => (**t).clone(),
+                        t => t.clone(),
+                    },
+                    _ => Ty::Unknown,
+                };
+                if !assignable(&ret, &types::route_response()) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("routes.{route} returns {}, not a route response", ret.describe()),
+                        "return { status?: number, headers?: Record<string, string>, body?: string }",
+                    );
+                }
+            }
             self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());
             out.push((root.slot.clone(), name));
         }
@@ -572,6 +588,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 types::job_ctx(),
             ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
+            Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,
@@ -592,7 +609,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Owner::Global(name) => &self.schema.globals[name].fields,
                     Owner::Action(name) => &self.schema.actions[name].input,
                     Owner::Job(name) => &self.schema.jobs[name].input,
-                    Owner::FileBucket(_) => unreachable!("file buckets have no validator fields"),
+                    Owner::FileBucket(_) | Owner::Route(_) => {
+                        unreachable!("file buckets and routes have no validator fields")
+                    }
                 };
                 vec![
                     types::col_base(col, &types::json_ty, false),
@@ -2955,6 +2974,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Relation(_)
             | Value::Action(_)
             | Value::Job(_)
+            | Value::Route(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,

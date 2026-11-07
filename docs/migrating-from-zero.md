@@ -2,8 +2,18 @@
 
 Migrate a Spacefast app with the hosted operation below. It converts supported
 source, preserves content and user IDs, and carries existing logins into v2.
-Generated endpoints and actions work on Spacefast, and so do [live updates](realtime.md).
-Pages are not hosted yet.
+Generated endpoints, actions, [HTTP routes](config-api.md#http-routes) and
+[live updates](realtime.md) work on Spacefast. [TSX pages](pages.md) do not
+yet: the Spacefast host mounts the runtime, the app and identity for a v2
+version, but not the compiled pages plugin, and it does not serve its assets.
+Until it does, keep any 0.8 Space whose visitors depend on its pages on 0.8;
+this guide's commit step retires the 0.8 site.
+
+The baseline is `@spacefast/zero` and `@spacefast/zero-compile` 0.8.1. A
+successful source conversion proves that the candidate compiles. Complete the
+data copy, access review, client changes, and runtime checks before calling an
+application migrated. [Coverage](#coverage) lists what each 0.8 capability
+becomes.
 
 For a standalone WordPress site, use the config and in-place data commands
 later in this guide. Both paths report unsupported behavior with pointers.
@@ -19,11 +29,23 @@ standalone in-place commands later in this guide target a different deployment.
    existing 0.8 app reports `legacy_0_8`.
 2. Inspect the capsule, frontend callers, content, and Space Users settings.
    Identify custom endpoints, `pages/`, `layouts/`, and `islands/`. The converter
-   refuses these with pointers. Port endpoints to named v2 actions and replace
-   unsupported frontend code before continuing. Realtime declarations and
+   refuses these with pointers. Port each method/path endpoint to a v2
+   [route](config-api.md#http-routes) (or a named action when its callers can
+   change). A route segment is literal or `:name`, which matches exactly one
+   segment, so a 0.8 catch-all endpoint (a final `:splat`, which took the rest
+   of the path) has no route form: move its callers to fixed paths or to a
+   query parameter, or to an action. Realtime declarations and
    `ctx.invalidate(...)` calls are removed: v2 announces every committed write.
-   Replace `useQuery` subscriptions with [`watch`](realtime.md). Pages are not
-   hosted yet.
+   Replace `useQuery` subscriptions with [`watch`](realtime.md).
+
+   Pages, layouts and islands need a [TSX page](pages.md) port, and that port
+   cannot go into the 0.8 project: the converter refuses any `pages/`,
+   `layouts/` or `islands/` it finds there and writes no candidate. Remove them
+   from the converter input, write the TSX pages in a separate directory, and
+   add them to the converted candidate after step 3 (`pages/` beside its
+   `zero.config.ts`, rendered with `zero-pages build` and committed as
+   `zero/pages.json`). Spacefast does not host TSX pages yet, so only Spaces
+   that can go without their pages should continue.
 3. Request the conversion report without changing the Space:
 
    ```sh
@@ -58,7 +80,7 @@ standalone in-place commands later in this guide target a different deployment.
    IDs and authors, an existing login, and a fresh Google sign-in when enabled.
    Check that the hosted repository now contains the converted v2 source.
    Update frontend callers to the generated client and named action routes in
-   the [deploy guide](spacefast-deploy.md#call-a-rest-endpoint-or-action).
+   the [deploy guide](spacefast-deploy.md#call-a-rest-endpoint-action-or-route).
 
 If the operation fails before `data`, fix the reported refusal and retry. Once
 `data` starts, retry forward with the same migration operation. Keep the Space
@@ -423,12 +445,110 @@ The standalone content-only config and site commands do not move:
 
 - `blocks` (rich text) fields and multiple references. The importer refuses them.
 - Native `posts`, `pages`, and `media` declarations in the content-only config importer.
-  Use the app migrator for native posts. Pages require a frontend port.
+  Use the app migrator for native posts. Pages need a port to [TSX pages](pages.md).
 - Application tables and handlers. Use the [app migrator](#application-source-migration)
-  for its supported subset; endpoints, pages, islands, service calls and sync
+  for its supported subset. Endpoints become [routes](config-api.md#http-routes),
+  pages and islands become [TSX pages](pages.md); service calls and sync
   bindings still need an explicit port.
 - Sign-in providers and sessions on standalone hosts. App users move with step 6;
   the [Spacefast operation](#migrate-a-spacefast-app) also copies provider identities and sessions.
 - The original Space's routes, redirects and private file storage.
 
-The [compatibility inventory](zero-compatibility.md) tracks each of these.
+[Coverage](#coverage) tracks each of these.
+
+## Coverage
+
+Zero uses WordPress posts, metadata, attachments, users, revisions, and plugin
+lifecycle. A generated plugin tree does not install WordPress or configure a
+third-party plugin's external services. Check the deployed platform requirements
+before activating an app.
+
+| 0.8 capability | v2 migration behavior | Limit or required review |
+| --- | --- | --- |
+| Spacefast project root | Accepts `server/index.ts`, optional `sf.jsonc`, and `content/`; produces `zero.config.ts` and migration metadata | Resolve every refusal and review entry before publication |
+| Application SQL tables | Adopts original physical tables with `existingTable`, preserving IDs and storage types | Requires the exact Space ID and expected columns, indexes, and foreign keys; IDs above JavaScript's safe integer range need a port |
+| Typed queries, mutations, and actions | Converts supported handlers and static DB/index calls into named v2 actions | Update clients to v2 input, response, error, and route contracts; dynamic builders, pagination, and unsupported context services are refused |
+| Native posts | A posts declaration or `content/posts/` adds a post-backed `posts` collection; scoped data copy preserves IDs, native body, authors, dates, and revisions | Custom native fields need a port; legacy sync declarations are dropped with a review hint |
+| Content collections | Imports supported field declarations; scoped data copy maps collection tags, typed metadata, and revision fields to candidate storage | Rich blocks, multiple references, unsupported fields, and incompatible data need a port |
+| Media | Copies attachment IDs, metadata, and parent links | File bytes must remain available through the host's media binding; the database command does not copy files |
+| Users | Auth or Space Users adds a `members` user projection; copies user IDs, passwords, scoped role metadata, and verified primary email | Review permissions and legacy principal references; the converter does not invent owner IDs |
+| Sessions | Copies imported sessions with markers; accepts the old cookie and upgrades a valid legacy hash once, preserving expiry | Requires original auth salt and an explicitly scoped cookie alias; native v2 rows never get legacy fallback |
+| Google sign-in | Copies provider subject bindings to the same user IDs; host projects Google client values into managed identity configuration | Verify a fresh Google sign-in on the deployed host; never put provider secrets in source or reports |
+| Connector roles | Emits `connector-roles.json`; maps `owner` to `personal` and retains `team` and `visitor` | The overlay grants no credentials or permissions; old connector calls require a port |
+| REST endpoints and actions | Generated collection endpoints and `POST /wp-json/zero/v1/actions/<name>` work on Spacefast | Old custom method/path `endpoints` declarations are refused with a pointer; port each to a v2 [route](config-api.md#http-routes) at the same method and path, or to an action. A catch-all (`:splat`) endpoint has no route form: its callers must change |
+| Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
+| Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
+| Pages, layouts, and islands | Old declarations and project directories are refused with pointers | Port them to [TSX pages](pages.md) outside the converter input and add them to the candidate. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over; the pages subset has its own limits |
+| Content sync | Local `zero sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
+| Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |
+| Publication and rollback | Spacefast migration commits a one-way transition to v2 | 0.8 publication and promotion are refused after commit; immutable 0.8 URLs return `410 zero_legacy_retired`; older v2 code still shares the latest schema |
+
+The hosted operation runs through `precheck`, `convert`, `fence`, `publish`,
+`data`, and `commit`. After data copy starts, recovery retries forward while the
+Space stays fenced.
+
+### Pages, layouts and islands
+
+The original runtime served `pages/`, `layouts/`, `_pages/` system pages and
+`client/` islands (hydrated through a `zero/component` block) itself, with
+`ZERO_DYNAMIC_BLOCKS` choosing between it and WordPress. v2 has no second
+renderer: WordPress serves every page. Port each page and layout to a
+[TSX page](pages.md) under `pages/` (`page.tsx`, `layout.tsx`, `not-found.tsx`)
+and each island to `<Island>` with an Interactivity API module. Item routes read
+the migrated collection's posts as the visitor. `_pages/` system pages have no
+counterpart; the host's own error pages replace them. Render with
+`zero-pages build` and commit `zero/pages.json` before publishing.
+
+### Standalone WordPress commands
+
+`zero migrate app --from zero-0.8` converts supported application source and
+emits adoption SQL. It does not connect to a database. `zero migrate config
+--from zero` imports supported content declarations, while `zero migrate site`
+uses the original content-model release to migrate records in place.
+`wp zero migrate-legacy-users` carries app users into a user projection.
+
+These commands do not provide Spacefast's publication fence, cross-prefix
+copy, managed provider configuration, or generation transition. Follow the
+[standalone steps](#before-you-start) and review the
+candidate's access rules. Keep a database backup; forward migrations have no
+automatic downgrade.
+
+### The original capsule config
+
+`zero migrate config --from zero` reads the original `@spacefast/zero` capsule
+API (0.8.1): one TypeScript module whose default export is
+`capsule({ collections: ... })` from `@spacefast/zero/server`. It maps content
+`text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`), `media`
+(including `multiple`) and single `reference` fields; [config migration](config-migration.md)
+describes the shared rules. A `reference` field `project` becomes an integer
+column `projectId`, with a relation for `with`. The original Zero kept a deleted
+target's id in place; Zero does not keep dangling references. Its `publicRead`
+overrides the corresponding access rule.
+
+It refuses, rather than drops: block-bound rich text, multiple references,
+native `posts`, `pages` and `media` declarations, and the capsule's `schema`
+tables, queries, mutations, actions, endpoints, pages, auth, connectors, sync
+bindings and favicon declarations. An old capsule with `queries` fails instead
+of producing a config with those handlers removed. For a site built with the
+original Zero, `zero migrate site` then moves the content; application tables
+and handlers go through [`zero migrate app --from zero-0.8`](#application-source-migration).
+
+### Executable acceptance
+
+The coverage above has separate source and data owners:
+
+- `cargo test --test app_migrate` compiles source candidates and checks refusals.
+- `tests/wp/app-migrate/run.sh` adopts retained application tables on real
+  WordPress/MariaDB and exercises the migrated actions and authentication.
+- `tests/wp/legacy/run.sh` migrates content in place and checks native posts.
+- `tests/wp/legacy/spacefast-run.sh` copies scoped content, users, provider
+  identities, and sessions on real WordPress/MariaDB. It checks rollback,
+  no-op retries, cookie authentication, hash upgrade, expiry, forgery rejection,
+  and revocation.
+- `tests/identity/run.sh` validates native identity behavior, provider callbacks
+  against a local OpenID provider, OAuth flows, and concurrent credential changes.
+
+Local acceptance does not qualify wp.cloud routing, persistent object-cache
+ordering, or a real Google authorization exchange. Complete those deployment
+checks on the actual host as described in the
+[Spacefast deploy guide](spacefast-deploy.md#prepare-the-wordpress-host).

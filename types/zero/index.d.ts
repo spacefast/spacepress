@@ -1095,6 +1095,8 @@ export interface ConfigInput<
   /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
   hooks?: NoInfer<Hooks<TSchema>>;
   actions?: Record<string, AnyAction>;
+  /** Custom HTTP endpoints on the site's own paths, outside `/wp-json`. */
+  routes?: Record<string, Route>;
   jobs?: TJobs;
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
@@ -1152,6 +1154,45 @@ export declare function job<TInput extends ColumnsConfig>(definition: {
   handler: (input: InferActionInput<TInput>, ctx: JobCtx) => Awaitable<void>;
 }): Job<TInput>;
 export interface EnqueueOptions { delay?: number; key?: string }
+
+declare const routeBrand: unique symbol;
+/** A custom HTTP endpoint: `routes: { feed: route({ ... }) }`. */
+export interface Route { readonly [routeBrand]: true }
+/** The request a route handler receives. Header names are lowercase; the body is the raw text. */
+export interface RouteRequest {
+  method: string;
+  path: string;
+  /** `:name` segments of the route path, decoded. */
+  params: Record<string, string>;
+  /**
+   * The query string as URLSearchParams reads it: names byte-exact (`a.b`, `x[]`), every value
+   * kept in order. `get` answers the first value or null.
+   */
+  query: RouteQuery;
+  headers: Record<string, string>;
+  body: string;
+}
+export interface RouteQuery {
+  get(name: string): string | null;
+  getAll(name: string): string[];
+  has(name: string): boolean;
+  entries(): [string, string][];
+}
+/** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
+export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
+type RoutePath = `/${string}`;
+/**
+ * One method and path served by a compiled handler, in one transaction (`docs/config-api.md#http-routes`).
+ * Exactly one of `access` (who may call) or `signature` (an HMAC over the raw body; the caller is anonymous).
+ */
+export declare function route(definition: {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: RoutePath;
+  handler: (req: RouteRequest, ctx: HookCtx) => Awaitable<RouteResponse>;
+} & (
+  | { access: GateRule<Record<string, never>>; signature?: never }
+  | { signature: { secret: EnvValue; header: string; scheme: "zero" | "hmac-sha256" }; access?: never }
+)): Route;
 export interface JobHandle<TInput> {
   enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }

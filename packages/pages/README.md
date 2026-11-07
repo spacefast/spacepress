@@ -38,6 +38,7 @@ both. It needs `npx` (for wp-studio 2.1.1) and a cached Chromium headless shell
 
 ## License
 
-The TypeScript build tool (`src/`, `bin/`) is MIT. The PHP runtime in `wp/`
+The TypeScript build tool (`src/`, `bin/`) is MIT. The PHP runtime (`runtime/pages/` in the
+Zero repository, packed as `wp/`)
 runs inside WordPress, is copied into the generated plugin, and is
 GPL-2.0-or-later, like Zero's own runtime.

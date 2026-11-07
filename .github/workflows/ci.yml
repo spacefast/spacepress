@@ -208,6 +208,11 @@ jobs:
         working-directory: packages/pages
       - run: pnpm check
         working-directory: packages/pages
+      - name: The committed render artifact is current
+        run: |
+          (cd packages/pages && pnpm build)
+          node packages/pages/bin/zero-pages.mjs build examples/full-site
+          git diff --exit-code examples/full-site/zero/pages.json
       - run: pnpm test:package
         working-directory: packages/pages
       - run: npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
@@ -329,6 +334,44 @@ jobs:
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - name: Shared S3 storage across disposable replicas
         run: ZERO_WP_PROJECT=zero-wp-s3 ZERO_WP_PORT=8792 ZERO_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
+
+  # Hosted TSX pages, the island in Chromium and custom HTTP routes, from `zero compile-sources`.
+  wp-pages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .zero/cache/plugins
+            tests/wp/cache
+          key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: corepack enable
+      - run: cargo build --locked --bin zero
+      - name: Hosted pages, island, action and HTTP routes from compile-sources
+        run: |
+          (cd packages/blocks && pnpm install --frozen-lockfile && pnpm build)
+          (cd packages/pages && pnpm install --frozen-lockfile)
+          npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
+          ZERO_WP_PROJECT=zero-wp-pages ZERO_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 
   # `zero dev` from a release binary after removing its build checkout.
   installed:

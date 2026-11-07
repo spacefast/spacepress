@@ -44,8 +44,9 @@
     "test:wp": "node --test --test-concurrency=1 tests/wp/*.test.mjs",
     "check": "pnpm typecheck && pnpm test",
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "pnpm build",
-    "test:package": "node --test tests/package/*.test.mjs"
+    "prepack": "pnpm build && rm -rf wp && cp -R ../../runtime/pages wp",
+    "test:package": "node --test tests/package/*.test.mjs",
+    "postpack": "rm -rf wp"
   },
   "dependencies": {
     "esbuild": "0.28.2",

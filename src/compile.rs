@@ -388,13 +388,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let f = &root.closure.func;
         let mut fields = std::collections::BTreeSet::new();
         if let Some(p) = f.params.first() {
+            let columns = &self.schema.collections[table].columns;
             for path in self.effects.writes_below(p.pat.span()) {
-                match path.first() {
-                    None => {}
-                    Some(effects::Step::Field(name)) => {
+                match path.as_slice() {
+                    [] => {}
+                    // A scalar passed to a function is a copy; the call can't write the row.
+                    [effects::Step::Field(name), effects::Step::Descendants]
+                        if columns.get(name).is_some_and(|c| {
+                            c.fields.is_none() && c.layouts.is_none() && !matches!(c.ty, ColType::Json)
+                        }) => {}
+                    [effects::Step::Field(name), ..] => {
                         fields.insert(name.clone());
                     }
-                    Some(_) => {
+                    _ => {
                         fields.insert("*".to_string());
                     }
                 }
@@ -467,8 +473,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn named(&self, base: &str) -> String {
         match &self.plugin {
-            Some((_, name)) => format!("plugin_{name}__{base}"),
-            None => base.to_string(),
+            Some((_, name)) if !base.starts_with(&format!("plugin_{name}__")) => format!("plugin_{name}__{base}"),
+            _ => base.to_string(),
         }
     }
 

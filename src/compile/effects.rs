@@ -80,16 +80,20 @@ pub(super) struct Effects {
     loop_writes: HashMap<Span, HashSet<Place>>,
     /// Every reachable write, by the binding it starts from, and the bindings that escape.
     binding_writes: HashMap<Span, HashSet<Vec<Step>>>,
-    escaped: HashSet<Span>,
+    escaped: HashSet<(Span, Vec<Step>)>,
 }
 
 impl Effects {
-    /// Paths written below `binding` anywhere reachable (helpers, callbacks, aliases), plus
-    /// `[Descendants]` when the value escapes to code the analysis can't see.
+    /// Paths written below `binding` anywhere reachable (helpers, callbacks, aliases). A path
+    /// that escapes to code the analysis can't see counts as written, with its descendants.
     pub fn writes_below(&self, binding: Span) -> Vec<Vec<Step>> {
         let mut paths: Vec<_> = self.binding_writes.get(&binding).into_iter().flatten().cloned().collect();
-        if self.escaped.contains(&binding) {
-            paths.push(vec![Step::Descendants]);
+        for (b, path) in &self.escaped {
+            if *b == binding {
+                let mut path = path.clone();
+                path.push(Step::Descendants);
+                paths.push(path);
+            }
         }
         paths
     }
@@ -1994,7 +1998,7 @@ impl Graph {
                 }
             }
         }
-        let escaped = self.escaped.iter().map(|p| p.binding).collect();
+        let escaped = self.escaped.iter().map(|p| (p.binding, p.path.clone())).collect();
         let mut effects = Effects {
             binding_writes,
             escaped,

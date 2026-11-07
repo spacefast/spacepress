@@ -260,7 +260,7 @@ pub struct Settled {
     pub hosts: Vec<(String, Option<Vec<String>>)>,
 }
 
-fn parse_lock(lock: &Json) -> Result<BTreeMap<String, (String, Grant, Json)>> {
+fn parse_lock(lock: &Json) -> Result<BTreeMap<String, (String, Grant)>> {
     let bad = |m: String| Diag::new(Span::NONE, format!("{LOCK_PATH}: {m}")).code(Code::PluginCapability);
     if lock.get("version") != Some(&json!(1)) {
         return Err(bad("expected version 1".into()));
@@ -281,7 +281,7 @@ fn parse_lock(lock: &Json) -> Result<BTreeMap<String, (String, Grant, Json)>> {
             }
         }
         let integrity = entry.get("integrity").and_then(Json::as_str).unwrap_or("").to_string();
-        out.insert(name.clone(), (integrity, grant, entry.clone()));
+        out.insert(name.clone(), (integrity, grant));
     }
     Ok(out)
 }
@@ -350,13 +350,20 @@ pub fn settle(
                 .help("run `zero build` without --frozen, review the plugin's grant, and commit the lock"));
             }
             None => {
-                changes.push(format!("plugin \"{}\" ({}@{}) added to {LOCK_PATH}:", p.name, p.package, p.version));
+                changes.push(format!("plugin \"{}\" ({}@{}) is new in {LOCK_PATH}:", p.name, p.package, p.version));
                 changes.extend(diff(&grant_of(&[], 0), &inferred).into_iter().map(|l| format!("  {l}")));
                 ("added", inferred.clone())
             }
-            Some((integrity, granted, _)) => {
+            Some((integrity, granted)) => {
                 let excess = excess(granted);
                 match excess {
+                    None if !frozen && *integrity != p.integrity => {
+                        changes.push(format!(
+                            "plugin \"{}\" ({}@{}): new package source, grant unchanged",
+                            p.name, p.package, p.version
+                        ));
+                        ("locked", granted.clone())
+                    }
                     None => ("locked", granted.clone()),
                     Some(u) if frozen || *integrity == p.integrity => {
                         let allowed: Vec<_> = granted[u.kind].iter().cloned().collect();
@@ -377,9 +384,15 @@ pub fn settle(
                         }));
                     }
                     Some(_) => {
+                        // A new package source: the entry becomes what it uses now, shown as a
+                        // diff. A host list the owner wrote in place of `*` stays.
+                        let mut next = inferred.clone();
+                        if !granted["http"].contains("*") && !granted["http"].is_empty() {
+                            next.get_mut("http").expect("every kind").remove("*");
+                        }
                         changes.push(format!("plugin \"{}\" ({}@{}) changed its grant:", p.name, p.package, p.version));
-                        changes.extend(diff(granted, &inferred).into_iter().map(|l| format!("  {l}")));
-                        ("updated", inferred.clone())
+                        changes.extend(diff(granted, &next).into_iter().map(|l| format!("  {l}")));
+                        ("updated", next)
                     }
                 }
             }
@@ -409,13 +422,13 @@ pub fn settle(
             "version": p.version,
             "integrity": p.integrity,
             "status": status,
-            "locked": entry.map(|(_, g, _)| grant_json(g)),
+            "locked": entry.map(|(_, g)| grant_json(g)),
             "inferred": grant_json(&inferred),
             "flows": flows(uses, i, &functions),
         }));
     }
     for name in locked.keys().filter(|n| !plugins.iter().any(|p| &p.name == *n)) {
-        changes.push(format!("plugin \"{name}\" removed from {LOCK_PATH}"));
+        changes.push(format!("plugin \"{name}\" leaves {LOCK_PATH}"));
     }
     let lock = (!plugins.is_empty() || lock.is_some()).then(|| json!({ "version": 1, "plugins": entries }));
     Ok(Settled {

@@ -733,7 +733,10 @@ fn binary_data_matches_node_through_generated_php() {
     );
     assert_eq!(refused[0], "TypeError");
     let message = refused[1].as_str().unwrap();
-    assert!(message.contains("Uint8Array at .v.0") && message.contains("TextDecoder"), "{message}");
+    assert!(
+        message.contains("Uint8Array at .v.0") && message.contains("TextDecoder"),
+        "{message}"
+    );
 }
 
 #[test]

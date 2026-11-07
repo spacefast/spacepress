@@ -2897,7 +2897,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Global("Math") => Ok(Out::atom("\\Zero\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
             Resolved::Global(g) if BINARY_GLOBALS.contains(&g) => {
                 self.binary_global(g, span)?;
-                Ok(Out::atom(format!("\\Zero\\JsConstructor::of({})", php_str(g)), Ty::Dynamic))
+                Ok(Out::atom(
+                    format!("\\Zero\\JsConstructor::of({})", php_str(g)),
+                    Ty::Dynamic,
+                ))
             }
             Resolved::Global(g) => err_help(
                 span,
@@ -3013,7 +3016,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         let args = args.join(", ");
                         let build = match &native.method {
-                            None => format!("\\Zero\\Js::dynamicConstruct({}, new \\Zero\\JsArray([{args}]))", php_str(native.constructor)),
+                            None => format!(
+                                "\\Zero\\Js::dynamicConstruct({}, new \\Zero\\JsArray([{args}]))",
+                                php_str(native.constructor)
+                            ),
                             Some(m) => format!(
                                 "\\Zero\\Js::dynamicStaticCall({}, {}, new \\Zero\\JsArray([{args}]))",
                                 php_str(native.constructor),
@@ -3814,7 +3820,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if BINARY_GLOBALS.contains(&g) {
                 self.binary_global(g, obj.span)?;
                 return Ok(Out::atom(
-                    format!("\\Zero\\Js::dynamicGet(\\Zero\\JsConstructor::of({}), {})", php_str(g), php_str(prop)),
+                    format!(
+                        "\\Zero\\Js::dynamicGet(\\Zero\\JsConstructor::of({}), {})",
+                        php_str(g),
+                        php_str(prop)
+                    ),
                     Ty::Dynamic,
                 ));
             }
@@ -4168,7 +4178,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
             if let ExprKind::Ident(name) = &callee.kind
-                && (matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp") || BINARY_GLOBALS.contains(&name.as_str()))
+                && (matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp")
+                    || BINARY_GLOBALS.contains(&name.as_str()))
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
                 if name == "Date" {
@@ -4693,10 +4704,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if matches!(g, "atob" | "btoa") {
             self.binary_global(g, span)?;
             let argv = self.javascript_args(args)?;
-            return Ok(Out::atom(
-                format!("\\Zero\\JsBinary::{g}(...({argv})->a)"),
-                Ty::Dynamic,
-            ));
+            return Ok(Out::atom(format!("\\Zero\\JsBinary::{g}(...({argv})->a)"), Ty::Dynamic));
         }
         self.builtin_args("global", g, args, span)?;
         if g == "parseInt" {

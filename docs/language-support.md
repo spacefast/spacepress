@@ -48,6 +48,22 @@ Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations 
 
 [Evidence](../tests/compiler_contracts.rs) (`unannotated_javascript_uses_checked_value_operations_without_weakening_typescript_unknown`)
 
+## binary-data
+
+Status: **supported**.
+
+Imported JavaScript compiles ArrayBuffer, the integer and float typed arrays, DataView, TextEncoder, TextDecoder (UTF-8 only, fatal and ignoreBOM), Blob, File, atob and btoa through checked runtime dispatch. Views share one buffer: subarray and buffer-offset views write through, slice copies. Element writes use the ECMAScript conversions (ToUint8 wraparound, Uint8Clamped round-half-even, Int32 modulo), and integer elements are little-endian. Invalid UTF-8 decodes with WHATWG maximal-subpart replacement. Module-scope byte constructions with plain-data arguments are rebuilt once per request. JSON.stringify of a typed array is an object of indexes; action and ability results that contain bytes throw a TypeError with a text fix, because JSON has no byte type. TextDecoder streaming, Blob.stream() before ReadableStream exists, FileReader, and typed TypeScript use of byte globals are refused. See docs/decisions/2026-11-07-binary-data.md.
+
+[Evidence](../tests/compiler_contracts.rs) (`binary_data_matches_node_through_generated_php`)
+
+## shared-memory
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+PHP requests share no memory between threads, so SharedArrayBuffer and Atomics have no meaning. Use ArrayBuffer. BigInt64Array and BigUint64Array are refused the same way; use DataView getUint32/setUint32 pairs.
+
+[Evidence](../tests/fixtures/reject-shared-array-buffer)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

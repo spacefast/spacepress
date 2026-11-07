@@ -129,7 +129,14 @@ Captured bindings retain that JavaScript behavior, including arrays, open
 records and optional fields. Object spread/rest copies field values shallowly.
 Loop-local declarations receive a fresh binding on each execution, and a
 captured `for (let …)` header variable receives a fresh `Js::cell` per iteration.
-The cell copies its value; copying a handle preserves the referenced container.
+The evaluator also forks lexical header bindings before the first test and before
+each update. Copying a handle preserves the referenced container. Source bindings
+use valid local PHP names; dollar signs, Unicode and superglobal names are encoded.
+Captures, authored locals and compiler temporaries share one reserved name pool.
+Lexical declarations reserve scope before runtime closure compilation. References
+to bindings not yet initialized receive a source refusal; declare them before
+creating the closure. Callback validation treats missing arguments as undefined
+and refuses missing required slots, including null-only parameters.
 
 Arrays remain dense. Indexed writes may replace an existing element or append
 at the current length; writes past the end throw a catchable `RangeError`.
@@ -553,6 +560,108 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 }
 ```
 
+Compiled captured-function caches use closure identity, retaining each closure
+until compilation completes. Factory invocations with the same syntax keep their
+own captured environments and function identities. Named exported bindings cannot be
+reassigned after export because live import bindings are not modeled; writes
+receive a source refusal. Stable let/var export aliases remain supported, including
+named default exports. Const data exports retain object identity; default-export
+expressions remain value snapshots.
+
+Lexical bindings carry initialization state during evaluation and emission.
+Reads and assignments before initialization are refused at source; they never
+fall through to an outer binding. Loop-head bindings shadow outer names while
+for/of/in source expressions run, and parameter defaults cannot read later
+uninitialized parameters. Error options refuse both own and inherited causes.
+
+Switch cases containing lexical declarations or functions require an explicit
+braced body. Unbraced case declarations are refused before either phase can give
+them independent scopes. Checked JavaScript refuses class-method property reads
+and calls through erased dynamic receivers; typed class dispatch stays supported.
+Own data fields continue to take precedence over inherited methods.
+
+Built-in overloads and phase arity are owned by `src/builtins.rs`. Its generated
+`runtime/Zero/Builtins.php` guards checked JavaScript dispatch; regenerate with
+`UPDATE_BUILTINS=1 cargo test --lib builtins::tests`. The normal Rust suite
+checks freshness. Type/coercion guards remain at their language boundary.
+JSON parsing/serialization and Error instances are runtime-only. The evaluator
+refuses these calls rather than serialize with Rust's JSON rules or substitute
+plain objects for Errors. Keep configuration data plain; serialize and construct
+Errors inside handlers. Custom object and function coercion is also refused
+at build time; the pure conversion helpers never silently skip ToPrimitive hooks.
+Runtime conversions execute user code once, with array length captured before
+bound or depth coercion. Coercions that would require sparse splice/fill results
+are explicitly refused. Typed string `at` retains its nullable-read boundary;
+checked JavaScript string `at` returns undefined outside the string.
+
+`tests/differential/builtin-vectors.json` supplies the same expressions to
+Node, captured configuration evaluation and generated PHP. Regex state is
+runtime-only because the pure evaluator has no mutable RegExp execution model.
+Captured arrays and objects retain one identity across typed and imported
+JavaScript callers, including references nested in other captured data.
+Build-time regex replacement accepts ASCII text/patterns without escapes,
+nested character classes, multiline mode, set operations or line terminators;
+other cases are refused
+instead of inheriting Rust regex semantics. String replacements have no such
+ASCII restriction. Replacement tokens implement GetSubstitution, including
+capture-number boundaries and named captures.
+Repeated groups containing captures are refused in every phase: Rust/PCRE
+retain captures from earlier iterations where JavaScript clears them. Capturing
+lookbehind is also refused because JavaScript matches its groups backward. Regex
+literals receive located diagnostics; dynamically constructed patterns throw. Literal patterns are parsed by Oxc's JavaScript regex parser before lowering;
+JavaScript-invalid syntax never reaches Rust or PCRE. Checked runtime constructors
+refuse unsupported quantifier chains. Legacy class identity escapes consume only
+the escaped character, leaving following class members intact.
+Large parseInt results are supported for base 10 and power-of-two bases; other
+radices require safe integer results to avoid engine-specific approximations.
+Known unsupported literals are refused at source; dynamic values throw explicitly.
+PHP and Rust power-of-two parsing round once from the significant bits.
+Powers accept safe integer powers, integral powers of binary bases, squares,
+square roots and IEEE special values. Other powers are refused:
+Node and native math libraries can round them differently. Known literals have
+source diagnostics; dynamic values throw RangeError. Missing reads and built-in
+results preserve undefined separately from null in both language modes.
+Unknown built-in properties and Object.freeze are refused during configuration evaluation.
+Database namespace, query and builder receivers must be direct references or calls;
+computed receiver expressions refuse at their source position before effects can be discarded.
+
+Database builders, configuration/schema factories and column modifiers also use
+the shared source arity contract, including runtime arguments to `$type`. Database
+collection arguments must resolve to static references; effectful expressions
+are refused instead of discarded. Updates require `set(...)` before `where(...)`
+to preserve argument evaluation order. Extracted methods cannot be invoked during
+configuration evaluation because the evaluator does not model lost receivers.
+Callbacks are validated before empty-input shortcuts in configuration evaluation.
+`Object.fromEntries` follows live array/Set/Map/arguments iterators and reads both
+entry values before key coercion. String splitting and regex replacement retain
+conversion effects even when a zero limit or non-global pattern makes them inert.
+Array conversions honor own `toString`, `valueOf` and `join`; join snapshots
+length before converting its separator. Function `apply` reads an array-like
+object, with primitive argument lists refused. Prototype setter literals and
+dynamic prototype access/mutation are refused; computed `__proto__` data keys
+remain ordinary own properties.
+Custom `toJSON` callbacks are refused at the source when known and explicitly
+at runtime otherwise. Serialize their result explicitly. JSON schemas must
+accept their serialized values; undefined array slots require null, and omitted
+properties must be optional. Addition and compound addition use default primitive
+conversion before string conversion. Sorting places undefined last without
+passing it to comparators. Typed Dates require explicit `toISOString()` or
+`toJSON()` before JSON.stringify; typed and imported dates share JsDate identity.
+Imported JavaScript for-of consumes live iterators. Regex source and string
+conversion escape delimiters and line terminators. Ignore-case matching requires
+literal ASCII source and ASCII input, including in Unicode mode. Regex split on
+astral text also requires u because returned lone surrogates are unsupported.
+Typed invalid-Date `toJSON()` returns null. Generated undefined defaults become
+null at the storage boundary; required fields still refuse null. Object
+overwrites retain key insertion order during evaluation.
+Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
+and typed string-search positions are never silently discarded.
+
+Rust and PHP trim and numeric parsers use the explicit ECMAScript WhiteSpace
+and LineTerminator set: BOM is whitespace; U+0085 is not. Unary negation performs ToNumber. JSON decoding preserves negative-zero tokens without rewriting quoted text.
+Math.round and multiplication preserve negative zero; round avoids the `floor(x + .5)` loss at
+large and adjacent-to-half boundaries.
+
 ## class Js — JavaScript semantics in PHP
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
@@ -564,62 +673,122 @@ The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
 
-Some typed missing reads and annotation-only `undefined`/`void` still normalize
-to PHP null. Explicit undefined expressions and imported JavaScript's dynamic
-operations preserve undefined identity: it is falsy, has typeof `undefined`,
+Runtime `void` results use undefined. Missing reads, uninitialized locals and class fields, optional arguments, bare
+returns and function fallthrough preserve undefined identity: it is falsy, has typeof `undefined`,
 stringifies as `"undefined"`, is omitted from JSON objects and becomes null in
-JSON arrays. This distinction does not change schema nullability.
-Optional object and array parameters accept explicit undefined as well as null;
-truthiness checks and typed default initializers treat both as absent. Typed
-object property reads distinguish missing properties from explicit null. Strict
+JSON arrays. This distinction does not change schema nullability. Public client
+result types describe serialization: undefined array slots become null, and
+properties whose values may be undefined become optional with undefined removed
+from the present value domain.
+Array and object destructuring retain undefined for absent entries. Configuration
+for-of and array destructuring use live iterators, including permanent exhaustion
+after completion. Optional/default parameters before rest parameters remain
+omittable.
+Optional parameters accept undefined; null requires an explicit nullable type.
+Parameter and destructuring defaults run only for undefined. Typed object
+property reads distinguish missing properties from explicit null. Strict
 null/undefined comparisons refine only the value being compared; `!= null`
-excludes both.
+excludes both. Class calls use the same omission rules as ordinary typed calls:
+nullable parameters remain required unless their contract also accepts undefined. Undefined cannot be assigned to a null-only annotation. Optional method
+results include undefined. Conditional var initializers retain the prior type,
+including the hoisted undefined path. Loop destructuring predeclares every
+lexical binding per iteration before evaluating defaults; earlier initialized
+bindings remain available. Destructured var loops refuse during configuration
+evaluation as well as handler compilation.
 
 Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
 does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
 calls, constructors, iteration and primitive operations against the supported
 value model; unknown methods and unsupported signatures throw `JsError`
-TypeError. Calls resolve an own method before evaluating arguments. Extracted
-supported builtin methods retain the receiver passed through `call`/`apply`.
+TypeError. Checked JavaScript calls resolve an own method before evaluating
+arguments. Typed array calls require the native method and explicitly refuse an
+own override before evaluating arguments; native return-type inference does not
+describe arbitrary overrides. Call such methods inside checked JavaScript.
+Extracted supported builtin methods retain the receiver passed through
+`call`/`apply`.
 Ordinary functions receive `JsArguments` (numeric properties, independent
 non-enumerable length); arrows inherit the surrounding arguments. Parameters
 are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,
-loose equality and own-key `for…in` share the evaluator's lowering.
+loose equality and own-key `for…in` share the evaluator's lowering. Runtime
+`for…in` snapshots the original keys and skips keys deleted before their turn.
 
-Dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
+Typed and dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
 These support the small constructor/method subset exercised by imported
 helpers. RegExp exec tracks global `lastIndex` and exposes match index, input,
-groups and undefined captures. Dynamic string match/split/replace preserve
-these semantics. Literal regexes allocate distinct objects; typed `re` remains
-the state-free cached helper. `Array.from` interleaves reads with its mapper,
+groups and undefined captures. Typed and dynamic non-global string match share that metadata; global match returns only matched strings. Dynamic string match/split/replace preserve
+these semantics. Literal regexes allocate distinct objects; captured regexes
+keep one instance for their shared state. Errors inherit `name`; a defined message
+creates an own nonenumerable `message`, including an empty string. Cloning and
+receipt snapshots preserve message ownership. Older Error snapshots retain their
+stored message as an own property. RegExp snapshots persist source, flags and
+lastIndex; restoration rebuilds translation caches, including for older snapshots.
+Stack metadata is refused.
+Configuration evaluation refuses restricted arguments access because it does
+not model native Error descriptors. Undefined remains distinct inside JavaScript. Storage validation treats it as
+null for schema fields, including nested fields. Required storage fields still
+reject it. `Array.from` interleaves reads with its mapper,
 and arrays use live length. The standard Math namespace has stable identity.
+`Object.hasOwn` sees the namespace’s supported non-enumerable own properties;
+`Object.keys`, `values` and `entries` retain its empty enumerable surface.
+Handles expose PI, E and registered methods; other properties refuse explicitly
+instead of returning undefined. Error message coercion precedes cause-option
+validation, including options mutated during that coercion.
 
 This is not a JavaScript host. Node/browser APIs, arbitrary prototypes,
 accessors, custom iterators, sparse arrays and lone surrogates remain outside
 the supported subset. JSON replacers/revivers, Error cause options, Date component constructors,
 Date string coercion and nondecimal number formatting fail explicitly instead
-of ignoring arguments. See the [npm probes](../examples/npm-compat/README.md)
+of ignoring arguments. Typed Dates require explicit `toISOString()`/`toJSON()`
+before string conversion. Dynamic function `call`/`apply` property values use
+the function method family; unsupported metadata and `bind` access fail
+explicitly. Array string conversion and `join` suppress recursive array visits
+while expanding repeated nonrecursive references.
+See the [npm probes](../examples/npm-compat/README.md)
 for exact library exports and inputs qualified against Node.
-Object string formatting currently uses the default object tag without invoking
-an authored `toString` method. Pass primitive strings to formatting helpers;
-custom string coercion is not qualified by the package probes.
+Object string conversion uses supported `toString`/`valueOf` hooks in JavaScript order.
+Function source-text conversion is refused at known call sites or explicitly at
+runtime. Date construction applies object primitive conversion before parsing
+or numeric clipping.
 
 Configuration evaluation uses the same UTF-16 units for numeric string indexes,
 `slice` and `split("")`; a result containing a lone surrogate is rejected with a
 located build diagnostic. `split` applies its limit before converting units.
+Configuration object reads preserve absent own values as undefined and refuse
+inherited prototype properties; use `Object.hasOwn` before reading those names. Noncanonical array index strings
+and ambiguous regex class delimiters are refused during evaluation. Optional
+regex groups containing captures require a nonempty body; the engines disagree
+about capture participation when that body can match empty text. Noncapturing
+groups with any quantifier also require a provably nonempty body; JavaScript and
+PCRE choose different alternatives when a group iteration can match empty text.
+
+Legacy regex braces that do not form JavaScript quantifiers remain literal text;
+Unicode mode refuses those malformed or unmatched braces.
+
+Unicode regex properties (`\p{...}` and `\P{...}` with `u`) are refused because
+JavaScript and PCRE use different Unicode databases. Ignore-case matching requires
+literal ASCII source and ASCII input; encoded character escapes are refused in
+that mode. Remove ignore-case matching or use explicit character classes.
+Class escapes adjacent to unescaped hyphens are refused; escape a literal hyphen.
+Unicode-mode constructors reject malformed hex, Unicode, named-reference and
+identity escapes and unmatched closing brackets. Trailing backslashes are syntax
+errors in both modes; legacy-mode identity escapes retain their JavaScript behavior.
+
+`Math.log` and `Math.exp` accept only IEEE special values and exact identities
+(log(1), exp(0)). Other inputs receive a located literal refusal or a checked
+runtime RangeError, avoiding engine-dependent transcendental rounding.
 
 String `lastIndexOf` accepts only literal number/null/undefined positions; a
-runtime position can hide the erased null/undefined distinction behind an alias,
-assertion or call. Omit the position or use a literal instead.
+runtime position coercion is outside this typed overload. Omit the position or use a literal instead.
 
 Conversions:
 - `str(mixed $v): string` — `String(v)`. null → `"null"`, bools → `"true"/"false"`, numbers → `numStr`, list → elements `str`'d joined by `,` with null as `""`, assoc → `"[object Object]"`, `RegExp` → `/src/flags`.
-- `numStr(int|float $n): string` — `Number.prototype.toString()`: `NaN`, `Infinity`, `-Infinity`, `-0` → `"0"`, integral values below 1e21 without exponent, shortest round-trip digits, exponent form `1e+21`, `1.5e-7` exactly where JS uses it (≥ 1e21 or < 1e-6).
+- `numStr(int|float $n): string` — `Number.prototype.toString()`: `NaN`, `Infinity`, `-Infinity`, `-0` → `"0"`, integral values below 1e21 without exponent, shortest round-trip digits (including adjacent decimal candidates at binary rounding boundaries), exponent form `1e+21`, `1.5e-7` exactly where JS uses it (≥ 1e21 or < 1e-6).
 - `toNumber(mixed $v): int|float` — `Number(v)`: null → 0, bool → 0/1, string trimmed of JS whitespace: `""` → 0, decimal, `0x`/`0o`/`0b` prefixes, `Infinity`/`-Infinity`, otherwise NAN. Safe integers (|n| ≤ 2^53) return int, larger values float.
 - `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So Zero ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
 - `Seam` owns conversions between compiled handles and schema-shaped runtime arrays: Db inputs/results, callback contexts, validators, generators, action/job inputs, Sync envelopes and ability inputs/outputs. User `json()` leaves remain handles in runtime rows. Write inputs detach them from compiled locals; each callback receives a fresh graph. Validator `value` aliases its full path in `ctx.data`; a before-hook's `data`/`patch` aliases `ctx.data` and is read back when no replacement is returned. Native `Extensions` callbacks keep array contracts. A string in a schema callback slot names compiled code; native callbacks use non-string callables.
 - Objects enumerate canonical array-index keys in ascending order, then other keys in insertion order (`ownKeys`). Empty objects encode as `{}` and empty arrays as `[]`, including nested JSON and numeric-keyed objects.
-- Arrays are dense: `get` returns null for an invalid/missing index; `setAt` permits overwrite or append at length and throws `RangeError` otherwise. Fixed-length walks throw if they reach an index removed by their callback; live-length `from` and `for…of` allow shrinking and growing.
+- Array length assignment applies ToUint32 and ToNumber separately, including both object-conversion effects, before validating the new length.
+- Arrays are dense: compiled reads use `dynamicGet` and return undefined for invalid/missing indexes. Native `get` returns null; `setAt` permits overwrite or append at length and throws `RangeError` otherwise. Fixed-length walks throw if they reach an index removed by their callback; live-length `from` and `for…of` allow shrinking and growing.
 - `get`/`prop` and `setAt`/`set` throw catchable JS `TypeError` for a missing receiver. Writes evaluate their value first; read-modify-write operations read first.
 - `has` snapshots property presence for arithmetic compounds and updates. `plus` implements `+=` primitive coercion with that snapshot, distinguishing a missing old value from present null.
 - `parseInt(string $s, int|float|null $radix = null): int|float`, `parseFloat(string $s): int|float` — exact JS semantics, NAN when nothing parses.
@@ -632,7 +801,7 @@ Conversions:
 Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; negative/float/out-of-range arguments handled exactly like JS):
 - `slice(string $s, int|float $start = 0, int|float|null $end = null): string`
 - `substring(string $s, int|float $start, int|float|null $end = null): string`
-- `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): ?string`
+- `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): string|JsUndefined`
 - `indexOf(string|JsArray $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|JsArray $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
 - `split(string $s, string|RegExp $sep, int|float|null $limit = null): JsArray` (`""` separator → UTF-16 code units; splitting a pair throws)
@@ -641,33 +810,73 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `replace(string $s, string|RegExp $pattern, string|callable $replacement): string` — string pattern replaces the first occurrence; RegExp replaces all with `g`, else first. String replacements support `$$`, `$&`, `` $` ``, `$'`, `$1`..`$99`, `$<name>`. A callable receives `(match, ...groups, offset, input)` like JS (no named-groups object).
 - `replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string` (RegExp without `g` → throw `JsError` TypeError like JS)
 - `repeat(string $s, int|float $n): string`
-- `localeCompare(string $a, string $b): int` — -1/0/1 via byte comparison (documented deviation)
-- `strIndex(string $s, int|float $i): ?string` — numeric bracket access; fractional, negative and non-finite indexes name no character.
-- `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
+- `stringCompare(string $a, string $b): int` — -1/0/1 by UTF-16 code units, shared by typed and dynamic relational operators. `localeCompare` is refused; no host-dependent collation or byte-order substitute is exposed.
+- `strIndex(string $s, int|float $i): string|JsUndefined` — numeric bracket access; fractional, negative and non-finite indexes name no character.
+- `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups undefined) or null; global → list of all matches or null.
 
 Every runtime and emitted `mb_*` call passes explicit encodings; Zero never
 depends on `mb_internal_encoding()`.
 
+Computed object keys evaluate before their values; computed fields and map spreads
+contribute to inferred map value types. Optional chains permit guarded steps and
+single optional method calls. Non-optional continuations after a short-circuiting
+link refuse at source; parenthesized chain boundaries retain ordinary access semantics.
+
+Missing indexed/optional arguments retain undefined in call constraints.
+Tuple destructuring widens later element/rest types after potentially effectful defaults,
+including nested defaults that can change the original array. Inherited Object valueOf
+method handles share identity across functions, arrays and other reference families;
+scalar and Date valueOf retain their own prototype methods. Inherited Object toString
+handles also share identity across Set, Map, Math and ordinary objects, while Error
+uses its own prototype method. Borrowed Object toString reports the receiver tag.
+Unimplemented native method names are explicitly refused in the shared built-in contract.
+Other absent properties remain undefined, including duck-typed reads such as string.flags,
+arguments-object fields, native length fields and fractional/negative/NaN array keys.
+Explicitly assigned array properties retain their values.
+
+Typed object/record reads accept own data fields. If an absent field resolves to an
+unmodeled Object prototype property, the read refuses before type-based optimizations
+can consume it. Member/index reads, destructuring, method fields and assignment reads
+share this boundary. Configuration destructuring uses the same property reader as direct reads,
+including inherited-property refusals. Every object pattern checks for null/undefined even when empty.
+Checked JavaScript retains inherited method lookup.
+
+Stored builtin method handles retain the property receiver for typed and checked JavaScript
+calls and primitive conversion. Missing typed compound reads retain undefined; ambiguous
+string/numeric additions refuse instead of fabricating a string result type.
+Parameter defaults may reference earlier parameters. Closure defaults require a function body
+without new bindings and cannot reference the current/later parameter. Defaults creating classes
+or nested functions, or referencing the current/later parameter, refuse at source, including nested
+destructuring defaults. These limits preserve parameter initialization and closure scope.
+Bindings named `undefined` refuse at their declaration; reads consistently denote the built-in missing value.
+
+Ordinary functions create their own arguments object before parameter defaults are compiled and run; defaults do not capture or overwrite a caller's arguments binding. Arrow defaults retain lexical arguments.
+
+Template interpolation converts and snapshots each substitution before evaluating the next one.
+
 RegExp:
-- `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
-- `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`.
-- Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
+- Named-capture group objects have no prototype. Missing names stay undefined; absent conversion methods throw TypeError. Internal snapshots preserve that shape, while structuredClone creates ordinary objects.
+- `re(string $source, string $flags): RegExp` — creates a fresh instance and translates the supported JS regex subset to UTF-aware, delimiter-safe PCRE. Accepts `g i m s u y`; `d` and `v` throw `JsError`.
+- `dateJSON(int|float $ms): ?string` returns null for invalid dates and otherwise ISO text.
+- `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`, `sticky`. `test` and checked `exec` share `execMatch`: global/sticky calls read and update UTF-16 `lastIndex`, reset it on failure, and keep it unchanged after an empty match. Literal evaluation creates fresh regex identity; a captured regex keeps its own instance. Sticky replacement is explicitly refused.
+- Astral characters and surrogate escapes in regex patterns require the `u` flag, even for ASCII or BMP subjects. Lone-surrogate escapes in character classes are refused. Unicode-mode classes retain valid surrogate pairs and braced scalar escapes.
+- Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes and lookarounds on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 
 Arrays (`JsArray`):
-- `find(JsArray $a, callable $f): mixed`, `findLast`; `findIndex`/`findLastIndex`: int (null/-1 when absent).
+- `find(JsArray $a, callable $f): mixed`, `findLast`; `findIndex`/`findLastIndex`: int (undefined/-1 when absent).
 - `some(JsArray $a, callable $f): bool`, `every(...)`: bool.
 - Callbacks receive `(value, index, array)`; fixed-length walks read each value live and keep the value read before the callback.
-- `filter(JsArray $a, callable $f): JsArray`, `map(...)`: JsArray, `forEach(...)`: void.
+- `filter(JsArray $a, callable $f): JsArray`, `map(...)`: JsArray, `forEach(...)`: JsUndefined.
 - `includes(JsArray $a, mixed $v): bool` uses SameValueZero; `indexOf`/`lastIndexOf` use strict equality.
 - `join(JsArray $a, string $sep = ','): string` (null elements → `""`; cyclic arrays render a revisited handle as `""`).
 - `arrSlice(JsArray $a, int|float $start = 0, int|float|null $end = null): JsArray`, `arrAt(JsArray $a, int|float $i): mixed`.
 - `splice(JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): JsArray`.
 - `push(JsArray $a, mixed ...$items): int`, `unshift(...)`: int; `pop(JsArray $a): mixed`, `shift(...)`: mixed.
-- `reverse(JsArray $a): JsArray`, `sort(JsArray $a, ?callable $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort is stable and retains a comparator-pushed tail; default comparison uses UTF-16 code units.
+- `reverse(JsArray $a): JsArray`, `sort(JsArray $a, ?callable $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort is stable; default comparison uses UTF-16 code units and refuses multiple object values. Custom comparators must be compiler-recognized numeric differences between the two parameters or matching property paths. The runtime sorts finite primitive keys; arbitrary or effectful comparator callbacks are refused before invocation.
 - `sorted(JsArray $a, ?callable $cmp = null): JsArray` (`toSorted`), `toReversed(JsArray $a): JsArray`, `with(JsArray $a, int|float $index, mixed $value): JsArray` return new handles.
 - `reduce(JsArray $a, callable $f, mixed ...$init): mixed` calls `(acc, value, index, array)`; empty without init throws `TypeError`.
-- `flat(JsArray $a, int|float $depth = 1): JsArray`, `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.
-- `concat(JsArray $a, mixed ...$items): JsArray` reads receiver elements after evaluating every argument.
+- `flat(JsArray $a, int|float $depth = 1): JsArray` (typed calls accept depths 0 and 1, with null selecting 0 and undefined selecting 1), `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.
+- `concat(JsArray $a, mixed ...$items): JsArray` reads receiver elements after evaluating every argument. Element inference preserves null and undefined, including nullable array operands.
 - `from(JsArray|string $source, ?callable $f = null): JsArray` uses live iterator length; strings iterate code points. `range(int $n, callable $f): JsArray` is the fixed-count `{ length: n }` path, passing `(null, index)`.
 - `max(int|float ...$n): int|float`, `min(...)` are JS Math helpers.
 
@@ -675,14 +884,14 @@ Objects (`JsObject`):
 - `keys(JsObject $o): JsArray`, `values(...)`: JsArray, `entries(...)`: JsArray of JsArray pairs; `fromEntries(JsArray $entries): JsObject`.
 - `obj(array ...$parts): JsObject` writes per key in source order; `omit(JsObject $o, array $keys): JsObject` implements object rest.
 - `hasOwn(JsObject|JsArray $o, mixed $key): bool`; `key(mixed $key): string` coerces computed keys as JS does.
-- `clone(mixed $v): mixed` independently copies objects, arrays, Set, Map and Date handles, preserving aliases and cycles; closures and arguments objects throw `DataCloneError`. Internal `detach` also copies arguments objects, while preserving closures and RegExp by reference for runtime ownership.
+- `clone(mixed $v): mixed` independently copies objects, arrays, Set, Map and Date handles, preserving aliases and cycles; closures and arguments objects throw `DataCloneError`. Math namespace clones are plain empty objects, preserving repeated-reference aliases. Internal `detach` also copies arguments objects, while preserving closures, RegExp and namespace identity by reference for runtime ownership.
 
 JSON:
 - `jsonStringify(mixed $v, int|float|string|null $indent = null): ?string` — `JSON.stringify(v, null, indent)`: lists → arrays, assoc → objects, empty array → `[]`, NAN/INF → `null`, integral floats without `.0`, unescaped `/` and Unicode, `Closure` values omitted from objects and `null` in arrays, top-level Closure → null. Cycles throw `TypeError`; `jsonTree` provides the same value tree for foreign encoders. Indent number (clamped 10) or string, exactly as JS formats it.
 - `jsonParse(string $s): mixed` — handles; invalid → `JsError` named `SyntaxError`.
 
 Misc:
-- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC), unparseable → NAN. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; unlike V8 it has no legacy fallback (`10/30/2026` → NAN). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
+- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC). Time requires a complete date and T separator; offsets require a colon. Invalid calendar components produce NAN; unsupported syntax throws RangeError. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; legacy/non-ISO syntax is refused explicitly (`10/30/2026` throws RangeError). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
 - `uuid(): string` — RFC 4122 v4.
 - `random(): float` — `[0, 1)`.
 - `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[zero] ` prefix.
@@ -698,11 +907,11 @@ code with strict TypeScript as well as `zero check`.
 | Surface | Support | Boundary |
 |---|---|---|
 | Interfaces | Supported for finite objects | Multiple `extends` bases, imported named types, generic arguments and inherited optional fields. Reachable merged declarations are refused. Class references use the separate nominal class dispatch described below; finite object operations do not model class prototype keys. |
-| Class/type interoperability | Supported within the existing class subset | Local/imported class references retain identity through concrete aliases and object wrappers. Class fields, constructor parameter properties and method signatures can use the finite type operations in this table. PHP compilation normalizes annotation-only `undefined`/`void` to null at every runtime boundary, including reentrant class compilation. This does not add generic classes or class-prototype type introspection. |
+| Class/type interoperability | Supported within the existing class subset | Local/imported class references retain identity through concrete aliases and object wrappers. Class fields, constructor parameter properties and method signatures can use the finite type operations in this table. PHP compilation preserves `undefined` identity, including reentrant class compilation; runtime `void` results are undefined. This does not add generic classes or class-prototype type introspection. |
 | Intersections | Partial | Named finite objects merge recursively; compatible scalar/literal intersections narrow. Optional properties include implicit `undefined` in overlapping value domains under strict TypeScript without `exactOptionalPropertyTypes`; required presence does not remove that value. Conflicting optional domains still allow absence. Impossible object intersections and function/array intersections are refused. |
 | Generic aliases/interfaces | Supported for concrete instantiations | Required arguments, scalar/array/finite-object structural constraints, defaults that reference earlier parameters, and nested applications. Constraint checks do not use PHP runtime conversions such as Date-to-number. Missing/extra arguments fail. PHP-reachable generic functions are refused, rather than compiling a signature widened to `unknown`. |
 | `keyof` | Supported for finite objects | Literal string keys; object unions retain only common keys. Open maps, arrays, primitive/prototype keys, numeric property names and symbols are refused. |
-| Indexed access types | Partial | String-key unions on finite objects, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`) with `[number]`, tuple numeric literals/unions and tuple `[number]`. A key missing from any union member fails. Optional reads include `undefined` during normalization and become nullable at the PHP boundary. |
+| Indexed access types | Partial | String-key unions on finite objects, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`) with `[number]`, tuple numeric literals/unions and tuple `[number]`. A key missing from any union member fails. Optional reads retain `undefined` at runtime. |
 | Dynamic property reads | Supported for finite string keys | `object[key]` works when every possible key belongs to the fixed object. Arbitrary string keys need `Record<string, T>`. This does not add dynamic writes to fixed objects. |
 | `Record<K, V>` | Partial | Finite string unions produce required fixed properties; `string` produces the existing open map. Numeric/symbol keys are refused. |
 | `Partial`, `Required`, `Readonly` | Partial | Finite objects and unions of finite objects. `Required` removes optional presence and its `undefined`, retaining explicit `null`. Readonly is type-only; PHP handles retain their existing identity/mutation semantics. Open-map and array utility transforms are refused. |
@@ -732,9 +941,9 @@ Their dependencies resolve
 independently of registry order. Recursive model dependencies and chains exceeding
 96 JSON annotations receive located refusals. Copying inferred model fields and
 cached JSON types also consumes the root's 16,384-step work budget, before cloning.
-PHP compilation and public client
-types apply null normalization after model expansion; generated backend query
-types retain the authored domain.
+PHP compilation and generated backend query types retain the authored
+null/undefined domain after model expansion. Public client types apply JSON
+serialization rules after that expansion.
 
 The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)
 imports its generic interfaces from a separate module. Its `typeReport` action
@@ -742,26 +951,26 @@ with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`
 emits this PHP/JSON result:
 
 ```json
-{"classView":{"entry":{"id":7,"title":"Hello","state":"draft","active":true},"missing":null,"label":"draft"},"labels":{},"intersected":{"note":null},"optionalConflict":{},"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","missing":null,"pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
+{"finiteChecks":[[false,false],[false,false],[false,true],[false,true],[false,true],[false,true],[false,false]],"finiteIdentity":true,"finiteCaptured":true,"pureFinite":[[false,false],[false,false],[false,true],[false,true],[false,true],[false,true],[false,false]],"scalarTypes":["8","HELLO","true","false","other"],"scalarFalseBranches":["6","hello","absent"],"guardedLabels":["found"],"guardedFind":"found","guardedBranch":"found","predicateMap":[false,true],"booleanFilter":["0","value"],"tupleLabels":["Left:L","Right:R"],"arrayPresence":{"tags":["present"]},"classView":{"entry":{"id":7,"title":"Hello","state":"draft","active":true},"label":"draft"},"labels":{},"intersected":{},"optionalConflict":{},"optionalSnapshot":{},"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
 ```
 
 The fixture also imports a derived class with public constructor parameter
 properties typed through `Projection`, a `Required` snapshot result, and an
 `undefined` field and `void` method. Its class reference is nested in a generic
 object alias before construction; this exercises class compilation reached
-from type normalization. The generated client exposes `classView.missing: null`
+from type normalization. The generated client exposes `classView.missing?: never`
 and `classView.label: "draft"`, and omits class methods at the JSON boundary.
 
 It also captures `{ note: undefined }` under
-`{ note?: string } & { note: string | undefined }`. The required output property
-is `note: string | null`, including after `Required` because its presence was
-already required. In contrast, `Required<{ label?: string | undefined }>`
+`{ note?: string } & { note: string | undefined }`. The authored property remains required with `note: string | undefined`,
+including after `Required`. JSON omits an undefined value, so the public client
+uses `note?: string`. In contrast, `Required<{ label?: string | undefined }>`
 removes optional undefined and keeps `label: string`. Direct mapped labels
 retain optional presence and return `{}`. Conflicting optional intersections
-also accept `{}` and admit only undefined (PHP null) when present.
+also accept `{}` and admit only undefined when present.
 
 The generated output type retains `state: "draft"`, `key: "common"`,
-`snapshot: { id: number; note: string | null }`, and `missing: string | null`.
+`snapshot: { id: number; note: string | null }`, and `missing: string | null | undefined`.
 The [client fixture](../tests/fixtures/type-semantics/client.ts) checks both
 accepted uses and rejected non-null/literal assumptions with strict TypeScript.
 JSON input annotations retain their existing compile-time role; this change
@@ -787,8 +996,8 @@ together at 0.152.0.
 
 This type-algebra work adds no JS built-in API. Arbitrary browser/Node APIs,
 symbols, generators and dynamic runtime type introspection remain outside the
-supported runtime. Package source resolution has its own [import contract](config-api.md). Existing documented PHP null/undefined and Unicode string
-semantics are unchanged. Class behavior has its own implementation contract.
+supported runtime. Package source resolution has its own [import contract](config-api.md). Runtime values preserve null and undefined separately; supported Unicode string
+semantics remain bounded by the contract above. Class behavior has its own implementation contract.
 
 ## Identity password verification inventory
 

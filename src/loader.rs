@@ -12,6 +12,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const ZERO_MODULE: &str = "zero";
+/// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
+pub const WORDPRESS_MODULE: &str = "php/wordpress";
+
+/// Modules the compiler provides itself; nothing is loaded for them.
+pub fn builtin_module(spec: &str) -> bool {
+    spec == ZERO_MODULE || spec == WORDPRESS_MODULE
+}
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
 /// are absolute either way, so diagnostics and module identity work the same.
@@ -125,7 +132,15 @@ fn load_module(
         body,
     }));
     for (spec, span) in imports {
-        if spec == ZERO_MODULE {
+        if builtin_module(&spec) {
+            continue;
+        }
+        if spec == "php" || spec.starts_with("php/") {
+            diagnostics.push(
+                Diag::new(span, format!("\"{spec}\" isn't available"))
+                    .help("WordPress core is \"php/wordpress\"; plugin modules (\"php/<plugin>\") and PHP built-ins (\"php\") are not available yet")
+                    .code(diag::Code::Import),
+            );
             continue;
         }
         match resolve(fs, path, &spec, span).and_then(|target| load_module(fs, &target, program, by_path, diagnostics))

@@ -21,6 +21,8 @@ pub struct Built {
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
     pub hints: Vec<String>,
+    /// Abilities (and later hooks and functions) the compiled code uses from WordPress.
+    pub wordpress_uses: Vec<compile::WordPressUse>,
 }
 
 /// The last build, as the next one needs it: its snapshot and the number the next migration file gets.
@@ -111,11 +113,15 @@ pub fn build(
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
+    let wordpress_uses;
+    let catalog = crate::abilities::Catalog::new(&schema, &read_lock(program, &project.join(crate::abilities::LOCK))?);
     let (functions, slots) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
+        c.abilities = catalog.clone();
         c.resolve_json_types().map_err(|d| d.phase(diag::Code::Compile))?;
         let slots = c.compile_roots(&roots).map_err(|d| d.phase(diag::Code::Compile))?;
         action_results = std::mem::take(&mut c.action_results);
+        wordpress_uses = std::mem::take(&mut c.wordpress_uses);
         (std::mem::take(&mut c.output), slots)
     };
     for (slot, name) in slots {
@@ -214,7 +220,16 @@ pub fn build(
         migrations.push((format!("{n:04}_{name}.sql"), migrate::render(&statements)));
     }
     let client_files = client::files(&schema, &action_results, runtime);
-    let gen_ts = schema_php::gen_ts(&schema);
+    // Only a project that imports "php/wordpress" maps it in tsconfig, so only then is it augmented.
+    let uses_wordpress = program.modules.iter().any(|m| {
+        m.body
+            .iter()
+            .any(|s| matches!(s, crate::ir::Stmt::Import { source, .. } if source == loader::WORDPRESS_MODULE))
+    });
+    let mut gen_ts = schema_php::gen_ts(&schema);
+    if uses_wordpress {
+        gen_ts += &crate::abilities::gen_ts(&catalog);
+    }
     Ok(Built {
         plugins: ext.plugins,
         client_files,
@@ -225,7 +240,21 @@ pub fn build(
         gen_ts,
         warnings,
         hints: ext.hints,
+        wordpress_uses,
     })
+}
+
+/// `zero/abilities.json` through the program's file system (so a hosted source bundle captures it);
+/// absent means no locked abilities.
+fn read_lock(program: &loader::Program, path: &Path) -> Result<Vec<crate::abilities::Locked>, Diag> {
+    if !program.fs.exists(path) {
+        return Ok(Vec::new());
+    }
+    let text = program
+        .fs
+        .read_to_string(path)
+        .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", crate::abilities::LOCK)))?;
+    crate::abilities::parse_lock(&text).map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Import))
 }
 
 impl Built {

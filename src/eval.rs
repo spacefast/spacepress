@@ -7,7 +7,7 @@
 
 use crate::diag::{Diag, Span, suggest};
 use crate::ir::*;
-use crate::loader::{Program, ZERO_MODULE};
+use crate::loader::{Program, WORDPRESS_MODULE, ZERO_MODULE};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
@@ -456,7 +456,7 @@ impl<'p> Evaluator<'p> {
             if let Stmt::Import { source, .. }
             | Stmt::ExportNames { from: Some(source), .. }
             | Stmt::ExportAll { from: source, .. } = stmt
-                && source != ZERO_MODULE
+                && !crate::loader::builtin_module(source)
                 && let Some(&target) = self.program.resolved.get(&(id, source.clone()))
             {
                 self.eval_module(target)?;
@@ -529,6 +529,9 @@ impl<'p> Evaluator<'p> {
         if source == ZERO_MODULE {
             return zero_export(name, span);
         }
+        if source == WORDPRESS_MODULE {
+            return wordpress_export(name, span);
+        }
         let target = self.program.resolved[&(from, source.to_string())];
         match self.exports[target].get(name) {
             Some(v) => Ok(v.clone()),
@@ -550,16 +553,23 @@ impl<'p> Evaluator<'p> {
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
                 ImportName::Default => {
-                    if source == ZERO_MODULE {
+                    if crate::loader::builtin_module(source) {
                         return err_help(
                             spec.span,
-                            "\"zero\" has no default export",
-                            "import names: `import { collection } from \"zero\"`",
+                            format!("\"{source}\" has no default export"),
+                            format!("import names: `import {{ ... }} from \"{source}\"`"),
                         );
                     }
                     self.import_value(id, source, "default", spec.span)?
                 }
                 ImportName::Namespace => {
+                    if source == WORDPRESS_MODULE {
+                        return err_help(
+                            spec.span,
+                            "\"php/wordpress\" can't be imported as a namespace",
+                            "import the names you use: `import { abilities } from \"php/wordpress\"`",
+                        );
+                    }
                     if source == ZERO_MODULE {
                         let mut map = IndexMap::new();
                         for n in ZERO_EXPORTS {
@@ -1786,11 +1796,13 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail => err_help(
-                span,
-                "once(), jobs, fetch(), crypto and mail only work inside hooks, actions, routes and jobs, which run in PHP at request time",
-                "move the call into a handler",
-            ),
+            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail | Builtin::Abilities => {
+                err_help(
+                    span,
+                    "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                    "move the call into a handler",
+                )
+            }
             Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
@@ -2413,6 +2425,25 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         _ => {
             let mut d = Diag::new(span, format!("\"zero\" has no export named `{name}`"));
             if let Some(s) = suggest(name, ZERO_EXPORTS.iter().copied()) {
+                d = d.help(format!("did you mean `{s}`?"));
+            }
+            return Err(Ctl::Err(d));
+        }
+    }))
+}
+
+/// Names exported by `"php/wordpress"`.
+pub const WORDPRESS_EXPORTS: &[&str] = &["abilities"];
+/// Type-only exports of `"php/wordpress"`: importable, erased.
+const WORDPRESS_TYPES: &[&str] = &["Abilities", "AbilityName", "AbilityInput", "AbilityOutput"];
+
+fn wordpress_export(name: &str, span: Span) -> R<Value> {
+    Ok(Value::Builtin(match name {
+        "abilities" => Builtin::Abilities,
+        n if WORDPRESS_TYPES.contains(&n) => return Ok(Value::Undef),
+        _ => {
+            let mut d = Diag::new(span, format!("\"php/wordpress\" has no export named `{name}`"));
+            if let Some(s) = suggest(name, WORDPRESS_EXPORTS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(Ctl::Err(d));

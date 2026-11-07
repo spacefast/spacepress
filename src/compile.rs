@@ -291,6 +291,29 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// Every ability `abilities.call` may name, typed (src/abilities.rs).
+    pub abilities: crate::abilities::Catalog,
+    /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
+    pub wordpress_uses: Vec<WordPressUse>,
+}
+
+/// What kind of WordPress feature a module uses: the capability kinds a plugin gate counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WordPressKind {
+    /// `abilities.call("vendor/name", ...)`.
+    Ability,
+}
+
+/// One use of a WordPress feature, located at the source that makes it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct WordPressUse {
+    pub kind: WordPressKind,
+    pub name: String,
+    /// The project-relative or absolute path of the module that makes the use.
+    pub module: String,
+    #[serde(skip)]
+    pub span: Span,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -331,6 +354,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
+            abilities: crate::abilities::Catalog::default(),
+            wordpress_uses: Vec::new(),
         }
     }
 
@@ -2940,6 +2965,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "`mail` can't be used as a value",
                 "call `mail.send({ to, subject, text })` directly",
             ),
+            Value::Builtin(Builtin::Abilities) => err_help(
+                span,
+                "`abilities` can't be used as a value",
+                "call `abilities.call(\"vendor/name\", input)` directly",
+            ),
             Value::Builtin(Builtin::Jobs) => err_help(
                 span,
                 "`jobs` can't be used as a value",
@@ -4347,7 +4377,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         | Builtin::Env
                         | Builtin::Fetch
                         | Builtin::Crypto
-                        | Builtin::Mail),
+                        | Builtin::Mail
+                        | Builtin::Abilities),
                     ),
                     _,
                 ) => Some(b),
@@ -4387,6 +4418,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
             {
                 self.mail_call(prop, args, span).map(Some)
+            }
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Abilities) =>
+            {
+                self.abilities_call(prop, args, span).map(Some)
             }
             ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
                 ExprKind::Member {
@@ -4599,6 +4636,107 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             format!("\\Zero\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
+        ))
+    }
+
+    /// Records one use of a WordPress feature. Plugin capability inference reads
+    /// `Built::wordpress_uses`; this is the single place each use is noted.
+    pub fn use_wordpress(&mut self, kind: WordPressKind, name: &str, span: Span) {
+        let module = self
+            .fx
+            .as_ref()
+            .map(|f| f.module)
+            .and_then(|m| self.ev_program().modules.get(m).map(|m| m.path.display().to_string()))
+            .unwrap_or_default();
+        self.wordpress_uses.push(WordPressUse {
+            kind,
+            name: name.to_string(),
+            module,
+            span,
+        });
+    }
+
+    /// `abilities.call("vendor/name", input?)` from "php/wordpress": core's `WP_Ability::execute()`.
+    fn abilities_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name != "call" {
+            return err_help(
+                span,
+                format!("`abilities` has no function `{name}`"),
+                "use `abilities.call(\"vendor/name\", input)`",
+            );
+        }
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't call abilities",
+                "move the call into a hook, action, route or job",
+            );
+        }
+        if args.is_empty() || args.len() > 2 {
+            return err_help(
+                span,
+                "abilities.call() takes an ability name and its input",
+                "write abilities.call(\"vendor/name\", { ... })",
+            );
+        }
+        let name_expr = self.arg(args, 0, span, "an ability name")?;
+        let ExprKind::Str(ability) = &name_expr.kind else {
+            return err_help(
+                name_expr.span,
+                "abilities.call() needs the ability name as a string literal",
+                "write the name in place, e.g. abilities.call(\"woocommerce/create-order\", input), so the build can type it",
+            );
+        };
+        let Some((input_ty, output_ty)) = self.abilities.abilities.get(ability).cloned() else {
+            let mut d = Diag::new(name_expr.span, format!("unknown ability `{ability}`"));
+            d = match suggest(ability, self.abilities.abilities.keys().map(String::as_str)) {
+                Some(s) => d.help(format!("did you mean `{s}`?")),
+                None => d.help(format!(
+                    "abilities outside this app come from {}; run `zero abilities pull --site <url>` and commit it",
+                    crate::abilities::LOCK
+                )),
+            };
+            return Err(d);
+        };
+        let input = match args.get(1) {
+            // No schema: core wants no input at all. An object schema gets `{}`, which core's
+            // validation accepts when nothing is required.
+            None if accepts_omission(&input_ty) => "null".to_string(),
+            None if matches!(&input_ty, Ty::Map(_))
+                || matches!(&input_ty, Ty::Obj(f) if f.values().all(|(_, o)| *o)) =>
+            {
+                "new \\Zero\\JsObject()".to_string()
+            }
+            None => {
+                return err_help(
+                    span,
+                    format!("`{ability}` needs input {}", input_ty.describe()),
+                    "pass the input as the second argument",
+                );
+            }
+            Some(_) => {
+                let e = self.arg(args, 1, span, "the ability input")?;
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                // An inline literal keeps its literal type, so `{ status: "draft" }` meets an enum.
+                if !assignable(&v.ty, &input_ty) {
+                    return err_help(
+                        e.span,
+                        format!(
+                            "`{ability}` takes {}, not {}",
+                            input_ty.describe(),
+                            widen_fresh_literals(&v.ty).describe()
+                        ),
+                        "the input type comes from the ability's input schema",
+                    );
+                }
+                v.php
+            }
+        };
+        self.use_wordpress(WordPressKind::Ability, ability, name_expr.span);
+        Ok(Out::atom(
+            format!("\\Zero\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
+            Ty::Promise(Box::new(output_ty)),
         ))
     }
 

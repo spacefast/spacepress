@@ -1650,16 +1650,24 @@ final class Js
     /** The JSON value tree shared by Zero's encoder and foreign encoders. */
     public static function jsonTree(mixed $value): mixed
     {
-        return self::jsonValueTree($value, new \SplObjectStorage());
+        return self::jsonValueTree(self::jsonClassValue($value, ''), new \SplObjectStorage());
+    }
+
+    /** SerializeJSONProperty step 2: a class `toJSON` method replaces the value, receiving the key. */
+    private static function jsonClassValue(mixed $value, string $key): mixed
+    {
+        if ($value instanceof JsObject && !array_key_exists('toJSON', $value->p) && $value->class !== null
+            && ($method = $value->class->readInherited($value, 'toJSON', false)) instanceof \Closure) {
+            return self::dynamicMethod($value, 'toJSON')($key);
+        }
+        return $value;
     }
 
     private static function jsonValueTree(mixed $value, \SplObjectStorage $stack): mixed
     {
-        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments) {
-            $custom = array_key_exists('toJSON', $value->p)
-                ? $value->p['toJSON'] instanceof \Closure
-                : $value instanceof JsObject && ($value->class?->hasMethod('toJSON') ?? false);
-            if ($custom) { throw new JsError('Custom toJSON callbacks are not supported', 'TypeError'); }
+        if (($value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments)
+            && array_key_exists('toJSON', $value->p) && $value->p['toJSON'] instanceof \Closure) {
+            throw new JsError('Custom toJSON callbacks are not supported', 'TypeError');
         }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
@@ -1685,15 +1693,16 @@ final class Js
             };
             if ($list) {
                 $out = [];
-                foreach ($items as $item) { $out[] = self::jsonValueTree($item, $stack); }
+                foreach ($items as $index => $item) { $out[] = self::jsonValueTree(self::jsonClassValue($item, (string) $index), $stack); }
                 return $out;
             }
             $out = [];
             $nulKey = false;
             foreach (self::ownKeys($items) as $key) {
-                if ($items[$key] instanceof \Closure || $items[$key] === JsUndefined::Value) { continue; }
+                $item = self::jsonClassValue($items[$key], (string) $key);
+                if ($item instanceof \Closure || $item === JsUndefined::Value) { continue; }
                 $nulKey = $nulKey || str_starts_with((string) $key, "\0");
-                $out[$key] = self::jsonValueTree($items[$key], $stack);
+                $out[$key] = self::jsonValueTree($item, $stack);
             }
             if ($nulKey) { return $out; }
             $result = new \stdClass();
@@ -1750,10 +1759,11 @@ final class Js
 
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
+        $v = self::jsonClassValue($v, '');
         if ($v instanceof \Closure || $v === JsUndefined::Value) {
             return null;
         }
-        $v = self::jsonTree($v);
+        $v = self::jsonValueTree($v, new \SplObjectStorage());
         if (is_string($indent)) {
             // The first 10 units. Cutting a surrogate pair there only matters if the gap is
             // written (a non-empty array or object): a scalar or empty result never uses it.

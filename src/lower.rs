@@ -637,7 +637,9 @@ impl Lowerer {
                         if matches!(
                             name.as_str(),
                             "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
-                        ) || accessor_names.iter().any(|(s, _, n): &(bool, bool, String)| *s == p.r#static && *n == name)
+                        ) || accessor_names
+                            .iter()
+                            .any(|(s, _, n): &(bool, bool, String)| *s == p.r#static && *n == name)
                             || !names.insert((p.r#static, name.to_string()))
                         {
                             return self.unsupported(
@@ -840,7 +842,7 @@ impl Lowerer {
                             }
                             if matches!(
                                 name.as_str(),
-                                "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
+                                "__proto__" | "prototype" | "constructor" | "toString" | "valueOf"
                             ) || !names.insert((m.r#static, name.to_string()))
                             {
                                 return self.unsupported(

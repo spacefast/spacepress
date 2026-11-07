@@ -63,3 +63,30 @@ export function untypedClasses() {
     called: method.call(d),
   };
 }
+
+// UploadControl's shape in files-sdk: private state behind getters, toJSON exposing one part.
+class Control {
+  #state = { status: "idle", loaded: 0 };
+  static from(session) { const control = new Control(); control.#state.session = session; return control; }
+  get status() { return this.#state.status; }
+  get loaded() { return this.#state.loaded; }
+  set loaded(value) { this.#state.loaded = value; this.#state.status = "uploading"; }
+  get session() { return this.#state.session; }
+  static get kind() { return "control"; }
+  toJSON() { return this.#state.session; }
+}
+class Subcontrol extends Control {
+  get status() { return "sub:" + super.status; }
+}
+
+export function untypedAccessors() {
+  const control = Subcontrol.from({ id: "s1" });
+  control.loaded = 10;
+  let readOnly = "";
+  try { control.status = "x"; } catch (error) { readOnly = error.name; }
+  const getter = control.status;
+  return {
+    status: getter, loaded: control.loaded, kind: Subcontrol.kind, keys: Object.keys(control),
+    json: JSON.stringify({ control, list: [control] }), readOnly, missing: control.nothing,
+  };
+}

@@ -1,5 +1,5 @@
 import { defineConfig, action } from "zero";
-import { untypedPrivate, untypedClasses } from "./class-private-lib.mjs";
+import { untypedPrivate, untypedClasses, untypedAccessors } from "./class-private-lib.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -29,6 +29,19 @@ class PrivateReader {
   }
 }
 
+class Temperature {
+  #celsius = 0;
+  static #reads = 0;
+  get celsius(): number { Temperature.#reads++; return this.#celsius; }
+  set celsius(value: number) { this.#celsius = Math.round(value); }
+  get fahrenheit() { return this.#celsius * 9 / 5 + 32; }
+  static get reads(): number { return Temperature.#reads; }
+  toJSON(): { c: number } { return { c: this.#celsius }; }
+}
+class Kelvin extends Temperature {
+  get celsius(): number { return super.celsius + 1000; }
+}
+
 export default defineConfig({
   name: "class-private",
   actions: {
@@ -48,6 +61,17 @@ export default defineConfig({
         foreign: [PrivateReader.read(new PrivateReader()), PrivateReader.read({ secret: "x" })],
       };
     }),
+    accessorsTyped: run(() => {
+      const t = new Temperature();
+      t.celsius = 36.6;
+      t.celsius += 1;
+      const k = new Kelvin();
+      return {
+        celsius: t.celsius, fahrenheit: t.fahrenheit, reads: Temperature.reads,
+        keys: Object.keys(t), json: JSON.stringify({ t, list: [t] }), kelvin: k.celsius,
+      };
+    }),
+    accessorsUntyped: run(() => untypedAccessors()),
     privateUntyped: run(() => untypedPrivate()),
     classesUntyped: run(() => untypedClasses()),
   },

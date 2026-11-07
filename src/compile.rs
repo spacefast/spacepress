@@ -557,6 +557,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     t => t.clone(),
                 };
                 crate::builtins::check_json_serialization_type(&ret, root.closure.func.span)?;
+                self.check_class_wire_type(&ret, root.closure.func.span)?;
                 self.action_results.insert(action.clone(), ret);
             }
             if let Slot::RouteHandler { route } = &root.slot {
@@ -3676,7 +3677,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if let Some(ty) = self.class_accessor_write(&o.ty, prop, *prop_span)? {
                     return Ok(AssignmentPlace {
-                        read: Out::atom(format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)), ty.clone()),
+                        read: Out::atom(
+                            format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
+                            ty.clone(),
+                        ),
                         constraint: ty,
                         target: Some(WriteTarget {
                             receiver: o.php,

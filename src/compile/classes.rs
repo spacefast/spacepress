@@ -299,13 +299,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let key = (accessor.is_static, accessor.name.clone());
             let shape = if accessor.is_static { &statics } else { &instance };
             if shape.field(&accessor.name).is_some() || self.classes[&id].methods.contains_key(&key) {
-                return err(accessor.func.span, "accessors cannot shadow inherited fields or methods");
+                return err(
+                    accessor.func.span,
+                    "accessors cannot shadow inherited fields or methods",
+                );
             }
         }
         let mut own_keys: Vec<(bool, String)> = c.accessors.iter().map(|a| (a.is_static, a.name.clone())).collect();
         own_keys.dedup();
         for key in own_keys {
-            let pair: Vec<_> = c.accessors.iter().filter(|a| (a.is_static, a.name.clone()) == key).collect();
+            let pair: Vec<_> = c
+                .accessors
+                .iter()
+                .filter(|a| (a.is_static, a.name.clone()) == key)
+                .collect();
             let getter = pair.iter().find(|a| !a.setter);
             let setter = pair.iter().find(|a| a.setter);
             let annotated = getter
@@ -443,8 +450,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } else {
                 instance.clone()
             };
-            let ty = self.classes[&id].accessors[&(accessor.is_static, accessor.name.clone())].ty.clone();
-            let params = if accessor.setter { vec![receiver, ty.clone()] } else { vec![receiver] };
+            let ty = self.classes[&id].accessors[&(accessor.is_static, accessor.name.clone())]
+                .ty
+                .clone();
+            let params = if accessor.setter {
+                vec![receiver, ty.clone()]
+            } else {
+                vec![receiver]
+            };
             let closure = Rc::new(Closure {
                 func: accessor.func.clone(),
                 env: env.clone(),
@@ -464,7 +477,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         .unwrap()
                         .ty = ret.clone();
                 } else if !assignable(&ret, &ty) {
-                    return err(accessor.func.span, format!("getter returns {}, expected {}", ret.describe(), ty.describe()));
+                    return err(
+                        accessor.func.span,
+                        format!("getter returns {}, expected {}", ret.describe(), ty.describe()),
+                    );
                 }
             }
             let callable = format!("\\Closure::fromCallable({})", php_str(&format!("\\ZeroApp\\{helper}")));
@@ -616,7 +632,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if let Some(accessor) = info.accessors.get(&(is_static, prop.to_string())) {
             if !accessor.getter {
-                return err(span, format!("`{prop}` has only a setter; reading it returns undefined"));
+                return err(
+                    span,
+                    format!("`{prop}` has only a setter; reading it returns undefined"),
+                );
             }
             return Ok(Out::atom(
                 if is_static {
@@ -951,9 +970,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Some(accessor) if accessor.getter => accessor.ty.clone(),
             Some(_) => Ty::Undefined,
             None if info.javascript => Ty::Dynamic,
-            None => return err_help(span, "super property reads are limited to getters", "call super.method(...) directly"),
+            None => {
+                return err_help(
+                    span,
+                    "super property reads are limited to getters",
+                    "call super.method(...) directly",
+                );
+            }
         };
-        let found = format!("{}()->readInherited({}, {}, {is_static})", info.name, recv.php, php_str(member));
+        let found = format!(
+            "{}()->readInherited({}, {}, {is_static})",
+            info.name,
+            recv.php,
+            php_str(member)
+        );
         let tmp = self.tmp_var();
         Ok(Out::atom(
             format!("(({tmp} = \\ZeroApp\\{found}) === \\Zero\\JsClass::absent() ? \\Zero\\Js::undefined() : {tmp})"),
@@ -972,7 +1002,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(None);
         };
         if !accessor.setter {
-            return err(span, format!("`{prop}` is a getter without a setter; assigning it throws TypeError"));
+            return err(
+                span,
+                format!("`{prop}` is a getter without a setter; assigning it throws TypeError"),
+            );
         }
         Ok(Some(accessor.ty.clone()))
     }
@@ -981,6 +1014,33 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.fx
             .as_ref()
             .is_some_and(|f| f.env.lookup(":constructing").is_some())
+    }
+}
+
+impl Compiler<'_, '_> {
+    /// Generated clients describe instances by their own fields; toJSON or getters would change that shape.
+    pub(super) fn check_class_wire_type(&self, ty: &Ty, span: Span) -> Result<()> {
+        fn custom(classes: &HashMap<usize, CompiledClass>, ty: &Ty) -> bool {
+            match ty {
+                Ty::Instance(identity, fields) => {
+                    classes[&identity.id].methods.contains_key(&(false, "toJSON".into())) || custom(classes, fields)
+                }
+                Ty::Obj(fields) => fields.values().any(|(t, _)| custom(classes, t)),
+                Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Map(t) => custom(classes, t),
+                Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => {
+                    items.iter().any(|t| custom(classes, t))
+                }
+                _ => false,
+            }
+        }
+        if custom(&self.classes, ty) {
+            return err_help(
+                span,
+                "actions can't return class instances with a toJSON method; their JSON differs from their fields",
+                "return the toJSON() result, or build the response object explicitly",
+            );
+        }
+        Ok(())
     }
 }
 

@@ -1,7 +1,8 @@
 # Use native access for stable PHP object parameters
 
 Required constant-key reads from a non-null PHP `JsObject` parameter use
-`($input->p['field'] ?? null)`. Writes to that same proven receiver use native
+`($input->p['field'] ?? Js::dataGet($input, 'field'))`: a present non-null value
+skips the helper, and an absent or null key keeps the checked read's result. Writes to that same proven receiver use native
 array assignment after capturing the receiver and key. A TypeScript object shape
 alone is insufficient: the emitted function signature must enforce `JsObject`,
 the parameter must have no default initializer, and the completed effects analysis
@@ -29,7 +30,8 @@ assignment alone must not erase that distinction. `Js::plus`, `Js::add`, array
 index checks and class static dispatch remain where their semantics differ.
 
 For example, a proven parameter read changes from
-`Js::prop($input, 'title')` to `($input->p['title'] ?? null)`. A captured write
+`Js::dataGet($input, 'title')` to
+`($input->p['title'] ?? Js::dataGet($input, 'title'))`. A captured write
 changes from `Js::set($receiver, $key, $value)` to
 `($receiver->p[$key] = $value)`. General numeric addition remains on its helper:
 the TypeScript `number` type proves neither a safe integer range nor the absence

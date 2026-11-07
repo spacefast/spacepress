@@ -740,6 +740,7 @@ impl Graph {
         env.vars.borrow_mut().insert(
             ":class".into(),
             Binding {
+                initialized: true,
                 value: Value::Class(class.clone()),
                 mutable: false,
                 module_level: false,
@@ -752,6 +753,7 @@ impl Graph {
             method_env.vars.borrow_mut().insert(
                 ":static".into(),
                 Binding {
+                    initialized: true,
                     value: Value::Bool(*is_static),
                     mutable: false,
                     module_level: false,

@@ -88,6 +88,14 @@ function read(item: Draft, key: keyof Projection<Draft, "title" | "state">): str
 export default defineConfig({
   tables: {},
   actions: {
+    wireLogicalArrayObject: action({ input: {}, handler: () => { const a:string[]=[]; const value=(a[0]&&='x'); return {value}; } }),
+    wireNullishObject: action({ input: {}, handler: () => {
+      function read(x?: string) { if (x == null) return {value:x}; return {value:x}; }
+      return read();
+    } }),
+    wireUndefinedTuple: action({ input: {}, handler: () => [undefined] }),
+    wireUndefinedObject: action({ input: {}, handler: () => ({ x: undefined }) }),
+    wireDestructuredObject: action({ input: {}, handler: () => { const [x]: undefined[] = []; return {x}; } }),
     nonemptyValues: action({
       input: {},
       handler: () => Array.from(["first"]).map(value => value.toUpperCase()),

@@ -525,6 +525,126 @@ export default defineConfig({
   allowance. A managed host without a transport refuses rather than falling
   back to `wp_mail`.
 
+## WordPress abilities
+
+A handler can call any ability registered on the site with the WordPress
+Abilities API: the app's own, core's, or another plugin's (WooCommerce,
+Jetpack, ...). Import `abilities` from `"php/wordpress"`:
+
+```ts
+import { action, defineConfig, text } from "zero";
+import { abilities } from "php/wordpress";
+
+export default defineConfig({
+  actions: {
+    count: action({
+      input: { text: text().notNull() },
+      access: "authenticated",
+      async handler(input) {
+        const result = await abilities.call("acme/word-count", { text: input.text });
+        return result.count;
+      },
+    }),
+  },
+});
+```
+
+- The name is a string literal. The input is checked against the ability's
+  input schema and the result is typed from its output schema, by the
+  compiler and by tsc.
+- The app's own abilities (`<app>/<collection>-list`, `<app>/<action>`, ...)
+  are typed from the schema with nothing else to do. An action's result is
+  `unknown`: its ability publishes no output schema.
+- Other abilities come from `zero/abilities.json`, which you commit.
+  `zero abilities pull [dir] --site <url>` writes it from a running site;
+  `--only acme/*` (repeatable) keeps matching names. The pull signs in only
+  with `ZERO_APP_PASSWORD=user:application-password` from the environment.
+  `zero build` and `zero check` read the lock and never contact the site.
+- Map `"php/wordpress"` in tsconfig.json next to `"zero"`
+  (`types/wordpress.d.ts` in the CLI package); `zero build` writes the ability
+  types into `zero.gen.ts` when the app imports the module.
+- The call runs core's `WP_Ability::execute()` for the current WordPress user:
+  core validates the input, runs the ability's permission check and validates
+  the output. It runs inside the handler's transaction, so the ability's
+  database writes roll back with the handler's.
+- Errors are `HttpError`s. A site without the ability answers
+  `503 ability_unavailable` (the build's lock no longer matches the site). A
+  `WP_Error` with a `status` keeps it and its code; otherwise a permission
+  failure is `401 unauthenticated` or `403 forbidden`, invalid input is
+  `422 invalid_input`, and anything else is 500 with the ability's code.
+- JSON Schema maps to TypeScript for `type` (with `"null"`), `properties` and
+  `required`, arrays, `enum`, `const`, `oneOf`/`anyOf` and
+  `additionalProperties`. `allOf`, `$ref`, `not`, `patternProperties` and
+  tuple `items` become `unknown`, and the pull prints a warning for each.
+- `zero doctor --site <url>` (with `ZERO_APP_PASSWORD`) reports every locked
+  ability the site no longer has or whose schema changed since the pull.
+
+## WordPress hooks
+
+`wp-hooks/` beside `zero.config.ts` adds WordPress actions and filters. Name a
+file after the hook, or make a directory of that name for several handlers.
+Each file default-exports its handler:
+
+```text
+wp-hooks/
+├── save_post.ts
+└── the_content/
+    ├── 10-reading-time.ts
+    └── 20-frame.ts
+```
+
+```ts
+// wp-hooks/the_content/20-frame.ts
+import type { Handler } from "php/wordpress";
+
+const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
+export default frame;
+```
+
+```ts
+// wp-hooks/save_post.ts
+import type { WP_Post } from "php/wordpress";
+
+export const priority = 20;
+export default function (postId: number, post: WP_Post, update: boolean) {
+  if (!update && post.post_type === "post") { /* ... */ }
+}
+```
+
+- The files compile to PHP like hooks and actions, and the app plugin
+  registers them with `add_filter`/`add_action`. No JavaScript reaches the site.
+- Hooks come from a curated catalog generated from core's docblocks
+  (`@wp-hooks/wordpress-core` 1.13.0) and `php-stubs/wordpress-stubs` 7.1.2:
+  `init`, `wp_head`, `wp_footer`, `wp_body_open`, `wp_enqueue_scripts`,
+  `template_redirect`, `the_content`, `the_title`, `the_excerpt`,
+  `excerpt_length`, `excerpt_more`, `body_class`, `post_class`, `save_post`,
+  `wp_insert_post`, `deleted_post`, `transition_post_status`, `user_register`,
+  `wp_login`, `wp_logout`, `rest_api_init`, `wp_mail`, `pre_get_posts` and
+  `login_message`. Any other name is a build error with the closest one.
+  There is no untyped escape hatch.
+- Arguments are typed from the catalog. A filter must return its first
+  argument's type. Handlers are synchronous: WordPress doesn't wait.
+- `WP_Post` and `WP_User` arguments are read-only copies of their documented
+  public properties (`post_title`, `post_status`, `user_login`, `roles`, ...).
+  `WP_Query` (`pre_get_posts`) offers `get(var)`, `set(var, value)` and
+  `is_main_query()` on the query WordPress runs. Nothing else of these
+  objects is reachable.
+- Files of one hook register in file-name order, all at priority 10, so they
+  run in that order after core's own callbacks at 10. `export const priority =
+  <integer>` moves a file; lower runs first. A file exports only `default` and
+  `priority`; share code through an ordinary imported module.
+- `wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
+  file without a default export, another file type, or the same hook as both a
+  file and a directory is a build error at that path.
+- Handlers run in WordPress's own request, whichever it is: a page view, an
+  editor save, cron, REST, WP-CLI. They are not in a Zero transaction. `db`
+  works and each write commits on its own; `ctx` and `HttpError` responses
+  don't apply, since there is no Zero request.
+- A handler that throws is logged to the PHP error log as
+  `[zero] wp-hooks/<hook>: ...`. A filter then returns the value it was given,
+  so one broken handler leaves the page as WordPress rendered it. An action's
+  throw stops only that handler.
+
 ## Jobs and webhooks
 
 ```ts
@@ -729,7 +849,7 @@ Fixed-length callback walks (`map`, `filter`, `forEach`, `some`, `every`,
 `reduce`, `flatMap`, `find*`) throw `RangeError` if they reach an index their
 callback removed. Shrinkage after the final visit or an early return is fine;
 growth is ignored by these walks. `for…of` and `Array.from(array, mapper)`
-read live length. Elisions, `new Array(n)`, `delete a[i]`, `a.length = n` and
+read live length. Elisions, `new Array(n)`, `delete a[i]` (use `splice`), `a.length = n` and
 non-numeric index types are compile errors.
 
 Explicit `undefined` has its own runtime value: `typeof undefined` gives
@@ -740,8 +860,17 @@ existing contracts. Optional typed parameters include null in body reads.
 Imported JavaScript distinguishes missing values from explicit null throughout
 its checked operations.
 
+Bitwise operators (`& | ^ ~ << >> >>>` and their compound assignments) follow
+JavaScript's 32-bit semantics: ToInt32 operands, shift counts masked to five
+bits, and an unsigned result for `>>>`. `key in object` checks own properties,
+then the value's built-in prototype chain (class methods, array, function and
+error prototypes, `Object.prototype`), and narrows object unions like
+TypeScript. `delete obj.key` and `delete obj?.key` remove optional properties
+and map entries with strict-mode results: true for absent keys, a `TypeError`
+for non-configurable ones such as `length`.
+
 Rejected with a located error and a fix: `this` outside class methods or their
-arrows, `enum`, `in`, `delete`, generators,
+arrows, `enum`, generators,
 labels, getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),

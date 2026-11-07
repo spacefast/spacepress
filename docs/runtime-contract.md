@@ -39,6 +39,10 @@ Every Zero file starts with `declare(strict_types=1);`. Namespace `Zero`.
 sets `ini_set('precision', '-1')`, `ini_set('serialize_precision', '-1')`,
 registers an autoloader for `Zero\*` from its own directory, and registers the
 ordered feature modules through `Features::register()` (once per process).
+The bundled Composer loader and its autoloaded function files load on the first
+`Zero\Vendor\*` or `Zero_Vendor_*` class use. Ordinary requests do not load the
+optional Markdown, merge or S3 dependencies. Both scoped namespace and global
+class names use the same authoritative Composer map.
 
 The signing key for private-file URLs is the `zero_runtime_secret` option,
 minted on activation.
@@ -460,8 +464,9 @@ operation or replace an already-started response.
 
 ## class App (HTTP)
 
-`App::boot(string $appRoot, Store $store, Auth $auth, Media $media): App` loads
-`zero/app/schema.php` and requires `zero/app/functions.php`; the plugin passes
+`App::boot(string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media): App`
+uses the validated schema passed by the WordPress registry and requires
+`zero/app/functions.php`; the plugin passes
 its store, authentication and media services, and migrates on activation and
 on the first request after an update (`Wp\Plugin`).
 

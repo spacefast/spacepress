@@ -297,9 +297,9 @@ pub struct Compiler<'a, 'p> {
     pub uses: Vec<crate::plugins::Use>,
     /// Which compiled functions each function calls, for the read→send report.
     pub calls: HashMap<String, HashSet<String>>,
-    /// Hosts each plugin's runtime-built fetch URLs may reach (`None`: any public host).
-    hosts: HashMap<String, Option<Vec<String>>>,
     plugin_names: Vec<String>,
+    /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
+    pub host_functions: Vec<String>,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -343,7 +343,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             current: String::new(),
             uses: Vec::new(),
             calls: HashMap::new(),
-            hosts: HashMap::new(),
+            host_functions: Vec::new(),
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
         }
     }
@@ -427,9 +427,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// The locked fetch hosts of each plugin (set before compiling roots).
-    pub fn set_plugin_hosts(&mut self, hosts: Vec<(String, Option<Vec<String>>)>) {
-        self.hosts = hosts.into_iter().collect();
+    /// One PHP function running several hooks of a collection in order: plugins in `use` order,
+    /// then the app's. A before-hook's returned replacement becomes the next hook's `data`.
+    pub fn chain(&mut self, table: &str, kind: HookKind, functions: &[String]) -> String {
+        let name = self.unique_name(&format!("{table}__{}__chain", kind.name()));
+        let calls: Vec<String> = functions.iter().map(|f| format!("'\\\\ZeroApp\\\\{f}'")).collect();
+        let list = calls.join(", ");
+        let body = match kind {
+            HookKind::BeforeCreate => format!(
+                "function {name}(\\Zero\\JsObject $data, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+            ),
+            HookKind::BeforeUpdate => format!(
+                "function {name}(\\Zero\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+            ),
+            _ => format!("function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"),
+        };
+        self.output.push_str(&body);
+        name
     }
 
     /// Records a capability the plugin compiling now uses; app code is unrestricted.
@@ -638,6 +652,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // Solve all roots together before emitting shared helper signatures.
         self.effects = effects::Effects::analyze(roots, self.schema, self.ev_program());
         let mut out = Vec::new();
+        for i in 0..self.plugin_names.len() {
+            self.plugin = Some((i, self.plugin_names[i].clone()));
+            let name = self.unique_name("fetch_hosts");
+            self.host_functions.push(name);
+        }
         for root in roots {
             self.plugin = root.plugin.map(|i| (i, self.plugin_names[i].clone()));
             let params = self.root_params(&root.slot);
@@ -4345,16 +4364,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         // A plugin's fetches are checked against its locked hosts on every hop, so a runtime-built
-        // URL or a redirect can't leave the grant. A lock holding `*` allows any public host.
-        let hosts = match &self.plugin {
-            Some((_, name)) => self.hosts.get(name).cloned().flatten(),
-            None => None,
-        };
-        let allow = match hosts {
-            Some(hosts) => format!(
-                ", [{}]",
-                hosts.iter().map(|h| php_str(h)).collect::<Vec<_>>().join(", ")
-            ),
+        // URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
+        let allow = match &self.plugin {
+            Some((i, _)) => format!(", \\ZeroApp\\{}()", self.host_functions[*i]),
             None => String::new(),
         };
         Ok(Out::atom(

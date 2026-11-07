@@ -4,6 +4,37 @@
 use crate::diag::Diag;
 use crate::diag::Span;
 
+/// A Node built-in module the compiler supplies itself. Nothing is loaded for it; its functions
+/// lower in compile/host.rs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinModule {
+    /// `"node:crypto"` / `"crypto"`, lowered onto `Zero\Crypto`.
+    NodeCrypto,
+}
+
+impl BuiltinModule {
+    /// The functions the module exports in Zero code.
+    pub const fn exports(self) -> &'static [&'static str] {
+        match self {
+            BuiltinModule::NodeCrypto => &[
+                "createHash",
+                "createHmac",
+                "randomBytes",
+                "randomUUID",
+                "timingSafeEqual",
+            ],
+        }
+    }
+}
+
+/// The one lookup for Node built-in modules, shared by `import ... from` and `require(...)`.
+pub fn module(spec: &str) -> Option<BuiltinModule> {
+    match spec {
+        "node:crypto" | "crypto" => Some(BuiltinModule::NodeCrypto),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum Phase {
     Evaluator,

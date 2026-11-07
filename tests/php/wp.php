@@ -133,6 +133,10 @@ final class WpSite
                 return $port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:$port", $url) : $url;
             });
             PHP);
+        // A suite's own must-use plugins (name => PHP source), loaded before anything else boots.
+        foreach ($fixture['muPlugins'] ?? [] as $file => $code) {
+            file_put_contents("$dir/content/mu-plugins/$file.php", $code);
+        }
         $users = ['editor' => 'editor', 'author' => 'author', 'subscriber' => 'subscriber'] + ($fixture['users'] ?? []);
         // The site's URL is where its php -S would listen, so WordPress never redirects a client elsewhere.
         $site->port = wpFreePort();

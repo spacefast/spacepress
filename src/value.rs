@@ -81,6 +81,8 @@ pub enum Builtin {
     NodeCrypto(Option<&'static str>),
     /// `mail.send(message)` from "zero", compiled to `Zero\Mail::send`.
     Mail,
+    /// `abilities.call(name, input)` from "php/wordpress", compiled to `Zero\Wp\Abilities\Call::run`.
+    Abilities,
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,

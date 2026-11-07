@@ -6,7 +6,9 @@
 //! before its PHP is emitted, so one function sees all of them. Forms that cannot be lowered
 //! soundly are refused here with a location and a fix.
 use super::*;
-use crate::eval::NODE_CRYPTO;
+use crate::builtins::BuiltinModule;
+
+const NODE_CRYPTO: &[&str] = BuiltinModule::NodeCrypto.exports();
 use crate::types::HostTy;
 
 /// What a host lowering reaches outside the handler.

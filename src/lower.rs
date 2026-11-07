@@ -15,6 +15,11 @@ pub struct Lowerer {
     pub module: usize,
     pub class_context: std::cell::Cell<bool>,
     pub super_call: std::cell::Cell<bool>,
+    /// Installed package TypeScript compiles like JavaScript: types are erased,
+    /// not modelled. Syntax with runtime semantics is still lowered or refused.
+    pub erase_types: bool,
+    /// Names of the type declarations erased so far.
+    pub erased_types: std::cell::RefCell<std::collections::HashSet<String>>,
 }
 
 impl Lowerer {
@@ -38,6 +43,14 @@ impl Lowerer {
             d = d.help(help);
         }
         Err(d)
+    }
+
+    /// A source annotation, or nothing when this module's types are erased.
+    fn annotation(&self, t: Option<&oxc_allocator::Box<'_, a::TSTypeAnnotation<'_>>>) -> Result<Option<TyAnn>> {
+        if self.erase_types {
+            return Ok(None);
+        }
+        t.map(|t| self.ty(&t.type_annotation)).transpose()
     }
 
     fn binding_name(&self, name: &str, span: oxc_span::Span) -> Result<String> {
@@ -224,7 +237,7 @@ impl Lowerer {
                 );
             }
         };
-        if !crate::eval::is_node_crypto(&source) {
+        if crate::builtins::module(&source).is_none() {
             return self.unsupported(
                 call.span,
                 &format!("`require(\"{source}\")`"),
@@ -311,6 +324,14 @@ impl Lowerer {
                 });
                 Ok(())
             }
+            a::Declaration::TSTypeAliasDeclaration(t) if self.erase_types => {
+                self.erased_types.borrow_mut().insert(t.id.name.to_string());
+                Ok(())
+            }
+            a::Declaration::TSInterfaceDeclaration(i) if self.erase_types => {
+                self.erased_types.borrow_mut().insert(i.id.name.to_string());
+                Ok(())
+            }
             a::Declaration::TSTypeAliasDeclaration(t) => {
                 out.push(Stmt::TypeAlias {
                     name: t.id.name.to_string(),
@@ -376,11 +397,7 @@ impl Lowerer {
             out.push(Stmt::Decl {
                 kind,
                 pat: self.pattern(&d.id)?,
-                ann: d
-                    .type_annotation
-                    .as_ref()
-                    .map(|t| self.ty(&t.type_annotation))
-                    .transpose()?,
+                ann: self.annotation(d.type_annotation.as_ref())?,
                 init: d.init.as_ref().map(|e| self.expr(e)).transpose()?,
                 span: self.sp(d.span),
             });
@@ -413,6 +430,9 @@ impl Lowerer {
     }
 
     fn type_params(&self, t: Option<&a::TSTypeParameterDeclaration<'_>>) -> Vec<String> {
+        if self.erase_types {
+            return Vec::new();
+        }
         t.map(|t| t.params.iter().map(|p| p.name.name.to_string()).collect())
             .unwrap_or_default()
     }
@@ -668,7 +688,8 @@ impl Lowerer {
     }
 
     fn class(&self, c: &a::Class<'_>) -> Result<Rc<Class>> {
-        if !c.decorators.is_empty() || c.r#abstract || c.declare || c.type_parameters.is_some() {
+        let type_only = |present: bool| present && !self.erase_types;
+        if !c.decorators.is_empty() || type_only(c.r#abstract) || c.declare || type_only(c.type_parameters.is_some()) {
             return self.unsupported(
                 c.span,
                 "decorated, abstract, ambient or generic classes",
@@ -682,7 +703,7 @@ impl Lowerer {
         let base = match &c.heritage {
             None => None,
             Some(h) => match &h.expression {
-                a::Expression::Identifier(i) if h.type_arguments.is_none() => Some(i.name.to_string()),
+                a::Expression::Identifier(i) if !type_only(h.type_arguments.is_some()) => Some(i.name.to_string()),
                 _ => return self.unsupported(c.span, "dynamic class inheritance", "extend a named concrete class"),
             },
         };
@@ -694,6 +715,16 @@ impl Lowerer {
             let mut names = std::collections::HashSet::new();
             for element in &c.body.body {
                 match element {
+                    // Erased members have no runtime form: abstract members,
+                    // ambient fields, overload signatures and index signatures.
+                    a::ClassElement::PropertyDefinition(p)
+                        if self.erase_types
+                            && (p.declare || p.r#type == a::PropertyDefinitionType::TSAbstractPropertyDefinition) => {}
+                    a::ClassElement::MethodDefinition(m)
+                        if self.erase_types
+                            && (m.value.body.is_none()
+                                || m.r#type == a::MethodDefinitionType::TSAbstractMethodDefinition) => {}
+                    a::ClassElement::TSIndexSignature(_) if self.erase_types => {}
                     a::ClassElement::PropertyDefinition(p) => {
                         let Some(name) = p.key.static_name() else {
                             return self.unsupported(p.span, "private class fields", "use public fields");
@@ -701,7 +732,7 @@ impl Lowerer {
                         if p.computed
                             || !p.decorators.is_empty()
                             || p.declare
-                            || p.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
+                            || type_only(p.accessibility.is_some_and(|a| a != a::TSAccessibility::Public))
                         {
                             return self.unsupported(
                                 p.span,
@@ -723,11 +754,7 @@ impl Lowerer {
                         fields.push(ClassField {
                             name: name.to_string(),
                             is_static: p.r#static,
-                            ann: p
-                                .type_annotation
-                                .as_ref()
-                                .map(|t| self.ty(&t.type_annotation))
-                                .transpose()?,
+                            ann: self.annotation(p.type_annotation.as_ref())?,
                             init: p.value.as_ref().map(|e| self.expr(e)).transpose()?,
                             span: self.sp(p.span),
                         });
@@ -738,7 +765,7 @@ impl Lowerer {
                         };
                         if m.computed
                             || !m.decorators.is_empty()
-                            || m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
+                            || type_only(m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public))
                             || matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set)
                         {
                             return self.unsupported(
@@ -747,7 +774,7 @@ impl Lowerer {
                                 "use public named methods",
                             );
                         }
-                        if m.value.type_parameters.is_some() || m.value.params.rest.is_some() {
+                        if type_only(m.value.type_parameters.is_some()) || m.value.params.rest.is_some() {
                             return self.unsupported(
                                 m.span,
                                 "generic or rest class methods",
@@ -762,7 +789,7 @@ impl Lowerer {
                         let is_ctor = m.kind == a::MethodDefinitionKind::Constructor;
                         for p in &m.value.params.items {
                             if !p.decorators.is_empty()
-                                || p.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
+                                || type_only(p.accessibility.is_some_and(|a| a != a::TSAccessibility::Public))
                             {
                                 return self.unsupported(
                                     p.span,
@@ -795,11 +822,7 @@ impl Lowerer {
                                 fields.push(ClassField {
                                     name: i.name.to_string(),
                                     is_static: false,
-                                    ann: p
-                                        .type_annotation
-                                        .as_ref()
-                                        .map(|t| self.ty(&t.type_annotation))
-                                        .transpose()?,
+                                    ann: self.annotation(p.type_annotation.as_ref())?,
                                     init: None,
                                     span: self.sp(p.span),
                                 });
@@ -946,11 +969,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
-            ret: f
-                .return_type
-                .as_ref()
-                .map(|t| self.ty(&t.type_annotation))
-                .transpose()?,
+            ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
             module: self.module,
@@ -970,11 +989,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
-            ret: f
-                .return_type
-                .as_ref()
-                .map(|t| self.ty(&t.type_annotation))
-                .transpose()?,
+            ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
             module: self.module,
@@ -989,11 +1004,7 @@ impl Lowerer {
             }
             out.push(Param {
                 pat: self.pattern(&item.pattern)?,
-                ann: item
-                    .type_annotation
-                    .as_ref()
-                    .map(|t| self.ty(&t.type_annotation))
-                    .transpose()?,
+                ann: self.annotation(item.type_annotation.as_ref())?,
                 default: item.initializer.as_ref().map(|e| self.expr(e)).transpose()?,
                 optional: item.optional,
                 rest: false,
@@ -1003,11 +1014,7 @@ impl Lowerer {
         if let Some(r) = &p.rest {
             out.push(Param {
                 pat: self.pattern(&r.rest.argument)?,
-                ann: r
-                    .type_annotation
-                    .as_ref()
-                    .map(|t| self.ty(&t.type_annotation))
-                    .transpose()?,
+                ann: self.annotation(r.type_annotation.as_ref())?,
                 default: None,
                 optional: false,
                 rest: true,
@@ -1211,13 +1218,44 @@ impl Lowerer {
                         ));
                     }
                     UO::Delete => {
-                        return self.unsupported(
-                            u.span,
-                            "`delete`",
-                            "build a new object without the key: `const { key, ...rest } = obj`",
-                        );
+                        let mut target = u.argument.get_inner_expression();
+                        while let a::Expression::TSNonNullExpression(x) = target {
+                            target = x.expression.get_inner_expression();
+                        }
+                        let target = match target {
+                            a::Expression::StaticMemberExpression(_) | a::Expression::ComputedMemberExpression(_) => {
+                                self.member(target.as_member_expression().expect("member"))?
+                            }
+                            a::Expression::ChainExpression(c) => match &c.expression {
+                                a::ChainElement::StaticMemberExpression(_)
+                                | a::ChainElement::ComputedMemberExpression(_) => self.mk(
+                                    c.span,
+                                    ExprKind::Chain(Box::new(
+                                        self.member(c.expression.as_member_expression().expect("member"))?,
+                                    )),
+                                ),
+                                _ => {
+                                    return self.unsupported(
+                                        u.span,
+                                        "`delete` of a call result",
+                                        "delete an object property",
+                                    );
+                                }
+                            },
+                            a::Expression::PrivateFieldExpression(_) => {
+                                return self.unsupported(u.span, "private fields", "");
+                            }
+                            _ => {
+                                return self.unsupported(
+                                    u.span,
+                                    "`delete` of a variable or value",
+                                    "`delete` removes an object property: `delete obj.key`",
+                                );
+                            }
+                        };
+                        return Ok(self.mk(u.span, ExprKind::Delete(Box::new(target))));
                     }
-                    UO::BitwiseNot => return self.unsupported(u.span, "bitwise operators", ""),
+                    UO::BitwiseNot => UnOp::BitNot,
                 };
                 self.mk(span, ExprKind::Unary(op, Box::new(self.expr(&u.argument)?)))
             }
@@ -1253,14 +1291,27 @@ impl Lowerer {
                         }
                         if negated { BinOp::LooseNe } else { BinOp::LooseEq }
                     }
-                    BO::In => return self.unsupported(b.span, "`in`", "use `Object.hasOwn(obj, key)`"),
+                    BO::In => {
+                        if matches!(b.left, a::Expression::PrivateInExpression(_)) {
+                            return self.unsupported(b.span, "`#field in`", "use public fields");
+                        }
+                        return Ok(self.mk(
+                            b.span,
+                            ExprKind::In(Box::new(self.expr(&b.left)?), Box::new(self.expr(&b.right)?)),
+                        ));
+                    }
                     BO::Instanceof => {
                         return Ok(self.mk(
                             b.span,
                             ExprKind::Instanceof(Box::new(self.expr(&b.left)?), Box::new(self.expr(&b.right)?)),
                         ));
                     }
-                    _ => return self.unsupported(b.span, "bitwise operators", ""),
+                    BO::BitwiseAnd => BinOp::BitAnd,
+                    BO::BitwiseOR => BinOp::BitOr,
+                    BO::BitwiseXOR => BinOp::BitXor,
+                    BO::ShiftLeft => BinOp::Shl,
+                    BO::ShiftRight => BinOp::Shr,
+                    BO::ShiftRightZeroFill => BinOp::UShr,
                 };
                 self.mk(
                     span,
@@ -1298,7 +1349,12 @@ impl Lowerer {
                     AO::LogicalOr => Some(AssignOp::Log(LogOp::Or)),
                     AO::LogicalAnd => Some(AssignOp::Log(LogOp::And)),
                     AO::LogicalNullish => Some(AssignOp::Log(LogOp::Nullish)),
-                    _ => return self.unsupported(asg.span, "bitwise assignment", ""),
+                    AO::BitwiseAnd => Some(AssignOp::Bin(BinOp::BitAnd)),
+                    AO::BitwiseOR => Some(AssignOp::Bin(BinOp::BitOr)),
+                    AO::BitwiseXOR => Some(AssignOp::Bin(BinOp::BitXor)),
+                    AO::ShiftLeft => Some(AssignOp::Bin(BinOp::Shl)),
+                    AO::ShiftRight => Some(AssignOp::Bin(BinOp::Shr)),
+                    AO::ShiftRightZeroFill => Some(AssignOp::Bin(BinOp::UShr)),
                 };
                 let target = match asg.left.as_simple_assignment_target() {
                     Some(t) => self.simple_target(t)?,
@@ -1382,6 +1438,9 @@ impl Lowerer {
     }
 
     fn cast(&self, span: oxc_span::Span, e: &a::Expression<'_>, ty: &a::TSType<'_>) -> Result<Expr> {
+        if self.erase_types {
+            return self.expr(e);
+        }
         if let a::TSType::TSTypeReference(r) = ty
             && let a::TSTypeName::IdentifierReference(id) = &r.type_name
             && id.name == "const"
@@ -1414,8 +1473,8 @@ impl Lowerer {
             ));
         }
         let type_args = match &c.type_arguments {
-            Some(t) => t.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
-            None => vec![],
+            Some(t) if !self.erase_types => t.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
+            _ => vec![],
         };
         Ok(self.mk(
             c.span,
@@ -1557,11 +1616,7 @@ impl Lowerer {
                 }
                 let mut params = Vec::new();
                 for p in &f.params.items {
-                    let ann = p
-                        .type_annotation
-                        .as_ref()
-                        .map(|t| self.ty(&t.type_annotation))
-                        .transpose()?;
+                    let ann = self.annotation(p.type_annotation.as_ref())?;
                     params.push((ann.unwrap_or(TyAnn::Any(self.sp(p.span))), p.optional));
                 }
                 TyAnn::Fn(params, Box::new(self.ty(&f.return_type.type_annotation)?))
@@ -1697,11 +1752,7 @@ impl Lowerer {
                     };
                     let mut params = Vec::new();
                     for p in &ms.params.items {
-                        let ann = p
-                            .type_annotation
-                            .as_ref()
-                            .map(|t| self.ty(&t.type_annotation))
-                            .transpose()?;
+                        let ann = self.annotation(p.type_annotation.as_ref())?;
                         params.push((ann.unwrap_or(TyAnn::Any(self.sp(p.span))), p.optional));
                     }
                     let ret = match &ms.return_type {
@@ -1822,6 +1873,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
             }))
             .collect(),
         ExprKind::Unary(_, value)
+        | ExprKind::Delete(value)
         | ExprKind::IsNullish(value, _)
         | ExprKind::Chain(value)
         | ExprKind::Await(value)
@@ -1832,6 +1884,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
         ExprKind::Binary(_, a, b)
         | ExprKind::Logical(_, a, b)
         | ExprKind::Instanceof(a, b)
+        | ExprKind::In(a, b)
         | ExprKind::Index { obj: a, index: b, .. }
         | ExprKind::Assign {
             target: a, value: b, ..

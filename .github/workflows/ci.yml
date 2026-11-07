@@ -60,6 +60,10 @@ jobs:
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
           ZERO_BIN="$GITHUB_WORKSPACE/target/debug/zero" node examples/npm-compat/verify.mjs --isolated
       - run: target/debug/zero check examples/showcase
+      - name: Zero 0.8 census tool
+        env:
+          ZERO_BIN: ${{ github.workspace }}/target/debug/zero
+        run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
       - name: Docker-free local development acceptance
         run: node --test scripts/dev/acceptance.test.mjs
       - name: Offline deployment and recovery acceptance
@@ -182,6 +186,8 @@ jobs:
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       - run: tsc -p tests/host-types
       - run: tsc -p types/zero/tests
+      # The WordPress hook catalog and its declarations match the pinned sources.
+      - run: python3 scripts/wordpress-catalog.py --check
       - run: tsc -p examples/pantry
       - run: tsc -p examples/blog
       - run: tsc -p examples/showcase
@@ -311,6 +317,8 @@ jobs:
         run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals
         run: ZERO_WP_PROJECT=zero-wp-fetch ZERO_WP_PORT=8899 tests/wp/fetch/run.sh
+      - name: WordPress abilities and wp-hooks from TypeScript
+        run: ZERO_WP_PROJECT=zero-wp-wordpress ZERO_WP_PORT=8898 tests/wp/wordpress/run.sh
 
   wp-s3:
     runs-on: ubuntu-24.04

@@ -99,6 +99,14 @@ trait JsDynamic
         return $result;
     }
 
+    /** A shared method value whose receiver-aware form runs for `.call`, `.apply` and method calls. */
+    public static function registerMethod(\Closure $function, \Closure $invoke): \Closure
+    {
+        self::$dynamicMethodReceivers ??= new \WeakMap();
+        self::$dynamicMethodReceivers[$function] = $invoke;
+        return $function;
+    }
+
     public static function undefined(): JsUndefined { return JsUndefined::Value; }
     public static function isNullish(mixed $value): bool { return $value === null || $value === JsUndefined::Value; }
     public static function requirePresent(mixed $value): mixed
@@ -117,6 +125,7 @@ trait JsDynamic
             return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
         }
         if ($value instanceof JsClass) { return $value->get($key); }
+        if (JsBinary::is($value)) { return JsBinary::get($value, $key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -170,6 +179,7 @@ trait JsDynamic
             return self::set($target, $key, $value);
         }
         if ($target instanceof RegExp && $key === 'lastIndex') { $target->lastIndex = $value; return $value; }
+        if (JsBinary::is($target)) { return JsBinary::set($target, $key, $value); }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
             if ($key === '__proto__' && !array_key_exists($key, $target->p)) {
                 throw new JsError('Prototype mutation is not supported', 'TypeError');
@@ -202,6 +212,7 @@ trait JsDynamic
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
+        if (JsBinary::is($value)) { return new JsArray(JsBinary::keys($value)); }
         if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
@@ -233,6 +244,8 @@ trait JsDynamic
             for ($i = 0; $i < count($value->values); $i++) { yield $value->values[$i]; }
         } elseif ($value instanceof JsMap) {
             for ($i = 0; $i < count($value->entries); $i++) { yield new JsArray($value->entries[$i]); }
+        } elseif ($value instanceof JsTypedArray) {
+            for ($i = 0; $i < $value->length; $i++) { yield $value->at($i); }
         } else {
             throw new JsError('Value is not iterable', 'TypeError');
         }
@@ -247,6 +260,7 @@ trait JsDynamic
             $value instanceof JsMap => 'Map', $value instanceof JsDate => 'Date', $value instanceof RegExp => 'RegExp',
             $value instanceof JsNamespace => $value->name,
             $value instanceof JsError => 'Error',
+            JsBinary::is($value) => JsBinary::tag($value),
             $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
         };
         return '[object ' . $tag . ']';
@@ -302,6 +316,7 @@ trait JsDynamic
         if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         if (!$builtin && $receiver instanceof JsObject && $receiver->nullPrototype) { return self::dynamicCall(JsUndefined::Value, $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
+        if (JsBinary::is($receiver)) { return JsBinary::call($receiver, $name, $a); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
@@ -513,6 +528,7 @@ trait JsDynamic
     {
         Builtins::check($owner, $method, count($args->a));
         $a = $args->a;
+        if (in_array($owner, JsBinary::GLOBALS, true)) { return JsBinary::staticCall($owner, $method, $a); }
         $get = static fn (int $i, mixed $default = JsUndefined::Value): mixed => array_key_exists($i, $a) ? $a[$i] : $default;
         if ($owner === 'Array') {
             if ($method === 'isArray') { return $get(0) instanceof JsArray; }
@@ -602,6 +618,7 @@ trait JsDynamic
         $a = $args->a;
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
+        if (in_array($constructor, JsBinary::GLOBALS, true)) { return JsBinary::construct($constructor, $a); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             $text = $message === JsUndefined::Value ? '' : self::str($message);

@@ -33,6 +33,8 @@ final class Js
             is_int($v), is_float($v) => self::numStr($v),
             $v instanceof JsArray, $v instanceof JsArguments, $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
             $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsTypedArray => $v->call('join', []),
+            JsBinary::is($v) => self::dynamicObjectTag($v),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
@@ -121,6 +123,7 @@ final class Js
     {
         if ($v instanceof JsDate) { return $v->milliseconds; }
         if ($v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
+        if (JsBinary::is($v)) { return self::toNumber(self::str($v)); }
         if (is_int($v)) {
             return self::n($v);
         }
@@ -1589,6 +1592,7 @@ final class Js
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
+        if (JsBinary::is($value)) { return $structured ? JsBinary::copy($value, $seen) : $value; }
         if ($value instanceof JsNamespace) {
             if (!$structured) { return $value; }
             if ($seen->offsetExists($value)) { return $seen[$value]; }
@@ -1661,6 +1665,7 @@ final class Js
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError) { return new \stdClass(); }
+        if (JsBinary::is($value)) { return JsBinary::json($value); }
         if (is_float($value)) { return !is_finite($value) ? null : ($value == 0.0 ? 0 : $value); }
         if ($value instanceof \Closure) { return null; }
         if ($value instanceof RegExp) { return new \stdClass(); }

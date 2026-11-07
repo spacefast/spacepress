@@ -157,7 +157,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `connectors` | `connector-roles.json` overlay | Role map only | Connector calls (`ctx.connectors`) |
 | `favicon` | **missing** in config | Refused | Ship the file under `public/` |
 | Pure helpers, classes, local `shared/` modules | Copied | Auto | Helpers outside the v2 subset (for example `in`, `URL`) |
-| `declare const NAME` build globals | `env("NAME")` | Refused, names the fix | Replace the global |
+| `declare const NAME` build globals | `process.env.NAME` in handlers, `env("NAME")` in webhook and upload settings | Refused, names the fix | Replace the global |
 
 ### Identity
 
@@ -177,17 +177,17 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| `ctx.env.NAME` | `env("NAME")`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables; a name 0.8 left unset may now resolve to a host constant |
+| `ctx.env.NAME` | `process.env["NAME"]`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables; a name 0.8 left unset may now resolve to a host constant |
 | `ctx.log.info/warn/error/debug` | `console.*` to the PHP error log | Auto | — |
 | `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
 | `ctx.email.send` | `mail.send` from `"zero"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `zero_mail_transport` to the Space sender (#5063) |
 | `ctx.spam.check/reportSpam/reportHam` | **missing** | Refused | **Gap** |
 | `ctx.gravatar` | **missing** | Refused | **Gap** (small: an HTTP GET with the email hash) |
-| `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `crypto` from `"zero"` (#132), byte for byte 0.8's output | Auto once #132 lands | — |
+| `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `createHash`/`createHmac`/`timingSafeEqual` from `"node:crypto"`, byte for byte 0.8's output on the 452 recorded vectors; a named key reads `process.env` trimmed | Auto | — |
 | `ctx.jwt.sign` | **missing** | Refused | **Gap** |
 | `ctx.storage.list/get/delete` | [files](config-api.md#files) buckets | Refused | Port to file buckets |
 | `ctx.connectors.<role>.<tool>()` | **missing** | Refused | **Gap** (needs the connector broker in PHP) |
-| `fetch()` in actions | `fetch` from `"zero"` (#131): HTTPS only, private and special-purpose addresses refused after every redirect, 10 s, 1 MiB | Auto once #131 lands | — |
+| `fetch()` in actions | The same global `fetch`, unchanged: HTTPS only, private and special-purpose addresses refused after every redirect, 10 s, 1 MiB | Auto | — |
 
 ### HTTP
 
@@ -241,8 +241,8 @@ Each gap below is a missing v2 runtime feature, not converter work. They are
 ordered by how many 0.8 capsules need them, roughly. Each one goes in its own
 PR stacked on #118, implemented in PHP:
 
-1. **Outbound HTTP in handlers** (`fetch`): done in #131.
-2. **Hashing builtins** (`ctx.crypto`): done in #132.
+1. **Outbound HTTP in handlers** (`fetch`): done in #131; the global `fetch` since the host-globals change.
+2. **Hashing builtins** (`ctx.crypto`): done in #132; mapped to `node:crypto` since the host-globals change.
 3. **Free-form email from handlers** (`ctx.email.send`): done in #133. The
    Spacefast engine still has to connect its sender (see #133).
 4. **Catch-all route segments**: done in #134 as v2's `*rest`. The converter

@@ -285,10 +285,25 @@ final class Fetch
 
         return [
             'status' => (int) wp_remote_retrieve_response_code($response),
-            'statusText' => (string) wp_remote_retrieve_response_message($response),
+            'statusText' => self::statusText($response),
             'headers' => $out,
             'body' => $raw,
         ];
+    }
+
+    /**
+     * The reason phrase the server sent, as fetch's `statusText`. WordPress replaces it with its own
+     * text for the code, so read the status line of the raw response when Requests kept it.
+     */
+    private static function statusText(array $response): string
+    {
+        $object = $response['http_response'] ?? null;
+        $raw = is_object($object) && method_exists($object, 'get_response_object') ? $object->get_response_object()->raw ?? null : null;
+        if (is_string($raw) && preg_match('#\AHTTP/\S+ \d{3}(?: ([^\r\n]*))?\r?\n#', $raw, $m) === 1) {
+            return $m[1] ?? '';
+        }
+
+        return (string) wp_remote_retrieve_response_message($response);
     }
 
     /** @return array{string, int} lowercase host and effective port of an https URL */

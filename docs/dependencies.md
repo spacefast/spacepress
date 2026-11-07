@@ -31,7 +31,7 @@ copies wherever core ships the code
 |---|---|---|
 | `wp-php-toolkit/html` | `WP_HTML_Tag_Processor`, `WP_HTML_Processor` | `replace`d in `composer.json`; the toolkit's references stay unprefixed and resolve to core |
 | `wp-php-toolkit/blockparser` | `parse_blocks()`, `serialize_blocks()` | `replace`d; `Sync\Blocks` calls core |
-| `wp-php-toolkit/encoding` | core's UTF-8 functions where needed | `replace`d; only data-liberation's CSS processor used it |
+| `wp-php-toolkit/encoding` | nothing; Zero never reaches it (core 7.1 has its own UTF-8 helpers) | `replace`d; only data-liberation's CSS processor used it |
 | `wp-php-toolkit/bytestream`, `filesystem`, `http-client`, `xml` | nothing; Zero never reaches them | `replace`d; only data-liberation's importers, entity readers/writers and URL rewriting used them |
 
 Those data-liberation directories (`CSS`, `EntityReader`, `EntityWriter`,

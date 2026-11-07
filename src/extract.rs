@@ -2659,15 +2659,25 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
 }
 
 fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
-    let Some(v) = cfg.get("jobs").filter(|v| !matches!(v, Value::Undef)) else {
-        return Ok(());
-    };
+    match cfg.get("jobs").filter(|v| !matches!(v, Value::Undef)) {
+        Some(v) => jobs(v, ev, span, out, None),
+        None => Ok(()),
+    }
+}
+
+/// `jobs.<name>`; a plugin's are registered as `<plugin>_<name>`.
+fn jobs(v: &Value, ev: &mut Evaluator<'_>, span: Span, out: &mut Extracted, plugin: Option<(usize, &str)>) -> Result<()> {
     for (name, value) in object(v, span, "jobs")? {
         let Value::Job(j) = value else {
             return Err(Diag::new(span, "jobs entries must use job()").help("write job({ input, handler })"));
         };
         if !valid_ident(&name) {
             return Err(Diag::new(j.span, "invalid job name").help("use an identifier"));
+        }
+        let name = registered(plugin, &name);
+        if out.schema.jobs.contains_key(&name) {
+            return Err(Diag::new(j.span, format!("two jobs are both registered as `{name}`"))
+                .help("rename one; plugin jobs are registered as <plugin>_<name>"));
         }
         let o = object(&j.config, j.span, "job")?;
         keys(&o, &["input", "handler", "retries", "agents"], j.span, "job")?;
@@ -2700,8 +2710,8 @@ fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::JobHandler { job: name.clone() },
-            name: format!("job__{name}"),
-            plugin: None,
+            name: format!("{}job__{name}", prefix(plugin)),
+            plugin: plugin.map(|(i, _)| i),
         });
         out.schema.jobs.insert(
             name,
@@ -2718,10 +2728,14 @@ fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span
 
 /// `routes: { name: route({ method, path, access | signature, handler }) }` (docs/config-api.md#http-routes).
 fn routes(cfg: &IndexMap<String, Value>, span: Span, out: &mut Extracted) -> Result<()> {
-    let Some(v) = cfg.get("routes").filter(|v| !matches!(v, Value::Undef)) else {
-        return Ok(());
-    };
-    let mut shapes: Vec<(String, String, String)> = Vec::new();
+    match cfg.get("routes").filter(|v| !matches!(v, Value::Undef)) {
+        Some(v) => plugin_routes(v, span, out, None),
+        None => Ok(()),
+    }
+}
+
+/// `routes.<name>`; a plugin's are registered as `<plugin>_<name>` and share the app's path rules.
+fn plugin_routes(v: &Value, span: Span, out: &mut Extracted, plugin: Option<(usize, &str)>) -> Result<()> {
     for (name, value) in object(v, span, "routes")? {
         let Value::Route(r) = value else {
             return Err(Diag::new(span, format!("routes.{name} must use route()"))
@@ -2743,27 +2757,15 @@ fn routes(cfg: &IndexMap<String, Value>, span: Span, out: &mut Extracted) -> Res
                 .help("use GET, POST, PUT, PATCH or DELETE; GET also answers HEAD"));
         }
         let path = route_path(&string(o.get("path"), r.span, "route path")?, r.span)?;
-        let shape = path
-            .split('/')
-            .map(|s| {
-                if s.starts_with(':') {
-                    ":"
-                } else if s.starts_with('*') {
-                    "*"
-                } else {
-                    s
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("/");
-        if let Some((other, ..)) = shapes.iter().find(|(_, m, s)| *m == method && *s == shape) {
+        let shape = route_shape(&path);
+        let name = registered(plugin, &name);
+        if let Some((other, _)) = out.schema.routes.iter().find(|(_, r)| r.method == method && route_shape(&r.path) == shape) {
             return Err(Diag::new(
                 r.span,
                 format!("routes.{name} and routes.{other} both match {method} {path}"),
             )
             .help("give each method and path one route"));
         }
-        shapes.push((name.clone(), method.clone(), shape));
         let owner = Owner::Route(name.clone());
         let (access, signature) = match (
             o.get("access").filter(|v| !matches!(v, Value::Undef)),
@@ -2790,8 +2792,8 @@ fn routes(cfg: &IndexMap<String, Value>, span: Span, out: &mut Extracted) -> Res
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::RouteHandler { route: name.clone() },
-            name: format!("route__{name}"),
-            plugin: None,
+            name: format!("{}route__{name}", prefix(plugin)),
+            plugin: plugin.map(|(i, _)| i),
         });
         out.schema.routes.insert(
             name,
@@ -2805,6 +2807,21 @@ fn routes(cfg: &IndexMap<String, Value>, span: Span, out: &mut Extracted) -> Res
         );
     }
     Ok(())
+}
+
+fn route_shape(path: &str) -> String {
+    path.split('/')
+        .map(|s| {
+            if s.starts_with(':') {
+                ":"
+            } else if s.starts_with('*') {
+                "*"
+            } else {
+                s
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// First segments WordPress, Zero and the host own; a route may not shadow them.

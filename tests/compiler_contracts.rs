@@ -670,6 +670,133 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
     );
 }
 
+/// Byte values from imported JavaScript: every exported case runs under Node and as compiled PHP.
+#[test]
+fn binary_data_matches_node_through_generated_php() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = root().join("tests/differential/binary.mjs");
+    std::fs::copy(&source, tmp.path().join("binary.mjs")).unwrap();
+    let node = Command::new("node")
+        .args(["--input-type=module", "-e"])
+        .arg(format!(
+            "import * as cases from {:?}; const out = {{}}; for (const [name, run] of Object.entries(cases)) out[name] = run(); process.stdout.write(JSON.stringify(out));",
+            format!("file://{}", source.display())
+        ))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let names: Vec<&String> = expected.as_object().unwrap().keys().collect();
+    assert!(names.len() >= 11, "{expected}");
+    let actions: Vec<String> = names
+        .iter()
+        .map(|name| format!("{name}: action({{ input: {{}}, handler: () => {name}() }})"))
+        .collect();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        format!(
+            "import {{ action, defineConfig }} from 'zero';\nimport {{ {} }} from './binary.mjs';\nexport default defineConfig({{ name: 'binary-tests', actions: {{ {} }} }});\n",
+            names.iter().map(|name| name.as_str()).collect::<Vec<_>>().join(", "),
+            actions.join(", ")
+        ),
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\ZeroApp\\' . $action['handler'];
+            try { $out[$name] = $fn(); }
+            catch (\Throwable $e) { $out[$name] = get_class($e) . ': ' . $e->getMessage(); }
+        }
+        echo \Zero\Js::jsonStringify(new \Zero\JsObject($out));
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-binary-tests/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected, "compiled byte behavior differs from Node");
+    // JSON has no byte type: an action result holding bytes is refused, with the text fix.
+    let refused = php(
+        r#"
+        require $argv[1];
+        $bytes = new \Zero\JsTypedArray('Uint8Array', new \Zero\JsArrayBuffer('ab'), 0, 2);
+        try { \Zero\JsBinary::refuseWire(new \Zero\JsObject(['v' => new \Zero\JsArray([$bytes])]), 'action a'); echo 'null'; }
+        catch (\Zero\JsError $e) { echo json_encode([$e->jsName, $e->getMessage()]); }
+    "#,
+        &[&content.join("plugins/zero-runtime/zero/bootstrap.php")],
+    );
+    assert_eq!(refused[0], "TypeError");
+    let message = refused[1].as_str().unwrap();
+    assert!(message.contains("Uint8Array at .v.0") && message.contains("TextDecoder"), "{message}");
+}
+
+#[test]
+fn binary_globals_refuse_shared_memory_and_typed_code_with_fixes() {
+    for (file, source, message, fix) in [
+        (
+            "helper.mjs",
+            "export function make(){ return new SharedArrayBuffer(4); }",
+            "`SharedArrayBuffer` isn't supported",
+            "use ArrayBuffer",
+        ),
+        (
+            "helper.mjs",
+            "export function make(){ return new BigUint64Array(1); }",
+            "`BigUint64Array` isn't supported",
+            "DataView",
+        ),
+        (
+            "helper.mjs",
+            "export function make(){ return Uint8Array(2); }",
+            "`Uint8Array` must be called with `new`",
+            "new Uint8Array",
+        ),
+        (
+            "helper.mjs",
+            "const holder = { values: Uint8Array.of(1) }; export function make(){ return holder; }",
+            "",
+            "",
+        ),
+        (
+            "helper.ts",
+            "export function make(): number { return new Uint8Array(2).length; }",
+            "`Uint8Array` is only available in imported JavaScript so far",
+            "pass text across",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(file), source).unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\nimport {{ make }} from './{file}';\nexport default defineConfig({{ actions: {{ probe: action({{ handler: () => {{ make(); return 1; }} }}) }} }});\n"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        if message.is_empty() {
+            assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+            assert!(
+                report["diagnostics"][0]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("can't be used in PHP"),
+                "{report}"
+            );
+            continue;
+        }
+        assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert_eq!(diagnostic["message"], message, "{report}");
+        assert!(diagnostic["location"].is_object(), "{report}");
+        assert!(diagnostic["help"].as_str().unwrap().contains(fix), "{report}");
+    }
+}
+
 #[test]
 fn classes_match_node_through_generated_php_and_wire_client_types() {
     let tmp = tempfile::tempdir().unwrap();

@@ -4174,6 +4174,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if name == "Date" {
                     crate::builtins::check_date_literal(args, span)?;
                 }
+                if BINARY_GLOBALS.contains(&name.as_str()) {
+                    self.binary_global(name, callee.span)?;
+                }
                 let argv = self.javascript_args(args)?;
                 return Ok(Out::atom(
                     format!("\\Zero\\Js::dynamicConstruct({}, {argv})", php_str(name)),
@@ -4199,6 +4202,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let ExprKind::Ident(n) = &callee.kind else {
             return err(span, "`new` only works with Date, Error, and HttpError");
         };
+        if let Resolved::Global(g) = self.resolve(n, callee.span)?
+            && BINARY_GLOBALS.contains(&g)
+        {
+            self.binary_global(g, callee.span)?;
+        }
         match self.resolve(n, callee.span)? {
             Resolved::Global("Date") => {
                 crate::builtins::check_date_literal(args, span)?;

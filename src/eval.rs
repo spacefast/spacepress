@@ -225,6 +225,8 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "once",
     "jobs",
     "fetch",
+    "crypto",
+    "mail",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
 const ZERO_TYPES: &[&str] = &[
@@ -1784,9 +1786,9 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Fetch => err_help(
+            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail => err_help(
                 span,
-                "once(), jobs and fetch() only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "once(), jobs, fetch(), crypto and mail only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
             Builtin::Action | Builtin::Job | Builtin::Route => {
@@ -2394,6 +2396,8 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
         "fetch" => Builtin::Fetch,
+        "crypto" => Builtin::Crypto,
+        "mail" => Builtin::Mail,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
         "group" => Builtin::Field("group"),

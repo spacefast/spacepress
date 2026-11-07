@@ -79,6 +79,26 @@ fn fetch_is_an_explicit_zero_import_with_string_bodies() {
 }
 
 #[test]
+fn crypto_takes_strings_and_names_only_its_functions() {
+    rejects(
+        "reject-crypto-arg",
+        "crypto.sha256() can't take string | null",
+        "zero.config.ts:3:",
+    );
+    rejects(
+        "reject-crypto-unknown",
+        "`crypto` has no function `sha265`",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/crypto-import"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn a_catch_all_route_segment_comes_last() {
     rejects(
         "reject-route-catchall-middle",
@@ -88,6 +108,21 @@ fn a_catch_all_route_segment_comes_last() {
     let out = zero()
         .args(["check"])
         .arg(root().join("tests/fixtures/route-catchall"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn mail_send_needs_recipients_a_subject_and_a_body() {
+    rejects(
+        "reject-mail-message",
+        "mail.send() needs { to, subject, text or html }",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/mail-import"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));

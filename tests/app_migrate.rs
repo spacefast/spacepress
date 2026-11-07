@@ -580,6 +580,103 @@ fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
     build(&out);
 }
 
+#[test]
+fn ctx_crypto_maps_to_the_zero_crypto_namespace() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("crypto");
+    let (ok, report) = migrate(&fixture("crypto"), &out, &[]);
+    assert!(ok, "{report:#}");
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(
+        !config.contains("ctx.crypto") && config.contains("__z08Crypto.hmacSha256("),
+        "{config}"
+    );
+    build(&out);
+    // A webhook endpoint's ctx.crypto is a route, not an action; it gets the mapping entry too.
+    let root = temp.path().join("webhook");
+    project(
+        &root,
+        r#"{endpoints:{hook:endpoint({method:"POST",path:"/hooks/in"},async (ctx, request) => text(await ctx.crypto.sha256(await request.text())))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, report) = migrate(&root, &temp.path().join("webhook-out"), &["--dry-run"]);
+    assert!(ok, "{report:#}");
+    assert!(
+        report["entries"].as_array().unwrap().iter().any(|e| e["outcome"] == "mapped"
+            && e["reason"].as_str().unwrap().starts_with("ctx.crypto becomes crypto")),
+        "{report:#}"
+    );
+    let root = temp.path().join("jwt");
+    project(
+        &root,
+        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} }))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { action, capsule }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/actions/token/ctx/jwt");
+}
+
+#[test]
+fn ctx_email_send_maps_to_mail_send_and_queries_still_refuse() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("email");
+    let (ok, report) = migrate(&fixture("email"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    assert!(report["entries"].as_array().unwrap().iter().any(|e| {
+        e["outcome"] == "review"
+            && e["reason"]
+                .as_str()
+                .unwrap()
+                .starts_with("ctx.email.send becomes mail.send")
+    }));
+    build(&out);
+    let root = temp.path().join("query");
+    project(
+        &root,
+        r#"{queries:{q:query(async (ctx) => ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, query }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/queries/q/ctx/email");
+    // A send returned from inside control flow was awaited by 0.8 as well; it maps.
+    let root = temp.path().join("nested");
+    project(
+        &root,
+        r#"{mutations:{m:mutation(async (ctx, enabled: boolean) => { if (enabled) { return ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }); } return false; })}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, mutation }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, report) = migrate(&root, &temp.path().join("nested-out"), &[]);
+    assert!(ok, "{report:#}");
+    build(&temp.path().join("nested-out"));
+    // A send left floating inside a nested function is still refused.
+    let root = temp.path().join("floating");
+    project(
+        &root,
+        r#"{mutations:{m:mutation(async (ctx) => { [1].forEach(() => { ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }); }); return true; })}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, mutation }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("floating-out"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/mutations/m/ctx/email");
+}
+
 /// A run from a stored 0.8 finalize payload (`--manifest`), as a production census drives it.
 fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool, Value) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_zero"));

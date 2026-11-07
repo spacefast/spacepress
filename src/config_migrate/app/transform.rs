@@ -648,6 +648,7 @@ pub(super) fn app(
                             writes: section == "mutations",
                             signed_in,
                             subjects: users,
+                            sends: section != "queries",
                             route: None,
                         },
                     )
@@ -722,6 +723,7 @@ pub(super) fn app(
                         writes: route.writes,
                         signed_in,
                         subjects: users,
+                        sends: route.writes,
                         route: Some(&route),
                     },
                 )
@@ -782,8 +784,30 @@ pub(super) fn app(
             "ctx.auth.userId reads each member's copied Space Users subject (usr_...); users created after migration answer wp:<id>. Rows owned by 0.8 guest:<id> identities keep their stored owner but no v2 user maps to them, and anonymous writes answer 401 so the v2 client can start a guest session.",
         ));
     }
+    if handlers
+        .iter()
+        .chain(routes.iter().map(|(_, c)| c))
+        .any(|h| h.contains("__z08Crypto."))
+    {
+        entries.push(entry(
+            "",
+            "mapped",
+            "ctx.crypto becomes crypto from \"zero\": the same lowercase-hex SHA-256 and HMAC-SHA-256 over UTF-8, and constant-time comparison; calls are synchronous",
+        ));
+    }
+    if handlers
+        .iter()
+        .chain(routes.iter().map(|(_, c)| c))
+        .any(|h| h.contains("__z08Mail.send("))
+    {
+        entries.push(entry(
+            "",
+            "review",
+            "ctx.email.send becomes mail.send from \"zero\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
+        ));
+    }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, env as __z08Env, type InferSelectModel } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, env as __z08Env, crypto as __z08Crypto, mail as __z08Mail, type InferSelectModel } from \"zero\";\n",
     );
     if !routes.is_empty() || !responses.is_empty() {
         config.push_str(super::endpoints::PRELUDE);
@@ -1113,6 +1137,9 @@ struct Mode<'a> {
     writes: bool,
     signed_in: bool,
     subjects: bool,
+    /// 0.8 gave every handler but a read (`query`, readOnly endpoint) `ctx.email`; reads could be
+    /// replayed, so their send rejected.
+    sends: bool,
     /// Set for a 0.8 endpoint, which becomes a v2 route at the same method and path.
     route: Option<&'a super::endpoints::Route>,
 }
@@ -1129,6 +1156,7 @@ fn handler(
         writes,
         signed_in,
         subjects,
+        sends,
         route,
     } = mode;
     if route.is_some() {
@@ -1179,6 +1207,9 @@ fn handler(
         params: vec![],
         logs: false,
         helpers: vec![],
+        sends,
+        // Every return of the handler itself, through its control flow but not nested functions.
+        returned: super::endpoints::returns(f),
         edits: vec![],
     };
     let body = match &f.body {
@@ -1281,6 +1312,8 @@ fn endpoint(
             .collect(),
         logs: false,
         helpers: vec![],
+        sends: mode.sends,
+        returned: super::endpoints::returns(f),
         edits: vec![],
     };
     for span in super::endpoints::returns(f) {
@@ -1387,6 +1420,10 @@ struct Rewrite<'a> {
     logs: bool,
     /// Module-level helpers generated for this handler (one per paginated call site).
     helpers: Vec<String>,
+    /// Whether 0.8 gave this handler `ctx.email`.
+    sends: bool,
+    /// Spans of values the handler returns directly (an expression body or `return <e>`).
+    returned: Vec<Span>,
     edits: Vec<(Span, String)>,
 }
 impl Rewrite<'_> {
@@ -1439,6 +1476,75 @@ impl Rewrite<'_> {
             && let Some(text) = self.db(inner)?
         {
             self.edits.push((e.span, text));
+            return Ok(());
+        }
+        // ctx.crypto returned promises; v2's crypto is synchronous with the same output.
+        let (call, awaited) = match &e.kind {
+            E::Await(inner) => (inner.as_ref(), true),
+            _ => (e, false),
+        };
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &call.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && matches!(&obj.kind, E::Member { obj, prop: c, .. } if c == "crypto" && matches!(&obj.kind, E::Ident(n) if n == self.ctx))
+        {
+            if !["sha256", "hmacSha256", "timingSafeEqual"].contains(&prop.as_str()) {
+                return Err(fail(
+                    &pointer(&pointer(self.at, "ctx"), "crypto"),
+                    format!("ctx.crypto.{prop} has no v2 counterpart"),
+                ));
+            }
+            let rendered = args
+                .iter()
+                .map(|a| match a {
+                    ArrEl::Item(e) => self.render(e),
+                    ArrEl::Spread(_) => Err(fail(self.at, "spread crypto arguments need a manual port")),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let text = format!("__z08Crypto.{prop}({})", rendered.join(", "));
+            // An unawaited call is returned or awaited later in 0.8 code; the value stands in for
+            // its promise either way. Storing it unawaited (`const p = ctx.crypto...`) and then
+            // awaiting it is refused by the v2 compiler's await check, which is the port pointer.
+            let _ = awaited;
+            self.edits.push((e.span, format!("({text})")));
+            return Ok(());
+        }
+        // ctx.email.send(message) → mail.send(message): the same EmailMessage, queued in the
+        // handler's transaction and handed to the site's transport after commit, as 0.8's outbox did.
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &call.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && matches!(&obj.kind, E::Member { obj, prop: svc, .. } if svc == "email" && matches!(&obj.kind, E::Ident(n) if n == self.ctx))
+        {
+            let at = pointer(&pointer(self.at, "ctx"), "email");
+            if prop != "send" {
+                return Err(fail(&at, format!("ctx.email.{prop} has no v2 counterpart")));
+            }
+            if !self.sends {
+                return Err(fail(
+                    &at,
+                    "reads (queries, readOnly endpoints) could not send email in 0.8 either; move the send to a mutation, action or writing endpoint",
+                ));
+            }
+            let [ArrEl::Item(message)] = args.as_slice() else {
+                return Err(fail(&at, "ctx.email.send takes one message"));
+            };
+            let message = self.render(message)?;
+            // 0.8 resolved to true on transport acceptance; v2 resolves once the message is queued.
+            let send = format!("(await __z08Mail.send({message}), true)");
+            // A returned promise was awaited by the 0.8 runtime; one left floating raced the response.
+            if !awaited && !self.returned.contains(&e.span) {
+                return Err(fail(&at, "an unawaited ctx.email.send needs a manual port; await it"));
+            }
+            self.edits.push((e.span, format!("({send})")));
             return Ok(());
         }
         if let Some(text) = self.db(e)? {

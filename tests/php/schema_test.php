@@ -123,6 +123,23 @@ $encoded = Schema::encode($box, ['label' => 'x', 'extra' => \Zero\Js::decodeJson
 eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \Zero\Js::jsonStringify(Schema::decode($box, $encoded))],
     ['{"label":"x","extra":{"a":{}}}', '{"label":"x","extra":{"a":{}}}']);
 eq('a json() default holding {} generates the empty object', \Zero\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], ['type' => 'json'])), '{"a":{}}');
+$undefinedDefault = ['type' => 'text', 'default' => ['fn' => static fn () => \Zero\JsUndefined::Value]];
+eq('undefined generators become nullable storage values', Schema::validateInput([
+    'note' => $undefinedDefault,
+    'payload' => ['type' => 'json', 'default' => $undefinedDefault['default']],
+], []), ['note' => null, 'payload' => null]);
+problem('undefined generators still enforce required fields', fn () => Schema::validateInput([
+    'note' => $undefinedDefault + ['notNull' => true],
+], []), 422, 'invalid_input', '/note');
+$undefinedInput = new \Zero\JsObject(['note' => \Zero\Js::undefined(), 'payload' => \Zero\Js::undefined(),
+    'nested' => new \Zero\JsObject(['note' => \Zero\Js::undefined()])]);
+$undefinedFields = ['note' => ['type' => 'text'], 'payload' => ['type' => 'json'],
+    'nested' => ['type' => 'group', 'fields' => ['note' => ['type' => 'text']]]];
+eq('explicit undefined becomes null at shaped storage boundaries', Schema::validateInput($undefinedFields, $undefinedInput),
+    ['note' => null, 'payload' => null, 'nested' => ['note' => null]]);
+problem('explicit undefined still enforces required storage fields', fn () => Schema::validateInput([
+    'note' => ['type' => 'text', 'notNull' => true],
+], new \Zero\JsObject(['note' => \Zero\Js::undefined()])), 422, 'invalid_input', '/note');
 $deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
 $deepValue = Schema::validateInput([
     'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],

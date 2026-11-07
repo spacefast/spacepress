@@ -1149,7 +1149,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
             "const helper = (value: any) => value; return helper('x');",
             "`any` isn't allowed",
         ),
-        ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
+        ("function* numbers() { yield 1; } return [...numbers()];", "generators"),
         ("return fetch('https://example.com');", "fetch"),
         ("return new Map<string, number>();", "new Map"),
         (

@@ -114,6 +114,12 @@ $row = $db->insert('comments', ['postId' => $post['id'], 'name' => 'still', 'bod
 check('the write committed although a publisher threw', $db->findFirst('comments', ['where' => ['id' => $row['id']]]) !== null);
 eq('later publishers still receive the notice', count($after), 1);
 
+// A write to a collection the schema doesn't name (a system table) is not announced and never fails.
+$after = [];
+\Zero\Realtime\Module::written('create', '__zero_media', ['id' => 1], null);
+\Zero\Realtime\Module::flush();
+eq('system collections are skipped without an error', $after, []);
+
 // Shared rooms: ids only where any visitor may list the collection.
 $shared = Realtime::shared(['id' => 'x', 'at' => 'now', 'changes' => [
     ['collection' => 'comments', 'ops' => ['create'], 'ids' => [1]],

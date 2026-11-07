@@ -56,7 +56,12 @@ final class Module
         if (!self::enabled()) {
             return;
         }
-        $pk = db()->schema()->collection($collection)['primaryKey'] ?? 'id';
+        // Only app collections are announced; system tables (media, files, revisions) are not the client's.
+        $spec = db()->schema()->collections()[$collection] ?? null;
+        if ($spec === null) {
+            return;
+        }
+        $pk = $spec['primaryKey'] ?? 'id';
         $id = $row[$pk] ?? $previous[$pk] ?? null;
         $entry = &self::$pending[$collection];
         $entry ??= ['ops' => [], 'ids' => [], 'overflow' => false];

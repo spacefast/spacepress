@@ -222,3 +222,79 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
     );
     assert!(!out.exists());
 }
+
+fn corpus(name: &str) -> PathBuf {
+    fixture("corpus").join(name)
+}
+
+/// Copies a corpus project without the parts a test does not exercise.
+fn trimmed(name: &str, root: &Path, drop: &[&str], edit: impl Fn(String) -> String) {
+    let from = corpus(name);
+    for entry in walk(&from) {
+        let relative = entry.strip_prefix(&from).unwrap();
+        if drop.iter().any(|d| relative.starts_with(d)) {
+            continue;
+        }
+        let target = root.join(relative);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        let text = std::fs::read_to_string(&entry).unwrap();
+        let text = if relative == Path::new("server/index.ts") {
+            edit(text)
+        } else {
+            text
+        };
+        std::fs::write(target, text).unwrap();
+    }
+}
+
+fn walk(dir: &Path) -> Vec<PathBuf> {
+    let mut out = vec![];
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            out.extend(walk(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out
+}
+
+fn without_endpoints(text: String) -> String {
+    let start = text.find("  endpoints: {").expect("endpoints");
+    let end = start + text[start..].find("\n  },\n").expect("end") + 5;
+    format!("{}{}", &text[..start], &text[end..])
+}
+
+#[test]
+fn space_user_subjects_back_owner_scoped_handlers() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("todo");
+    trimmed("starter-todo", &root, &["pages", "client"], without_endpoints);
+    let out = temp.path().join("candidate");
+    // Without Space Users there is no subject to carry, so userId stays refused.
+    let (ok, refused) = migrate(&root, &out, &["--space", "spc_migrate_test", "--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/queries/todos/ctx/auth/userId");
+    let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test", "--users"]);
+    assert!(ok, "{report:#}");
+    let entries = report["entries"].as_array().unwrap();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["pointer"] == "/name" && e["reason"].as_str().unwrap().contains("\"todo\""))
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["pointer"] == "/auth" && e["outcome"] == "review")
+    );
+    let snapshot: Value =
+        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+    assert_eq!(
+        snapshot["tables"]["members"]["columns"]["spacefastSubject"]["type"], "text",
+        "{:#}",
+        snapshot["tables"]["members"]
+    );
+    build(&out);
+}

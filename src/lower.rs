@@ -1266,11 +1266,14 @@ impl Lowerer {
                 let target = match asg.left.as_simple_assignment_target() {
                     Some(t) => self.simple_target(t)?,
                     None => {
-                        return self.unsupported(
-                            asg.span,
-                            "destructuring assignment",
-                            "declare new variables: `const [a, b] = ...`",
-                        );
+                        if op.is_some() {
+                            return self.unsupported(asg.span, "compound destructuring assignment", "");
+                        }
+                        let pattern = self.assign_pattern(&asg.left)?;
+                        return Ok(self.mk(
+                            span,
+                            ExprKind::AssignPattern(Box::new(pattern), Box::new(self.expr(&asg.right)?)),
+                        ));
                     }
                 };
                 self.mk(
@@ -1414,6 +1417,74 @@ impl Lowerer {
                 return self.unsupported(p.span, "private fields", "");
             }
         })
+    }
+
+    fn assign_pattern(&self, t: &a::AssignmentTarget<'_>) -> Result<AssignPat> {
+        if let Some(simple) = t.as_simple_assignment_target() {
+            return Ok(AssignPat::Target(self.simple_target(simple)?));
+        }
+        let rest = |r: &Option<oxc_allocator::Box<'_, a::AssignmentTargetRest<'_>>>| -> Result<Option<Box<AssignPat>>> {
+            r.as_ref()
+                .map(|r| self.assign_pattern(&r.target).map(Box::new))
+                .transpose()
+        };
+        match t.as_assignment_target_pattern().expect("pattern") {
+            a::AssignmentTargetPattern::ArrayAssignmentTarget(arr) => {
+                let mut elems = Vec::new();
+                for e in &arr.elements {
+                    elems.push(e.as_ref().map(|e| self.assign_maybe_default(e)).transpose()?);
+                }
+                Ok(AssignPat::Arr {
+                    elems,
+                    rest: rest(&arr.rest)?,
+                    span: self.sp(arr.span),
+                })
+            }
+            a::AssignmentTargetPattern::ObjectAssignmentTarget(obj) => {
+                let mut props = Vec::new();
+                for p in &obj.properties {
+                    match p {
+                        a::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(id) => {
+                            let target = AssignPat::Target(self.mk(
+                                id.binding.span,
+                                ExprKind::Ident(self.binding_name(id.binding.name.as_str(), id.binding.span)?),
+                            ));
+                            let pattern = match &id.init {
+                                Some(init) => AssignPat::Default(Box::new(target), self.expr(init)?),
+                                None => target,
+                            };
+                            props.push((PropKey::Static(id.binding.name.to_string()), pattern));
+                        }
+                        a::AssignmentTargetProperty::AssignmentTargetPropertyProperty(pp) => {
+                            let key = if pp.computed {
+                                PropKey::Computed(self.expr(pp.name.to_expression())?)
+                            } else {
+                                match pp.name.static_name() {
+                                    Some(n) => PropKey::Static(n.to_string()),
+                                    None => return self.unsupported(pp.span, "this property key", ""),
+                                }
+                            };
+                            props.push((key, self.assign_maybe_default(&pp.binding)?));
+                        }
+                    }
+                }
+                Ok(AssignPat::Obj {
+                    props,
+                    rest: rest(&obj.rest)?,
+                    span: self.sp(obj.span),
+                })
+            }
+        }
+    }
+
+    fn assign_maybe_default(&self, t: &a::AssignmentTargetMaybeDefault<'_>) -> Result<AssignPat> {
+        match t {
+            a::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(d) => Ok(AssignPat::Default(
+                Box::new(self.assign_pattern(&d.binding)?),
+                self.expr(&d.init)?,
+            )),
+            other => self.assign_pattern(other.to_assignment_target()),
+        }
     }
 
     fn simple_target(&self, t: &a::SimpleAssignmentTarget<'_>) -> Result<Expr> {
@@ -1803,6 +1874,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
             target: a, value: b, ..
         } => vec![a, b],
         ExprKind::Cond(a, b, c) => vec![a, b, c],
+        ExprKind::AssignPattern(pattern, value) => pattern.exprs().into_iter().chain([&**value]).collect(),
         ExprKind::Template(_, values) | ExprKind::Sequence(values) => values.iter().collect(),
         ExprKind::Ident(_)
         | ExprKind::Num(_)

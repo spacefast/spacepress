@@ -96,6 +96,14 @@ Status: **supported**.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## destructuring-assignment
+
+Status: **supported**.
+
+Array and object patterns on the left of `=` assign existing variables, object fields and array elements, including elisions, defaults, rest elements, nested patterns and computed keys. The right side is evaluated once and is the expression's value. Each leaf runs in JavaScript order: computed key, target reference, read, default (only for undefined), write. Typed targets must accept the value, so a missing optional field needs a default or an optional target; computed keys need an open map or a literal key. Compound destructuring assignment does not exist in JavaScript.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

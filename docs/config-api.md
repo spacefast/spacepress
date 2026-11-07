@@ -613,6 +613,8 @@ TypeScript. `delete obj.key` and `delete obj?.key` remove optional properties
 and map entries with strict-mode results: true for absent keys, a `TypeError`
 for non-configurable ones such as `length`. `do…while` and labeled loops,
 switches and blocks (`break label`, `continue label`) follow JavaScript.
+Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
+assigns existing variables and fields in JavaScript order.
 
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,

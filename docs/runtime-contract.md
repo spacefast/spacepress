@@ -687,7 +687,7 @@ JSON arrays. This distinction does not change schema nullability. Public client
 result types describe serialization: undefined array slots become null, and
 properties whose values may be undefined become optional with undefined removed
 from the present value domain.
-Array and object destructuring retain undefined for absent entries. Configuration
+Array and object destructuring retain undefined for absent entries. Destructuring assignment evaluates its right side once and returns it; each leaf resolves its target (computed key, then receiver), reads its part, applies its default only for undefined, and writes through the same `set`/`setAt`/`dynamicSet` calls as `=`. Configuration
 for-of and array destructuring use live iterators, including permanent exhaustion
 after completion. Optional/default parameters before rest parameters remain
 omittable.

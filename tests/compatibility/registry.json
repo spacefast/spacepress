@@ -83,6 +83,13 @@
       "guidance": "`do…while` runs its body before the first test; `continue` goes to the test. Labeled loops, switches and blocks compile with `break label` and `continue label` in typed code, imported JavaScript and configuration evaluation, through nested loops, switches and labeled blocks. Labeled function declarations are refused, as in strict mode."
     },
     {
+      "id": "destructuring-assignment",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "Array and object patterns on the left of `=` assign existing variables, object fields and array elements, including elisions, defaults, rest elements, nested patterns and computed keys. The right side is evaluated once and is the expression's value. Each leaf runs in JavaScript order: computed key, target reference, read, default (only for undefined), write. Typed targets must accept the value, so a missing optional field needs a default or an optional target; computed keys need an open map or a literal key. Compound destructuring assignment does not exist in JavaScript."
+    },
+    {
       "id": "build-time-clock",
       "status": "refused",
       "code": "Z2101",

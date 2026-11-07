@@ -450,8 +450,8 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     }
     let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
     assert!(
-        pricing.starts_with("import { plans } from \"../../shared/plans\";"),
-        "{pricing}"
+        pricing.contains("import { plans } from '../../shared/plans';"),
+        "a single-quoted relative import moves with the page: {pricing}"
     );
     // Interactive starters keep a pointer per page saying what to port.
     let (ok, refused) = migrate(
@@ -660,3 +660,4 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     assert!(!ok);
     assert_eq!(report["errors"][0]["pointer"], "/artifact/format");
 }
+

@@ -1,4 +1,5 @@
-import { plans } from "../shared/plans";
+// Single quotes: the move to pages/pricing/page.tsx must deepen this relative import too.
+import { plans } from '../shared/plans';
 
 function Tagline(props: { text: string }) {
   return <p class="tagline">{props.text}</p>;

@@ -148,8 +148,10 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
         entries.sort();
         Ok(entries)
     };
+    // Located at the offending path (registered with no source), so `check --json` names the file.
     let refuse = |path: &Path, why: &str| {
-        Diag::new(Span::NONE, format!("{}: {why}", path.display())).help(
+        let file = diag::register_file(path, "");
+        Diag::new(Span { file, start: 0, end: 0 }, why.to_string()).help(
             "wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
         )
     };

@@ -38,13 +38,41 @@ category, so the counts can sum to more than the number of refused apps.
 "Pages only", "endpoints only" and "both" partition the refused apps by
 whether `pages` and/or `endpoints` are among their categories.
 
-**Corpus.** The production replica was not reachable from the dev box. The
-account's own Spacefast API (`sf`, scopes `spaces:read` and
-`versions:download`) lists 100 Spaces, of which 3 have a runtime. Their
-version downloads hold only published output (`index.html`, bundled
-`client.js`), with no capsule source and no connected repository
-(`sf source ls` answers `404 Repository connection not found`). So
-the corpus is the eight 0.8 projects in
+**Corpus.** The production replica is not reachable from the dev box, and the
+public API cannot serve 0.8 capsule source at all:
+
+- `GET /v1/spaces/{id}/versions/{versionId}/files?view=uploaded` lists what
+  the publisher uploaded. For a 0.8 Space (`start-map-studio`,
+  `ver_cb889f98…`) that is the built shell, `client.js` and platform chunks:
+  the 0.8 CLI compiles before uploading, and `isZeroProjectOnlyPath`
+  (`zero-compile/src/capsule.ts`) excludes every `.ts`/`.tsx` file and
+  `server/`, `shared/` and `pages/` sources from the upload.
+- `GET /v1/spaces/{id}/source/archive` serves a hosted or connected
+  repository. Of the account's three runtime Spaces only `batuhan-tasks` has
+  one, and it is a Functions app (`functions/api/v1/*.js`), not a capsule.
+  Versions published from a local checkout record only the commit
+  (`source.kind: "git"`, `commit`, `repository`), which needs access to that
+  repository, not to Spacefast.
+- What the finalizer keeps (`sourceMetadata.statticZero.finalize`) is the
+  compiled endpoint and run bundles, not capsule source; the converter refuses
+  those, as the `zero-all-features` fixture shows.
+
+So the census can only cover sources that exist outside Spacefast. Counting
+the live set needs one of these, read-only and scoped like the copier:
+
+1. **Capture source at 0.8 publish time** from now on: upload the capsule tree
+   (`server/`, `shared/`, `pages/`, `client/`, `content/`, `sf.jsonc`) as a
+   private version artifact, as v2 already does with `.zero-source/`. This does
+   nothing for versions already live.
+2. **An internal endpoint** for the migration operation,
+   `GET /v1/internal/spaces/{id}/versions/{versionId}/zero-source`, returning
+   the capsule tree for versions whose `source.kind` is `git` with a
+   repository the control plane can read (GitHub App installations), or a
+   hosted repository at the version's commit. Spaces published from an
+   unconnected local checkout have no recoverable source; their owners must
+   publish once from source, or the census counts them as unknown.
+
+The corpus here is therefore the eight 0.8 projects in
 [`tests/fixtures/app-migrate/corpus`](../tests/fixtures/app-migrate/corpus):
 the four `sf init --runtime zero` starters, `start-map-studio`, the dashboard's
 `/push/new-repo` capsule, the compiler test's "Notes" capsule and the MCP test's

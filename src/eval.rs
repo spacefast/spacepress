@@ -994,6 +994,16 @@ impl<'p> Evaluator<'p> {
                 }))
             }
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
+            ExprKind::In(key, object) => {
+                let key = self.eval(key, scope)?;
+                let object = self.eval(object, scope)?;
+                require_static_data(&key, e.span)?;
+                require_static_coercion(&key, e.span)?;
+                let Some(key) = key.to_js_string() else {
+                    return err(e.span, "`in` at build time needs a primitive property key");
+                };
+                Value::Bool(build_time_in(&key, &object, e.span)?)
+            }
             ExprKind::Num(n) => Value::Num(*n),
             ExprKind::Str(s) => Value::str(s),
             ExprKind::Bool(b) => Value::Bool(*b),
@@ -3005,6 +3015,93 @@ fn slice_bounds(len: f64, start: &Value, end: &Value) -> (usize, usize) {
         (if n < 0.0 { (len + n).max(0.0) } else { n.min(len) }) as usize
     };
     (clamp(start, 0.0), clamp(end, len))
+}
+
+/// Own string names of Object.prototype and Array.prototype, as Node reports them.
+const OBJECT_PROTOTYPE: &[&str] = &[
+    "constructor",
+    "__defineGetter__",
+    "__defineSetter__",
+    "hasOwnProperty",
+    "__lookupGetter__",
+    "__lookupSetter__",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toString",
+    "valueOf",
+    "__proto__",
+    "toLocaleString",
+];
+const ARRAY_PROTOTYPE: &[&str] = &[
+    "length",
+    "constructor",
+    "at",
+    "concat",
+    "copyWithin",
+    "fill",
+    "find",
+    "findIndex",
+    "findLast",
+    "findLastIndex",
+    "lastIndexOf",
+    "pop",
+    "push",
+    "reverse",
+    "shift",
+    "unshift",
+    "slice",
+    "sort",
+    "splice",
+    "includes",
+    "indexOf",
+    "join",
+    "keys",
+    "entries",
+    "values",
+    "forEach",
+    "filter",
+    "flat",
+    "flatMap",
+    "map",
+    "every",
+    "some",
+    "reduce",
+    "reduceRight",
+    "toReversed",
+    "toSorted",
+    "toSpliced",
+    "with",
+    "toLocaleString",
+    "toString",
+];
+
+/// `key in object` during configuration evaluation, for the plain data values the evaluator
+/// models. Runtime `Js::hasProperty` covers every runtime value.
+fn build_time_in(key: &str, object: &Value, span: Span) -> R<bool> {
+    let index_below = |length: usize| key.parse::<usize>().is_ok_and(|i| i.to_string() == key && i < length);
+    Ok(match object {
+        Value::Object(o) => o.borrow().contains_key(key) || OBJECT_PROTOTYPE.contains(&key),
+        Value::Arguments(o) => {
+            o.borrow().contains_key(key) || matches!(key, "length" | "callee") || OBJECT_PROTOTYPE.contains(&key)
+        }
+        Value::Array(a) => {
+            index_below(a.borrow().len()) || ARRAY_PROTOTYPE.contains(&key) || OBJECT_PROTOTYPE.contains(&key)
+        }
+        Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_) => {
+            return err_help(
+                span,
+                "`in` needs an object on its right side; JavaScript throws a TypeError here",
+                "check `typeof value === \"object\" && value !== null` first",
+            );
+        }
+        _ => {
+            return err_help(
+                span,
+                "`in` at build time inspects only plain objects, arrays and arguments",
+                "move the check into a handler",
+            );
+        }
+    })
 }
 
 fn build_regex(pattern: &str, flags: &str, span: Span) -> R<regex::Regex> {

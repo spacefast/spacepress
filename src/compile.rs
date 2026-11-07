@@ -2012,6 +2012,54 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
+            // `"key" in x` keeps the object-union members that declare `key` (TypeScript's `in`
+            // narrowing). A member with an open map or an optional `key` stays on both sides.
+            ExprKind::In(key, object) => {
+                if let ExprKind::Str(key) = &key.kind
+                    && let Some((path, original)) = self.path_ty(object)
+                    && original == Ty::Unknown
+                {
+                    // TypeScript narrows `unknown` to `object & Record<key, unknown>`; reads
+                    // through it stay checked (`dataGet`), whatever object the value is.
+                    let yes = Ty::Obj([(key.clone(), (Ty::Unknown, false))].into_iter().collect());
+                    out.push(if negate {
+                        (path, Ty::Unknown, yes)
+                    } else {
+                        (path, yes, Ty::Unknown)
+                    });
+                } else if let ExprKind::Str(key) = &key.kind
+                    && let Some((path, original)) = self.path_ty(object)
+                    && let Ty::Union(items) = &original
+                {
+                    let declares = |item: &Ty| match item {
+                        Ty::Obj(fields) => fields.get(key.as_str()).map(|(_, optional)| !optional),
+                        Ty::Instance(_, fields) => match &**fields {
+                            Ty::Obj(fields) => fields.get(key.as_str()).map(|(_, optional)| !optional),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let (mut hit, mut miss) = (Vec::new(), Vec::new());
+                    for item in items {
+                        match item {
+                            Ty::Obj(_) | Ty::Instance(..) => match declares(item) {
+                                Some(true) => hit.push(item.clone()),
+                                Some(false) => {
+                                    hit.push(item.clone());
+                                    miss.push(item.clone());
+                                }
+                                None => miss.push(item.clone()),
+                            },
+                            other => {
+                                hit.push(other.clone());
+                                miss.push(other.clone());
+                            }
+                        }
+                    }
+                    let (yes, no) = (Ty::union(hit), Ty::union(miss));
+                    out.push(if negate { (path, no, yes) } else { (path, yes, no) });
+                }
+            }
             ExprKind::IsNullish(inner, negated) => {
                 if let Some((n, t)) = self.path_ty(inner) {
                     // `x == null` retains each nullish member, including undefined.
@@ -2328,6 +2376,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!("\\Zero\\JsClass::isInstance({}, {})", left.php, right.php),
+                    Ty::Bool,
+                )
+            }
+            ExprKind::In(key, object) => {
+                let key = self.expr(key)?;
+                let key = self.finish_value(key, span)?;
+                let object = self.expr(object)?;
+                let object = if matches!(object.ty, Ty::Class(_)) {
+                    object
+                } else {
+                    self.finish_value(object, span)?
+                };
+                // Js::hasProperty: own properties, then the value's fixed prototype chain.
+                Out::atom(
+                    format!("\\Zero\\Js::hasProperty({}, {})", key.php, object.php),
                     Ty::Bool,
                 )
             }

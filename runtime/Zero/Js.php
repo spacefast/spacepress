@@ -1174,6 +1174,74 @@ final class Js
         return array_key_exists(self::key($key), $o->p);
     }
 
+    /** Own string property names of the built-in prototypes (ECMAScript 2025, as Node reports them). */
+    private const PROTOTYPE_NAMES = [
+        'Object' => ['constructor', '__defineGetter__', '__defineSetter__', 'hasOwnProperty', '__lookupGetter__', '__lookupSetter__', 'isPrototypeOf', 'propertyIsEnumerable', 'toString', 'valueOf', '__proto__', 'toLocaleString'],
+        'Array' => ['length', 'constructor', 'at', 'concat', 'copyWithin', 'fill', 'find', 'findIndex', 'findLast', 'findLastIndex', 'lastIndexOf', 'pop', 'push', 'reverse', 'shift', 'unshift', 'slice', 'sort', 'splice', 'includes', 'indexOf', 'join', 'keys', 'entries', 'values', 'forEach', 'filter', 'flat', 'flatMap', 'map', 'every', 'some', 'reduce', 'reduceRight', 'toReversed', 'toSorted', 'toSpliced', 'with', 'toLocaleString', 'toString'],
+        'Function' => ['length', 'name', 'arguments', 'caller', 'constructor', 'apply', 'bind', 'call', 'toString'],
+        'Map' => ['constructor', 'get', 'set', 'has', 'delete', 'clear', 'entries', 'forEach', 'keys', 'size', 'values'],
+        'Set' => ['constructor', 'has', 'add', 'delete', 'clear', 'entries', 'forEach', 'size', 'values', 'keys', 'union', 'intersection', 'difference', 'symmetricDifference', 'isSubsetOf', 'isSupersetOf', 'isDisjointFrom'],
+        'Date' => ['constructor', 'toString', 'toDateString', 'toTimeString', 'toISOString', 'toUTCString', 'toGMTString', 'getDate', 'setDate', 'getDay', 'getFullYear', 'setFullYear', 'getHours', 'setHours', 'getMilliseconds', 'setMilliseconds', 'getMinutes', 'setMinutes', 'getMonth', 'setMonth', 'getSeconds', 'setSeconds', 'getTime', 'setTime', 'getTimezoneOffset', 'getUTCDate', 'setUTCDate', 'getUTCDay', 'getUTCFullYear', 'setUTCFullYear', 'getUTCHours', 'setUTCHours', 'getUTCMilliseconds', 'setUTCMilliseconds', 'getUTCMinutes', 'setUTCMinutes', 'getUTCMonth', 'setUTCMonth', 'getUTCSeconds', 'setUTCSeconds', 'valueOf', 'getYear', 'setYear', 'toJSON', 'toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'],
+        'RegExp' => ['constructor', 'exec', 'dotAll', 'flags', 'global', 'hasIndices', 'ignoreCase', 'multiline', 'source', 'sticky', 'unicode', 'compile', 'toString', 'test', 'unicodeSets'],
+        'Error' => ['constructor', 'name', 'message', 'toString'],
+        'Math' => ['abs', 'acos', 'acosh', 'asin', 'asinh', 'atan', 'atanh', 'atan2', 'ceil', 'cbrt', 'expm1', 'clz32', 'cos', 'cosh', 'exp', 'floor', 'fround', 'hypot', 'imul', 'log', 'log1p', 'log2', 'log10', 'max', 'min', 'pow', 'random', 'round', 'sign', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'trunc', 'E', 'LN10', 'LN2', 'LOG10E', 'LOG2E', 'PI', 'SQRT1_2', 'SQRT2'],
+    ];
+
+    private static function prototypeHas(string $prototype, string $key): bool
+    {
+        return in_array($key, self::PROTOTYPE_NAMES[$prototype], true)
+            || ($prototype !== 'Object' && in_array($key, self::PROTOTYPE_NAMES['Object'], true));
+    }
+
+    /**
+     * Compiled `key in object` (ECMAScript 13.10.1): the object must not be a primitive, then the
+     * key goes through ToPropertyKey and own properties are checked before the fixed prototype
+     * chain of each runtime value (class methods, the built-in prototype, Object.prototype). A
+     * null-prototype object has only its own properties. Arrays are dense, so an index is present
+     * exactly when it is below the length.
+     */
+    public static function hasProperty(mixed $key, mixed $object): bool
+    {
+        if (!is_object($object) || $object instanceof JsUndefined) {
+            $search = is_object($key) ? '[object Object]' : self::str($key);
+            $in = is_string($object) ? $object : self::str($object);
+            throw new JsError("Cannot use 'in' operator to search for '$search' in $in", 'TypeError');
+        }
+        $key = self::key($key);
+        $index = static fn (int $length): bool => preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && (float) $key < 4294967295 && (int) $key < $length;
+        if ($object instanceof JsObject) {
+            if (array_key_exists($key, $object->p)) { return true; }
+            if ($object->nullPrototype) { return false; }
+            return ($object->class?->hasMethod($key) ?? false) || self::prototypeHas('Object', $key);
+        }
+        if ($object instanceof JsArray) {
+            return array_key_exists($key, $object->p) || $index(count($object->a)) || self::prototypeHas('Array', $key);
+        }
+        if ($object instanceof JsArguments) {
+            return array_key_exists($key, $object->p) || $index(count($object->a)) || in_array($key, ['length', 'callee'], true) || self::prototypeHas('Object', $key);
+        }
+        if ($object instanceof JsClass) {
+            if ($object->has($key) || $object->hasStaticMethod($key) || in_array($key, ['length', 'name', 'prototype'], true)) { return true; }
+            return self::prototypeHas('Function', $key);
+        }
+        if ($object instanceof \Closure) {
+            if (in_array($key, ['prototype', 'arguments', 'caller'], true)) {
+                throw new JsError('Function metadata is not supported', 'TypeError');
+            }
+            return self::prototypeHas('Function', $key);
+        }
+        if ($object instanceof JsError) {
+            if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
+            return self::prototypeHas('Error', $key);
+        }
+        if ($object instanceof RegExp) { return $key === 'lastIndex' || self::prototypeHas('RegExp', $key); }
+        $prototype = match (true) {
+            $object instanceof JsMap => 'Map', $object instanceof JsSet => 'Set', $object instanceof JsDate => 'Date',
+            $object instanceof JsNamespace => $object->name, default => 'Object',
+        };
+        return self::prototypeHas($prototype, $key);
+    }
+
     /** += needs the actual primitive types, including an absent old property. */
     public static function plus(mixed $a, mixed $b, bool $missing): mixed
     {

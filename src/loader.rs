@@ -615,6 +615,7 @@ impl CommonJsScope {
             | ExprKind::As(value, _)
             | ExprKind::NonNull(value) => self.expression(value)?,
             ExprKind::Instanceof(left, right)
+            | ExprKind::In(left, right)
             | ExprKind::Binary(_, left, right)
             | ExprKind::Logical(_, left, right)
             | ExprKind::Assign {

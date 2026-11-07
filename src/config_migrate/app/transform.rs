@@ -1014,6 +1014,7 @@ impl Rewrite<'_> {
             E::Binary(_, a, b)
             | E::Logical(_, a, b)
             | E::Instanceof(a, b)
+            | E::In(a, b)
             | E::Assign {
                 target: a, value: b, ..
             } => {

@@ -46,6 +46,13 @@
       "guidance": "`&`, `|`, `^`, `~`, `<<`, `>>`, `>>>` and their compound assignments compile in typed code, imported JavaScript and configuration evaluation. Operands go through ToNumber, then ToInt32 (ToUint32 for the left side of `>>>`); shift counts use ToUint32 masked to five bits, so negative counts and counts of 32 or more wrap as in JavaScript. Results are signed 32-bit integers, except `>>>`, which is unsigned. NaN, the infinities and -0 become 0. Typed code requires number operands; imported JavaScript coerces strings, booleans, null, undefined and objects through their primitive value."
     },
     {
+      "id": "in-operator",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "`key in object` compiles in typed code, imported JavaScript and configuration evaluation. The key goes through ToPropertyKey after the key expression runs; own properties are checked first, then the value's fixed prototype chain: class methods and statics, the built-in prototype of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then Object.prototype. Arrays are dense, so an index is present exactly when it is below the length. A primitive right side throws JavaScript's TypeError. `\"key\" in x` narrows object unions like TypeScript; members with an optional key stay on both branches, and `unknown` narrows to an object whose key reads stay checked. Configuration evaluation inspects plain objects, arrays and arguments, and refuses a primitive right side at build time."
+    },
+    {
       "id": "build-time-clock",
       "status": "refused",
       "code": "Z2101",

@@ -1169,7 +1169,15 @@ impl Lowerer {
                         }
                         if negated { BinOp::LooseNe } else { BinOp::LooseEq }
                     }
-                    BO::In => return self.unsupported(b.span, "`in`", "use `Object.hasOwn(obj, key)`"),
+                    BO::In => {
+                        if matches!(b.left, a::Expression::PrivateInExpression(_)) {
+                            return self.unsupported(b.span, "`#field in`", "use public fields");
+                        }
+                        return Ok(self.mk(
+                            b.span,
+                            ExprKind::In(Box::new(self.expr(&b.left)?), Box::new(self.expr(&b.right)?)),
+                        ));
+                    }
                     BO::Instanceof => {
                         return Ok(self.mk(
                             b.span,
@@ -1758,6 +1766,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
         ExprKind::Binary(_, a, b)
         | ExprKind::Logical(_, a, b)
         | ExprKind::Instanceof(a, b)
+        | ExprKind::In(a, b)
         | ExprKind::Index { obj: a, index: b, .. }
         | ExprKind::Assign {
             target: a, value: b, ..

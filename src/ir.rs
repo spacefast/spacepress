@@ -333,6 +333,8 @@ pub enum Prop {
 pub enum ExprKind {
     Class(Rc<Class>),
     Instanceof(P<Expr>, P<Expr>),
+    /// `key in object`: own or inherited property presence. The key is evaluated first.
+    In(P<Expr>, P<Expr>),
     Num(f64),
     Str(String),
     Bool(bool),

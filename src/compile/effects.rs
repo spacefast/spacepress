@@ -1295,7 +1295,7 @@ impl Graph {
                     self.copy(src, Some(value.clone()), owner);
                 }
             }
-            ExprKind::Binary(_, a, b) | ExprKind::Instanceof(a, b) => {
+            ExprKind::Binary(_, a, b) | ExprKind::Instanceof(a, b) | ExprKind::In(a, b) => {
                 self.expr(a, names, env, owner);
                 self.expr(b, names, env, owner);
                 return None;

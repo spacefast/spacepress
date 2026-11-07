@@ -79,7 +79,16 @@ final class WpPostStore implements Store
         }
         $spec = $this->schema->collection($collection);
         if ($viewer->user === null) {
-            return $this->visibility[$key] = [$this->passwordGuard($collection, $viewer, $spec)];
+            $guard = $this->passwordGuard($collection, $viewer, $spec);
+            // Empty guards also certify unrestricted visibility to unique-write checks
+            // and the native REST controller. A predicate that cannot hide a row must
+            // retain that meaning without materializing every readable primary key.
+            $hidden = $this->db->run(
+                'SELECT 1 FROM `' . $this->db->wpdb()->posts . '` p WHERE p.post_type = ? AND NOT ('
+                . str_replace('{a}', 'p', $guard->sql) . ') LIMIT 1',
+                [$spec['wp']['postType'], ...$guard->params],
+            );
+            return $this->visibility[$key] = $hidden === [] ? [] : [$guard];
         }
         $hidden = [];
         $acceptedPasswords = [];

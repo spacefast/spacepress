@@ -14,13 +14,28 @@ use Zero\App;
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
+$schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
+$open = $schema['collections']['posts'];
+$open['key'] = 'openNotes';
+$open['drafts'] = $open['revisions'] = false;
+$open['content'] = null;
+$open['columns'] = array_intersect_key($open['columns'], array_flip(['id', 'title', 'slug']));
+$open['hooks'] = $open['relations'] = [];
+$open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'anyone']);
+$open['wp'] = ['postType' => 'zero_open_notes', 'groupKey' => 'group_zero_open_notes', 'metaPrefix' => 'zero_', 'fieldKeyPrefix' => 'field_zero_open_notes_'];
+$schema['collections']['openNotes'] = $open;
 $wp = wpSite('blog', [
-    'schema' => require dirname(__DIR__) . '/fixtures/blog/schema.php',
+    'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),
     'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
 ]);
 $app = $wp->app();
 $db = \Zero\db();
+$anonymous = new \Zero\Viewer(null);
+eq('an unprotected collection retains unrestricted storage visibility', $db->store()->readGuards('openNotes', $anonymous), []);
+$openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true, $anonymous)[0];
+eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
+eq('native unrestricted reads do not enumerate every primary key', $db->permittedKeys('openNotes', 'read', $anonymous), null);
 
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {

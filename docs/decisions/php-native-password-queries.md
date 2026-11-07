@@ -3,7 +3,10 @@
 Anonymous reads use a store-owned SQL predicate over accepted post passwords,
 before limit, offset, relation matching and partitioned pagination. A request
 without a valid post-password cookie performs no protected-post inventory or
-post-cache priming. A scoped native REST password contributes only to its own
+post-cache priming. A bound `SELECT 1 … LIMIT 1` probe determines whether the
+predicate can hide any row. If none exists, the store returns no guard, retaining
+unrestricted visibility for unique-write checks and native list controllers.
+It does not enumerate readable IDs to prove that absence. A scoped native REST password contributes only to its own
 collection and explicit viewer. A valid WordPress cookie is verified against
 distinct byte-valued passwords instead of against every protected row.
 

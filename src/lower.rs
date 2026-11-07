@@ -1032,7 +1032,37 @@ impl Lowerer {
                 self.mk(span, ExprKind::Template(quasis, exprs))
             }
             E::TaggedTemplateExpression(t) => {
-                return self.unsupported(t.span, "tagged templates", "call a function with a template literal");
+                // tag`a${x}b` calls tag(strings, x), where strings is the site's array of cooked
+                // strings with a `raw` property (ECMAScript 13.3.11).
+                let strings = self.mk(
+                    t.quasi.span,
+                    ExprKind::TemplateStrings {
+                        cooked: t
+                            .quasi
+                            .quasis
+                            .iter()
+                            .map(|q| q.value.cooked.map(|c| c.to_string()))
+                            .collect(),
+                        raw: t.quasi.quasis.iter().map(|q| q.value.raw.to_string()).collect(),
+                    },
+                );
+                let mut args = vec![ArrEl::Item(strings)];
+                for e in &t.quasi.expressions {
+                    args.push(ArrEl::Item(self.expr(e)?));
+                }
+                let type_args = match &t.type_arguments {
+                    Some(ta) => ta.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
+                    None => vec![],
+                };
+                self.mk(
+                    span,
+                    ExprKind::Call {
+                        callee: Box::new(self.expr(&t.tag)?),
+                        args,
+                        optional: false,
+                        type_args,
+                    },
+                )
             }
             E::Identifier(id) => {
                 if id.name == "undefined" {
@@ -1882,7 +1912,8 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
         | ExprKind::Bool(_)
         | ExprKind::Null
         | ExprKind::Undefined
-        | ExprKind::Regex { .. } => Vec::new(),
+        | ExprKind::Regex { .. }
+        | ExprKind::TemplateStrings { .. } => Vec::new(),
     };
     for child in children {
         check_parameter_default(child, uninitialized, allow_functions)?;

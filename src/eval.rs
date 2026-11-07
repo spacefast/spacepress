@@ -1138,6 +1138,15 @@ impl<'p> Evaluator<'p> {
                 }))
             }
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
+            // Evaluator arrays carry no named properties, so the strings array's `raw` can't be
+            // modeled during configuration evaluation; handlers compile tagged templates.
+            ExprKind::TemplateStrings { .. } => {
+                return err_help(
+                    e.span,
+                    "tagged templates are only available inside compiled callbacks",
+                    "call the tag inside a handler, or use an ordinary template literal",
+                );
+            }
             ExprKind::AssignPattern(pattern, value) => {
                 let value = self.eval(value, scope)?;
                 self.assign_pattern(pattern, value.clone(), scope)?;

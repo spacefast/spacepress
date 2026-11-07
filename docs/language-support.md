@@ -104,6 +104,14 @@ Array and object patterns on the left of `=` assign existing variables, object f
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## tagged-templates
+
+Status: **supported**.
+
+tag`…${x}…` calls the tag with the call site's strings array, then the substitutions, in typed code and imported JavaScript. The strings array has a `raw` property with the source text, cooked strings are undefined where an escape is invalid, and each call site keeps one array across calls. String.raw is supported, including its object form in imported JavaScript. Configuration evaluation refuses tagged templates; call the tag inside a handler.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

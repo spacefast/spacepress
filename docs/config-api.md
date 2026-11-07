@@ -614,7 +614,9 @@ and map entries with strict-mode results: true for absent keys, a `TypeError`
 for non-configurable ones such as `length`. `do…while` and labeled loops,
 switches and blocks (`break label`, `continue label`) follow JavaScript.
 Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
-assigns existing variables and fields in JavaScript order.
+assigns existing variables and fields in JavaScript order. Tagged templates
+call the tag with the call site's strings array (with `raw`) and the
+substitutions; `String.raw` is supported.
 
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,

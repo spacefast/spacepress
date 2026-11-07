@@ -3006,7 +3006,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
             ),
             Value::Native(native) => {
-                let key = (3, Rc::as_ptr(native) as *const () as usize);
+                let key = (4, Rc::as_ptr(native) as *const () as usize);
                 let name = match self.data_helpers.get(&key) {
                     Some(name) => name.clone(),
                     None => {

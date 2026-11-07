@@ -1786,7 +1786,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 #[test]
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'clear'),read([],'entries'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
+    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -1799,8 +1799,8 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     assert_eq!(
         result,
         json!([
-            ["TypeError", "Unsupported built-in set.clear"],
-            ["TypeError", "Unsupported built-in array.entries"],
+            ["TypeError", "Unsupported built-in set.union"],
+            ["TypeError", "Unsupported built-in array.copyWithin"],
             "undefined",
             2,
             "undefined"

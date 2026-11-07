@@ -97,13 +97,13 @@ RANGE_FALLBACK;
 		}
 
 		fclose( $handle );
-		file_put_contents( $output . ZERO_VENDOR_DS . 'mapped.php', "<?php\n\nreturn " . var_export( $statuses['mapped'], true ) . ";\n" );
-		file_put_contents( $output . ZERO_VENDOR_DS . 'ignored.php', "<?php\n\nreturn " . var_export( $statuses['ignored'], true ) . ";\n" );
-		file_put_contents( $output . ZERO_VENDOR_DS . 'deviation.php', "<?php\n\nreturn " . var_export( $statuses['deviation'], true ) . ";\n" );
-		file_put_contents( $output . ZERO_VENDOR_DS . 'disallowed.php', "<?php\n\nreturn " . var_export( $statuses['disallowed'], true ) . ";\n" );
-		file_put_contents( $output . ZERO_VENDOR_DS . 'disallowed_STD3_mapped.php',
+		file_put_contents( $output . DS . 'mapped.php', "<?php\n\nreturn " . var_export( $statuses['mapped'], true ) . ";\n" );
+		file_put_contents( $output . DS . 'ignored.php', "<?php\n\nreturn " . var_export( $statuses['ignored'], true ) . ";\n" );
+		file_put_contents( $output . DS . 'deviation.php', "<?php\n\nreturn " . var_export( $statuses['deviation'], true ) . ";\n" );
+		file_put_contents( $output . DS . 'disallowed.php', "<?php\n\nreturn " . var_export( $statuses['disallowed'], true ) . ";\n" );
+		file_put_contents( $output . DS . 'disallowed_STD3_mapped.php',
 			"<?php\n\nreturn " . var_export( $statuses['disallowed_STD3_mapped'], true ) . ";\n" );
-		file_put_contents( $output . ZERO_VENDOR_DS . 'disallowed_STD3_valid.php',
+		file_put_contents( $output . DS . 'disallowed_STD3_valid.php',
 			"<?php\n\nreturn " . var_export( $statuses['disallowed_STD3_valid'], true ) . ";\n" );
 		$s = <<<CP_STATUS
 <?php
@@ -124,6 +124,6 @@ final class DisallowedRanges
 
 CP_STATUS;
 
-		file_put_contents( $output . ZERO_VENDOR_DS . 'DisallowedRanges.php', $s );
+		file_put_contents( $output . DS . 'DisallowedRanges.php', $s );
 	}
 }

@@ -9,7 +9,7 @@ use Zero\Vendor\Rowbot\Idna\Resource\DisallowedRanges;
 use const DIRECTORY_SEPARATOR as DS;
 
 final class CodePointStatus {
-	private const RESOURCE_DIR = __DIR__ . ZERO_VENDOR_DS . '..' . ZERO_VENDOR_DS . 'resources' . ZERO_VENDOR_DS;
+	private const RESOURCE_DIR = __DIR__ . DS . '..' . DS . 'resources' . DS;
 
 	/**
 	 * @var array<int, string>

@@ -6,11 +6,11 @@ use Zero\Vendor\Rowbot\Idna\Bin\IdnaDataBuilder;
 use Zero\Vendor\Rowbot\Idna\Bin\RegexBuilder;
 use Zero\Vendor\Rowbot\Idna\Bin\ViramaDataBuilder;
 
-const ZERO_VENDOR_DS         = DIRECTORY_SEPARATOR;
-const ZERO_VENDOR_ROOT_DIR   = __DIR__ . ZERO_VENDOR_DS . '..';
-const ZERO_VENDOR_OUTPUT_DIR = ZERO_VENDOR_ROOT_DIR . ZERO_VENDOR_DS . 'resources';
+const DS         = DIRECTORY_SEPARATOR;
+const ZERO_VENDOR_ROOT_DIR   = __DIR__ . DS . '..';
+const ZERO_VENDOR_OUTPUT_DIR = ZERO_VENDOR_ROOT_DIR . DS . 'resources';
 
-require ZERO_VENDOR_ROOT_DIR . ZERO_VENDOR_DS . 'vendor' . ZERO_VENDOR_DS . 'autoload.php';
+require ZERO_VENDOR_ROOT_DIR . DS . 'vendor' . DS . 'autoload.php';
 
 ViramaDataBuilder::buildHashMap( ZERO_VENDOR_OUTPUT_DIR );
 RegexBuilder::buildRegexClass( ZERO_VENDOR_OUTPUT_DIR );

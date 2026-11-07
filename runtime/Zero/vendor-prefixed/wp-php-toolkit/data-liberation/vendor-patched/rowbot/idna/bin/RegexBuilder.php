@@ -144,7 +144,7 @@ final class Regex
 }
 RegexClass;
 
-		file_put_contents( $output . ZERO_VENDOR_DS . 'Regex.php', $s );
+		file_put_contents( $output . DS . 'Regex.php', $s );
 	}
 
 	private static function buildJoiningTypesRegex(): string {

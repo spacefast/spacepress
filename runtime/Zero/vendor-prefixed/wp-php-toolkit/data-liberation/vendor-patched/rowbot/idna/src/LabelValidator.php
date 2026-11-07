@@ -29,7 +29,7 @@ class LabelValidator {
 		$this->info = $info;
 
 		if ( self::$virama === [] ) {
-			self::$virama = require __DIR__ . ZERO_VENDOR_DS . '..' . ZERO_VENDOR_DS . 'resources' . ZERO_VENDOR_DS . 'virama.php';
+			self::$virama = require __DIR__ . DS . '..' . DS . 'resources' . DS . 'virama.php';
 		}
 	}
 

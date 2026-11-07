@@ -4,6 +4,10 @@ $root = $argv[1];
 // Each bundle gets its own loader class and files registry, so two Zero bundles never share one.
 $bundle = ($argv[2] ?? 'runtime') === 'identity' ? ['ZeroIdentity', '__zero_identity_vendor_autoload_files'] : ['ZeroRuntime', '__zero_runtime_vendor_autoload_files'];
 $lock = json_decode(file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+if ($bundle[0] === 'ZeroRuntime') {
+    // Unused terminal diagnostics invoke tput; only the merger's library classes ship.
+    unlink($root . '/vendor-prefixed/wp-php-toolkit/merge/functions.php');
+}
 // Strauss creates a temporary Composer project without a lock, so Composer
 // chooses a random loader suffix. Give this isolated bundle a stable identity.
 foreach (['autoload.php', 'composer/autoload_real.php', 'composer/autoload_static.php'] as $relative) {

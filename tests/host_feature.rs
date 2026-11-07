@@ -336,7 +336,7 @@ fn routes_declare_one_method_and_a_path_that_wordpress_does_not_own() {
             .map(|_| ())
             .map_err(|e| e.message)
     };
-    let ok = "a: route({ method: 'GET', path: '/api/:id/feed.json', access: 'anyone', handler: (req) => ({ body: req.params['id'] }) })";
+    let ok = "a: route({ method: 'GET', path: '/api/:id/feed.json', access: 'anyone', handler: (req) => ({ body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }) })";
     assert_eq!(check(ok), Ok(()));
     for (routes, message) in [
         (
@@ -362,6 +362,10 @@ fn routes_declare_one_method_and_a_path_that_wordpress_does_not_own() {
         (
             "a: route({ method: 'GET', path: '/x', access: 'anyone', handler: () => ({ status: 'ok' }) })",
             "not a route response",
+        ),
+        (
+            "a: route({ method: 'GET', path: '/x', access: 'anyone', handler: (req) => ({ body: req.query['k'] }) })",
+            "has no field `k`",
         ),
     ] {
         let error = check(routes).unwrap_err();

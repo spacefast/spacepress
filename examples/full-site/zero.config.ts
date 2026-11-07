@@ -66,7 +66,7 @@ export default defineConfig({
       path: "/api/feed.json",
       access: "anyone",
       async handler(req) {
-        const limit = Number(req.query["limit"] ?? "10");
+        const limit = Number(req.query.get("limit") ?? "10");
         const notes = await db.query.notes.findMany({ where: { status: "published" }, orderBy: { id: "desc" }, limit: limit > 0 && limit <= 50 ? limit : 10 });
         const items = notes.map((note) => ({ id: String(note.id), title: note.title, summary: note.dek ?? "" }));
         return {

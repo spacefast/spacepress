@@ -103,6 +103,11 @@ final class App
                 return null;
             }
         }
+        // Most specific wins, whatever the declaration order: compared segment by segment from the
+        // left, a literal beats a `:param`. Declaration order breaks only exact ties, which the
+        // compiler refuses anyway.
+        $best = null;
+        $bestRank = null;
         foreach ($this->schema->routes() as $name => $route) {
             if ($route['method'] !== $method) {
                 continue;
@@ -112,18 +117,24 @@ final class App
                 continue;
             }
             $params = [];
+            $rank = [];
             foreach ($pattern as $i => $part) {
                 if (str_starts_with($part, ':')) {
                     $params[substr($part, 1)] = $decoded[$i];
+                    $rank[] = 1;
                 } elseif ($part !== $decoded[$i]) {
                     continue 2;
+                } else {
+                    $rank[] = 0;
                 }
             }
-
-            return ['name' => $name, 'route' => $route, 'params' => $params];
+            if ($bestRank === null || $rank < $bestRank) {
+                $best = ['name' => $name, 'route' => $route, 'params' => $params];
+                $bestRank = $rank;
+            }
         }
 
-        return null;
+        return $best;
     }
 
     /** Whether any route claims this path for some method (a 405 rather than a 404 for the others). */
@@ -144,7 +155,7 @@ final class App
      *
      * @return array{int, array<string, string>, string}
      */
-    public function serveRoute(array $match, string $method, string $path, array $query, string $body, array $headers, ?array $user): array
+    public function serveRoute(array $match, string $method, string $path, string $query, string $body, array $headers, ?array $user): array
     {
         $headers = array_change_key_case($headers, CASE_LOWER);
         try {
@@ -167,7 +178,7 @@ final class App
                         'method' => $method,
                         'path' => $path,
                         'params' => $string($match['params']),
-                        'query' => $string(array_filter($query, 'is_scalar')),
+                        'query' => QueryString::toJs(QueryString::parse($query)),
                         'headers' => $string($headers),
                         'body' => $body,
                     ]);

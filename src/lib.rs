@@ -5,7 +5,7 @@
 //! ([`pipeline`]). The `cli` feature adds the commands, which read and write the project, download
 //! plugin dependencies and carry the embedded PHP runtime. [`wasm`] exports the core to a browser.
 
-pub mod abilities;
+
 pub mod builtins;
 pub mod client;
 pub mod compile;
@@ -27,6 +27,7 @@ pub mod types;
 pub mod uri;
 pub mod value;
 pub mod wasm;
+pub mod wordpress;
 pub mod wp_plugins;
 pub mod wpml_config;
 

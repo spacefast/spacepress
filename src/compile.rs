@@ -292,7 +292,7 @@ pub struct Compiler<'a, 'p> {
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
     /// Every ability `abilities.call` may name, typed (src/abilities.rs).
-    pub abilities: crate::abilities::Catalog,
+    pub abilities: crate::wordpress::abilities::Catalog,
     /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
     pub wordpress_uses: Vec<WordPressUse>,
 }
@@ -354,7 +354,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
-            abilities: crate::abilities::Catalog::default(),
+            abilities: crate::wordpress::abilities::Catalog::default(),
             wordpress_uses: Vec::new(),
         }
     }
@@ -4693,7 +4693,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(s) => d.help(format!("did you mean `{s}`?")),
                 None => d.help(format!(
                     "abilities outside this app come from {}; run `zero abilities pull --site <url>` and commit it",
-                    crate::abilities::LOCK
+                    crate::wordpress::abilities::LOCK
                 )),
             };
             return Err(d);

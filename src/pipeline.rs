@@ -114,7 +114,7 @@ pub fn build(
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
     let wordpress_uses;
-    let catalog = crate::abilities::Catalog::new(&schema, &read_lock(program, &project.join(crate::abilities::LOCK))?);
+    let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program, &project.join(crate::wordpress::abilities::LOCK))?);
     let (functions, slots) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
         c.abilities = catalog.clone();
@@ -228,7 +228,7 @@ pub fn build(
     });
     let mut gen_ts = schema_php::gen_ts(&schema);
     if uses_wordpress {
-        gen_ts += &crate::abilities::gen_ts(&catalog);
+        gen_ts += &crate::wordpress::abilities::gen_ts(&catalog);
     }
     Ok(Built {
         plugins: ext.plugins,
@@ -246,15 +246,15 @@ pub fn build(
 
 /// `zero/abilities.json` through the program's file system (so a hosted source bundle captures it);
 /// absent means no locked abilities.
-fn read_lock(program: &loader::Program, path: &Path) -> Result<Vec<crate::abilities::Locked>, Diag> {
+fn read_lock(program: &loader::Program, path: &Path) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
     if !program.fs.exists(path) {
         return Ok(Vec::new());
     }
     let text = program
         .fs
         .read_to_string(path)
-        .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", crate::abilities::LOCK)))?;
-    crate::abilities::parse_lock(&text).map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Import))
+        .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", crate::wordpress::abilities::LOCK)))?;
+    crate::wordpress::abilities::parse_lock(&text).map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Import))
 }
 
 impl Built {

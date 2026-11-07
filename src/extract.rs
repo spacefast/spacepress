@@ -2816,7 +2816,7 @@ fn route_path(path: &str, span: Span) -> Result<String> {
     Ok(format!("/{rest}"))
 }
 
-use crate::abilities::kebab;
+use crate::wordpress::abilities::kebab;
 
 fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
     if let Some(v) = cfg.get("globals") {

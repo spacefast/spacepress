@@ -58,7 +58,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
         check(&mut checks, "site", false, error);
     }
     if let Some(site) = &args.site
-        && project.join(crate::abilities::LOCK).is_file()
+        && project.join(crate::wordpress::abilities::LOCK).is_file()
     {
         // Abilities are listed with the application password `zero abilities pull` uses.
         let credential = std::env::var("ZERO_APP_PASSWORD").ok().filter(|s| !s.is_empty());

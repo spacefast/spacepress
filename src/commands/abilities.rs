@@ -2,7 +2,7 @@
 //! `wp-abilities/v1` and write the committed lock `zero/abilities.json`. Credentials come only from
 //! `ZERO_APP_PASSWORD` (`user:application-password`), never a flag that lands in shell history.
 
-use crate::abilities::{self, LOCK};
+use crate::wordpress::abilities::{self, LOCK};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

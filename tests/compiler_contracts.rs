@@ -265,6 +265,80 @@ export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {
 }
 
 #[test]
+fn url_vectors_agree_in_node_and_generated_php() {
+    // Every WHATWG urltestdata.json case (tests/differential/URL-WPT-NOTICE.txt) plus URLSearchParams
+    // and setter cases, through checked JavaScript, compared with Node byte for byte.
+    let dir = root().join("tests/differential");
+    let wpt: Value = serde_json::from_str(include_str!("differential/url-wpt.json")).unwrap();
+    let cases: Vec<Value> = wpt
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c.is_object())
+        .map(|c| json!({ "input": c["input"], "base": c["base"] }))
+        .collect();
+    assert!(cases.len() > 800, "WPT subset shrank: {}", cases.len());
+    let script = format!(
+        "const m = await import({:?}); const cases = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify([m.parseAll(cases), m.searchParams(), m.invalid()]));",
+        format!("file://{}", dir.join("url.js").display())
+    );
+    let node = Command::new("node")
+        .args(["--input-type=module", "-e", &script])
+        .arg(Value::Array(cases.clone()).to_string())
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(dir.join("url.js"), tmp.path().join("url.js")).unwrap();
+    std::fs::write(tmp.path().join("cases.json"), Value::Array(cases).to_string()).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { action, defineConfig } from "zero";
+import { parseAll, searchParams, invalid } from "./url.js";
+export default defineConfig({ name: "url", actions: { probe: action({ input: {}, handler: () => [searchParams(), invalid()] }) } });
+"#,
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let app = content.join("plugins/zero-app-url/zero/app");
+    // parseAll takes a data argument the action input can't carry at this size; call the compiled
+    // module function directly with the decoded cases.
+    let result = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+        $probe = $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]));
+        $cases = \Zero\Js::decodeJson(file_get_contents($argv[3]));
+        $parse = static function ($cases) {
+            $props = ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'];
+            $out = [];
+            foreach ($cases->a as $c) {
+                $base = \Zero\Js::dynamicGet($c, 'base');
+                $parsed = \Zero\Js::dynamicStaticCall('URL', 'parse', new \Zero\JsArray($base === null ? [\Zero\Js::dynamicGet($c, 'input')] : [\Zero\Js::dynamicGet($c, 'input'), $base]));
+                $out[] = $parsed === null ? null : new \Zero\JsArray(array_map(static fn ($p) => \Zero\Js::dynamicGet($parsed, $p), $props));
+            }
+            return new \Zero\JsArray($out);
+        };
+        echo \Zero\Js::jsonStringify(new \Zero\JsArray([$parse($cases), ...$probe->a]));
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &app,
+            &tmp.path().join("cases.json"),
+        ],
+    );
+    let parsed = &expected[0];
+    let got: Value = result;
+    for (i, (want, have)) in parsed.as_array().unwrap().iter().zip(got[0].as_array().unwrap()).enumerate() {
+        assert_eq!(want, have, "WPT urltestdata case {i}");
+    }
+    assert_eq!(got, expected);
+}
+
+#[test]
 fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
     let tmp = tempfile::tempdir().unwrap();
     let (out, missing) = checked(tmp.path());
@@ -1786,7 +1860,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 #[test]
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'clear'),read([],'entries'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
+    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -1799,8 +1873,8 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     assert_eq!(
         result,
         json!([
-            ["TypeError", "Unsupported built-in set.clear"],
-            ["TypeError", "Unsupported built-in array.entries"],
+            ["TypeError", "Unsupported built-in set.union"],
+            ["TypeError", "Unsupported built-in array.copyWithin"],
             "undefined",
             2,
             "undefined"

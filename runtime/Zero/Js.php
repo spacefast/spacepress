@@ -33,6 +33,7 @@ final class Js
             is_int($v), is_float($v) => self::numStr($v),
             $v instanceof JsArray, $v instanceof JsArguments, $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
             $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsUrl, $v instanceof JsUrlSearchParams => $v->toString(),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
@@ -1660,6 +1661,8 @@ final class Js
         }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
+        if ($value instanceof JsUrl) { return $value->toJSON(); }
+        if ($value instanceof JsUrlSearchParams) { return new \stdClass(); }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError) { return new \stdClass(); }
         if (is_float($value)) { return !is_finite($value) ? null : ($value == 0.0 ? 0 : $value); }
         if ($value instanceof \Closure) { return null; }

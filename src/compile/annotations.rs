@@ -186,6 +186,8 @@ impl Compiler<'_, '_> {
                     }
                     ("Date", []) => Ty::Date,
                     ("RegExp", []) => Ty::Regex,
+                    ("URL", []) => Ty::Url,
+                    ("URLSearchParams", []) => Ty::UrlParams,
                     ("Error", []) => Ty::Error,
                     ("Record", [k, v]) => {
                         let keys = self.resolve_ann(k, module, generics)?;

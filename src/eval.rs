@@ -308,6 +308,8 @@ pub const GLOBALS: &[&str] = &[
     "Promise",
     "setTimeout",
     "crypto",
+    "URL",
+    "URLSearchParams",
 ];
 
 pub struct Evaluator<'p> {

@@ -392,6 +392,9 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     }
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
     routes(&cfg_map, config_span, &mut out)?;
+    if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
+        uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
+    }
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
 }
@@ -462,7 +465,7 @@ fn hooks(
                     table: table.clone(),
                     kind,
                 },
-                name: format!("{}{table}__{hname}", prefix(plugin)),
+                name: format!("{table}__{hname}"),
                 plugin: plugin.map(|(i, _)| i),
             });
         }
@@ -554,7 +557,7 @@ fn actions(
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::ActionHandler { action: name.clone() },
-            name: format!("{}action__{name}", prefix(plugin)),
+            name: format!("action__{name}"),
             plugin: plugin.map(|(i, _)| i),
         });
         out.schema.actions.insert(
@@ -572,14 +575,56 @@ fn actions(
     }
     Ok(())
 }
-/// PHP name prefix for a plugin's functions, so plugins never share compiled state.
-fn prefix(plugin: Option<(usize, &str)>) -> String {
-    plugin.map_or_else(String::new, |(_, name)| format!("plugin_{name}__"))
-}
-
 /// The registered name of a plugin's action, job or route.
 fn registered(plugin: Option<(usize, &str)>, name: &str) -> String {
     plugin.map_or_else(|| name.to_string(), |(_, p)| format!("{p}_{name}"))
+}
+
+/// `defineConfig({ use: [plugin(), ...] })`: each `definePlugin` value, its package, and everything
+/// it registers. Every root extracted for a plugin (access rules and input defaults included)
+/// belongs to it.
+fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> Result<()> {
+    let Value::Array(items) = v else {
+        return Err(Diag::new(span, "`use` must be a list of plugins").help("write use: [seo(), forms()]"));
+    };
+    for item in items.borrow().iter() {
+        let Value::Plugin(p) = item else {
+            return Err(Diag::new(span, format!("`use` lists plugins, not {}", item.describe()))
+                .help("call the package's export: use: [seo({ ... })]"));
+        };
+        let o = object(&p.config, p.span, "definePlugin")?;
+        keys(&o, &["name", "hooks", "actions", "jobs", "routes"], p.span, "definePlugin")?;
+        let name = string(o.get("name"), p.span, "plugin name")?;
+        if !(valid_ident(&name) && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')) {
+            return Err(Diag::new(p.span, format!("plugin name \"{name}\" must be a lowercase identifier"))
+                .help("use letters, digits and underscores, like \"seo\""));
+        }
+        if out.uses.iter().any(|u| u.name == name) {
+            return Err(Diag::new(p.span, format!("two plugins are both named \"{name}\""))
+                .help("each plugin is registered once"));
+        }
+        let plugin = crate::plugins::identify(ev.program(), &name, p.span)?;
+        let index = out.uses.len();
+        out.uses.push(plugin);
+        let first = out.roots.len();
+        let owner = Some((index, name.as_str()));
+        if let Some(h) = o.get("hooks").filter(|v| !matches!(v, Value::Undef)) {
+            hooks(h, ev.key_span(&p.config, "hooks").unwrap_or(p.span), ev, out, owner)?;
+        }
+        if let Some(a) = o.get("actions").filter(|v| !matches!(v, Value::Undef)) {
+            actions(a, ev.key_span(&p.config, "actions").unwrap_or(p.span), ev, out, owner)?;
+        }
+        if let Some(j) = o.get("jobs").filter(|v| !matches!(v, Value::Undef)) {
+            jobs(j, ev, p.span, out, owner)?;
+        }
+        if let Some(r) = o.get("routes").filter(|v| !matches!(v, Value::Undef)) {
+            plugin_routes(r, p.span, out, owner)?;
+        }
+        for root in &mut out.roots[first..] {
+            root.plugin = Some(index);
+        }
+    }
+    crate::plugins::isolate(ev.program(), &mut out.uses)
 }
 
 /// Package pins cannot inherit JavaScript's last-property-wins behavior.
@@ -2710,7 +2755,7 @@ fn jobs(v: &Value, ev: &mut Evaluator<'_>, span: Span, out: &mut Extracted, plug
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::JobHandler { job: name.clone() },
-            name: format!("{}job__{name}", prefix(plugin)),
+            name: format!("job__{name}"),
             plugin: plugin.map(|(i, _)| i),
         });
         out.schema.jobs.insert(
@@ -2792,7 +2837,7 @@ fn plugin_routes(v: &Value, span: Span, out: &mut Extracted, plugin: Option<(usi
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::RouteHandler { route: name.clone() },
-            name: format!("{}route__{name}", prefix(plugin)),
+            name: format!("route__{name}"),
             plugin: plugin.map(|(i, _)| i),
         });
         out.schema.routes.insert(

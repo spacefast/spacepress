@@ -271,3 +271,35 @@ Status: **supported**.
 undefined denotes the built-in missing value. Runtime bindings named undefined are refused at source, including function/class names, parameters, local declarations, imports, catch variables, loop variables and rest/destructuring bindings. Use a different local name.
 
 [Evidence](../tests/compiler_contracts.rs) (`undefined_bindings_are_located_refusals_in_all_runtime_binding_forms`)
+
+## wordpress-ability-unknown
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in zero/abilities.json by `zero abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+
+[Evidence](../tests/fixtures/reject-ability-unknown)
+
+## wordpress-ability-input
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+An ability's input is checked against the TypeScript type generated from its input JSON Schema (enums, required properties, closed objects). WordPress validates the same schema again at run time; a mismatch the build can see never ships.
+
+[Evidence](../tests/fixtures/reject-ability-input)
+
+## wordpress-ability-name
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+The ability name must be written in place so the build can type the input and result and record which abilities the app uses. Branch between literal calls when the ability depends on data.
+
+[Evidence](../tests/fixtures/reject-ability-name)
+
+## wordpress-ability-call
+
+Status: **supported**.
+
+abilities.call("vendor/name", input) compiles to Zero\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from zero/abilities.json, which build and check read without touching the network. zero.gen.ts carries the same types for the editor.
+
+[Evidence](../tests/compiler_contracts.rs) (`wordpress_abilities_are_typed_from_the_lock_and_the_schema`)

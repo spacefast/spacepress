@@ -2195,3 +2195,88 @@ fn named_function_expressions_refuse_with_a_source_position() {
         );
     }
 }
+
+/// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
+/// compiler and for tsc (zero.gen.ts), and the compiled handler calls `Call::run` with the input as
+/// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
+#[test]
+fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("calls");
+    copy_dir(&root().join("tests/fixtures/abilities-call"), &project);
+    let content = build_wp(&project);
+    let plugin = content.join("plugins/zero-app-calls/zero/app/functions.php");
+    // Stand in for WordPress: record each call and answer as the ability would.
+    let stub = tmp.path().join("call.php");
+    std::fs::write(
+        &stub,
+        r#"<?php
+        namespace Zero\Wp\Abilities;
+        final class Call {
+            public static array $seen = [];
+            public static function run(string $name, mixed $input): mixed {
+                self::$seen[] = [$name, \Zero\Js::jsonStringify($input)];
+                return $name === 'acme/site-info' ? new \Zero\JsObject(['value' => 'zero site']) : 'hi ada';
+            }
+        }"#,
+    )
+    .unwrap();
+    let got = php(
+        r#"
+        require $argv[1]; require $argv[2]; require $argv[3];
+        $out = \ZeroApp\action__relay(new \Zero\JsObject(['who' => 'ada']), null);
+        echo json_encode(['out' => \Zero\Js::jsonTree($out), 'seen' => \Zero\Wp\Abilities\Call::$seen]);
+    "#,
+        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &stub, &plugin],
+    );
+    assert_eq!(
+        got,
+        json!({"out": {"name": "ZERO SITE", "own": "hi ada"},
+            "seen": [["acme/site-info", "{\"field\":\"name\"}"], ["calls/greet", "{\"who\":\"ada\"}"]]})
+    );
+    std::fs::write(
+        project.join("tsconfig.json"),
+        serde_json::to_vec(&json!({
+            "compilerOptions": {
+                "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
+                "paths": { "zero": [root().join("types/zero/index.d.ts")], "php/wordpress": [root().join("types/zero/wordpress.d.ts")] }
+            },
+            "files": ["zero.config.ts", "zero.gen.ts"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let tsc = || {
+        Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+            .arg("--project")
+            .arg(project.join("tsconfig.json"))
+            .output()
+            .expect("tsc (or TSC) must be installed")
+    };
+    let out = tsc();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    // tsc refuses the same wrong input the compiler refuses.
+    let config = std::fs::read_to_string(project.join("zero.config.ts")).unwrap();
+    std::fs::write(
+        project.join("zero.config.ts"),
+        config.replace("field: \"name\"", "field: \"title\""),
+    )
+    .unwrap();
+    let out = tsc();
+    assert!(
+        String::from_utf8_lossy(&out.stdout)
+            .contains("Type '\"title\"' is not assignable to type '\"name\" | \"url\"'")
+    );
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &to.join(entry.file_name()));
+        } else {
+            std::fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
+}

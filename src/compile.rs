@@ -4722,11 +4722,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if !assignable(&v.ty, &input_ty) {
                     return err_help(
                         e.span,
-                        format!(
-                            "`{ability}` takes {}, not {}",
-                            input_ty.describe(),
-                            widen_fresh_literals(&v.ty).describe()
-                        ),
+                        format!("`{ability}` takes {}, not {}", input_ty.describe(), v.ty.describe()),
                         "the input type comes from the ability's input schema",
                     );
                 }

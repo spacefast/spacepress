@@ -153,7 +153,7 @@ final class Spacefast
                 'sessions' => $this->exists($source . 'sfi_sessions') ? $this->db->run("SELECT COUNT(*) AS count, MAX(id) AS id, MAX(revoked_at) AS revoked FROM `{$source}sfi_sessions` WHERE wp_user_id IN ($where)", $ids) : [],
             };
         }
-        return hash('sha256', json_encode($values, JSON_THROW_ON_ERROR));
+        return hash('sha256', \Zero\Json::encode($values, JSON_THROW_ON_ERROR));
     }
 
     /** The source rows the posts group copies, keyed by table. */

@@ -36,9 +36,12 @@ Every Zero file starts with `declare(strict_types=1);`. Namespace `Zero`.
 ```
 
 `zero/bootstrap.php` eagerly loads `Db.php` (for the `Zero\db()` function),
-sets `ini_set('precision', '-1')`, `ini_set('serialize_precision', '-1')`,
 registers an autoloader for `Zero\*` from its own directory, and registers the
 ordered feature modules through `Features::register()` (once per process).
+It preserves the site's numeric precision and PHP diagnostic settings.
+`Json::encode` scopes round-tripping native JSON precision to one encoding and
+restores the host setting even on failure. `Js::numStr` and JavaScript JSON
+serialization own their numeric spelling independently of PHP's ini precision.
 The bundled Composer loader and its autoloaded function files load on the first
 `Zero\Vendor\*` or `Zero_Vendor_*` class use. Ordinary requests do not load the
 optional Markdown, merge or S3 dependencies. Both scoped namespace and global

@@ -579,6 +579,23 @@ fn ctx_crypto_maps_to_the_zero_crypto_namespace() {
         "{config}"
     );
     build(&out);
+    // A webhook endpoint's ctx.crypto is a route, not an action; it gets the mapping entry too.
+    let root = temp.path().join("webhook");
+    project(
+        &root,
+        r#"{endpoints:{hook:endpoint({method:"POST",path:"/hooks/in"},async (ctx, request) => text(await ctx.crypto.sha256(await request.text())))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, report) = migrate(&root, &temp.path().join("webhook-out"), &["--dry-run"]);
+    assert!(ok, "{report:#}");
+    assert!(
+        report["entries"].as_array().unwrap().iter().any(|e| e["outcome"] == "mapped"
+            && e["reason"].as_str().unwrap().starts_with("ctx.crypto becomes crypto")),
+        "{report:#}"
+    );
     let root = temp.path().join("jwt");
     project(
         &root,

@@ -44,9 +44,12 @@ eq('a missing or blank named key is crypto_key_unavailable; malformed options ar
         $code(fn () => Crypto::hmacSha256(new JsObject(['key' => 'K', 'data' => 'x', 'extra' => 1]))),
         $code(fn () => Crypto::hmacSha256(new JsObject(['key' => new JsObject(['value' => 1]), 'data' => 'x']))),
         $code(fn () => Crypto::sha256(str_repeat('x', Crypto::MAX_DATA + 1))),
+        // An inline { value } key is capped like the data it signs.
+        $code(fn () => Crypto::hmacSha256(new JsObject(['key' => new JsObject(['value' => str_repeat('k', Crypto::MAX_DATA + 1)]), 'data' => 'x']))),
     ],
     ['crypto_key_unavailable', 'crypto_key_unavailable', 'crypto.hmacSha256 takes { key, data }',
-        'crypto.hmacSha256 key must be a variable name or { value }', 'crypto_input_too_large']);
+        'crypto.hmacSha256 key must be a variable name or { value }', 'crypto_input_too_large', 'crypto_input_too_large']);
+eq('an inline key at the cap still signs', strlen(Crypto::hmacSha256(new JsObject(['key' => new JsObject(['value' => str_repeat('k', Crypto::MAX_DATA)]), 'data' => 'x']))), 64);
 Env::isolate([]);
 
 eq('timingSafeEqual compares whole values', [

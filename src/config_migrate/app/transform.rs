@@ -782,7 +782,11 @@ pub(super) fn app(
             "ctx.auth.userId reads each member's copied Space Users subject (usr_...); users created after migration answer wp:<id>. Rows owned by 0.8 guest:<id> identities keep their stored owner but no v2 user maps to them, and anonymous writes answer 401 so the v2 client can start a guest session.",
         ));
     }
-    if handlers.iter().any(|h| h.contains("__z08Crypto.")) {
+    if handlers
+        .iter()
+        .chain(routes.iter().map(|(_, c)| c))
+        .any(|h| h.contains("__z08Crypto."))
+    {
         entries.push(entry(
             "",
             "mapped",

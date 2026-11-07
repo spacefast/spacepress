@@ -627,7 +627,7 @@ trait JsDynamic
             if (!self::isNullish($a[0] ?? JsUndefined::Value)) {
                 foreach (self::dynamicIterable($a[0])->a as $value) {
                     if ($result instanceof JsSet) { $result->add($value); }
-                    elseif ($value instanceof JsArray || $value instanceof JsObject) { $result->set(self::dynamicGet($value, '0'), self::dynamicGet($value, '1')); }
+                    elseif ($value instanceof JsArray || $value instanceof JsArguments || $value instanceof JsObject) { $result->set(self::dynamicGet($value, '0'), self::dynamicGet($value, '1')); }
                     else { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
                 }
             }

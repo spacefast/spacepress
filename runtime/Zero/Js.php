@@ -1543,7 +1543,7 @@ final class Js
     {
         $out = new JsObject();
         foreach (self::dynamicIterator($entries) as $entry) {
-            if (!$entry instanceof JsArray && !$entry instanceof JsObject) { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
+            if (!$entry instanceof JsArray && !$entry instanceof JsArguments && !$entry instanceof JsObject) { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
             $key = self::dynamicGet($entry, '0');
             $value = self::dynamicGet($entry, '1');
             $out->p[self::key($key)] = $value;

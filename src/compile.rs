@@ -301,7 +301,7 @@ pub struct Compiler<'a, 'p> {
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
     /// Every ability `abilities.call` may name, typed (src/abilities.rs).
-    pub abilities: crate::abilities::Catalog,
+    pub abilities: crate::wordpress::abilities::Catalog,
     /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
     pub wordpress_uses: Vec<WordPressUse>,
 }
@@ -312,6 +312,8 @@ pub struct Compiler<'a, 'p> {
 pub enum WordPressKind {
     /// `abilities.call("vendor/name", ...)`.
     Ability,
+    /// A `wp-hooks/<hook>` handler.
+    Hook,
 }
 
 /// One use of a WordPress feature, located at the source that makes it.
@@ -363,7 +365,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
-            abilities: crate::abilities::Catalog::default(),
+            abilities: crate::wordpress::abilities::Catalog::default(),
             wordpress_uses: Vec::new(),
         }
     }
@@ -565,6 +567,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::builtins::check_json_serialization_type(&ret, root.closure.func.span)?;
                 self.action_results.insert(action.clone(), ret);
             }
+            if let Slot::WpHook { index } = &root.slot {
+                let hook = &self.schema.wp_hooks[*index];
+                let returns = crate::wordpress::hook(&hook.hook).expect("catalog hook").returns;
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => (**ret).clone(),
+                    _ => Ty::Unknown,
+                };
+                if matches!(ret, Ty::Promise(_)) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("a `{}` handler can't be async", hook.hook),
+                        "WordPress calls hooks synchronously; remove `async` and `await`",
+                    );
+                }
+                if hook.filter && !assignable(&ret, &returns) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!(
+                            "the `{}` filter must return {}, not {}",
+                            hook.hook,
+                            returns.describe(),
+                            ret.describe()
+                        ),
+                        "return the filtered value, changed or not",
+                    );
+                }
+                self.use_wordpress(WordPressKind::Hook, &hook.hook, root.closure.func.span);
+            }
             if let Slot::RouteHandler { route } = &root.slot {
                 let ret = match self.helper_types.get(&key) {
                     Some(Ty::Fn(_, ret)) => match &**ret {
@@ -613,6 +643,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 types::job_ctx(),
             ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
+            Slot::WpHook { index } => crate::wordpress::hook(&self.schema.wp_hooks[*index].hook)
+                .expect("checked in the pipeline")
+                .params
+                .into_iter()
+                .map(|(_, t)| t)
+                .collect(),
             Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
@@ -4695,10 +4731,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// `Built::wordpress_uses`; this is the single place each use is noted.
     pub fn use_wordpress(&mut self, kind: WordPressKind, name: &str, span: Span) {
         let module = self
-            .fx
-            .as_ref()
-            .map(|f| f.module)
-            .and_then(|m| self.ev_program().modules.get(m).map(|m| m.path.display().to_string()))
+            .ev_program()
+            .modules
+            .iter()
+            .find(|m| m.file == span.file)
+            .map(|m| m.path.display().to_string())
             .unwrap_or_default();
         self.wordpress_uses.push(WordPressUse {
             kind,
@@ -4745,7 +4782,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(s) => d.help(format!("did you mean `{s}`?")),
                 None => d.help(format!(
                     "abilities outside this app come from {}; run `zero abilities pull --site <url>` and commit it",
-                    crate::abilities::LOCK
+                    crate::wordpress::abilities::LOCK
                 )),
             };
             return Err(d);

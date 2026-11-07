@@ -579,6 +579,72 @@ export default defineConfig({
 - `zero doctor --site <url>` (with `ZERO_APP_PASSWORD`) reports every locked
   ability the site no longer has or whose schema changed since the pull.
 
+## WordPress hooks
+
+`wp-hooks/` beside `zero.config.ts` adds WordPress actions and filters. Name a
+file after the hook, or make a directory of that name for several handlers.
+Each file default-exports its handler:
+
+```text
+wp-hooks/
+├── save_post.ts
+└── the_content/
+    ├── 10-reading-time.ts
+    └── 20-frame.ts
+```
+
+```ts
+// wp-hooks/the_content/20-frame.ts
+import type { Handler } from "php/wordpress";
+
+const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
+export default frame;
+```
+
+```ts
+// wp-hooks/save_post.ts
+import type { WP_Post } from "php/wordpress";
+
+export const priority = 20;
+export default function (postId: number, post: WP_Post, update: boolean) {
+  if (!update && post.post_type === "post") { /* ... */ }
+}
+```
+
+- The files compile to PHP like hooks and actions, and the app plugin
+  registers them with `add_filter`/`add_action`. No JavaScript reaches the site.
+- Hooks come from a curated catalog generated from core's docblocks
+  (`@wp-hooks/wordpress-core` 1.13.0) and `php-stubs/wordpress-stubs` 7.1.2:
+  `init`, `wp_head`, `wp_footer`, `wp_body_open`, `wp_enqueue_scripts`,
+  `template_redirect`, `the_content`, `the_title`, `the_excerpt`,
+  `excerpt_length`, `excerpt_more`, `body_class`, `post_class`, `save_post`,
+  `wp_insert_post`, `deleted_post`, `transition_post_status`, `user_register`,
+  `wp_login`, `wp_logout`, `rest_api_init`, `wp_mail`, `pre_get_posts` and
+  `login_message`. Any other name is a build error with the closest one.
+  There is no untyped escape hatch.
+- Arguments are typed from the catalog. A filter must return its first
+  argument's type. Handlers are synchronous: WordPress doesn't wait.
+- `WP_Post` and `WP_User` arguments are read-only copies of their documented
+  public properties (`post_title`, `post_status`, `user_login`, `roles`, ...).
+  `WP_Query` (`pre_get_posts`) offers `get(var)`, `set(var, value)` and
+  `is_main_query()` on the query WordPress runs. Nothing else of these
+  objects is reachable.
+- Files of one hook register in file-name order, all at priority 10, so they
+  run in that order after core's own callbacks at 10. `export const priority =
+  <integer>` moves a file; lower runs first. A file exports only `default` and
+  `priority`; share code through an ordinary imported module.
+- `wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
+  file without a default export, another file type, or the same hook as both a
+  file and a directory is a build error at that path.
+- Handlers run in WordPress's own request, whichever it is: a page view, an
+  editor save, cron, REST, WP-CLI. They are not in a Zero transaction. `db`
+  works and each write commits on its own; `ctx` and `HttpError` responses
+  don't apply, since there is no Zero request.
+- A handler that throws is logged to the PHP error log as
+  `[zero] wp-hooks/<hook>: ...`. A filter then returns the value it was given,
+  so one broken handler leaves the page as WordPress rendered it. An action's
+  throw stops only that handler.
+
 ## Jobs and webhooks
 
 ```ts

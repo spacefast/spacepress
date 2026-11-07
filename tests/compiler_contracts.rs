@@ -2280,3 +2280,54 @@ fn copy_dir(from: &Path, to: &Path) {
         }
     }
 }
+
+/// `wp-hooks/` on an in-process WordPress, through the built plugin: one hook's files apply in
+/// file-name order, a `priority` export moves one, a throwing filter hands back its input, and an
+/// action reads the typed WP_Post view (its throw is logged, the save goes on).
+#[test]
+fn wp_hooks_register_in_file_order_with_their_priorities() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("hooks");
+    copy_dir(&root().join("tests/fixtures/wp-hooks"), &project);
+    let content = build_wp(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $log = tempnam(sys_get_temp_dir(), 'zero-hooks');
+            ini_set('error_log', $log);
+            $content = apply_filters('the_content', "  body  ");
+            $title = apply_filters('the_title', 'Kept', 7);
+            $id = wp_insert_post(['post_title' => 'Draft one', 'post_status' => 'draft', 'post_type' => 'post']);
+            $errors = array_values(array_filter(explode("\n", (string) file_get_contents($log)), fn ($l) => str_contains($l, 'wp-hooks/')));
+            echo json_encode(['content' => $content, 'title' => $title, 'saved' => $id > 0,
+                'errors' => array_map(fn ($l) => preg_replace('/^\[[^\]]*\] /', '', $l), $errors)]), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let got: Value = serde_json::from_str(text.lines().next_back().unwrap()).unwrap();
+    assert_eq!(
+        got,
+        json!({
+            // c-early trims at 5, core's wpautop (also at 10, registered first) wraps, then a, then b.
+            "content": "<div><p>body</p>\n[a]</div>",
+            "title": "Kept",
+            "saved": true,
+            "errors": [
+                "[zero] wp-hooks/the_title: Zero\\JsError: broken title filter",
+                "[zero] wp-hooks/save_post: Zero\\JsError: saw Draft one #true",
+            ],
+        })
+    );
+}

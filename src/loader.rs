@@ -74,6 +74,17 @@ pub struct Program {
     pub entry: usize,
     /// The source of these modules; later passes that look beside them (sync directories) ask it.
     pub fs: Rc<dyn Fs>,
+    /// `wp-hooks/` handler files beside the entry, in registration order (see [`wp_hook_files`]).
+    pub wp_hooks: Vec<WpHookFile>,
+}
+
+/// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
+#[derive(Debug, Clone)]
+pub struct WpHookFile {
+    pub hook: String,
+    pub module: usize,
+    /// Position among the files of its hook, from 0 in alphabetical order.
+    pub order: usize,
 }
 
 pub fn load(entry: &Path) -> Result<Program> {
@@ -90,6 +101,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         resolved: HashMap::new(),
         entry: 0,
         fs: fs.clone(),
+        wp_hooks: Vec::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let entry = fs
@@ -100,11 +112,79 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
+    let dir = entry.parent().expect("entry has a directory").join(WP_HOOKS_DIR);
+    match wp_hook_files(&*fs, &dir) {
+        Ok(files) => {
+            for (hook, order, path) in files {
+                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
+                    Ok(module) => program.wp_hooks.push(WpHookFile { hook, module, order }),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+        }
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
     if diagnostics.is_empty() {
         Ok(program)
     } else {
         Err(diagnostics)
     }
+}
+
+/// The WordPress hooks directory beside `zero.config.ts`.
+pub const WP_HOOKS_DIR: &str = "wp-hooks";
+
+/// `wp-hooks/<hook>.ts` and `wp-hooks/<hook>/*.ts`, as `(hook, order, path)` sorted by hook, then by
+/// file name. Anything else in the directory is an error that names it: a non-`.ts` file would
+/// otherwise be silently skipped, and the author would wonder why their handler never runs.
+pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, PathBuf)>> {
+    if !fs.exists(dir) {
+        return Ok(Vec::new());
+    }
+    let listing = |d: &Path| -> Result<Vec<PathBuf>> {
+        let mut entries = fs
+            .read_dir(d)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", d.display())))?;
+        entries.sort();
+        Ok(entries)
+    };
+    // Located at the offending path (registered with no source), so `check --json` names the file.
+    let refuse = |path: &Path, why: &str| {
+        let file = diag::register_file(path, "");
+        Diag::new(Span { file, start: 0, end: 0 }, why.to_string()).help(
+            "wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
+        )
+    };
+    let ts =
+        |p: &Path| p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p);
+    let mut out = Vec::new();
+    for path in listing(dir)? {
+        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if fs.is_dir(&path) {
+            for (order, file) in listing(&path)?.into_iter().enumerate() {
+                if !ts(&file) {
+                    return Err(refuse(&file, "not a .ts handler file"));
+                }
+                out.push((name.clone(), order, file));
+            }
+        } else if ts(&path) {
+            out.push((name.trim_end_matches(".ts").to_string(), 0, path));
+        } else {
+            return Err(refuse(&path, "not a .ts handler file"));
+        }
+    }
+    // A hook both as a file and as a directory would have two independent orders.
+    let mut seen: HashMap<&str, &Path> = HashMap::new();
+    for (hook, _, path) in &out {
+        let parent = path.parent().expect("listed under wp-hooks/");
+        if seen.insert(hook, parent).is_some_and(|p| p != parent) {
+            return Err(refuse(
+                path,
+                &format!("`{hook}` is both a file and a directory; keep one"),
+            ));
+        }
+    }
+    Ok(out)
 }
 
 fn load_module(

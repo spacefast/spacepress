@@ -148,6 +148,18 @@ impl Compiler<'_, '_> {
                 if args.is_empty() {
                     for stmt in &self.ev_program().modules[module].body {
                         if let Stmt::Import { source, specs, .. } = stmt
+                            && source == crate::loader::WORDPRESS_MODULE
+                        {
+                            for spec in specs {
+                                if spec.local == *name
+                                    && let ImportName::Named(imported) = &spec.imported
+                                    && matches!(imported.as_str(), "WP_Post" | "WP_User" | "WP_Query")
+                                {
+                                    return Ok(crate::wordpress::class(imported));
+                                }
+                            }
+                        }
+                        if let Stmt::Import { source, specs, .. } = stmt
                             && source == crate::loader::ZERO_MODULE
                         {
                             for spec in specs {

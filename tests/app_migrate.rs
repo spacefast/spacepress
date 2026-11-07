@@ -233,3 +233,15 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
     );
     assert!(!out.exists());
 }
+
+/// Language constructs live 0.8 apps use (zero#138) convert and build. Each construct also has a
+/// Node/PHP differential corpus in tests/differential/language.
+#[test]
+fn language_constructs_convert_and_build() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("language");
+    let (ok, written) = migrate(&fixture("language"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{written:#}");
+    assert_eq!(written["status"], "written");
+    build(&out);
+}

@@ -257,6 +257,8 @@ pub enum UnOp {
     Plus,
     Not,
     TypeOf,
+    /// `~x`: ToInt32, then bitwise complement.
+    BitNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -276,6 +278,30 @@ pub enum BinOp {
     Ne,
     LooseEq,
     LooseNe,
+    /// `&`, `|`, `^`: both operands through ToInt32; the result is a signed 32-bit integer.
+    BitAnd,
+    BitOr,
+    BitXor,
+    /// `<<`, `>>`: the left operand through ToInt32, the count through ToUint32 masked to 5 bits.
+    Shl,
+    Shr,
+    /// `>>>`: the left operand through ToUint32; the result is unsigned.
+    UShr,
+}
+
+impl BinOp {
+    /// The JavaScript spelling of a bitwise operator.
+    pub fn bitwise_symbol(self) -> Option<&'static str> {
+        Some(match self {
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
+            BinOp::Shl => "<<",
+            BinOp::Shr => ">>",
+            BinOp::UShr => ">>>",
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

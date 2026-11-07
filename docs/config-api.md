@@ -604,6 +604,10 @@ existing contracts. Optional typed parameters include null in body reads.
 Imported JavaScript distinguishes missing values from explicit null throughout
 its checked operations.
 
+Bitwise operators (`& | ^ ~ << >> >>>` and their compound assignments) follow
+JavaScript's 32-bit semantics: ToInt32 operands, shift counts masked to five
+bits, and an unsigned result for `>>>`.
+
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, `in`, `delete`, generators,
 labels, getters/setters, BigInt, dynamic `import()`, `any`,

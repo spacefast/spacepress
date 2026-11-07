@@ -1097,13 +1097,14 @@ impl<'p> Evaluator<'p> {
             })),
             ExprKind::Unary(op, x) => {
                 let v = self.eval_static_data(x, scope)?;
-                if matches!(op, UnOp::Neg | UnOp::Plus) {
+                if matches!(op, UnOp::Neg | UnOp::Plus | UnOp::BitNot) {
                     require_static_coercion(&v, e.span)?;
                 }
                 match op {
                     UnOp::Not => Value::Bool(!v.truthy()),
                     UnOp::Neg => Value::Num(-to_number(&v)),
                     UnOp::Plus => Value::Num(to_number(&v)),
+                    UnOp::BitNot => Value::Num(f64::from(!crate::num::to_int32(to_number(&v)))),
                     UnOp::TypeOf => {
                         if let Value::Builtin(Builtin::Global(
                             name @ ("process" | "require" | "globalThis" | "crypto"),
@@ -3333,6 +3334,10 @@ fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
         BinOp::Ne => Value::Bool(!a.strict_eq(b)),
         BinOp::LooseEq => Value::Bool(loose_eq(a, b, span)?),
         BinOp::LooseNe => Value::Bool(!loose_eq(a, b, span)?),
+        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr | BinOp::UShr => {
+            let (a, b) = (to_number(&prim(a)?), to_number(&prim(b)?));
+            Value::Num(crate::num::bitwise(op, a, b))
+        }
         BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
             let (a, b) = (prim(a)?, prim(b)?);
             let ord = match (&a, &b) {

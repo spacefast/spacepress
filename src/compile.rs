@@ -2520,6 +2520,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
                         }
                     }
+                    UnOp::BitNot => {
+                        if v.ty != Ty::Dynamic {
+                            self.need_num(&v, x.span, "`~`")?;
+                        }
+                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::Num)
+                    }
                     UnOp::Plus => {
                         if v.ty.is_num() {
                             v
@@ -2853,6 +2859,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             BinOp::LooseEq | BinOp::LooseNe => unreachable!("loose equality uses checked JavaScript dispatch"),
+            BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr | BinOp::UShr => {
+                let sym = op.bitwise_symbol().expect("bitwise operator");
+                self.need_num(&a, span, &format!("`{sym}`"))?;
+                self.need_num(&b, span, &format!("`{sym}`"))?;
+                // Js::bitwise: ToInt32/ToUint32 on JS numbers, a signed or (`>>>`) unsigned 32-bit result.
+                Out::atom(
+                    format!("\\Zero\\Js::bitwise({}, {}, {})", php_str(sym), a.php, b.php),
+                    Ty::Num,
+                )
+            }
         })
     }
 

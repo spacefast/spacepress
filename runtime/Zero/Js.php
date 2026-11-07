@@ -402,6 +402,34 @@ final class Js
         return $f < 0 ? ceil($f) : floor($f);
     }
 
+    /**
+     * Compiled `a & b`, `a | b`, `a ^ b`, `a << b`, `a >> b` and `a >>> b` (ECMAScript 13.9, 13.12).
+     * Each operand is ToNumber'd (objects with the number hint), then ToInt32 (`>>>` reads its left
+     * side through ToUint32). Shift counts are ToUint32 masked to 5 bits, so `x << 32` is `x` and a
+     * negative count wraps. Results stay inside 32 bits: signed, except `>>>`, which is unsigned.
+     */
+    public static function bitwise(string $operator, mixed $a, mixed $b): int
+    {
+        $a = self::toNumber($a);
+        $b = self::toNumber($b);
+        if ($operator === '>>>') { return self::toUint32($a) >> (self::toUint32($b) & 31); }
+        $x = self::toInt32($a);
+        return match ($operator) {
+            '&' => $x & self::toInt32($b),
+            '|' => $x | self::toInt32($b),
+            '^' => $x ^ self::toInt32($b),
+            '<<' => self::toInt32($x << (self::toUint32($b) & 31)),
+            '>>' => $x >> (self::toUint32($b) & 31),
+            default => throw new JsError('Unsupported bitwise operator ' . $operator, 'TypeError'),
+        };
+    }
+
+    /** Compiled `~a`: ToInt32, then the complement, a signed 32-bit result. */
+    public static function bitNot(mixed $a): int
+    {
+        return ~self::toInt32(self::toNumber($a));
+    }
+
     private static function toInt32(int|float $n): int
     {
         if (is_float($n)) {

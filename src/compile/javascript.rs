@@ -58,6 +58,7 @@ impl Compiler<'_, '_> {
             BinOp::Ne => ("!==", Ty::Bool),
             BinOp::LooseEq => ("==", Ty::Bool),
             BinOp::LooseNe => ("!=", Ty::Bool),
+            bitwise => (bitwise.bitwise_symbol().expect("bitwise operator"), Ty::Num),
         };
         Ok(Out::atom(
             format!("\\Zero\\Js::dynamicBinary({}, {}, {})", php_str(operator), a.php, b.php),

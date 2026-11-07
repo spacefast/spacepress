@@ -2195,3 +2195,83 @@ fn named_function_expressions_refuse_with_a_source_position() {
         );
     }
 }
+
+/// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
+/// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
+/// beside it (untyped `.mjs` helpers) are copied with it.
+#[test]
+fn language_constructs_match_node_through_generated_php() {
+    let dir = root().join("tests/differential/language");
+    let mut apps: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "ts"))
+        .collect();
+    apps.sort();
+    assert!(!apps.is_empty());
+    for config in apps {
+        let name = config.file_stem().unwrap().to_str().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            std::fs::copy(&path, tmp.path().join(path.file_name().unwrap())).unwrap();
+        }
+        std::fs::copy(&config, tmp.path().join("zero.config.ts")).unwrap();
+        let node = Command::new("node")
+            .arg(root().join("tests/differential/run-node.mjs"))
+            .arg(&config)
+            .output()
+            .unwrap();
+        assert!(
+            node.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&node.stderr)
+        );
+        let node = String::from_utf8(node.stdout).unwrap();
+        let expected: Value = serde_json::from_str(&node).unwrap();
+        assert_eq!(expected["complete"], true);
+        let cases = expected["cases"].as_object().unwrap();
+        assert!(
+            cases.values().all(|result| result.get("data").is_some()),
+            "{name}: {expected}"
+        );
+        let content = build_wp(tmp.path());
+        let runtime = content.join("plugins/zero-runtime/zero/bootstrap.php");
+        let app = content.join(format!("plugins/zero-app-language-{name}/zero/app"));
+        let out = Command::new("php")
+            .arg("-r")
+            .arg(
+                r#"
+            require $argv[1];
+            $schema = require $argv[2] . '/schema.php';
+            require $argv[2] . '/functions.php';
+            $out = [];
+            foreach ($schema['actions'] as $name => $action) {
+                $fn = '\\ZeroApp\\' . $action['handler'];
+                try { $out[$name] = ['data' => \Zero\Seam::toWire($fn(new \Zero\JsObject()))]; }
+                catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+            }
+            echo \Zero\Js::jsonStringify(['schema' => 'zero-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
+        "#,
+            )
+            .arg(&runtime)
+            .arg(&app)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{name}: {}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.stderr.is_empty(),
+            "{name}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let php = String::from_utf8(out.stdout).unwrap();
+        let actual: Value = serde_json::from_str(&php).unwrap();
+        for (case, want) in cases {
+            assert_eq!(
+                &actual["cases"][case], want,
+                "{name}/{case}: compiled PHP differs from Node"
+            );
+        }
+        assert_eq!(php, node, "{name}: the PHP envelope is not byte-identical to Node's");
+    }
+}

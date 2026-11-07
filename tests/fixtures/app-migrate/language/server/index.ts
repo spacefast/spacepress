@@ -1,0 +1,18 @@
+import { capsule, mutation, number, query, string, table } from "@spacefast/zero/server";
+import { flags, hash, truncate } from "../shared/bitwise";
+
+// Each language construct the v2 compiler learned for live 0.8 apps (zero#138), used from a
+// handler. tests/app_migrate.rs converts this capsule and builds the candidate.
+export default capsule({
+  name: "legacy-language",
+  schema: {
+    notes: table({ title: string(), score: number() }),
+  },
+  queries: {
+    bitwise: query(async (ctx, title: string, score: number) => [hash(title), flags(true, score > 0), truncate(score)]),
+  },
+  mutations: {
+    add: mutation(async (ctx, title: string, score: number) =>
+      ctx.db.notes.insert({ title, score: truncate(score) | hash(title) & 0 })),
+  },
+});

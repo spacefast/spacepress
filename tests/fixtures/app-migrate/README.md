@@ -16,3 +16,8 @@ migrator must refuse it rather than fabricate a capsule or rename its columns.
 
 `tests/app_migrate.rs` owns CLI generation, dry runs and refusals.
 `tests/wp/app-migrate/run.sh` owns existing MariaDB rows and action behavior.
+
+`language` uses each JavaScript construct the v2 compiler accepts for live 0.8
+apps (zero#138) from a handler, one `shared/<construct>.ts` per construct group.
+`language_constructs_convert_and_build` converts and builds it; the exact
+semantics are proven by `tests/differential/language`.

@@ -48,6 +48,14 @@ Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations 
 
 [Evidence](../tests/compiler_contracts.rs) (`unannotated_javascript_uses_checked_value_operations_without_weakening_typescript_unknown`)
 
+## bitwise-operators
+
+Status: **supported**.
+
+`&`, `|`, `^`, `~`, `<<`, `>>`, `>>>` and their compound assignments compile in typed code, imported JavaScript and configuration evaluation. Operands go through ToNumber, then ToInt32 (ToUint32 for the left side of `>>>`); shift counts use ToUint32 masked to five bits, so negative counts and counts of 32 or more wrap as in JavaScript. Results are signed 32-bit integers, except `>>>`, which is unsigned. NaN, the infinities and -0 become 0. Typed code requires number operands; imported JavaScript coerces strings, booleans, null, undefined and objects through their primitive value.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

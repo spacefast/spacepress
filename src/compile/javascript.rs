@@ -88,8 +88,7 @@ impl Compiler<'_, '_> {
             target: Some(WriteTarget {
                 receiver: receiver.php,
                 key: key.php,
-                array: false,
-                dynamic: true,
+                kind: WriteKind::Dynamic,
             }),
         }
     }

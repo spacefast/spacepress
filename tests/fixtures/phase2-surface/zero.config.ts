@@ -84,7 +84,7 @@ function constDefault(): boolean { const { value = "show", enabled = true } = { 
 function allowed(flag: boolean | null): boolean { const NO = false; switch (flag) { case YES: return constDefault(); case NO: deny(); case NIL: return false; } }
 function visibleRole(ctx: FieldContext): boolean { if (ctx.user === null) return true; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return true; } }
 function visible(value: unknown): boolean { const decision: `hide` | `show` = value === "private" ? "hide" : "show"; const VISIBLE = "show"; switch (decision) { case HIDE: return false; case VISIBLE: return true; } }
-function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label === "error") deny(); const decision = ctx.user === null ? 0 : 1; switch (decision) { case 0: return visible(ctx.data.label); case 1: return false; } case "create": return false; case "update": return true; } }
+function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": { if (ctx.data.label === "error") deny(); const decision = ctx.user === null ? 0 : 1; switch (decision) { case 0: return visible(ctx.data.label); case 1: return false; } } case "create": return false; case "update": return true; } }
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }
 function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0]!(); switch (flag) { case true: return true; } }
@@ -132,7 +132,7 @@ export default defineConfig({
       const formatted = formatNumeric(-1);
       const numericChoice = values.length > 0 ? 0 : 1;
       const inferredNumber = numericChoice.toString();
-      const selected = finite[0]; if (selected === null) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite: finite.map((value: "a" | "b") => value), nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
+      const selected = finite[0]; if (selected === undefined) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite: finite.map((value: "a" | "b") => value), nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
     } }),
   },
 });

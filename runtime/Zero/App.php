@@ -38,9 +38,8 @@ final class App
     }
 
     /** Boot an app root (`zero/app/{schema.php,functions.php}`) on the services the plugin provides. */
-    public static function boot(string $appRoot, Store $store, Auth $auth, Media $media): self
+    public static function boot(string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media): self
     {
-        $schema = Schema::load($appRoot . '/zero/app/schema.php');
         $functions = $appRoot . '/zero/app/functions.php';
         if (is_file($functions)) {
             require_once $functions;

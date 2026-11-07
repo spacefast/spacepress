@@ -636,6 +636,12 @@ pub(super) fn app(
     })
 }
 
+/// `x.json()` / `x.text()` with no arguments: a fetch body read, which returns a promise.
+fn returns_body_read(e: &Expr) -> bool {
+    matches!(&e.kind, E::Call { callee, args, .. }
+        if args.is_empty() && matches!(&callee.kind, E::Member { prop, .. } if prop == "json" || prop == "text"))
+}
+
 /// True when the module calls a global `fetch(` it does not bind itself. Lexical: a mention inside
 /// a string or comment only adds an import the module does not use, which compiles.
 fn uses_global_fetch(body: &[Stmt], source: &str) -> bool {
@@ -864,7 +870,16 @@ fn handler(
     let body = match &f.body {
         FnBody::Expr(e) => {
             r.expr(e)?;
-            format!("return {};", r.apply(e.span))
+            // `async () => response.json()` returned the promise and JavaScript awaited it.
+            let text = r.apply(e.span);
+            format!(
+                "return {};",
+                if returns_body_read(e) {
+                    format!("await {text}")
+                } else {
+                    text
+                }
+            )
         }
         FnBody::Block(stmts) => {
             for s in stmts {
@@ -1075,7 +1090,15 @@ impl Rewrite<'_> {
                 }
             }
             Stmt::Expr(e) | Stmt::Throw(e) | Stmt::ExportDefault(e) => self.expr(e)?,
-            Stmt::Return(Some(e), _) => self.expr(e)?,
+            Stmt::Return(Some(e), _) => {
+                self.expr(e)?;
+                if returns_body_read(e) {
+                    let text = self.apply(e.span);
+                    self.edits
+                        .retain(|(s, _)| !(s.start >= e.span.start && s.end <= e.span.end));
+                    self.edits.push((e.span, format!("await {text}")));
+                }
+            }
             Stmt::If(e, a, b) => {
                 self.expr(e)?;
                 for s in a {

@@ -299,6 +299,7 @@ pub struct Compiler<'a, 'p> {
     pub calls: HashMap<String, HashSet<String>>,
     /// Hosts each plugin's runtime-built fetch URLs may reach (`None`: any public host).
     hosts: HashMap<String, Option<Vec<String>>>,
+    plugin_names: Vec<String>,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -343,6 +344,86 @@ impl<'a, 'p> Compiler<'a, 'p> {
             uses: Vec::new(),
             calls: HashMap::new(),
             hosts: HashMap::new(),
+            plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
+        }
+    }
+
+    /// What registering a plugin root itself uses: the collection a hook sees, its own action or
+    /// route, and the secret a signature reads.
+    fn root_capabilities(&mut self, root: &Root) {
+        let span = root.closure.func.span;
+        match &root.slot {
+            Slot::Hook { table, kind } => {
+                let key = self.schema.collections[table].key.clone();
+                self.uses("read", key.clone(), span);
+                self.uses("hooks", format!("{key}.{}", kind.name()), span);
+            }
+            Slot::ActionHandler { action } => {
+                self.uses("actions", action.clone(), span);
+                if let Some(env) = self.schema.actions[action].signature.as_ref().and_then(|s| s["secret"]["env"].as_str()) {
+                    self.uses("env", env.to_string(), span);
+                }
+            }
+            Slot::RouteHandler { route } => {
+                let r = &self.schema.routes[route];
+                self.uses("routes", format!("{} {}", r.method, r.path), span);
+                if let Some(env) = r.signature.as_ref().and_then(|s| s["secret"]["env"].as_str()) {
+                    self.uses("env", env.to_string(), span);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A before-hook writes the fields it sets on `data` (directly, through helpers it passes
+    /// `data` to, or through `ctx.data`) and the fields of a replacement it returns.
+    fn hook_writes(&mut self, root: &Root) {
+        let Slot::Hook { table, kind: HookKind::BeforeCreate | HookKind::BeforeUpdate } = &root.slot else {
+            return;
+        };
+        if self.plugin.is_none() {
+            return;
+        }
+        let key = self.schema.collections[table].key.clone();
+        let f = &root.closure.func;
+        let mut fields = std::collections::BTreeSet::new();
+        if let Some(p) = f.params.first() {
+            for path in self.effects.writes_below(p.pat.span()) {
+                match path.first() {
+                    None => {}
+                    Some(effects::Step::Field(name)) => {
+                        fields.insert(name.clone());
+                    }
+                    Some(_) => {
+                        fields.insert("*".to_string());
+                    }
+                }
+            }
+            if !matches!(p.pat, Pat::Id(..)) {
+                fields.insert("*".to_string());
+            }
+        }
+        if let Some(Ty::Fn(_, ret)) = self.helper_types.get(&closure_key(&root.closure)) {
+            let ret = match &**ret {
+                Ty::Promise(t) => (**t).clone(),
+                t => t.clone(),
+            };
+            let parts = match ret {
+                Ty::Union(ts) => ts,
+                t => vec![t],
+            };
+            for t in parts {
+                match t {
+                    Ty::Void | Ty::Undefined | Ty::Null | Ty::Never => {}
+                    Ty::Obj(f) => fields.extend(f.keys().cloned()),
+                    _ => {
+                        fields.insert("*".to_string());
+                    }
+                }
+            }
+        }
+        for field in fields {
+            self.uses("write", format!("{key}.{field}"), f.span);
         }
     }
 
@@ -558,8 +639,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.effects = effects::Effects::analyze(roots, self.schema, self.ev_program());
         let mut out = Vec::new();
         for root in roots {
+            self.plugin = root.plugin.map(|i| (i, self.plugin_names[i].clone()));
             let params = self.root_params(&root.slot);
             let name = self.unique_name(&root.name);
+            self.current = name.clone();
+            self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
             let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
@@ -590,8 +674,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             self.helpers.entry((self.owner(), key, no_db)).or_insert_with(|| name.clone());
+            self.hook_writes(root);
             out.push((root.slot.clone(), name));
         }
+        self.plugin = None;
         while let Some((closure, name, params)) = self.pending.pop() {
             self.compile_function(&closure, &name, params, None, false)?;
         }
@@ -784,7 +870,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let saved = self.fx.replace(fx);
+        let caller = std::mem::replace(&mut self.current, name.to_string());
         let result = self.compile_function_body(&f, name, &param_tys, slot);
+        self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
         let (params_php, body) = result?;
         let ret_ty = predicate.unwrap_or_else(|| fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone())));

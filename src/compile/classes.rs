@@ -16,7 +16,7 @@ pub(super) struct CompiledClass {
 
 /// Classes carry static state, so each plugin compiles its own copy.
 fn key(class: &Rc<ClassValue>, owner: usize) -> usize {
-    (Rc::as_ptr(class) as usize).wrapping_add(owner)
+    (Rc::as_ptr(class) as usize) ^ (owner << 48)
 }
 
 impl<'a, 'p> Compiler<'a, 'p> {

@@ -100,4 +100,16 @@ final class JsMap
     {
         foreach ($this->iterate() as [$key, $value]) { $callback($value, $key, $this); }
     }
+
+    /** Receipts persist the live entries; object ids are per-process, so the index is rebuilt. */
+    public function __serialize(): array { return ['entries' => $this->entries()]; }
+
+    /** Also reads receipts written before the index existed (the same public `entries` list). */
+    public function __unserialize(array $data): void
+    {
+        $this->slots = [];
+        $this->index = [];
+        $this->live = 0;
+        foreach ($data['entries'] ?? [] as [$key, $value]) { $this->set($key, $value); }
+    }
 }

@@ -89,6 +89,58 @@ No local compilation or verification overlapped the refreshed run, which include
 the duplicate-precedence correction. Other agents remained running. Alternation
 limits drift but does not isolate the host; the phase ranges remain separated.
 
+
+## MCP init share (separate diagnostic experiment)
+
+The latency table above remains uninstrumented. A second run uses the same
+alternating method as #123: five baseline/candidate pairs, ten warmups and
+25 timed requests per phase, concurrency one, the same original app/runtime and
+25 public posts, with only the adapter swapped. It validates
+`2 × 5 × (10 + 25) = 350` responses, `2 × 5 × 25 = 250` timed, zero errors.
+The opt-in test probe wraps only the existing `McpAdapter::init` callback at
+`rest_api_init`; it includes that callback's server-registration callbacks.
+Nothing changes the production hook lifecycle.
+
+Per request, MCP ms is `(hrtime_after_init - hrtime_before_init) / 1e6`, live
+bytes are `memory_get_usage_after_init - memory_get_usage_before_init`, and
+MCP's PHP interval share is `mcp_init_ms / php_ms × 100`. PHP ms retains the
+MU-plugin-load to rest_pre_serve_request interval defined above. Each reported
+value is the median of the five phase medians, including the per-request share;
+parentheses give their min–max. Ratios of separately aggregated medians need not
+equal the aggregated per-request ratios. Raw samples and all columns are in
+[php-native-mcp-profile.json](../benchmarks/php-native-mcp-profile.json).
+
+| Diagnostic metric | Before | After |
+| --- | ---: | ---: |
+| MCP init ms | 102.486 (101.551–108.927) | 12.766 (12.690–12.805) |
+| MCP share of PHP interval, % | 80.264 (79.581–81.017) | 34.672 (33.964–34.888) |
+| MCP additional live bytes | 62,072,824 | 25,244,656 |
+| Instrumented PHP ms | 129.253 (127.342–136.315) | 37.002 (36.665–38.142) |
+
+The init duration reduction is
+`(102.485522 - 12.766133) / 102.485522 × 100 = 87.54%`. The share change is
+`80.264296 - 34.672134 = 45.592162` percentage points. The retained live-byte
+reduction is `62,072,824 - 25,244,656 = 36,828,168` bytes, or
+`36,828,168 / 1,048,576 = 35.12 MiB`. This live delta is not a peak or RSS.
+The diagnostic HTTP medians are intentionally excluded from the uninstrumented
+latency claim. The shared host's one-minute load was 5.13 before and 3.94 after;
+no local compilation or verification overlapped this run. As with #123, the
+probe attributes work but does not isolate the host or claim throughput.
+
+Reproduce this diagnostic with the collection command below, adding
+`--mcp-profile` and writing to `docs/benchmarks/php-native-mcp-profile.json`.
+The runner installs the alternate probe only for that diagnostic and removes
+it in `finally`; the ordinary command still uses the uninstrumented probe.
+
+## Generated output freshness
+
+Rebuild every example with committed plugin locks using this PR's compiler:
+`site`, `blog`, `pantry`, `full-site` and `wp-plugins`. The verified upstream MCP
+ZIP hash stays unchanged; each installed tree hash changes to the patched tree.
+The sweep also refreshes the existing stale full-site generated client and its
+JavaScript/declaration outputs. A second build of all those examples produces
+no tracked or untracked changes relative to the staged generated outputs.
+
 Reproduce by building a fresh fixture as in `tests/wp/run.sh`, staging its
 wp-content to a stable directory, and starting a uniquely named harness. Snapshot
 the unpatched adapter from the verified ZIP and the patched adapter from the

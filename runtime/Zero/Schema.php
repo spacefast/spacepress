@@ -298,7 +298,7 @@ final class Schema
      */
     public static function normalize(array $col, mixed $v, string $name, string $pointer): mixed
     {
-        if ($v === null) {
+        if ($v === null || $v === JsUndefined::Value) {
             if ($col['notNull'] ?? false) {
                 throw HttpError::invalidInput("$name is required", $pointer);
             }

@@ -63,6 +63,17 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     assert!(ok, "{written:#}");
     assert_eq!(written["status"], "written");
     assert_eq!(dry["adoption_sql"], written["adoption_sql"]);
+    // Realtime maps: v2 announces every committed write, so the declaration and ctx.invalidate go.
+    assert!(
+        written["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped"),
+        "{written:#}"
+    );
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(!config.contains("invalidate"), "{config}");
     let snapshot: Value =
         serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(snapshot["tables"]["tasks"]["columns"]["id"]["autoIncrement"], true);
@@ -146,7 +157,7 @@ fn project(root: &Path, capsule: &str) {
 }
 
 #[test]
-fn spacefast_content_only_root_adopts_native_posts_and_drops_realtime() {
+fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("source");
     project(&root, r#"{name:"spacefast-posts", realtime:{enabled:true}}"#);
@@ -163,7 +174,7 @@ fn spacefast_content_only_root_adopts_native_posts_and_drops_realtime() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "review")
+            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped")
     );
     assert_eq!(
         serde_json::from_slice::<Value>(&std::fs::read(out.join("connector-roles.json")).unwrap()).unwrap(),
@@ -344,7 +355,7 @@ fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
 fn endpoints_become_routes_and_unroutable_ones_refuse() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("endpoints");
-    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test"]);
+    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test", "--users"]);
     assert!(ok, "{report:#}");
     let routes: Vec<_> = report["entries"]
         .as_array()
@@ -366,6 +377,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "GET /go/home",
             "GET /api/tags",
             "GET /api/files/*splat",
+            "POST /api/marks",
             "GET /api/total"
         ]
     );
@@ -450,8 +462,8 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     }
     let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
     assert!(
-        pricing.starts_with("import { plans } from \"../../shared/plans\";"),
-        "{pricing}"
+        pricing.contains("import { plans } from '../../shared/plans';"),
+        "a single-quoted relative import moves with the page: {pricing}"
     );
     // Interactive starters keep a pointer per page saying what to port.
     let (ok, refused) = migrate(
@@ -579,6 +591,23 @@ fn ctx_crypto_maps_to_the_zero_crypto_namespace() {
         "{config}"
     );
     build(&out);
+    // A webhook endpoint's ctx.crypto is a route, not an action; it gets the mapping entry too.
+    let root = temp.path().join("webhook");
+    project(
+        &root,
+        r#"{endpoints:{hook:endpoint({method:"POST",path:"/hooks/in"},async (ctx, request) => text(await ctx.crypto.sha256(await request.text())))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, report) = migrate(&root, &temp.path().join("webhook-out"), &["--dry-run"]);
+    assert!(ok, "{report:#}");
+    assert!(
+        report["entries"].as_array().unwrap().iter().any(|e| e["outcome"] == "mapped"
+            && e["reason"].as_str().unwrap().starts_with("ctx.crypto becomes crypto")),
+        "{report:#}"
+    );
     let root = temp.path().join("jwt");
     project(
         &root,
@@ -633,7 +662,7 @@ fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool
     let output = command
         .arg("--out")
         .arg(out)
-        .args(["--dry-run", "--space", "spc_migrate_test"])
+        .args(["--dry-run", "--space", "spc_migrate_test", "--users"])
         .output()
         .unwrap();
     let report = serde_json::from_slice(&output.stdout)

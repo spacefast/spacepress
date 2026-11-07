@@ -1247,6 +1247,15 @@ impl<'p> Evaluator<'p> {
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
             ),
+            Value::Builtin(Builtin::Global(g @ ("process" | "fetch" | "crypto" | "Buffer"))) => err_help(
+                span,
+                format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),
+                if *g == "process" {
+                    "read `process.env.NAME` inside the handler; for webhook and upload settings use env(\"NAME\") from \"zero\""
+                } else {
+                    "move the call into a handler"
+                },
+            ),
             Value::Builtin(Builtin::Global(g)) => match (*g, prop) {
                 ("Math", "PI") => Ok(Value::Num(std::f64::consts::PI)),
                 ("Math", "E") => Ok(Value::Num(std::f64::consts::E)),

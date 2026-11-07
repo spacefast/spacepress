@@ -577,19 +577,7 @@ impl Compiler<'_, '_> {
         if prop != "from" || !self.is_global(obj, "Buffer") {
             return Ok(None);
         }
-        match args.get(1) {
-            None => {}
-            Some(ArrEl::Item(Expr {
-                kind: ExprKind::Str(enc),
-                ..
-            })) if matches!(enc.as_str(), "utf8" | "utf-8") => {}
-            Some(ArrEl::Item(x) | ArrEl::Spread(x)) => {
-                return err_help(x.span, "Buffer.from() reads text as UTF-8 here", "omit the encoding");
-            }
-        }
-        if args.len() > 2 {
-            return err(e.span, "Buffer.from() takes text here");
-        }
+        utf8_only(args, e.span, "Buffer.from()")?;
         self.arg(args, 0, e.span, "text").map(Some)
     }
 
@@ -601,9 +589,7 @@ impl Compiler<'_, '_> {
                 "compare with `timingSafeEqual(Buffer.from(a), Buffer.from(b))` or measure with `Buffer.byteLength(text)`",
             );
         }
-        if args.len() != 1 {
-            return err(span, "Buffer.byteLength() takes text here");
-        }
+        utf8_only(args, span, "Buffer.byteLength()")?;
         let e = self.arg(args, 0, span, "text")?;
         let text = self.string_arg(e, "Buffer.byteLength()", "pass text")?;
         Ok(Out::atom(format!("strlen({text})"), Ty::Num))
@@ -789,6 +775,24 @@ impl Compiler<'_, '_> {
                 Err(d)
             }
         }
+    }
+}
+
+/// `(text)` or `(text, "utf8")`: Buffers here are always the UTF-8 bytes of a string.
+fn utf8_only(args: &[ArrEl], span: Span, call: &str) -> Result<()> {
+    match args {
+        [_] => Ok(()),
+        [
+            _,
+            ArrEl::Item(Expr {
+                kind: ExprKind::Str(enc),
+                ..
+            }),
+        ] if matches!(enc.as_str(), "utf8" | "utf-8") => Ok(()),
+        [_, ArrEl::Item(x) | ArrEl::Spread(x)] => {
+            err_help(x.span, format!("{call} reads text as UTF-8 here"), "omit the encoding")
+        }
+        _ => err(span, format!("{call} takes text here")),
     }
 }
 

@@ -29,7 +29,7 @@
       "status": "supported",
       "evidence": "src/loader.rs",
       "test": "installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports",
-      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. The CommonJS subset accepts one static top-level function export; require, named CommonJS exports, implicit sloppy arguments, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
+      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. The CommonJS subset accepts one static top-level function export; require, named CommonJS exports, implicit sloppy arguments, Node built-ins other than node:crypto, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
     },
     {
       "id": "unannotated-javascript",
@@ -213,6 +213,133 @@
       "evidence": "tests/compiler.rs",
       "test": "compiled_php_matches_node_on_every_differential_case",
       "guidance": "Global isFinite accepts zero or one argument and applies numeric coercion; Number.isFinite checks numbers without coercion. Number.isFinite is available as a stable function value, including local and captured aliases and feature detection. The differential numeric owner compares NaN, infinities, numbers, strings, null, booleans and arrays in pure configuration evaluation and PHP. Typed missing values retain the documented nullable boundary; explicit undefined is distinct from null."
+    },
+    {
+      "id": "host-globals",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "host_globals_match_node_through_generated_php",
+      "guidance": "Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env[\"NAME\"] (string | undefined); crypto.randomUUID(); and from \"node:crypto\" (import or a top-level const require) createHash and createHmac chains ending in digest(\"hex\" | \"base64\" | \"base64url\"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto Zero\\Fetch (HTTPS-only egress policy), Zero\\Env and Zero\\Crypto. See config-api.md."
+    },
+    {
+      "id": "fetch-signal",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-fetch-signal",
+      "message": "fetch() `signal` isn't available in Zero code",
+      "guidance": "Every call already ends after 10 s. credentials, mode, cache and the other browser options are refused because they have no effect server-side."
+    },
+    {
+      "id": "fetch-binary-body",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-fetch-body",
+      "message": "fetch() `body` can't be",
+      "guidance": "Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormData, ArrayBuffer and stream bodies are not available."
+    },
+    {
+      "id": "url-objects",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-fetch-url-object",
+      "message": "`new URL` isn't available in Zero code",
+      "guidance": "fetch() takes a URL string. Build it with encodeURIComponent and URLSearchParams.toString(). URL and Request objects are not compiled."
+    },
+    {
+      "id": "response-streams",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-response-stream",
+      "message": "response streams aren't available in Zero code",
+      "guidance": "The body is read in full (at most 1 MiB) before fetch() resolves. Read it with text() or json(); arrayBuffer, blob, formData and clone are refused."
+    },
+    {
+      "id": "process-env-dynamic",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-process-env-dynamic",
+      "message": "`process.env` needs a literal variable name",
+      "guidance": "Name the variable: process.env.NAME or process.env[\"NAME\"]. Computed names, iterating process.env and writes are refused, so request input cannot choose a server variable."
+    },
+    {
+      "id": "process-members",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-process-member",
+      "message": "isn't available on `process` in Zero code",
+      "guidance": "Handlers run in PHP. Only process.env.NAME is supported."
+    },
+    {
+      "id": "env-in-handlers",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-env-handler",
+      "message": "env() is a config reference for webhooks, signatures and upload credentials",
+      "guidance": "env(\"NAME\") is a deferred reference inside defineConfig (webhook URLs and secrets, action signatures, upload credentials). Handlers read runtime variables with process.env.NAME."
+    },
+    {
+      "id": "web-crypto-subtle",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-crypto-subtle",
+      "message": "`crypto.subtle` isn't available in Zero code",
+      "guidance": "SubtleCrypto needs ArrayBuffers and is not compiled. Hash and sign with createHash and createHmac from \"node:crypto\"."
+    },
+    {
+      "id": "web-crypto-random-values",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-crypto-random-values",
+      "message": "`crypto.getRandomValues` needs typed arrays",
+      "guidance": "Typed arrays are not compiled. Use randomBytes(n).toString(\"hex\") from \"node:crypto\", or crypto.randomUUID()."
+    },
+    {
+      "id": "node-crypto-members",
+      "status": "refused",
+      "code": "Z2001",
+      "fixture": "tests/fixtures/reject-node-crypto-member",
+      "message": "\"node:crypto\" has no `createCipheriv` in Zero code",
+      "guidance": "node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingSafeEqual. Ciphers, keys, KDFs and streams are not compiled."
+    },
+    {
+      "id": "node-crypto-buffers",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-digest-buffer",
+      "message": "digest() without an encoding returns a Buffer",
+      "guidance": "Finish a hash in one expression with a string encoding: createHash(\"sha256\").update(text).digest(\"hex\"). Buffers exist only inside timingSafeEqual(Buffer.from(a), Buffer.from(b)) and Buffer.byteLength(text)."
+    },
+    {
+      "id": "timing-safe-equal-strings",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-timing-safe-equal",
+      "message": "timingSafeEqual() compares Buffers made from text",
+      "guidance": "Pass Buffer.from(a) and Buffer.from(b). As in Node, inputs of different byte lengths throw RangeError, so check Buffer.byteLength first."
+    },
+    {
+      "id": "node-builtins",
+      "status": "refused",
+      "code": "Z1102",
+      "fixture": "tests/fixtures/reject-node-builtin",
+      "message": "Node built-ins other than node:crypto are unavailable",
+      "guidance": "Handlers run in PHP. Use the global fetch, process.env.NAME and \"node:crypto\"."
+    },
+    {
+      "id": "require",
+      "status": "refused",
+      "code": "Z1002",
+      "fixture": "tests/fixtures/reject-require-module",
+      "message": "doesn't support `require(\"node:fs\")`",
+      "guidance": "A top-level const declaration may require(\"node:crypto\"). Every other require is refused; use import."
+    },
+    {
+      "id": "zero-fetch-import",
+      "status": "refused",
+      "code": "Z2001",
+      "fixture": "tests/fixtures/reject-zero-fetch-import",
+      "message": "\"zero\" has no export named `fetch`",
+      "guidance": "fetch and crypto are the standard globals, not \"zero\" exports. Remove them from the import."
     }
   ]
 }

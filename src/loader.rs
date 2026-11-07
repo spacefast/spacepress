@@ -706,7 +706,11 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
 fn package_error(spec: &str, span: Span, reason: &str) -> Diag {
     Diag::new(span, format!("can't import \"{spec}\": {reason}"))
         .code(diag::Code::NpmImport)
-        .help("install a source package locally; its TypeScript, ESM, or static CommonJS source must fit Zero's PHP compiler subset")
+        .help(if spec.starts_with("node:") {
+            "handlers run in PHP: use the global fetch, process.env.NAME and \"node:crypto\""
+        } else {
+            "install a source package locally; its TypeScript, ESM, or static CommonJS source must fit Zero's PHP compiler subset"
+        })
 }
 
 fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> {

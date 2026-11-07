@@ -876,3 +876,107 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
     }
 }
+
+/// The standard host forms (global fetch, Headers, URLSearchParams, process.env, crypto and
+/// node:crypto) give Node's results through the generated PHP, against one shared HTTP origin.
+#[test]
+fn host_globals_match_node_through_generated_php() {
+    let dir = root().join("tests/differential");
+    let mut origin = Command::new("node")
+        .arg(dir.join("host-origin.mjs"))
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let port = {
+        use std::io::BufRead as _;
+        let mut line = String::new();
+        std::io::BufReader::new(origin.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        line.trim().to_string()
+    };
+    struct Kill(std::process::Child);
+    impl Drop for Kill {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+        }
+    }
+    let _origin = Kill(origin);
+    let secret = " lane secret \n";
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(tmp.path().join("zero.config.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&transpiled.stdout)
+    );
+    // The config is an ES module that also uses a static require, as a TypeScript project may.
+    let module = std::fs::read_to_string(js.join("zero.config.js")).unwrap();
+    std::fs::write(
+        js.join("zero.config.mjs"),
+        format!(
+            "import {{ createRequire }} from 'node:module';\nconst require = createRequire(import.meta.url);\n{module}"
+        ),
+    )
+    .unwrap();
+    // Node reads the origin directly; the PHP side sees the same answers through the stub.
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(js.join("zero.config.mjs"))
+        .env("HOST_URL", format!("http://127.0.0.1:{port}"))
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    let mut expected = expected["cases"].clone();
+    assert_eq!(expected.as_object().unwrap().len(), 9, "{expected}");
+    assert!(
+        expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
+        "{expected}"
+    );
+    // Zero trims a process.env HMAC key (0.8's keyring rule); Node uses it as given.
+    assert_eq!(expected["secrets"]["data"][0], false);
+    expected["secrets"]["data"][0] = json!(true);
+    let content = build_wp(tmp.path());
+    let out = Command::new("php")
+        .args([
+            "-r",
+            r#"
+require $argv[1];
+require $argv[3];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$out = [];
+foreach ($schema['actions'] as $name => $action) {
+    $fn = '\\ZeroApp\\' . $action['handler'];
+    try { $out[$name] = ['data' => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]; }
+    catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+}
+echo \Zero\Js::jsonStringify($out);
+"#,
+        ])
+        .arg(content.join("plugins/zero-runtime/zero/bootstrap.php"))
+        .arg(content.join("plugins/zero-app-host-globals/zero/app"))
+        .arg(dir.join("host-wp-http.php"))
+        // The PHP side fetches the public name; the policy checks it, the stub connects locally.
+        .env("HOST_URL", "https://origin.example")
+        .env("HOST_ORIGIN", &port)
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+    let actual: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(actual, expected, "generated PHP differs from Node");
+}

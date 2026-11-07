@@ -88,6 +88,14 @@ Zero arrays are dense, and deleting an element leaves a hole that keeps the leng
 
 [Evidence](../tests/fixtures/reject-delete-array-element)
 
+## do-while-and-labels
+
+Status: **supported**.
+
+`do…while` runs its body before the first test; `continue` goes to the test. Labeled loops, switches and blocks compile with `break label` and `continue label` in typed code, imported JavaScript and configuration evaluation, through nested loops, switches and labeled blocks. Labeled function declarations are refused, as in strict mode.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

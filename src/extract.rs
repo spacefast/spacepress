@@ -1935,7 +1935,8 @@ fn scan_stmts(stmts: &[Stmt], param: &str, out: &mut Vec<String>) {
                     scan_stmts(b, param, out);
                 }
             }
-            Stmt::Block(b) | Stmt::While(_, b) => scan_stmts(b, param, out),
+            Stmt::Block(b) | Stmt::While(_, b) | Stmt::DoWhile(b, _) => scan_stmts(b, param, out),
+            Stmt::Labeled(_, s, _) => scan_stmts(std::slice::from_ref(s), param, out),
             Stmt::For { body, .. } | Stmt::ForOf { body, .. } | Stmt::ForIn { body, .. } => {
                 scan_stmts(body, param, out)
             }

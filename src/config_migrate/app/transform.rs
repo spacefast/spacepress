@@ -1638,12 +1638,13 @@ impl Rewrite<'_> {
                     self.stmt(s)?;
                 }
             }
-            Stmt::While(iter, body) => {
+            Stmt::While(iter, body) | Stmt::DoWhile(body, iter) => {
                 self.expr(iter)?;
                 for s in body {
                     self.stmt(s)?;
                 }
             }
+            Stmt::Labeled(_, body, _) => self.stmt(body)?,
             Stmt::Try {
                 block,
                 handler,

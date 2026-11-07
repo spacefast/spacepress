@@ -1402,6 +1402,14 @@ impl Graph {
                 self.block(b, names, env, owner);
                 self.loop_history(owner, first_call, &before, e.span);
             }
+            Stmt::DoWhile(b, e) => {
+                let first_call = self.calls.len();
+                let before = self.history.get(&owner).cloned().unwrap_or_default();
+                self.block(b, names, env, owner);
+                self.expr(e, names, env, owner);
+                self.loop_history(owner, first_call, &before, e.span);
+            }
+            Stmt::Labeled(_, s, _) => self.stmt(s, names, env, owner),
             Stmt::For {
                 init,
                 test,
@@ -1513,8 +1521,8 @@ impl Graph {
             }
             Stmt::Exported(s) => self.stmt(s, names, env, owner),
             Stmt::Return(None, _)
-            | Stmt::Break(_)
-            | Stmt::Continue(_)
+            | Stmt::Break(..)
+            | Stmt::Continue(..)
             | Stmt::TypeAlias { .. }
             | Stmt::Import { .. }
             | Stmt::ExportNames { .. }

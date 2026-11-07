@@ -486,20 +486,12 @@ impl Lowerer {
                 }
             }
             a::Statement::WhileStatement(w) => Stmt::While(self.expr(&w.test)?, self.body_of(&w.body)?),
-            a::Statement::DoWhileStatement(d) => {
-                return self.unsupported(d.span, "`do ... while`", "use `while`");
-            }
+            a::Statement::DoWhileStatement(d) => Stmt::DoWhile(self.body_of(&d.body)?, self.expr(&d.test)?),
             a::Statement::BreakStatement(b) => {
-                if b.label.is_some() {
-                    return self.unsupported(b.span, "labeled `break`", "");
-                }
-                Stmt::Break(self.sp(b.span))
+                Stmt::Break(b.label.as_ref().map(|l| l.name.to_string()), self.sp(b.span))
             }
             a::Statement::ContinueStatement(c) => {
-                if c.label.is_some() {
-                    return self.unsupported(c.span, "labeled `continue`", "");
-                }
-                Stmt::Continue(self.sp(c.span))
+                Stmt::Continue(c.label.as_ref().map(|l| l.name.to_string()), self.sp(c.span))
             }
             a::Statement::ThrowStatement(t) => Stmt::Throw(self.expr(&t.argument)?),
             a::Statement::TryStatement(t) => {
@@ -554,11 +546,17 @@ impl Lowerer {
                 }
             }
             a::Statement::LabeledStatement(l) => {
-                return self.unsupported(
-                    l.span,
-                    "labels",
-                    "extract a helper and return early, or use a boolean flag to leave nested loops",
-                );
+                if matches!(l.body, a::Statement::FunctionDeclaration(_)) {
+                    return self.unsupported(l.span, "labeled function declarations", "remove the label");
+                }
+                let mut body = Vec::new();
+                self.inner_stmt(&l.body, &mut body)?;
+                let body = if body.len() == 1 {
+                    body.pop().expect("one statement")
+                } else {
+                    Stmt::Block(body)
+                };
+                Stmt::Labeled(l.label.name.to_string(), Box::new(body), self.sp(l.span))
             }
             a::Statement::WithStatement(w) => return self.unsupported(w.span, "`with`", ""),
             a::Statement::DebuggerStatement(d) => return self.unsupported(d.span, "`debugger`", ""),
@@ -1689,6 +1687,7 @@ fn contains_constructor_return(body: &[Stmt]) -> bool {
         Stmt::Return(Some(_), _) => true,
         Stmt::Block(b)
         | Stmt::While(_, b)
+        | Stmt::DoWhile(b, _)
         | Stmt::For { body: b, .. }
         | Stmt::ForOf { body: b, .. }
         | Stmt::ForIn { body: b, .. } => contains_constructor_return(b),
@@ -1823,7 +1822,8 @@ fn parameter_body_has_bindings(body: &FnBody) -> bool {
     fn statements(body: &[Stmt]) -> bool {
         body.iter().any(|statement| match statement {
             Stmt::Decl { .. } | Stmt::Func(_) | Stmt::ForOf { .. } | Stmt::ForIn { .. } => true,
-            Stmt::Block(body) | Stmt::While(_, body) => statements(body),
+            Stmt::Block(body) | Stmt::While(_, body) | Stmt::DoWhile(body, _) => statements(body),
+            Stmt::Labeled(_, body, _) => statements(std::slice::from_ref(body)),
             Stmt::If(_, yes, no) => statements(yes) || no.as_ref().is_some_and(|body| statements(body)),
             Stmt::For { init, body, .. } => {
                 init.as_ref().is_some_and(|init| statements(std::slice::from_ref(init))) || statements(body)
@@ -1870,10 +1870,11 @@ fn check_parameter_statements(body: &[Stmt], uninitialized: &[(&str, Span)]) -> 
                 check_parameter_default(value, uninitialized, false)?
             }
             Stmt::Block(body) => check_parameter_statements(body, uninitialized)?,
-            Stmt::While(value, body) => {
+            Stmt::While(value, body) | Stmt::DoWhile(body, value) => {
                 check_parameter_default(value, uninitialized, false)?;
                 check_parameter_statements(body, uninitialized)?;
             }
+            Stmt::Labeled(_, body, _) => check_parameter_statements(std::slice::from_ref(body), uninitialized)?,
             Stmt::If(value, yes, no) => {
                 check_parameter_default(value, uninitialized, false)?;
                 check_parameter_statements(yes, uninitialized)?;
@@ -1931,8 +1932,8 @@ fn check_parameter_statements(body: &[Stmt], uninitialized: &[(&str, Span)]) -> 
             }
             Stmt::Exported(statement) => check_parameter_statements(std::slice::from_ref(statement), uninitialized)?,
             Stmt::Return(None, _)
-            | Stmt::Break(_)
-            | Stmt::Continue(_)
+            | Stmt::Break(..)
+            | Stmt::Continue(..)
             | Stmt::TypeAlias { .. }
             | Stmt::Import { .. }
             | Stmt::ExportNames { .. }

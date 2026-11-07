@@ -715,7 +715,7 @@ Extracted supported builtin methods retain the receiver passed through
 `call`/`apply`.
 Ordinary functions receive `JsArguments` (numeric properties, independent
 non-enumerable length); arrows inherit the surrounding arguments. Parameters
-are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,
+are not sloppy-mode mapped aliases. `do…while` compiles to PHP `do … while`. Labeled loops and switches use PHP's numbered `break N`/`continue N`, counting every enclosing loop, switch and labeled block; a labeled block that is not a loop becomes a one-pass `do { … } while (false)` so `break label` can leave it. Function-scoped `var`, comma expressions,
 loose equality and own-key `for…in` share the evaluator's lowering. Runtime
 `for…in` snapshots the original keys and skips keys deleted before their turn.
 

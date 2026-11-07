@@ -611,11 +611,12 @@ then the value's built-in prototype chain (class methods, array, function and
 error prototypes, `Object.prototype`), and narrows object unions like
 TypeScript. `delete obj.key` and `delete obj?.key` remove optional properties
 and map entries with strict-mode results: true for absent keys, a `TypeError`
-for non-configurable ones such as `length`.
+for non-configurable ones such as `length`. `do…while` and labeled loops,
+switches and blocks (`break label`, `continue label`) follow JavaScript.
 
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,
-labels, getters/setters, BigInt, dynamic `import()`, `any`,
+getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal

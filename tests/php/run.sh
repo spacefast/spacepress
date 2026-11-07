@@ -18,7 +18,10 @@ for s in "${suites[@]}"; do
          "$PHP" -d zend.assertions=1 env_test.php || status=1 ;;
     schema|sql|images|legacy) "$PHP" -d zend.assertions=1 "${s}_test.php" || status=1 ;;
     db|blog|auth|jobs|webhooks|services|files|media|locales|sync) "$PHP" -d zend.assertions=1 -d memory_limit=512M "${s}_test.php" || status=1 ;;
-    vendor) "$PHP" -d zend.assertions=1 vendor_drift.php || status=1 ;;
+    vendor)
+      "$PHP" -d zend.assertions=1 vendor_drift.php || status=1
+      "$PHP" -d zend.assertions=1 autoload_test.php || status=1
+      ;;
     *) echo "unknown suite: $s" >&2; exit 2 ;;
   esac
 done

@@ -51,7 +51,8 @@ pub struct Plugin {
 #[derive(Debug, Clone)]
 pub struct Use {
     pub plugin: usize,
-    /// The PHP function compiling when it was seen (or the registering slot's name).
+    /// The PHP function compiling when it was seen. Empty for what registration alone implies
+    /// (the row a hook receives): granted, but no handler's read for the flow report.
     pub function: String,
     pub kind: &'static str,
     pub value: String,
@@ -470,6 +471,28 @@ mod tests {
             g.get_mut(k).unwrap().insert(v.to_string());
         }
         g
+    }
+
+    #[test]
+    fn a_hooks_own_row_is_granted_but_not_reported_as_a_read_before_a_send() {
+        let at = |function: &str, kind: &'static str, value: &str| Use {
+            plugin: 0,
+            function: function.to_string(),
+            kind,
+            value: value.to_string(),
+            span: Span::NONE,
+        };
+        let handler = vec![("hook".to_string(), BTreeSet::from(["hook".to_string()]))];
+        // Registration's implicit read (no function) plus a constant send: nothing to report.
+        let uses = vec![at("", "read", "posts"), at("hook", "http", "api.example.com")];
+        assert_eq!(flows(&uses, 0, &handler), json!([]));
+        assert!(grant_of(&uses, 0)["read"].contains("posts"));
+        // A read the handler makes itself is reported.
+        let uses = vec![at("hook", "read", "users"), at("hook", "http", "api.example.com")];
+        assert_eq!(
+            flows(&uses, 0, &handler),
+            json!([{ "handler": "hook", "reads": ["read: users"], "sends": ["http: api.example.com"] }])
+        );
     }
 
     #[test]

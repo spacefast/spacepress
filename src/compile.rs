@@ -397,7 +397,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &root.slot {
             Slot::Hook { table, kind } => {
                 let key = self.schema.collections[table].key.clone();
+                // Every hook receives its row: that read is granted, but it isn't data the
+                // handler chose to read, so the flow report doesn't attribute it.
+                let handler = std::mem::take(&mut self.current);
                 self.uses("read", key.clone(), span);
+                self.current = handler;
                 self.uses("hooks", format!("{key}.{}", kind.name()), span);
             }
             Slot::ActionHandler { action } => {
@@ -7141,11 +7145,47 @@ fn static_host(e: &Expr) -> Option<String> {
     if authority.is_empty() || authority.contains('@') {
         return None;
     }
-    let host = authority
-        .rsplit_once(':')
-        .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
-        .map_or(authority, |(h, _)| h);
+    // A bracketed IPv6 literal holds colons of its own; only a port follows the bracket.
+    let host = match authority.strip_prefix('[') {
+        Some(rest) => rest.split_once(']')?.0,
+        None => authority
+            .rsplit_once(':')
+            .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
+            .map_or(authority, |(h, _)| h),
+    };
+    // The same normalization `Zero\Fetch::target` applies before comparing hosts.
     Some(host.trim_end_matches('.').to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::static_host;
+    use crate::diag::Span;
+    use crate::ir::{Expr, ExprKind};
+
+    #[test]
+    fn locked_hosts_normalize_like_the_runtime_fetch_check() {
+        let host = |url: &str| {
+            static_host(&Expr {
+                kind: ExprKind::Str(url.to_string()),
+                span: Span::NONE,
+            })
+        };
+        assert_eq!(
+            host("https://[2606:4700:4700::1111]/").as_deref(),
+            Some("2606:4700:4700::1111")
+        );
+        assert_eq!(
+            host("https://[2606:4700::1111]:8443/x").as_deref(),
+            Some("2606:4700::1111")
+        );
+        assert_eq!(
+            host("https://API.Example.com.:8443/v1").as_deref(),
+            Some("api.example.com")
+        );
+        assert_eq!(host("https://api.example.com").as_deref(), Some("api.example.com"));
+        assert_eq!(host("https://user@api.example.com/"), None);
+    }
 }
 
 const FILTER_OPS: &[&str] = &[

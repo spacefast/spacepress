@@ -608,6 +608,8 @@ impl Lowerer {
             let mut methods = Vec::new();
             let mut constructor = None;
             let mut names = std::collections::HashSet::new();
+            let mut accessors = Vec::new();
+            let mut accessor_names = std::collections::HashSet::new();
             for element in &c.body.body {
                 match element {
                     a::ClassElement::PropertyDefinition(p) => {
@@ -635,7 +637,8 @@ impl Lowerer {
                         if matches!(
                             name.as_str(),
                             "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
-                        ) || !names.insert((p.r#static, name.to_string()))
+                        ) || accessor_names.iter().any(|(s, _, n): &(bool, bool, String)| *s == p.r#static && *n == name)
+                            || !names.insert((p.r#static, name.to_string()))
                         {
                             return self.unsupported(
                                 p.span,
@@ -669,14 +672,14 @@ impl Lowerer {
                         if m.computed
                             || !m.decorators.is_empty()
                             || m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
-                            || matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set)
                         {
                             return self.unsupported(
                                 m.span,
-                                "computed, decorated, private or accessor class methods",
+                                "computed, decorated or private class methods",
                                 "use public named methods",
                             );
                         }
+                        let accessor = matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set);
                         if m.value.type_parameters.is_some() || m.value.params.rest.is_some() {
                             return self.unsupported(
                                 m.span,
@@ -809,7 +812,32 @@ impl Lowerer {
                                 }
                             }
                             constructor = Some(f);
+                        } else if accessor {
+                            let setter = m.kind == a::MethodDefinitionKind::Set;
+                            if matches!(name.as_str(), "__proto__" | "prototype" | "constructor")
+                                || names.contains(&(m.r#static, name.clone()))
+                                || !accessor_names.insert((m.r#static, setter, name.clone()))
+                            {
+                                return self.unsupported(
+                                    m.span,
+                                    "duplicate or protocol class members",
+                                    "use distinct ordinary member names",
+                                );
+                            }
+                            accessors.push(ClassAccessor {
+                                name: name.clone(),
+                                is_static: m.r#static,
+                                setter,
+                                func: f,
+                            });
                         } else {
+                            if accessor_names.iter().any(|(s, _, n)| *s == m.r#static && *n == name) {
+                                return self.unsupported(
+                                    m.span,
+                                    "duplicate or protocol class members",
+                                    "use distinct ordinary member names",
+                                );
+                            }
                             if matches!(
                                 name.as_str(),
                                 "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
@@ -844,6 +872,7 @@ impl Lowerer {
                 fields,
                 methods,
                 constructor,
+                accessors,
                 span: self.sp(c.span),
             }))
         })();

@@ -117,7 +117,9 @@ trait JsDynamic
         $key = self::key($key);
         if ($value instanceof JsObject) {
             if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
-            return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
+            if (array_key_exists($key, $value->p)) { return $value->p[$key]; }
+            if ($value->class !== null && ($inherited = $value->class->readInherited($value, $key, false)) !== JsClass::absent()) { return $inherited; }
+            return self::dynamicMethodValue($value, $key);
         }
         if ($value instanceof JsClass) { return $value->has($key) || !$value->hasStaticMethod($key) ? $value->get($key) ?? JsUndefined::Value : self::dynamicMethodValue($value, $key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
@@ -159,7 +161,8 @@ trait JsDynamic
     {
         self::requirePresent($value);
         $key = self::key($key);
-        if ($value instanceof JsObject && !$value->nullPrototype && !array_key_exists($key, $value->p) && Builtins::has('object', $key)) {
+        if ($value instanceof JsObject && !$value->nullPrototype && !array_key_exists($key, $value->p) && Builtins::has('object', $key)
+            && ($value->class === null || $value->class->accessor($key, false) === null)) {
             throw new JsError('Inherited properties are not supported by typed data reads', 'TypeError');
         }
         return self::dynamicGet($value, $key);

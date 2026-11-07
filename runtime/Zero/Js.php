@@ -1131,6 +1131,9 @@ final class Js
         if ($key === '__proto__' && !$o->nullPrototype && !array_key_exists($key, $o->p)) {
             throw new JsError('Prototype mutation is not supported', 'TypeError');
         }
+        if ($o->class !== null && !array_key_exists($key, $o->p) && $o->class->writeInherited($o, $key, $value, false)) {
+            return $value;
+        }
         $o->p[$key] = $value;
         return $value;
     }

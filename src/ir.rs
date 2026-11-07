@@ -55,7 +55,17 @@ pub struct Class {
     pub fields: Vec<ClassField>,
     pub methods: Vec<(String, bool, Rc<Func>)>,
     pub constructor: Option<Rc<Func>>,
+    /// `get`/`set` members in declaration order; they live on the prototype, never as own fields.
+    pub accessors: Vec<ClassAccessor>,
     pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct ClassAccessor {
+    pub name: String,
+    pub is_static: bool,
+    pub setter: bool,
+    pub func: Rc<Func>,
 }
 
 #[derive(Debug)]

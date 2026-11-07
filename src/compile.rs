@@ -3674,6 +3674,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
+                if let Some(ty) = self.class_accessor_write(&o.ty, prop, *prop_span)? {
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)), ty.clone()),
+                        constraint: ty,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Dynamic,
+                        }),
+                    });
+                }
                 if let Ty::Class(id) = o.ty {
                     o.ty = self.class_shape(id);
                 }
@@ -3796,6 +3807,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if matches!(&obj.kind, ExprKind::Ident(n) if n == "super") {
+            return self.super_member(prop, prop_span);
+        }
         if prop.starts_with('#') {
             return self.private_read(obj, prop, optional, prop_span);
         }

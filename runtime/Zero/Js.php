@@ -1218,7 +1218,9 @@ final class Js
             return array_key_exists($key, $object->p) || $index(count($object->a)) || self::prototypeHas('Array', $key);
         }
         if ($object instanceof JsArguments) {
-            return array_key_exists($key, $object->p) || $index(count($object->a)) || in_array($key, ['length', 'callee'], true) || self::prototypeHas('Object', $key);
+            // Arguments indexes can be deleted, so presence is the slot itself, not the length.
+            $own = preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && array_key_exists((int) $key, $object->a);
+            return array_key_exists($key, $object->p) || $own || in_array($key, ['length', 'callee'], true) || self::prototypeHas('Object', $key);
         }
         if ($object instanceof JsClass) {
             if ($object->has($key) || $object->hasStaticMethod($key) || in_array($key, ['length', 'name', 'prototype'], true)) { return true; }

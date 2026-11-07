@@ -23,7 +23,6 @@ final class Plugin
     private static ?self $instance = null;
     private static ?bool $keyed = null;
 
-    public readonly Schema $schema;
     private ?App $app = null;
     private string $mainFile;
     private ?Connection $connection = null;
@@ -38,10 +37,9 @@ final class Plugin
     /** @var array<int, list<string>> post id → columns fillEditorDefaults generated in this save */
     private array $filled = [];
 
-    public function __construct(public readonly string $dir, string $mainFile)
+    public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
         self::$instance = $this;
-        $this->schema = Schema::load($dir . '/zero/app/schema.php');
         $this->mainFile = $mainFile;
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
@@ -243,7 +241,7 @@ final class Plugin
         if ($this->app === null) {
             $db = $this->connection();
             $store = CompositeStore::create($this->schema, $db);
-            $this->app = App::boot($this->dir, $store, new WpAuth(), new WpMedia($db, $store->dialect()));
+            $this->app = App::boot($this->dir, $this->schema, $store, new WpAuth(), new WpMedia($db, $store->dialect()));
             \Zero\Auth\Module::use(IdentityBridge::available() ? new IdentityBridge($db) : null);
         }
 
@@ -476,7 +474,12 @@ final class Plugin
 
     public function promoted(mixed $post): void
     {
-        unset($this->promoting[(int) ($post instanceof \WP_Post ? $post->ID : $post)]);
+        $id = (int) ($post instanceof \WP_Post ? $post->ID : $post);
+        if (isset($this->promoting[$id]) && ($collection = $this->collectionOf($id)) !== null) {
+            // Promotion runs no write hooks; watchers still need to see the row appear.
+            $this->app()->db->current(static fn () => \Zero\Realtime\Module::promoted($collection, [$id]));
+        }
+        unset($this->promoting[$id]);
     }
 
     public function revisionsToKeep(int $keep, \WP_Post $post): int

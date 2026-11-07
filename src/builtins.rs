@@ -115,7 +115,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("constructor", &["Date"], overload("value?: unknown; primitive conversion, ISO date strings only", None, arity(0, 1), arity(0, 1))),
     ("constructor", &["Error", "TypeError", "RangeError"], overload("runtime-only message?: string; options without cause", None, arity(0, 2), arity(0, 2))),
     ("constructor", &["Map", "Set"], overload("entries?: iterable", None, None, arity(0, 1))),
-    ("number", &["toString"], overload("decimal only", arity(0, 0), arity(0, 0), arity(0, 0))),
+    ("number", &["toString"], overload("decimal; checked JavaScript: radix 2..36 for safe integers", arity(0, 0), arity(0, 0), arity(0, 1))),
     ("array", &["map", "filter", "find", "findIndex", "some", "every", "flatMap", "forEach"], overload("callback: function (thisArg refused)", arity(1, 1), arity(1, 1), arity(1, 1))),
     ("array", &["findLast", "findLastIndex"], overload("callback: function (thisArg refused)", None, arity(1, 1), arity(1, 1))),
     ("array", &["reduce"], overload("callback: function, initial?: unknown", arity(1, 2), arity(1, 2), arity(1, 2))),

@@ -146,7 +146,7 @@ final class Builtins
         'constructor.RangeError' => [0, 2],
         'constructor.Map' => [0, 1],
         'constructor.Set' => [0, 1],
-        'number.toString' => [0, 0],
+        'number.toString' => [0, 1],
         'array.map' => [1, 1],
         'array.filter' => [1, 1],
         'array.find' => [1, 1],

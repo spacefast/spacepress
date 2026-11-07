@@ -330,7 +330,12 @@ trait JsDynamic
         if ($receiver instanceof JsNamespace && Builtins::has($receiver->name, $name)) { return self::dynamicStaticCall($receiver->name, $name, $args); }
         if ($name === 'toFixed' && (is_int($receiver) || is_float($receiver))) { return self::toFixed($receiver, $get(0, 0)); }
         if ($name === 'toString') {
-            if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && self::toInteger(self::toNumber($get(0))) !== 10) { throw new JsError('Number.toString radix is not supported', 'TypeError'); }
+            if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && ($radix = self::toInteger(self::toNumber($get(0)))) !== 10) {
+                if ($radix < 2 || $radix > 36) { throw new JsError('toString() radix must be between 2 and 36', 'RangeError'); }
+                // Integer digits are exact in every base; fractional digits depend on the engine.
+                if (!is_int($receiver) || abs($receiver) > 9007199254740991) { throw new JsError('Number.toString radix is supported for safe integers only', 'TypeError'); }
+                return ($receiver < 0 ? '-' : '') . base_convert((string) abs($receiver), 10, (int) $radix);
+            }
             if ($receiver instanceof JsArray) {
                 if (array_key_exists('join', $receiver->p) && !$receiver->p['join'] instanceof \Closure) { return self::dynamicObjectTag($receiver); }
                 return self::dynamicCallMethod($receiver, 'join', new JsArray());

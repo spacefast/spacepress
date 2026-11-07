@@ -58,4 +58,5 @@ ZERO_WP_HARNESS="$work/feed-harness.json" node --test "$here/feed.test.ts"
 docker compose -p "$ZERO_WP_PROJECT" cp "$here/endpoints-seed.php" cli:/tmp/zero-app-migrate-endpoints-seed.php >/dev/null 2>&1
 "$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-endpoints-seed.php >/dev/null
 "$wp/harness.sh" up --wp-content "$work/endpoints/.zero/wp-content" > "$work/endpoints-harness.json"
+"$wp/harness.sh" wp config set LEGACY_BANNER "from wp-config" >/dev/null
 ZERO_WP_HARNESS="$work/endpoints-harness.json" node --test "$here/endpoints.test.ts"

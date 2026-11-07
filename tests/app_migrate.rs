@@ -351,6 +351,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
         routes,
         [
             "GET /api/ping",
+            "GET /api/banner",
             "GET /api/notes/count",
             "GET /api/notes/:id",
             "POST /api/search",
@@ -401,4 +402,13 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "/endpoints/two"
         ]
     );
+}
+
+#[test]
+fn env_and_log_services_map_to_v2_builtins() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("services");
+    let (ok, report) = migrate(&fixture("services"), &out, &[]);
+    assert!(ok, "{report:#}");
+    build(&out);
 }

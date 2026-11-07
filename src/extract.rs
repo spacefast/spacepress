@@ -384,166 +384,202 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     }
 
-    // Hooks
     if let Some(hooks_val) = cfg_map.get("hooks") {
-        let hspan = span_of(ev, config, "hooks", config_span);
-        let Value::Object(hooks) = hooks_val else {
-            return Err(Diag::new(hspan, "`hooks` must be an object keyed by collection"));
-        };
-        for (key, per) in hooks.borrow().iter() {
-            let kspan = span_of(ev, hooks_val, key, hspan);
-            let Some(coll) = out.schema.by_key(key) else {
-                let mut d = Diag::new(
-                    kspan,
-                    format!("`hooks.{key}` doesn't match a registered collection, table, or user projection"),
-                );
-                let keys: Vec<&str> = out.schema.collections.values().map(|c| c.key.as_str()).collect();
-                if let Some(s) = suggest(key, keys) {
-                    d = d.help(format!("did you mean `{s}`?"));
-                }
-                return Err(d);
-            };
-            let table = coll.table.clone();
-            let Value::Object(per_map) = per else {
-                return Err(Diag::new(
-                    kspan,
-                    format!("`hooks.{key}` must be an object of hook functions"),
-                ));
-            };
-            for (hname, f) in per_map.borrow().iter() {
-                let fspan = span_of(ev, per, hname, kspan);
-                let Some(kind) = HookKind::parse(hname) else {
-                    let mut d = Diag::new(fspan, format!("there's no hook called `{hname}`"));
-                    if let Some(s) = suggest(hname, HookKind::ALL.iter().map(|h| h.name())) {
-                        d = d.help(format!("did you mean `{s}`?"));
-                    }
-                    return Err(d);
-                };
-                let Value::Closure(f) = f else {
-                    return Err(Diag::new(
-                        fspan,
-                        format!("`{hname}` must be a function, not {}", f.describe()),
-                    ));
-                };
-                if kind == HookKind::BeforeCreate {
-                    let coll = out.schema.collections.get_mut(&table).expect("collection");
-                    coll.before_create_fills = assigned_keys(f)
-                        .into_iter()
-                        .filter(|k| {
-                            coll.columns
-                                .get(k)
-                                .is_some_and(|c| c.not_null && c.default.is_none() && !c.auto_increment)
-                        })
-                        .collect();
-                }
-                out.roots.push(Root {
-                    closure: f.clone(),
-                    slot: Slot::Hook {
-                        table: table.clone(),
-                        kind,
-                    },
-                    name: format!("{table}__{hname}"),
-                    plugin: None,
-                });
-            }
-        }
+        hooks(hooks_val, span_of(ev, config, "hooks", config_span), ev, &mut out, None)?;
     }
-
-    // Actions
     if let Some(actions_val) = cfg_map.get("actions") {
-        let aspan = span_of(ev, config, "actions", config_span);
-        let Value::Object(actions) = actions_val else {
-            return Err(Diag::new(aspan, "`actions` must be an object of action(...) values"));
-        };
-        for (name, a) in actions.borrow().iter() {
-            let nspan = span_of(ev, actions_val, name, aspan);
-            if !valid_ident(name) {
-                return Err(Diag::new(nspan, format!("\"{name}\" isn't a valid action name")));
-            }
-            let Value::Action(a) = a else {
-                return Err(Diag::new(
-                    nspan,
-                    format!("action `{name}` must be wrapped in action({{ input, handler }})"),
-                ));
-            };
-            let Value::Object(cfg) = &a.config else { unreachable!() };
-            let cfg = cfg.borrow().clone();
-            for k in cfg.keys() {
-                if !matches!(
-                    k.as_str(),
-                    "input" | "handler" | "access" | "agents" | "idempotent" | "signature"
-                ) {
-                    return Err(Diag::new(
-                        ev.key_span(&a.config, k).unwrap_or(a.span),
-                        format!("action() has no option `{k}`"),
-                    )
-                    .help("use input, handler, access"));
-                }
-            }
-            let owner = Owner::Action(name.clone());
-            let mut input = IndexMap::new();
-            if let Some(iv) = cfg.get("input") {
-                let Value::Object(fields) = iv else {
-                    return Err(Diag::new(a.span, "`input` must be an object of columns"));
-                };
-                for (field, fv) in fields.borrow().iter() {
-                    let fspan = ev.key_span(iv, field).unwrap_or(a.span);
-                    let Value::Column(b) = fv else {
-                        return Err(
-                            Diag::new(fspan, format!("input `{field}` is {}, not a column", fv.describe()))
-                                .help("describe inputs with integer(), text(), ..."),
-                        );
-                    };
-                    let col = column(field, b, &owner, &[], Place::Input, ev, &mut out)?;
-                    input.insert(field.clone(), col);
-                }
-            }
-            let Some(Value::Closure(handler)) = cfg.get("handler") else {
-                return Err(Diag::new(a.span, format!("action `{name}` needs a `handler` function")));
-            };
-            let agents = bool_option(&cfg, "agents", true, a.span)?;
-            let idempotent = bool_option(&cfg, "idempotent", false, a.span)?;
-            let signature = match cfg.get("signature") {
-                None | Some(Value::Undef) => None,
-                Some(v) => {
-                    if cfg.contains_key("access") {
-                        return Err(Diag::new(a.span, "signature cannot be combined with access")
-                            .help("remove access; signature authenticates the caller"));
-                    }
-                    Some(signature_config(v, a.span)?)
-                }
-            };
-            let access = match cfg.get("access") {
-                None | Some(Value::Undef) => Access::editor(),
-                Some(v) => {
-                    let sp = ev.key_span(&a.config, "access").unwrap_or(a.span);
-                    access_rule(v, sp, &owner, "access", format!("action__{name}__access"), &mut out)?
-                }
-            };
-            out.roots.push(Root {
-                closure: handler.clone(),
-                slot: Slot::ActionHandler { action: name.clone() },
-                name: format!("action__{name}"),
-                plugin: None,
-            });
-            out.schema.actions.insert(
-                name.clone(),
-                Action {
-                    name: name.clone(),
-                    input,
-                    handler: String::new(),
-                    access,
-                    agents,
-                    idempotent,
-                    signature,
-                },
-            );
-        }
+        actions(actions_val, span_of(ev, config, "actions", config_span), ev, &mut out, None)?;
     }
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
     routes(&cfg_map, config_span, &mut out)?;
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
+}
+
+/// `hooks.<collectionKey>.<hook>`, from the app or from a plugin (`plugin`: index and name).
+fn hooks(
+    hooks_val: &Value,
+    hspan: Span,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let Value::Object(hooks) = hooks_val else {
+        return Err(Diag::new(hspan, "`hooks` must be an object keyed by collection"));
+    };
+    for (key, per) in hooks.borrow().iter() {
+        let kspan = ev.key_span(hooks_val, key).unwrap_or(hspan);
+        let Some(coll) = out.schema.by_key(key) else {
+            let mut d = Diag::new(
+                kspan,
+                format!("`hooks.{key}` doesn't match a registered collection, table, or user projection"),
+            );
+            let keys: Vec<&str> = out.schema.collections.values().map(|c| c.key.as_str()).collect();
+            if let Some(s) = suggest(key, keys) {
+                d = d.help(format!("did you mean `{s}`?"));
+            }
+            return Err(d);
+        };
+        let table = coll.table.clone();
+        let Value::Object(per_map) = per else {
+            return Err(Diag::new(
+                kspan,
+                format!("`hooks.{key}` must be an object of hook functions"),
+            ));
+        };
+        for (hname, f) in per_map.borrow().iter() {
+            let fspan = ev.key_span(per, hname).unwrap_or(kspan);
+            let Some(kind) = HookKind::parse(hname) else {
+                let mut d = Diag::new(fspan, format!("there's no hook called `{hname}`"));
+                if let Some(s) = suggest(hname, HookKind::ALL.iter().map(|h| h.name())) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                }
+                return Err(d);
+            };
+            let Value::Closure(f) = f else {
+                return Err(Diag::new(
+                    fspan,
+                    format!("`{hname}` must be a function, not {}", f.describe()),
+                ));
+            };
+            if kind == HookKind::BeforeCreate {
+                let coll = out.schema.collections.get_mut(&table).expect("collection");
+                // Plugin hooks run before the app's; any of them may fill a required column.
+                for k in assigned_keys(f) {
+                    if !coll.before_create_fills.contains(&k)
+                        && coll
+                            .columns
+                            .get(&k)
+                            .is_some_and(|c| c.not_null && c.default.is_none() && !c.auto_increment)
+                    {
+                        coll.before_create_fills.push(k);
+                    }
+                }
+            }
+            out.roots.push(Root {
+                closure: f.clone(),
+                slot: Slot::Hook {
+                    table: table.clone(),
+                    kind,
+                },
+                name: format!("{}{table}__{hname}", prefix(plugin)),
+                plugin: plugin.map(|(i, _)| i),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// `actions.<name>`; a plugin's are registered as `<plugin>_<name>`.
+fn actions(
+    actions_val: &Value,
+    aspan: Span,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let Value::Object(actions) = actions_val else {
+        return Err(Diag::new(aspan, "`actions` must be an object of action(...) values"));
+    };
+    for (name, a) in actions.borrow().iter() {
+        let nspan = ev.key_span(actions_val, name).unwrap_or(aspan);
+        if !valid_ident(name) {
+            return Err(Diag::new(nspan, format!("\"{name}\" isn't a valid action name")));
+        }
+        let name = &registered(plugin, name);
+        if out.schema.actions.contains_key(name) {
+            return Err(Diag::new(nspan, format!("two actions are both registered as `{name}`"))
+                .help("rename one; plugin actions are registered as <plugin>_<name>"));
+        }
+        let Value::Action(a) = a else {
+            return Err(Diag::new(
+                nspan,
+                format!("action `{name}` must be wrapped in action({{ input, handler }})"),
+            ));
+        };
+        let Value::Object(cfg) = &a.config else { unreachable!() };
+        let cfg = cfg.borrow().clone();
+        for k in cfg.keys() {
+            if !matches!(
+                k.as_str(),
+                "input" | "handler" | "access" | "agents" | "idempotent" | "signature"
+            ) {
+                return Err(Diag::new(
+                    ev.key_span(&a.config, k).unwrap_or(a.span),
+                    format!("action() has no option `{k}`"),
+                )
+                .help("use input, handler, access"));
+            }
+        }
+        let owner = Owner::Action(name.clone());
+        let mut input = IndexMap::new();
+        if let Some(iv) = cfg.get("input") {
+            let Value::Object(fields) = iv else {
+                return Err(Diag::new(a.span, "`input` must be an object of columns"));
+            };
+            for (field, fv) in fields.borrow().iter() {
+                let fspan = ev.key_span(iv, field).unwrap_or(a.span);
+                let Value::Column(b) = fv else {
+                    return Err(
+                        Diag::new(fspan, format!("input `{field}` is {}, not a column", fv.describe()))
+                            .help("describe inputs with integer(), text(), ..."),
+                    );
+                };
+                let col = column(field, b, &owner, &[], Place::Input, ev, out)?;
+                input.insert(field.clone(), col);
+            }
+        }
+        let Some(Value::Closure(handler)) = cfg.get("handler") else {
+            return Err(Diag::new(a.span, format!("action `{name}` needs a `handler` function")));
+        };
+        let agents = bool_option(&cfg, "agents", true, a.span)?;
+        let idempotent = bool_option(&cfg, "idempotent", false, a.span)?;
+        let signature = match cfg.get("signature") {
+            None | Some(Value::Undef) => None,
+            Some(v) => {
+                if cfg.contains_key("access") {
+                    return Err(Diag::new(a.span, "signature cannot be combined with access")
+                        .help("remove access; signature authenticates the caller"));
+                }
+                Some(signature_config(v, a.span)?)
+            }
+        };
+        let access = match cfg.get("access") {
+            None | Some(Value::Undef) => Access::editor(),
+            Some(v) => {
+                let sp = ev.key_span(&a.config, "access").unwrap_or(a.span);
+                access_rule(v, sp, &owner, "access", format!("action__{name}__access"), out)?
+            }
+        };
+        out.roots.push(Root {
+            closure: handler.clone(),
+            slot: Slot::ActionHandler { action: name.clone() },
+            name: format!("{}action__{name}", prefix(plugin)),
+            plugin: plugin.map(|(i, _)| i),
+        });
+        out.schema.actions.insert(
+            name.clone(),
+            Action {
+                name: name.clone(),
+                input,
+                handler: String::new(),
+                access,
+                agents,
+                idempotent,
+                signature,
+            },
+        );
+    }
+    Ok(())
+}
+/// PHP name prefix for a plugin's functions, so plugins never share compiled state.
+fn prefix(plugin: Option<(usize, &str)>) -> String {
+    plugin.map_or_else(String::new, |(_, name)| format!("plugin_{name}__"))
+}
+
+/// The registered name of a plugin's action, job or route.
+fn registered(plugin: Option<(usize, &str)>, name: &str) -> String {
+    plugin.map_or_else(|| name.to_string(), |(_, p)| format!("{p}_{name}"))
 }
 
 /// Package pins cannot inherit JavaScript's last-property-wins behavior.

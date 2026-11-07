@@ -1025,7 +1025,7 @@ impl Rewrite<'_> {
                 self.expr(b)?;
                 self.expr(c)?;
             }
-            E::Call { callee, args, .. } | E::New { callee, args } => {
+            E::Call { callee, args, .. } | E::New { callee, args, .. } => {
                 self.expr(callee)?;
                 for a in args {
                     self.arr(a)?;

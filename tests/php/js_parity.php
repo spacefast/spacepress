@@ -47,6 +47,19 @@ $cases = [
         function () { $r = new \Zero\RegExp('(a)?b', 'g'); $m = Js::dynamicRegExpExec($r, '🙂b ab'); $n = Js::dynamicRegExpExec($r, '🙂b ab'); $end = Js::dynamicRegExpExec($r, '🙂b ab'); return [Js::dynamicGet($m, 'index'), Js::dynamicGet($m, '1') === Js::undefined(), Js::dynamicGet($n, 'index'), Js::dynamicGet($n, '1'), $end, $r->lastIndex]; }],
     ['(() => { const s = new Set([1, 1, NaN, NaN]); const m = new Map([["a", 1], ["a", 2], [null, 3]]); return [[...s], [...m], s.size, m.get(null), m.has("x"), Object.prototype.toString.call(s), Object.prototype.toString.call(m), new Date(0).toISOString()]; })()',
         function () { $s = Js::dynamicConstruct('Set', new JsArray([new JsArray([1, 1, NAN, NAN])])); $m = Js::dynamicConstruct('Map', new JsArray([new JsArray([new JsArray(['a', 1]), new JsArray(['a', 2]), new JsArray([null, 3])])])); return [Js::dynamicIterable($s), Js::dynamicIterable($m), Js::dynamicGet($s, 'size'), Js::dynamicCallMethod($m, 'get', new JsArray([null])), Js::dynamicCallMethod($m, 'has', new JsArray(['x'])), Js::dynamicObjectTag($s), Js::dynamicObjectTag($m), Js::dynamicCallMethod(Js::dynamicConstruct('Date', new JsArray([0])), 'toISOString', new JsArray())]; }],
+    // Live Map/Set iteration, delete/clear/forEach and iterator objects (docs/decisions/2026-11-07-stdlib-objects.md).
+    ['(() => { const m = new Map([["b", 1], ["a", 2]]); const seen = []; for (const [k, v] of m) { seen.push(k + v); if (k === "b") { m.set("c", 3); m.delete("a"); } } const it = m.keys(); const first = it.next(); const s = new Set([1, 2, 3]); const fe = []; s.forEach((v, k) => fe.push(v + k)); s.delete(2); const wasCleared = [s.size]; s.clear(); return [seen, first.value, first.done, [...it], m.size, fe, wasCleared, s.size, [...s.entries()], Object.prototype.toString.call(m.entries()), [...["x", "y"].entries()], [...["x"].keys()], Array.from(new Map([[1, 2]]).values())]; })()',
+        function () {
+            $call = static fn ($r, $n, ...$a) => Js::dynamicCallMethod($r, $n, new JsArray($a));
+            $m = Js::dynamicConstruct('Map', new JsArray([new JsArray([new JsArray(['b', 1]), new JsArray(['a', 2])])]));
+            $seen = [];
+            foreach (Js::dynamicIterator($m) as $entry) { [$k, $v] = $entry->a; $seen[] = $k . $v; if ($k === 'b') { $call($m, 'set', 'c', 3); $call($m, 'delete', 'a'); } }
+            $it = $call($m, 'keys'); $first = $call($it, 'next');
+            $s = Js::dynamicConstruct('Set', new JsArray([new JsArray([1, 2, 3])]));
+            $fe = []; $call($s, 'forEach', static function ($v, $k) use (&$fe) { $fe[] = $v + $k; });
+            $call($s, 'delete', 2); $wasCleared = [Js::dynamicGet($s, 'size')]; $call($s, 'clear');
+            return [new JsArray($seen), Js::dynamicGet($first, 'value'), Js::dynamicGet($first, 'done'), Js::dynamicIterable($it), Js::dynamicGet($m, 'size'), new JsArray($fe), new JsArray($wasCleared), Js::dynamicGet($s, 'size'), Js::dynamicIterable($call($s, 'entries')), Js::dynamicObjectTag($call($m, 'entries')), Js::dynamicIterable($call(new JsArray(['x', 'y']), 'entries')), Js::dynamicIterable($call(new JsArray(['x']), 'keys')), Js::dynamicStaticCall('Array', 'from', new JsArray([$call(Js::dynamicConstruct('Map', new JsArray([new JsArray([new JsArray([1, 2])])])), 'values')]))];
+        }],
     ['[Array.from({0:"a", 1:null, length:2}, (v,i) => String(v)+i), Math.round(-0.2), Math.min(), Number.isFinite("3"), JSON.stringify(undefined)]',
         fn () => [Js::dynamicStaticCall('Array', 'from', new JsArray([new JsObject(['0' => 'a', '1' => null, 'length' => 2]), static fn ($v, $i) => Js::str($v) . $i])), Js::dynamicStaticCall('Math', 'round', new JsArray([-0.2])), Js::dynamicStaticCall('Math', 'min', new JsArray()), Js::dynamicStaticCall('Number', 'isFinite', new JsArray(['3'])), Js::dynamicStaticCall('JSON', 'stringify', new JsArray([Js::undefined()])) === Js::undefined() ? null : false]],
     ['[...["at","pop","shift","find","findLast","forEach"].map(n => [][n](() => false) === undefined), [null].find(() => true) === null, Object.fromEntries([["x"]]).x === undefined, Object.hasOwn([], "length")]',
@@ -326,15 +339,15 @@ $cases[] = ['(() => { const p = {x:1}; const array = [p,p]; array.extra = p; con
     $date = new \Zero\JsDate(0);
     $copy = Js::clone(new JsObject(['array' => $array, 'set' => $set, 'map' => $map, 'date' => $date, 'again' => $date]));
     $items = $copy->p; $items['array']->a[0]->p['x'] = 2; $items['set']->add('new'); $items['map']->set('new', 3);
-    return [$items['array']->a[0] === $items['array']->a[1], $items['array']->p['extra'] === $items['array']->a[0], $p->p['x'], $items['array'], count($set->values), count($items['set']->values), count($map->entries), count($items['map']->entries), $items['set']->has($items['set']), $items['map']->get($items['array']->a[0]) === $items['set'], $items['map']->get($items['map']) === $items['array']->a[0], $items['date'] !== $date, $items['date'] === $items['again'], $items['date']->milliseconds];
+    return [$items['array']->a[0] === $items['array']->a[1], $items['array']->p['extra'] === $items['array']->a[0], $p->p['x'], $items['array'], $set->size(), $items['set']->size(), $map->size(), $items['map']->size(), $items['set']->has($items['set']), $items['map']->get($items['array']->a[0]) === $items['set'], $items['map']->get($items['map']) === $items['array']->a[0], $items['date'] !== $date, $items['date'] === $items['again'], $items['date']->milliseconds];
 }];
 $cases[] = ['(function () { return structuredClone(arguments); })(1)', fn () => Js::clone(Js::arguments([1]))];
 $deviations[] = ['detached collection and arguments graphs retain identity only within the copy', static function () {
     $set = new \Zero\JsSet(); $map = new \Zero\JsMap(); $args = Js::arguments([$set]);
     $set->add($map); $map->set($args, $set); $args->length = new JsObject(['nested' => $set]);
-    $copy = Js::detach($args); $copiedSet = $copy->a[0]; $copiedMap = $copiedSet->values[0];
+    $copy = Js::detach($args); $copiedSet = $copy->a[0]; $copiedMap = $copiedSet->values()[0];
     $copiedSet->add(2);
-    return [$copy !== $args, count($set->values), count($copiedSet->values), $copiedMap->get($copy) === $copiedSet, $copy->length !== $args->length, $copy->length->p['nested'] === $copiedSet];
+    return [$copy !== $args, $set->size(), $copiedSet->size(), $copiedMap->get($copy) === $copiedSet, $copy->length !== $args->length, $copy->length->p['nested'] === $copiedSet];
 }, [true, 1, 2, true, true, true]];
 
 // ---------------------------------------------------------------- run node once

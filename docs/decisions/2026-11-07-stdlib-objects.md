@@ -91,15 +91,23 @@ is the only point where it can run.
 - Total waiting is capped by the request budget: the smaller of the remaining
   `max_execution_time` and `ZERO_TIMER_BUDGET_MS` (default 30000). A wait past the
   budget throws `RangeError("timer budget exceeded")` at the await. It never hangs.
-- The promise job queue belongs to agent 4 (`feat/async-streams`). Its await
-  drain calls `Timers::runNext()` whenever microtasks are empty and the awaited
-  promise is still pending. Each callback is a macrotask followed by a microtask
-  drain. If no timer is pending, the promise can never settle, and agent 4's
-  queue reports that.
-- At handler end, pending timers created by `AbortSignal.timeout` or cleared by
-  `clearTimeout` are discarded. A still-pending user `setTimeout` is a runtime
-  `Error` naming the source location: in Node it would fire after the response,
-  and in PHP the request would end first. That's a divergence we refuse.
+- The promise job queue belongs to agent 4 (`feat/async-streams`, agreed in
+  `docs/decisions/2026-11-07-promises-generators-streams.md`). Its root drain,
+  `\Zero\JsJobs::runUntilSettled`, called from `Js::await`, calls
+  `Timers::runNext()` whenever microtasks are empty and the awaited promise is
+  still pending. If no timer is pending, the promise can never settle, and agent
+  4's loop throws that error, naming the await site.
+- `runNext()` runs exactly one callback and never drains microtasks itself; the
+  job loop drains after every macrotask, so spec order lives in one place. It is
+  only called from the root, never inside a Fiber. An exception from a timer
+  callback propagates out of `runNext()` as the request error, the way Node's
+  uncaught exception ends the process.
+- At handler end, the order is: the root promise settles, microtasks drain to
+  empty, the unhandled-rejection check runs, then `Timers::assertNonePending()`.
+  Timers created by `AbortSignal.timeout` or cleared by `clearTimeout` are
+  discarded. A still-pending user `setTimeout` is a runtime `Error` naming its
+  creation site: in Node it would fire after the response, and in PHP the
+  request would end first. That's a divergence we refuse.
 - Until agent 4's queue lands, this branch emits `setTimeout` and `clearTimeout`
   against `Zero\Timers`. The typed sleep shape
   `await new Promise<void>((r) => setTimeout(r, ms))` is the one pattern
@@ -115,9 +123,7 @@ hasn't merged when this lands, the row is added by whichever PR merges second.
 
 Only after the layers above are gone. The core path uses `Date.now`, `Math.min/max/
 floor/ceil/trunc`, and `JSON.stringify` of arrays of strings, all already
-supported. `Math.sin` (one use, in `md5.ts`) needs exact IEEE `sin`. PHP's `sin` is
-libm's and matches V8 for the inputs `md5.ts` uses (integers 1..64). The
-differential test fixes those 64 values, and any other input is refused.
+supported. (`Math.sin` appears only in a comment: `md5.ts` writes its table out.)
 
 ## PRs
 

@@ -54,6 +54,12 @@ pub enum Ty {
     Obj(IndexMap<String, (Ty, bool)>),
     /// `Record<string, T>`
     Map(Box<Ty>),
+    /// A JavaScript `Map<K, V>` (`Zero\JsMap`): SameValueZero keys, insertion order, object keys by identity.
+    MapOf(Box<Ty>, Box<Ty>),
+    /// A JavaScript `Set<T>` (`Zero\JsSet`).
+    SetOf(Box<Ty>),
+    /// A built-in iterator (`map.keys()`, `array.entries()`, ...) yielding T, consumed once.
+    Iter(Box<Ty>),
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
     /// Callable parameter metadata; inner type is the rest binding's array.
@@ -267,6 +273,9 @@ impl Ty {
                 format!("{{ {}{} }}", f.join("; "), if fields.len() > 4 { "; ..." } else { "" })
             }
             Ty::Map(t) => format!("Record<string, {}>", t.describe()),
+            Ty::MapOf(k, v) => format!("Map<{}, {}>", k.describe(), v.describe()),
+            Ty::SetOf(t) => format!("Set<{}>", t.describe()),
+            Ty::Iter(t) => format!("IterableIterator<{}>", t.describe()),
             Ty::Union(ts) => ts.iter().map(Ty::describe).collect::<Vec<_>>().join(" | "),
             Ty::Fn(..) => "a function".into(),
             Ty::Rest(t) => format!("...{}", t.describe()),

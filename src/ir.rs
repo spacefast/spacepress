@@ -348,6 +348,7 @@ pub enum ExprKind {
     New {
         callee: P<Expr>,
         args: Vec<ArrEl>,
+        type_args: Vec<TyAnn>,
     },
     Member {
         obj: P<Expr>,

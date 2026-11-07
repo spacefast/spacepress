@@ -1266,7 +1266,7 @@ impl<'p> Evaluator<'p> {
                     self.call(&f, argv, call_span)?
                 }
             }
-            ExprKind::New { callee, args } => {
+            ExprKind::New { callee, args, .. } => {
                 let f = self.eval(callee, scope)?;
                 let argv = self.eval_args(args, scope)?;
                 let constructor = match &f {
@@ -2904,7 +2904,7 @@ fn returns_new_date(f: &Func) -> bool {
             _ => return false,
         },
     };
-    matches!(&body.kind, ExprKind::New { callee, args }
+    matches!(&body.kind, ExprKind::New { callee, args, .. }
         if args.is_empty() && matches!(&callee.kind, ExprKind::Ident(n) if n == "Date"))
 }
 

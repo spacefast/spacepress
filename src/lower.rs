@@ -1249,6 +1249,10 @@ impl Lowerer {
                 ExprKind::New {
                     callee: Box::new(self.expr(&n.callee)?),
                     args: self.args(&n.arguments)?,
+                    type_args: match &n.type_arguments {
+                        Some(t) => t.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
+                        None => vec![],
+                    },
                 },
             ),
             E::ChainExpression(c) => {
@@ -1732,7 +1736,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
             }
             children
         }
-        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => std::iter::once(callee.as_ref())
+        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => std::iter::once(callee.as_ref())
             .chain(args.iter().map(|v| match v {
                 ArrEl::Item(v) | ArrEl::Spread(v) => v,
             }))

@@ -1151,7 +1151,15 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ),
         ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
         ("return fetch('https://example.com');", "fetch"),
-        ("return new Map<string, number>();", "new Map"),
+        ("return new Map().size;", "an empty `new Map()` needs type arguments"),
+        (
+            "const m = new Map<string, number>(); m.set('a', 'b'); return m.size;",
+            "\"b\" isn't assignable to number",
+        ),
+        (
+            "const s: Set<number> = new Set<number>(); const t: Set<number | string> = s; return t.size;",
+            "isn't assignable to Set<number | string>",
+        ),
         (
             "const f=(value:string)=>typeof value; return f();",
             "missing required function arguments",

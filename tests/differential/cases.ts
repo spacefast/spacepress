@@ -820,6 +820,7 @@ export default defineConfig({
     }),
     ...laneDActions(),
     ...laneSActions(),
+    ...stdlibActions(),
   },
   jobs: laneDJobs(),
 });
@@ -891,6 +892,41 @@ function laneSActions() {
     utf16Units: run(() => {
       const s = "\u{1F600}a\u00e9";
       return [s.length, s[2.5] ?? "missing", s.indexOf("a"), s.lastIndexOf("\u00e9"), s.slice(2), s.substring(0, 2), s.charAt(2), s.at(-1), s.padStart(6, "-"), s.padEnd(5, "."), s.replace("a", (m, at: number) => `${m}@${at}`)];
+    }),
+  };
+}
+
+// ---- standard objects: Map and Set in typed code (docs/decisions/2026-11-07-stdlib-objects.md).
+type Entry = { n: number };
+function stdlibActions() {
+  return {
+    mapOrder: run(() => {
+      const m = new Map<string, Entry>();
+      m.set("b", { n: 1 }).set("a", { n: 2 }).set("b", { n: 4 });
+      const seen: string[] = [];
+      // Entries added during iteration are visited; deleted ones are skipped.
+      for (const [key, v] of m) {
+        seen.push(`${key}=${v.n}`);
+        if (key === "b") { m.set("c", { n: 3 }); m.delete("a"); }
+      }
+      m.forEach((v, key, self) => { seen.push(`${key}${v.n}${self.size}`); });
+      return [seen, [...m.keys()], m.size, m.get("c")?.n ?? -1, m.get("z") === undefined, m.delete("z"), m.delete("c"), m.size];
+    }),
+    mapKeys: run(() => {
+      const k = { n: 9 };
+      const byObj = new Map<Entry, string>([[k, "obj"]]);
+      const nums = new Map<number, string>([[NaN, "nan"], [0, "zero"], [-0, "negzero"]]);
+      const mixed = new Map<string | number | null, number>([["1", 1], [1, 2], [null, 3]]);
+      return [byObj.get(k) ?? "none", byObj.has({ n: 9 }), nums.get(NaN) ?? "", nums.get(-0) ?? "", nums.size, 1 / ([...nums.keys()][1] ?? 1), mixed.get("1"), mixed.get(1), mixed.get(null), mixed.size];
+    }),
+    setOps: run(() => {
+      const s = new Set([3, 1, 3, 2]);
+      const deleted = [s.delete(1), s.delete(1)];
+      const visited: number[] = [];
+      for (const v of s) { visited.push(v); if (v === 3) s.add(7); }
+      const copy = new Set<number>(s);
+      copy.clear();
+      return [deleted, visited, [...s], [...s.entries()], Array.from(s.keys(), (v, i) => v * 10 + i), s.has(7), s.size, copy.size, new Set("abca").size];
     }),
   };
 }

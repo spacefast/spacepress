@@ -1225,9 +1225,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     (None, _) if javascript => Ty::Dynamic,
                     (Some(d), Some(v)) => {
                         if !assignable(&v.ty, d) {
-                            return err(
+                            let help = if matches!(d.non_null(), Ty::MapOf(..) | Ty::SetOf(_)) {
+                                "Map and Set type arguments must match exactly, because both are mutable; copy into a new collection to widen"
+                            } else {
+                                "change the annotation or the value so their types agree"
+                            };
+                            return err_help(
                                 *span,
                                 format!("{} isn't assignable to {}", v.ty.describe(), d.describe()),
+                                help,
                             );
                         }
                         d.clone()
@@ -1406,6 +1412,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Array(t) | Ty::NonEmptyArray(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
                     t if t.is_str() => (Ty::Str, format!("\\Zero\\Js::from({})", it.php)),
+                    t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) => (
+                        self.iterable_element(t).expect("collection element"),
+                        format!("\\Zero\\Js::iter({})", it.php),
+                    ),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
                 if it.ty.is_nullable() {
@@ -1420,7 +1430,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let source = self.tmp_var();
                 let index = self.tmp_var();
                 let value = self.tmp_var();
-                if it.ty == Ty::Dynamic {
+                if it.ty == Ty::Dynamic || matches!(it.ty, Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
                     let _ = writeln!(
@@ -1733,7 +1743,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn throw_value(&mut self, e: &Expr) -> Result<String> {
-        if let ExprKind::New { callee, args } = &e.kind {
+        if let ExprKind::New { callee, args, .. } = &e.kind {
             let callee_v = match &callee.kind {
                 ExprKind::Ident(n) => self.resolve(n, callee.span)?,
                 _ => return err(callee.span, "throw `new Error(...)` or `new HttpError(...)`"),
@@ -2403,6 +2413,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 }
                                 Ty::Array(t) | Ty::NonEmptyArray(t) => tys.push(*t),
                                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => tys.extend(ts),
+                                t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) => {
+                                    if v.ty.is_nullable() {
+                                        return err(x.span, format!("can't spread {}: it might be null", v.ty.describe()));
+                                    }
+                                    tys.push(self.iterable_element(&t).expect("collection element"));
+                                    parts.push(format!("...(\\Zero\\Js::iterArray({}))->a", v.php));
+                                    continue;
+                                }
                                 other => {
                                     return err(x.span, format!("can't spread {} into an array", other.describe()));
                                 }
@@ -2644,7 +2662,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Call {
                 callee, args, optional, ..
             } => self.call(callee, args, *optional, span)?,
-            ExprKind::New { callee, args } => self.new_expr(callee, args, span)?,
+            ExprKind::New { callee, args, type_args } => self.new_expr(callee, args, type_args, span)?,
             ExprKind::Member {
                 obj,
                 prop,
@@ -3892,6 +3910,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("({x})->{prop}"));
                 Out::atom(php, suffix_null(Ty::Str))
             }
+            (Ty::MapOf(..) | Ty::SetOf(_), "size") => {
+                let php = guarded(self, &|x| format!("({x})->size()"));
+                Out::atom(php, suffix_null(Ty::Num))
+            }
+            (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_), _) => {
+                return err(prop_span, format!("{} has no property `{prop}`", base.describe()));
+            }
             (Ty::Obj(_) | Ty::Map(_) | Ty::Union(_), _) => {
                 let Some((ft, opt_field)) = base.field(prop) else {
                     if matches!(base, Ty::Union(_)) {
@@ -4083,12 +4108,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
-    fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+    fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], type_args: &[TyAnn], span: Span) -> Result<Out> {
         if let ExprKind::Ident(name) = &callee.kind
             && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             && (name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module))
         {
             self.builtin_args("constructor", name, args, span)?;
+        }
+        if let ExprKind::Ident(name) = &callee.kind
+            && matches!(name.as_str(), "Map" | "Set")
+            && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
+            && !self.javascript_module(self.fx.as_ref().expect("fn").module)
+        {
+            return self.typed_collection(name == "Map", args, type_args, span);
         }
         if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"
@@ -4164,6 +4196,165 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 },
             ),
         }
+    }
+
+    fn collection_method(&mut self, recv: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        let r = recv.wrapped();
+        let (key, value, set) = match &recv.ty.non_null() {
+            Ty::MapOf(k, v) => ((**k).clone(), (**v).clone(), false),
+            Ty::SetOf(t) => ((**t).clone(), (**t).clone(), true),
+            Ty::Iter(_) => {
+                return err_help(
+                    m_span,
+                    format!("calling `{m}()` on an iterator isn't supported in typed code"),
+                    "iterate with for…of, spread or Array.from",
+                );
+            }
+            _ => unreachable!("collection receiver"),
+        };
+        let arg = |this: &mut Self, i: usize, want: &Ty, what: &str| -> Result<Out> {
+            let x = this.arg(args, i, span, what)?;
+            let v = this.expr(x)?;
+            let v = this.finish_value(v, x.span)?;
+            if !assignable(&v.ty, want) {
+                return err_help(
+                    x.span,
+                    format!("{} isn't assignable to {}", v.ty.describe(), want.describe()),
+                    "pass a value of the collection's declared type, or widen its type arguments",
+                );
+            }
+            Ok(v)
+        };
+        let iter = |kind: &str, el: Ty| Out::atom(format!("new \\Zero\\JsIterator({r}->{kind}Iterator(), {})", php_str(if set { "Set Iterator" } else { "Map Iterator" })), Ty::Iter(Box::new(el)));
+        Ok(match (set, m) {
+            (false, "get") => {
+                let k = arg(self, 0, &key, "a key")?;
+                Out::atom(format!("{r}->get({})", k.php), Ty::union([value, Ty::Undefined]))
+            }
+            (false, "set") => {
+                let k = arg(self, 0, &key, "a key")?;
+                let v = arg(self, 1, &value, "a value")?;
+                Out::atom(format!("{r}->set({}, {})", k.php, v.php), recv.ty.non_null())
+            }
+            (true, "add") => {
+                let k = arg(self, 0, &key, "a value")?;
+                Out::atom(format!("{r}->add({})", k.php), recv.ty.non_null())
+            }
+            (_, "has" | "delete") => {
+                // Like TypeScript, a probe must have the key type; SameValueZero then decides.
+                let k = arg(self, 0, &key, "a key")?;
+                Out::atom(format!("{r}->{m}({})", k.php), Ty::Bool)
+            }
+            (_, "clear") => Out::atom(format!("\\Zero\\Js::clearCollection({r})"), Ty::Undefined),
+            (_, "forEach") => {
+                let f = self.arg(args, 0, span, "a function")?;
+                let cb = self.callback(f, &[value, key, recv.ty.non_null()])?;
+                Out::atom(format!("\\Zero\\Js::collectionForEach({r}, {})", cb.php), Ty::Undefined)
+            }
+            (false, "keys") => iter("keys", key),
+            (_, "values") => iter("values", value),
+            (true, "keys") => iter("values", key),
+            (_, "entries") => iter("entries", Ty::Tuple(vec![key, value])),
+            _ => return err(m_span, format!("{} has no method `{m}`", recv.ty.describe())),
+        })
+    }
+
+    /// `new Map<K, V>(entries?)` / `new Set<T>(values?)` in typed code. Type arguments come from the
+    /// call or are inferred from a non-empty source; an empty `new Map()` needs them.
+    fn typed_collection(&mut self, map: bool, args: &[ArrEl], type_args: &[TyAnn], span: Span) -> Result<Out> {
+        let what = if map { "Map" } else { "Set" };
+        if args.len() > 1 {
+            return err(span, format!("`new {what}` takes at most one iterable"));
+        }
+        let module = self.fx().module;
+        let mut declared = Vec::new();
+        for a in type_args {
+            declared.push(self.resolve_runtime_ann(a, module)?);
+        }
+        if !declared.is_empty() && declared.len() != if map { 2 } else { 1 } {
+            return err(span, format!("`{what}` takes {} type argument{}", if map { 2 } else { 1 }, if map { "s" } else { "" }));
+        }
+        let source = match args.first() {
+            None => None,
+            Some(ArrEl::Spread(x)) => return err(x.span, "spread arguments aren't supported here"),
+            Some(ArrEl::Item(x)) => {
+                let v = self.expr(x)?;
+                let v = self.finish_value(v, x.span)?;
+                if matches!(v.ty, Ty::Null | Ty::Undefined) {
+                    None
+                } else {
+                    let el = self.iterable_element(&v.ty).ok_or_else(|| {
+                        Diag::new(x.span, format!("`new {what}` needs an iterable, not {}", v.ty.describe()))
+                    })?;
+                    Some((v, el, x.span))
+                }
+            }
+        };
+        fn entry(el: &Ty) -> Option<(Ty, Ty)> {
+            match el {
+                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) if ts.len() >= 2 => Some((ts[0].clone(), ts[1].clone())),
+                Ty::Array(t) | Ty::NonEmptyArray(t) => Some(((**t).clone(), (**t).clone())),
+                Ty::Union(parts) => {
+                    let pairs: Option<Vec<_>> = parts.iter().map(entry).collect();
+                    let (ks, vs): (Vec<_>, Vec<_>) = pairs?.into_iter().unzip();
+                    Some((Ty::union(ks), Ty::union(vs)))
+                }
+                _ => None,
+            }
+        }
+        let elem = |el: &Ty, at: Span| -> Result<(Ty, Ty)> {
+            entry(el).ok_or_else(|| {
+                Diag::new(at, format!("Map entries must be [key, value] pairs, not {}", el.describe()))
+            })
+        };
+        let ty = match (map, declared.as_slice(), &source) {
+            (true, [k, v], src) => {
+                if let Some((_, el, at)) = src {
+                    let (ek, ev) = elem(el, *at)?;
+                    if !assignable(&ek, k) || !assignable(&ev, v) {
+                        return err(*at, format!("these entries don't fit Map<{}, {}>", k.describe(), v.describe()));
+                    }
+                }
+                Ty::MapOf(Box::new(k.clone()), Box::new(v.clone()))
+            }
+            (false, [t], src) => {
+                if let Some((_, el, at)) = src
+                    && !assignable(el, t)
+                {
+                    return err(*at, format!("these values don't fit Set<{}>", t.describe()));
+                }
+                Ty::SetOf(Box::new(t.clone()))
+            }
+            (true, [], Some((_, el, at))) => {
+                let (k, v) = elem(el, *at)?;
+                Ty::MapOf(Box::new(widen_fresh_literals(&k)), Box::new(widen_fresh_literals(&v)))
+            }
+            (false, [], Some((_, el, _))) => Ty::SetOf(Box::new(widen_fresh_literals(el))),
+            _ => {
+                return err_help(
+                    span,
+                    format!("an empty `new {what}()` needs type arguments"),
+                    if map { "write `new Map<string, number>()`" } else { "write `new Set<string>()`" },
+                );
+            }
+        };
+        let php = match source {
+            Some((v, _, _)) => format!("\\Zero\\Js::new{what}({})", v.php),
+            None => format!("\\Zero\\Js::new{what}()"),
+        };
+        Ok(Out::atom(php, ty))
+    }
+
+    /// The element type `for…of`, spread and `Array.from` see for a typed iterable.
+    fn iterable_element(&self, t: &Ty) -> Option<Ty> {
+        Some(match t {
+            Ty::Array(t) | Ty::NonEmptyArray(t) => (**t).clone(),
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts.clone()),
+            t if t.is_str() => Ty::Str,
+            Ty::MapOf(k, v) => Ty::Tuple(vec![(**k).clone(), (**v).clone()]),
+            Ty::SetOf(t) | Ty::Iter(t) => (**t).clone(),
+            _ => return None,
+        })
     }
 
     /// The PHP value model erases undefined into null. Only literal string-search positions are
@@ -4726,6 +4917,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             let v = self.expr(src)?;
             let nonempty = array_proven_nonempty(&v.ty);
+            if let t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) = &v.ty {
+                let el = self.iterable_element(t).expect("collection element");
+                if let Some(ArrEl::Item(f)) = args.get(1) {
+                    let cb = self.callback(f, &[el, Ty::Num])?;
+                    let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Js::iterArray({}, {})", v.php, cb.php),
+                        Ty::Array(ret.clone()),
+                    ));
+                }
+                return Ok(Out::atom(format!("\\Zero\\Js::iterArray({})", v.php), Ty::Array(Box::new(el))));
+            }
             if matches!(v.ty, Ty::Dynamic | Ty::Arguments) {
                 let mut element = if v.ty == Ty::Arguments {
                     Ty::Unknown
@@ -4995,6 +5198,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t if t.is_str() => Some("string"),
             Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => Some("array"),
             Ty::Regex => Some("regex"),
+            Ty::MapOf(..) => Some("map"),
+            Ty::SetOf(_) => Some("set"),
+            Ty::Iter(_) => Some("iterator"),
             _ => None,
         };
         if let Some(family) = family {
@@ -5091,6 +5297,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 _ => return err(m_span, format!("regular expressions have no method `{m}`")),
             },
+            Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) => self.collection_method(&recv, m, args, span, m_span)?,
             Ty::Map(_) | Ty::Obj(_) => {
                 // Calling a function stored in an object field.
                 let mut f = self.member_of_out(&recv, m, m_span)?;
@@ -6438,6 +6645,9 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::ArrayLiteral(_)
         | Ty::Obj(_)
         | Ty::Map(_)
+        | Ty::MapOf(..)
+        | Ty::SetOf(_)
+        | Ty::Iter(_)
         | Ty::Fn(..)
         | Ty::Rest(_)
         | Ty::Promise(_)
@@ -6630,6 +6840,8 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
                 .collect(),
         ),
         Ty::Map(t) => Ty::Map(Box::new(widen_fresh_literals(t))),
+        // Map and Set type arguments are invariant handles; they never carry fresh literals.
+        Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) => t.clone(),
         Ty::Fn(params, ret) => Ty::Fn(
             params.iter().map(widen_fresh_literals).collect(),
             Box::new(widen_fresh_literals(ret)),
@@ -6715,11 +6927,20 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (Ty::Map(x), Ty::Map(y)) => assignable(x, y),
         (Ty::Rest(x), Ty::Rest(y)) => assignable(x, y),
         (Ty::Promise(x), Ty::Promise(y)) => assignable(x, y),
+        // Mutable handles: TypeScript checks these covariantly, which is unsound for writes.
+        // Zero requires the same element types (ReadonlyMap/ReadonlySet are the same handle).
+        (Ty::MapOf(ka, va), Ty::MapOf(kb, vb)) => same_type(ka, kb) && same_type(va, vb),
+        (Ty::SetOf(a), Ty::SetOf(b)) => same_type(a, b),
+        (Ty::Iter(a), Ty::Iter(b)) => assignable(a, b),
         (Ty::Fn(pa, ra), Ty::Fn(pb, rb)) => {
             pa.len() <= pb.len() && pa.iter().zip(pb).all(|(x, y)| assignable(y, x)) && assignable(ra, rb)
         }
         _ => false,
     }
+}
+
+fn same_type(a: &Ty, b: &Ty) -> bool {
+    assignable(a, b) && assignable(b, a)
 }
 
 fn stmt_span(s: &Stmt) -> Span {

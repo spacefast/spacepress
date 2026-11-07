@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Zero;
 
 /**
- * `fetch(url, init?)` from "zero": outbound HTTPS from handlers through the WordPress HTTP API.
+ * The global `fetch(url, init?)`: outbound HTTPS from handlers through the WordPress HTTP API.
  *
  * The policy matches the original Zero runtime's tenant fetch: HTTPS only, no URL credentials, no
  * `localhost` names, and no address in a private, loopback, link-local, CGNAT, documentation,
@@ -43,25 +43,32 @@ final class Fetch
     public static ?\Closure $resolver = null;
 
     /**
-     * @param array{method?: mixed, headers?: mixed, body?: mixed}|JsObject|JsUndefined|null $init
+     * @param JsObject|array{method?: mixed, headers?: mixed, body?: mixed, redirect?: mixed}|JsUndefined|null $init
      */
-    public static function call(mixed $url, mixed $init = null): JsObject
+    public static function call(mixed $url, mixed $init = null): FetchResponse
     {
         if (!is_string($url)) {
             throw new JsError('fetch() needs a URL string', 'TypeError');
         }
         $init = $init instanceof JsObject ? $init->p : (is_array($init) ? $init : []);
+        $init = array_filter($init, static fn ($v): bool => $v !== JsUndefined::Value && $v !== null);
         $method = strtoupper(is_string($init['method'] ?? null) ? $init['method'] : 'GET');
         if (!in_array($method, self::METHODS, true)) {
             throw self::refuse('zero_fetch_method_denied', 'The fetch method is not permitted.');
         }
+        $redirect = $init['redirect'] ?? 'follow';
+        if (!in_array($redirect, ['follow', 'manual', 'error'], true)) {
+            throw new JsError("fetch() redirect must be 'follow', 'manual' or 'error'", 'TypeError');
+        }
         $headers = self::requestHeaders($init['headers'] ?? null);
         $body = $init['body'] ?? null;
-        if ($body === JsUndefined::Value) {
-            $body = null;
-        }
-        if ($body !== null && !is_string($body)) {
-            throw new JsError('fetch() body must be a string', 'TypeError');
+        if ($body instanceof SearchParams) {
+            $headers['content-type'] ??= 'application/x-www-form-urlencoded;charset=UTF-8';
+            $body = (string) $body;
+        } elseif (is_string($body)) {
+            $headers['content-type'] ??= 'text/plain;charset=UTF-8';
+        } elseif ($body !== null) {
+            throw new JsError('fetch() body must be a string or URLSearchParams', 'TypeError');
         }
         if ($body !== null && strlen($body) > self::MAX_BODY) {
             throw self::refuse('zero_fetch_payload_too_large', 'The fetch request body is too large.');
@@ -79,7 +86,10 @@ final class Fetch
             $response = self::send($url, $host, $port, $address, $method, $headers, $body, $remaining);
             $status = $response['status'];
             $location = $response['headers']['location'] ?? null;
-            if (in_array($status, [301, 302, 303, 307, 308], true) && is_string($location)) {
+            if ($redirect !== 'manual' && in_array($status, [301, 302, 303, 307, 308], true) && is_string($location)) {
+                if ($redirect === 'error') {
+                    throw self::refuse('zero_fetch_redirect_denied', 'The fetch target redirected and redirect is "error".');
+                }
                 if ($hop >= self::MAX_REDIRECTS) {
                     throw self::refuse('zero_fetch_too_many_redirects', 'The fetch target redirected too many times.');
                 }
@@ -96,26 +106,20 @@ final class Fetch
                 }
                 continue;
             }
-            return self::response($url, $response, $hop > 0);
+            return new FetchResponse($status, $response['statusText'], $url, $hop > 0,
+                FetchHeaders::received($response['headers']), $method === 'HEAD' ? '' : $response['body']);
         }
     }
 
-    /** @return array<string, string> lowercase names */
+    /**
+     * `headers` as an object, an array of pairs or a Headers, validated as Headers does.
+     *
+     * @return array<string, string> lowercase names
+     */
     private static function requestHeaders(mixed $headers): array
     {
-        if ($headers === null || $headers === JsUndefined::Value) {
-            return [];
-        }
-        $headers = $headers instanceof JsObject ? $headers->p : $headers;
-        if (!is_array($headers)) {
-            throw new JsError('fetch() headers must be an object of strings', 'TypeError');
-        }
         $out = [];
-        foreach ($headers as $name => $value) {
-            $name = strtolower((string) $name);
-            if (!is_string($value) || preg_match('/\A[!#$%&\'*+.^_`|~0-9a-z-]+\z/', $name) !== 1 || strpbrk($value, "\r\n\0") !== false) {
-                throw new JsError('fetch() header names and values must be valid strings', 'TypeError');
-            }
+        foreach ((new FetchHeaders($headers))->sorted() as $name => $value) {
             if (!in_array($name, self::DROP_REQUEST, true)) {
                 $out[$name] = $value;
             }
@@ -226,7 +230,7 @@ final class Fetch
         return (ord($address[$bytes]) & $mask) === (ord($network[$bytes]) & $mask);
     }
 
-    /** @return array{status: int, headers: array<string, string>, body: string} */
+    /** @return array{status: int, statusText: string, headers: array<string, string>, body: string} */
     private static function send(string $url, string $host, int $port, string $address, string $method, array $headers, ?string $body, float $timeout): array
     {
         if (!function_exists('wp_remote_request')) {
@@ -270,7 +274,12 @@ final class Fetch
             }
         }
 
-        return ['status' => (int) wp_remote_retrieve_response_code($response), 'headers' => $out, 'body' => $raw];
+        return [
+            'status' => (int) wp_remote_retrieve_response_code($response),
+            'statusText' => (string) wp_remote_retrieve_response_message($response),
+            'headers' => $out,
+            'body' => $raw,
+        ];
     }
 
     private static function resolveUrl(string $base, string $location): string
@@ -289,27 +298,6 @@ final class Fetch
         $dir = preg_replace('#/[^/]*\z#', '/', $b['path'] ?? '/');
 
         return $origin . $dir . $location;
-    }
-
-    /** The Response a handler sees: status, ok, url, redirected, headers.get/has, text(), json(). */
-    private static function response(string $url, array $response, bool $redirected): JsObject
-    {
-        $headers = $response['headers'];
-        $body = $response['body'];
-        $status = $response['status'];
-
-        return new JsObject([
-            'status' => $status,
-            'ok' => $status >= 200 && $status <= 299,
-            'url' => $url,
-            'redirected' => $redirected,
-            'headers' => new JsObject([
-                'get' => static fn ($name): ?string => $headers[strtolower((string) $name)] ?? null,
-                'has' => static fn ($name): bool => isset($headers[strtolower((string) $name)]),
-            ]),
-            'text' => static fn (): string => $body,
-            'json' => static fn (): mixed => Js::jsonParse($body),
-        ]);
     }
 
     private static function refuse(string $code, string $message): HttpError

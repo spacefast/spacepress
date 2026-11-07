@@ -110,10 +110,21 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "env",
     "once",
     "jobs",
-    "fetch",
-    "crypto",
     "mail",
 ];
+/// `"node:crypto"` (or `"crypto"`) functions that lower onto `Zero\Crypto`; see compile/host.rs.
+pub const NODE_CRYPTO: &[&str] = &[
+    "createHash",
+    "createHmac",
+    "randomBytes",
+    "randomUUID",
+    "timingSafeEqual",
+];
+
+/// True for the Node built-in module the compiler supplies.
+pub fn is_node_crypto(source: &str) -> bool {
+    matches!(source, "node:crypto" | "crypto")
+}
 /// Type-only exports of `"zero"`: importable, erased.
 const ZERO_TYPES: &[&str] = &[
     "InferSelectModel",
@@ -197,6 +208,15 @@ pub const GLOBALS: &[&str] = &[
     "Promise",
     "setTimeout",
     "crypto",
+    "Buffer",
+    "Headers",
+    "URLSearchParams",
+    "URL",
+    "Request",
+    "Response",
+    "FormData",
+    "Blob",
+    "AbortController",
 ];
 
 pub struct Evaluator<'p> {
@@ -402,6 +422,9 @@ impl<'p> Evaluator<'p> {
         if source == ZERO_MODULE {
             return zero_export(name, span);
         }
+        if is_node_crypto(source) {
+            return node_crypto_export(source, name, span);
+        }
         let target = self.program.resolved[&(from, source.to_string())];
         match self.exports[target].get(name) {
             Some(v) => Ok(v.clone()),
@@ -422,6 +445,7 @@ impl<'p> Evaluator<'p> {
             }
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
+                ImportName::Default if is_node_crypto(source) => Value::Builtin(Builtin::NodeCrypto(None)),
                 ImportName::Default => {
                     if source == ZERO_MODULE {
                         return err_help(
@@ -432,6 +456,7 @@ impl<'p> Evaluator<'p> {
                     }
                     self.import_value(id, source, "default", spec.span)?
                 }
+                ImportName::Namespace if is_node_crypto(source) => Value::Builtin(Builtin::NodeCrypto(None)),
                 ImportName::Namespace => {
                     if source == ZERO_MODULE {
                         let mut map = IndexMap::new();
@@ -1461,9 +1486,9 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail => err_help(
+            Builtin::Once | Builtin::Jobs | Builtin::Mail | Builtin::NodeCrypto(_) => err_help(
                 span,
-                "once(), jobs, fetch(), crypto and mail only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "once(), jobs, mail and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
             Builtin::Action | Builtin::Job | Builtin::Route => {
@@ -2006,8 +2031,6 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "route" => Builtin::Route,
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
-        "fetch" => Builtin::Fetch,
-        "crypto" => Builtin::Crypto,
         "mail" => Builtin::Mail,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
@@ -2021,6 +2044,20 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
         n if ZERO_TYPES.contains(&n) => return Ok(Value::Undef),
+        "fetch" | "crypto" => {
+            return err_help(
+                span,
+                format!("\"zero\" has no export named `{name}`"),
+                format!(
+                    "`{name}` is the standard global: remove it from this import{}",
+                    if name == "crypto" {
+                        ", or import { createHash, createHmac, randomBytes } from \"node:crypto\""
+                    } else {
+                        ""
+                    }
+                ),
+            );
+        }
         _ => {
             let mut d = Diag::new(span, format!("\"zero\" has no export named `{name}`"));
             if let Some(s) = suggest(name, ZERO_EXPORTS.iter().copied()) {
@@ -2029,6 +2066,21 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
             return Err(Ctl::Err(d));
         }
     }))
+}
+
+fn node_crypto_export(source: &str, name: &str, span: Span) -> R<Value> {
+    if let Some(f) = NODE_CRYPTO.iter().find(|f| **f == name) {
+        return Ok(Value::Builtin(Builtin::NodeCrypto(Some(f))));
+    }
+    let mut d = Diag::new(span, format!("\"{source}\" has no `{name}` in Zero code"));
+    d = match suggest(name, NODE_CRYPTO.iter().copied()) {
+        Some(s) => d.help(format!("did you mean `{s}`?")),
+        None => d.help(format!(
+            "Zero compiles {} from node:crypto to PHP; other functions, keys, ciphers and streams aren't available",
+            NODE_CRYPTO.join(", ")
+        )),
+    };
+    Err(Ctl::Err(d))
 }
 
 /// Function declarations are visible in their whole block.

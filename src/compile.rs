@@ -9,6 +9,7 @@
 mod annotations;
 mod classes;
 mod effects;
+mod host;
 mod javascript;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -2785,15 +2786,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Env::get({})", php_str(name)),
                 Ty::Str.nullable(),
             )),
-            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
+            Value::Builtin(Builtin::Env) => err_help(
+                span,
+                "env() is a config reference for webhooks, signatures and upload credentials",
+                "read runtime variables in handlers with `process.env.NAME`",
+            ),
+            Value::Builtin(Builtin::Once) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
             ),
-            Value::Builtin(Builtin::Crypto) => err_help(
+            Value::Builtin(Builtin::NodeCrypto(_)) => err_help(
                 span,
-                "`crypto` can't be used as a value",
-                "call its functions directly: `crypto.sha256(text)`",
+                format!("`{n}` from \"node:crypto\" can't be used as a value"),
+                "call it where it's used, e.g. `createHash(\"sha256\").update(text).digest(\"hex\")`",
             ),
             Value::Builtin(Builtin::Mail) => err_help(
                 span,
@@ -3385,6 +3391,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
+        self.host_place(target)?;
         match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
@@ -3537,6 +3544,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if let Some(out) = self.host_member(obj, prop, prop_span)? {
+            return Ok(out);
+        }
         // Namespaces: Math.PI etc.
         if let ExprKind::Ident(n) = &obj.kind
             && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
@@ -3669,6 +3679,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (Ty::Error, "message") => Out::atom(format!("{}->getMessage()", o.wrapped()), Ty::Str),
             (Ty::Error, "name") => Out::atom(format!("{}->jsName", o.wrapped()), Ty::Str),
             (Ty::Regex, "source" | "flags") => Out::atom(format!("{}->{prop}", o.wrapped()), Ty::Str),
+            (Ty::Host(h), _) => self.host_property(h, &o, prop, prop_span)?,
             (Ty::Obj(_) | Ty::Map(_) | Ty::Union(_), _) => {
                 let Some((ft, opt_field)) = base.field(prop) else {
                     if matches!(base, Ty::Union(_)) {
@@ -3705,6 +3716,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn index(&mut self, obj: &Expr, index: &Expr, optional: bool, span: Span) -> Result<Out> {
+        if let Some(out) = self.host_index(obj, index)? {
+            return Ok(out);
+        }
         let o = self.expr(obj)?;
         let mut o = self.finish_value(o, obj.span)?;
         let i = self.expr(index)?;
@@ -3851,6 +3865,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+        if let Some(out) = self.host_new(callee, args, span)? {
+            return Ok(out);
+        }
         if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"
             && matches!(self.resolve(name, callee.span)?, Resolved::Global("RegExp"))
@@ -4018,6 +4035,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
         }
+        if let Some(out) = self.host_call(callee, args, span)? {
+            return Ok(out);
+        }
         if let Some(out) = self.jobs_call(callee, args, span)? {
             return Ok(out);
         }
@@ -4089,14 +4109,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
                 Resolved::Value(
-                    Value::Builtin(
-                        b @ (Builtin::Once
-                        | Builtin::Jobs
-                        | Builtin::Env
-                        | Builtin::Fetch
-                        | Builtin::Crypto
-                        | Builtin::Mail),
-                    ),
+                    Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env | Builtin::Mail)),
                     _,
                 ) => Some(b),
                 _ => None,
@@ -4105,31 +4118,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &callee.kind {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
-                Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
-                Some(Builtin::Env) => {
-                    let name = self.arg(args, 0, span, "an environment variable name")?;
-                    match &name.kind {
-                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => Ok(Some(Out::atom(
-                            format!("\\Zero\\Env::get({})", php_str(s)),
-                            Ty::Str.nullable(),
-                        ))),
-                        _ => err_help(
-                            name.span,
-                            "env() needs an environment variable name",
-                            "use env(\"HOOK_SECRET\")",
-                        ),
-                    }
-                }
+                Some(Builtin::Env) => err_help(
+                    callee.span,
+                    "env() is a config reference for webhooks, signatures and upload credentials",
+                    "read runtime variables in handlers with `process.env.NAME`",
+                ),
                 _ => Ok(None),
             },
-            // Only a name that resolves to the imported `crypto` is ours; `super`, unbound and
-            // shadowed names fall through to ordinary member calls.
-            ExprKind::Member { obj, prop, .. }
-                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
-                    && builtin(self, obj).ok().flatten() == Some(Builtin::Crypto) =>
-            {
-                self.crypto_call(prop, args, span).map(Some)
-            }
             ExprKind::Member { obj, prop, .. }
                 if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
                     && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
@@ -4148,134 +4143,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// `fetch(url, { method?, headers?, body? })` → `Promise<FetchResponse>`, see `types::fetch_response`.
-    fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
-        if self.fx().no_db {
-            return err_help(
-                span,
-                "access rules can't use fetch()",
-                "move it into a hook, action or route",
-            );
-        }
-        if args.is_empty() || args.len() > 2 {
-            return err_help(
-                span,
-                "fetch() takes a URL and optional init",
-                "write fetch(url, { method, headers, body })",
-            );
-        }
-        let url_expr = self.arg(args, 0, span, "a URL")?;
-        let url = self.expr(url_expr)?;
-        let url = self.finish_value(url, url_expr.span)?;
-        if !url.ty.is_str() || url.ty.is_nullable() {
-            return err_help(url_expr.span, "fetch() needs a URL string", "pass the URL as a string");
-        }
-        let init = match args.get(1) {
-            None => "null".to_string(),
-            Some(_) => {
-                let init_expr = self.arg(args, 1, span, "init")?;
-                let init = self.expr(init_expr)?;
-                let init = self.finish_value(init, init_expr.span)?;
-                let ok = match &init.ty {
-                    Ty::Obj(fields) => fields.iter().all(|(k, (t, _))| match k.as_str() {
-                        "method" | "body" => t.all(|t| t.is_str() || matches!(t, Ty::Null | Ty::Undefined)),
-                        "headers" => t.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Null | Ty::Undefined)),
-                        _ => false,
-                    }),
-                    _ => false,
-                };
-                if !ok {
-                    return err_help(
-                        init_expr.span,
-                        format!(
-                            "fetch() init must be {{ method?, headers?, body? }} with strings, not {}",
-                            init.ty.describe()
-                        ),
-                        "stringify JSON bodies with JSON.stringify(...)",
-                    );
-                }
-                init.php
-            }
-        };
-        Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({}, {init})", url.php),
-            Ty::Promise(Box::new(types::fetch_response())),
-        ))
-    }
-
-    /// `crypto.<fn>(...)`: synchronous digests and comparisons over `Zero\Crypto`. Every result is
-    /// lowercase hex (or a boolean / UUID), matching the original runtime's `ctx.crypto`.
-    fn crypto_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
-        let (arity, ret, php) = match name {
-            "sha256" | "sha1" | "sha512" | "md5" => (1, Ty::Str, name),
-            "hmacSha256" => (1, Ty::Str, "hmacSha256"),
-            "timingSafeEqual" => (2, Ty::Bool, "timingSafeEqual"),
-            "randomHex" => (1, Ty::Str, "randomHex"),
-            "randomUUID" => (0, Ty::Str, "randomUUID"),
-            _ => {
-                let mut d = Diag::new(span, format!("`crypto` has no function `{name}`"));
-                let names = [
-                    "sha256",
-                    "sha1",
-                    "sha512",
-                    "md5",
-                    "hmacSha256",
-                    "timingSafeEqual",
-                    "randomHex",
-                    "randomUUID",
-                ];
-                if let Some(s) = suggest(name, names.iter().copied()) {
-                    d = d.help(format!("did you mean `crypto.{s}`?"));
-                }
-                return Err(d);
-            }
-        };
-        if args.len() != arity {
-            return err(
-                span,
-                format!(
-                    "crypto.{name}() takes {arity} argument{}",
-                    if arity == 1 { "" } else { "s" }
-                ),
-            );
-        }
-        let mut argv = Vec::new();
-        for i in 0..arity {
-            let e = self.arg(args, i, span, "an argument")?;
-            let v = self.expr(e)?;
-            let v = self.finish_value(v, e.span)?;
-            let ok = match (name, i) {
-                ("randomHex", _) => v.ty.is_num() && !v.ty.is_nullable(),
-                ("hmacSha256", _) => match &v.ty {
-                    Ty::Obj(f) => {
-                        f.keys().all(|k| k == "key" || k == "data")
-                            && f.get("data").is_some_and(|(t, opt)| !opt && t.is_str() && !t.is_nullable())
-                            && f.get("key").is_some_and(|(t, opt)| {
-                                !opt && (t.is_str() && !t.is_nullable()
-                                    || matches!(t, Ty::Obj(k) if k.len() == 1 && k.get("value").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())))
-                            })
-                    }
-                    _ => false,
-                },
-                _ => v.ty.is_str() && !v.ty.is_nullable(),
-            };
-            if !ok {
-                return err_help(
-                    e.span,
-                    format!("crypto.{name}() can't take {}", v.ty.describe()),
-                    match name {
-                        "hmacSha256" => "pass { key: \"VAR_NAME\" | { value }, data: string }",
-                        "randomHex" => "pass a number of bytes",
-                        _ => "pass a string",
-                    },
-                );
-            }
-            argv.push(v.php);
-        }
-        Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
-    }
-
-    /// `mail.send(message)`: queues inside the handler's transaction, hands off after commit.
     fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if name != "send" {
             return err_help(
@@ -4568,9 +4435,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Bool,
             ),
             ("isFinite", None) => Out::atom("false", Ty::Bool),
+            ("process" | "crypto" | "Buffer", _) => {
+                return err_help(
+                    span,
+                    format!("`{g}` can't be called"),
+                    "use `process.env.NAME`, `crypto.randomUUID()` or \"node:crypto\"",
+                );
+            }
+            ("Headers" | "URLSearchParams", _) => {
+                return err_help(span, format!("`{g}` needs `new`"), format!("write `new {g}(...)`"));
+            }
             (
-                "fetch" | "process" | "require" | "eval" | "Function" | "setTimeout" | "crypto" | "globalThis"
-                | "Promise",
+                "eval" | "Function" | "setTimeout" | "globalThis" | "Promise" | "URL" | "Request" | "Response"
+                | "FormData" | "Blob" | "AbortController",
                 _,
             ) => {
                 return err(span, format!("`{g}` isn't available in Zero code"));
@@ -4922,6 +4799,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             },
+            Ty::Host(h) => self.host_method(h, &recv, m, args, m_span, span)?,
             Ty::Regex => match m {
                 "test" => {
                     let argv = self.plain_args(args)?;
@@ -6144,6 +6022,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Promise(_)
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db
@@ -6319,6 +6198,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Never
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db

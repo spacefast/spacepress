@@ -125,7 +125,7 @@ fn load_module(
         body,
     }));
     for (spec, span) in imports {
-        if spec == ZERO_MODULE {
+        if spec == ZERO_MODULE || crate::eval::is_node_crypto(&spec) {
             continue;
         }
         match resolve(fs, path, &spec, span).and_then(|target| load_module(fs, &target, program, by_path, diagnostics))
@@ -720,7 +720,11 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<P
         return Err(package_error(
             spec,
             span,
-            "unsupported package specifier (Node built-ins and package aliases are unavailable)",
+            if spec.starts_with("node:") {
+                "Node built-ins other than node:crypto are unavailable"
+            } else {
+                "unsupported package specifier (package aliases are unavailable)"
+            },
         ));
     }
     let name = parts[..count].join("/");

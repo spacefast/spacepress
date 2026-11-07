@@ -182,9 +182,93 @@ impl Lowerer {
             a::Statement::TSExportAssignment(d) => {
                 return self.unsupported(d.span, "`export =`", "use `export default`");
             }
+            a::Statement::VariableDeclaration(v) if let Some(import) = self.require_import(v)? => out.push(import),
             other => self.inner_stmt(other, out)?,
         }
         Ok(())
+    }
+
+    /// `const { createHash } = require("node:crypto")` or `const crypto = require("crypto")` at the
+    /// top level is the import it stands for. Any other `require` stays a compile error.
+    fn require_import(&self, v: &a::VariableDeclaration<'_>) -> Result<Option<Stmt>> {
+        let [d] = v.declarations.as_slice() else {
+            return Ok(None);
+        };
+        let Some(a::Expression::CallExpression(call)) = d.init.as_ref().map(|e| e.get_inner_expression()) else {
+            return Ok(None);
+        };
+        let a::Expression::Identifier(callee) = &call.callee else {
+            return Ok(None);
+        };
+        if callee.name != "require" {
+            return Ok(None);
+        }
+        let source = match call.arguments.as_slice() {
+            [a::Argument::StringLiteral(s)] => s.value.to_string(),
+            _ => {
+                return self.unsupported(
+                    call.span,
+                    "a dynamic `require`",
+                    "write `require(\"node:crypto\")`, or use `import`",
+                );
+            }
+        };
+        if !crate::eval::is_node_crypto(&source) {
+            return self.unsupported(
+                call.span,
+                &format!("`require(\"{source}\")`"),
+                if source.starts_with("node:") {
+                    "only node:crypto is available; use `import` for your own modules and packages"
+                } else {
+                    "use `import` for your own modules and packages"
+                },
+            );
+        }
+        if v.kind != a::VariableDeclarationKind::Const {
+            return self.unsupported(v.span, "a reassignable `require`", "declare it with `const`");
+        }
+        let span = self.sp(v.span);
+        let specs = match &d.id {
+            a::BindingPattern::BindingIdentifier(id) => vec![ImportSpec {
+                imported: ImportName::Namespace,
+                local: id.name.to_string(),
+                type_only: false,
+                span: self.sp(id.span),
+            }],
+            a::BindingPattern::ObjectPattern(o) if o.rest.is_none() => {
+                let mut specs = Vec::new();
+                for p in &o.properties {
+                    let (Some(key), a::BindingPattern::BindingIdentifier(local)) = (p.key.static_name(), &p.value)
+                    else {
+                        return self.unsupported(
+                            p.span,
+                            "this `require` pattern",
+                            "list the functions: `const { createHash } = require(\"node:crypto\")`",
+                        );
+                    };
+                    specs.push(ImportSpec {
+                        imported: ImportName::Named(key.to_string()),
+                        local: local.name.to_string(),
+                        type_only: false,
+                        span: self.sp(p.span),
+                    });
+                }
+                specs
+            }
+            _ => {
+                return self.unsupported(
+                    d.span,
+                    "this `require` pattern",
+                    "list the functions: `const { createHash } = require(\"node:crypto\")`",
+                );
+            }
+        };
+        Ok(Some(Stmt::Import {
+            source,
+            specs,
+            type_only: false,
+            span,
+        }))
     }
 
     fn export_name(&self, n: &a::ModuleExportName<'_>) -> String {

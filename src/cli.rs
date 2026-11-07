@@ -1,8 +1,8 @@
 //! The `zero` command line.
 //!
 //! ```text
-//! zero build [dir] [--out <dir>] [--quiet]   write the plugins to .zero/wp-content
-//! zero check [dir] [--json]                  compile; write nothing (JSON diagnostics optional)
+//! zero build [dir] [--out <dir>] [--quiet] [--frozen]   write the plugins to .zero/wp-content
+//! zero check [dir] [--json] [--frozen]                  compile; write nothing (JSON diagnostics optional)
 //! zero dev [dir] [--port <n>] [--no-watch]   local WordPress through Studio, without Docker
 //! zero doctor [dir] [--out <dir>] [--site <url> --token <t>] [--json]
 //! zero sync [status|resolve <uid>] [dir] --site <url> <credential>   files ⇄ records (src/commands/sync.rs)

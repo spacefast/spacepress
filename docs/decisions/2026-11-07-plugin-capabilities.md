@@ -37,14 +37,16 @@ the committed lock file is what the app grants.
    ordinary npm packages. Those packages are compiled under the plugin's
    grant. It can't import app modules or another plugin's package (`Z1201`).
    Every compiled helper, captured value, and class (static state included) is
-   emitted per plugin under a `plugin_<name>__` prefix, so two plugins sharing
-   a pure package don't share state.
+   emitted per plugin under a `plugin_<name>__` prefix, and `once()` receipts
+   use a per-plugin scope, so two plugins sharing a pure package don't share
+   state.
 5. **Report, not refusal, for exfiltration.** A granted read plus a granted
    host can send data out; that's accepted. `zero check --json` adds a
    `plugins` report: each plugin's lock entry, its inferred grant, and the
-   handlers that both read data (a query, a hooked row, an env value) and
-   call `fetch` or `mail.send`. This is handler-level co-occurrence, not
-   precise taint tracking.
+   handlers that both read data (a query or an env value, in the handler or
+   any helper it calls) and call `fetch` or `mail.send`. This is
+   handler-level co-occurrence, not precise taint tracking. A hook's own row
+   argument isn't counted as a read for the report, since every hook has one.
 
 No CPU or memory limits. A plugin hook keeps app-hook semantics: a throw
 aborts the request and rolls back its writes.
@@ -67,6 +69,7 @@ the place that records it.
 | `write` | `<collection>.<field>`, `<collection>.*`, `globals.<name>` | `db.insert/update` value fields, before-hook mutation or replacement of `data` (through helpers too) |
 | `delete` | collection keys | `db.delete` |
 | `hooks` | `<collection>.<hook>` | registered plugin hooks |
+| `actions`, `routes` | registered names; `METHOD /path` | registered plugin actions and routes |
 | `http` | hosts; `*` for a URL built at runtime | `fetch` |
 | `env` | variable names | `env()`, captured `env()` values, `crypto.hmacSha256` key names, signature secrets |
 | `mail` | `send` | `mail.send` |
@@ -99,4 +102,7 @@ check, and it sits in front of the existing SSRF policy.
   The lock is computed against the app's schema (field names, hooked
   collections), so a package-side copy would be advisory only.
 - `abilities`, `wpHooks`, `php`: rows reserved above; sibling work implements
-  them.
+  them. Recording one is a `uses(kind, value, span)` call where its import is
+  lowered; the lock, diff, narrowing and report need no change.
+- `crypto` hashing and `once()` are not capabilities: they touch no data or
+  network beyond what other kinds already cover.

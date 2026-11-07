@@ -106,6 +106,7 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "file",
     "files",
     "job",
+    "route",
     "env",
     "once",
     "jobs",
@@ -138,6 +139,9 @@ const ZERO_TYPES: &[&str] = &[
     "JobCtx",
     "JobsApi",
     "JobHandle",
+    "Route",
+    "RouteRequest",
+    "RouteResponse",
     "EnqueueOptions",
     "EnvValue",
     "Webhook",
@@ -1459,16 +1463,23 @@ impl<'p> Evaluator<'p> {
                 "once() and jobs only work inside hooks, actions and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
-            Builtin::Action | Builtin::Job => {
+            Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
-                    return err(span, "action() needs `{ input, handler }`");
+                    return err(
+                        span,
+                        if *b == Builtin::Route {
+                            "route() needs `{ method, path, handler }`"
+                        } else {
+                            "action() needs `{ input, handler }`"
+                        },
+                    );
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
-                Ok(if *b == Builtin::Job {
-                    Value::Job(value)
-                } else {
-                    Value::Action(value)
+                Ok(match b {
+                    Builtin::Job => Value::Job(value),
+                    Builtin::Route => Value::Route(value),
+                    _ => Value::Action(value),
                 })
             }
             Builtin::RelFn(kind, target) => {
@@ -1989,6 +2000,7 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "file" => Builtin::Field("file"),
         "files" => Builtin::Files,
         "job" => Builtin::Job,
+        "route" => Builtin::Route,
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
         "env" => Builtin::Env,

@@ -82,6 +82,138 @@ final class App
             static fn (): Response => Response::json($fn($input, $ctx)));
     }
 
+    /**
+     * The `routes` entry for a method and path, with its decoded parameters. GET answers HEAD;
+     * a trailing slash is ignored; literal segments match exactly and `:name` takes one segment.
+     *
+     * @return ?array{name: string, route: array, params: array<string, string>}
+     */
+    public function matchRoute(string $method, string $path): ?array
+    {
+        $method = $method === 'HEAD' ? 'GET' : $method;
+        $segments = explode('/', trim($path, '/'));
+        foreach ($segments as $segment) {
+            if ($segment === '' || preg_match('/%(?![0-9A-Fa-f]{2})/', $segment) === 1) {
+                return null;
+            }
+        }
+        $decoded = array_map('rawurldecode', $segments);
+        foreach ($decoded as $segment) {
+            if ($segment === '.' || $segment === '..' || str_contains($segment, '/') || !mb_check_encoding($segment, 'UTF-8')) {
+                return null;
+            }
+        }
+        foreach ($this->schema->routes() as $name => $route) {
+            if ($route['method'] !== $method) {
+                continue;
+            }
+            $pattern = explode('/', trim($route['path'], '/'));
+            if (count($pattern) !== count($decoded)) {
+                continue;
+            }
+            $params = [];
+            foreach ($pattern as $i => $part) {
+                if (str_starts_with($part, ':')) {
+                    $params[substr($part, 1)] = $decoded[$i];
+                } elseif ($part !== $decoded[$i]) {
+                    continue 2;
+                }
+            }
+
+            return ['name' => $name, 'route' => $route, 'params' => $params];
+        }
+
+        return null;
+    }
+
+    /** Whether any route claims this path for some method (a 405 rather than a 404 for the others). */
+    public function routePathKnown(string $path): bool
+    {
+        foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
+            if ($this->matchRoute($method, $path) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Run a matched route in one transaction. `$user` is the resolved caller (null: anonymous);
+     * a `signature` route verifies the raw body instead and always runs anonymously.
+     *
+     * @return array{int, array<string, string>, string}
+     */
+    public function serveRoute(array $match, string $method, string $path, array $query, string $body, array $headers, ?array $user): array
+    {
+        $headers = array_change_key_case($headers, CASE_LOWER);
+        try {
+            $response = $this->db->transaction(function () use ($match, $method, $path, $query, $body, $headers, $user): array {
+                $route = $match['route'];
+                $name = $match['name'];
+                $viewer = new Viewer($user);
+                if (($route['signature'] ?? null) !== null) {
+                    Jobs\Webhooks::verify($route, 'route ' . $name, $body, $headers, $viewer);
+                    $viewer = new Viewer(null);
+                } else {
+                    Access::require($route['access'], $viewer, 'create', null, "call route $name");
+                }
+                $previous = $this->db->actor();
+                $this->db->setActor($viewer->user);
+                try {
+                    $this->db->promoteDue();
+                    $string = static fn (array $values): JsObject => new JsObject(array_map('strval', $values));
+                    $request = new JsObject([
+                        'method' => $method,
+                        'path' => $path,
+                        'params' => $string($match['params']),
+                        'query' => $string(array_filter($query, 'is_scalar')),
+                        'headers' => $string($headers),
+                        'body' => $body,
+                    ]);
+                    $fn = '\\ZeroApp\\' . $route['handler'];
+                    // `once()` in a handler is keyed to this exact request body, as in actions.
+                    $result = Jobs\Receipts::withFingerprint(hash('sha256', $body),
+                        fn (): mixed => Seam::container($fn($request, Seam::ctx($this->db->hookCtx()))));
+                } finally {
+                    $this->db->setActor($previous);
+                }
+
+                return self::routeResponse($name, $result);
+            });
+
+            return $method === 'HEAD' ? [$response[0], $response[1], ''] : $response;
+        } catch (\Throwable $e) {
+            return self::respond($e);
+        }
+    }
+
+    /** @return array{int, array<string, string>, string} */
+    private static function routeResponse(string $name, mixed $result): array
+    {
+        $result = is_array($result) ? $result : [];
+        // An optional property set to `undefined` is absent, as in JavaScript.
+        $result = array_filter($result, static fn (mixed $value): bool => $value !== JsUndefined::Value);
+        $status = $result['status'] ?? 200;
+        if (!is_int($status) && !(is_float($status) && floor($status) === $status) || $status < 200 || $status > 599) {
+            throw new \LogicException("Route $name returned an invalid status");
+        }
+        $headers = [];
+        foreach (Seam::container($result['headers'] ?? []) as $header => $value) {
+            $header = (string) $header;
+            if ($value === JsUndefined::Value) {
+                continue;
+            }
+            if (preg_match('/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/', $header) !== 1 || !is_string($value) || preg_match('/[\r\n\0]/', $value) === 1) {
+                throw new \LogicException("Route $name returned an invalid header");
+            }
+            $headers[$header] = $value;
+        }
+        $headers = Response::mergeHeaders(['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'private, no-store'], $headers);
+
+        return [(int) $status, $headers, (string) ($result['body'] ?? '')];
+    }
+
     /** Invoke any API operation with explicit authority. No authentication, JSON envelope or error conversion. */
     public function invoke(string $method, string $path, array $query, mixed $body, Viewer $viewer): mixed
     {

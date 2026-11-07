@@ -1,24 +1,24 @@
 # Migrate a CMS config
 
-`zero migrate config` imports declarative schemas from EmDash, Payload, Sanity
-and the original `@spacefast/zero` capsule API (0.8.1). It writes a new
-`zero.config.ts`; it never overwrites the source or an existing destination.
+`zero migrate config` imports declarative schemas from EmDash, Payload and
+Sanity. It writes a new `zero.config.ts`; it never overwrites the source or an
+existing destination. `--from zero` reads an earlier Zero's capsule config; see
+[migrating from Zero](migrating-from-zero.md#the-original-capsule-config).
 
 ```sh
 zero migrate config --from payload payload.config.ts --out migrated/zero.config.ts
 zero build migrated
 ```
 
-Use `--from emdash`, `payload`, `sanity` or `zero`. Input can be a JSON schema
+Use `--from emdash`, `payload` or `sanity`. Input can be a JSON schema
 export or a single TypeScript module with a default export. EmDash uses its
 version `"1"` seed format; Payload uses its config's declarative object; Sanity
-uses `schema.types`; original Zero uses `capsule({ collections: ... })`.
+uses `schema.types`.
 Runnable input examples live in `tests/fixtures/config-migrate`.
 
 The importer parses TypeScript with Rust. It recognizes named imports of
 Payload's `buildConfig`, Sanity's `defineConfig`/`defineType`/`defineField`/
-`defineArrayMember`, and original Zero's `capsule` from
-`@spacefast/zero/server`. Aliases, constants, literal objects/arrays and type
+`defineArrayMember`. Aliases, constants, literal objects/arrays and type
 assertions work. CMS packages are never loaded. A JSON export must retain the
 source declarations: `JSON.stringify` can erase callbacks before Zero sees them,
 so a serialized executable config does not establish compatibility. Relative modules, spreads,
@@ -32,7 +32,6 @@ a declarative export or a manual port. JSON and TypeScript duplicate keys fail.
 | EmDash | `string`, `text`, `number`, `integer`, `boolean`, `datetime`, `json` |
 | Payload | `text`, `textarea`, `email`, `number`, `checkbox`, `date`, `json`, string-valued `select` (including `hasMany`) |
 | Sanity | `string`, `text`, `number`, `boolean`, `datetime`; literal `initialValue`; `Rule => Rule.required()` |
-| Original Zero | Content `text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`), `media` (including `multiple`), single `reference` |
 
 Required fields (including nonempty required Payload text/multi-selects and EmDash/Sanity strings),
 scalar defaults, supported bounds, uniqueness and collection
@@ -57,8 +56,8 @@ character counts as two. A Payload `text` or `textarea` without `maxLength`
 receives Payload's default `defaultMaxTextLength` of 40000. These validators preserve the source constraint rather
 than using Zero's Unicode-character count for text `.max()`.
 
-Field labels are preserved with `.ui({ label })` for the supported scalar and
-original Zero reference mappings. Sanity field `title`/`description` map to
+Field labels are preserved with `.ui({ label })` for the supported scalar
+mappings. Sanity field `title`/`description` map to
 `label`/`help`. Payload `admin.description`, `admin.placeholder` and integer
 percentage `admin.width` (for example `"50%"`) map to the same presentation
 metadata. Each mapped property appears in the report. Other admin options,
@@ -69,18 +68,7 @@ A required text field named `title` enables a WordPress custom post type with
 the target's draft/revision behavior. Otherwise the imported collection uses a
 SQL table (`table()` in `tables`). The report calls out this storage choice and the
 need to review publishing behavior. Import does not adopt existing WordPress
-post types. Original Zero's native `posts`, `pages` and `media` declarations are
-refused because creating new stores would change their ownership.
-
-An original Zero `reference` field `project` becomes an integer column
-`projectId` that references the target's `id`, plus a `project` relation for
-`with`. Original Zero kept a deleted target's id in place; Zero does not keep
-dangling references. An optional reference is cleared when its target is
-deleted (`set null`), and a required reference prevents the delete
-(`restrict`). A `reference` with `multiple: true` is refused: Zero has no
-multi-reference column, so model it as a join collection and move the data
-yourself. Media fields keep their cardinality, and a required multiple media
-field still needs at least one item.
+post types.
 
 EmDash URL fields are refused because their relative, `mailto:` and `tel:` URL
 policy differs from Zero's absolute HTTP(S) URL field. Sanity URI fields are also
@@ -115,8 +103,7 @@ numeric property names alone do not cause a default to be refused.
 
 Unspecified REST permissions are emitted as `false` for read/create/update/
 delete, rather than inheriting Zero's public-read default. Literal Payload
-boolean access rules and original Zero's `publicRead` override the corresponding
-denials. Configure access before deployment. This is a reported change, not a
+boolean access rules override the corresponding denials. Configure access before deployment. This is a reported change, not a
 claim that the source CMS's authentication model has been migrated.
 
 ## Reports and refusal
@@ -141,28 +128,19 @@ The supported subset rejects unknown keys rather than ignoring them. In
 particular, these require a separate port:
 
 - Access/validation/hook callbacks, except the explicit Sanity required rule.
-- Rich text (Portable Text, Lexical and original Zero block bindings), CMS
-  assets and references other than original Zero's single references and media
-  fields, nested/custom schemas, globals, localization and custom plugins.
+- Rich text (Portable Text and Lexical), CMS assets and references, nested/custom
+  schemas, globals, localization and custom plugins.
 - EmDash documents, menus, taxonomies, settings, routes and other seed features.
-- Original Zero `schema` tables, queries, mutations, actions, endpoints, pages,
-  auth, connectors, sync bindings and favicon declarations.
 
-For example, an old capsule with `queries` fails instead of producing a config
-with those handlers removed. Keep the original application intact until its
+For example, a Payload config with hooks fails instead of producing a config
+with those hooks removed. Keep the original application intact until its
 behavior is implemented and validated in the new runtime.
 
 ## Config import versus application migration
 
-For a WordPress site built with the original Zero, `zero migrate site` moves
-the content after this import; see [migrating from Zero 0.8](migrating-from-zero.md).
-For supported application tables and handlers, use [`zero migrate app --from zero-0.8`](migrating-from-zero.md#application-source-migration). The config-only command still refuses those declarations.
-
 This command does not move documents, uploads, string IDs, user identities,
 sessions, secrets, URLs or browser clients. It does not convert existing PHP or
-JavaScript plugins into Rust declarations. A complete old Zero migration also
-needs the runtime and data work listed in the
-[compatibility inventory](zero-compatibility.md).
+JavaScript plugins into Rust declarations.
 
 Tests are owned by `tests/config_migrate.rs`. They run the actual command for
 all four formats, build its output and load the emitted PHP schema. The

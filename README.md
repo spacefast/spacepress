@@ -241,6 +241,9 @@ boot on a site that misses any of them and names each one;
 - **Hooks and actions** written in a checked subset of TypeScript and compiled
   to PHP. Anything outside the subset fails the build at `file:line:col` with a
   fix.
+- **HTTP routes** on the site's own paths (`GET /api/feed.json`,
+  `POST /webhooks/stripe`), with any status, headers and body, access rules or
+  an HMAC signature, in one transaction. See [routes](docs/config-api.md#http-routes).
 - **Access rules** per collection, per action and per field, as roles or
   functions; a collection's read, update and delete rules can return a filter
   instead of a boolean. `showIf` drives conditional fields in the editor.
@@ -292,10 +295,11 @@ and the build pins and ships them too.
 
 Deploy to [Spacefast](https://spacefast.com) with `sf publish` from a project
 containing `zero.config.ts`, or use the hosted MCP publish tool. Spacefast captures
-and compiles source on the host. REST endpoints and actions work on the Space
-hostname. Realtime is not supported, and Zero Pages are not hosted yet.
-See the [Spacefast deploy guide](docs/spacefast-deploy.md) and the
-[0.8 migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
+and compiles source on the host. REST endpoints, actions, [HTTP routes](docs/config-api.md#http-routes)
+and [TSX pages](docs/pages.md) work on the Space hostname; render pages locally
+with `zero-pages build` before publishing. Realtime is not supported.
+See the [Spacefast deploy guide](docs/spacefast-deploy.md) and, for an existing
+Space, the [migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
 
 Anywhere else: the build is `.zero/wp-content/plugins/*.zip`, which you upload
 or copy like any plugin, and `.zero/wp-content/zero-manifest.json` records the

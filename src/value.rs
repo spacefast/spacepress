@@ -37,6 +37,7 @@ pub enum Value {
     Relation(Rc<RelVal>),
     Action(Rc<ActionVal>),
     Job(Rc<ActionVal>),
+    Route(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
     Global(Rc<GlobalVal>),
@@ -71,10 +72,13 @@ pub enum Builtin {
     DefineConfig,
     Action,
     Job,
+    Route,
     Files,
     Env,
     Once,
     Jobs,
+    /// `fetch(url, init?)`: outbound HTTPS, compiled to `Zero\Fetch::call`.
+    Fetch,
     /// `crypto.sha256(...)` and friends from "zero", compiled to `Zero\Crypto`.
     Crypto,
     /// Runtime-only values: usable in compiled code, an error at build time.
@@ -314,6 +318,7 @@ impl Value {
             Value::Relation(_) => "a relation".into(),
             Value::Action(_) => "an action".into(),
             Value::Job(_) => "a job".into(),
+            Value::Route(_) => "a route".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
             Value::Global(g) => format!("global \"{}\"", g.name),

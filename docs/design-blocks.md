@@ -45,7 +45,7 @@ nothing else.
 | Theme source | `theme.config.ts` (`defineTheme`: header + typed `theme.json`), `templates/<slug>.tsx`, `parts/<slug>.tsx`, `patterns/<name>.tsx`, `styles/<name>.ts`, `assets/`. File names are the template hierarchy. |
 | Validation | Unknown core block, unknown or mistyped attribute, a `save()` that throws, `style` prop on an HTML tag, unmappable tag, missing part or pattern reference, unknown preset slug, template name outside WP's hierarchy without a custom-template declaration, `theme.json` failing the 7.1 schema: all errors with locations. Never silently dropped. |
 | Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `bind.field("excerpt")` → the SCF block binding `{ source: "acf/field", args: { key: "zero_excerpt" } }` for the meta key Zero writes. Pure markup; no runtime dependency on Zero. Query loops over Zero collections are **not** offered: `core/query` ignores non-viewable post types and Zero's are private (§5). |
-| Not in scope | Capsule frontends, islands, the `zero/component` dynamic block, `_pages` system pages, any JS app runtime, HTML→TSX, live editing, Markdown. See §9. |
+| Not in scope | App frontends, islands, dynamic component blocks, platform system pages, any JS app runtime, HTML→TSX, live editing, Markdown. See §9. (TSX pages and islands later landed separately in `packages/pages`; see [pages](pages.md).) |
 | Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the pinned platform plugins and the blog example's Zero artifact are installed into the same site and the binding sugar is proven on a real collection row through a real SCF field. |
 | CI | A separate workflow, `.github/workflows/blocks.yml`, with jobs `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof), path-filtered to `packages/blocks/**`, the workflow file, and the contract it reads (`tests/wp/harness.sh`, `tests/wp/compose.yml`, `tests/wp/{apache,php,mu-plugins}/**`, `tests/fixtures/platform.json`, `examples/blog/**`). `ci.yml` and Zero core's jobs are untouched; core PRs outside those paths never run them. |
 
@@ -64,10 +64,8 @@ ported almost intact. What changes:
 
 | Earlier work | Here | Why |
 |---|---|---|
-| Content pages served by a Spacefast runtime | Content compiles to markup; themes compile to a theme. WordPress serves and renders all of it; the package renders nothing. | No capsule frontends, no second runtime. |
-| Islands (`client/` components → hydrated mounts), `zero/component` block | Removed. `core/html` remains for verbatim HTML only. | A JS app runtime is out of scope by ruling. |
-| `_pages/*.tsx` system pages → HTML documents | Removed. | Spacefast platform pages; nothing in Zero corresponds. |
-| `ZERO_DYNAMIC_BLOCKS` decided whether WordPress or the Spacefast runtime had to serve a page | Removed. | WordPress serves every page, so the distinction has no meaning. In a theme every template block is dynamic and that is fine. |
+| Pages served by a separate runtime | Content compiles to markup; themes compile to a theme. WordPress serves and renders all of it; the package renders nothing. | No second runtime. |
+| Hydrated client components and dynamic component blocks | Removed. `core/html` remains for verbatim HTML only. | A JS app runtime is out of scope by ruling. |
 | Diagnostics per entry file | Diagnostics per JSX node: `templates/index.tsx:14:9`. | `jsxDEV` hands the runtime each element's source position; the mapper and serializer keep it. |
 | `core/query` forbidden from `inherit: true` | `inherit` is the normal archive loop in a template; `<QueryLoop>` requires the author to choose `inherit` or an explicit query. | The restriction existed for a renderer with no main query; WordPress always has one. |
 | Attribute drift silently dropped by `createBlock` | Attributes checked against the registered schema; unknown or mistyped → error. | "never silently dropped" was the stated goal; this closes the gap. |
@@ -677,10 +675,10 @@ core PR outside the listed contract paths never runs either job.
 
 ## 9. Out of scope, and non-goals
 
-- Capsule frontends, islands, hydration, any browser JavaScript the package
+- App frontends, islands, hydration, any browser JavaScript the package
   emits. Not "later": the WordPress Interactivity API would be the way to add
   behaviour to a block theme and would be a separate design.
-- `_pages` system pages, Tailwind/`zero.css`, the Spacefast runtime. The
+- Platform system pages, Tailwind/`zero.css`, a hosting runtime. The
   package renders nothing; WordPress is the only renderer of its output.
 - HTML/blocks → TSX (decompilation), two-way editing, live collaboration.
 - Markdown (Zero's sync owns it), classic themes, child themes (a `parent`

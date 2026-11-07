@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { withBlockApi } from "@spacefast/zero-blocks/compiler";
 
-import { buildPages, type Manifest } from "../../src/build.ts";
+import { buildPages, installPlugin, type Manifest } from "../../src/build.ts";
 import { routeId, routeKey } from "../../src/routes.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -428,4 +428,30 @@ test("rebuilding unchanged sources keeps route IDs, keys and the manifest digest
   const second = await manifestOf(root);
   assert.equal(second.digest, first.digest);
   assert.deepEqual(second.routes.map((r) => [r.id, r.key]), first.routes.map((r) => [r.id, r.key]));
+});
+
+test("the render artifact holds the plugin's files and its inputs, and installing it rewrites the same plugin", async () => {
+  const root = await project();
+  const result = await buildPages({ project: root, out: out(root) });
+  assert.equal(result.ok, true);
+  const artifact = JSON.parse(await readFile(path.join(root, "zero/pages.json"), "utf8")) as { format: string; manifest: string; files: Record<string, string>; inputs: Record<string, string> };
+  assert.equal(artifact.format, "zero.pages.v1");
+  assert.equal(artifact.manifest, await readFile(path.join(plugin(root), "manifest.json"), "utf8"));
+  for (const [name, contents] of Object.entries(artifact.files)) {
+    assert.deepEqual(await readFile(path.join(plugin(root), name)), Buffer.from(contents, "base64"), name);
+  }
+  assert.equal(Object.keys(artifact.files).some((name) => name.endsWith(".php")), false, "no PHP in the artifact");
+  for (const input of ["pages/layout.tsx", "components/NoteCard.tsx", "islands/cheer.client.ts", "styles/global.css", "pages/notes/[slug]/note.module.css"]) {
+    assert.match(artifact.inputs[input] ?? "", /^[0-9a-f]{64}$/, input);
+  }
+  assert.equal(Object.keys(artifact.inputs).some((input) => input.includes("node_modules") || input.startsWith("..")), false);
+  // Imported JSON is inlined into the render, so it is an input too.
+  const withJson = await project({ "pages/about/facts.json": '{"motto":"Field first"}\n', "pages/about/page.tsx": (await readFile(path.join(example, "pages/about/page.tsx"), "utf8")).replace('import type { Metadata } from "@spacefast/zero-pages";', 'import type { Metadata } from "@spacefast/zero-pages";\nimport facts from "./facts.json";').replace("<h1>About</h1>", "<h1>{facts.motto}</h1>") });
+  assert.equal((await buildPages({ project: withJson, out: out(withJson) })).ok, true);
+  const jsonArtifact = JSON.parse(await readFile(path.join(withJson, "zero/pages.json"), "utf8")) as { inputs: Record<string, string> };
+  assert.match(jsonArtifact.inputs["pages/about/facts.json"] ?? "", /^[0-9a-f]{64}$/);
+  const again = path.join(scratch, `reinstall-${counter++}`);
+  await installPlugin(again, await readFile(path.join(root, "zero/pages.json"), "utf8"));
+  const tree = async (dir: string): Promise<string[]> => (await readdir(dir, { recursive: true })).map(String).sort();
+  assert.deepEqual(await tree(path.join(again, "plugins/zero-pages-fullsite")), await tree(plugin(root)));
 });

@@ -12,6 +12,10 @@ if ($phase === 'seed') {
     $uid = wp_insert_user(['user_login'=>'imported-member','user_email'=>'old@example.test','display_name'=>'Imported Member','user_pass'=>'disposable-member-password','role'=>'subscriber']);
     if (is_wp_error($uid)) { throw new RuntimeException($uid->get_error_message()); }
     add_user_meta($uid, '_spacefast_app_user', 'imported-space');
+    // Space Users mint one random subject per user and Space; 0.8 handlers saw it as ctx.auth.userId.
+    $subject = 'usr_' . str_repeat('ab', 32);
+    add_option('spacefast_app_subject_' . $uid . '_imported-space', $subject, '', false);
+    add_option('spacefast_app_subject_' . $uid . '_foreign-space', 'usr_' . str_repeat('cd', 32), '', false);
     // A raw legacy hash arrives after identity provisioned its native profile schedule.
     $wpdb->update('wp_users', ['user_pass' => md5('disposable-member-password')], ['ID' => $uid]);
     clean_user_cache($uid);
@@ -88,7 +92,7 @@ if ($phase === 'seed') {
     }
     $wpdb->query("INSERT INTO `{$target}options` SELECT * FROM wp_options");
     $wpdb->query($wpdb->prepare("UPDATE `{$target}options` SET option_name=%s WHERE option_name='wp_user_roles'", $target.'user_roles'));
-    file_put_contents('/tmp/spacefast-fixture.json', json_encode(compact('uid','foreign','post','revision','project','projectRevision','attachment','other','parent','child','now','passwordUsers','overCeilingUser')+['salt'=>wp_salt('auth')]));
+    file_put_contents('/tmp/spacefast-fixture.json', json_encode(compact('uid','subject','foreign','post','revision','project','projectRevision','attachment','other','parent','child','now','passwordUsers','overCeilingUser')+['salt'=>wp_salt('auth')]));
     proof($wpdb->last_error === '', 'legacy rows and empty scoped tables seeded');
     return;
 }
@@ -213,6 +217,11 @@ if ($phase === 'nested') {
     proof($p->post_type==='zero_posts' && $p->post_content==='<p>Preserved body</p>' && (int)$p->post_author===$uid, 'post ID, body and author retained with candidate type');
     proof(get_post($revision)->post_type==='revision' && (int)get_post($attachment)->post_parent===$post && get_post_meta($attachment,'_wp_attached_file',true)==='2026/11/imported.png', 'revision and attachment IDs and metadata retained');
     proof(!get_post($other) && !get_userdata($foreign), 'foreign Space posts and users absent');
+    proof(get_user_meta($uid, 'zero_spacefastSubject', true) === $subject && count(get_user_meta($uid, 'zero_spacefastSubject')) === 1, 'Space Users subject copied once to the hidden member column');
+    $member = \Zero\Wp\Runtime::plugin()->db()->findFirst('members', ['where' => ['id' => $uid], 'columns' => ['spacefastSubject' => true]]);
+    proof(($member['spacefastSubject'] ?? null) === $subject, 'trusted member reads return the 0.8 subject');
+    $mask = rest_do_request(new WP_REST_Request('GET', '/zero/v1/members/' . $uid));
+    proof(!array_key_exists('spacefastSubject', (array) ($mask->get_data()['data'] ?? [])), 'REST never exposes the migrated subject');
     proof((int)get_term($child)->parent===$parent && get_term_meta($child,'fixture',true)==='retained' && wp_get_object_terms($post,'category',['fields'=>'ids'])===[$child], 'taxonomy hierarchy, metadata and relationships retained');
     proof(get_post($project)->post_type==='zero_projects' && get_post_meta($project,'zero_budget',true)==='42.5' && get_post_meta($project,'zero_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
     proof(get_post_meta($projectRevision,'zero_budget',true)==='12.5' && get_post_meta($projectRevision,'zero_active',true)==='0', 'collection revision fields use parent mapping');
@@ -289,6 +298,10 @@ if ($phase === 'nested') {
     $wpdb->insert($target.'zero_identity_sessions', ['id'=>str_repeat('e',32),'wp_user_id'=>$uid,'secret_hash'=>hash_hmac('sha256','native-legacy-shaped',wp_salt('auth')),'csrf'=>str_repeat('e',64),'created_at'=>$now,'expires_at'=>$now+3600,'verified_at'=>$now,'label'=>'Unmarked row']);
     Plugin::$sessions->revoke($uid,str_repeat('c',32));
     proof(Plugin::$sessions->find('revoke-token')===null, 'revocation rejects a never-upgraded imported session');
+} elseif ($phase === 'drop-subject') {
+    proof(delete_user_meta($uid, 'zero_spacefastSubject'), 'copied subject removed after the users receipt');
+} elseif ($phase === 'restore-subject') {
+    proof(add_user_meta($uid, 'zero_spacefastSubject', $subject, true) !== false, 'copied subject restored');
 } elseif ($phase === 'authenticated') {
     $s = $wpdb->get_row("SELECT * FROM {$target}zero_identity_sessions WHERE id='".str_repeat('a',32)."'", ARRAY_A);
     proof(hash_equals(Sessions::digest('old-token'),$s['secret_hash']) && (int)$s['expires_at']===$now+3600, 'old cookie upgraded to v2 hash without extending expiry');

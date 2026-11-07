@@ -106,9 +106,11 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "file",
     "files",
     "job",
+    "route",
     "env",
     "once",
     "jobs",
+    "fetch",
     "crypto",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
@@ -139,6 +141,9 @@ const ZERO_TYPES: &[&str] = &[
     "JobCtx",
     "JobsApi",
     "JobHandle",
+    "Route",
+    "RouteRequest",
+    "RouteResponse",
     "EnqueueOptions",
     "EnvValue",
     "Webhook",
@@ -1455,21 +1460,28 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Crypto => err_help(
+            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto => err_help(
                 span,
-                "once(), jobs and crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "once(), jobs, fetch() and crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
-            Builtin::Action | Builtin::Job => {
+            Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
-                    return err(span, "action() needs `{ input, handler }`");
+                    return err(
+                        span,
+                        if *b == Builtin::Route {
+                            "route() needs `{ method, path, handler }`"
+                        } else {
+                            "action() needs `{ input, handler }`"
+                        },
+                    );
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
-                Ok(if *b == Builtin::Job {
-                    Value::Job(value)
-                } else {
-                    Value::Action(value)
+                Ok(match b {
+                    Builtin::Job => Value::Job(value),
+                    Builtin::Route => Value::Route(value),
+                    _ => Value::Action(value),
                 })
             }
             Builtin::RelFn(kind, target) => {
@@ -1990,8 +2002,10 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "file" => Builtin::Field("file"),
         "files" => Builtin::Files,
         "job" => Builtin::Job,
+        "route" => Builtin::Route,
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
+        "fetch" => Builtin::Fetch,
         "crypto" => Builtin::Crypto,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),

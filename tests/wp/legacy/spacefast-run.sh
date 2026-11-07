@@ -29,7 +29,7 @@ export default capsule({
   },
 });
 TS
-"$target/debug/zero" migrate app --from zero-0.8 "$app/source" --out "$app/converted" >/dev/null
+"$target/debug/zero" migrate app --from zero-0.8 "$app/source" --out "$app/converted" --users >/dev/null
 "$target/debug/zero" build "$app/converted" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-spacefast"
 rsync -a --delete "$app/converted/.zero/wp-content/" "$wp/.wp-content-spacefast/"
@@ -92,6 +92,23 @@ import json,sys
 assert all(g=={'copied':0,'status':'already-migrated'} for g in json.load(open(sys.argv[1]))['data']['groups'].values())
 CHECK
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php authenticated
+
+# A users receipt must not hide a subject the target never received.
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php drop-subject
+if "$wp/harness.sh" wp "${command[@]}" > "$app/subjects.json"; then
+  echo 'Expected a missing subject to refuse the rerun' >&2; exit 1
+fi
+"$wp/harness.sh" wp "${command[@]}" --verify > "$app/subjects-verify.json" && { echo 'Expected verify to report the missing subject' >&2; exit 1; }
+python3 - "$app" <<'CHECK'
+import json,sys
+from pathlib import Path
+p=Path(sys.argv[1])
+error=json.loads((p/'subjects.json').read_text())['error']
+assert error['code']=='zero_spacefast_subjects_missing' and error['pointer'].startswith('/users/'), error
+assert json.loads((p/'subjects-verify.json').read_text())['error']['groups']['users']['status']=='incomplete'
+CHECK
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php restore-subject
+"$wp/harness.sh" wp "${command[@]}" --verify > /dev/null
 
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php drift
 if "$wp/harness.sh" wp "${command[@]}" --verify > "$app/drift.json"; then

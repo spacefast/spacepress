@@ -77,6 +77,35 @@ built (or there is no `pages/`), `1` with diagnostics, `2` on usage errors.
 Install the `zero-pages-<app>` plugin beside the app plugin and activate it.
 On a build error nothing is written, and the previous plugin stays in place.
 
+The build also writes `zero/pages.json`, the render artifact. It holds the
+plugin's manifest, every template, body and asset, the compiled schema the
+pages were rendered against, and a SHA-256 of each authored input (routes,
+layouts, components, islands, CSS, imported SVGs). It holds no PHP. Commit it
+with the pages.
+
+## Publish on Spacefast
+
+A Spacefast box compiles your app without Node, so it cannot run page modules.
+Run `zero build` and `zero-pages build` locally, then `sf publish`. Capture
+(`zero sources`, or the CLI's WebAssembly compiler) checks `zero/pages.json`
+and bundles it with its inputs. The host's `compile-sources` checks it again
+and writes `zero-pages-<app>` next to the app plugin. The plugin is byte for
+byte what `zero-pages build` installs: the artifact's files plus the pages
+runtime the compiler embeds. The compiled manifest names it under `pages`.
+
+Capture refuses with `zero_source_needs_local_capture`, before anything is
+uploaded, when:
+
+- `pages/` exists and there is no `zero/pages.json`;
+- a page, layout, component, island or stylesheet changed after the render;
+- a `page.tsx`, `layout.tsx` or `not-found.tsx` was added after the render;
+- `zero.config.ts` now compiles to a different schema than the pages saw.
+
+Run `zero build` and `zero-pages build` again, then publish. The host also
+refuses an artifact that names a non-asset file, PHP, an unknown island or
+action, or a route WordPress owns. An uploaded artifact can only carry markup
+and static assets, never server code.
+
 Pages read the app's schema from `zero build` output (`zero/client/schema.ts`,
 `zero/migrations/snapshot.json`). They never execute `zero.config.ts`, and a
 page cannot import runtime values from `"zero"`; use type imports and name
@@ -226,6 +255,7 @@ never produce markup, block delimiters or another placeholder.
 - Native post passwords on routed items (such items are not served).
 - React builds of shared components (`@spacefast/zero-blocks/universal`).
 - SEO-provider adapters, sitemaps of item routes, redirects for moved routes.
-- A `zero build` integration: run `zero-pages build` after `zero build`.
+- A `zero build` integration: run `zero-pages build` after `zero build`, locally,
+  before publishing.
 - Full-page HTML caching; managed routes bypass shared caches.
 - Arbitrary TSX/React semantics: only the subset above compiles.

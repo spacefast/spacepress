@@ -1,4 +1,6 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
+mod endpoints;
+mod pages;
 mod spacefast;
 mod transform;
 
@@ -150,14 +152,15 @@ fn convert(
     files: &mut BTreeMap<String, String>,
 ) -> Result<(), Failure> {
     let root = fs.canonicalize(input).map_err(io)?;
-    let entry = PathBuf::from("server/index.ts");
+    let entry = server_entry(fs.as_ref(), &root, report)?;
     let mut sources = BTreeMap::new();
     collect_sources(&*fs, &root, &entry, &mut sources, &mut BTreeSet::new())?;
-    for dir in ["pages", "islands", "layouts"] {
+    for dir in ["islands", "layouts", "_pages"] {
         if fs.exists(&root.join(dir)) {
             refuse_pages(&*fs, &root.join(dir), &format!("/{dir}"), &mut report.errors)?;
         }
     }
+    let converted = convert_pages(&*fs, &root, report, &mut sources)?;
     let transformed = transform::app(
         &entry,
         sources
@@ -173,7 +176,17 @@ fn convert(
     if sources.contains_key(Path::new("zero.config.ts")) || sources.contains_key(Path::new("server/__z08-content.ts")) {
         return Err(fail("", "input imports a reserved generated config path"));
     }
-    sources.insert(entry, transformed.config);
+    let canonical = PathBuf::from("server/index.ts");
+    if entry != canonical {
+        if sources.contains_key(&canonical) {
+            return Err(fail(
+                "",
+                "server/index.ts exists beside the configured server entry; rename one",
+            ));
+        }
+        sources.remove(&entry);
+    }
+    sources.insert(canonical, transformed.config);
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }
@@ -181,6 +194,7 @@ fn convert(
         PathBuf::from("zero.config.ts"),
         "export { default } from \"./server/index\";\n".into(),
     );
+    let page_files = converted;
     // Both dry runs and writes compile the same candidate, before creating a destination.
     if !report.errors.is_empty() {
         return Ok(());
@@ -212,6 +226,9 @@ fn convert(
     report.adoption_sql = Some(sql.clone());
     for (path, text) in sources {
         files.insert(path.to_string_lossy().replace('\\', "/"), text);
+    }
+    for (path, text) in page_files {
+        files.insert(path, text);
     }
     files.insert("zero/migrations/0001_adopt.sql".into(), sql);
     files.insert(
@@ -298,6 +315,194 @@ fn collect_sources(
     Ok(())
 }
 
+/// 0.8 config files in the finalizer's precedence order (`SPACE_CONFIG_PRECEDENCE`).
+const CONFIG_FILES: &[&str] = &[
+    "sf.jsonc",
+    "spacefast.jsonc",
+    "spacefast.json",
+    "sf.json",
+    ".sf/sf.json",
+    ".sf/config.jsonc",
+    ".sf/config.json",
+];
+
+/// The capsule's server module: `runtime.server` of the selected 0.8 config, else
+/// `server/index.ts`. It is renamed to `server/index.ts` in the candidate.
+fn server_entry(fs: &dyn Fs, root: &Path, report: &mut Report) -> Result<PathBuf, Failure> {
+    if fs.is_file(&root.join("spacefast.config.ts")) {
+        return Err(fail(
+            "/spacefast.config.ts",
+            "an executable Spacefast config needs a manual port; write its runtime as sf.jsonc",
+        ));
+    }
+    let Some(name) = CONFIG_FILES.iter().find(|f| fs.is_file(&root.join(f))) else {
+        return Ok(PathBuf::from("server/index.ts"));
+    };
+    let text = fs.read_to_string(&root.join(name)).map_err(io)?;
+    let config: serde_json::Value = serde_json::from_str(&strip_jsonc(&text))
+        .map_err(|e| fail(&format!("/{name}"), format!("cannot read {name}: {e}")))?;
+    let Some(server) = config.pointer("/runtime/server").and_then(serde_json::Value::as_str) else {
+        return Ok(PathBuf::from("server/index.ts"));
+    };
+    let server = server.trim_start_matches("./");
+    if server != "server/index.ts" {
+        report.entries.push(super::entry(
+            &format!("/{name}/runtime/server"),
+            "mapped",
+            format!("server entry {server} becomes server/index.ts"),
+        ));
+    }
+    // Renaming keeps relative imports valid only for a module directly under server/.
+    let direct = server.strip_prefix("server/").is_some_and(|rest| !rest.contains('/'));
+    if !direct || !(server.ends_with(".ts") || server.ends_with(".tsx")) {
+        return Err(fail(
+            &format!("/{name}/runtime/server"),
+            "the server entry must be a module directly under server/ (server/<name>.ts)",
+        ));
+    }
+    Ok(PathBuf::from(server))
+}
+
+/// JSONC → JSON: comments and trailing commas outside strings.
+fn strip_jsonc(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut string = false;
+    while let Some(c) = chars.next() {
+        if string {
+            out.push(c);
+            if c == '\\' {
+                out.extend(chars.next());
+            } else if c == '"' {
+                string = false;
+            }
+            continue;
+        }
+        match (c, chars.peek()) {
+            ('"', _) => {
+                string = true;
+                out.push(c);
+            }
+            ('/', Some('/')) => {
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
+            }
+            ('/', Some('*')) => {
+                chars.next();
+                let mut last = ' ';
+                for c in chars.by_ref() {
+                    if last == '*' && c == '/' {
+                        break;
+                    }
+                    last = c;
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    // Trailing commas: a comma followed only by whitespace before } or ].
+    let re = regex::Regex::new(r",(\s*[}\]])").expect("regex");
+    re.replace_all(&out, "$1").into_owned()
+}
+
+/// Static 0.8 pages and the client `Layout` become v2 TSX pages. Interactive ones are refused.
+fn convert_pages(
+    fs: &dyn Fs,
+    root: &Path,
+    report: &mut Report,
+    sources: &mut BTreeMap<PathBuf, String>,
+) -> Result<BTreeMap<String, String>, Failure> {
+    let mut out = BTreeMap::new();
+    let pages_dir = root.join("pages");
+    if !fs.exists(&pages_dir) {
+        return Ok(out);
+    }
+    let mut stack = vec![pages_dir];
+    let mut files = vec![];
+    while let Some(dir) = stack.pop() {
+        if !fs.is_dir(&dir) || fs.is_symlink(&dir) {
+            report.errors.push(fail(
+                &pages::at(dir.strip_prefix(root).unwrap_or(&dir)),
+                "pages must be a directory of files",
+            ));
+            continue;
+        }
+        let mut entries = fs.read_dir(&dir).map_err(io)?;
+        entries.sort();
+        for path in entries {
+            if fs.is_dir(&path) && !fs.is_symlink(&path) {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    for path in files {
+        let relative = path.strip_prefix(root).expect("inside root").to_path_buf();
+        let at = pages::at(&relative);
+        if fs.is_symlink(&path) {
+            report.errors.push(fail(&at, "symlinked pages need a manual port"));
+            continue;
+        }
+        // 0.8 routed only .tsx, .md and .html under pages/; other files are modules pages import.
+        if !relative
+            .extension()
+            .is_some_and(|e| e == "tsx" || e == "md" || e == "html")
+        {
+            continue;
+        }
+        let text = fs.read_to_string(&path).map_err(io)?;
+        if relative.extension().is_some_and(|e| e == "md" || e == "html") {
+            report.errors.push(fail(&at, "content-owned 0.8 pages have no v2 counterpart yet (docs/pages.md, Not in this release); move the text into a TSX page or a collection"));
+            continue;
+        }
+        match pages::page(&relative, &text, &at) {
+            Ok(page) => {
+                // Data modules a page imports are copied like the server's helpers.
+                for import in &page.imports {
+                    collect_sources(fs, root, Path::new(import), sources, &mut BTreeSet::new())?;
+                }
+                report.entries.push(super::entry(
+                    &at,
+                    "mapped",
+                    format!(
+                        "static page becomes {}; run zero-pages build and commit zero/pages.json before publishing",
+                        page.file
+                    ),
+                ));
+                if out.insert(page.file.clone(), page.source).is_some() {
+                    report
+                        .errors
+                        .push(fail(&at, format!("two 0.8 pages map to {}", page.file)));
+                }
+            }
+            Err(e) => report.errors.push(e),
+        }
+    }
+    let client = root.join("client/index.tsx");
+    if !out.is_empty() && fs.is_file(&client) {
+        let text = fs.read_to_string(&client).map_err(io)?;
+        match pages::layout(&text, "/client/index.tsx") {
+            Ok(Some(layout)) => {
+                report.entries.push(super::entry(
+                    "/client/index.tsx",
+                    "mapped",
+                    "Layout becomes pages/layout.tsx",
+                ));
+                out.insert("pages/layout.tsx".into(), layout);
+            }
+            Ok(None) => {}
+            Err(e) => report.errors.push(e),
+        }
+    }
+    Ok(out)
+}
+
 fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -> Result<(), Failure> {
     if !fs.is_dir(path) || fs.is_symlink(path) {
         errors.push(fail(at, "page, layout and island compilation needs an explicit port"));
@@ -310,7 +515,8 @@ fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -
         if fs.is_dir(&path) && !fs.is_symlink(&path) {
             refuse_pages(fs, &path, &at, errors)?;
         } else {
-            errors.push(fail(&at, "page, layout and island compilation needs an explicit port"));
+            let text = fs.read_to_string(&path).unwrap_or_default();
+            errors.push(fail(&at, pages::reason(&text, "a 0.8 page, layout or island file")));
         }
     }
     Ok(())

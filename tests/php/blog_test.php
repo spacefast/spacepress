@@ -24,6 +24,23 @@ $db = \Zero\db();
 eq('WordPress and the request pipeline share the validated schema', $app->schema === \Zero\Wp\Runtime::plugin()->schema, true);
 eq('the database uses the validated schema', $db->schema() === $app->schema, true);
 
+// Internal REST calls can discard their response before WordPress serves a different one.
+$internal = new \WP_REST_Request('GET', '/zero/v1/posts');
+$internal->set_url_params(['path' => 'posts']);
+$discarded = \Zero\Wp\Rest::dispatch($app, $internal);
+unset($discarded);
+$unrelated = new \WP_REST_Response(['native' => true]);
+ob_start();
+$served = \Zero\Wp\Rest::serve(false, $unrelated);
+$output = ob_get_clean();
+eq('discarded Zero responses cannot hijack another response', [$served, $output], [false, '']);
+$response = \Zero\Wp\Rest::dispatch($app, $internal);
+ob_start();
+$served = \Zero\Wp\Rest::serve(false, $response);
+$output = ob_get_clean();
+eq('live Zero responses still serve their committed body', [$served, json_decode($output, true)], [true, ['data' => []]]);
+eq('a response body is consumed once', \Zero\Wp\Rest::serve(false, $response), false);
+
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
     $users[$name] = $wp->user($name);

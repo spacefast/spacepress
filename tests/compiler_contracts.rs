@@ -931,7 +931,15 @@ export default () => definePlugin({
 });"#,
     )
     .unwrap();
-    let (out, report) = checked(tmp.path());
+    // A first local check, before any lock exists. Under CI the same plugin is refused until a
+    // lock is committed, which is its own assertion below.
+    let out = zero()
+        .env_remove("CI")
+        .args(["check", "--json"])
+        .arg(tmp.path())
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(out.status.success(), "{report}");
     let plugin = &report["plugins"][0];
     assert_eq!(plugin["package"], "zero-plugin-sync");
@@ -955,6 +963,21 @@ export default () => definePlugin({
         }])
     );
     assert!(!tmp.path().join("zero").exists(), "check writes no lock");
+    let frozen = zero()
+        .args(["check", "--json", "--frozen"])
+        .arg(tmp.path())
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&frozen.stdout).unwrap();
+    assert_eq!(frozen.status.code(), Some(1), "{report}");
+    assert_eq!(report["diagnostics"][0]["code"], "Z4201");
+    assert!(
+        report["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/plugins.lock.json"),
+        "{report}"
+    );
 }
 
 #[test]

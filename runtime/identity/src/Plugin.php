@@ -570,7 +570,7 @@ final class Plugin
                     exit();
                 }
                 $session = self::$sessions->find(
-                    (string) ($_COOKIE[Sessions::COOKIE] ?? ""),
+                    (string) ($_COOKIE[Sessions::cookieName()] ?? ""),
                 );
                 if (
                     $_SERVER["REQUEST_METHOD"] === "GET" &&

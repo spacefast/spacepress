@@ -14,7 +14,8 @@ use Zero\Wp\Plugin;
  * `wp zero migrate-legacy-users --space=<id> [--dry-run]` (Users), WordPress only. Site maintenance
  * commands like `wp zero migrate`: each runs in its own transaction, not the app CLI's, so nothing
  * else (scheduled promotion) commits alongside it, and a dry run rolls the whole transaction back.
- * `migrate-spacefast` copies across prefixes with a transaction and durable receipt per table group.
+ * `migrate-spacefast` copies across prefixes with a transaction and durable receipt per table group;
+ * `--users-only` copies just the Space's app users and identity accounts.
  */
 final class Module
 {
@@ -48,16 +49,17 @@ final class Module
 
     private static function spacefast(Plugin $plugin, array $args, array $flags): array
     {
-        $unknown = array_diff(array_keys($flags), ['space', 'source-prefix', 'target-prefix', 'dry-run', 'verify']);
+        $unknown = array_diff(array_keys($flags), ['space', 'source-prefix', 'target-prefix', 'dry-run', 'verify', 'users-only']);
         if ($args !== [] || $unknown !== [] || (isset($flags['dry-run']) && $flags['dry-run'] !== true)
+            || (isset($flags['users-only']) && $flags['users-only'] !== true)
             || (isset($flags['verify']) && ($flags['verify'] !== true || isset($flags['dry-run'])))) {
-            throw new HttpError(400, 'invalid_command', 'Usage: migrate-spacefast --space=<id> --source-prefix=<prefix> --target-prefix=<prefix> [--dry-run | --verify]');
+            throw new HttpError(400, 'invalid_command', 'Usage: migrate-spacefast --space=<id> --source-prefix=<prefix> --target-prefix=<prefix> [--users-only] [--dry-run | --verify]');
         }
         foreach (['space', 'source-prefix', 'target-prefix'] as $key) {
             if (!is_string($flags[$key] ?? null) || $flags[$key] === '') { throw new HttpError(400, 'invalid_command', "--$key is required", '/' . $key); }
         }
         $plugin->app();
-        return (new Spacefast($plugin->connection(), $plugin->schema))->run($flags['space'], $flags['source-prefix'], $flags['target-prefix'], isset($flags['dry-run']), isset($flags['verify']));
+        return (new Spacefast($plugin->connection(), $plugin->schema))->run($flags['space'], $flags['source-prefix'], $flags['target-prefix'], isset($flags['dry-run']), isset($flags['verify']), isset($flags['users-only']));
     }
 
     private static function run(Plugin $plugin, array $args, array $flags): array

@@ -105,3 +105,27 @@ assert error['groups']['posts']['status']=='drifted'
 assert error['groups']['posts']['stored']!=error['groups']['posts']['current']
 assert all(error['groups'][g]['status']=='verified' for g in ['users','sessions'])
 CHECK
+
+# Users-only: a second Space's app users move without posts or sessions, once.
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php users-only-seed
+"$wp/harness.sh" compose exec -T cli sh -c 'echo users-space > /tmp/spacefast-space'
+users_prefix="$(python3 -c 'import hashlib; print("sfz_"+hashlib.sha256(b"users-space").hexdigest()[:24]+"_")')"
+"$wp/harness.sh" wp zero migrate >/dev/null
+users_command=(zero migrate-spacefast --users-only --space=users-space --source-prefix=wp_ --target-prefix="$users_prefix")
+"$wp/harness.sh" wp "${users_command[@]}" --dry-run > "$app/users-dry.json"
+"$wp/harness.sh" wp "${users_command[@]}" > "$app/users-first.json"
+"$wp/harness.sh" wp "${users_command[@]}" > "$app/users-second.json"
+"$wp/harness.sh" wp "${users_command[@]}" --verify > "$app/users-verify.json"
+python3 - "$app" <<'CHECK'
+import json,sys
+from pathlib import Path
+p=Path(sys.argv[1])
+assert list(json.loads((p/'users-dry.json').read_text())['data']['groups'])==['users']
+assert json.loads((p/'users-dry.json').read_text())['data']['groups']['users']['status']=='dry-run'
+first=json.loads((p/'users-first.json').read_text())['data']['groups']
+assert list(first)==['users'] and first['users']['status']=='copied' and first['users']['copied']>0
+assert json.loads((p/'users-second.json').read_text())['data']['groups']=={'users':{'copied':0,'status':'already-migrated'}}
+assert json.loads((p/'users-verify.json').read_text())['data']['groups']['users']['status']=='verified'
+CHECK
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php users-only
+"$wp/harness.sh" compose exec -T cli rm -f /tmp/spacefast-space

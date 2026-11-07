@@ -13,7 +13,11 @@ final class Providers
         private Accounts $accounts,
         private Sessions $sessions,
     ) {}
-    /** Google is the one built-in provider; sites add others through `zero_identity_providers`. */
+    /**
+     * Google is the one built-in provider; sites add others through `zero_identity_providers`:
+     * `issuer`, `client_id`, `secret` (empty for a public client), optional `discovery` entries
+     * that override the issuer's discovery document, and `alg` (`RS256` default, or `EdDSA`).
+     */
     public static function config(): array
     {
         $providers = [];
@@ -42,6 +46,7 @@ final class Providers
             $config["secret"],
             home_url("/identity/provider/callback?provider=" . rawurlencode($name)),
             $config["discovery"] ?? null,
+            $config["alg"] ?? "RS256",
         );
     }
     /** Where the hosted screen may continue after sign-in (issuer-relative): a pending authorization, nothing else. */

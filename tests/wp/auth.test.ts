@@ -84,6 +84,32 @@ test("PKCE sign-in yields a Bearer that works on /zero/v1; refresh rotates and r
   assert.deepEqual([after.status, after.json.code], [401, "unauthenticated"], "reuse revoked the family on /zero/v1 too");
 });
 
+test("an opted-in host's identity cookie works on /zero/v1 from its own pages only", async () => {
+  const host = await member("host-cookie");
+  const signin = await fetch(`${site}/wp-json/zero-identity/v1/sign-in/password`, {
+    method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ login: host.email, password: host.password }),
+  });
+  const cookie = signin.headers.getSetCookie().find((c) => c.startsWith("zi_session="))!.split(";")[0];
+  const me = (headers: Record<string, string> = {}) => fetch(`${api}/me`, { headers: { cookie, ...headers } });
+  assert.equal((await (await me()).json()).data, null, "cookies are off on /zero/v1 unless the host opts in");
+  wp("option", "update", "zero_test_rest_cookie_auth", "1");
+  try {
+    const own = await me({ origin: site });
+    assert.equal((await own.json()).data.id, host.id, "a same-origin request is the signed-in member");
+    assert.match(own.headers.get("cache-control") ?? "", /no-store|no-cache/, "a cookie-authenticated answer is never shared");
+    assert.equal((await (await me()).json()).data.id, host.id, "a navigation or same-origin GET without Origin too");
+    assert.equal((await (await me({ origin: "https://sibling.example.test" })).json()).data, null, "another origin borrows no identity");
+    assert.equal((await (await me({ "sec-fetch-site": "cross-site" })).json()).data, null, "nor does a cross-site fetch");
+    const write = (headers: Record<string, string>) =>
+      fetch(`${api}/reviews`, { method: "POST", headers: { cookie, "content-type": "application/json", ...headers }, body: JSON.stringify({ body: `cookie ${run}` }) });
+    assert.equal((await write({ origin: site })).status, 201, "the app's own pages write as the member");
+    const forged = await write({});
+    assert.deepEqual([forged.status, (await forged.json()).code], [403, "invalid_csrf"], "a write without Origin needs the session's CSRF token");
+  } finally {
+    wp("option", "delete", "zero_test_rest_cookie_auth");
+  }
+});
+
 test("guests: created on first write, below subscriber, upgraded in place with the same id", async () => {
   const zero = createClient({ url: api, auth: { guests: true } });
   const entry: any = await (zero as any).guestbook.create({ message: `hello ${run}` });

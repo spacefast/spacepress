@@ -193,7 +193,7 @@ final class Api
                 $this->field($r, "code", 12),
             );
             $current = $this->sessions->find(
-                (string) ($_COOKIE[Sessions::COOKIE] ?? ""),
+                (string) ($_COOKIE[Sessions::cookieName()] ?? ""),
             );
             return $this->login(
                 $this->accounts->verifiedSignIn($c["payload"]["email"], $current),

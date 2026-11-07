@@ -4234,7 +4234,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
             if let ExprKind::Ident(name) = &callee.kind
-                && matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp" | "URL" | "URLSearchParams")
+                && matches!(
+                    name.as_str(),
+                    "Set" | "Map" | "Date" | "RegExp" | "URL" | "URLSearchParams"
+                )
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
                 if name == "Date" {
@@ -4370,7 +4373,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn typed_url(&mut self, url: bool, args: &[ArrEl], span: Span) -> Result<Out> {
         let mut argv = Vec::new();
         for (i, a) in args.iter().enumerate() {
-            let ArrEl::Item(x) = a else { return err(span, "spread arguments aren't supported here") };
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
             let v = self.expr(x)?;
             let v = self.finish_value(v, x.span)?;
             let ok = if url {
@@ -4396,7 +4401,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if !ok {
                 return err_help(
                     x.span,
-                    format!("`new {}` doesn't take {}", if url { "URL" } else { "URLSearchParams" }, v.ty.describe()),
+                    format!(
+                        "`new {}` doesn't take {}",
+                        if url { "URL" } else { "URLSearchParams" },
+                        v.ty.describe()
+                    ),
                     if url {
                         "pass a string or URL"
                     } else {
@@ -4420,14 +4429,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let r = recv.wrapped();
         let mut strs = Vec::new();
         for a in args {
-            let ArrEl::Item(x) = a else { return err(span, "spread arguments aren't supported here") };
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
             if m == "forEach" {
                 break;
             }
             let v = self.expr(x)?;
             let v = self.finish_value(v, x.span)?;
             if !v.ty.is_str() {
-                return err_help(x.span, format!("`{m}` needs strings, not {}", v.ty.describe()), "convert with String(...)");
+                return err_help(
+                    x.span,
+                    format!("`{m}` needs strings, not {}", v.ty.describe()),
+                    "convert with String(...)",
+                );
             }
             strs.push(v.php);
         }

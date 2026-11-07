@@ -240,6 +240,14 @@ Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\Js
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
 
+## whatwg-url
+
+Status: **supported**.
+
+`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce the same href and components as Node 22, and invalid input throws TypeError. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named Zero classes.
+
+[Evidence](../tests/compiler_contracts.rs) (`url_vectors_agree_in_node_and_generated_php`)
+
 ## builtin-overloads
 
 Status: **supported**.

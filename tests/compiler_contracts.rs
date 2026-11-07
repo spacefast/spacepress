@@ -332,7 +332,13 @@ export default defineConfig({ name: "url", actions: { probe: action({ input: {},
     );
     let parsed = &expected[0];
     let got: Value = result;
-    for (i, (want, have)) in parsed.as_array().unwrap().iter().zip(got[0].as_array().unwrap()).enumerate() {
+    for (i, (want, have)) in parsed
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(got[0].as_array().unwrap())
+        .enumerate()
+    {
         assert_eq!(want, have, "WPT urltestdata case {i}");
     }
     assert_eq!(got, expected);

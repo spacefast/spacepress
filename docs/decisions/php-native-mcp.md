@@ -73,20 +73,21 @@ samples are in [php-native-mcp.json](../benchmarks/php-native-mcp.json).
 
 | Metric | Before | After |
 | --- | ---: | ---: |
-| HTTP ms | 133.723 (131.494–141.367) | 40.837 (40.446–41.553) |
-| PHP ms | 129.077 (127.219–136.517) | 37.167 (36.340–37.566) |
-| Peak used bytes | 74,396,488 | 37,568,320 |
+| HTTP ms | 132.698 (132.355–135.241) | 41.948 (40.920–42.171) |
+| PHP ms | 128.333 (127.555–129.921) | 37.920 (37.122–38.240) |
+| Peak used bytes | 74,398,992 | 37,570,824 |
 | Peak allocated bytes | 75,497,472 | 44,040,192 |
 | Included files | 1,134 | 1,127 |
 
-HTTP reduction is `(133.723067 - 40.836618) / 133.723067 × 100 = 69.46%`.
-Peak used reduction is `74,396,488 - 37,568,320 = 36,828,168` bytes, or
+HTTP reduction is `(132.698337 - 41.947936) / 132.698337 × 100 = 68.39%`.
+Peak used reduction is `74,398,992 - 37,570,824 = 36,828,168` bytes, or
 `36,828,168 / 1,048,576 = 35.12 MiB`. Allocator reduction is
 `(75,497,472 - 44,040,192) / 1,048,576 = 30 MiB`. This is warm request latency,
 not cold startup, throughput, or a comparison against 0.8. On the shared host,
-`nproc` reports 24 logical CPUs; one-minute load was 2.48 before and 2.97 after.
-A local Rust test compilation overlapped part of the run. Alternation limits
-drift, but does not isolate the host. The phase ranges remain clearly separated.
+`nproc` reports 24 logical CPUs; one-minute load was 2.69 during and 2.96 after.
+No local compilation or verification overlapped the refreshed run, which includes
+the duplicate-precedence correction. Other agents remained running. Alternation
+limits drift but does not isolate the host; the phase ranges remain separated.
 
 Reproduce by building a fresh fixture as in `tests/wp/run.sh`, staging its
 wp-content to a stable directory, and starting a uniquely named harness. Snapshot

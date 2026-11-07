@@ -131,14 +131,14 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.env.NAME` | `env("NAME")`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables; a name 0.8 left unset may now resolve to a host constant |
 | `ctx.log.info/warn/error/debug` | `console.*` to the PHP error log | Auto | — |
 | `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
-| `ctx.email.send` | [services](services.md) forms and queued mail | Refused | **Gap**: no free-form send from a handler |
+| `ctx.email.send` | `mail.send` from `"zero"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `zero_mail_transport` to the Space sender (#5063) |
 | `ctx.spam.check/reportSpam/reportHam` | **missing** | Refused | **Gap** |
 | `ctx.gravatar` | **missing** | Refused | **Gap** (small: an HTTP GET with the email hash) |
-| `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `signature` on actions and routes covers inbound webhooks | Refused | **Gap**: no hashing builtins in handlers |
+| `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `crypto` from `"zero"` (#132), byte for byte 0.8's output | Auto once #132 lands | — |
 | `ctx.jwt.sign` | **missing** | Refused | **Gap** |
 | `ctx.storage.list/get/delete` | [files](config-api.md#files) buckets | Refused | Port to file buckets |
 | `ctx.connectors.<role>.<tool>()` | **missing** | Refused | **Gap** (needs the connector broker in PHP) |
-| `fetch()` in actions | **missing** in compiled handlers | Compile refusal | **Gap**: no outbound HTTP builtin |
+| `fetch()` in actions | `fetch` from `"zero"` (#131): HTTPS only, private and special-purpose addresses refused after every redirect, 10 s, 1 MiB | Auto once #131 lands | — |
 
 ### HTTP
 
@@ -150,7 +150,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `request.url`, `bytes()`, `arrayBuffer()`, `headers.entries` | **missing** on `RouteRequest` | Refused with pointer | Port |
 | `HEAD`, `OPTIONS` endpoints | GET answers HEAD; **missing** OPTIONS | Refused | Port |
 | `:param` segments | `:param` | Auto, **WP** | — |
-| `*rest` catch-all segments | **missing** | Refused | **Gap** |
+| `*rest` catch-all segments | `*rest` (#134): one or more decoded segments joined with `/` | Auto, **WP** | — |
 | A writing `GET` (`readOnly: false`) | **missing** by design: GET routes take cookies without a nonce | Refused | Move to POST |
 | Paths under `wp-*`, `feed`, `auth`, `__zero`, … | Owned by WordPress or Zero | Refused | Move the endpoint |
 | `ImageResponse` | **missing** (PHP has no JSX renderer) | Refused | Pre-render the image |
@@ -192,16 +192,11 @@ Each gap below is a missing v2 runtime feature, not converter work. They are
 ordered by how many 0.8 capsules need them, roughly. Each one goes in its own
 PR stacked on #118, implemented in PHP:
 
-1. **Outbound HTTP in handlers** (`fetch` in actions; connectors build on it).
-   A `Zero\Http` builtin over `wp_remote_request`, with timeouts and an allow
-   list. Medium size.
-2. **Hashing builtins** (`ctx.crypto`): SHA-256, HMAC-SHA-256 and a constant-time
-   compare are a few lines each over `hash`, `hash_hmac` and `hash_equals`.
-   Small, but it needs compiler builtins and `types/zero` declarations.
-3. **Free-form email from handlers** (`ctx.email.send`). The services outbox
-   exists; a handler API onto it is medium size.
-4. **Catch-all route segments** (`*rest`). Small in `App::matchRoute`, with
-   matching type and conflict rules.
+1. **Outbound HTTP in handlers** (`fetch`): done in #131.
+2. **Hashing builtins** (`ctx.crypto`): done in #132.
+3. **Free-form email from handlers** (`ctx.email.send`): done in #133. The
+   Spacefast engine still has to connect its sender (see #133).
+4. **Catch-all route segments** (`*rest`): done in #134.
 5. **`RouteRequest.url` and raw bytes**. Small, but the route request belongs to
    #129, so it is left to that PR.
 6. **Gravatar, spam and JWT services**. Each is small to medium. Spam needs a
@@ -210,9 +205,8 @@ PR stacked on #118, implemented in PHP:
 8. **Kit, charts and the context editor** for pages. Large and product-shaped,
    so they are not converter work.
 
-None of these is implemented on this branch. Each touches the compiler's builtins
-and `types/zero` as well as PHP, so each needs its own design-sized PR rather
-than a tail on the converter.
+Items 1–4 each have their own PR. The converter maps the 0.8 calls once those
+land; the rest remain open.
 
 ## Executable evidence
 

@@ -365,6 +365,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "DELETE /api/notes/:id",
             "GET /go/home",
             "GET /api/tags",
+            "GET /api/files/*path",
             "GET /api/total"
         ]
     );
@@ -374,7 +375,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
         &root,
         r#"{endpoints:{
           head:endpoint({method:"HEAD",path:"/x"},()=>text("")),
-          rest:endpoint({method:"GET",path:"/files/*rest"},()=>text("")),
+          rest:endpoint({method:"GET",path:"/*rest"},()=>text("")),
           admin:endpoint({method:"GET",path:"/wp-admin/x"},()=>text("")),
           root:endpoint({method:"GET",path:"/"},()=>text("")),
           hit:endpoint({method:"GET",path:"/hit",readOnly:false},()=>text("")),

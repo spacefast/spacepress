@@ -704,7 +704,15 @@ pub(super) fn app(
                 let shape = route
                     .path
                     .split('/')
-                    .map(|s| if s.starts_with(':') { ":" } else { s })
+                    .map(|s| {
+                        if s.starts_with(':') {
+                            ":"
+                        } else if s.starts_with('*') {
+                            "*"
+                        } else {
+                            s
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join("/");
                 if !seen.insert((route.method.clone(), shape)) {
@@ -1197,7 +1205,7 @@ fn endpoint(
         params: route
             .path
             .split('/')
-            .filter_map(|s| s.strip_prefix(':').map(str::to_owned))
+            .filter_map(|s| s.strip_prefix(':').or_else(|| s.strip_prefix('*')).map(str::to_owned))
             .collect(),
         logs: false,
         helpers: vec![],

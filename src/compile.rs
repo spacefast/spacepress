@@ -4310,6 +4310,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let url_expr = self.arg(args, 0, span, "a URL")?;
+        let host = static_host(url_expr);
+        self.uses("http", host.clone().unwrap_or_else(|| "*".into()), url_expr.span);
         let url = self.expr(url_expr)?;
         let url = self.finish_value(url, url_expr.span)?;
         if !url.ty.is_str() || url.ty.is_nullable() {
@@ -4342,8 +4344,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 init.php
             }
         };
+        // A plugin's fetches are checked against its locked hosts on every hop, so a runtime-built
+        // URL or a redirect can't leave the grant. A lock holding `*` allows any public host.
+        let hosts = match &self.plugin {
+            Some((_, name)) => self.hosts.get(name).cloned().flatten(),
+            None => None,
+        };
+        let allow = match hosts {
+            Some(hosts) => format!(
+                ", [{}]",
+                hosts.iter().map(|h| php_str(h)).collect::<Vec<_>>().join(", ")
+            ),
+            None => String::new(),
+        };
         Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({}, {init})", url.php),
+            format!("\\Zero\\Fetch::call({}, {init}{allow})", url.php),
             Ty::Promise(Box::new(types::fetch_response())),
         ))
     }
@@ -4417,6 +4432,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             argv.push(v.php);
         }
+        if name == "hmacSha256"
+            && let Some(ArrEl::Item(Expr { kind: ExprKind::Object(props), .. })) = args.first()
+        {
+            for p in props {
+                if let Prop::KV(PropKey::Static(k), v) = p
+                    && k == "key"
+                {
+                    match &v.kind {
+                        ExprKind::Str(var) => self.uses("env", var.clone(), v.span),
+                        ExprKind::Object(_) => {}
+                        _ => self.uses("env", "*", v.span),
+                    }
+                }
+            }
+        } else if name == "hmacSha256" {
+            self.uses("env", "*", span);
+        }
         Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
     }
 
@@ -4489,6 +4521,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "addresses are strings or { email, name? }; to/cc/bcc may be lists",
             );
         }
+        self.uses("mail", "send", span);
         Ok(Out::atom(
             format!("\\Zero\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
@@ -4532,6 +4565,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn enqueue_call(&mut self, job: &str, job_span: Span, args: &[ArrEl], span: Span) -> Result<Out> {
+        // Inside a plugin, `jobs.<name>` names the plugin's own job.
+        let registered = match &self.plugin {
+            Some((_, plugin)) => format!("{plugin}_{job}"),
+            None => job.to_string(),
+        };
+        let job = registered.as_str();
+        self.uses("jobs", job, job_span);
         let Some(spec) = self.schema.jobs.get(job) else {
             let mut d = Diag::new(job_span, format!("unknown job `{job}`"));
             if let Some(s) = suggest(job, self.schema.jobs.keys().map(String::as_str)) {
@@ -6155,6 +6195,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         Ok(v.php)
     }
+}
+
+/// The host of a URL whose `https://host/` prefix is written in the source: a string, a template
+/// or a `+` chain starting with one. Anything else is built at runtime.
+fn static_host(e: &Expr) -> Option<String> {
+    let complete = matches!(e.kind, ExprKind::Str(_));
+    let prefix = match &e.kind {
+        ExprKind::Str(s) => s.clone(),
+        ExprKind::Template(quasis, _) => quasis.first()?.clone(),
+        ExprKind::Binary(BinOp::Add, left, _) => {
+            let mut left = left;
+            while let ExprKind::Binary(BinOp::Add, l, _) = &left.kind {
+                left = l;
+            }
+            match &left.kind {
+                ExprKind::Str(s) => s.clone(),
+                ExprKind::Template(quasis, _) => quasis.first()?.clone(),
+                _ => return None,
+            }
+        }
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => return static_host(inner),
+        _ => return None,
+    };
+    let rest = prefix.get(..8).filter(|p| p.eq_ignore_ascii_case("https://")).map(|_| &prefix[8..])?;
+    let end = rest.find(['/', '?', '#']).or(complete.then_some(rest.len()))?;
+    let authority = &rest[..end];
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    let host = authority.rsplit_once(':').filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit())).map_or(authority, |(h, _)| h);
+    Some(host.trim_end_matches('.').to_ascii_lowercase())
 }
 
 const FILTER_OPS: &[&str] = &[

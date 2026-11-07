@@ -269,6 +269,11 @@ def render_types(catalog):
         else:
             lines += [f"  readonly {k}: {t};" for k, t in fields.items()]
         lines.append("}")
+    for name, f in catalog["functions"].items():
+        params = ", ".join(f"{p['name']}: {p['type']}" for p in f["params"])
+        throws = " Throws an HttpError when WordPress returns a WP_Error." if f["wpError"] else ""
+        lines.append(f"/** WordPress `{name}()`.{throws} */")
+        lines.append(f"export declare function {name}({params}): {f['returns']};")
     lines.append("/** The WordPress hooks `wp-hooks/` accepts: kind and arguments, from core's docblocks. */")
     lines.append("export interface Hooks {")
     for name, h in catalog["hooks"].items():

@@ -19,7 +19,7 @@ final class Functions
     /** @param list<mixed> $args the author's arguments, then the catalog's fixed ones */
     public static function call(string $function, array $args): mixed
     {
-        $result = $function(...array_map(self::toPhp(...), $args));
+        $result = self::tracked(static fn () => $function(...array_map(self::toPhp(...), $args)));
         if ($result instanceof \WP_Error) {
             // The error's own status when it carries one; otherwise WordPress refused the input.
             $data = $result->get_error_data();
@@ -29,6 +29,36 @@ final class Functions
         $plugin = Runtime::plugin();
 
         return Hooks::toJs($result, $plugin?->schema->wpViews() ?? []);
+    }
+
+    /**
+     * Inside a Zero transaction, a core write rolls back with the handler, but WordPress's object
+     * cache does not: record every option and post the call writes so a rollback cleans them.
+     */
+    private static function tracked(\Closure $call): mixed
+    {
+        $connection = Runtime::plugin()?->connection();
+        if ($connection === null || !$connection->inTransaction()) {
+            return $call();
+        }
+        $option = static function (string $name) use ($connection): void {
+            $connection->touchOption($name);
+        };
+        $post = static function (int $id) use ($connection): void {
+            $connection->touchPost($id);
+        };
+        $hooks = [['added_option', $option], ['updated_option', $option], ['deleted_option', $option],
+            ['wp_insert_post', $post], ['clean_post_cache', $post]];
+        foreach ($hooks as [$hook, $fn]) {
+            add_action($hook, $fn, PHP_INT_MIN, 1);
+        }
+        try {
+            return $call();
+        } finally {
+            foreach ($hooks as [$hook, $fn]) {
+                remove_action($hook, $fn, PHP_INT_MIN);
+            }
+        }
     }
 
     private static function toPhp(mixed $value): mixed

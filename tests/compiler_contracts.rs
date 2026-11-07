@@ -2331,3 +2331,55 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
         })
     );
 }
+
+/// WordPress functions from "php/wordpress" on an in-process WordPress, through the built plugin:
+/// the action runs as the signed-in user, writes an option and a post, reads the post back as a
+/// typed view, and a WP_Error from wp_insert_post is a thrown HttpError.
+#[test]
+fn wordpress_functions_run_as_the_signed_in_user() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("fns");
+    copy_dir(&root().join("tests/fixtures/wp-functions"), &project);
+    let content = build_wp(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $run = function (string $title, ?string $as) use ($wp) {
+                [$status, $data] = $wp->call('POST', '/actions/note', ['title' => $title], $as);
+                return [$status, $data];
+            };
+            echo json_encode([
+                'editor' => $run('Fish & <chips>', 'editor'),
+                'subscriber' => $run('Nope', 'subscriber'),
+                'empty' => $run('', 'editor'),
+                'option' => get_option('zero_last_note'),
+            ]), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let got: Value = serde_json::from_str(text.lines().next_back().unwrap()).unwrap();
+    let editor = &got["editor"][1];
+    assert_eq!(got["editor"][0], 200, "{got}");
+    assert_eq!(editor["allowed"], true);
+    assert!(editor["id"].as_i64().unwrap() > 0);
+    assert_eq!(editor["title"], "Fish &amp; &lt;chips&gt;");
+    assert_eq!(editor["last"], "Fish & <chips>");
+    assert_eq!(got["subscriber"], json!([200, {"allowed": false}]));
+    // An empty post is WordPress's `empty_content` WP_Error: 422 with its code; the option written
+    // before it rolled back with the action's transaction.
+    assert_eq!(got["empty"][0], 422);
+    assert_eq!(got["empty"][1]["code"], "empty_content");
+    assert_eq!(got["option"], "Fish & <chips>");
+}

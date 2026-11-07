@@ -317,7 +317,7 @@ impl Compiler<'_, '_> {
                 v.php
             }
         };
-        Ok(Some(Out::atom(format!("new \\Zero\\{class}({init})"), Ty::Host(ty))))
+        Ok(Some(Out::atom(format!("(new \\Zero\\{class}({init}))"), Ty::Host(ty))))
     }
 
     /// `fetch(url, init?)`, the standard signature, → `Promise<Response>`.

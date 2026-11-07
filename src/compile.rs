@@ -161,13 +161,20 @@ struct AssignmentPlace {
 struct WriteTarget {
     receiver: String,
     key: String,
-    array: bool,
-    dynamic: bool,
+    kind: WriteKind,
+}
+
+enum WriteKind {
+    Object,
+    NativeObject,
+    Array,
+    Dynamic,
 }
 
 enum CapturedPlace {
     Binding(String),
     Object { receiver: String, key: String },
+    NativeObject { receiver: String, key: String },
     Array { receiver: String, key: String },
     Dynamic { receiver: String, key: String },
 }
@@ -218,6 +225,8 @@ struct Local {
     mutable: bool,
     binding: Span,
     view: Vec<effects::Step>,
+    /// A PHP JsObject parameter whose binding is never replaced, including by captures.
+    native_object: bool,
     initialized: bool,
 }
 
@@ -820,6 +829,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
                     let hint = php_hint(&t);
+                    if hint == "\\Zero\\JsObject "
+                        && matches!(t, Ty::Obj(_) | Ty::Map(_))
+                        && p.default.is_none()
+                        && !self.effects.binding_reassigned(p.pat.span())
+                    {
+                        let Pat::Id(name, _) = &p.pat else { unreachable!() };
+                        self.fx()
+                            .scopes
+                            .last_mut()
+                            .expect("scope")
+                            .get_mut(name)
+                            .expect("parameter")
+                            .native_object = true;
+                    }
                     params_php.push(format!("{hint}{php}{default}"));
                 }
                 pat => {
@@ -924,6 +947,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 mutable,
                 binding,
                 view: Vec::new(),
+                native_object: false,
                 initialized: true,
             },
         );
@@ -2129,6 +2153,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    fn native_object_receiver(&self, e: &Expr) -> bool {
+        matches!(&e.kind, ExprKind::Ident(name) if self.scope_local(name).is_some_and(|local| local.native_object))
+    }
+
     /// The type a path had before any narrowing in the current branch stack (outermost entry).
     fn declared_path_ty(&self, name: &str) -> Option<Ty> {
         self.fx
@@ -2185,6 +2213,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         mutable: false,
                         binding,
                         view,
+                        native_object: false,
                         initialized: true,
                     },
                 );
@@ -3327,7 +3356,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let place = self.place(target)?;
         if op.is_none()
             && !statement
-            && let Some(target) = place.target
+            && let Some(target) = place.target.as_ref()
+            && !matches!(target.kind, WriteKind::NativeObject)
         {
             let v = self.expr(value)?;
             let v = self.finish_value(v, value.span)?;
@@ -3344,12 +3374,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(Out::atom(
                 format!(
                     "\\Zero\\Js::{}({}, {}, {})",
-                    if target.dynamic {
-                        "dynamicSet"
-                    } else if target.array {
-                        "setAt"
-                    } else {
-                        "set"
+                    match target.kind {
+                        WriteKind::Dynamic => "dynamicSet",
+                        WriteKind::Array => "setAt",
+                        WriteKind::Object => "set",
+                        WriteKind::NativeObject => unreachable!(),
                     },
                     target.receiver,
                     target.key,
@@ -3365,7 +3394,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let present = if matches!(op, AssignOp::Bin(_)) {
                 match &write {
                     CapturedPlace::Binding(_) | CapturedPlace::Dynamic { .. } => None,
-                    CapturedPlace::Array { receiver, key } | CapturedPlace::Object { receiver, key } => {
+                    CapturedPlace::Array { receiver, key }
+                    | CapturedPlace::Object { receiver, key }
+                    | CapturedPlace::NativeObject { receiver, key } => {
                         let present = self.tmp_var();
                         steps.push(format!("{present} = \\Zero\\Js::has({receiver}, {key})"));
                         Some(present)
@@ -3471,18 +3502,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("{receiver} = {}", target.receiver),
                     format!("{key} = {}", target.key),
                 ];
-                let getter = if target.dynamic || target.array {
-                    "dynamicGet"
-                } else {
-                    "dataGet"
+                let read = match target.kind {
+                    WriteKind::Dynamic | WriteKind::Array => format!("\\Zero\\Js::dynamicGet({receiver}, {key})"),
+                    // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
+                    WriteKind::NativeObject => {
+                        format!("({receiver}->p[{key}] ?? \\Zero\\Js::dataGet({receiver}, {key}))")
+                    }
+                    WriteKind::Object => format!("\\Zero\\Js::dataGet({receiver}, {key})"),
                 };
-                let read = format!("\\Zero\\Js::{getter}({receiver}, {key})");
-                let write = if target.dynamic {
-                    CapturedPlace::Dynamic { receiver, key }
-                } else if target.array {
-                    CapturedPlace::Array { receiver, key }
-                } else {
-                    CapturedPlace::Object { receiver, key }
+                let write = match target.kind {
+                    WriteKind::Dynamic => CapturedPlace::Dynamic { receiver, key },
+                    WriteKind::Array => CapturedPlace::Array { receiver, key },
+                    WriteKind::NativeObject => CapturedPlace::NativeObject { receiver, key },
+                    WriteKind::Object => CapturedPlace::Object { receiver, key },
                 };
                 (steps, read, write)
             }
@@ -3493,6 +3525,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match write {
             CapturedPlace::Binding(binding) => format!("({binding} = {value})"),
             CapturedPlace::Object { receiver, key } => format!("\\Zero\\Js::set({receiver}, {key}, {value})"),
+            CapturedPlace::NativeObject { receiver, key } => format!("({receiver}->p[{key}] = {value})"),
             CapturedPlace::Array { receiver, key } => format!("\\Zero\\Js::setAt({receiver}, {key}, {value})"),
             CapturedPlace::Dynamic { receiver, key } => format!("\\Zero\\Js::dynamicSet({receiver}, {key}, {value})"),
         }
@@ -3511,7 +3544,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             steps.push(format!("{old} = \\Zero\\Js::toNumber({old})"));
         }
         if property_number {
-            let (CapturedPlace::Array { receiver, key } | CapturedPlace::Object { receiver, key }) = &write else {
+            let (CapturedPlace::Array { receiver, key }
+            | CapturedPlace::Object { receiver, key }
+            | CapturedPlace::NativeObject { receiver, key }) = &write
+            else {
                 unreachable!()
             };
             steps.push(format!(
@@ -3606,8 +3642,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     target: Some(WriteTarget {
                         receiver: o.php,
                         key: php_str(prop),
-                        array: false,
-                        dynamic: false,
+                        kind: if self.native_object_receiver(obj) {
+                            WriteKind::NativeObject
+                        } else {
+                            WriteKind::Object
+                        },
                     }),
                 })
             }
@@ -3658,8 +3697,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     target: Some(WriteTarget {
                         receiver: o.php,
                         key,
-                        array,
-                        dynamic: false,
+                        kind: if array {
+                            WriteKind::Array
+                        } else if self.native_object_receiver(obj) {
+                            WriteKind::NativeObject
+                        } else {
+                            WriteKind::Object
+                        },
                     }),
                 })
             }
@@ -3684,6 +3728,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        let native_object = self.native_object_receiver(obj);
         // Namespaces: Math.PI etc.
         if let ExprKind::Ident(n) = &obj.kind
             && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
@@ -3835,7 +3880,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
-                let php = guarded(self, &|x| format!("\\Zero\\Js::dataGet({x}, {})", php_str(prop)));
+                let php = guarded(self, &|x| {
+                    if native_object && !map && !opt_field {
+                        // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
+                        format!("({x}->p[{0}] ?? \\Zero\\Js::dataGet({x}, {0}))", php_str(prop))
+                    } else {
+                        format!("\\Zero\\Js::dataGet({x}, {})", php_str(prop))
+                    }
+                });
                 let ft = if map || opt_field {
                     Ty::union([ft, Ty::Undefined])
                 } else {

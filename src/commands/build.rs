@@ -229,7 +229,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
             std::fs::remove_file(archive)?;
         }
     }
-    emit_generated(project, &migrations_dir(project), &plugins, built)?;
+    emit_generated(project, &migrations_dir(project), &plugins, built, true)?;
     let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);

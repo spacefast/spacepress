@@ -63,6 +63,8 @@ if "$wp/harness.sh" wp "${command[@]}" > "$app/conflict.json"; then
   echo 'Expected conflicting post ID to refuse migration' >&2; exit 1
 fi
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php rollback
+# The operator's backup of the target users, taken before the copy (restored by recover-subjects).
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php snapshot-users
 "$wp/harness.sh" wp "${command[@]}" > "$app/first.json"
 "$wp/harness.sh" wp "${command[@]}" --verify > "$app/verify.json"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php copied
@@ -105,9 +107,17 @@ from pathlib import Path
 p=Path(sys.argv[1])
 error=json.loads((p/'subjects.json').read_text())['error']
 assert error['code']=='zero_spacefast_subjects_missing' and error['pointer'].startswith('/users/'), error
+assert "delete the" in error['detail'] and "backup" in error['detail'] and "table_group 'users'" in error['detail'], error
 assert json.loads((p/'subjects-verify.json').read_text())['error']['groups']['users']['status']=='incomplete'
 CHECK
-"$wp/harness.sh" wp eval-file /tmp/spacefast.php restore-subject
+# The recovery the message names: the target users back as copied, the users receipt deleted, a rerun.
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php recover-subjects
+"$wp/harness.sh" wp "${command[@]}" > "$app/recovered.json" || { cat "$app/recovered.json" >&2; exit 1; }
+python3 - "$app/recovered.json" <<'CHECK'
+import json,sys
+groups=json.load(open(sys.argv[1]))['data']['groups']
+assert groups['users']['status']=='copied' and groups['users']['copied']>0, groups
+CHECK
 "$wp/harness.sh" wp "${command[@]}" --verify > /dev/null
 
 # Content edits invisible to counters drift content receipts; older counter receipts keep verifying.

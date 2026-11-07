@@ -164,8 +164,22 @@ impl Manifest {
             .collect()
     }
 
+    /// The server entry the published version declared (`sourceManifest.entries.server`).
+    pub(super) fn server_entry(&self) -> Option<&str> {
+        self.artifact
+            .get("sourceManifest")?
+            .get("entries")?
+            .get("server")?
+            .as_str()
+    }
+
     /// Refuses unless every recorded source file is present under `root` with its stored hash.
-    pub(super) fn verify(&self, fs: &dyn Fs, root: &Path) -> Result<(), Failure> {
+    /// Returns exactly those files, as read, so a conversion can see nothing the publish did not.
+    pub(super) fn verify(
+        &self,
+        fs: &dyn Fs,
+        root: &Path,
+    ) -> Result<std::collections::BTreeMap<String, String>, Failure> {
         let files = self.files();
         if files.is_empty() {
             return Err(fail(
@@ -174,6 +188,7 @@ impl Manifest {
             ));
         }
         let mut differing = vec![];
+        let mut verified = std::collections::BTreeMap::new();
         for (path, expected) in &files {
             let relative = Path::new(path);
             if relative.is_absolute()
@@ -186,15 +201,16 @@ impl Manifest {
                     format!("manifest source path {path:?} leaves the source root"),
                 ));
             }
-            let bytes = fs.read_to_string(&root.join(relative)).map(|t| t.into_bytes());
-            match bytes {
-                Ok(bytes) if hex(&Sha256::digest(&bytes)) == *expected => {}
+            match fs.read_to_string(&root.join(relative)) {
+                Ok(text) if hex(&Sha256::digest(text.as_bytes())) == *expected => {
+                    verified.insert(path.clone(), text);
+                }
                 Ok(_) => differing.push(format!("{path} (changed)")),
                 Err(_) => differing.push(format!("{path} (missing)")),
             }
         }
         if differing.is_empty() {
-            return Ok(());
+            return Ok(verified);
         }
         differing.truncate(5);
         Err(fail(

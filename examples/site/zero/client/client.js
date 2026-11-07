@@ -112,16 +112,15 @@ export const SCHEMA = {
 	],
 	"buckets": ["manuscripts"]
 };
-const TRANSPORT_KEY = "__zeroRealtimeTransport";
-/** For host scripts: every client created on this page (before or after) uses this transport by default. */
-export function registerRealtimeTransport(transport) {
-	globalThis[TRANSPORT_KEY] = transport;
-	for (const wake of transportWaiters) wake();
+function registry() {
+	const g = globalThis;
+	return g.__zeroRealtime ??= { waiters: new Set() };
 }
-const transportWaiters = new Set();
-function registeredTransport() {
-	const t = globalThis[TRANSPORT_KEY];
-	return typeof t === "object" && t !== null && typeof t.connect === "function" ? t : undefined;
+/** For host scripts: every client on this page, created before or after, uses this transport by default. */
+export function registerRealtimeTransport(transport) {
+	const r = registry();
+	r.transport = transport;
+	for (const wake of [...r.waiters]) wake();
 }
 /** Thrown for every non-2xx response; the fields are the problem document. Network failures: status 0, code "network". */
 export class ZeroError extends Error {
@@ -600,9 +599,9 @@ export function createClient(options = {}) {
 	};
 	const connect = () => {
 		if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;
-		const transport = rtOpts.transport ?? registeredTransport();
-		if (!transport) return;
-		transportWaiters.delete(connect);
+		const transport = rtOpts.transport ?? registry().transport;
+		if (!transport || typeof transport.connect !== "function") return;
+		registry().waiters.delete(connect);
 		let current = true;
 		const stop = transport.connect((notice) => {
 			if (current && isObject(notice) && Array.isArray(notice.changes)) dispatch(notice);
@@ -626,13 +625,13 @@ export function createClient(options = {}) {
 			onChange
 		};
 		listeners.add(entry);
-		transportWaiters.add(connect);
+		registry().waiters.add(connect);
 		connect();
 		syncPolling();
 		return () => {
 			listeners.delete(entry);
 			if (listeners.size === 0) {
-				transportWaiters.delete(connect);
+				registry().waiters.delete(connect);
 				disconnect?.();
 				disconnect = null;
 			}
@@ -646,38 +645,7 @@ export function createClient(options = {}) {
 		const list = (q) => request("GET", path, { query: listParams(q) });
 		return {
 			list,
-			watch(q, onRows, onError) {
-				// Coalesced: one read in flight; changes during it schedule exactly one more.
-				let stopped = false;
-				let running = false;
-				let again = false;
-				const refresh = async () => {
-					if (running) {
-						again = true;
-						return;
-					}
-					running = true;
-					try {
-						do {
-							again = false;
-							try {
-								const rows = await list(q);
-								if (!stopped) onRows(rows);
-							} catch (e) {
-								if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
-							}
-						} while (again && !stopped);
-					} finally {
-						running = false;
-					}
-				};
-				const unsubscribe = realtime.subscribe(dependencies(key, q?.with), () => void refresh());
-				void refresh();
-				return () => {
-					stopped = true;
-					unsubscribe();
-				};
-			},
+			watch: (q, onRows, onError) => watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
 			get: (id, q) => request("GET", one(id), { query: listParams(q ? {
 				with: q.with,
 				locale: q.locale
@@ -724,7 +692,52 @@ export function createClient(options = {}) {
 		schema: () => request("GET", "/_schema")
 	};
 	for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key);
+	hubs.set(client, realtime);
 	return client;
+}
+const hubs = new WeakMap();
+/**
+* Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
+* transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
+* express: an action's result, a `get`, a global. Returns a function that stops watching.
+*/
+export function watch(client, collections, read, onResult, onError) {
+	const hub = hubs.get(client) ?? (() => {
+		throw new TypeError("watch() needs a client from createClient()");
+	})();
+	return watchWith(hub, collections, read, onResult, onError);
+}
+function watchWith(hub, collections, read, onResult, onError) {
+	// Coalesced: one read in flight; changes during it schedule exactly one more.
+	let stopped = false;
+	let running = false;
+	let again = false;
+	const refresh = async () => {
+		if (running) {
+			again = true;
+			return;
+		}
+		running = true;
+		try {
+			do {
+				again = false;
+				try {
+					const value = await read();
+					if (!stopped) onResult(value);
+				} catch (e) {
+					if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
+				}
+			} while (again && !stopped);
+		} finally {
+			running = false;
+		}
+	};
+	const unsubscribe = hub.subscribe(collections, () => void refresh());
+	void refresh();
+	return () => {
+		stopped = true;
+		unsubscribe();
+	};
 }
 /** The collection and every collection its `with` loads: a change to any of them refreshes the read. */
 function dependencies(key, w, seen = new Set()) {

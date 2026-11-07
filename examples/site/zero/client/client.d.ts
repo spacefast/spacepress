@@ -1438,7 +1438,7 @@ export interface RealtimeOptions {
 	/** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
 	pollMs?: number | false;
 }
-/** For host scripts: every client created on this page (before or after) uses this transport by default. */
+/** For host scripts: every client on this page, created before or after, uses this transport by default. */
 export declare function registerRealtimeTransport(transport: RealtimeTransport): void;
 export interface ClientOptions {
 	/** Base URL including the REST prefix: "https://x.test/wp-json/zero/v1". Default: `/wp-json/zero/v1` on the page's origin. */
@@ -1485,4 +1485,10 @@ export declare class ZeroError extends Error {
 	constructor(problem: Problem);
 }
 export declare function createClient(options?: ClientOptions): Client;
+/**
+* Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
+* transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
+* express: an action's result, a `get`, a global. Returns a function that stops watching.
+*/
+export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: ZeroError) => void): () => void;
 export {};

@@ -206,19 +206,24 @@ export interface RealtimeOptions {
   pollMs?: number | false;
 }
 
-const TRANSPORT_KEY = "__zeroRealtimeTransport";
-
-/** For host scripts: every client created on this page (before or after) uses this transport by default. */
-export function registerRealtimeTransport(transport: RealtimeTransport): void {
-  (globalThis as Record<string, unknown>)[TRANSPORT_KEY] = transport;
-  for (const wake of transportWaiters) wake();
+/**
+ * The page-wide registry, on `globalThis` so a host script and an app bundle that each carry their
+ * own copy of this client still meet.
+ */
+interface Registry {
+  transport?: RealtimeTransport;
+  waiters: Set<() => void>;
+}
+function registry(): Registry {
+  const g = globalThis as { __zeroRealtime?: Registry };
+  return (g.__zeroRealtime ??= { waiters: new Set() });
 }
 
-const transportWaiters = new Set<() => void>();
-
-function registeredTransport(): RealtimeTransport | undefined {
-  const t = (globalThis as Record<string, unknown>)[TRANSPORT_KEY];
-  return typeof t === "object" && t !== null && typeof (t as RealtimeTransport).connect === "function" ? (t as RealtimeTransport) : undefined;
+/** For host scripts: every client on this page, created before or after, uses this transport by default. */
+export function registerRealtimeTransport(transport: RealtimeTransport): void {
+  const r = registry();
+  r.transport = transport;
+  for (const wake of [...r.waiters]) wake();
 }
 
 export interface ClientOptions {
@@ -775,9 +780,9 @@ export function createClient(options: ClientOptions = {}): Client {
   };
   const connect = () => {
     if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;
-    const transport = rtOpts.transport ?? registeredTransport();
-    if (!transport) return;
-    transportWaiters.delete(connect);
+    const transport = rtOpts.transport ?? registry().transport;
+    if (!transport || typeof transport.connect !== "function") return;
+    registry().waiters.delete(connect);
     let current = true;
     const stop = transport.connect(
       (notice) => {
@@ -802,13 +807,13 @@ export function createClient(options: ClientOptions = {}): Client {
     subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void {
       const entry = { collections: new Set(collections), onChange };
       listeners.add(entry);
-      transportWaiters.add(connect);
+      registry().waiters.add(connect);
       connect();
       syncPolling();
       return () => {
         listeners.delete(entry);
         if (listeners.size === 0) {
-          transportWaiters.delete(connect);
+          registry().waiters.delete(connect);
           disconnect?.();
           disconnect = null;
         }

@@ -206,19 +206,24 @@ export interface RealtimeOptions {
   pollMs?: number | false;
 }
 
-const TRANSPORT_KEY = "__zeroRealtimeTransport";
-
-/** For host scripts: every client created on this page (before or after) uses this transport by default. */
-export function registerRealtimeTransport(transport: RealtimeTransport): void {
-  (globalThis as Record<string, unknown>)[TRANSPORT_KEY] = transport;
-  for (const wake of transportWaiters) wake();
+/**
+ * The page-wide registry, on `globalThis` so a host script and an app bundle that each carry their
+ * own copy of this client still meet.
+ */
+interface Registry {
+  transport?: RealtimeTransport;
+  waiters: Set<() => void>;
+}
+function registry(): Registry {
+  const g = globalThis as { __zeroRealtime?: Registry };
+  return (g.__zeroRealtime ??= { waiters: new Set() });
 }
 
-const transportWaiters = new Set<() => void>();
-
-function registeredTransport(): RealtimeTransport | undefined {
-  const t = (globalThis as Record<string, unknown>)[TRANSPORT_KEY];
-  return typeof t === "object" && t !== null && typeof (t as RealtimeTransport).connect === "function" ? (t as RealtimeTransport) : undefined;
+/** For host scripts: every client on this page, created before or after, uses this transport by default. */
+export function registerRealtimeTransport(transport: RealtimeTransport): void {
+  const r = registry();
+  r.transport = transport;
+  for (const wake of [...r.waiters]) wake();
 }
 
 export interface ClientOptions {
@@ -775,9 +780,9 @@ export function createClient(options: ClientOptions = {}): Client {
   };
   const connect = () => {
     if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;
-    const transport = rtOpts.transport ?? registeredTransport();
-    if (!transport) return;
-    transportWaiters.delete(connect);
+    const transport = rtOpts.transport ?? registry().transport;
+    if (!transport || typeof transport.connect !== "function") return;
+    registry().waiters.delete(connect);
     let current = true;
     const stop = transport.connect(
       (notice) => {
@@ -802,13 +807,13 @@ export function createClient(options: ClientOptions = {}): Client {
     subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void {
       const entry = { collections: new Set(collections), onChange };
       listeners.add(entry);
-      transportWaiters.add(connect);
+      registry().waiters.add(connect);
       connect();
       syncPolling();
       return () => {
         listeners.delete(entry);
         if (listeners.size === 0) {
-          transportWaiters.delete(connect);
+          registry().waiters.delete(connect);
           disconnect?.();
           disconnect = null;
         }
@@ -824,38 +829,8 @@ export function createClient(options: ClientOptions = {}): Client {
     const list = (q?: Json) => request("GET", path, { query: listParams(q) });
     return {
       list,
-      watch(q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: ZeroError) => void) {
-        // Coalesced: one read in flight; changes during it schedule exactly one more.
-        let stopped = false;
-        let running = false;
-        let again = false;
-        const refresh = async (): Promise<void> => {
-          if (running) {
-            again = true;
-            return;
-          }
-          running = true;
-          try {
-            do {
-              again = false;
-              try {
-                const rows = await list(q);
-                if (!stopped) onRows(rows);
-              } catch (e) {
-                if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
-              }
-            } while (again && !stopped);
-          } finally {
-            running = false;
-          }
-        };
-        const unsubscribe = realtime.subscribe(dependencies(key, q?.with), () => void refresh());
-        void refresh();
-        return () => {
-          stopped = true;
-          unsubscribe();
-        };
-      },
+      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: ZeroError) => void) =>
+        watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
       get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
       create: (data: unknown) => request("POST", path, { json: data }),
       update: (id: string | number, patch: unknown) => request("PATCH", one(id), { json: patch }),
@@ -912,7 +887,62 @@ export function createClient(options: ClientOptions = {}): Client {
     schema: () => request("GET", "/_schema"),
   };
   for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key as CollectionKey);
+  hubs.set(client, realtime);
   return client as unknown as Client;
+}
+
+type Hub = { subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void };
+const hubs = new WeakMap<object, Hub>();
+
+/**
+ * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
+ * transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
+ * express: an action's result, a `get`, a global. Returns a function that stops watching.
+ */
+export function watch<T>(
+  client: Client,
+  collections: readonly CollectionKey[],
+  read: () => Promise<T>,
+  onResult: (value: T) => void,
+  onError?: (error: ZeroError) => void,
+): () => void {
+  const hub = hubs.get(client) ?? (() => {
+    throw new TypeError("watch() needs a client from createClient()");
+  })();
+  return watchWith(hub, collections, read, onResult, onError);
+}
+
+function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: ZeroError) => void): () => void {
+  // Coalesced: one read in flight; changes during it schedule exactly one more.
+  let stopped = false;
+  let running = false;
+  let again = false;
+  const refresh = async (): Promise<void> => {
+    if (running) {
+      again = true;
+      return;
+    }
+    running = true;
+    try {
+      do {
+        again = false;
+        try {
+          const value = await read();
+          if (!stopped) onResult(value);
+        } catch (e) {
+          if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
+        }
+      } while (again && !stopped);
+    } finally {
+      running = false;
+    }
+  };
+  const unsubscribe = hub.subscribe(collections, () => void refresh());
+  void refresh();
+  return () => {
+    stopped = true;
+    unsubscribe();
+  };
 }
 
 /** The collection and every collection its `with` loads: a change to any of them refreshes the read. */

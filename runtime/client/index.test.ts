@@ -931,5 +931,18 @@ test("without a live transport, watch polls; a transport registered later is pic
   await new Promise((r) => setTimeout(r, 100));
   assert.ok(seen.length > atLive, "and resumes when the transport goes down");
   stop();
-  delete (globalThis as Record<string, unknown>).__zeroRealtimeTransport;
+
+  delete (globalThis as Record<string, unknown>).__zeroRealtime;
+
+  // A second copy of the client (a host script's) registers; this copy's watchers connect to it.
+  const other: any = await load(SCHEMA_TS);
+  const second = fakeTransport();
+  const stop2 = zero.posts.watch(undefined, () => {});
+  try {
+    other.registerRealtimeTransport(second);
+    assert.equal(second.connects, 1, "the registry is page-wide, not per module copy");
+  } finally {
+    stop2();
+    delete (globalThis as Record<string, unknown>).__zeroRealtime;
+  }
 });

@@ -64,6 +64,30 @@ Status: **supported**.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## delete-operator
+
+Status: **supported**.
+
+`delete obj.key`, `delete obj[key]` and `delete obj?.key` compile in typed code, imported JavaScript and configuration evaluation with strict-mode semantics. They return true, also for absent and inherited properties, and remove own object keys without reordering the rest. Non-configurable properties (array and string length, string indexes, regex lastIndex, class and function prototype, arguments callee, Math constants) throw JavaScript's TypeError; null and undefined receivers throw TypeError. Typed code may delete only optional properties and map entries, as TypeScript requires, so later reads stay sound.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## delete-required-property
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+TypeScript allows `delete` only on optional properties. Declare the property optional (`key?: T`) or build a new object without it.
+
+[Evidence](../tests/fixtures/reject-delete-required)
+
+## delete-array-element
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Zero arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead.
+
+[Evidence](../tests/fixtures/reject-delete-array-element)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

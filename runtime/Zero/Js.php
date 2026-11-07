@@ -1244,6 +1244,81 @@ final class Js
         return self::prototypeHas($prototype, $key);
     }
 
+    /**
+     * Compiled `delete object[key]` in strict mode (ECMAScript 13.5.1). Configurable properties
+     * are removed and the result is true, also when the property is absent. Removing an own
+     * object key keeps the order of the others. Deleting an array element would leave a hole and
+     * keep `length`; Zero arrays are dense, so an in-range index throws RangeError instead of
+     * silently changing `length` (use `splice`). Out-of-range indexes and named array properties
+     * are removed like object keys. Non-configurable properties (array and string `length` and
+     * string indexes, regex `lastIndex`, class and function `prototype`, arguments `callee`, Math
+     * constants) throw JavaScript's TypeError.
+     */
+    public static function delete(mixed $object, mixed $key): bool
+    {
+        if (self::isNullish($object)) { throw new JsError('Cannot convert undefined or null to object', 'TypeError'); }
+        $key = self::key($key);
+        $refuse = static function (string $where) use ($key): never {
+            throw new JsError("Cannot delete property '$key' of $where", 'TypeError');
+        };
+        $canonicalIndex = preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && (float) $key < 4294967295;
+        if ($object instanceof JsObject) {
+            if ($key === '__proto__' && !$object->nullPrototype && !array_key_exists($key, $object->p)) { return true; }
+            unset($object->p[$key]);
+            return true;
+        }
+        if ($object instanceof JsArray) {
+            if ($key === 'length') { $refuse('[object Array]'); }
+            if ($canonicalIndex) {
+                if ((int) $key < count($object->a)) {
+                    throw new JsError('Zero arrays are dense: delete cannot leave a hole; use splice to remove elements', 'RangeError');
+                }
+                return true;
+            }
+            unset($object->p[$key]);
+            return true;
+        }
+        if ($object instanceof JsArguments) {
+            if ($key === 'callee') { $refuse('#<Object>'); }
+            if ($key === 'length') { throw new JsError('Deleting arguments.length is not supported', 'TypeError'); }
+            if ($canonicalIndex) { unset($object->a[(int) $key]); return true; }
+            unset($object->p[$key]);
+            return true;
+        }
+        if (is_string($object)) {
+            if ($key === 'length' || $canonicalIndex && (int) $key < self::length($object)) { $refuse('[object String]'); }
+            return true;
+        }
+        if ($object instanceof JsClass) {
+            if ($key === 'prototype') { $refuse('class'); }
+            if (array_key_exists($key, $object->statics->p)) { unset($object->statics->p[$key]); return true; }
+            if ($object->hasStaticMethod($key)) { throw new JsError('Deleting class methods is not supported', 'TypeError'); }
+            return true;
+        }
+        if ($object instanceof RegExp && $key === 'lastIndex') { $refuse('[object RegExp]'); }
+        if ($object instanceof JsNamespace && in_array($key, ['E', 'LN10', 'LN2', 'LOG10E', 'LOG2E', 'PI', 'SQRT1_2', 'SQRT2'], true)) { $refuse('#<Object>'); }
+        if ($object instanceof \Closure && $key === 'prototype') { $refuse('function'); }
+        if ($object instanceof JsError && $key === 'message' && $object->hasMessage) {
+            throw new JsError('Deleting an Error message is not supported', 'TypeError');
+        }
+        // Other own properties of built-in values are not modeled as deletable; inherited ones are
+        // absent, so deleting them is a successful no-op as in JavaScript.
+        if (is_object($object) && !$object instanceof JsUndefined && Js::hasProperty($key, $object) && !self::prototypeProperty($object, $key)) {
+            throw new JsError('Deleting built-in properties is not supported', 'TypeError');
+        }
+        return true;
+    }
+
+    /** Whether a present key of a built-in value is inherited (so `delete` is a no-op). */
+    private static function prototypeProperty(object $object, string $key): bool
+    {
+        if ($object instanceof JsMap || $object instanceof JsSet || $object instanceof JsDate || $object instanceof \Closure && !in_array($key, ['length', 'name'], true)) { return true; }
+        if ($object instanceof JsNamespace) { return false; }
+        if ($object instanceof JsError) { return $key !== 'message'; }
+        if ($object instanceof RegExp) { return $key !== 'lastIndex'; }
+        return true;
+    }
+
     /** += needs the actual primitive types, including an absent old property. */
     public static function plus(mixed $a, mixed $b, bool $missing): mixed
     {

@@ -2379,6 +2379,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Bool,
                 )
             }
+            ExprKind::Delete(target) => self.delete(target, span)?,
             ExprKind::In(key, object) => {
                 let key = self.expr(key)?;
                 let key = self.finish_value(key, span)?;
@@ -3814,6 +3815,110 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::As(x, _) => self.place(x),
             _ => err(target.span, "can't assign to this"),
         }
+    }
+
+    /// `delete obj.key` / `delete obj[key]` / `delete obj?.key`. As in TypeScript, a typed object
+    /// may lose only an optional property (or a map entry), so later reads stay sound; arrays,
+    /// checked JavaScript and other receivers go through Js::delete's runtime semantics.
+    fn delete(&mut self, target: &Expr, span: Span) -> Result<Out> {
+        let (chain, inner) = match &target.kind {
+            ExprKind::Chain(inner) => {
+                check_optional_chain(inner)?;
+                (true, &**inner)
+            }
+            _ => (false, target),
+        };
+        let (obj, key, optional, prop) = match &inner.kind {
+            ExprKind::Member {
+                obj, prop, optional, ..
+            } => (obj, None, *optional, Some(prop.as_str())),
+            ExprKind::Index { obj, index, optional } => (obj, Some(index), *optional, None),
+            _ => return err(span, "`delete` needs an object property"),
+        };
+        if chain && !optional {
+            return err_help(
+                span,
+                "`delete` through an optional chain is supported only at its last step",
+                "check the earlier steps first",
+            );
+        }
+        let o = self.expr(obj)?;
+        let o = if matches!(o.ty, Ty::Class(_)) {
+            o
+        } else {
+            self.finish_value(o, obj.span)?
+        };
+        let key_php = match (key, prop) {
+            (Some(index), _) => {
+                let k = self.expr(index)?;
+                self.finish_value(k, index.span)?.php
+            }
+            (None, Some(prop)) => php_str(prop),
+            _ => unreachable!(),
+        };
+        let receiver_ty = self.argument_constraint(obj).unwrap_or(o.ty.clone());
+        if key.is_some()
+            && matches!(
+                receiver_ty.non_null(),
+                Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
+            )
+        {
+            return err_help(
+                span,
+                "`delete` on an array element would leave a hole; Zero arrays are dense",
+                "remove it with `splice(index, 1)`, or assign `undefined` to keep the length",
+            );
+        }
+        if let Some(prop) = prop.map(str::to_string).or_else(|| match key.map(|k| &k.kind) {
+            Some(ExprKind::Str(s)) => Some(s.clone()),
+            _ => None,
+        }) {
+            let required = |ty: &Ty| match ty {
+                Ty::Obj(fields) => fields.get(&prop).is_some_and(|(_, optional)| !optional),
+                Ty::Instance(_, fields) => {
+                    matches!(&**fields, Ty::Obj(f) if f.get(&prop).is_some_and(|(_, optional)| !optional))
+                }
+                _ => false,
+            };
+            let mut members = Vec::new();
+            match receiver_ty.non_null() {
+                Ty::Union(items) => members.extend(items),
+                other => members.push(other),
+            }
+            if members.iter().any(required) {
+                return err_help(
+                    span,
+                    format!("can't delete `{prop}`: the type requires it"),
+                    "make the property optional (`key?: T`), as TypeScript requires for `delete`",
+                );
+            }
+        } else if matches!(receiver_ty.non_null(), Ty::Obj(_) | Ty::Instance(..)) {
+            return err_help(
+                span,
+                "`delete` with a computed key needs an open map type",
+                "use Record<string, T>, or delete a named optional property",
+            );
+        }
+        if o.ty.is_nullable() && !optional {
+            return err_help(
+                span,
+                format!("can't delete from this: it might be null ({})", o.ty.describe()),
+                "check it first, or use `delete obj?.key`",
+            );
+        }
+        // Js::delete: strict-mode [[Delete]] on Zero's value model.
+        Ok(if optional {
+            let tmp = self.tmp_var();
+            Out::atom(
+                format!(
+                    "(\\Zero\\Js::isNullish({tmp} = {}) ? true : \\Zero\\Js::delete({tmp}, {key_php}))",
+                    o.php
+                ),
+                Ty::Bool,
+            )
+        } else {
+            Out::atom(format!("\\Zero\\Js::delete({}, {key_php})", o.php), Ty::Bool)
+        })
     }
 
     fn no_field(&self, t: &Ty, prop: &str, span: Span) -> Diag {

@@ -607,6 +607,7 @@ impl CommonJsScope {
                 }
             }
             ExprKind::Unary(_, value)
+            | ExprKind::Delete(value)
             | ExprKind::IsNullish(value, _)
             | ExprKind::Update { target: value, .. }
             | ExprKind::Member { obj: value, .. }

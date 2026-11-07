@@ -921,6 +921,16 @@ impl Graph {
                 self.history.entry(owner).or_default().insert(e.span);
                 return target;
             }
+            // `delete` writes its target place: the property becomes absent.
+            ExprKind::Delete(target) => {
+                if let Some(p) = self.expr(target, names, env, owner) {
+                    self.write_events.entry(e.span).or_default().insert(p.clone());
+                    self.function_writes.entry(owner).or_default().insert(p.clone());
+                    self.events.entry(e.span).or_default().insert(p);
+                }
+                self.history.entry(owner).or_default().insert(e.span);
+                return None;
+            }
             ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
                 let callee_value = self.expr(callee, names, env, owner);
                 let argv: Vec<_> = args

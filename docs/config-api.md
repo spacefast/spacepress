@@ -593,7 +593,7 @@ Fixed-length callback walks (`map`, `filter`, `forEach`, `some`, `every`,
 `reduce`, `flatMap`, `find*`) throw `RangeError` if they reach an index their
 callback removed. Shrinkage after the final visit or an early return is fine;
 growth is ignored by these walks. `for…of` and `Array.from(array, mapper)`
-read live length. Elisions, `new Array(n)`, `delete a[i]`, `a.length = n` and
+read live length. Elisions, `new Array(n)`, `delete a[i]` (use `splice`), `a.length = n` and
 non-numeric index types are compile errors.
 
 Explicit `undefined` has its own runtime value: `typeof undefined` gives
@@ -609,10 +609,12 @@ JavaScript's 32-bit semantics: ToInt32 operands, shift counts masked to five
 bits, and an unsigned result for `>>>`. `key in object` checks own properties,
 then the value's built-in prototype chain (class methods, array, function and
 error prototypes, `Object.prototype`), and narrows object unions like
-TypeScript.
+TypeScript. `delete obj.key` and `delete obj?.key` remove optional properties
+and map entries with strict-mode results: true for absent keys, a `TypeError`
+for non-configurable ones such as `length`.
 
 Rejected with a located error and a fix: `this` outside class methods or their
-arrows, `enum`, `delete`, generators,
+arrows, `enum`, generators,
 labels, getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),

@@ -95,6 +95,24 @@ final class Module
         }
     }
 
+    /**
+     * Scheduled promotion publishes rows without the write pipeline (no hooks, by design), so it
+     * reports here: each promoted row is an `update` of its collection.
+     *
+     * @param list<int|string> $pks
+     */
+    public static function promoted(string $collection, array $pks): void
+    {
+        $spec = db()->schema()->collections()[$collection] ?? null;
+        if ($spec === null) {
+            return;
+        }
+        $pk = $spec['primaryKey'] ?? 'id';
+        foreach ($pks as $id) {
+            self::written('update', $collection, [$pk => $id], null);
+        }
+    }
+
     /** The batch of the transaction that just committed. Public for hosts that drive their own commits. */
     public static function flush(): void
     {
@@ -122,8 +140,14 @@ final class Module
 
     private static function emit(array $notice): void
     {
+        // Listeners and publishers run after the commit: a failure in one is logged, never thrown
+        // back into a request whose write already succeeded (a retry would duplicate it).
         if (function_exists('do_action')) {
-            do_action(self::ACTION, $notice);
+            try {
+                do_action(self::ACTION, $notice);
+            } catch (\Throwable $e) {
+                error_log('[zero] a ' . self::ACTION . ' listener failed: ' . $e->getMessage());
+            }
         }
         foreach (self::$publishers as $publisher) {
             try {

@@ -114,6 +114,35 @@ $sent = [];
 $db->insert('comments', ['postId' => $post['id'], 'name' => 'hooked', 'body' => 'y']);
 check('zero_realtime_changes fires with the published notice', count($actions) === 1 && $actions[0] === $sent[0], ['actions' => $actions, 'sent' => $sent]);
 
+// A throwing zero_realtime_changes listener is logged, never thrown into the committed request.
+$sent = [];
+$throwing = static function (): void {
+    throw new \RuntimeException('listener down');
+};
+add_action(Realtime::ACTION, $throwing);
+$kept = $db->insert('comments', ['postId' => $post['id'], 'name' => 'listener', 'body' => 'still saved'], true)[0];
+remove_action(Realtime::ACTION, $throwing);
+check('a throwing listener does not fail the write', $db->findFirst('comments', ['where' => ['id' => $kept['id']]]) !== null);
+eq('publishers still run after a throwing listener', count($sent), 1);
+
+// Scheduled promotion runs no write hooks, yet announces the promoted rows. Posts here are
+// WordPress posts (WP cron promotes them, covered in tests/wp/rest.test.ts); a table-backed
+// drafts collection is promoted by Db::promoteDue.
+$status = ['type' => 'select', 'options' => ['draft', 'published', 'scheduled'], 'notNull' => true, 'default' => 'draft', 'system' => true];
+$notes = new \Zero\Schema(['version' => 3, 'runtime' => \Zero\Schema::SERIES, 'collections' => ['notes' => [
+    'key' => 'notes', 'primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'zero_rt_notes',
+    'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]],
+]]]);
+$wp->exec('CREATE TABLE {prefix}zero_rt_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+$wp->exec("INSERT INTO {prefix}zero_rt_notes (`status`, `publishedAt`) VALUES ('scheduled', '2026-01-02T00:00:00.000Z')");
+$notesDb = new \Zero\Db(\Zero\Wp\CompositeStore::create($notes, $db->store()->db), $notes, $db->media());
+$sent = [];
+putenv('ZERO_NOW=2026-01-03T00:00:00.000Z');
+$promotedIds = $notesDb->transaction(static fn () => $notesDb->promoteDue());
+putenv('ZERO_NOW');
+eq('the scheduled note was promoted', array_map(static fn ($ids) => array_map('intval', $ids), $promotedIds), ['notes' => [1]]);
+eq('promotion announces each promoted row as an update', array_map(static fn ($c) => [$c['collection'], $c['ops'], array_map('intval', $c['ids'] ?? [])], $sent[0]['changes'] ?? []), [['notes', ['update'], [1]]]);
+
 // A failing publisher never fails the write and never blocks the next one.
 Realtime::reset();
 $after = [];

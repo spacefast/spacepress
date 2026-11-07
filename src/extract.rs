@@ -32,6 +32,8 @@ pub struct Root {
     pub slot: Slot,
     /// Suggested PHP function name.
     pub name: String,
+    /// Index into `Extracted::plugins` when a plugin registered this function.
+    pub plugin: Option<usize>,
 }
 
 pub struct Extracted {
@@ -42,6 +44,8 @@ pub struct Extracted {
     /// Non-fatal advice printed by `zero build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
     pub plugins: Option<crate::wp_plugins::Config>,
+    /// `defineConfig({ use })`: plugin packages, in registration order.
+    pub uses: Vec<crate::plugins::Plugin>,
 }
 
 const CONFIG_KEYS: &[&str] = &[
@@ -63,6 +67,7 @@ const CONFIG_KEYS: &[&str] = &[
     "plugins",
     "admin",
     "services",
+    "use",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
@@ -149,6 +154,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         collections: Vec::new(),
         hints: Vec::new(),
         plugins: None,
+        uses: Vec::new(),
     };
 
     out.schema.name = match cfg_map.get("name") {
@@ -437,6 +443,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                         kind,
                     },
                     name: format!("{table}__{hname}"),
+                    plugin: None,
                 });
             }
         }
@@ -517,6 +524,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 closure: handler.clone(),
                 slot: Slot::ActionHandler { action: name.clone() },
                 name: format!("action__{name}"),
+                plugin: None,
             });
             out.schema.actions.insert(
                 name.clone(),
@@ -1004,6 +1012,7 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
                     op: op.to_string(),
                 },
                 name: fn_name,
+                plugin: None,
             });
             Access::Fn(String::new())
         }
@@ -1304,6 +1313,7 @@ fn column(
                 closure: f.clone(),
                 slot: Slot::Default { at: at.clone() },
                 name: fn_name(owner, "default", &path),
+                plugin: None,
             });
             Some(DefaultKind::Fn(String::new()))
         }
@@ -1317,6 +1327,7 @@ fn column(
                 closure: f.clone(),
                 slot: Slot::OnUpdate { at: at.clone() },
                 name: fn_name(owner, "onUpdate", &path),
+                plugin: None,
             });
             Some(DefaultKind::Fn(String::new()))
         }
@@ -1387,6 +1398,7 @@ fn column(
                 closure: f.clone(),
                 slot: Slot::Validate { at: at.clone() },
                 name: fn_name(owner, "validate", &path),
+                plugin: None,
             });
             Some(String::new())
         }
@@ -2653,6 +2665,7 @@ fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span
             closure: handler.clone(),
             slot: Slot::JobHandler { job: name.clone() },
             name: format!("job__{name}"),
+            plugin: None,
         });
         out.schema.jobs.insert(
             name,
@@ -2742,6 +2755,7 @@ fn routes(cfg: &IndexMap<String, Value>, span: Span, out: &mut Extracted) -> Res
             closure: handler.clone(),
             slot: Slot::RouteHandler { route: name.clone() },
             name: format!("route__{name}"),
+            plugin: None,
         });
         out.schema.routes.insert(
             name,

@@ -73,7 +73,7 @@ the place that records it.
 | `jobs` | the plugin's own job names | `jobs.<name>.enqueue` |
 | `abilities` | reserved: calling WordPress abilities (`vendor/name`) | not implemented |
 | `wpHooks` | reserved: registering WordPress actions and filters | not implemented |
-| `wp` | reserved: WordPress PHP functions from a `"wp"` module | not implemented |
+| `php` | reserved: imported PHP functions as `<source>:<function>` (`wordpress:get_option`, `woocommerce:wc_get_order`) | not implemented: `"php/wordpress"`, `"php/<plugin-slug>"` and `"php"` imports |
 
 `http` hosts: a URL with a static `https://host/` prefix (string, template or
 concatenation) is checked at build time. A URL built at runtime records `*`.
@@ -98,5 +98,5 @@ check, and it sits in front of the existing SSRF policy.
 - Writing the inferred grant into a packed package for registries: left out.
   The lock is computed against the app's schema (field names, hooked
   collections), so a package-side copy would be advisory only.
-- `abilities`, `wpHooks`, `wp`: rows reserved above; sibling work implements
+- `abilities`, `wpHooks`, `php`: rows reserved above; sibling work implements
   them.

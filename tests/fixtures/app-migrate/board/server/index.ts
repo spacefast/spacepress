@@ -8,6 +8,7 @@ class Defaults {
 
 export default capsule({
   name: "legacy-board",
+  realtime: { enabled: true },
   schema: {
     tasks: table({
       title: string(),
@@ -40,7 +41,10 @@ export default capsule({
       ctx.db.tasks.update(id, { note, category: null })),
     clearNote: mutation(async (ctx, id: string) => ctx.db.tasks.update(id, { note: undefined })),
     touch: mutation(async (ctx, id: string) => ctx.db.tasks.update(id, {})),
-    setDone: mutation(async (ctx, id: string, done: boolean) => ctx.db.tasks.update(id, { done })),
+    setDone: mutation(async (ctx, id: string, done: boolean) => {
+      ctx.invalidate("list", "byDone");
+      return ctx.db.tasks.update(id, { done });
+    }),
     remove: mutation(async (ctx, id: string) => ctx.db.tasks.delete(id)),
     rollback: mutation(async (ctx) => {
       await ctx.db.tasks.insert({ title: "must roll back", owner: "legacy-user" });

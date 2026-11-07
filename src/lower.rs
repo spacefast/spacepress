@@ -1667,19 +1667,32 @@ fn check_parameter_pattern(pattern: &Pat, uninitialized: &[(&str, Span)], allow_
             check_parameter_default(value, uninitialized, allow_functions)?;
             check_parameter_pattern(inner, uninitialized, allow_functions)?;
         }
+        // Elements bind left to right, so a later element's default may read an earlier sibling:
+        // `({ a, b = a })` and `([a, b = a])` are valid JavaScript.
         Pat::Obj { props, .. } => {
+            let mut pending = uninitialized.to_vec();
             for (_, value) in props {
-                check_parameter_pattern(value, uninitialized, allow_functions)?;
+                check_parameter_pattern(value, &pending, allow_functions)?;
+                initialized(value, &mut pending);
             }
         }
         Pat::Arr { elems, .. } => {
+            let mut pending = uninitialized.to_vec();
             for value in elems.iter().flatten() {
-                check_parameter_pattern(value, uninitialized, allow_functions)?;
+                check_parameter_pattern(value, &pending, allow_functions)?;
+                initialized(value, &mut pending);
             }
         }
         Pat::Id(..) => {}
     }
     Ok(())
+}
+
+/// Removes a visited pattern element's bindings from the not-yet-initialized set.
+fn initialized(pattern: &Pat, pending: &mut Vec<(&str, Span)>) {
+    let mut bound = Vec::new();
+    pattern.bindings(&mut bound);
+    pending.retain(|(name, span)| !bound.iter().any(|(b, s)| b == name && s == span));
 }
 
 fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_functions: bool) -> Result<()> {

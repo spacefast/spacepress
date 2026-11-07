@@ -1,5 +1,6 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
 mod endpoints;
+mod pages;
 mod spacefast;
 mod transform;
 
@@ -154,11 +155,12 @@ fn convert(
     let entry = PathBuf::from("server/index.ts");
     let mut sources = BTreeMap::new();
     collect_sources(&*fs, &root, &entry, &mut sources, &mut BTreeSet::new())?;
-    for dir in ["pages", "islands", "layouts"] {
+    for dir in ["islands", "layouts", "_pages"] {
         if fs.exists(&root.join(dir)) {
             refuse_pages(&*fs, &root.join(dir), &format!("/{dir}"), &mut report.errors)?;
         }
     }
+    let converted = convert_pages(&*fs, &root, report, &mut sources)?;
     let transformed = transform::app(
         &entry,
         sources
@@ -182,6 +184,7 @@ fn convert(
         PathBuf::from("zero.config.ts"),
         "export { default } from \"./server/index\";\n".into(),
     );
+    let page_files = converted;
     // Both dry runs and writes compile the same candidate, before creating a destination.
     if !report.errors.is_empty() {
         return Ok(());
@@ -213,6 +216,9 @@ fn convert(
     report.adoption_sql = Some(sql.clone());
     for (path, text) in sources {
         files.insert(path.to_string_lossy().replace('\\', "/"), text);
+    }
+    for (path, text) in page_files {
+        files.insert(path, text);
     }
     files.insert("zero/migrations/0001_adopt.sql".into(), sql);
     files.insert(
@@ -299,6 +305,93 @@ fn collect_sources(
     Ok(())
 }
 
+/// Static 0.8 pages and the client `Layout` become v2 TSX pages. Interactive ones are refused.
+fn convert_pages(
+    fs: &dyn Fs,
+    root: &Path,
+    report: &mut Report,
+    sources: &mut BTreeMap<PathBuf, String>,
+) -> Result<BTreeMap<String, String>, Failure> {
+    let mut out = BTreeMap::new();
+    let pages_dir = root.join("pages");
+    if !fs.exists(&pages_dir) {
+        return Ok(out);
+    }
+    let mut stack = vec![pages_dir];
+    let mut files = vec![];
+    while let Some(dir) = stack.pop() {
+        if !fs.is_dir(&dir) || fs.is_symlink(&dir) {
+            report.errors.push(fail(
+                &pages::at(dir.strip_prefix(root).unwrap_or(&dir)),
+                "pages must be a directory of files",
+            ));
+            continue;
+        }
+        let mut entries = fs.read_dir(&dir).map_err(io)?;
+        entries.sort();
+        for path in entries {
+            if fs.is_dir(&path) && !fs.is_symlink(&path) {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    for path in files {
+        let relative = path.strip_prefix(root).expect("inside root").to_path_buf();
+        let at = pages::at(&relative);
+        if fs.is_symlink(&path) {
+            report.errors.push(fail(&at, "symlinked pages need a manual port"));
+            continue;
+        }
+        let text = fs.read_to_string(&path).map_err(io)?;
+        if relative.extension().is_some_and(|e| e == "md" || e == "html") {
+            report.errors.push(fail(&at, "content-owned 0.8 pages have no v2 counterpart yet (docs/pages.md, Not in this release); move the text into a TSX page or a collection"));
+            continue;
+        }
+        match pages::page(&relative, &text, &at) {
+            Ok(page) => {
+                // Data modules a page imports are copied like the server's helpers.
+                for import in &page.imports {
+                    collect_sources(fs, root, Path::new(import), sources, &mut BTreeSet::new())?;
+                }
+                report.entries.push(super::entry(
+                    &at,
+                    "mapped",
+                    format!(
+                        "static page becomes {}; run zero-pages build and commit zero/pages.json before publishing",
+                        page.file
+                    ),
+                ));
+                if out.insert(page.file.clone(), page.source).is_some() {
+                    report
+                        .errors
+                        .push(fail(&at, format!("two 0.8 pages map to {}", page.file)));
+                }
+            }
+            Err(e) => report.errors.push(e),
+        }
+    }
+    let client = root.join("client/index.tsx");
+    if !out.is_empty() && fs.is_file(&client) {
+        let text = fs.read_to_string(&client).map_err(io)?;
+        match pages::layout(&text, "/client/index.tsx") {
+            Ok(Some(layout)) => {
+                report.entries.push(super::entry(
+                    "/client/index.tsx",
+                    "mapped",
+                    "Layout becomes pages/layout.tsx",
+                ));
+                out.insert("pages/layout.tsx".into(), layout);
+            }
+            Ok(None) => {}
+            Err(e) => report.errors.push(e),
+        }
+    }
+    Ok(out)
+}
+
 fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -> Result<(), Failure> {
     if !fs.is_dir(path) || fs.is_symlink(path) {
         errors.push(fail(at, "page, layout and island compilation needs an explicit port"));
@@ -311,7 +404,8 @@ fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -
         if fs.is_dir(&path) && !fs.is_symlink(&path) {
             refuse_pages(fs, &path, &at, errors)?;
         } else {
-            errors.push(fail(&at, "page, layout and island compilation needs an explicit port"));
+            let text = fs.read_to_string(&path).unwrap_or_default();
+            errors.push(fail(&at, pages::reason(&text, "a 0.8 page, layout or island file")));
         }
     }
     Ok(())

@@ -34,6 +34,33 @@ impl Compiler<'_, '_> {
         }
         Ok(())
     }
+    /// Byte globals compile only through checked JavaScript dispatch; typed code has no static
+    /// Uint8Array/Blob types yet, and SharedArrayBuffer is refused everywhere.
+    pub(super) fn binary_global(&self, name: &str, span: Span) -> Result<()> {
+        if name == "SharedArrayBuffer" {
+            return err_help(
+                span,
+                "`SharedArrayBuffer` isn't supported",
+                "use ArrayBuffer; PHP requests share no memory between threads",
+            );
+        }
+        if matches!(name, "BigInt64Array" | "BigUint64Array") {
+            return err_help(
+                span,
+                format!("`{name}` isn't supported"),
+                "use a DataView with getUint32/setUint32 pairs, or a Uint8Array",
+            );
+        }
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            return err_help(
+                span,
+                format!("`{name}` is only available in imported JavaScript so far"),
+                "typed handlers don't have a static type for bytes yet; call a JavaScript or npm helper that uses them, and pass text across",
+            );
+        }
+        Ok(())
+    }
+
     pub(super) fn javascript_module(&self, module: usize) -> bool {
         self.ev_program().modules[module]
             .path

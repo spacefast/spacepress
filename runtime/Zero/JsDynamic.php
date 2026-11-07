@@ -126,6 +126,7 @@ trait JsDynamic
         }
         if ($value instanceof JsClass) { return $value->get($key); }
         if (JsBinary::is($value)) { return JsBinary::get($value, $key); }
+        if ($value instanceof JsConstructor) { return JsBinary::constructorGet($value, $key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -261,7 +262,7 @@ trait JsDynamic
             $value instanceof JsNamespace => $value->name,
             $value instanceof JsError => 'Error',
             JsBinary::is($value) => JsBinary::tag($value),
-            $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
+            $value instanceof \Closure, $value instanceof JsClass, $value instanceof JsConstructor => 'Function', default => 'Object',
         };
         return '[object ' . $tag . ']';
     }
@@ -317,6 +318,7 @@ trait JsDynamic
         if (!$builtin && $receiver instanceof JsObject && $receiver->nullPrototype) { return self::dynamicCall(JsUndefined::Value, $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         if (JsBinary::is($receiver)) { return JsBinary::call($receiver, $name, $a); }
+        if ($receiver instanceof JsConstructor && !in_array($name, ['call', 'apply', 'toString', 'valueOf'], true)) { return JsBinary::staticCall($receiver->name, $name, $a); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
@@ -618,6 +620,7 @@ trait JsDynamic
         $a = $args->a;
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
+        if ($constructor instanceof JsConstructor) { $constructor = $constructor->name; }
         if (in_array($constructor, JsBinary::GLOBALS, true)) { return JsBinary::construct($constructor, $a); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;

@@ -53,6 +53,29 @@ final class JsBinary
         throw new JsError($owner . '.' . $method . ' is not supported', 'TypeError');
     }
 
+    /** `value instanceof constructor` when the right side is a runtime value. */
+    public static function instanceOfValue(mixed $value, mixed $constructor): bool
+    {
+        if ($constructor instanceof JsConstructor) { return self::instanceOf($value, $constructor->name); }
+        if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
+        throw new JsError("Right-hand side of 'instanceof' is not a supported constructor", 'TypeError');
+    }
+
+    public static function constructorGet(JsConstructor $constructor, string $key): mixed
+    {
+        $name = $constructor->name;
+        if ($key === 'name') { return $name; }
+        if ($key === 'BYTES_PER_ELEMENT' && JsTypedArray::isKind($name)) { return JsTypedArray::KINDS[$name][0]; }
+        $static = $name === 'ArrayBuffer' ? $key === 'isView' : JsTypedArray::isKind($name) && ($key === 'from' || $key === 'of');
+        if (!$static) { return JsUndefined::Value; }
+        $method = $name . '.' . $key;
+        if (!isset(self::$methods[$method])) {
+            $invoke = static fn (mixed $thisArg, JsArray $args): mixed => self::staticCall($name, $key, $args->a);
+            self::$methods[$method] = Js::registerMethod(static fn (...$args) => $invoke(JsUndefined::Value, new JsArray($args)), $invoke);
+        }
+        return self::$methods[$method];
+    }
+
     public static function instanceOf(mixed $value, string $name): bool
     {
         return match ($name) {

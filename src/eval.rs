@@ -130,6 +130,33 @@ fn require_callable(value: &Value, span: Span) -> R<()> {
 }
 
 /// Runtime tokens may be carried through config composition, but never consumed as build-time data.
+/// A byte object built at module scope. Its arguments must be plain data; compiled code rebuilds
+/// it once per request through the same runtime constructor.
+fn native_value(constructor: &'static str, method: Option<Rc<str>>, args: Vec<Value>, span: Span) -> R<Value> {
+    fn plain(value: &Value, seen: &mut HashSet<usize>) -> bool {
+        match value {
+            Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_) => true,
+            Value::Array(a) => seen.insert(Rc::as_ptr(a) as usize) && a.borrow().iter().all(|v| plain(v, seen)),
+            Value::Object(o) => {
+                seen.insert(Rc::as_ptr(o) as *const () as usize) && o.borrow().values().all(|v| plain(v, seen))
+            }
+            _ => false,
+        }
+    }
+    if !args.iter().all(|value| plain(value, &mut HashSet::new())) {
+        return err_help(
+            span,
+            format!("module-scope `{constructor}` arguments must be plain data"),
+            "construct it inside the function that uses it",
+        );
+    }
+    Ok(Value::Native(Rc::new(NativeVal {
+        constructor,
+        method,
+        args,
+    })))
+}
+
 fn require_static_data(value: &Value, span: Span) -> R<()> {
     fn visit(value: &Value, span: Span, seen: &mut HashSet<usize>) -> R<()> {
         match value {
@@ -308,6 +335,51 @@ pub const GLOBALS: &[&str] = &[
     "Promise",
     "setTimeout",
     "crypto",
+    // Bytes and text encoding (runtime/Zero/JsBinary.php). Imported JavaScript only.
+    "ArrayBuffer",
+    "SharedArrayBuffer",
+    "DataView",
+    "TextEncoder",
+    "TextDecoder",
+    "Blob",
+    "File",
+    "FileReader",
+    "Int8Array",
+    "Uint8Array",
+    "Uint8ClampedArray",
+    "Int16Array",
+    "Uint16Array",
+    "Int32Array",
+    "Uint32Array",
+    "Float32Array",
+    "Float64Array",
+    "BigInt64Array",
+    "BigUint64Array",
+    "atob",
+    "btoa",
+];
+
+/// Byte globals, compiled only in imported JavaScript through checked runtime dispatch.
+pub const BINARY_GLOBALS: &[&str] = &[
+    "ArrayBuffer",
+    "SharedArrayBuffer",
+    "DataView",
+    "TextEncoder",
+    "TextDecoder",
+    "Blob",
+    "File",
+    "FileReader",
+    "Int8Array",
+    "Uint8Array",
+    "Uint8ClampedArray",
+    "Int16Array",
+    "Uint16Array",
+    "Int32Array",
+    "Uint32Array",
+    "Float32Array",
+    "Float64Array",
+    "BigInt64Array",
+    "BigUint64Array",
 ];
 
 pub struct Evaluator<'p> {
@@ -1285,6 +1357,9 @@ impl<'p> Evaluator<'p> {
                     .map_err(Ctl::Err)?;
                 }
                 match f {
+                    Value::Builtin(Builtin::Global(g)) if BINARY_GLOBALS.contains(&g) => {
+                        return native_value(g, None, argv, e.span);
+                    }
                     Value::Class(_) => {
                         return err(
                             e.span,
@@ -1522,6 +1597,9 @@ impl<'p> Evaluator<'p> {
                 ("Number", "MAX_SAFE_INTEGER") => Ok(Value::Num(9_007_199_254_740_991.0)),
                 ("Number", "MIN_SAFE_INTEGER") => Ok(Value::Num(-9_007_199_254_740_991.0)),
                 ("Number", "EPSILON") => Ok(Value::Num(f64::EPSILON)),
+                (g, "from" | "of") if BINARY_GLOBALS.contains(&g) && g.ends_with("Array") => {
+                    Ok(Value::Builtin(Builtin::Static(g, Rc::from(prop))))
+                }
                 _ if crate::builtins::contract(g, prop).is_some() => {
                     Ok(Value::Builtin(Builtin::Static(g, Rc::from(prop))))
                 }
@@ -2013,6 +2091,10 @@ impl<'p> Evaluator<'p> {
     }
 
     fn call_static(&mut self, g: &str, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        if BINARY_GLOBALS.contains(&g) {
+            let g = BINARY_GLOBALS.iter().find(|name| **name == g).expect("binary global");
+            return native_value(g, Some(Rc::from(m)), args, span);
+        }
         if matches!(g, "Math" | "Number" | "JSON") || matches!((g, m), ("Array", "isArray")) {
             for value in &args {
                 require_static_data(value, span)?;

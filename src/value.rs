@@ -42,6 +42,18 @@ pub enum Value {
     Env(Rc<str>),
     Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
+    /// A built-in object constructed at module scope that only exists in PHP, such as
+    /// `new TextEncoder()` or `Uint32Array.of(...)`. Compiled code builds it once per request.
+    Native(Rc<NativeVal>),
+}
+
+#[derive(Debug)]
+pub struct NativeVal {
+    /// The constructor, e.g. `Uint8Array`.
+    pub constructor: &'static str,
+    /// A static factory (`from`, `of`), or `None` for `new`.
+    pub method: Option<Rc<str>>,
+    pub args: Vec<Value>,
 }
 
 #[derive(Debug)]
@@ -332,6 +344,7 @@ impl Value {
             Value::Env(n) => format!("env({n:?})"),
             Value::Global(g) => format!("global \"{}\"", g.name),
             Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
+            Value::Native(n) => format!("a {}", n.constructor),
         }
     }
 
@@ -391,6 +404,7 @@ impl Value {
             (Value::Object(a), Value::Object(b)) => Rc::ptr_eq(a, b),
             (Value::Closure(a), Value::Closure(b)) => Rc::ptr_eq(a, b),
             (Value::Regex(a, af), Value::Regex(b, bf)) => Rc::ptr_eq(a, b) && Rc::ptr_eq(af, bf),
+            (Value::Native(a), Value::Native(b)) => Rc::ptr_eq(a, b),
             (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
             (Value::Builtin(a), Value::Builtin(b)) => a == b,
             _ => false,

@@ -12,7 +12,7 @@ mod effects;
 mod javascript;
 
 use crate::diag::{Diag, Result, Span, suggest};
-use crate::eval::{Evaluator, GLOBALS};
+use crate::eval::{BINARY_GLOBALS, Evaluator, GLOBALS};
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
@@ -2322,7 +2322,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
                 let left = self.expr(left)?;
+                if let ExprKind::Ident(name) = &right.kind
+                    && let Resolved::Global(g) = self.resolve(name, right.span)?
+                    && BINARY_GLOBALS.contains(&g)
+                {
+                    self.binary_global(g, right.span)?;
+                    let left = self.finish_value(left, span)?;
+                    return Ok(Out::atom(
+                        format!("\\Zero\\JsBinary::instanceOf({}, {})", left.php, php_str(g)),
+                        Ty::Bool,
+                    ));
+                }
                 let right = self.expr(right)?;
+                if right.ty == Ty::Dynamic && self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                    let left = self.finish_value(left, span)?;
+                    return Ok(Out::atom(
+                        format!("\\Zero\\JsBinary::instanceOfValue({}, {})", left.php, right.php),
+                        Ty::Bool,
+                    ));
+                }
                 if !matches!(right.ty, Ty::Class(_)) {
                     return err(span, "instanceof requires a named Zero class");
                 }
@@ -2877,6 +2895,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Global("NaN") => Ok(Out::atom("NAN", Ty::Num)),
             Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
             Resolved::Global("Math") => Ok(Out::atom("\\Zero\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
+            Resolved::Global(g) if BINARY_GLOBALS.contains(&g) => {
+                self.binary_global(g, span)?;
+                Ok(Out::atom(format!("\\Zero\\JsConstructor::of({})", php_str(g)), Ty::Dynamic))
+            }
             Resolved::Global(g) => err_help(
                 span,
                 format!("`{g}` can't be used as a value; call one of its functions"),
@@ -2980,6 +3002,42 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
             ),
+            Value::Native(native) => {
+                let key = (3, Rc::as_ptr(native) as *const () as usize);
+                let name = match self.data_helpers.get(&key) {
+                    Some(name) => name.clone(),
+                    None => {
+                        let mut args = Vec::new();
+                        for arg in &native.args {
+                            args.push(self.captured_data(arg)?);
+                        }
+                        let args = args.join(", ");
+                        let build = match &native.method {
+                            None => format!("\\Zero\\Js::dynamicConstruct({}, new \\Zero\\JsArray([{args}]))", php_str(native.constructor)),
+                            Some(m) => format!(
+                                "\\Zero\\Js::dynamicStaticCall({}, {}, new \\Zero\\JsArray([{args}]))",
+                                php_str(native.constructor),
+                                php_str(m)
+                            ),
+                        };
+                        let name = self.unique_name("captured_native");
+                        self.data_helpers.insert(key, name.clone());
+                        let _ = writeln!(
+                            self.output,
+                            "function {name}(): object {{ static $value; return $value ??= {build}; }}\n"
+                        );
+                        name
+                    }
+                };
+                if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                    return err_help(
+                        span,
+                        format!("`{n}` is {}, which typed code can't use yet", v.describe()),
+                        "use it from imported JavaScript, or pass plain data",
+                    );
+                }
+                Ok(Out::atom(format!("\\ZeroApp\\{name}()"), Ty::Dynamic))
+            }
             Value::Regex(p, f) => {
                 let key = (2, Rc::as_ptr(p) as *const () as usize);
                 let name = if let Some(name) = self.data_helpers.get(&key) {
@@ -3753,6 +3811,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let ExprKind::Ident(n) = &obj.kind
             && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
         {
+            if BINARY_GLOBALS.contains(&g) {
+                self.binary_global(g, obj.span)?;
+                return Ok(Out::atom(
+                    format!("\\Zero\\Js::dynamicGet(\\Zero\\JsConstructor::of({}), {})", php_str(g), php_str(prop)),
+                    Ty::Dynamic,
+                ));
+            }
             return match (g, prop) {
                 ("Math", "PI") => Ok(Out::atom("M_PI", Ty::Num)),
                 ("Math", "E") => Ok(Out::atom("M_E", Ty::Num)),
@@ -4103,7 +4168,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
             if let ExprKind::Ident(name) = &callee.kind
-                && matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp")
+                && (matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp") || BINARY_GLOBALS.contains(&name.as_str()))
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
                 if name == "Date" {
@@ -4609,6 +4674,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if BINARY_GLOBALS.contains(&g) {
+            self.binary_global(g, span)?;
+            return err_help(
+                span,
+                format!("`{g}` must be called with `new`"),
+                format!("write `new {g}(...)`"),
+            );
+        }
+        if matches!(g, "atob" | "btoa") {
+            self.binary_global(g, span)?;
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\Zero\\JsBinary::{g}(...({argv})->a)"),
+                Ty::Dynamic,
+            ));
+        }
         self.builtin_args("global", g, args, span)?;
         if g == "parseInt" {
             crate::builtins::check_parse_int_literals(args, span)?;
@@ -4684,6 +4765,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if BINARY_GLOBALS.contains(&g) {
+            self.binary_global(g, span)?;
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicStaticCall({}, {}, {argv})", php_str(g), php_str(m)),
+                Ty::Dynamic,
+            ));
+        }
         self.builtin_args(g, m, args, span)?;
         if (g, m) == ("Math", "pow") {
             crate::builtins::check_power_literals(args, span)?;

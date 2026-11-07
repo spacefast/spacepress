@@ -58,6 +58,26 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
+fn crypto_takes_strings_and_names_only_its_functions() {
+    rejects(
+        "reject-crypto-arg",
+        "crypto.sha256() can't take string | null",
+        "zero.config.ts:3:",
+    );
+    rejects(
+        "reject-crypto-unknown",
+        "`crypto` has no function `sha265`",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/crypto-import"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",

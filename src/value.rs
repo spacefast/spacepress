@@ -75,6 +75,8 @@ pub enum Builtin {
     Env,
     Once,
     Jobs,
+    /// `crypto.sha256(...)` and friends from "zero", compiled to `Zero\Crypto`.
+    Crypto,
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,

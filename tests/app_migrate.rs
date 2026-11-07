@@ -222,3 +222,29 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
     );
     assert!(!out.exists());
 }
+
+#[test]
+fn ctx_crypto_maps_to_the_zero_crypto_namespace() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("crypto");
+    let (ok, report) = migrate(&fixture("crypto"), &out, &[]);
+    assert!(ok, "{report:#}");
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(
+        !config.contains("ctx.crypto") && config.contains("__z08Crypto.hmacSha256("),
+        "{config}"
+    );
+    build(&out);
+    let root = temp.path().join("jwt");
+    project(
+        &root,
+        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} }))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { action, capsule }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/actions/token/ctx/jwt");
+}

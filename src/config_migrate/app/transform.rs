@@ -559,8 +559,15 @@ pub(super) fn app(
             }
         }
     }
+    if handlers.iter().any(|h| h.contains("__z08Crypto.")) {
+        entries.push(entry(
+            "",
+            "mapped",
+            "ctx.crypto becomes crypto from \"zero\": the same lowercase-hex SHA-256 and HMAC-SHA-256 over UTF-8, and constant-time comparison; calls are synchronous",
+        ));
+    }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, type InferSelectModel } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, crypto as __z08Crypto, type InferSelectModel } from \"zero\";\n",
     );
     config.push_str(&prelude);
     if content_config.is_some() {
@@ -908,6 +915,41 @@ impl Rewrite<'_> {
             && let Some(text) = self.db(inner)?
         {
             self.edits.push((e.span, text));
+            return Ok(());
+        }
+        // ctx.crypto returned promises; v2's crypto is synchronous with the same output.
+        let (call, awaited) = match &e.kind {
+            E::Await(inner) => (inner.as_ref(), true),
+            _ => (e, false),
+        };
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &call.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && matches!(&obj.kind, E::Member { obj, prop: c, .. } if c == "crypto" && matches!(&obj.kind, E::Ident(n) if n == self.ctx))
+        {
+            if !["sha256", "hmacSha256", "timingSafeEqual"].contains(&prop.as_str()) {
+                return Err(fail(
+                    &pointer(&pointer(self.at, "ctx"), "crypto"),
+                    format!("ctx.crypto.{prop} has no v2 counterpart"),
+                ));
+            }
+            let rendered = args
+                .iter()
+                .map(|a| match a {
+                    ArrEl::Item(e) => self.render(e),
+                    ArrEl::Spread(_) => Err(fail(self.at, "spread crypto arguments need a manual port")),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let text = format!("__z08Crypto.{prop}({})", rendered.join(", "));
+            // An unawaited call is returned or awaited later in 0.8 code; the value stands in for
+            // its promise either way. Storing it unawaited (`const p = ctx.crypto...`) and then
+            // awaiting it is refused by the v2 compiler's await check, which is the port pointer.
+            let _ = awaited;
+            self.edits.push((e.span, format!("({text})")));
             return Ok(());
         }
         if let Some(text) = self.db(e)? {

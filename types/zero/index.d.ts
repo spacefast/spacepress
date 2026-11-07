@@ -1161,6 +1161,28 @@ export type JobsApi = [RegisteredJobs] extends [never]
   : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };
 export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
+
+/**
+ * Digests, MACs, comparison and random values for hooks, actions, routes and jobs. Results are
+ * lowercase hex over the UTF-8 bytes of the input. Inputs are capped at 1 MiB.
+ */
+export declare const crypto: {
+  sha256(data: string): string;
+  sha512(data: string): string;
+  sha1(data: string): string;
+  md5(data: string): string;
+  /**
+   * `key` names an environment variable (read trimmed; a missing or blank one throws
+   * `crypto_key_unavailable`) or is `{ value }` for a key that is not a secret.
+   */
+  hmacSha256(options: { key: string | { value: string }; data: string }): string;
+  /** Constant time over equal lengths; values of different lengths are unequal. */
+  timingSafeEqual(a: string, b: string): boolean;
+  /** `bytes` (1 to 1024) random bytes as hex. */
+  randomHex(bytes: number): string;
+  /** A random RFC 4122 version 4 UUID. */
+  randomUUID(): string;
+};
 export interface EnvValue { readonly [envBrand]: true }
 export declare function env(name: string): EnvValue;
 export interface Webhook { url: EnvValue | string; secret: EnvValue; events: WebhookEvent[] }

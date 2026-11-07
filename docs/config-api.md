@@ -307,6 +307,41 @@ Throwing anything aborts the request and rolls back every write in it.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
 
+## Hashing and random values
+
+`crypto` from `"zero"` hashes, signs and compares in hooks, actions, routes and
+jobs. Every call is synchronous:
+
+```ts
+import { action, crypto, defineConfig, text } from "zero";
+
+export default defineConfig({
+  actions: {
+    verify: action({
+      input: { body: text().notNull(), signature: text().notNull() },
+      access: "anyone",
+      handler({ body, signature }) {
+        const expected = crypto.hmacSha256({ key: "WEBHOOK_SECRET", data: body });
+        return crypto.timingSafeEqual(expected, signature);
+      },
+    }),
+  },
+});
+```
+
+| Function | Result |
+| --- | --- |
+| `sha256(data)`, `sha512(data)`, `sha1(data)`, `md5(data)` | Lowercase hex digest of the UTF-8 bytes |
+| `hmacSha256({ key, data })` | Lowercase hex HMAC-SHA-256. `key` is an environment variable name, read like `env()` and trimmed, or `{ value }` for a key that is not a secret |
+| `timingSafeEqual(a, b)` | `true` when equal, compared in constant time; different lengths are unequal |
+| `randomHex(bytes)` | `bytes` (1 to 1024) random bytes from `random_bytes`, as hex |
+| `randomUUID()` | A random version 4 UUID |
+
+Inputs are capped at 1 MiB (`413 crypto_input_too_large`). A named key that is
+unset or blank throws `500 crypto_key_unavailable`, so a missing secret never
+signs with an empty key. For inbound webhooks, prefer an action's or route's
+`signature` option, which also checks timestamps.
+
 ## Jobs and webhooks
 
 ```ts

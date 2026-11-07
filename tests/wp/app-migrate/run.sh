@@ -41,3 +41,10 @@ docker compose -p "$ZERO_WP_PROJECT" exec -T db mariadb -uroot -pzero-test-root 
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/content/.zero/wp-content" > "$work/content-harness.json"
 ZERO_WP_HARNESS="$work/content-harness.json" node --test "$here/identity.test.ts"
+# ctx.crypto through the migrated app, with the secret as a padded wp-config constant.
+"$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/crypto --out "$work/crypto" > "$work/crypto-report.json"
+"$zero" build "$work/crypto" --quiet >/dev/null
+"$wp/harness.sh" down >/dev/null
+"$wp/harness.sh" up --wp-content "$work/crypto/.zero/wp-content" > "$work/crypto-harness.json"
+"$wp/harness.sh" wp config set WEBHOOK_SECRET "  lane-secret  " --type=constant >/dev/null
+ZERO_WP_HARNESS="$work/crypto-harness.json" node --test "$here/crypto.test.ts"

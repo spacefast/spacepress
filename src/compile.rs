@@ -2771,6 +2771,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
             ),
+            Value::Builtin(Builtin::Crypto) => err_help(
+                span,
+                "`crypto` can't be used as a value",
+                "call its functions directly: `crypto.sha256(text)`",
+            ),
             Value::Builtin(Builtin::Jobs) => err_help(
                 span,
                 "`jobs` can't be used as a value",
@@ -4058,7 +4063,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let builtin = |this: &mut Self, e: &Expr| -> Result<Option<Builtin>> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
-                Resolved::Value(Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env)), _) => Some(b),
+                Resolved::Value(
+                    Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env | Builtin::Crypto)),
+                    _,
+                ) => Some(b),
                 _ => None,
             })
         };
@@ -4081,6 +4089,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 _ => Ok(None),
             },
+            // Only a name that resolves to the imported `crypto` is ours; `super`, unbound and
+            // shadowed names fall through to ordinary member calls.
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Crypto) =>
+            {
+                self.crypto_call(prop, args, span).map(Some)
+            }
             ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
                 ExprKind::Member {
                     obj: root, prop: job, ..
@@ -4091,6 +4107,78 @@ impl<'a, 'p> Compiler<'a, 'p> {
             },
             _ => Ok(None),
         }
+    }
+
+    /// `crypto.<fn>(...)`: synchronous digests and comparisons over `Zero\Crypto`. Every result is
+    /// lowercase hex (or a boolean / UUID), matching the original runtime's `ctx.crypto`.
+    fn crypto_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let (arity, ret, php) = match name {
+            "sha256" | "sha1" | "sha512" | "md5" => (1, Ty::Str, name),
+            "hmacSha256" => (1, Ty::Str, "hmacSha256"),
+            "timingSafeEqual" => (2, Ty::Bool, "timingSafeEqual"),
+            "randomHex" => (1, Ty::Str, "randomHex"),
+            "randomUUID" => (0, Ty::Str, "randomUUID"),
+            _ => {
+                let mut d = Diag::new(span, format!("`crypto` has no function `{name}`"));
+                let names = [
+                    "sha256",
+                    "sha1",
+                    "sha512",
+                    "md5",
+                    "hmacSha256",
+                    "timingSafeEqual",
+                    "randomHex",
+                    "randomUUID",
+                ];
+                if let Some(s) = suggest(name, names.iter().copied()) {
+                    d = d.help(format!("did you mean `crypto.{s}`?"));
+                }
+                return Err(d);
+            }
+        };
+        if args.len() != arity {
+            return err(
+                span,
+                format!(
+                    "crypto.{name}() takes {arity} argument{}",
+                    if arity == 1 { "" } else { "s" }
+                ),
+            );
+        }
+        let mut argv = Vec::new();
+        for i in 0..arity {
+            let e = self.arg(args, i, span, "an argument")?;
+            let v = self.expr(e)?;
+            let v = self.finish_value(v, e.span)?;
+            let ok = match (name, i) {
+                ("randomHex", _) => v.ty.is_num() && !v.ty.is_nullable(),
+                ("hmacSha256", _) => match &v.ty {
+                    Ty::Obj(f) => {
+                        f.keys().all(|k| k == "key" || k == "data")
+                            && f.get("data").is_some_and(|(t, opt)| !opt && t.is_str() && !t.is_nullable())
+                            && f.get("key").is_some_and(|(t, opt)| {
+                                !opt && (t.is_str() && !t.is_nullable()
+                                    || matches!(t, Ty::Obj(k) if k.len() == 1 && k.get("value").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())))
+                            })
+                    }
+                    _ => false,
+                },
+                _ => v.ty.is_str() && !v.ty.is_nullable(),
+            };
+            if !ok {
+                return err_help(
+                    e.span,
+                    format!("crypto.{name}() can't take {}", v.ty.describe()),
+                    match name {
+                        "hmacSha256" => "pass { key: \"VAR_NAME\" | { value }, data: string }",
+                        "randomHex" => "pass a number of bytes",
+                        _ => "pass a string",
+                    },
+                );
+            }
+            argv.push(v.php);
+        }
+        Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
     }
 
     fn once_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {

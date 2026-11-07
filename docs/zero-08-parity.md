@@ -94,7 +94,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
 | `capsule({ name })` | `defineConfig({ name })`; display titles become plugin slugs | Auto | — |
-| Server entry from `sf.jsonc` `runtime.server` (and its aliases) | `server/index.ts` in the candidate | Auto | An executable `spacefast.config.ts` |
+| Server entry from `sf.jsonc` `runtime.server` (and its aliases) | `server/index.ts` in the candidate | Auto | An executable `spacefast.config.ts`; an entry nested below `server/` (its relative imports would move) |
 | `table()` with `string`, `number`, `boolean`, `id`, `userId`, `.optional()`, `.default()` | `table()` over the existing `sf_<space>_<table>_<hash>` table with `existingTable`; string IDs over `BIGINT` | Auto, **WP** | IDs above `Number.MAX_SAFE_INTEGER` |
 | `.index(name, fields)`, `by_creation` | Index order plus `createdAt`, `id`, as 0.8 ordered | Auto, **WP** | — |
 | `ctx.db.<t>.get/insert/update/delete` | Generated row helpers keeping 0.8's string ids, defaults and optional omission | Auto, **WP** | — |
@@ -121,14 +121,14 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.auth.requireSignedIn()`, `requireIdentity()` | Same refusal (401), same returned fields | Auto with `--users` | — |
 | `ctx.auth.userId` without Space Users (Spacefast accounts, guests) | **missing**: v2 users are WordPress users | Refused | Map principals to users explicitly |
 | `ctx.auth.email`, `picture`, `provider`, `subject`, `identityAliases` | **missing** in handler context | Refused | Read the member row, or port |
-| Users, passwords, sessions, Google bindings | `wp zero migrate-spacefast` | Data command, **WP** | Original auth salt and cookie alias on the host |
+| Users, passwords, sessions, Google bindings, Space Users subjects | `wp zero migrate-spacefast`; a users receipt without the candidate's subjects refuses (`zero_spacefast_subjects_missing`) and `--verify` reports `incomplete` | Data command, **WP** | Original auth salt and cookie alias on the host |
 | `verifyUser()` (server SDK) | `GET /wp-json/zero-identity/v1/account` | Not applicable (runs outside the capsule) | Port callers |
 
 ### Context services
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| `ctx.env.NAME` | `env("NAME")`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables |
+| `ctx.env.NAME` | `env("NAME")`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables; a name 0.8 left unset may now resolve to a host constant |
 | `ctx.log.info/warn/error/debug` | `console.*` to the PHP error log | Auto | — |
 | `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
 | `ctx.email.send` | [services](services.md) forms and queued mail | Refused | **Gap**: no free-form send from a handler |
@@ -144,9 +144,9 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously |
+| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path; literal segments are declared before `:params`, as 0.8 matched them | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
 | `json()`, `text()`, `empty()`, `redirect()`, plain values, `undefined` → 204 | The same status, headers and body | Auto, **WP** | — |
-| `request.text()`, `json()`, `headers.get/has`, `query.get/has`, `params`, `method` | `req.body`, `req.headers`, `req.query`, `req.params` | Auto, **WP** | — |
+| `request.text()`, `json()`, `headers.get/has`, `query.get/has`, `params`, `method` | `req.body`, `req.headers`, `req.query`, `req.params` | Auto, **WP** | Query names other than `[A-Za-z0-9_-]+` literals are refused, because PHP renames `.` and spaces and arrays `[]`; a repeated name reads its last value, where 0.8 read the first |
 | `request.url`, `bytes()`, `arrayBuffer()`, `query.getAll`, `headers.entries` | **missing** on `RouteRequest` | Refused with pointer | Port |
 | `HEAD`, `OPTIONS` endpoints | GET answers HEAD; **missing** OPTIONS | Refused | Port |
 | `:param` segments | `:param` | Auto, **WP** | — |
@@ -160,7 +160,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| Static `pages/*.tsx` (no hooks, handlers, client or kit imports) | `pages/<path>/page.tsx`, rendered at capture, served by WordPress | Auto, **WP** (hosted compile) | Run `zero-pages build` and commit `zero/pages.json` |
+| Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `pages/<path>/page.tsx`, rendered at capture, served by WordPress; relative imports are adjusted for the move | Auto, **WP** (hosted compile) | Run `zero-pages build` and commit `zero/pages.json` |
 | `client/index.tsx` static `Layout` | `pages/layout.tsx` | Auto, **WP** | — |
 | `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | `load()` reads as the visitor, plus `<Island>` with an Interactivity store calling actions | Refused, lists what each page uses | Port each page |
 | `usePaginatedQuery` | An island over the paginated action | Refused | Port |

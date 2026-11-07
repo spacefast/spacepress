@@ -49,10 +49,11 @@ pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failur
     } else {
         format!("pages/{}", segments.join("/"))
     };
-    let depth = dir.matches('/').count() + 1;
+    // `pages/a/index.tsx` stays in its directory; `pages/a/b.tsx` moves one level down.
+    let moved = usize::from(relative.file_stem().is_some_and(|s| s != "index"));
     Ok(Page {
         file: format!("{dir}/page.tsx"),
-        source: relocate(&strip_directive(text), depth - 1),
+        source: relocate(&strip_directive(text), moved),
         imports,
     })
 }
@@ -148,7 +149,12 @@ fn static_markup(text: &str, at: &str) -> Result<Vec<String>, Failure> {
             }
         }
     }
-    // Hooks, handlers and browser globals all decide output after render.
+    // A "use client" page hydrated in 0.8, but one with no handlers, hooks or browser reads
+    // hydrates to the markup it already rendered, so it moves like a document page.
+    if handler_attribute(text) {
+        return Err(fail(at, reason(text, "a 0.8 page")));
+    }
+    // Hooks and browser globals decide output after render.
     for needle in [
         "use(",
         "useState",
@@ -176,6 +182,18 @@ fn static_markup(text: &str, at: &str) -> Result<Vec<String>, Failure> {
         }
     }
     Ok(imports)
+}
+
+/// Any JSX event attribute (`onClick=`, `onKeyDown=`, ...): an `on` + capital letter followed by `=`.
+fn handler_attribute(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    (0..bytes.len().saturating_sub(3)).any(|i| {
+        (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
+            && bytes[i] == b'o'
+            && bytes[i + 1] == b'n'
+            && bytes[i + 2].is_ascii_uppercase()
+            && bytes[i + 3..].iter().find(|b| !b.is_ascii_alphanumeric()) == Some(&b'=')
+    })
 }
 
 fn strip_directive(text: &str) -> String {

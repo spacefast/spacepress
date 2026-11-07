@@ -352,10 +352,12 @@ fn server_entry(fs: &dyn Fs, root: &Path, report: &mut Report) -> Result<PathBuf
             format!("server entry {server} becomes server/index.ts"),
         ));
     }
-    if !server.starts_with("server/") || !(server.ends_with(".ts") || server.ends_with(".tsx")) {
+    // Renaming keeps relative imports valid only for a module directly under server/.
+    let direct = server.strip_prefix("server/").is_some_and(|rest| !rest.contains('/'));
+    if !direct || !(server.ends_with(".ts") || server.ends_with(".tsx")) {
         return Err(fail(
             &format!("/{name}/runtime/server"),
-            "the server entry must be a server/*.ts or server/*.tsx module",
+            "the server entry must be a module directly under server/ (server/<name>.ts)",
         ));
     }
     Ok(PathBuf::from(server))
@@ -445,6 +447,13 @@ fn convert_pages(
         let at = pages::at(&relative);
         if fs.is_symlink(&path) {
             report.errors.push(fail(&at, "symlinked pages need a manual port"));
+            continue;
+        }
+        // 0.8 routed only .tsx, .md and .html under pages/; other files are modules pages import.
+        if !relative
+            .extension()
+            .is_some_and(|e| e == "tsx" || e == "md" || e == "html")
+        {
             continue;
         }
         let text = fs.read_to_string(&path).map_err(io)?;

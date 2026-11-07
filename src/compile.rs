@@ -2766,7 +2766,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Env::get({})", php_str(name)),
                 Ty::Str.nullable(),
             )),
-            Value::Builtin(Builtin::Env | Builtin::Once) => err_help(
+            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
@@ -4058,13 +4058,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let builtin = |this: &mut Self, e: &Expr| -> Result<Option<Builtin>> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
-                Resolved::Value(Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env)), _) => Some(b),
+                Resolved::Value(
+                    Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env | Builtin::Fetch)),
+                    _,
+                ) => Some(b),
                 _ => None,
             })
         };
         match &callee.kind {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
+                Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
                 Some(Builtin::Env) => {
                     let name = self.arg(args, 0, span, "an environment variable name")?;
                     match &name.kind {
@@ -4091,6 +4095,61 @@ impl<'a, 'p> Compiler<'a, 'p> {
             },
             _ => Ok(None),
         }
+    }
+
+    /// `fetch(url, { method?, headers?, body? })` → `Promise<FetchResponse>`, see `types::fetch_response`.
+    fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't use fetch()",
+                "move it into a hook, action or route",
+            );
+        }
+        if args.is_empty() || args.len() > 2 {
+            return err_help(
+                span,
+                "fetch() takes a URL and optional init",
+                "write fetch(url, { method, headers, body })",
+            );
+        }
+        let url_expr = self.arg(args, 0, span, "a URL")?;
+        let url = self.expr(url_expr)?;
+        let url = self.finish_value(url, url_expr.span)?;
+        if !url.ty.is_str() || url.ty.is_nullable() {
+            return err_help(url_expr.span, "fetch() needs a URL string", "pass the URL as a string");
+        }
+        let init = match args.get(1) {
+            None => "null".to_string(),
+            Some(_) => {
+                let init_expr = self.arg(args, 1, span, "init")?;
+                let init = self.expr(init_expr)?;
+                let init = self.finish_value(init, init_expr.span)?;
+                let ok = match &init.ty {
+                    Ty::Obj(fields) => fields.iter().all(|(k, (t, _))| match k.as_str() {
+                        "method" | "body" => t.all(|t| t.is_str() || matches!(t, Ty::Null | Ty::Undefined)),
+                        "headers" => t.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Null | Ty::Undefined)),
+                        _ => false,
+                    }),
+                    _ => false,
+                };
+                if !ok {
+                    return err_help(
+                        init_expr.span,
+                        format!(
+                            "fetch() init must be {{ method?, headers?, body? }} with strings, not {}",
+                            init.ty.describe()
+                        ),
+                        "stringify JSON bodies with JSON.stringify(...)",
+                    );
+                }
+                init.php
+            }
+        };
+        Ok(Out::atom(
+            format!("\\Zero\\Fetch::call({}, {init})", url.php),
+            Ty::Promise(Box::new(types::fetch_response())),
+        ))
     }
 
     fn once_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {

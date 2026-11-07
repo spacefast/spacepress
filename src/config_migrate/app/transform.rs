@@ -562,6 +562,15 @@ pub(super) fn app(
     let mut config = String::from(
         "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, type InferSelectModel } from \"zero\";\n",
     );
+    // 0.8 gave every handler the global fetch(); v2 imports it from "zero" with the same egress rules.
+    if uses_global_fetch(&body, source) {
+        config.push_str("import { fetch } from \"zero\";\n");
+        entries.push(entry(
+            "",
+            "mapped",
+            "fetch() comes from \"zero\": HTTPS only, private and special-purpose addresses refused after every redirect, 10 s and 1 MiB each way, as in 0.8",
+        ));
+    }
     config.push_str(&prelude);
     if content_config.is_some() {
         config.push_str("import * as __z08Content from \"./__z08-content\";\n");
@@ -625,6 +634,29 @@ pub(super) fn app(
         content_config,
         connector_roles: Value::Object(connector_roles),
     })
+}
+
+/// True when the module calls a global `fetch(` it does not bind itself. Lexical: a mention inside
+/// a string or comment only adds an import the module does not use, which compiles.
+fn uses_global_fetch(body: &[Stmt], source: &str) -> bool {
+    let binds = body.iter().any(|s| match s {
+        Stmt::Import { specs, .. } => specs.iter().any(|s| s.local == "fetch"),
+        Stmt::Func(f) => f.name.as_deref() == Some("fetch"),
+        Stmt::Decl { pat, .. } => {
+            let mut names = vec![];
+            pat.bindings(&mut names);
+            names.iter().any(|(n, _)| *n == "fetch")
+        }
+        _ => false,
+    });
+    let bytes = source.as_bytes();
+    let calls = source.match_indices("fetch").any(|(at, _)| {
+        let before = at.checked_sub(1).map(|i| bytes[i]);
+        let after = source[at + 5..].trim_start();
+        !before.is_some_and(|b| b == b'.' || b == b'_' || b == b'$' || b.is_ascii_alphanumeric())
+            && after.starts_with('(')
+    });
+    calls && !binds
 }
 
 fn type_aliases(source: &str) -> String {

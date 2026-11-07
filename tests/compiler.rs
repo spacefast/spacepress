@@ -58,6 +58,15 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
+fn fetch_is_an_explicit_zero_import_with_string_bodies() {
+    // The ambient global stays refused, so every outbound call is visible in the imports.
+    rejects("reject-global-fetch", "`fetch` isn't available in Zero code", "zero.config.ts:3:");
+    rejects("reject-fetch-init", "fetch() init must be { method?, headers?, body? } with strings", "zero.config.ts:3:");
+    let out = zero().args(["check"]).arg(root().join("tests/fixtures/fetch-import")).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",

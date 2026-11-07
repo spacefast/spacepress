@@ -307,6 +307,61 @@ Throwing anything aborts the request and rolls back every write in it.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
 
+## Outbound HTTP
+
+`fetch(url, init?)` from `"zero"` calls another service from a hook, action,
+route or job, through the WordPress HTTP API:
+
+```ts
+import { action, defineConfig, env, fetch, HttpError, text } from "zero";
+
+export default defineConfig({
+  actions: {
+    weather: action({
+      input: { city: text().notNull() },
+      access: "anyone",
+      async handler({ city }) {
+        const response = await fetch("https://api.example.com/v1/weather?q=" + encodeURIComponent(city), {
+          headers: { authorization: "Bearer " + (env("WEATHER_KEY") ?? "") },
+        });
+        if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
+        return (await response.json()) as { temperature: number };
+      },
+    }),
+  },
+});
+```
+
+- `init` takes `method`, `headers` (an object of strings) and `body` (a string;
+  use `JSON.stringify`). The response has `status`, `ok`, `url`, `redirected`,
+  `headers.get/has` and `text()`/`json()`.
+- Only `https:` URLs without credentials are fetched. The host must not be
+  `localhost` or a platform host, and every address it resolves to must be
+  public: private, loopback, link-local (including `169.254.169.254`), CGNAT,
+  documentation, multicast and other special-purpose IPv4 and IPv6 ranges are
+  refused, as are IPv4-mapped and 6to4 forms of them. The connection is pinned
+  to the checked address.
+- Redirects are followed up to three times, and each hop is checked again. 303,
+  and 301/302 after a POST, become a GET without a body; `authorization` and
+  `cookie` headers are dropped when the origin changes.
+- Each call has 10 s and 1 MiB for the request body and the response.
+  `connection`, `host` and other hop-by-hop request headers are ignored, and
+  `set-cookie` is never returned.
+- A refused or failed call throws `HttpError(502)` with a code:
+  `zero_fetch_scheme_denied`, `zero_fetch_credentials_denied`,
+  `zero_fetch_host_denied`, `zero_fetch_address_denied`,
+  `zero_fetch_method_denied`, `zero_fetch_payload_too_large`,
+  `zero_fetch_response_too_large`, `zero_fetch_too_many_redirects`,
+  `zero_fetch_timeout` or `zero_fetch_upstream_unavailable`. A non-2xx answer
+  is a response, not an error.
+- A handler that fetches holds its transaction open while it waits. Keep calls
+  in actions short, or enqueue a job for slow ones.
+
+A site plugin can open one internal target with the
+`zero_fetch_allow_address` filter (`$open, $address, $host, $port`), and
+answer for a privately resolved name with `zero_fetch_resolve`
+(`$answer, $host`). Request input never reaches either.
+
 ## Jobs and webhooks
 
 ```ts

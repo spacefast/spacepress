@@ -222,3 +222,14 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
     );
     assert!(!out.exists());
 }
+
+#[test]
+fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("fetch");
+    let (ok, report) = migrate(&fixture("fetch"), &out, &[]);
+    assert!(ok, "{report:#}");
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
+    build(&out);
+}

@@ -4369,7 +4369,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let iter = |kind: &str, el: Ty| {
             Out::atom(
                 format!(
-                    "new \\Zero\\JsIterator({r}->{kind}Iterator(), {})",
+                    "(new \\Zero\\JsIterator({r}->{kind}Iterator(), {}))",
                     php_str(if set { "Set Iterator" } else { "Map Iterator" })
                 ),
                 Ty::Iter(Box::new(el)),
@@ -4524,7 +4524,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let call = |ty: Ty| Out::atom(format!("{r}->{m}({})", strs.join(", ")), ty);
         let iter = |kind: &str, el: Ty| {
             Out::atom(
-                format!("new \\Zero\\JsIterator({r}->{kind}Iterator(), 'URLSearchParams Iterator')"),
+                format!("(new \\Zero\\JsIterator({r}->{kind}Iterator(), 'URLSearchParams Iterator'))"),
                 Ty::Iter(Box::new(el)),
             )
         };

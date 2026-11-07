@@ -8,7 +8,7 @@ use Zero\Vendor\Rowbot\URL\URLSearchParams as WhatwgParams;
  * WHATWG `URLSearchParams`, backed by the bundled rowbot/url. A URL's `searchParams` shares its
  * list with that URL, so writes update `url.search` exactly as the standard's update steps do.
  */
-final class JsUrlSearchParams
+final class JsUrlSearchParams implements \Stringable
 {
     private function __construct(private readonly WhatwgParams $params) {}
 
@@ -55,6 +55,7 @@ final class JsUrlSearchParams
     public function get(mixed $name): ?string { return $this->params->get(Js::str($name)); }
     public function getAll(mixed $name): JsArray { return new JsArray($this->params->getAll(Js::str($name))); }
     public function toString(): string { return $this->params->toString(); }
+    public function __toString(): string { return $this->params->toString(); }
 
     /** @return list<array{0: string, 1: string}> */
     private function pairs(): array

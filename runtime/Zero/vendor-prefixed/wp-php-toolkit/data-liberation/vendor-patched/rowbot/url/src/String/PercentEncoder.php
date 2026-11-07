@@ -151,7 +151,7 @@ final class PercentEncoder {
 				}
 
 				// 5.3.5. Otherwise, percent-encode byte and append the result to output.
-				$output .= rawurlencode( $bytes[ $i ] );
+				$output .= sprintf( '%%%02X', ord( $bytes[ $i ] ) );
 			}
 		}
 

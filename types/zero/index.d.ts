@@ -1164,9 +1164,19 @@ export interface RouteRequest {
   path: string;
   /** `:name` segments of the route path, decoded. */
   params: Record<string, string>;
-  query: Record<string, string>;
+  /**
+   * The query string as URLSearchParams reads it: names byte-exact (`a.b`, `x[]`), every value
+   * kept in order. `get` answers the first value or null.
+   */
+  query: RouteQuery;
   headers: Record<string, string>;
   body: string;
+}
+export interface RouteQuery {
+  get(name: string): string | null;
+  getAll(name: string): string[];
+  has(name: string): boolean;
+  entries(): [string, string][];
 }
 /** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
 export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }

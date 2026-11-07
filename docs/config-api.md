@@ -323,7 +323,8 @@ export default defineConfig({
       path: "/api/feed.json",
       access: "anyone",
       async handler(req) {
-        const notes = await db.query.notes.findMany({ where: { status: "published" }, limit: 20 });
+        const limit = Number(req.query.get("limit") ?? "20");
+        const notes = await db.query.notes.findMany({ where: { status: "published" }, limit });
         return {
           headers: { "content-type": "application/feed+json" },
           body: JSON.stringify({ version: "https://jsonfeed.org/version/1.1", items: notes.map((n) => ({ id: String(n.id), title: n.title })) }),
@@ -358,6 +359,15 @@ export default defineConfig({
   body, as on [actions](#actions). The verified caller is then anonymous.
 - `req` is `{ method, path, params, query, headers, body }`. Header names are
   lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
+- `req.query` reads the raw query string the way `URLSearchParams` does:
+  `get(name)` (the first value, or `null`), `getAll(name)`, `has(name)` and
+  `entries()`. Names are kept exactly (`a.b`, `x[]`), `+` is a space, and a
+  repeated name keeps every value in order. PHP's `$_GET` would rename `a.b` to
+  `a_b` and keep only the last value.
+- When several routes match, the most specific one wins, whatever their order
+  in the config. Segments are compared from the left, and a literal segment
+  beats a `:param`: `/api/feed.json` wins over `/api/:id`, and
+  `/api/probe/:id` wins over `/api/:kind/:id`.
 - The handler returns `{ status?, headers?, body? }`. `status` defaults to
   `200`, `body` to `""`, and `Content-Type` to `text/plain; charset=utf-8`. Header
   names are case-insensitive, so the handler's `content-type` replaces the

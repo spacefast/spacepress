@@ -145,7 +145,26 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   assert.equal(mismatch.status, 409, mismatch.text);
   assert.equal(JSON.parse(mismatch.text).code, 'idempotency_mismatch');
 
+  // The most specific route wins whatever the declaration order: literal segments beat `:params`
+  // segment by segment from the left. `/api/:id` and `/api/:kind/:id` are declared first.
+  const body = async (path) => (await http(path)).text;
+  assert.equal(feed.headers.get('content-type'), 'application/feed+json', 'the literal feed beats /api/:id declared before it');
+  assert.equal(await body('/api/other'), 'param other');
+  assert.equal(await body('/api/probe/feed.json'), 'probe literal', '/api/probe/feed.json beats /api/probe/:id and /api/:kind/:id');
+  assert.equal(await body('/api/probe/42'), 'probe param 42', '/api/probe/:id beats /api/:kind/:id');
+  assert.equal(await body('/api/notes/42'), 'params notes 42');
+
+  // The query string as URLSearchParams parses it, not as PHP's $_GET does.
+  const query = JSON.parse(await body('/api/probe-query?a.b=1&x[]=1&x[]=2&k=1&k=2'));
+  assert.deepEqual(query, {
+    dotted: '1', underscored: null, brackets: ['1', '2'], first: '1', every: ['1', '2'], has: true, missing: null,
+    entries: [['a.b', '1'], ['x[]', '1'], ['x[]', '2'], ['k', '1'], ['k', '2']],
+  });
+  const encoded = JSON.parse(await body('/api/probe-query?a%2Eb=%31&k=one+two&k=3'));
+  assert.deepEqual([encoded.dotted, encoded.first, encoded.every], ['1', 'one two', ['one two', '3']]);
+
   // Unclaimed paths still belong to WordPress.
-  assert.equal((await http('/api/other.json')).status, 404);
+  assert.equal((await http('/unclaimed/other.json')).status, 404);
+  assert.equal((await http('/api/a/b/c')).status, 404, 'no route has three segments under /api');
   assert.equal((await http('/wp-json/zero/v1/notes')).status, 200);
 });

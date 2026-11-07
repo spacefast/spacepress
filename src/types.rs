@@ -658,9 +658,23 @@ pub fn route_request() -> Ty {
         ("method", Ty::Str),
         ("path", Ty::Str),
         ("params", Ty::Map(Box::new(Ty::Str))),
-        ("query", Ty::Map(Box::new(Ty::Str))),
+        ("query", route_query()),
         ("headers", Ty::Map(Box::new(Ty::Str))),
         ("body", Ty::Str),
+    ])
+}
+
+/// `req.query`: URLSearchParams' read methods over the raw query string, names byte-exact and every
+/// value kept in order (runtime/Zero/QueryString.php).
+pub fn route_query() -> Ty {
+    obj(&[
+        ("get", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str.nullable()))),
+        ("getAll", Ty::Fn(vec![Ty::Str], Box::new(Ty::Array(Box::new(Ty::Str))))),
+        ("has", Ty::Fn(vec![Ty::Str], Box::new(Ty::Bool))),
+        (
+            "entries",
+            Ty::Fn(vec![], Box::new(Ty::Array(Box::new(Ty::Tuple(vec![Ty::Str, Ty::Str]))))),
+        ),
     ])
 }
 

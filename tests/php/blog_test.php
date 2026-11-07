@@ -14,8 +14,18 @@ use Zero\App;
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
+$schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
+$open = $schema['collections']['posts'];
+$open['key'] = 'openNotes';
+$open['drafts'] = $open['revisions'] = false;
+$open['content'] = null;
+$open['columns'] = array_intersect_key($open['columns'], array_flip(['id', 'title', 'slug']));
+$open['hooks'] = $open['relations'] = [];
+$open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'anyone']);
+$open['wp'] = ['postType' => 'zero_open_notes', 'groupKey' => 'group_zero_open_notes', 'metaPrefix' => 'zero_', 'fieldKeyPrefix' => 'field_zero_open_notes_'];
+$schema['collections']['openNotes'] = $open;
 $wp = wpSite('blog', [
-    'schema' => require dirname(__DIR__) . '/fixtures/blog/schema.php',
+    'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),
     'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
 ]);
@@ -23,6 +33,11 @@ $app = $wp->app();
 $db = \Zero\db();
 eq('WordPress and the request pipeline share the validated schema', $app->schema === \Zero\Wp\Runtime::plugin()->schema, true);
 eq('the database uses the validated schema', $db->schema() === $app->schema, true);
+$anonymous = new \Zero\Viewer(null);
+eq('an unprotected collection retains unrestricted storage visibility', $db->store()->readGuards('openNotes', $anonymous), []);
+$openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true, $anonymous)[0];
+eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
+eq('native unrestricted reads do not enumerate every primary key', $db->permittedKeys('openNotes', 'read', $anonymous), null);
 
 // Internal REST calls can discard their response before WordPress serves a different one.
 $internal = new \WP_REST_Request('GET', '/zero/v1/posts');
@@ -137,6 +152,10 @@ eq('native editor can still load protected content for editing', [$nativeEdited-
 $wp->actAs(null);
 wp_update_post(['ID' => $protected['id'], 'post_password' => '0']);
 eq('WordPress empty-password semantics remain public', [post_password_required($protected['id']), $db->findFirst('posts', ['where' => $protectedWhere], $anon)['body'] ?? null], [false, $protected['body']]);
+foreach (['0 ', ' ', 'Native-secret', 'native-secret '] as $password) {
+    wp_update_post(['ID' => $protected['id'], 'post_password' => $password]);
+    eq('only exact empty passwords are public: ' . json_encode($password), $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
+}
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
 $coreRead = static function () use ($protected) {
     return rest_do_request(new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $protected['id']));
@@ -214,6 +233,7 @@ $page = $db->findMany('posts', ['where' => ['id' => ['in' => array_merge($protec
 $firstQueries = $wpdb->num_queries - $queries;
 eq('batch visibility preserves a full public page', array_column($page, 'id'), [$pub['id']]);
 check('protected visibility primes forty posts in a bounded query count', $firstQueries <= 5, $firstQueries);
+eq('anonymous pagination never primes unrelated protected posts', wp_cache_get($protectedIds[0], 'posts'), false);
 $proofChecks = 0;
 $countCapabilities = static function ($caps) use (&$proofChecks) { $proofChecks++; return $caps; };
 add_filter('map_meta_cap', $countCapabilities, 1);
@@ -233,7 +253,7 @@ $failPostLookup = static function (string $sql) use ($wpdb): string {
 add_filter('query', $failPostLookup);
 $suppressed = $wpdb->suppress_errors(true);
 try {
-    problem('unresolved protected posts refuse anonymous reads', fn () => $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $anon), 503, 'storage_unavailable');
+    eq('SQL policy still hides protected rows when the WP post-cache lookup fails', $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $anon), []);
     problem('unresolved protected posts refuse editor reads', fn () => $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $viewer), 503, 'storage_unavailable');
 } finally {
     remove_filter('query', $failPostLookup);

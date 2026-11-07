@@ -21,6 +21,8 @@ $wp = wpSite('blog', [
 ]);
 $app = $wp->app();
 $db = \Zero\db();
+eq('WordPress and the request pipeline share the validated schema', $app->schema === \Zero\Wp\Runtime::plugin()->schema, true);
+eq('the database uses the validated schema', $db->schema() === $app->schema, true);
 
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {

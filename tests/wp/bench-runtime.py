@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--adapter-before", type=Path, help="optional baseline MCP adapter tree")
     parser.add_argument("--adapter-after", type=Path, help="optional candidate MCP adapter tree")
+    parser.add_argument("--mcp-profile", action="store_true", help="separate diagnostic run timing MCP init")
     parser.add_argument("--app-before", type=Path, help="optional baseline app plugin tree")
     parser.add_argument("--app-after", type=Path, help="optional candidate app plugin tree")
     parser.add_argument("--app-slug", help="mounted app plugin directory name")
@@ -93,19 +94,26 @@ def main():
         digest = hashlib.sha256(body).hexdigest()
         expected_digest = expected_digest or digest
         assert digest == expected_digest, "response changed between requests or runtime snapshots"
-        return [elapsed, metrics["php_ms"], metrics["peak_bytes"], metrics["allocated_bytes"], metrics["included_files"]]
+        values = [elapsed, metrics["php_ms"], metrics["peak_bytes"], metrics["allocated_bytes"], metrics["included_files"]]
+        if args.mcp_profile:
+            values.extend(metrics[name] for name in ["mcp_init_ms", "mcp_init_live_bytes", "mcp_share_percent"])
+        return values
 
     results = {
         "url": args.url, "rows": None if args.expected else args.rows, "warmup_per_phase": args.warmup,
         "columns": ["http_ms", "php_ms", "peak_bytes", "allocated_bytes", "included_files"],
         "runs": [], "errors": 0,
     }
+    if args.mcp_profile:
+        results["columns"].extend(["mcp_init_ms", "mcp_init_live_bytes", "mcp_share_percent"])
+        results["instrumented"] = True
     if args.expected:
         results.update({"method": "POST" if request_body else "GET", "expected_response": expected})
     probe = "/var/www/html/wp-content/mu-plugins/zero-runtime-bench.php"
-    harness("compose", "cp", str(here / "fixtures/runtime-metrics.php"), "wordpress:" + probe)
+    fixture = "runtime-mcp-metrics.php" if args.mcp_profile else "runtime-metrics.php"
+    harness("compose", "cp", str(here / "fixtures" / fixture), "wordpress:" + probe)
     try:
-        # Profilers must be removed before this measurement.
+        # The opt-in diagnostic run is separate from uninstrumented latency results.
         for run in range(args.runs):
             for side, snapshot in [("before", args.before), ("after", args.after)]:
                 install(snapshot, run * 2 + (side == "after"), args.adapter_before if side == "before" else args.adapter_after,

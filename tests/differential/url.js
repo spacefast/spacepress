@@ -27,7 +27,14 @@ export function searchParams() {
   url.hash = "";
   url.port = "8443";
   const relative = new URL("../x?y", "http://h/a/b/c");
-  return [p.get("a"), p.get("missing"), p.getAll("a"), p.has("c"), p.has("a", "z"), p.size, seen, before, p.toString(), [...p.keys()], [...fromPairs], fromPairs.toString(), fromRecord.toString(), url.href, url.search, String(url), JSON.stringify({ url }), relative.href, URL.canParse("nope"), URL.canParse("/x", "http://h")];
+  // The application/x-www-form-urlencoded set: `*-._` stay, `~!'()` are escaped, and a lone `%zz` stays.
+  const encoded = new URLSearchParams("?a=1&b=two words");
+  encoded.append("a", "é");
+  encoded.append("d", "x&y=z ü");
+  encoded.append("t", "*-._~!'()");
+  const tilde = new URL("http://h/a~b?c~d#e~f");
+  tilde.searchParams.append("x", "~");
+  return [p.get("a"), p.get("missing"), p.getAll("a"), p.has("c"), p.has("a", "z"), p.size, seen, before, p.toString(), [...p.keys()], [...fromPairs], fromPairs.toString(), fromRecord.toString(), url.href, url.search, String(url), JSON.stringify({ url }), relative.href, URL.canParse("nope"), URL.canParse("/x", "http://h"), String(encoded), new URLSearchParams("x=%zz").get("x"), String(new URLSearchParams(encoded)), tilde.href];
 }
 
 export function invalid() {

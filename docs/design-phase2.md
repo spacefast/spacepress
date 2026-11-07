@@ -368,9 +368,9 @@ signature library (none is mature; Stripe-style `t=…,v1=hmac_sha256` is 15
 lines of `hash_hmac`/`hash_equals`, §6.1); `symfony/yaml` directly (the
 toolkit vendors it; front matter parsing on the PHP side goes through
 `webuni/front-matter` inside the toolkit, and the Rust CLI keeps its own
-strict YAML subset for file I/O). Zero's standalone target carries the same
-`vendor-prefixed/` tree (≈ 2 MB for the runtime root) so sync behaves the
-same on both targets.
+strict YAML subset for file I/O). (Superseded: the standalone target is
+removed, design-wp-only.md; the toolkit's HTML API and block parser copies are
+replaced by WordPress core's, decisions/2026-11-07-wp-core-apis.md.)
 
 5. **Size.** Runtime root ≈ 2 MB, identity root ≈ 4 MB of PHP embedded in the
    binary. Accepted (§10). `build.rs` skips `tests/`, `docs/`, `*.md` inside

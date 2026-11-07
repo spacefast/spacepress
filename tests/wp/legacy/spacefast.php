@@ -229,6 +229,20 @@ if ($phase === 'nested') {
         }
     }
     proof($statuses($verify()) === $all, 'content receipts verify again once the source is restored');
+    // A source subject that no longer matches the copied one is incomplete, checked before drift.
+    $option = 'spacefast_app_subject_' . $uid . '_imported-space';
+    // The source Space's options table, which the copier reads; not this request's option API.
+    $setSubject = static fn (string $value) => $wpdb->update('wp_options', ['option_value' => $value], ['option_name' => $option]);
+    proof($setSubject('usr_' . str_repeat('ef', 32)) === 1, 'source subject changed after the copy');
+    $seen = $statuses($verify());
+    proof($seen === array_replace($all, ['users' => 'incomplete']), 'a changed source subject reports the users group incomplete: ' . json_encode($seen));
+    // The subject is also part of the users fingerprint: with the target updated to match, the
+    // receipt written for the old subject drifts.
+    update_user_meta($uid, 'zero_spacefastSubject', 'usr_' . str_repeat('ef', 32));
+    proof($statuses($verify()) === array_replace($all, ['users' => 'drifted']), 'a subject change the receipt never saw drifts the users group');
+    proof($setSubject($subject) === 1, 'source subject restored');
+    update_user_meta($uid, 'zero_spacefastSubject', $subject);
+    proof($statuses($verify()) === $all, 'the restored subject verifies again');
     // Receipts written before content fingerprints hashed aggregate counters (formula pinned here).
     $scope = (new ReflectionMethod($copier, 'scope'))->invoke($copier, 'imported-space', 'wp_');
     [, $ids, $users] = $scope;

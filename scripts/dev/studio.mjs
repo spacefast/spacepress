@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { watch } from 'node:fs';
+import { once } from 'node:events';
 import { access, cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
@@ -279,7 +280,10 @@ async function main() {
   const studio = await studioBinary();
   const runStudio = (args, options) => execute(process.execPath, [studio, ...args, '--path', managed.owner.site], options);
   if (mode === 'wp') {
-    await runStudio(['wp', ...process.argv.slice(4)], { input: 'inherit' });
+    // `zero wp` and the site commands: WP-CLI's own stdio and exit status, untouched.
+    const child = spawn(process.execPath, [studio, 'wp', ...process.argv.slice(4), '--path', managed.owner.site], { stdio: 'inherit' });
+    const [code, signal] = await once(child, 'exit');
+    process.exitCode = code ?? (signal === 'SIGINT' ? 130 : 1);
     return;
   }
   if (mode === 'status') {

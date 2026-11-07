@@ -1,4 +1,3 @@
-use crate::cli::USAGE;
 use crate::diag::{Diag, Span};
 use crate::emit::{emit_generated, plugin_vars, runtime_file, write};
 use crate::pipeline::{self, Built};
@@ -330,7 +329,7 @@ fn check_json(project: &Path) -> ExitCode {
 pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
     if !matches!(args.command.as_str(), "build" | "check") {
-        eprintln!("unknown command {}\n{USAGE}", args.command);
+        eprintln!("no command {}\n{}", args.command, crate::cli::help());
         return ExitCode::from(2);
     }
     if args.command == "check" && args.json {

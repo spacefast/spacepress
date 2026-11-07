@@ -784,7 +784,11 @@ pub(super) fn app(
             "ctx.auth.userId reads each member's copied Space Users subject (usr_...); users created after migration answer wp:<id>. Rows owned by 0.8 guest:<id> identities keep their stored owner but no v2 user maps to them, and anonymous writes answer 401 so the v2 client can start a guest session.",
         ));
     }
-    let uses_crypto = handlers.iter().any(|h| h.contains("__z08Crypto."));
+    let uses_crypto = handlers.iter().any(|h| {
+        ["__z08Sha256(", "__z08Hmac(", "__z08TimingSafeEqual("]
+            .iter()
+            .any(|f| h.contains(f))
+    });
     if uses_crypto {
         entries.push(entry(
             "",
@@ -899,11 +903,12 @@ fn returns_body_read(e: &Expr) -> bool {
 /// the compiler lowers `createHmac(alg, process.env.NAME)` that way) or `{ value }` used as given,
 /// and a comparison that answers false for inputs of different byte lengths, where Node throws.
 const CRYPTO_PRELUDE: &str = r#"import { createHash as __z08Hash, createHmac as __z08Hmac, timingSafeEqual as __z08Equal } from "node:crypto";
-const __z08Crypto = {
-  sha256: (data: string): string => __z08Hash("sha256").update(data).digest("hex"),
-  timingSafeEqual: (a: string, b: string): boolean =>
-    Buffer.byteLength(a) === Buffer.byteLength(b) && __z08Equal(Buffer.from(a), Buffer.from(b)),
-};
+function __z08Sha256(data: string): string {
+  return __z08Hash("sha256").update(data).digest("hex");
+}
+function __z08TimingSafeEqual(a: string, b: string): boolean {
+  return Buffer.byteLength(a) === Buffer.byteLength(b) && __z08Equal(Buffer.from(a), Buffer.from(b));
+}
 "#;
 
 /// A route path with parameter names erased, so two routes v2 would refuse as ambiguous compare equal.
@@ -1521,10 +1526,10 @@ impl Rewrite<'_> {
                     ArrEl::Spread(_) => Err(fail(self.at, "spread crypto arguments need a manual port")),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let text = if prop == "hmacSha256" {
-                self.hmac(args)?
-            } else {
-                format!("__z08Crypto.{prop}({})", rendered.join(", "))
+            let text = match prop.as_str() {
+                "hmacSha256" => self.hmac(args)?,
+                "sha256" => format!("__z08Sha256({})", rendered.join(", ")),
+                _ => format!("__z08TimingSafeEqual({})", rendered.join(", ")),
             };
             // An unawaited call is returned or awaited later in 0.8 code; the value stands in for
             // its promise either way. Storing it unawaited (`const p = ctx.crypto...`) and then

@@ -944,7 +944,7 @@ mod tests {
             (
                 r#"{"exports":"./source.ts"}"#,
                 "node:fs",
-                "unsupported package specifier",
+                "Node built-ins other than node:crypto are unavailable",
             ),
         ] {
             let fs = memory(&[

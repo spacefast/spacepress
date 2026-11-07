@@ -56,6 +56,14 @@ Status: **supported**.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## in-operator
+
+Status: **supported**.
+
+`key in object` compiles in typed code, imported JavaScript and configuration evaluation. The key goes through ToPropertyKey after the key expression runs; own properties are checked first, then the value's fixed prototype chain: class methods and statics, the built-in prototype of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then Object.prototype. Arrays are dense, so an index is present exactly when it is below the length. A primitive right side throws JavaScript's TypeError. `"key" in x` narrows object unions like TypeScript; members with an optional key stay on both branches, and `unknown` narrows to an object whose key reads stay checked. Configuration evaluation inspects plain objects, arrays and arguments, and refuses a primitive right side at build time.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

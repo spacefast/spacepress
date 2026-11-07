@@ -862,10 +862,13 @@ its checked operations.
 
 Bitwise operators (`& | ^ ~ << >> >>>` and their compound assignments) follow
 JavaScript's 32-bit semantics: ToInt32 operands, shift counts masked to five
-bits, and an unsigned result for `>>>`.
+bits, and an unsigned result for `>>>`. `key in object` checks own properties,
+then the value's built-in prototype chain (class methods, array, function and
+error prototypes, `Object.prototype`), and narrows object unions like
+TypeScript.
 
 Rejected with a located error and a fix: `this` outside class methods or their
-arrows, `enum`, `in`, `delete`, generators,
+arrows, `enum`, `delete`, generators,
 labels, getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),

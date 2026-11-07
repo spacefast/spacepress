@@ -288,6 +288,38 @@ fn physical(space: &str, name: &str) -> String {
     format!("{}_{:.10}", &base[..base.len().min(53)], digest)
 }
 
+/// Every v2 user projects as a member whose hidden `spacefastSubject` holds the 0.8 Space
+/// subject (`usr_<64 hex>` for Space Users) copied by `wp zero migrate-spacefast`. Users created
+/// after the migration answer `wp:<id>`, which no 0.8 subject can equal.
+const IDENTITY: &str = r#"const __z08Members = __z08Users({email: __z08Email().notNull().unique().max(191), name: __z08Text().notNull(), spacefastSubject: __z08Text().max(191).access({ read: false, create: false, update: false })});
+type __z08User = { id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" };
+async function __z08Subject(user: __z08User | null): Promise<string | null> {
+  if (user === null) return null;
+  const member = await __z08Db.query.members.findFirst({ where: { id: user.id }, columns: { spacefastSubject: true } });
+  const stored = member?.spacefastSubject;
+  return stored != null && stored !== "" ? stored : "wp:" + String(user.id);
+}
+function __z08Auth(user: __z08User | null, subject: string | null) {
+  const guest = user !== null && String(user.role) === "guest";
+  return { userId: subject, displayName: user === null ? "Signed out" : guest ? "Guest" : user.name, isGuest: guest, isSignedIn: user !== null && !guest, isAuthenticated: user !== null && !guest };
+}
+function __z08RequireSignedIn(user: __z08User | null, subject: string | null) {
+  if (user === null || subject === null || String(user.role) === "guest") throw new __z08HttpError(401, "unauthorized", "Sign in to continue.");
+  return { userId: subject, displayName: user.name, isGuest: false, isSignedIn: true, isAuthenticated: true };
+}
+function __z08RequireIdentity(user: __z08User | null, subject: string | null) {
+  if (user === null || subject === null) throw new __z08HttpError(401, "unauthorized", "An identity is required.");
+  const guest = String(user.role) === "guest";
+  return { userId: subject, displayName: guest ? "Guest" : user.name, isGuest: guest, isSignedIn: !guest, isAuthenticated: !guest };
+}
+"#;
+
+/// Index ranges keep 0.8's null rule: comparing against null is refused.
+const RANGE: &str = r#"function __z08RangeText(value: string | null | undefined): string { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
+function __z08RangeReal(value: number | null | undefined): number { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
+function __z08RangeBoolean(value: boolean | null | undefined): boolean { if (value == null) throw new Error("Zero DB range filters cannot compare against null."); return value; }
+"#;
+
 pub(super) struct Transformed {
     pub config: String,
     pub content_config: Option<String>,
@@ -387,11 +419,19 @@ pub(super) fn app(
         return Err(fail("", "expected capsule({...})"));
     }
     let root = obj(a[0], "")?;
-    let name = root
-        .get("name")
-        .map(|e| string(e, "/name"))
-        .transpose()?
+    let title = root.get("name").map(|e| string(e, "/name")).transpose()?;
+    // 0.8 names are display titles; v2 needs the plugin slug.
+    let name = title
+        .as_deref()
+        .map(crate::extract::slugify_name)
         .unwrap_or_else(|| "migrated-app".into());
+    if let Some(title) = title.as_deref().filter(|t| *t != name) {
+        entries.push(entry(
+            "/name",
+            "mapped",
+            format!("display name {title:?} becomes the plugin slug {name:?}"),
+        ));
+    }
     let mut tables = BTreeMap::new();
     if let Some(schema) = root.get("schema") {
         for (name, e) in obj(schema, "/schema")? {
@@ -522,6 +562,10 @@ pub(super) fn app(
     } else {
         None
     };
+    let has_users = users
+        || root
+            .get("auth")
+            .is_some_and(|auth| !matches!(literal(auth), Ok(Value::Bool(false))));
     let mut handlers = Vec::new();
     let mut names = BTreeSet::new();
     for section in ["queries", "mutations", "actions"] {
@@ -547,7 +591,7 @@ pub(super) fn app(
                     let E::Func(f) = &a[0].kind else {
                         return Err(fail(&at, "handler must be an inline function"));
                     };
-                    handler(source, f, &tables, &at, &name, section == "mutations", signed_in)
+                    handler(source, f, &tables, &at, &name, section == "mutations", signed_in, users)
                 })();
                 match result {
                     Ok(h) => {
@@ -558,6 +602,13 @@ pub(super) fn app(
                 }
             }
         }
+    }
+    if handlers.iter().any(|h| h.contains("__z08Subject(")) {
+        entries.push(entry(
+            "/auth",
+            "review",
+            "ctx.auth.userId reads each member's copied Space Users subject (usr_...); users created after migration answer wp:<id>. Rows owned by 0.8 guest:<id> identities keep their stored owner but no v2 user maps to them, and anonymous writes answer 401 so the v2 client can start a guest session.",
+        ));
     }
     let mut config = String::from(
         "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, type InferSelectModel } from \"zero\";\n",
@@ -578,6 +629,10 @@ pub(super) fn app(
     for t in tables.values() {
         config.push_str(&table_code(t));
     }
+    if has_users {
+        config.push_str(IDENTITY);
+    }
+    config.push_str(RANGE);
     config.push_str("function __z08Key(id: string): number {\n  const n = Number(id);\n  if (!/^[1-9][0-9]*$/.test(id) || n > 9007199254740991) throw new __z08HttpError(422, \"legacy_id_range\", \"Expected a positive safe integer ID.\");\n  return n;\n}\n");
     config.push_str(&format!(
         "export default __z08Config({{ name: {}, tables: {{ {} {} }},",
@@ -606,12 +661,8 @@ pub(super) fn app(
     if content_config.is_none() && native_posts.is_some() {
         config.push_str("collections: {posts: __z08Posts},");
     }
-    if users
-        || root
-            .get("auth")
-            .is_some_and(|auth| !matches!(literal(auth), Ok(Value::Bool(false))))
-    {
-        config.push_str("users: {members: __z08Users({email: __z08Email().notNull().unique().max(191), name: __z08Text().notNull()})},");
+    if has_users {
+        config.push_str("users: {members: __z08Members},");
         entries.push(entry(
             "/auth",
             "mapped",
@@ -789,6 +840,7 @@ fn handler(
     name: &str,
     writes: bool,
     signed_in: bool,
+    subjects: bool,
 ) -> Result<String, Failure> {
     let Some(first) = f.params.first() else {
         return Err(fail(at, "handler must declare its context parameter"));
@@ -827,6 +879,8 @@ fn handler(
         tables,
         at,
         writes,
+        subjects,
+        uses_subject: false,
         edits: vec![],
     };
     let body = match &f.body {
@@ -859,11 +913,20 @@ fn handler(
     };
     let gate = if signed_in {
         "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
+    } else if r.uses_subject && writes {
+        // 0.8 gave every visitor a guest identity; a v2 client starts a guest session on this 401.
+        "if (__z08ctx.user === null) throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
     } else {
         ""
     };
+    // Writes run behind the 401 gate below, so their subject is never null.
+    let subject = match (r.uses_subject, writes || signed_in) {
+        (false, _) => "",
+        (true, false) => "const __z08subject = await __z08Subject(__z08ctx.user);\n",
+        (true, true) => "const __z08subject: string = await __z08Subject(__z08ctx.user) ?? \"\";\n",
+    };
     Ok(format!(
-        "{}: __z08Action({{ input: {{ {} }}, access: \"anyone\", agents: false, async handler(__z08input, __z08ctx) {{\n{gate}{bindings}{body}\n}} }})",
+        "{}: __z08Action({{ input: {{ {} }}, access: \"anyone\", agents: false, async handler(__z08input, __z08ctx) {{\n{gate}{subject}{bindings}{body}\n}} }})",
         q(name),
         input.join(", ")
     ))
@@ -875,6 +938,9 @@ struct Rewrite<'a> {
     tables: &'a BTreeMap<String, Table>,
     at: &'a str,
     writes: bool,
+    /// A `members` projection carries each user's 0.8 Space subject.
+    subjects: bool,
+    uses_subject: bool,
     edits: Vec<(Span, String)>,
 }
 impl Rewrite<'_> {
@@ -922,15 +988,58 @@ impl Rewrite<'_> {
                     "(__z08ctx.user !== null && String(__z08ctx.user.role) !== \"guest\")"
                 }
                 "isGuest" => "(__z08ctx.user !== null && String(__z08ctx.user.role) === \"guest\")",
-                "displayName" => "(__z08ctx.user === null ? \"Signed out\" : __z08ctx.user.name)",
+                "displayName" => {
+                    "(__z08ctx.user === null ? \"Signed out\" : String(__z08ctx.user.role) === \"guest\" ? \"Guest\" : __z08ctx.user?.name ?? \"Signed out\")"
+                }
+                "userId" if self.subjects => {
+                    self.uses_subject = true;
+                    "__z08subject"
+                }
                 _ => {
                     return Err(fail(
                         &pointer(&pointer(&pointer(self.at, "ctx"), "auth"), prop),
-                        "legacy principal IDs, profiles and auth methods require an explicit identity mapping; no wp:<id> identity is invented",
+                        if prop == "userId" {
+                            "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Spacefast account principals and guest:<id> identities have no v2 user"
+                        } else {
+                            "legacy profiles and auth methods require an explicit identity mapping"
+                        },
                     ));
                 }
             };
             self.edits.push((e.span, text.into()));
+            return Ok(());
+        }
+        // requireSignedIn() and requireIdentity() keep their 0.8 refusal and return the auth value.
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &e.kind
+            && args.is_empty()
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && matches!(&obj.kind,E::Member{obj,prop:auth,..} if auth=="auth"&&matches!(&obj.kind,E::Ident(n) if n==self.ctx))
+            && (prop == "requireSignedIn" || prop == "requireIdentity")
+            && self.subjects
+        {
+            self.uses_subject = true;
+            let helper = if prop == "requireSignedIn" {
+                "__z08RequireSignedIn"
+            } else {
+                "__z08RequireIdentity"
+            };
+            self.edits
+                .push((e.span, format!("{helper}(__z08ctx.user, __z08subject)")));
+            return Ok(());
+        }
+        if let E::Member { obj, prop, .. } = &e.kind
+            && prop == "auth"
+            && matches!(&obj.kind, E::Ident(n) if n == self.ctx)
+            && self.subjects
+        {
+            self.uses_subject = true;
+            self.edits
+                .push((e.span, "__z08Auth(__z08ctx.user, __z08subject)".into()));
             return Ok(());
         }
         if let E::Member { obj, prop, .. } = &e.kind
@@ -1278,7 +1387,20 @@ impl Rewrite<'_> {
                         } else {
                             range_field = Some(field.clone());
                         }
-                        filters.push(format!("{{ {}: {{ {op}: {value} }} }}", q(&field)));
+                        // 0.8 compared a null equality as IS NULL and refused null ranges.
+                        let (kind, ty) = match t.fields.iter().find(|f| f.name == field).map(|f| f.ty()) {
+                            Some("number") => ("Real", "number"),
+                            Some("boolean") => ("Boolean", "boolean"),
+                            _ if field == "id" => ("Real", "number"),
+                            _ => ("Text", "string"),
+                        };
+                        // The runtime compares `eq: null` as IS NULL, as 0.8 did; the cast only
+                        // states that to TypeScript. Ranges refuse null like 0.8's runner.
+                        filters.push(if op == "eq" {
+                            format!("{{ {}: {{ eq: ({value}) as {ty} }} }}", q(&field))
+                        } else {
+                            format!("{{ {}: {{ {op}: __z08Range{kind}({value}) }} }}", q(&field))
+                        });
                     }
                 }
                 let mut direction = "asc".to_string();

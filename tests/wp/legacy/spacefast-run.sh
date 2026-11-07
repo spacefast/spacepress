@@ -29,7 +29,7 @@ export default capsule({
   },
 });
 TS
-"$target/debug/zero" migrate app --from zero-0.8 "$app/source" --out "$app/converted" >/dev/null
+"$target/debug/zero" migrate app --from zero-0.8 "$app/source" --out "$app/converted" --users >/dev/null
 "$target/debug/zero" build "$app/converted" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-spacefast"
 rsync -a --delete "$app/converted/.zero/wp-content/" "$wp/.wp-content-spacefast/"

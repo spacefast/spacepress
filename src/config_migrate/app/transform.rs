@@ -344,7 +344,23 @@ pub(super) fn app(
     let mut aliases = BTreeMap::new();
     let mut prelude = String::new();
     let mut root = None;
-    for stmt in &body {
+    // `export` on a helper changes nothing in the generated module; the helper itself is copied.
+    let body: Vec<&Stmt> = body
+        .iter()
+        .map(|s| match s {
+            Stmt::Exported(inner) => inner.as_ref(),
+            s => s,
+        })
+        .collect();
+    if let Some(name) = ambient_globals(source).first() {
+        return Err(fail(
+            "",
+            format!(
+                "`declare const {name}` names a build-time global that 0.8 injected; replace it with env(\"{name}\") or a constant"
+            ),
+        ));
+    }
+    for stmt in body {
         match stmt {
             Stmt::Import {
                 source: package,
@@ -801,6 +817,32 @@ pub(super) fn app(
         content_config,
         connector_roles: Value::Object(connector_roles),
     })
+}
+
+/// Names declared with `declare const|let|var` at module level.
+fn ambient_globals(source: &str) -> Vec<String> {
+    use oxc_ast::ast::{BindingPattern, Declaration, Statement};
+    let arena = Allocator::default();
+    let parsed = Parser::new(&arena, source, SourceType::ts()).parse();
+    let mut out = vec![];
+    for s in &parsed.program.body {
+        let declaration = match s {
+            Statement::VariableDeclaration(v) => Some(&**v),
+            Statement::ExportDeclaration(e) => match &e.declaration {
+                Declaration::VariableDeclaration(v) => Some(&**v),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(v) = declaration.filter(|v| v.declare) {
+            for d in &v.declarations {
+                if let BindingPattern::BindingIdentifier(id) = &d.id {
+                    out.push(id.name.to_string());
+                }
+            }
+        }
+    }
+    out
 }
 
 fn type_aliases(source: &str) -> String {

@@ -1,13 +1,15 @@
 import { action, defineConfig, text } from "zero";
 import { Files } from "files-sdk";
 import { memory } from "files-sdk/memory";
+import { errors, handles, listing, mutate, roundtrip } from "./scenarios.mjs";
 
-// The baseline probe from the files-sdk effort brief: one action that builds a
-// memory-backed Files instance and round-trips one object.
+// `probe` is the baseline from the files-sdk effort brief, kept verbatim so
+// counts stay comparable. The other actions are the differential scenarios
+// that ../verify.mjs compares with Node.
 export default defineConfig({
   name: "files-sdk-probe",
   actions: {
-    roundtrip: action({
+    probe: action({
       access: "anyone",
       input: { key: text().notNull(), body: text().notNull() },
       async handler(input) {
@@ -17,5 +19,16 @@ export default defineConfig({
         return { exists: await files.exists(input.key), text: await got.text() };
       },
     }),
+    roundtrip: action({
+      access: "anyone",
+      input: { key: text().notNull(), body: text().notNull() },
+      async handler(input) {
+        return await roundtrip(input.key, input.body);
+      },
+    }),
+    listing: action({ access: "anyone", input: {}, async handler() { return await listing(); } }),
+    mutate: action({ access: "anyone", input: {}, async handler() { return await mutate(); } }),
+    handles: action({ access: "anyone", input: {}, async handler() { return await handles(); } }),
+    errors: action({ access: "anyone", input: {}, async handler() { return await errors(); } }),
   },
 });

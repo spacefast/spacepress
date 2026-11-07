@@ -2015,6 +2015,9 @@ fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_ref
 fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
     for body in [
         "const x=7;for(const x of [x])return x;return 0;",
+        "const x=5;for(const [x=x] of [[undefined]])return x;return 0;",
+        "const x=5;for(let [x=x] of [[undefined]])return x;return 0;",
+        "const b=5;const rows:{a?:number;b:number}[]=[{b:1}];for(const {a=b,b} of rows)return a;return 0;",
         "const x='key';for(const x in {[x]:1})return x;return '';",
         "let x=7;for(let x of [(x=2)])return x;return 0;",
         "const x=7;for(const x of [()=>x])return x();return 0;",
@@ -2145,5 +2148,23 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
                 "Own array method overrides are not supported by typed calls"
             ]
         ])
+    );
+}
+
+#[test]
+fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    let diagnostic = &report["diagnostics"][0];
+    assert_eq!(
+        diagnostic["message"], "destructured var loops aren't supported yet",
+        "{report}"
+    );
+    assert_eq!(diagnostic["location"]["file"], "zero.config.ts", "{report}");
+    assert_eq!(
+        diagnostic["help"], "use const or let for loop destructuring",
+        "{report}"
     );
 }

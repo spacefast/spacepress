@@ -754,6 +754,13 @@ impl<'p> Evaluator<'p> {
                 body,
                 span,
             } => {
+                if *kind == DeclKind::Var && !matches!(pat, Pat::Id(..)) {
+                    return err_help(
+                        *span,
+                        "destructured var loops aren't supported yet",
+                        "use const or let for loop destructuring",
+                    );
+                }
                 let head = Scope::new(Some(scope.clone()), scope.module);
                 if *kind != DeclKind::Var {
                     predeclare(pat, &head, *kind == DeclKind::Let);
@@ -762,6 +769,9 @@ impl<'p> Evaluator<'p> {
                 while let Some(item) = items.next(iter.span)? {
                     self.tick(*span)?;
                     let iter_scope = Scope::new(Some(scope.clone()), scope.module);
+                    if *kind != DeclKind::Var {
+                        predeclare(pat, &iter_scope, *kind == DeclKind::Let);
+                    }
                     self.initialize_pattern(
                         pat,
                         item,

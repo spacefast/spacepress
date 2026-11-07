@@ -1086,5 +1086,10 @@
     "declarations": "import {deletedArrayKeys} from './for-in-live.js';",
     "expression": "[deletedArrayKeys(), (() => {const a=[1,2];const seen=[];for(const k in a){seen.push(k);a.pop();}return seen;})()]",
     "fold": false
+  },
+  {
+    "name": "loopDestructuringDefaultsInitializeInOrder",
+    "expression": "(() => {const rows:number[][]=[[]];const out=[];for(const [a=1,b=a] of rows)out.push([a,b]);return out;})()",
+    "fold": true
   }
 ]

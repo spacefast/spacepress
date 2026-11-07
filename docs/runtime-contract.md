@@ -686,7 +686,10 @@ null/undefined comparisons refine only the value being compared; `!= null`
 excludes both. Class calls use the same omission rules as ordinary typed calls:
 nullable parameters remain required unless their contract also accepts undefined. Undefined cannot be assigned to a null-only annotation. Optional method
 results include undefined. Conditional var initializers retain the prior type,
-including the hoisted undefined path.
+including the hoisted undefined path. Loop destructuring predeclares every
+lexical binding per iteration before evaluating defaults; earlier initialized
+bindings remain available. Destructured var loops refuse during configuration
+evaluation as well as handler compilation.
 
 Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
 does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,

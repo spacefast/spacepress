@@ -1202,6 +1202,32 @@ export type JobsApi = [RegisteredJobs] extends [never]
   : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };
 export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
+
+/** What `fetch()` resolves to: the parts of a WHATWG Response a handler reads. */
+export interface FetchResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  /** The final URL after redirects. */
+  readonly url: string;
+  readonly redirected: boolean;
+  readonly headers: { get(name: string): string | null; has(name: string): boolean };
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+export interface FetchInit {
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
+  headers?: Record<string, string>;
+  /** Send JSON as `JSON.stringify(value)` with a `content-type` header. */
+  body?: string;
+}
+/**
+ * Outbound HTTPS from hooks, actions, routes and jobs, through the WordPress HTTP API. Refuses
+ * non-HTTPS URLs, URL credentials, and any private, loopback, link-local or special-purpose
+ * address, before and after each of at most three redirects. 10 s per call, 1 MiB each way. A
+ * refused or failed call throws an HttpError 502 with a `zero_fetch_*` code; a non-2xx answer is
+ * a response.
+ */
+export declare function fetch(url: string, init?: FetchInit): Promise<FetchResponse>;
 export interface EnvValue { readonly [envBrand]: true }
 export declare function env(name: string): EnvValue;
 export interface Webhook { url: EnvValue | string; secret: EnvValue; events: WebhookEvent[] }

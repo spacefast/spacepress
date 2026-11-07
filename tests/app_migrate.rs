@@ -568,6 +568,18 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     assert!(out.join("pages/docs/data.ts").is_file());
 }
 
+#[test]
+fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("fetch");
+    let (ok, report) = migrate(&fixture("fetch"), &out, &[]);
+    assert!(ok, "{report:#}");
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
+    assert!(config.contains("__z08EndpointValue(await response.json())"), "{config}");
+    build(&out);
+}
+
 /// A run from a stored 0.8 finalize payload (`--manifest`), as a production census drives it.
 fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool, Value) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_zero"));

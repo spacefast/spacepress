@@ -377,7 +377,7 @@ pub(super) fn app(
             ),
         ));
     }
-    for stmt in body {
+    for &stmt in &body {
         match stmt {
             Stmt::Import {
                 source: package,
@@ -789,6 +789,15 @@ pub(super) fn app(
         config.push_str(super::endpoints::PRELUDE);
         config.push_str(&responses);
     }
+    // 0.8 gave every handler the global fetch(); v2 imports it from "zero" with the same egress rules.
+    if uses_global_fetch(&body, source) {
+        config.push_str("import { fetch } from \"zero\";\n");
+        entries.push(entry(
+            "",
+            "mapped",
+            "fetch() comes from \"zero\": HTTPS only, private and special-purpose addresses refused after every redirect, 10 s and 1 MiB each way, as in 0.8",
+        ));
+    }
     config.push_str(&prelude);
     if content_config.is_some() {
         config.push_str("import * as __z08Content from \"./__z08-content\";\n");
@@ -862,6 +871,35 @@ pub(super) fn app(
         content_config,
         connector_roles: Value::Object(connector_roles),
     })
+}
+
+/// `x.json()` / `x.text()` with no arguments: a fetch body read, which returns a promise.
+fn returns_body_read(e: &Expr) -> bool {
+    matches!(&e.kind, E::Call { callee, args, .. }
+        if args.is_empty() && matches!(&callee.kind, E::Member { prop, .. } if prop == "json" || prop == "text"))
+}
+
+/// True when the module calls a global `fetch(` it does not bind itself. Lexical: a mention inside
+/// a string or comment only adds an import the module does not use, which compiles.
+fn uses_global_fetch(body: &[&Stmt], source: &str) -> bool {
+    let binds = body.iter().any(|s| match s {
+        Stmt::Import { specs, .. } => specs.iter().any(|s| s.local == "fetch"),
+        Stmt::Func(f) => f.name.as_deref() == Some("fetch"),
+        Stmt::Decl { pat, .. } => {
+            let mut names = vec![];
+            pat.bindings(&mut names);
+            names.iter().any(|(n, _)| *n == "fetch")
+        }
+        _ => false,
+    });
+    let bytes = source.as_bytes();
+    let calls = source.match_indices("fetch").any(|(at, _)| {
+        let before = at.checked_sub(1).map(|i| bytes[i]);
+        let after = source[at + 5..].trim_start();
+        !before.is_some_and(|b| b == b'.' || b == b'_' || b == b'$' || b.is_ascii_alphanumeric())
+            && after.starts_with('(')
+    });
+    calls && !binds
 }
 
 /// A route path with parameter names erased, so two routes v2 would refuse as ambiguous compare equal.
@@ -1146,7 +1184,16 @@ fn handler(
     let body = match &f.body {
         FnBody::Expr(e) => {
             r.expr(e)?;
-            format!("return {};", r.apply(e.span))
+            // `async () => response.json()` returned the promise and JavaScript awaited it.
+            let text = r.apply(e.span);
+            format!(
+                "return {};",
+                if returns_body_read(e) {
+                    format!("await {text}")
+                } else {
+                    text
+                }
+            )
         }
         FnBody::Block(stmts) => {
             for s in stmts {
@@ -1576,11 +1623,22 @@ impl Rewrite<'_> {
             Stmt::Expr(e) | Stmt::Throw(e) | Stmt::ExportDefault(e) => self.expr(e)?,
             Stmt::Return(Some(e), _) => {
                 self.expr(e)?;
-                if self.returns.contains(&e.span) {
+                // `return response.json()` returned a promise the 0.8 runtime awaited; an endpoint's
+                // return then passes through 0.8's result rules.
+                let body_read = returns_body_read(e);
+                if body_read || self.returns.contains(&e.span) {
                     let text = self.apply(e.span);
+                    let text = if body_read { format!("await {text}") } else { text };
                     self.edits
                         .retain(|(s, _)| !(s.start >= e.span.start && s.end <= e.span.end));
-                    self.edits.push((e.span, format!("__z08EndpointValue({text})")));
+                    self.edits.push((
+                        e.span,
+                        if self.returns.contains(&e.span) {
+                            format!("__z08EndpointValue({text})")
+                        } else {
+                            text
+                        },
+                    ));
                 }
             }
             Stmt::Return(None, span) if self.returns.contains(span) => {

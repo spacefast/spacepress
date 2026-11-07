@@ -18,7 +18,7 @@
 //!
 //! Response: `{ "check": <zero-diagnostics envelope>, "output": null }` on a diagnostic, otherwise
 //! `output` carries `schemaPhp`, `functionsPhp`, `migrations` (`[name, sql]` pairs), `snapshot`,
-//! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings` and `hints`.
+//! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings`, `unsupportedPlugins` and `hints`.
 
 use crate::loader::{self, Fs};
 use crate::{diag, pipeline};
@@ -48,6 +48,7 @@ struct Output {
     client: BTreeMap<String, String>,
     gen_ts: String,
     warnings: Vec<String>,
+    unsupported_plugins: Vec<String>,
     hints: Vec<String>,
 }
 
@@ -215,6 +216,7 @@ fn compile_request(request: Request) -> String {
                 client,
                 gen_ts: built.gen_ts,
                 warnings: built.warnings,
+                unsupported_plugins: built.unsupported_plugins,
                 hints: built.hints,
             };
             (Vec::new(), Some(output))

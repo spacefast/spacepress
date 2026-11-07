@@ -296,6 +296,8 @@ jobs:
             .zero/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      # The app migration lane renders converted static pages with packages/pages, built with pnpm.
+      - run: corepack enable
       - run: cargo build --locked --bin zero
       - name: Zero 0.8 site, app-user and application migrations
         run: ZERO_WP_PROJECT=zero-wp-migrate ZERO_WP_PORT=8794 tests/wp/migrate-run.sh

@@ -652,6 +652,31 @@ pub fn hook_ctx() -> Ty {
     obj(&[("user", user().nullable())])
 }
 
+/// A route handler's first argument: the request as received, the body as raw text.
+pub fn route_request() -> Ty {
+    obj(&[
+        ("method", Ty::Str),
+        ("path", Ty::Str),
+        ("params", Ty::Map(Box::new(Ty::Str))),
+        ("query", Ty::Map(Box::new(Ty::Str))),
+        ("headers", Ty::Map(Box::new(Ty::Str))),
+        ("body", Ty::Str),
+    ])
+}
+
+/// What a route handler returns: `{ status?, headers?, body? }`.
+pub fn route_response() -> Ty {
+    Ty::Obj(
+        [
+            ("status".to_string(), (Ty::Num, true)),
+            ("headers".to_string(), (Ty::Map(Box::new(Ty::Str)), true)),
+            ("body".to_string(), (Ty::Str, true)),
+        ]
+        .into_iter()
+        .collect(),
+    )
+}
+
 pub fn job_ctx() -> Ty {
     let Ty::Obj(mut props) = hook_ctx() else { unreachable!() };
     props.insert("attempt".into(), (Ty::Num, false));

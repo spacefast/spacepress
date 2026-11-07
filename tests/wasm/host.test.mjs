@@ -66,3 +66,25 @@ test('wasm and native capture include the same synced Markdown files', () => {
     assert.equal(JSON.parse(disk.app).files['content/posts/ignored.txt'], undefined);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
+
+test('wasm captures the full-site pages bundle byte for byte like native sources', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'zero-wasm-pages-'));
+  try {
+    const project = path.join(temp, 'site');
+    fs.cpSync(path.resolve('examples/full-site'), project, { recursive: true, filter: (source) => !source.split(path.sep).includes('.zero') });
+    execFileSync(zero, ['sources', project, '--out', path.join(temp, 'native')]);
+    const capture = call(exports, 'zero_sources', { project });
+    for (const [key, file] of [['app', 'app.zero.json'], ['vendor', 'vendor.zero.json'], ['manifest', 'manifest.json']]) {
+      assert.equal(capture[key], fs.readFileSync(path.join(temp, 'native', file), 'utf8'), file);
+    }
+    const files = JSON.parse(capture.app).files;
+    for (const name of ['zero/pages.json', 'pages/notes/[slug]/page.tsx', 'islands/cheer.client.ts', 'pages/about/compass.svg']) {
+      assert.equal(typeof files[name], 'string', name);
+    }
+    const memory = Object.fromEntries(Object.entries(files).filter(([name]) => !name.startsWith('zero/migrations/')));
+    for (const name of fs.readdirSync(path.join(project, 'zero/migrations'))) memory[`zero/migrations/${name}`] = fs.readFileSync(path.join(project, 'zero/migrations', name), 'utf8');
+    assert.equal(call(exports, 'zero_sources', { project: '/site', files: memory }).app, capture.app, 'an in-memory project captures the same bytes');
+    fs.writeFileSync(path.join(project, 'pages/page.tsx'), fs.readFileSync(path.join(project, 'pages/page.tsx'), 'utf8') + '\n');
+    assert.equal(call(exports, 'zero_sources', { project }).check.diagnostics[0].code, 'zero_source_needs_local_capture');
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});

@@ -179,8 +179,8 @@ compiler's names, columns, uniqueness and reference actions. Prefix-only unique
 indexes are refused. Other existing indexes are retained and remain unmanaged.
 This keeps later constraint removals consistent with the committed snapshot. Database
 engine checks include these tables. Uninstall retains their rows like normal tables.
-Use [app migration](migrating-from-zero.md#application-source-migration) for Zero 0.8
-TEXT/DOUBLE storage and string response IDs.
+An [adopted application table](migrating-from-zero.md#application-source-migration)
+keeps its TEXT/DOUBLE storage and string response IDs.
 
 ### Upgrading authoring
 
@@ -259,7 +259,7 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
-jobs?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
+jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `zero-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `zero-admin`; by default the build emits none.
@@ -306,6 +306,74 @@ Throwing anything aborts the request and rolls back every write in it.
   `zero` also checks a timestamp so old deliveries are refused.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
+
+## HTTP routes
+
+`routes` serves your own method and path on the site, outside `/wp-json`: a
+feed, a sitemap, a payment provider's webhook, anything that is not a JSON
+action call.
+
+```ts
+import { defineConfig, route, env, db } from "zero";
+
+export default defineConfig({
+  routes: {
+    feed: route({
+      method: "GET",
+      path: "/api/feed.json",
+      access: "anyone",
+      async handler(req) {
+        const notes = await db.query.notes.findMany({ where: { status: "published" }, limit: 20 });
+        return {
+          headers: { "content-type": "application/feed+json" },
+          body: JSON.stringify({ version: "https://jsonfeed.org/version/1.1", items: notes.map((n) => ({ id: String(n.id), title: n.title })) }),
+        };
+      },
+    }),
+    stripe: route({
+      method: "POST",
+      path: "/webhooks/stripe",
+      signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" },
+      handler(req) {
+        const event = JSON.parse(req.body) as { type: string };
+        return { status: 202, body: "ok " + event.type };
+      },
+    }),
+  },
+});
+```
+
+- `method`: `GET`, `POST`, `PUT`, `PATCH` or `DELETE`, one per route. A `GET`
+  route also answers `HEAD`. A path that a route serves with another method
+  answers `405`.
+- `path` starts with `/`. Each segment is literal (`A-Z a-z 0-9 . _ ~ -`) or
+  `:name`, which matches one segment. A trailing slash matches. Two routes with
+  the same method and shape are refused. So is a first segment WordPress or Zero
+  owns (`wp-admin`, `wp-json`, `wp-content`, `feed`, `zero-admin`, `auth`,
+  `__spacefast`, `.well-known`, ...), and so is a URL that a
+  [TSX page](pages.md) serves.
+- Pass exactly one of `access` or `signature`; there is no default. `access`
+  takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
+  boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
+  body, as on [actions](#actions). The verified caller is then anonymous.
+- `req` is `{ method, path, params, query, headers, body }`. Header names are
+  lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
+- The handler returns `{ status?, headers?, body? }`. `status` defaults to
+  `200`, `body` to `""`, and `Content-Type` to `text/plain; charset=utf-8`. Header
+  names are case-insensitive, so the handler's `content-type` replaces the
+  default. Responses send `Cache-Control: private, no-store` unless the handler
+  sets its own. Any other return type is a compile error.
+- The handler runs in one transaction. A throw rolls it back, and
+  `throw new HttpError(status, code, message)` answers with a problem+json
+  document. `db`, `jobs` and `once` work as they do in actions.
+- Cookie sessions authenticate `GET` and `HEAD` routes. On other methods a
+  signed-in visitor counts only with a valid `X-WP-Nonce` (`wp_rest`) header;
+  otherwise the request runs anonymously, so another site cannot post as your
+  visitor. Keep `GET` handlers free of writes for the same reason. Application
+  passwords are not accepted here; use actions for API clients.
+
+Routes are WordPress front-controller requests: no theme or template renders
+for them, and they need no rewrite rules or permalink flush.
 
 ## Jobs and webhooks
 

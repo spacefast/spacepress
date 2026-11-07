@@ -114,3 +114,293 @@ fn sync_capture_refuses_more_than_eight_mebibytes_and_escaping_files() {
         assert!(zero::host::sources(&project, &work.path().join("escape")).is_err());
     }
 }
+
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name();
+        if name == ".zero" || name == "node_modules" {
+            continue;
+        }
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &to.join(&name));
+        } else {
+            fs::copy(entry.path(), to.join(&name)).unwrap();
+        }
+    }
+}
+
+fn tree(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                out.insert(
+                    path.strip_prefix(root).unwrap().to_string_lossy().into_owned(),
+                    fs::read(&path).unwrap(),
+                );
+            }
+        }
+    }
+    out
+}
+
+/// The committed render artifact of examples/full-site (`zero-pages build`) travels in the app bundle,
+/// and the host compiler turns it into the pages plugin without JavaScript, after the project is gone.
+#[test]
+fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("site");
+    copy_tree(Path::new("examples/full-site"), &project);
+    let host = work.path().join("host");
+    let native = work.path().join("native");
+    zero::host::sources(&project, &host).unwrap();
+    zero::bundle::sources(&project, &native).unwrap();
+    for name in ["app.zero.json", "vendor.zero.json", "manifest.json"] {
+        assert_eq!(
+            fs::read(host.join(name)).unwrap(),
+            fs::read(native.join(name)).unwrap(),
+            "{name}"
+        );
+    }
+    let app: serde_json::Value = serde_json::from_slice(&fs::read(host.join("app.zero.json")).unwrap()).unwrap();
+    for file in [
+        "zero/pages.json",
+        "pages/notes/[slug]/page.tsx",
+        "islands/cheer.client.ts",
+        "styles/global.css",
+        "pages/about/compass.svg",
+    ] {
+        assert!(app["files"][file].is_string(), "{file} is captured");
+    }
+    fs::remove_dir_all(&project).unwrap();
+    let compiled = work.path().join("compiled");
+    let manifest = zero::host::compile_sources(&host, &compiled, &host, None).unwrap();
+    assert_eq!(manifest["pages"], "zero-pages-fullsite");
+    let plugin = tree(&compiled.join("plugins/zero-pages-fullsite"));
+    let artifact: serde_json::Value = serde_json::from_str(app["files"]["zero/pages.json"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        plugin["manifest.json"],
+        artifact["manifest"].as_str().unwrap().as_bytes()
+    );
+    for name in artifact["files"].as_object().unwrap().keys() {
+        assert!(plugin.contains_key(name), "{name}");
+    }
+    for php in [
+        "zero-pages-fullsite.php",
+        "zero-pages/Plugin.php",
+        "zero-pages/Routes.php",
+        "zero-pages/Renderer.php",
+        "zero-pages/Request.php",
+        "zero-pages/bootstrap.php",
+    ] {
+        assert!(plugin.contains_key(php), "{php}");
+    }
+    assert_eq!(
+        plugin["zero-pages/Plugin.php"],
+        fs::read("runtime/pages/Plugin.php").unwrap(),
+        "the pages runtime is the embedded runtime/pages"
+    );
+    let schema =
+        String::from_utf8(fs::read(compiled.join("plugins/zero-app-fullsite/zero/app/schema.php")).unwrap()).unwrap();
+    assert!(
+        schema.contains("'feed' => ['method' => 'GET', 'path' => '/api/feed.json'"),
+        "{schema}"
+    );
+}
+
+fn pages_project(work: &Path) -> std::path::PathBuf {
+    let project = work.join("site");
+    copy_tree(Path::new("examples/full-site"), &project);
+    project
+}
+
+fn refused(project: &Path, out: &Path) -> zero::diag::Diag {
+    zero::host::sources(project, out).err().expect("capture refuses")
+}
+
+#[test]
+fn a_stale_or_missing_render_artifact_is_refused_before_publishing() {
+    let work = tempfile::tempdir().unwrap();
+    let project = pages_project(work.path());
+    let page = project.join("pages/about/page.tsx");
+    let original = fs::read_to_string(&page).unwrap();
+    fs::write(&page, original.replace("About", "About us")).unwrap();
+    let error = refused(&project, &work.path().join("a"));
+    assert_eq!(error.code, zero::diag::Code::SourceNeedsLocalCapture);
+    assert!(
+        error.message.contains("pages/about/page.tsx changed"),
+        "{}",
+        error.message
+    );
+    fs::write(&page, original).unwrap();
+
+    fs::create_dir_all(project.join("pages/contact")).unwrap();
+    fs::write(
+        project.join("pages/contact/page.tsx"),
+        "export default () => <p>Hi</p>;\n",
+    )
+    .unwrap();
+    assert!(
+        refused(&project, &work.path().join("b"))
+            .message
+            .contains("pages/contact/page.tsx was added")
+    );
+    fs::remove_dir_all(project.join("pages/contact")).unwrap();
+
+    let config = project.join("zero.config.ts");
+    let text = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        text.replace(
+            "dek: text({ multiline: true }).max(240),",
+            "dek: text({ multiline: true }).max(240),\n  mood: text(),",
+        ),
+    )
+    .unwrap();
+    assert!(
+        refused(&project, &work.path().join("c"))
+            .message
+            .contains("different schema")
+    );
+    fs::write(&config, text).unwrap();
+
+    fs::remove_file(project.join("zero/pages.json")).unwrap();
+    assert_eq!(
+        refused(&project, &work.path().join("d")).code,
+        zero::diag::Code::SourceNeedsLocalCapture
+    );
+    assert!(!work.path().join("d").exists());
+}
+
+#[test]
+fn a_tampered_render_artifact_cannot_carry_php_or_escape_the_plugin() {
+    let work = tempfile::tempdir().unwrap();
+    let project = pages_project(work.path());
+    let path = project.join("zero/pages.json");
+    let original: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    for (name, contents) in [
+        ("assets/x.php", "PD9waHA="),
+        ("zero-pages/Plugin.php", "PD9waHA="),
+        ("assets/../../x.css", "eA=="),
+        ("assets/a.css", "!!"),
+    ] {
+        let mut artifact = original.clone();
+        artifact["files"][name] = contents.into();
+        fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
+        let error = refused(&project, &work.path().join("out"));
+        assert!(
+            error.message.contains("invalid zero/pages.json"),
+            "{name}: {}",
+            error.message
+        );
+    }
+    let mut artifact = original.clone();
+    let mut manifest: serde_json::Value = serde_json::from_str(artifact["manifest"].as_str().unwrap()).unwrap();
+    manifest["routes"][0]["id"] = "zero:not-found".into();
+    manifest["routes"][0]["pattern"] = "/category/news".into();
+    artifact["manifest"] = manifest.to_string().into();
+    fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
+    assert!(
+        refused(&project, &work.path().join("out"))
+            .message
+            .contains("not-found identity")
+    );
+    let mut artifact = original.clone();
+    let mut manifest: serde_json::Value = serde_json::from_str(artifact["manifest"].as_str().unwrap()).unwrap();
+    manifest["routes"][0]["pattern"] = "/wp-admin".into();
+    artifact["manifest"] = manifest.to_string().into();
+    fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
+    assert!(
+        refused(&project, &work.path().join("out"))
+            .message
+            .contains("route pattern")
+    );
+}
+
+#[test]
+fn routes_declare_one_method_and_a_path_that_wordpress_does_not_own() {
+    let work = tempfile::tempdir().unwrap();
+    let check = |routes: &str| {
+        fs::write(
+            work.path().join("zero.config.ts"),
+            format!("import {{ defineConfig, route }} from 'zero'; export default defineConfig({{ name: 'r', routes: {{ {routes} }} }});"),
+        )
+        .unwrap();
+        zero::host::sources(work.path(), &work.path().join(format!("o{}", rand_suffix())))
+            .map(|_| ())
+            .map_err(|e| e.message)
+    };
+    let ok = "a: route({ method: 'GET', path: '/api/:id/feed.json', access: 'anyone', handler: (req) => ({ body: req.params['id'] }) })";
+    assert_eq!(check(ok), Ok(()));
+    for (routes, message) in [
+        (
+            "a: route({ method: 'GET', path: '/wp-json/x', access: 'anyone', handler: () => ({}) })",
+            "owns",
+        ),
+        (
+            "a: route({ method: 'GET', path: 'api', access: 'anyone', handler: () => ({}) })",
+            "must start with /",
+        ),
+        (
+            "a: route({ method: 'TRACE', path: '/x', access: 'anyone', handler: () => ({}) })",
+            "not supported",
+        ),
+        (
+            "a: route({ method: 'GET', path: '/x', handler: () => ({}) })",
+            "needs access or signature",
+        ),
+        (
+            "a: route({ method: 'GET', path: '/x/:a', access: 'anyone', handler: () => ({}) }), b: route({ method: 'GET', path: '/x/:b', access: 'anyone', handler: () => ({}) })",
+            "both match",
+        ),
+        (
+            "a: route({ method: 'GET', path: '/x', access: 'anyone', handler: () => ({ status: 'ok' }) })",
+            "not a route response",
+        ),
+    ] {
+        let error = check(routes).unwrap_err();
+        assert!(error.contains(message), "{routes}: {error}");
+    }
+}
+
+fn rand_suffix() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    N.fetch_add(1, Ordering::Relaxed)
+}
+
+#[test]
+fn a_route_cannot_take_a_page_url() {
+    let work = tempfile::tempdir().unwrap();
+    let project = pages_project(work.path());
+    let config = project.join("zero.config.ts");
+    let text = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        text.replace("path: \"/api/feed.json\"", "path: \"/notes/:id\""),
+    )
+    .unwrap();
+    let error = refused(&project, &work.path().join("out"));
+    assert!(error.message.contains("can match a URL the page"), "{}", error.message);
+    // A literal path under an item route is a URL that route serves, whatever the method.
+    fs::write(
+        &config,
+        text.replace("path: \"/api/feed.json\"", "path: \"/notes/hello\"")
+            .replace(
+                "method: \"GET\",\n      path: \"/notes/hello\"",
+                "method: \"POST\",\n      path: \"/notes/hello\"",
+            ),
+    )
+    .unwrap();
+    assert!(
+        refused(&project, &work.path().join("out2"))
+            .message
+            .contains("can match a URL the page")
+    );
+}

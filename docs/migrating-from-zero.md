@@ -2,7 +2,7 @@
 
 Migrate a Spacefast app with the hosted operation below. It converts supported
 source, preserves content and user IDs, and carries existing logins into v2.
-Generated endpoints and actions work on Spacefast. Realtime is not supported.
+Generated endpoints and actions work on Spacefast, and so do [live updates](realtime.md).
 Pages are not hosted yet.
 
 For a standalone WordPress site, use the config and in-place data commands
@@ -20,8 +20,9 @@ standalone in-place commands later in this guide target a different deployment.
 2. Inspect the capsule, frontend callers, content, and Space Users settings.
    Identify custom endpoints, `pages/`, `layouts/`, and `islands/`. The converter
    refuses these with pointers. Port endpoints to named v2 actions and replace
-   unsupported frontend code before continuing. Realtime declarations produce
-   a review hint and are removed. Realtime is not supported; Pages are not
+   unsupported frontend code before continuing. Realtime declarations and
+   `ctx.invalidate(...)` calls are removed: v2 announces every committed write.
+   Replace `useQuery` subscriptions with [`watch`](realtime.md). Pages are not
    hosted yet.
 3. Request the conversion report without changing the Space:
 
@@ -117,6 +118,12 @@ receipt in `<target-prefix>zero_spacefast_migrations`. A conflicting row refuses
 the group with `zero_spacefast_conflict` and rolls that group back. Earlier
 groups remain committed and are skipped on retry. On a completed rerun, each
 group reports `copied: 0` and `status: "already-migrated"`. Keep the receipts.
+Each receipt holds a digest of the source rows its group copied. `--verify`
+reports a group as `drifted` when any of those rows changed afterwards,
+including edits that keep row counts and IDs, such as a changed email,
+password hash, metadata value or session secret. Receipts written before
+content digests (bare 64-hex values) are still checked with the earlier
+count-based digest, so they keep verifying while the source is unchanged.
 
 ## Application source migration
 
@@ -200,7 +207,10 @@ keep their roles. The file carries no credentials or grants and is not part of
 the portable v2 config. Connector calls in handlers are refused. Spacefast's
 hosting integration owns applying this overlay and account sessions.
 
-Realtime declarations are dropped with a review hint: realtime is not supported.
+Realtime declarations map: v2 announces every committed write, so `realtime`
+and `ctx.invalidate(...)` (which named the live queries a mutation refreshed)
+are removed with a `mapped` entry. Old `useQuery` subscriptions are frontend code
+the migrator does not see; replace them with [`watch`](realtime.md).
 Endpoints, pages, layouts, islands, unknown context services, dynamic database
 builders, pagination, optional-field range comparisons, npm imports and executable
 schema factories require an explicit port. Row IDs above JavaScript's safe integer
@@ -215,7 +225,7 @@ source using only relative imports and `zero`. The embedded server compiler emit
 PHP at finalize. Migration never requires uploading generated PHP. Published
 versions share the current database schema, so forward migrations can break older
 code; the command adds no schema versioning or down migrations. Spacefast owns
-readiness, activation, and hosted client URLs. Realtime is not supported.
+readiness, activation, hosted client URLs and the live-update transport.
 
 The executable proof is `cargo test --test app_migrate` plus
 `tests/wp/app-migrate/run.sh`. The former compiles the generated apps with Zero

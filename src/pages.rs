@@ -206,13 +206,23 @@ pub fn check(fs: &dyn Fs, root: &Path, built: &Built) -> Result<Option<Pages>, D
     for route in built.schema.routes.values() {
         let segments = |p: &str| -> Vec<String> { p.split('/').filter(|s| !s.is_empty()).map(str::to_owned).collect() };
         let route_segments = segments(&route.path);
+        let rest = route_segments.last().is_some_and(|s| s.starts_with('*'));
         let overlaps = |page: &String| {
             let page_segments = segments(page);
-            page_segments.len() == route_segments.len()
-                && page_segments
-                    .iter()
-                    .zip(&route_segments)
-                    .all(|(p, r)| p == "[]" || r.starts_with(':') || p == r)
+            let fixed = if rest {
+                route_segments.len() - 1
+            } else {
+                route_segments.len()
+            };
+            // A `*rest` route can match a page with one or more segments after its fixed prefix.
+            (if rest {
+                page_segments.len() > fixed
+            } else {
+                page_segments.len() == fixed
+            }) && page_segments
+                .iter()
+                .zip(&route_segments[..fixed])
+                .all(|(p, r)| p == "[]" || r.starts_with(':') || p == r)
         };
         if let Some(page) = pages.patterns.iter().find(|p| overlaps(p)) {
             return Err(Diag::new(

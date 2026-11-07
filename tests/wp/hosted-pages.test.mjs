@@ -163,6 +163,16 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   const encoded = JSON.parse(await body('/api/probe-query?a%2Eb=%31&k=one+two&k=3'));
   assert.deepEqual([encoded.dotted, encoded.first, encoded.every], ['1', 'one two', ['one two', '3']]);
 
+  // `*path` takes one or more decoded segments; literals and :params at the same position win.
+  assert.equal(await body('/files/a'), 'rest a');
+  assert.equal(await body('/files/a/b/c.txt'), 'rest a/b/c.txt');
+  assert.equal(await body('/files/a%20b/%C3%A9.txt'), 'rest a b/é.txt', 'segments are decoded');
+  assert.equal(await body('/files/readme.txt'), 'readme', 'a literal beats *path');
+  assert.equal(await body('/files/photos/latest'), 'latest photos', '/files/:bucket/latest beats *path');
+  assert.equal(await body('/files/photos/latest/old'), 'rest photos/latest/old');
+  assert.equal((await http('/files')).status, 404, '*path needs at least one segment');
+  assert.equal((await http('/files/a/..%2F..%2Fwp-config.php')).status, 404, 'an encoded slash or dot segment never matches');
+
   // Unclaimed paths still belong to WordPress.
   assert.equal((await http('/unclaimed/other.json')).status, 404);
   assert.equal((await http('/api/a/b/c')).status, 404, 'no route has three segments under /api');

@@ -190,6 +190,7 @@ shop/
 ├── zero/
 │   ├── client/               # generated typed HTTP client
 │   ├── migrations/           # reviewed database migrations
+│   ├── abilities.json        # optional: abilities locked by `zero abilities pull`
 │   └── wp-plugins.lock.json  # pinned plugin artifacts
 └── .zero/                    # generated build/staging output
 ```

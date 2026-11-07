@@ -525,6 +525,60 @@ export default defineConfig({
   allowance. A managed host without a transport refuses rather than falling
   back to `wp_mail`.
 
+## WordPress abilities
+
+A handler can call any ability registered on the site with the WordPress
+Abilities API: the app's own, core's, or another plugin's (WooCommerce,
+Jetpack, ...). Import `abilities` from `"php/wordpress"`:
+
+```ts
+import { action, defineConfig, text } from "zero";
+import { abilities } from "php/wordpress";
+
+export default defineConfig({
+  actions: {
+    count: action({
+      input: { text: text().notNull() },
+      access: "authenticated",
+      async handler(input) {
+        const result = await abilities.call("acme/word-count", { text: input.text });
+        return result.count;
+      },
+    }),
+  },
+});
+```
+
+- The name is a string literal. The input is checked against the ability's
+  input schema and the result is typed from its output schema, by the
+  compiler and by tsc.
+- The app's own abilities (`<app>/<collection>-list`, `<app>/<action>`, ...)
+  are typed from the schema with nothing else to do. An action's result is
+  `unknown`: its ability publishes no output schema.
+- Other abilities come from `zero/abilities.json`, which you commit.
+  `zero abilities pull [dir] --site <url>` writes it from a running site;
+  `--only acme/*` (repeatable) keeps matching names. The pull signs in only
+  with `ZERO_APP_PASSWORD=user:application-password` from the environment.
+  `zero build` and `zero check` read the lock and never contact the site.
+- Map `"php/wordpress"` in tsconfig.json next to `"zero"`
+  (`types/wordpress.d.ts` in the CLI package); `zero build` writes the ability
+  types into `zero.gen.ts` when the app imports the module.
+- The call runs core's `WP_Ability::execute()` for the current WordPress user:
+  core validates the input, runs the ability's permission check and validates
+  the output. It runs inside the handler's transaction, so the ability's
+  database writes roll back with the handler's.
+- Errors are `HttpError`s. A site without the ability answers
+  `503 ability_unavailable` (the build's lock no longer matches the site). A
+  `WP_Error` with a `status` keeps it and its code; otherwise a permission
+  failure is `401 unauthenticated` or `403 forbidden`, invalid input is
+  `422 invalid_input`, and anything else is 500 with the ability's code.
+- JSON Schema maps to TypeScript for `type` (with `"null"`), `properties` and
+  `required`, arrays, `enum`, `const`, `oneOf`/`anyOf` and
+  `additionalProperties`. `allOf`, `$ref`, `not`, `patternProperties` and
+  tuple `items` become `unknown`, and the pull prints a warning for each.
+- `zero doctor --site <url>` (with `ZERO_APP_PASSWORD`) reports every locked
+  ability the site no longer has or whose schema changed since the pull.
+
 ## Jobs and webhooks
 
 ```ts

@@ -5120,9 +5120,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
-    /// Records one use of a WordPress feature. Plugin capability inference reads
-    /// `Built::wordpress_uses`; this is the single place each use is noted.
+    /// Records one use of a WordPress feature: in `Built::wordpress_uses` for every module, and as
+    /// a capability when a plugin's code makes it. This is the single place each use is noted.
     pub fn use_wordpress(&mut self, kind: WordPressKind, name: &str, span: Span) {
+        self.uses(
+            match kind {
+                WordPressKind::Ability => "abilities",
+                WordPressKind::Hook => "wpHooks",
+            },
+            name,
+            span,
+        );
         let module = self
             .ev_program()
             .modules

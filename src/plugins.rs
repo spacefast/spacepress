@@ -23,9 +23,12 @@ pub const KINDS: &[(&str, &str)] = &[
     ("env", "reads the environment variable"),
     ("mail", "sends mail with"),
     ("jobs", "enqueues the job"),
-    // Reserved for WordPress-from-TypeScript work; nothing records them yet.
+    // WordPress from TypeScript (`Compiler::use_wordpress`): `abilities.call` from "php/wordpress",
+    // and handlers registered on WordPress actions and filters.
     ("abilities", "calls the ability"),
     ("wpHooks", "registers the WordPress hook"),
+    // Reserved: PHP functions imported from "php/wordpress", "php/<slug>" or "php", recorded as
+    // `<source>:<function>`. Nothing records them yet.
     ("php", "calls the PHP function"),
 ];
 

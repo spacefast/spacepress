@@ -319,7 +319,9 @@ grant and writes `zero/plugins.lock.json`:
 | `env` | variable names, including `crypto.hmacSha256` keys and signature secrets |
 | `mail` | `send` |
 | `jobs` | the plugin's own jobs it enqueues |
-| `abilities`, `wpHooks`, `php` | reserved for WordPress abilities, WordPress actions/filters and imported PHP functions; always empty today |
+| `abilities` | `vendor/name` of each `abilities.call` from `"php/wordpress"` |
+| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `wp-hooks/` directory |
+| `php` | reserved for PHP functions imported from `"php/wordpress"`, `"php/<slug>"` or `"php"` (`wordpress:get_option`); always empty today |
 
 Commit the lock: it is the grant.
 

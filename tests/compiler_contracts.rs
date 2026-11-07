@@ -919,14 +919,20 @@ export default defineConfig({ name: "flows", collections: { posts }, use: [sync(
     std::fs::write(
         tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
         r#"import { action, db, definePlugin, env, fetch } from "zero";
+import { abilities } from "php/wordpress";
+// The send happens in a helper the handler calls with what it read. Package TypeScript compiles
+// as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
 async function push(body: string) {
-  await fetch("https://hooks.example.com/in", { method: "POST", body, headers: { authorization: env("SYNC_KEY") ?? "" } });
+  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: env("SYNC_KEY") ?? "" } });
+  return response.status;
 }
 export default () => definePlugin({
   name: "sync",
   actions: {
-    export: action({ input: {}, async handler() { await push(JSON.stringify(await db.query.posts.findMany())); return true; } }),
+    export: action({ input: {}, async handler() { const rows = await db.query.posts.findMany(); push(JSON.stringify(rows)); return true; } }),
     count: action({ input: {}, async handler() { return (await db.query.posts.findMany()).length; } }),
+    // A WordPress ability is a capability like any other: here the app's own `posts` list.
+    list: action({ input: {}, async handler() { const rows = await abilities.call("flows/posts-list", {}); return rows; } }),
   },
 });"#,
     )
@@ -949,9 +955,13 @@ export default () => definePlugin({
     assert_eq!(plugin["inferred"]["read"], json!(["posts"]));
     assert_eq!(plugin["inferred"]["http"], json!(["hooks.example.com"]));
     assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
-    assert_eq!(plugin["inferred"]["actions"], json!(["sync_count", "sync_export"]));
-    for reserved in ["abilities", "wpHooks", "php"] {
-        assert_eq!(plugin["inferred"][reserved], json!([]));
+    assert_eq!(
+        plugin["inferred"]["actions"],
+        json!(["sync_count", "sync_export", "sync_list"])
+    );
+    assert_eq!(plugin["inferred"]["abilities"], json!(["flows/posts-list"]));
+    for empty in ["wpHooks", "php"] {
+        assert_eq!(plugin["inferred"][empty], json!([]));
     }
     // Only the handler that reads and then sends, through its helper, is flagged.
     assert_eq!(

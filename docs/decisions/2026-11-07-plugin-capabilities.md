@@ -74,8 +74,8 @@ the place that records it.
 | `env` | variable names | `env()`, captured `env()` values, `crypto.hmacSha256` key names, signature secrets |
 | `mail` | `send` | `mail.send` |
 | `jobs` | the plugin's own job names | `jobs.<name>.enqueue` |
-| `abilities` | reserved: calling WordPress abilities (`vendor/name`) | not implemented |
-| `wpHooks` | reserved: registering WordPress actions and filters | not implemented |
+| `abilities` | `vendor/name` | `abilities.call` from `"php/wordpress"`, through `Compiler::use_wordpress` |
+| `wpHooks` | WordPress action and filter names | `Compiler::use_wordpress` for hook handlers; empty for plugins today, because WordPress hooks are registered only from the app's `wp-hooks/` directory |
 | `php` | reserved: imported PHP functions as `<source>:<function>` (`wordpress:get_option`, `woocommerce:wc_get_order`) | not implemented: `"php/wordpress"`, `"php/<plugin-slug>"` and `"php"` imports |
 
 `http` hosts: a URL with a static `https://host/` prefix (string, template or
@@ -101,8 +101,8 @@ check, and it sits in front of the existing SSRF policy.
 - Writing the inferred grant into a packed package for registries: left out.
   The lock is computed against the app's schema (field names, hooked
   collections), so a package-side copy would be advisory only.
-- `abilities`, `wpHooks`, `php`: rows reserved above; sibling work implements
-  them. Recording one is a `uses(kind, value, span)` call where its import is
-  lowered; the lock, diff, narrowing and report need no change.
+- `php`: reserved above; sibling work implements it. Recording one is a
+  `use_wordpress` call where its import is lowered, as abilities already are;
+  the lock, diff, narrowing and report need no change.
 - `crypto` hashing and `once()` are not capabilities: they touch no data or
   network beyond what other kinds already cover.

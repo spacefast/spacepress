@@ -4258,7 +4258,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if !args.is_empty() {
                 return err(span, "`new AbortController()` takes no arguments");
             }
-            return Ok(Out::atom("new \\Zero\\JsAbortController()", Ty::AbortController));
+            return Ok(Out::atom("(new \\Zero\\JsAbortController())", Ty::AbortController));
         }
         if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"

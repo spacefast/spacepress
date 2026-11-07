@@ -463,15 +463,6 @@ impl<'p> Evaluator<'p> {
                     source, specs, span, ..
                 } => self.bind_imports(id, source, specs, *span, &scope)?,
                 Stmt::Exported(inner) => {
-                    if let Stmt::Decl { kind, span, .. } = inner.as_ref()
-                        && *kind != DeclKind::Const
-                    {
-                        return err_help(
-                            *span,
-                            "mutable named exports aren't supported",
-                            "export a const value or pure function; live import bindings aren't modeled",
-                        );
-                    }
                     self.exec(inner, &scope)?;
                     let mut names = Vec::new();
                     match inner.as_ref() {
@@ -480,6 +471,7 @@ impl<'p> Evaluator<'p> {
                         _ => {}
                     }
                     for (n, _) in names {
+                        scope.exported.borrow_mut().insert(n.to_string());
                         let v = scope.lookup(n).map(|b| b.value).unwrap_or(Value::Undef);
                         self.exports[id].insert(n.to_string(), v);
                     }
@@ -488,19 +480,15 @@ impl<'p> Evaluator<'p> {
                     for (local, exported) in names {
                         let v = match from {
                             None => match scope.lookup(local) {
-                                Some(b) if b.mutable => {
-                                    return err_help(
-                                        *span,
-                                        "mutable named exports aren't supported",
-                                        "export a const value or pure function; live import bindings aren't modeled",
-                                    );
-                                }
                                 Some(b) if b.initialized => b.value,
                                 Some(_) => return err(*span, format!("`{local}` isn't initialized")),
                                 None => return err(*span, format!("can't export `{local}`: it isn't defined")),
                             },
                             Some(src) => self.import_value(id, src, local, *span)?,
                         };
+                        if from.is_none() {
+                            scope.exported.borrow_mut().insert(local.clone());
+                        }
                         self.exports[id].insert(exported.clone(), v);
                     }
                 }
@@ -939,6 +927,13 @@ impl<'p> Evaluator<'p> {
                 }
                 if !b.mutable {
                     return err(span, format!("can't assign to `{name}`: it's a constant"));
+                }
+                if sc.exported.borrow().contains(name) {
+                    return err_help(
+                        span,
+                        "reassigning named exports isn't supported",
+                        "finish composing the value before exporting it, or export a const object; live import bindings aren't modeled",
+                    );
                 }
                 b.value = value;
                 return Ok(());

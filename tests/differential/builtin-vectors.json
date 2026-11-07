@@ -1053,10 +1053,10 @@
   {
     "name": "capturedFactoryClosuresKeepEnvironmentAndIdentity",
     "files": {
-      "closure-factory.js": "function make(n){return()=>n;}const a=make(1),b=make(2);export function read(){return [a(),b(),a===b,a===a];}"
+      "closure-factory.js": "function make(n){return()=>n;}const a=make(1),b=make(2);export function read(){return [a(),b(),a===b,a===a];}var stableAlias=read;export {stableAlias};"
     },
-    "declarations": "import {read as readFactoryClosures} from './closure-factory.js'; function makeFactoryClosure(n:number){return()=>n;}const factoryA=makeFactoryClosure(1),factoryB=makeFactoryClosure(2);",
-    "expression": "[factoryA(),factoryB(),factoryA===factoryB,factoryA===factoryA,readFactoryClosures()]",
+    "declarations": "import {read as readFactoryClosures,stableAlias as stableFactoryAlias} from './closure-factory.js'; function makeFactoryClosure(n:number){return()=>n;}const factoryA=makeFactoryClosure(1),factoryB=makeFactoryClosure(2);",
+    "expression": "[factoryA(),factoryB(),factoryA===factoryB,factoryA===factoryA,readFactoryClosures(),readFactoryClosures===stableFactoryAlias]",
     "fold": true
   },
   {

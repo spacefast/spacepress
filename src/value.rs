@@ -221,6 +221,7 @@ pub struct ActionVal {
 /// compiler can resolve what a hook captured (constants, helpers, collections).
 #[derive(Debug)]
 pub struct Scope {
+    pub exported: RefCell<HashSet<String>>,
     pub vars: RefCell<HashMap<String, Binding>>,
     pub parent: Option<Rc<Scope>>,
     pub module: usize,
@@ -240,6 +241,7 @@ pub struct Binding {
 impl Scope {
     pub fn new(parent: Option<Rc<Scope>>, module: usize) -> Rc<Scope> {
         Rc::new(Scope {
+            exported: RefCell::new(HashSet::new()),
             vars: RefCell::new(HashMap::new()),
             parent,
             module,
@@ -248,6 +250,7 @@ impl Scope {
 
     pub fn fork_bindings(&self) -> Rc<Scope> {
         Rc::new(Self {
+            exported: RefCell::new(self.exported.borrow().clone()),
             vars: RefCell::new(self.vars.borrow().clone()),
             parent: self.parent.clone(),
             module: self.module,

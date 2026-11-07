@@ -2073,7 +2073,7 @@ fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
 }
 
 #[test]
-fn mutable_named_exports_refuse_before_imports_can_snapshot_them() {
+fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
     for (file, source, import) in [
         (
             "counter.js",
@@ -2103,7 +2103,7 @@ fn mutable_named_exports_refuse_before_imports_can_snapshot_them() {
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
         assert_eq!(
-            diagnostic["message"], "mutable named exports aren't supported",
+            diagnostic["message"], "reassigning named exports isn't supported",
             "{report}"
         );
         assert_eq!(diagnostic["location"]["file"], file, "{report}");

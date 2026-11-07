@@ -557,10 +557,11 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 
 Compiled captured-function caches use closure identity, retaining each closure
 until compilation completes. Factory invocations with the same syntax keep their
-own captured environments and function identities. Mutable named exports are
-refused at the exporting declaration or export list because live import bindings
-are not modeled. This includes aliases and named default exports. Const data
-exports retain object identity; default-export expressions remain value snapshots.
+own captured environments and function identities. Named exported bindings cannot be
+reassigned after export because live import bindings are not modeled; writes
+receive a source refusal. Stable let/var export aliases remain supported, including
+named default exports. Const data exports retain object identity; default-export
+expressions remain value snapshots.
 
 Lexical bindings carry initialization state during evaluation and emission.
 Reads and assignments before initialization are refused at source; they never

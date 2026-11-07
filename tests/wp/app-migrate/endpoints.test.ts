@@ -37,6 +37,10 @@ test("0.8 endpoints answer at their original paths with 0.8 result rules", async
   const tags = await at("/api/tags?t=a&t=b+c&user.id=7");
   assert.deepEqual(await tags.json(), { first: "a", all: ["a", "b c"], dotted: "7" });
 
+  // 0.8's *rest took the rest of the path, decoded and joined with /.
+  assert.equal(await (await at("/api/files/docs/a%20b/c.txt")).text(), "file docs/a b/c.txt");
+  assert.equal((await at("/api/files")).status, 404);
+
   // A number is text, like 0.8.
   const total = await at("/api/total");
   assert.equal(total.headers.get("content-type"), "text/plain; charset=utf-8");

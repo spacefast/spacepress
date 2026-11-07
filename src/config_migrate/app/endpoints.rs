@@ -62,16 +62,25 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
             "the site root needs a TSX page, not a route",
         ));
     }
-    for s in &segments {
-        let ok = if let Some(name) = s.strip_prefix(':') {
-            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    let ident = |n: &str| {
+        n.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    };
+    for (i, s) in segments.iter().enumerate() {
+        // 0.8's `*rest` took the rest of the path, one or more segments joined with `/`, as v2's does.
+        let ok = if let Some(name) = s.strip_prefix('*') {
+            i + 1 == segments.len() && i > 0 && ident(name)
+        } else if let Some(name) = s.strip_prefix(':') {
+            ident(name)
         } else {
-            !s.starts_with('*') && s.chars().all(|c| c.is_ascii_alphanumeric() || "._~-".contains(c))
+            s.chars().all(|c| c.is_ascii_alphanumeric() || "._~-".contains(c))
         };
         if !ok {
             return Err(fail(
                 &pointer(at, "path"),
-                format!("segment {s:?} has no v2 route form; catch-all and encoded segments need a manual port"),
+                format!(
+                    "segment {s:?} has no v2 route form; a *rest must be last and not first, and encoded segments need a manual port"
+                ),
             ));
         }
     }

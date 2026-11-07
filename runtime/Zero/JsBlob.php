@@ -29,7 +29,7 @@ final class JsBlob
         $bytes = '';
         if ($parts !== JsUndefined::Value) {
             if (!is_object($parts) || $parts instanceof JsUndefined) { throw new JsError('The provided value cannot be converted to a sequence', 'TypeError'); }
-            foreach (Js::dynamicIterable($parts)->a as $part) { $bytes .= self::part($part); }
+            $partList = Js::dynamicIterable($parts)->a;
         }
         $type = ''; $endings = 'transparent'; $lastModified = null;
         if (!Js::isNullish($options)) {
@@ -43,8 +43,11 @@ final class JsBlob
                 if ($value !== JsUndefined::Value) { $lastModified = Js::toNumber($value); }
             }
         }
-        if ($endings === 'native') { throw new JsError('Blob native line endings are not supported', 'TypeError'); }
-        if ($endings !== 'transparent') { throw new JsError("The provided value '" . $endings . "' is not a valid enum value of type EndingType", 'TypeError'); }
+        if ($endings !== 'transparent' && $endings !== 'native') { throw new JsError("The provided value '" . $endings . "' is not a valid enum value of type EndingType", 'TypeError'); }
+        foreach ($partList ?? [] as $part) {
+            // Native endings rewrite string parts only, to this host's line separator, as Node does.
+            $bytes .= $endings === 'native' && is_string($part) ? preg_replace('/\r\n|\r|\n/', PHP_EOL, $part) : self::part($part);
+        }
         if (!$file) { return new self($bytes, $type); }
         $lastModified ??= Js::now();
         $lastModified = is_float($lastModified) && !is_finite($lastModified) ? 0 : Js::toInteger($lastModified);

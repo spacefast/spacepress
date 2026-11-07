@@ -56,7 +56,8 @@ replacing each maximal subpart with U+FFFD, because `mb_scrub` and
 sequences. `stream: true` is refused at runtime.
 
 `Blob` holds an immutable string and a type. Parts are strings (UTF-8),
-`ArrayBuffer`s, views and Blobs; `endings: "native"` is refused. `text()`,
+`ArrayBuffer`s, views and Blobs; `endings: "native"` rewrites string parts to `PHP_EOL`, the host's line
+separator, as Node does on the same host. `text()`,
 `arrayBuffer()` and `bytes()` return through one runtime function so they become
 resolved promises when the promise model lands (agent 4, `feat/async-streams`);
 today `await` is a blocking value pass-through. `stream()` calls a registered

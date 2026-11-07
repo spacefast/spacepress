@@ -78,7 +78,7 @@ final class App
         }
 
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
-            static fn (): Response => Response::json($fn($input, $ctx)));
+            static fn (): Response => Response::json(JsBinary::refuseWire($fn($input, $ctx), 'action ' . $name)));
     }
 
     /**

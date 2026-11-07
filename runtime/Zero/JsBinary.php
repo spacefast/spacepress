@@ -199,6 +199,32 @@ final class JsBinary
         return $copy;
     }
 
+    /**
+     * Action and ability results are JSON. JSON has no byte type, and JSON.stringify's object of
+     * indexes is not a wire contract a client can rely on, so byte values are refused there.
+     */
+    public static function refuseWire(mixed $value, string $where): mixed
+    {
+        self::findBytes($value, $where, '', new \SplObjectStorage());
+        return $value;
+    }
+
+    private static function findBytes(mixed $value, string $where, string $path, \SplObjectStorage $seen): void
+    {
+        if (!is_object($value) || $value instanceof \Closure) { return; }
+        if (self::is($value)) {
+            throw new JsError($where . ' returned a ' . self::tag($value) . ($path === '' ? '' : ' at ' . $path) . '; JSON has no byte type; return text instead, such as new TextDecoder().decode(bytes) or a base64 string', 'TypeError');
+        }
+        if ($seen->offsetExists($value)) { return; }
+        $seen->offsetSet($value);
+        $items = match (true) {
+            $value instanceof JsArray => $value->a + $value->p,
+            $value instanceof JsObject, $value instanceof JsArguments => $value->p,
+            default => [],
+        };
+        foreach ($items as $key => $item) { self::findBytes($item, $where, $path . '.' . $key, $seen); }
+    }
+
     public static function btoa(mixed $value): string
     {
         $text = Js::str($value);

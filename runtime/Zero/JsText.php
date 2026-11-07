@@ -20,7 +20,7 @@ final class JsText
         $label = array_key_exists(0, $a) && $a[0] !== JsUndefined::Value ? Js::str($a[0]) : 'utf-8';
         $label = strtolower(trim($label, "\t\n\f\r "));
         if (!in_array($label, self::LABELS, true)) {
-            throw new JsError('The "' . $label . '" encoding is not supported by compiled code; only UTF-8 is', 'RangeError');
+            throw new JsError('The "' . $label . '" encoding is not supported by compiled code; only UTF-8 is', 'TypeError');
         }
         $options = $a[1] ?? JsUndefined::Value;
         $read = static fn (string $key): bool => !Js::isNullish($options) && Js::truthy(Js::dynamicGet($options, $key));

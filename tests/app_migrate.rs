@@ -619,6 +619,32 @@ fn ctx_email_send_maps_to_mail_send_and_queries_still_refuse() {
     let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
     assert!(!ok);
     assert_eq!(refused["errors"][0]["pointer"], "/queries/q/ctx/email");
+    // A send returned from inside control flow was awaited by 0.8 as well; it maps.
+    let root = temp.path().join("nested");
+    project(
+        &root,
+        r#"{mutations:{m:mutation(async (ctx, enabled: boolean) => { if (enabled) { return ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }); } return false; })}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, mutation }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, report) = migrate(&root, &temp.path().join("nested-out"), &[]);
+    assert!(ok, "{report:#}");
+    build(&temp.path().join("nested-out"));
+    // A send left floating inside a nested function is still refused.
+    let root = temp.path().join("floating");
+    project(
+        &root,
+        r#"{mutations:{m:mutation(async (ctx) => { [1].forEach(() => { ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }); }); return true; })}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, mutation }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("floating-out"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/mutations/m/ctx/email");
 }
 
 /// A run from a stored 0.8 finalize payload (`--manifest`), as a production census drives it.

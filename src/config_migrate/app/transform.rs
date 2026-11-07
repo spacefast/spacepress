@@ -1204,16 +1204,8 @@ fn handler(
         logs: false,
         helpers: vec![],
         sends,
-        returned: match &f.body {
-            FnBody::Expr(e) => vec![e.span],
-            FnBody::Block(stmts) => stmts
-                .iter()
-                .filter_map(|s| match s {
-                    Stmt::Return(Some(e), _) => Some(e.span),
-                    _ => None,
-                })
-                .collect(),
-        },
+        // Every return of the handler itself, through its control flow but not nested functions.
+        returned: super::endpoints::returns(f),
         edits: vec![],
     };
     let body = match &f.body {

@@ -33,6 +33,10 @@ test("0.8 endpoints answer at their original paths with 0.8 result rules", async
   assert.equal(search.status, 200);
   assert.deepEqual(await search.json(), ["first", "third"]);
 
+  // Query values keep URLSearchParams semantics: first value, every value, byte-exact names.
+  const tags = await at("/api/tags?t=a&t=b+c&user.id=7");
+  assert.deepEqual(await tags.json(), { first: "a", all: ["a", "b c"], dotted: "7" });
+
   // A number is text, like 0.8.
   const total = await at("/api/total");
   assert.equal(total.headers.get("content-type"), "text/plain; charset=utf-8");

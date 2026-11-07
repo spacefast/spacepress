@@ -15,13 +15,14 @@ export default capsule({
       ctx.log.info("banner", { served: true });
       return text(ctx.env.LEGACY_BANNER ?? "unset");
     }),
-    count: endpoint({ method: "GET", path: "/api/notes/count" }, async (ctx) =>
-      json({ count: (await ctx.db.notes.withIndex("by_creation").collect()).length })),
+    // Declared before the literal /api/notes/count: v2 still prefers the literal, as 0.8 did.
     note: endpoint({ method: "GET", path: "/api/notes/:id" }, async (ctx, request: EndpointRequest) => {
       const note = await ctx.db.notes.get(request.params.id);
       if (!note) return json({ error: "missing" }, { status: 404 });
       return note;
     }),
+    count: endpoint({ method: "GET", path: "/api/notes/count" }, async (ctx) =>
+      json({ count: (await ctx.db.notes.withIndex("by_creation").collect()).length })),
     search: endpoint({ method: "POST", path: "/api/search", readOnly: true }, async (ctx, request) => {
       const filter = (await request.json()) as { tag?: string };
       const rows = await ctx.db.notes.withIndex("by_tag", (r) => r.eq("tag", filter.tag ?? "")).take(LIMIT);
@@ -39,6 +40,8 @@ export default capsule({
     }),
     home: endpoint({ method: "GET", path: "/go/home" }, (_ctx, request) =>
       redirect("/?from=" + (request.query.has("ref") ? "ref" : "direct"), { status: 303 })),
+    tags: endpoint({ method: "GET", path: "/api/tags" }, (_ctx, request) =>
+      json({ first: request.query.get("t"), all: request.query.getAll("t"), dotted: request.query.get("user.id") })),
     total: endpoint({ method: "GET", path: "/api/total" }, async (ctx) => (await ctx.db.notes.withIndex("by_creation").count())),
   },
 });

@@ -835,9 +835,6 @@ pub(super) fn app(
         ));
     }
     if !routes.is_empty() {
-        // v2 matches routes in declaration order; 0.8 preferred literal segments over `:params`
-        // at each position, so emit them in that order.
-        routes.sort_by_key(|(path, _)| route_rank(path));
         let routes: Vec<&str> = routes.iter().map(|(_, code)| code.as_str()).collect();
         config.push_str(&format!("routes: {{\n{}\n}},", routes.join(",\n")));
     }
@@ -848,14 +845,6 @@ pub(super) fn app(
         content_config,
         connector_roles: Value::Object(connector_roles),
     })
-}
-
-/// Sort key: per segment, literals (0) before `:params` (1), then longer paths; stable otherwise.
-fn route_rank(path: &str) -> Vec<u8> {
-    path.split('/')
-        .filter(|s| !s.is_empty())
-        .map(|s| u8::from(s.starts_with(':')))
-        .collect()
 }
 
 /// Names declared with `declare const|let|var` at module level.
@@ -1817,32 +1806,24 @@ impl Rewrite<'_> {
                 && (part == "headers" || part == "query")
                 && !awaited
             {
+                // `req.query` is a URLSearchParams-like RouteQuery: 0.8's calls map one to one.
+                if part == "query" {
+                    if !["get", "getAll", "has"].contains(&prop.as_str()) {
+                        return refuse(&format!("query.{prop}"));
+                    }
+                    for a in args {
+                        self.arr(a)?;
+                    }
+                    return Ok(true);
+                }
                 let [ArrEl::Item(arg)] = args.as_slice() else {
                     return refuse(&format!("{part}.{prop}"));
                 };
-                // v2 reads the query through PHP, which renames `.` and space to `_` and turns
-                // `[` into arrays. Only names both sides decode alike are mapped.
-                if part == "query" {
-                    let E::Str(name) = &arg.kind else {
-                        return refuse("query-name");
-                    };
-                    if name.is_empty()
-                        || !name
-                            .bytes()
-                            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-                    {
-                        return refuse("query-name");
-                    }
-                }
                 let key = self.render(arg)?;
-                let key = if part == "headers" {
-                    format!("String({key}).toLowerCase()")
-                } else {
-                    format!("String({key})")
-                };
+                let key = format!("String({key}).toLowerCase()");
                 let text = match prop.as_str() {
-                    "get" => format!("({req}.{part}[{key}] ?? null)"),
-                    "has" => format!("({req}.{part}[{key}] !== undefined)"),
+                    "get" => format!("({req}.headers[{key}] ?? null)"),
+                    "has" => format!("({req}.headers[{key}] !== undefined)"),
                     _ => return refuse(&format!("{part}.{prop}")),
                 };
                 self.edits.push((e.span, text));

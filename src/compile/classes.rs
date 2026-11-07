@@ -14,8 +14,9 @@ pub(super) struct CompiledClass {
     _static_data: Value,
 }
 
-fn key(class: &Rc<ClassValue>) -> usize {
-    Rc::as_ptr(class) as usize
+/// Classes carry static state, so each plugin compiles its own copy.
+fn key(class: &Rc<ClassValue>, owner: usize) -> usize {
+    (Rc::as_ptr(class) as usize).wrapping_add(owner)
 }
 
 impl<'a, 'p> Compiler<'a, 'p> {
@@ -110,7 +111,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     pub(super) fn ensure_class(&mut self, class: &Rc<ClassValue>) -> Result<usize> {
-        let id = key(class);
+        let id = key(class, self.owner());
         if self.classes.contains_key(&id) {
             return Ok(id);
         }

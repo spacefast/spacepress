@@ -276,10 +276,10 @@ pub struct Compiler<'a, 'p> {
     annotation_steps: usize,
     resolving_json_types: HashSet<usize>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
-    helpers: HashMap<(usize, bool), String>,
-    helper_values: HashMap<usize, String>,
+    helpers: HashMap<(usize, usize, bool), String>,
+    helper_values: HashMap<(usize, usize), String>,
     helper_types: HashMap<usize, Ty>,
-    data_helpers: HashMap<(u8, usize), String>,
+    data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
@@ -289,6 +289,16 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// The plugin whose root is compiling, and its name; `None` for the app's own code.
+    plugin: Option<(usize, String)>,
+    /// The PHP function compiling right now, for the read→send report.
+    current: String,
+    /// Every capability-bearing call in a plugin's compiled code.
+    pub uses: Vec<crate::plugins::Use>,
+    /// Which compiled functions each function calls, for the read→send report.
+    pub calls: HashMap<String, HashSet<String>>,
+    /// Hosts each plugin's runtime-built fetch URLs may reach (`None`: any public host).
+    hosts: HashMap<String, Option<Vec<String>>>,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -328,6 +338,42 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
+            plugin: None,
+            current: String::new(),
+            uses: Vec::new(),
+            calls: HashMap::new(),
+            hosts: HashMap::new(),
+        }
+    }
+
+    /// The locked fetch hosts of each plugin (set before compiling roots).
+    pub fn set_plugin_hosts(&mut self, hosts: Vec<(String, Option<Vec<String>>)>) {
+        self.hosts = hosts.into_iter().collect();
+    }
+
+    /// Records a capability the plugin compiling now uses; app code is unrestricted.
+    fn uses(&mut self, kind: &'static str, value: impl Into<String>, span: Span) {
+        if let Some((plugin, _)) = &self.plugin {
+            self.uses.push(crate::plugins::Use {
+                plugin: *plugin,
+                function: self.current.clone(),
+                kind,
+                value: value.into(),
+                span,
+            });
+        }
+    }
+
+    /// Plugins never share compiled state: their helpers, captured data and classes are emitted
+    /// once per plugin under its own prefix.
+    fn owner(&self) -> usize {
+        self.plugin.as_ref().map_or(0, |(i, _)| i + 1)
+    }
+
+    fn named(&self, base: &str) -> String {
+        match &self.plugin {
+            Some((_, name)) => format!("plugin_{name}__{base}"),
+            None => base.to_string(),
         }
     }
 
@@ -336,6 +382,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn unique_name(&mut self, base: &str) -> String {
+        let base = &self.named(base);
         let mut name: String = base
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
@@ -542,7 +589,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             }
-            self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());
+            self.helpers.entry((self.owner(), key, no_db)).or_insert_with(|| name.clone());
             out.push((root.slot.clone(), name));
         }
         while let Some((closure, name, params)) = self.pending.pop() {
@@ -2729,7 +2776,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Class(class) => self.class_value(class),
             Value::Closure(c) => {
                 let key = closure_key(c);
-                let helper_key = (key, self.fx().no_db);
+                let helper_key = (self.owner(), key, self.fx().no_db);
                 let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
                     None => {
@@ -2739,6 +2786,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         name
                     }
                 };
+                let caller = self.current.clone();
+                self.calls.entry(caller).or_default().insert(name.clone());
                 let Some(ty) = self.helper_types.get(&key).cloned() else {
                     return err_help(
                         span,
@@ -2746,11 +2795,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("annotate it: `function {n}(...): number`"),
                     );
                 };
-                let wrapper = match self.helper_values.get(&key) {
+                let wrapper = match self.helper_values.get(&(self.owner(), key)) {
                     Some(wrapper) => wrapper.clone(),
                     None => {
                         let wrapper = self.unique_name(&format!("{name}_value"));
-                        self.helper_values.insert(key, wrapper.clone());
+                        self.helper_values.insert((self.owner(), key), wrapper.clone());
                         let _ = writeln!(
                             self.output,
                             "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
@@ -2823,7 +2872,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
             ),
             Value::Regex(p, f) if self.javascript_module(self.fx.as_ref().expect("fn").module) => {
-                let key = (2, Rc::as_ptr(p) as *const () as usize);
+                let key = (self.owner(), 2, Rc::as_ptr(p) as *const () as usize);
                 let name = if let Some(name) = self.data_helpers.get(&key) {
                     name.clone()
                 } else {
@@ -2858,9 +2907,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn captured_data(&mut self, value: &Value, javascript: bool) -> Result<String> {
+        let owner = self.owner();
         let (key, array) = match value {
-            Value::Array(a) => ((if javascript { 3 } else { 0 }, Rc::as_ptr(a) as usize), true),
-            Value::Object(o) => ((if javascript { 4 } else { 1 }, Rc::as_ptr(o) as usize), false),
+            Value::Array(a) => ((owner, if javascript { 3 } else { 0 }, Rc::as_ptr(a) as usize), true),
+            Value::Object(o) => ((owner, if javascript { 4 } else { 1 }, Rc::as_ptr(o) as usize), false),
             _ => {
                 return Ok(match value {
                     Value::Undef if javascript => "\\Zero\\Js::undefined()".into(),

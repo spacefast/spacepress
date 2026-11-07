@@ -2918,10 +2918,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\Zero\\db()", Ty::Db))
             }
-            Value::Env(name) => Ok(Out::atom(
-                format!("\\Zero\\Env::get({})", php_str(name)),
-                Ty::Str.nullable(),
-            )),
+            Value::Env(name) => {
+                self.uses("env", name.to_string(), span);
+                Ok(Out::atom(
+                    format!("\\Zero\\Env::get({})", php_str(name)),
+                    Ty::Str.nullable(),
+                ))
+            }
             Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
@@ -4248,10 +4251,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(Builtin::Env) => {
                     let name = self.arg(args, 0, span, "an environment variable name")?;
                     match &name.kind {
-                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => Ok(Some(Out::atom(
-                            format!("\\Zero\\Env::get({})", php_str(s)),
-                            Ty::Str.nullable(),
-                        ))),
+                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => {
+                            self.uses("env", s.clone(), name.span);
+                            Ok(Some(Out::atom(
+                                format!("\\Zero\\Env::get({})", php_str(s)),
+                                Ty::Str.nullable(),
+                            )))
+                        }
                         _ => err_help(
                             name.span,
                             "env() needs an environment variable name",
@@ -5469,6 +5475,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- database ---------------------------------------------------------------
 
     fn query_call(&mut self, table: &str, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        let key = self.schema.collections[table].key.clone();
+        self.uses("read", key, m_span);
         if !matches!(m, "findMany" | "findFirst") {
             return err_help(
                 m_span,
@@ -5626,6 +5634,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 continue;
             }
             let r = self.check_relation(table, rel, v.span)?.clone();
+            let target = self.schema.collections[&r.collection].key.clone();
+            self.uses("read", target, v.span);
             match &v.kind {
                 ExprKind::Bool(true) => {
                     parts.push(format!("{} => true", php_str(rel)));
@@ -5739,6 +5749,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             return err(v.span, "relation filters only work in findMany/findFirst");
                         }
                         let target = c.relations[name].collection.clone();
+                        let key = self.schema.collections[&target].key.clone();
+                        self.uses("read", key, v.span);
                         match &v.kind {
                             ExprKind::Bool(true) => "true".to_string(),
                             _ => self.filter(&target, v, true)?,
@@ -5949,6 +5961,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
     fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
+        self.uses(if m == "update" { "write" } else { "read" }, format!("globals.{name}"), m_span);
         // Typed like collection rows: `json().$type<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
@@ -6020,6 +6033,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Collection(table) = v.ty else {
             return err(t.span, format!("db.{m}() needs a collection, not {}", v.ty.describe()));
         };
+        if kind == BuilderKind::Delete {
+            let key = self.schema.collections[&table].key.clone();
+            self.uses("delete", key, t.span);
+        }
         Ok(Out::atom(
             "",
             Ty::Builder(Box::new(Builder {
@@ -6044,6 +6061,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 b.set = Some(self.write_values(&b.table, x, false)?);
             }
             (BuilderKind::Update | BuilderKind::Delete, "where") if b.filter.is_none() => {
+                let key = self.schema.collections[&b.table].key.clone();
+                self.uses("read", key, m_span);
                 let x = self.arg(args, 0, span, "a filter")?;
                 b.filter = Some(self.filter(&b.table, x, false)?);
             }
@@ -6083,6 +6102,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(e)?;
         let v = self.finish_value(v, e.span)?;
+        let key = self.schema.collections[table].key.clone();
+        let fields: Vec<String> = match v.ty.non_null() {
+            Ty::Obj(f) => f.keys().cloned().collect(),
+            Ty::Array(el) | Ty::NonEmptyArray(el) => match *el {
+                Ty::Obj(f) => f.keys().cloned().collect(),
+                _ => vec!["*".into()],
+            },
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => ts
+                .iter()
+                .flat_map(|t| match t {
+                    Ty::Obj(f) => f.keys().cloned().collect(),
+                    _ => vec!["*".to_string()],
+                })
+                .collect(),
+            _ => vec!["*".into()],
+        };
+        for field in fields {
+            self.uses("write", format!("{key}.{field}"), e.span);
+        }
         let want = if insert {
             types::insert(self.schema, table)
         } else {

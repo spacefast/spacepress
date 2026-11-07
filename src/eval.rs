@@ -491,6 +491,18 @@ impl<'p> Evaluator<'p> {
                 }
                 Stmt::ExportNames { names, from, span } => {
                     for (local, exported) in names {
+                        let erased = module.dynamic
+                            && match from {
+                                Some(source) => self
+                                    .program
+                                    .resolved
+                                    .get(&(id, source.clone()))
+                                    .is_some_and(|&target| self.erased_type_export(target, local, 0)),
+                                None => scope.lookup(local).is_none() && self.erased_type_import(id, local, 0),
+                            };
+                        if erased {
+                            continue;
+                        }
                         let v = match from {
                             None => match scope.lookup(local) {
                                 Some(b) if b.initialized => b.value,
@@ -531,6 +543,47 @@ impl<'p> Evaluator<'p> {
         Ok(())
     }
 
+    /// Whether `name` is a type that a dynamic module erased, directly or through re-exports.
+    fn erased_type_export(&self, module: usize, name: &str, depth: usize) -> bool {
+        let m = &self.program.modules[module];
+        if depth > 64 || !m.dynamic || self.exports[module].contains_key(name) {
+            return false;
+        }
+        if m.type_names.contains(name) {
+            return true;
+        }
+        let target = |source: &str| self.program.resolved.get(&(module, source.to_string())).copied();
+        m.body.iter().any(|stmt| match stmt {
+            Stmt::ExportNames { names, from, .. } => names.iter().any(|(local, exported)| {
+                exported == name
+                    && match from {
+                        Some(source) => target(source).is_some_and(|t| self.erased_type_export(t, local, depth + 1)),
+                        None => self.erased_type_import(module, local, depth),
+                    }
+            }),
+            Stmt::ExportAll { from, .. } => target(from).is_some_and(|t| self.erased_type_export(t, name, depth + 1)),
+            _ => false,
+        })
+    }
+
+    fn erased_type_import(&self, module: usize, local: &str, depth: usize) -> bool {
+        let m = &self.program.modules[module];
+        m.type_names.contains(local)
+            || m.body.iter().any(|stmt| {
+                let Stmt::Import { source, specs, .. } = stmt else {
+                    return false;
+                };
+                specs.iter().any(
+                    |spec| match (&spec.imported, self.program.resolved.get(&(module, source.clone()))) {
+                        (ImportName::Named(imported), Some(&t)) if spec.local == local => {
+                            self.erased_type_export(t, imported, depth + 1)
+                        }
+                        _ => false,
+                    },
+                )
+            })
+    }
+
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
         if source == ZERO_MODULE {
             return zero_export(name, span);
@@ -541,6 +594,11 @@ impl<'p> Evaluator<'p> {
         let target = self.program.resolved[&(from, source.to_string())];
         match self.exports[target].get(name) {
             Some(v) => Ok(v.clone()),
+            None if self.erased_type_export(target, name, 0) => err_help(
+                span,
+                format!("`{name}` comes from an installed package or JavaScript module, whose types Zero erases"),
+                "describe the value with a local type, or narrow it with `typeof`/`instanceof` at the call site",
+            ),
             None => {
                 let mut d = Diag::new(span, format!("\"{source}\" has no export named `{name}`"));
                 if let Some(s) = suggest(name, self.exports[target].keys().map(String::as_str)) {
@@ -554,6 +612,14 @@ impl<'p> Evaluator<'p> {
     fn bind_imports(&mut self, id: usize, source: &str, specs: &[ImportSpec], span: Span, scope: &Rc<Scope>) -> R<()> {
         for spec in specs {
             if spec.type_only {
+                continue;
+            }
+            // TypeScript elides imports that only name types.
+            if let ImportName::Named(name) = &spec.imported
+                && self.program.modules[id].dynamic
+                && let Some(&target) = self.program.resolved.get(&(id, source.to_string()))
+                && self.erased_type_export(target, name, 0)
+            {
                 continue;
             }
             let value = match &spec.imported {

@@ -48,6 +48,14 @@ Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations 
 
 [Evidence](../tests/compiler_contracts.rs) (`unannotated_javascript_uses_checked_value_operations_without_weakening_typescript_unknown`)
 
+## erased-package-typescript
+
+Status: **supported**.
+
+TypeScript sources installed under node_modules compile like JavaScript: annotations, type declarations, type-only imports and re-exports, generics, overload and abstract signatures, `this` parameters, assertion signatures and type assertions are erased, not modelled. Runtime constructs keep the checked-JavaScript subset and its refusals; enums, namespaces, parameter properties and decorators are not erased. Values crossing into authored code are JavaScript values that need refinement, and authored code can't name a package type until declaration hydration lands.
+
+[Evidence](../tests/compiler_contracts.rs) (`installed_package_typescript_is_type_erased_like_javascript_and_matches_node`)
+
 ## bitwise-operators
 
 Status: **supported**.

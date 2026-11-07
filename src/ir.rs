@@ -15,6 +15,22 @@ pub struct Module {
     pub file: u32,
     pub path: std::path::PathBuf,
     pub body: Vec<Stmt>,
+    /// Compiled in the checked-dynamic domain: raw JavaScript, and installed
+    /// package TypeScript, whose annotations are erased while lowering.
+    pub dynamic: bool,
+    /// Type declarations erased from a dynamic module. Imports and re-exports
+    /// of these names are elided, as TypeScript elides them.
+    pub type_names: std::collections::HashSet<String>,
+}
+
+/// Raw JavaScript and installed package TypeScript (not declarations) share
+/// the checked-dynamic domain. Authored TypeScript keeps static checking.
+pub fn dynamic_source(path: &std::path::Path) -> bool {
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    if matches!(extension, Some("js" | "mjs" | "cjs")) {
+        return true;
+    }
+    matches!(extension, Some("ts" | "mts" | "cts")) && path.components().any(|part| part.as_os_str() == "node_modules")
 }
 
 #[derive(Debug)]

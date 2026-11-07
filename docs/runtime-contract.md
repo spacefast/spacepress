@@ -704,7 +704,12 @@ bindings remain available. Destructured var loops refuse during configuration
 evaluation as well as handler compilation.
 
 Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
-does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
+does not weaken authored TypeScript `unknown`. TypeScript installed under
+`node_modules` shares this domain: its annotations, type declarations, type-only
+imports, generics and signatures are erased while lowering, as esbuild and
+`tsc --noCheck` erase them; runtime syntax keeps the checked subset. Authored
+code cannot name an erased package type (see
+`docs/decisions/2026-11-07-erase-package-typescript.md`). `JsDynamic` checks properties,
 calls, constructors, iteration and primitive operations against the supported
 value model; unknown methods and unsupported signatures throw `JsError`
 TypeError. Checked JavaScript calls resolve an own method before evaluating

@@ -35,11 +35,7 @@ impl Compiler<'_, '_> {
         Ok(())
     }
     pub(super) fn javascript_module(&self, module: usize) -> bool {
-        self.ev_program().modules[module]
-            .path
-            .extension()
-            .and_then(|s| s.to_str())
-            .is_some_and(|s| matches!(s, "js" | "mjs" | "cjs"))
+        self.ev_program().modules[module].dynamic
     }
 
     pub(super) fn javascript_binary(&self, op: BinOp, a: Out, b: Out, _span: Span) -> Result<Out> {

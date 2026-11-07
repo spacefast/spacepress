@@ -900,11 +900,16 @@ fn returns_body_read(e: &Expr) -> bool {
 
 /// ctx.crypto's three functions over node:crypto, with 0.8's results: SHA-256 and HMAC-SHA-256 as
 /// lowercase hex over UTF-8, a named key read from the environment (trimmed, refused when unset;
-/// the compiler lowers `createHmac(alg, process.env.NAME)` that way) or `{ value }` used as given,
+/// the compiler lowers `createHmac(alg, process.env.NAME)` that way) or `{ value }` used as given
+/// (also when the value is `ctx.env.X`),
 /// and a comparison that answers false for inputs of different byte lengths, where Node throws.
 const CRYPTO_PRELUDE: &str = r#"import { createHash as __z08Hash, createHmac as __z08Hmac, timingSafeEqual as __z08Equal } from "node:crypto";
 function __z08Sha256(data: string): string {
   return __z08Hash("sha256").update(data).digest("hex");
+}
+function __z08InlineKey(key: string | undefined): string {
+  if (key === undefined) throw new TypeError("crypto.hmacSha256 key must be a variable name or { value }");
+  return key;
 }
 function __z08TimingSafeEqual(a: string, b: string): boolean {
   return Buffer.byteLength(a) === Buffer.byteLength(b) && __z08Equal(Buffer.from(a), Buffer.from(b));
@@ -1464,7 +1469,11 @@ impl Rewrite<'_> {
                 format!("process.env[{}]!", q(name))
             }
             E::Object(kv) => match kv.as_slice() {
-                [Prop::KV(PropKey::Static(k), value)] if k == "value" => self.render(value)?,
+                // Used exactly as given, as 0.8 did: the helper keeps a `ctx.env.X` value off the
+                // compiler's trimmed, required `createHmac(alg, process.env.X)` path.
+                [Prop::KV(PropKey::Static(k), value)] if k == "value" => {
+                    format!("__z08InlineKey({})", self.render(value)?)
+                }
                 _ => return Err(manual()),
             },
             _ => return Err(manual()),

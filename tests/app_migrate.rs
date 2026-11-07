@@ -709,6 +709,19 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
                     .starts_with("ctx.crypto becomes node:crypto")),
         "{report:#}"
     );
+    // `{ value: ctx.env.SECRET }` keeps the untrimmed value, unlike the named key "K".
+    let key = " k \n";
+    let env_key = run_actions(
+        &out,
+        &[],
+        &serde_json::json!([
+            ["inlineEnv", {"data": "d"}, {"SECRET": key}],
+            ["vector", {"key": key, "data": "d"}, {}],
+            ["named", {"key": key, "data": "d"}, {"K": key}],
+        ]),
+    );
+    assert_eq!(env_key[0]["data"], env_key[1]["data"][1], "{env_key}");
+    assert_ne!(env_key[0]["data"], env_key[2]["data"][1], "{env_key}");
     let root = temp.path().join("jwt");
     project(
         &root,

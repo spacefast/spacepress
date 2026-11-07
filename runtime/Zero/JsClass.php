@@ -13,6 +13,8 @@ final class JsClass
 {
     /** @var \WeakMap<JsObject, array<string, mixed>>|null */
     private ?\WeakMap $brands = null;
+    /** @var array<string, \Closure> */
+    private array $methodValues = [];
 
     public function __construct(
         public readonly ?self $parent,
@@ -60,6 +62,24 @@ final class JsClass
         if ($method !== null) { return $method; }
         if ($this->parent !== null) { return $this->parent->method($name, $static); }
         throw new JsError("Unknown class method $name", 'TypeError');
+    }
+
+    /** One function identity per class and member, like a prototype method; call/apply supply the receiver. */
+    public function methodValue(string $name, bool $static): \Closure
+    {
+        // Inherited members share the declaring class's function, as with one prototype.
+        if (!isset(($static ? $this->staticMethods : $this->methods)[$name]) && $this->parent !== null) {
+            return $this->parent->methodValue($name, $static);
+        }
+        $key = ($static ? 'static:' : '') . $name;
+        if (!isset($this->methodValues[$key])) {
+            $method = $this->method($name, $static);
+            $this->methodValues[$key] = Js::dynamicMethodFunction(
+                static fn (...$args) => $method(JsUndefined::Value, ...$args),
+                static fn ($thisArg, JsArray $args) => $method($thisArg, ...$args->a),
+            );
+        }
+        return $this->methodValues[$key];
     }
 
     public function invokeOn(JsObject|self $receiver, string $name, array $args, bool $static): mixed

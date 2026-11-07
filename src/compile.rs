@@ -2342,6 +2342,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Instanceof(left, right) => {
                 let left = self.expr(left)?;
                 let right = self.expr(right)?;
+                if right.ty == Ty::Dynamic {
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Js::dynamicInstanceof({}, {})", left.php, right.php),
+                        Ty::Bool,
+                    ));
+                }
                 if !matches!(right.ty, Ty::Class(_)) {
                     return err(span, "instanceof requires a named Zero class");
                 }
@@ -3577,7 +3583,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn update(&mut self, target: &Expr, inc: bool, prefix: bool) -> Result<Out> {
         let place = self.place(target)?;
-        let property_number = place.target.is_some() && place.constraint.non_null().is_num();
+        // Private slots always exist once read; the presence check only applies to properties.
+        let property_number = place
+            .target
+            .as_ref()
+            .is_some_and(|t| !matches!(t.kind, WriteKind::Private(_)))
+            && place.constraint.non_null().is_num();
         if !property_number && place.read.ty != Ty::Dynamic {
             self.need_num(&place.read, target.span, if inc { "`++`" } else { "`--`" })?;
         }
@@ -3634,8 +3645,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } => {
                 if prop.starts_with('#') {
                     let (class, ty) = self.private_member(prop, *prop_span)?;
-                    let o = self.expr(obj)?;
-                    let o = self.finish_value(o, obj.span)?;
+                    let o = self.private_receiver(obj)?;
                     return Ok(AssignmentPlace {
                         read: Out::atom(format!("{class}->privateGet({}, {})", o.php, php_str(prop)), ty.clone()),
                         constraint: ty,

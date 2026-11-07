@@ -702,10 +702,22 @@ include methods or class metadata. Object spread copies own fields shallowly.
 produce plain data without class identity. Use object types in `json().$type<T>()`;
 class types and assertions that would pretend to hydrate a class are refused.
 
+Private names (`#field`, `#method()`, `static #x` and `#x in value`) belong to
+the class that declares them, as in JavaScript. A subclass declaring the same
+`#x` gets a separate slot, and only code inside the declaring class body can
+name it. Private state is invisible to `Object.keys`, JSON, spread and
+`structuredClone`; a clone does not carry the brand. Reading a private member
+from an object the class did not initialize throws `TypeError`.
+
+Classes in imported JavaScript (`.js`, `.mjs`, `.cjs`) need no annotations:
+fields, parameters and returns use checked JavaScript values, and method values
+such as `instance.method` keep one identity per class, so `call` supplies the
+receiver.
+
 These class features remain outside the supported surface, with located errors:
 class expressions, default-export class declarations and
 anonymous/local/abstract/ambient/generic classes;
-decorators; private/protected/`#` members; accessors; static blocks; computed names;
+decorators; private/protected members; accessors; static blocks; computed names;
 generic/rest methods; dynamic or built-in inheritance; constructor return values;
 prototype/reflection machinery and custom coercion/serialization protocol members.
 Indexed class members and recursive class field types are also refused.

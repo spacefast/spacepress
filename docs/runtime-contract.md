@@ -45,7 +45,9 @@ serialization own their numeric spelling independently of PHP's ini precision.
 The bundled Composer loader and its autoloaded function files load on the first
 `Zero\Vendor\*` or `Zero_Vendor_*` class use. Ordinary requests do not load the
 optional Markdown, merge or S3 dependencies. Both scoped namespace and global
-class names use the same authoritative Composer map.
+class names use the same authoritative Composer map. HTML parsing and block
+parsing/serialization are WordPress core's (`WP_HTML_*`, `parse_blocks`,
+`serialize_blocks`); the bundle carries no copy.
 
 The signing key for private-file URLs is the `zero_runtime_secret` option,
 minted on activation.

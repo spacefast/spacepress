@@ -54,14 +54,19 @@ if (is_dir($adminApps)) {
     sort($notices);
     eq('admin licence bundle names every workspace notice', array_values(array_filter($notices, static fn ($n) => !str_contains($bundle, "\n$n\n") && !str_starts_with($bundle, "$n\n"))), []);
 }
-// Another plugin can own these names before Zero loads. The real bundled
-// parser and YAML implementation must still run through their private names.
+// Another plugin can own the bundled libraries' original names before Zero loads.
+// The bundled Markdown, YAML and merger must still run through their private names,
+// on WordPress core's own HTML API, which the bundle no longer copies.
 eval('namespace Symfony\Component\Yaml; final class Yaml {}');
-class WP_HTML_Tag_Processor {}
+eval('namespace League\CommonMark; final class CommonMarkConverter {}');
+eval('namespace WordPress\Merge; final class MergeStrategy {}');
+require __DIR__ . '/wp.php';
+wpCoreHtmlApi();
 require __DIR__ . '/../../runtime/Zero/bootstrap.php';
 $document = (new \Zero\Vendor\WordPress\Markdown\MarkdownConsumer("---\ntitle: Proof\n---\n# Hello\n\nWorld\n"))->consume();
 eq('isolated Markdown and nested YAML preserve front matter', $document->get_all_metadata(), ['title' => ['Proof']]);
-eq('isolated HTML and Markdown produce blocks', $document->get_block_markup(), "<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\" id=\"hello\">Hello</h1>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>World</p>\n<!-- /wp:paragraph -->\n\n");
+eq('isolated Markdown produces blocks on core\'s HTML API', $document->get_block_markup(), "<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\" id=\"hello\">Hello</h1>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>World</p>\n<!-- /wp:paragraph -->\n\n");
+eq('the bundled toolkit loaded no HTML API of its own', array_values(array_filter(get_included_files(), static fn (string $f): bool => str_contains($f, '/vendor-prefixed/') && str_contains($f, 'class-wp-html'))), []);
 $merge = new \Zero\Vendor\WordPress\Merge\MergeStrategy(new \Zero\Vendor\WordPress\Merge\Diff\LineDiffer(), new \Zero\Vendor\WordPress\Merge\Merge\LineMerger());
 $result = $merge->merge("a\nb\nc\n", "A\nb\nc\n", "a\nb\nC\n");
 eq('bundled merge combines independent edits', [$result->has_conflicts(), $result->get_merged_content()], [false, "A\nb\nC\n\n"]);

@@ -473,7 +473,12 @@ final class Plugin
 
     public function promoted(mixed $post): void
     {
-        unset($this->promoting[(int) ($post instanceof \WP_Post ? $post->ID : $post)]);
+        $id = (int) ($post instanceof \WP_Post ? $post->ID : $post);
+        if (isset($this->promoting[$id]) && ($collection = $this->collectionOf($id)) !== null) {
+            // Promotion runs no write hooks; watchers still need to see the row appear.
+            $this->app()->db->current(static fn () => \Zero\Realtime\Module::promoted($collection, [$id]));
+        }
+        unset($this->promoting[$id]);
     }
 
     public function revisionsToKeep(int $keep, \WP_Post $post): int

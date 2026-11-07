@@ -59,9 +59,14 @@ test("WP cron promotion runs no Zero hooks, fills nothing and writes no revision
     sql(`UPDATE wp_posts SET post_date_gmt = '2000-01-01 00:00:00', post_date = '2000-01-01 00:00:00' WHERE ID = ${id}`);
     wp("cron", "event", "schedule", "publish_future_post", "now", `--0=${id}`);
   }
+  const noticeLog = () => wp("eval", "$f = WP_CONTENT_DIR . '/zero-test-realtime.jsonl'; echo is_file($f) ? file_get_contents($f) : '';");
+  const noticesBefore = noticeLog().split("\n").filter(Boolean).length;
   wp("cron", "event", "run", "--due-now");
   wp("cache", "flush");
   assert.equal((await ok("GET", `/posts/${post.id}`, { as: "editor" })).status, "published");
+  // Promotion runs no hooks, but watchers still hear that the row changed.
+  const promoted = noticeLog().split("\n").filter(Boolean).slice(noticesBefore).map((l) => JSON.parse(l).changes).flat();
+  assert.deepEqual(promoted.filter((c: { collection: string }) => c.collection === "posts"), [{ collection: "posts", ops: ["update"], ids: [post.id] }]);
   assert.deepEqual(await trace(), { ...before, row: { updatedAt: "2001-01-01T00:00:00.000Z", comments: ["afterCreate"] } });
   assert.equal(wp("post", "get", String(native), "--field=post_status"), "publish");
   assert.equal(nativeRevisions(), nativeBefore + 1, "core revises the native post as usual");

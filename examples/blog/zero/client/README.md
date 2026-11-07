@@ -44,6 +44,12 @@ await guest.auth.upgrade();
 await zero.auth.signOut();
 ```
 
+## Live updates
+
+`zero.posts.watch(query, onRows)` re-runs `list(query)` after every committed write to `posts`
+(or to a collection the query loads with `with`). It polls every 30 seconds until a host
+transport is registered with `registerRealtimeTransport`. See `docs/realtime.md` in the Zero repo.
+
 Server to server, or from a logged-in page: `nonce` (from `wpApiSettings.nonce`) uses the
 WordPress cookie, or pass `headers: { Authorization: "Basic " + btoa("user:application password") }`.
 `auth.session()` hands out the held tokens to forward elsewhere.

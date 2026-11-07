@@ -47,9 +47,12 @@ eq('a missing or blank process.env key is crypto_key_unavailable; bad inputs thr
         $code(fn () => Crypto::hash('whirlpool', ['x'], 'hex')),
         $code(fn () => Crypto::hash('sha256', [null], 'hex')),
         $code(fn () => Crypto::hash('sha256', [str_repeat('x', Crypto::MAX_DATA), 'x'], 'hex')),
+        // A key is capped like the data it signs.
+        $code(fn () => Crypto::hmac('sha256', str_repeat('k', Crypto::MAX_DATA + 1), ['x'], 'hex')),
     ],
     ['crypto_key_unavailable', 'crypto_key_unavailable', 'Error: Digest method not supported',
-        'TypeError: Hash.update needs a string', 'crypto_input_too_large']);
+        'TypeError: Hash.update needs a string', 'crypto_input_too_large', 'crypto_input_too_large']);
+eq('a key at the cap still signs', strlen(Crypto::hmac('sha256', str_repeat('k', Crypto::MAX_DATA), ['x'], 'hex')), 64);
 Env::isolate([]);
 
 eq('timingSafeEqual compares UTF-8 bytes and throws on different byte lengths, as Node does', [

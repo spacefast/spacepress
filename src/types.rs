@@ -211,6 +211,15 @@ impl Ty {
         }
     }
 
+    pub fn nullish(&self) -> Ty {
+        match self {
+            Ty::Union(items) => Ty::union(items.iter().map(Ty::nullish)),
+            Ty::Null | Ty::Undefined | Ty::Void => self.clone(),
+            Ty::Unknown | Ty::Dynamic => Ty::union([Ty::Null, Ty::Undefined]),
+            _ => Ty::Never,
+        }
+    }
+
     pub fn is_nullable(&self) -> bool {
         match self {
             Ty::Null | Ty::Undefined | Ty::Void | Ty::Unknown => true,
@@ -230,7 +239,7 @@ impl Ty {
     }
 
     pub fn is_num(&self) -> bool {
-        self.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date))
+        self.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)))
     }
 
     pub fn is_str(&self) -> bool {
@@ -469,6 +478,24 @@ pub fn columns_row(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column)
 
 pub fn row(schema: &Schema, table: &str) -> Ty {
     row_of(&schema.collections[table])
+}
+
+/// Storage validation normalizes undefined to null only within nullable fields.
+pub fn storage_input(ty: Ty) -> Ty {
+    match ty {
+        Ty::Null => Ty::union([Ty::Null, Ty::Undefined]),
+        Ty::Union(items) => Ty::union(items.into_iter().map(storage_input)),
+        Ty::Obj(fields) => Ty::Obj(
+            fields
+                .into_iter()
+                .map(|(key, (ty, optional))| (key, (storage_input(ty), optional)))
+                .collect(),
+        ),
+        Ty::Array(ty) => Ty::Array(Box::new(storage_input(*ty))),
+        Ty::NonEmptyArray(ty) => Ty::NonEmptyArray(Box::new(storage_input(*ty))),
+        Ty::Tuple(items) => Ty::Tuple(items.into_iter().map(storage_input).collect()),
+        other => other,
+    }
 }
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
@@ -780,4 +807,47 @@ pub fn with_relations(schema: &Schema, table: &str, base: Ty, rel: &str, nested:
     };
     fields.insert(rel.to_string(), (t, false));
     Ty::Obj(fields)
+}
+fn wire_omits(t: &Ty) -> bool {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) | Ty::Unknown | Ty::Dynamic => true,
+        Ty::Union(items) => items.iter().any(wire_omits),
+        _ => false,
+    }
+}
+
+fn wire_present(t: &Ty) -> Ty {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) => Ty::Never,
+        Ty::Union(items) => Ty::union(items.iter().map(wire_present)),
+        _ => t.clone(),
+    }
+}
+
+/// JSON nulls array slots and omits object properties without serializable values.
+pub fn json_wire_type(t: &Ty) -> Ty {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) => Ty::Null,
+        Ty::Date => Ty::Str.nullable(),
+        Ty::NumLit(n) | Ty::FreshNumLit(n) if !n.is_finite() => Ty::Null,
+        Ty::Array(t) => Ty::Array(Box::new(json_wire_type(t))),
+        Ty::NonEmptyArray(t) => Ty::NonEmptyArray(Box::new(json_wire_type(t))),
+        Ty::Tuple(items) => Ty::Tuple(items.iter().map(json_wire_type).collect()),
+        Ty::ArrayLiteral(items) => Ty::ArrayLiteral(items.iter().map(json_wire_type).collect()),
+        Ty::Obj(fields) => Ty::Obj(
+            fields
+                .iter()
+                .map(|(key, (ty, optional))| {
+                    (
+                        key.clone(),
+                        (json_wire_type(&wire_present(ty)), *optional || wire_omits(ty)),
+                    )
+                })
+                .collect(),
+        ),
+        Ty::Map(t) => Ty::Map(Box::new(json_wire_type(&wire_present(t)))),
+        Ty::Union(items) => Ty::union(items.iter().map(json_wire_type)),
+        Ty::Instance(id, fields) => Ty::Instance(id.clone(), Box::new(json_wire_type(fields))),
+        _ => t.clone(),
+    }
 }

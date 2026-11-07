@@ -16,6 +16,11 @@ foreach ([[1, 'a', 3, '01'], [2, 'a', 1, '02'], [3, 'b', 9, '02'], [4, 'a', 1, '
     $at = "2026-03-01T00:$minute:00.000Z";
     $rows[] = ['id' => $id, 'createdAt' => $at, 'updatedAt' => $at, 'channel' => $channel, 'body' => "post $id", 'score' => $score];
 }
+// A channel holding NUL: its value is part of every by_channel cursor key that passes it.
+foreach ([[8, 'nul', 1, '05'], [9, 'nul', 2, '05']] as [$id, $prefix, $score, $minute]) {
+    $at = "2026-03-01T00:$minute:00.000Z";
+    $rows[] = ['id' => $id, 'createdAt' => $at, 'updatedAt' => $at, 'channel' => "$prefix\0x", 'body' => "post $id", 'score' => $score];
+}
 foreach ($rows as $row) {
     if ($wpdb->insert($table, $row) === false) { WP_CLI::error($wpdb->last_error); }
 }

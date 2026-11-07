@@ -85,4 +85,17 @@ eq('Headers join repeated names; URLSearchParams parse and serialize like the UR
     ['1, 2', ['x-a' => '1, 2'], 'a=1&b=two+words&a=%C3%A9&c=&%25zz=%25', ['1', 'é'], '%',
         true, ['a' => 1], true, 'Body is unusable: Body has already been read', 'immutable']);
 
+// Location resolution, RFC 3986 §5.2: query-only and fragment-only references keep the base path.
+foreach ([
+    ['https://api.example/items/42', '?page=2', 'https://api.example/items/42?page=2'],
+    ['https://api.example/items/42?x=1', '#frag', 'https://api.example/items/42?x=1'],
+    ['https://api.example/a/b/c', '../d', 'https://api.example/a/d'],
+    ['https://api.example/a/b/c', './d?q', 'https://api.example/a/b/d?q'],
+    ['https://api.example/a/b', '../../../x', 'https://api.example/x'],
+    ['https://api.example:8443/a/b', '/c', 'https://api.example:8443/c'],
+    ['https://api.example/a', '//other.example/x', 'https://other.example/x'],
+] as [$base, $location, $expected]) {
+    eq("Location $location against $base", Fetch::resolveUrl($base, $location), $expected);
+}
+
 finish('fetch');

@@ -30,6 +30,8 @@ final class Crypto
         if (!is_string($key)) {
             throw new JsError('The "key" argument must be a string', 'TypeError');
         }
+        // A key can come from request input, so it gets the same cap as the data.
+        $key = self::bounded($key, "$algorithm key");
 
         return self::encode(hash_hmac(self::algorithm($algorithm), self::joined($parts, 'Hmac'), $key, true), $encoding);
     }

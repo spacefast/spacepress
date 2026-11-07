@@ -177,8 +177,8 @@ pub struct Column {
     pub bucket: Option<String>,
     pub derived: bool,
     pub hidden: bool,
-    /// `json().$type<T>()` annotation and the module it was written in.
-    pub ts_type: Option<(crate::ir::TyAnn, usize)>,
+    /// `json().$type<T>()` annotation, module and call position.
+    pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
 }
 
 impl Column {

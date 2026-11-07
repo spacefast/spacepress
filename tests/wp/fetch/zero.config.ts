@@ -44,7 +44,7 @@ export default defineConfig({
       async handler(input) {
         const response = await fetch(input.url, {
           method: "POST",
-          headers: { "content-type": "application/json", authorization: "Bearer lane-token", host: "evil.test" },
+          headers: { "content-type": "application/json", authorization: "Bearer lane-token", cookie: "lane=1", host: "evil.test" },
           body: input.payload,
         });
         const data = (await response.json()) as { hello: string; method: string; received: string };

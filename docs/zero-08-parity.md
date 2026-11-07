@@ -19,8 +19,274 @@ and `packages/cli/src/zero-commands.ts`.
 
 ## Census
 
-`scripts/migrate-census.py` runs the converter over a corpus and counts
-refusal reasons. Rerun it with:
+Two censuses measure the converter. The production census below is the
+measure of record. The corpus census further down grades the converter on
+known source.
+
+### Production census (2026-11-07)
+
+**The bar.** v2 can replace 0.8 on Spacefast when `zero migrate app --from
+zero-0.8` converts a live 0.8 Space, with no human edit, into a candidate that
+compiles. The census reports the share it converts and ranks why the rest are
+refused.
+
+**Population.** For each non-deleted Space, the version with the latest
+`ready_at` on its `live` channel (`stattic_channels.name = 'live'`), counted
+when `stattic_versions.zero_declared`. The export read
+`source_metadata_json -> 'statticZero' -> 'finalize'` for each one from the
+read-only replica, paged by version id. It returned 767 versions; the
+population count taken earlier that day was 766, so one Space went live
+between the two reads. All shares below are of 767.
+
+| Of 767 | Spaces |
+| --- | ---: |
+| With client-rendered pages | 489 |
+| With document pages only | 25 |
+| With custom endpoints | 469 |
+| With neither pages nor endpoints | 63 |
+| Requiring `db.v1` / `app-contract.v2` / `pages.v1` | 745 / 614 / 519 |
+| Requiring `crypto.v1` / `connectors.v1` | 126 / 6 |
+
+**What is stored, and what it can decide.** No live 0.8 version keeps its
+authored TypeScript (see "Why the API cannot serve source" below). The
+finalize payload keeps:
+
+- `artifact`: the schema, handler names, endpoint methods, paths and modes,
+  the pages with their files and render modes, the required capabilities, and
+  `sourceManifest.files` (each source file's path and SHA-256, without its
+  bytes);
+- `bundles[0]` (`server.qjs.mjs`): esbuild's bundle of the server entry
+  (`createRuntimeBundle` in 0.8's `zero-compile/src/compile.ts`). Every
+  local module is inlined, whitespace is removed and identifiers are kept,
+  but TypeScript types are erased;
+- `endpointSources[]` and `runSources[]`: the same server code wrapped
+  with the runtime host, once per endpoint and per handler. They add nothing
+  the bundle does not have.
+
+Each feature is decided from whichever of these can decide it:
+
+| Feature | Decided from | Without the original source |
+| --- | --- | --- |
+| Endpoint method, path, mode (writing GET, reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
+| Document pages (`.md`, `.html`) | `artifact.pages[].render`, `file` | Decided (refused) |
+| Client app with no pages | `artifact.pages` empty, client entry in `sourceManifest` | Decided (refused, census rule) |
+| `ctx` services, request APIs, database calls, handler shapes | The bundle, run through the converter | Decided when refused |
+| Language constructs outside the v2 subset in handlers or helpers | The bundle | Decided when refused |
+| `favicon`, `auth` callbacks, collections | The bundle's `capsule({...})` options | Decided when refused |
+| `ImageResponse` | The bundle's `@spacefast/zero/server` import (its JSX is compiled away) | Decided (refused, census rule) |
+| Handler input types | Erased | Needs the source |
+| Page bodies (TSX) | Not stored | Needs the source |
+| Module structure (esbuild hoists, renames and inlines) | Changed by bundling | Needs the source |
+
+**Method.** `scripts/census-08/census.mjs` rebuilds one capsule per Space from
+its payload: the bundle becomes `server/index.ts`, with the default export
+restored, `var X = class` written back as `class X`, and each untyped handler
+input given a placeholder type. Each page becomes a stub of its file. Every
+binary under test then runs `zero migrate app --from zero-0.8 <capsule>
+--dry-run --json` on the same rebuilt capsules. A version whose original source
+is placed under `sources/<version_id>/`, and matches every recorded SHA-256, is
+converted from that source instead.
+
+**Formula.**
+
+- `accepted(space)`: verified original source, and the dry run exits 0 with
+  status `dry-run`. The stored payload alone never counts as accepted.
+- `refused(space)`: at least one error of kind *refusal*. That is a converter
+  error the original source would hit as well, or a census rule (a client app
+  with no pages, `ImageResponse`). `scripts/census-08/classify.mjs` lists every
+  rule.
+- `not recoverable(space)`: no refusal and no verified source. Every remaining
+  error is of kind *source* ("source not recoverable"): an erased input type, a
+  page body, or a shape that bundling produced.
+- Every Space is in exactly one of the three. `share = count / 767`.
+- `count(reason)` is the number of refused Spaces with at least one error for
+  that reason. A Space counts once per reason, so the reasons sum to more than
+  the refused total.
+
+**Validation.** The census tests (`scripts/census-08/census.test.mjs`) and a
+run over the converter fixtures bundled the way 0.8 does both check that a
+rebuilt capsule keeps the source's refusals and never gains an acceptance. On
+the fixtures, every app the source run accepts lands in *not recoverable*.
+Every reason the source run refuses for is found again, with one exception: a
+`declare const` build global, which the bundle inlines. In that app the
+rebuild found the request-API refusal that the source run reaches once the
+global is replaced.
+
+**Results.** Each column is one binary built at the PR head, and each PR in
+the stack contains the ones to its left: #118 `138bfe46`, #129 `7af4ea87`,
+#134 `6c67ab7a`, #130 `72dee2fd`, #131 `dbd6d336`, #132 `cf0cc344`,
+#133 `5f413a2c`.
+
+With `--users`, as for a Space that uses Space Users:
+
+| | #118 | #129 | #134 | #130 | #131 | #132 | #133 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Accepted | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Refused | 766 (99.9%) | 766 (99.9%) | 766 (99.9%) | 543 (70.8%) | 543 (70.8%) | 543 (70.8%) | 539 (70.3%) |
+| Not recoverable | 1 (0.1%) | 1 (0.1%) | 1 (0.1%) | 224 (29.2%) | 224 (29.2%) | 224 (29.2%) | 228 (29.7%) |
+
+Without `--users`:
+
+| | #118 | #129 | #134 | #130 | #131 | #132 | #133 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Accepted | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Refused | 766 (99.9%) | 766 (99.9%) | 766 (99.9%) | 591 (77.1%) | 591 (77.1%) | 591 (77.1%) | 589 (76.8%) |
+| Not recoverable | 1 (0.1%) | 1 (0.1%) | 1 (0.1%) | 176 (22.9%) | 176 (22.9%) | 176 (22.9%) | 178 (23.2%) |
+
+No live Space is accepted: none has recoverable source. The refused share is a
+floor on what still needs a person. Recovering source can move a Space from
+*not recoverable* to accepted or refused, but never out of *refused*.
+
+**Refusal reasons, with `--users`** (Spaces with at least one error for the
+reason, ranked by the #133 column):
+
+| Reason | #118 | #129 | #134 | #130 | #131 | #132 | #133 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ctx passed on or read dynamically | 117 | 116 | 116 | 184 | 184 | 184 | 184 |
+| client app without pages (no v2 conversion) | 180 | 180 | 180 | 180 | 180 | 180 | 180 |
+| language: bitwise operators | 57 | 56 | 56 | 56 | 56 | 56 | 56 |
+| endpoint: request API (url, bytes, headers.entries) | 0 | 0 | 0 | 55 | 55 | 56 | 56 |
+| favicon | 47 | 47 | 47 | 47 | 47 | 47 | 47 |
+| language: the in operator | 47 | 47 | 47 | 47 | 47 | 47 | 47 |
+| ctx.db: database handle use | 20 | 20 | 20 | 30 | 30 | 31 | 31 |
+| pages: Markdown or HTML document | 0 | 0 | 0 | 22 | 22 | 22 | 22 |
+| endpoint: writing GET | 0 | 0 | 0 | 21 | 21 | 21 | 21 |
+| ImageResponse (JSX on the server) | 19 | 19 | 19 | 19 | 19 | 19 | 19 |
+| ctx.auth: profile fields or methods | 0 | 0 | 0 | 19 | 19 | 19 | 19 |
+| ctx.env | 26 | 26 | 26 | 17 | 17 | 17 | 17 |
+| endpoint: path owned by WordPress or Zero | 0 | 0 | 0 | 16 | 16 | 16 | 16 |
+| db: paginate, filter or other operation | 17 | 17 | 17 | 14 | 14 | 14 | 14 |
+| language: delete | 14 | 14 | 14 | 14 | 14 | 14 | 14 |
+| language: this outside a class | 14 | 14 | 14 | 14 | 14 | 14 | 14 |
+| handler signature (rest, default or destructured parameters) | 16 | 16 | 16 | 11 | 11 | 11 | 11 |
+| collections or sync | 8 | 8 | 8 | 8 | 8 | 8 | 8 |
+| language: destructuring assignment | 8 | 8 | 8 | 8 | 8 | 8 | 8 |
+| db: spread arguments | 5 | 4 | 4 | 8 | 8 | 8 | 8 |
+| ctx.spam | 4 | 4 | 4 | 7 | 7 | 8 | 8 |
+| endpoint: name shared with a handler | 0 | 0 | 0 | 8 | 8 | 8 | 8 |
+| db: write outside a mutation | 0 | 0 | 0 | 6 | 6 | 6 | 6 |
+| language: do-while | 5 | 5 | 5 | 5 | 5 | 5 | 5 |
+| ctx.email | 2 | 2 | 2 | 10 | 10 | 10 | 4 |
+| auth callbacks (onGuestUpgrade) | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| language: other construct | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| handler or table name | 3 | 2 | 2 | 2 | 2 | 2 | 2 |
+| ctx.connectors | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
+| language: BigInt | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
+| language: tagged templates | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
+| schema: non-literal default | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
+| endpoint: OPTIONS or HEAD | 0 | 0 | 0 | 2 | 2 | 2 | 2 |
+| language: labels | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
+| ctx.jwt | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
+| ctx: other service | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
+| db: handle escapes a handler | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
+| db: range on an optional field | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
+| pages: no page conversion | 403 | 403 | 403 | 0 | 0 | 0 | 0 |
+| endpoint: no endpoint conversion | 326 | 326 | 326 | 0 | 0 | 0 | 0 |
+| ctx.auth: principal id or profile | 133 | 133 | 133 | 0 | 0 | 0 | 0 |
+| ctx.invalidate | 96 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ctx.auth: whole object passed on | 24 | 24 | 24 | 0 | 0 | 0 | 0 |
+| ctx.log | 4 | 4 | 4 | 0 | 0 | 0 | 0 |
+| ctx.crypto | 1 | 1 | 1 | 12 | 12 | 0 | 0 |
+
+Without `--users`, the same table also has `ctx.auth.userId without Space
+Users` (126 Spaces at #133). The `ctx.auth` reasons shift with it: 33 Spaces
+refused for profile fields or methods, and 33 for passing the whole auth
+object on.
+
+**What each PR changes.** The refused total moves only when a Space loses its
+last refusal. Most gains show in the per-reason rows first:
+
+- #129 removes `ctx.invalidate` (96 Spaces).
+- #130 removes the blanket page (403) and endpoint (326) refusals and the
+  `ctx.auth` principal refusal (133). This moves 223 Spaces from refused to
+  *not recoverable*: their remaining blockers need the source to decide. The
+  specific page and endpoint refusals that replace the blanket ones become
+  visible here.
+- #131 maps `fetch`, which 120 Spaces' bundles call. No outcome changes: the
+  v2 compile step that refuses `fetch` runs only when the converter has found no
+  other error, and each of those Spaces stops at an earlier one.
+- #132 removes `ctx.crypto` (12 Spaces), but each of those Spaces has another
+  refusal.
+- #133 removes `ctx.email` from 6 of 10 Spaces and moves 4 Spaces to *not
+  recoverable*. The other 4 use `ctx.email` in endpoints in a form other than a
+  direct `ctx.email.send(message)` call, which #133 does not map.
+
+**Sole refusals at #133, with `--users`** (Spaces whose only refusal is this
+one, and so what fixing it alone would release to source review):
+
+| Reason | Spaces |
+| --- | ---: |
+| client app without pages (no v2 conversion) | 56 |
+| ctx passed on or read dynamically | 53 |
+| language: bitwise operators | 42 |
+| language: the in operator | 40 |
+| endpoint: request API (url, bytes, headers.entries) | 14 |
+| pages: Markdown or HTML document | 13 |
+| ctx.db: database handle use | 10 |
+| favicon | 9 |
+| language: delete | 9 |
+| endpoint: path owned by WordPress or Zero | 7 |
+| language: destructuring assignment | 6 |
+| ctx.env | 5 |
+
+**Not recoverable, by what is missing** (Spaces):
+
+| Missing | #118 | #129 | #134 | #130 | #131 | #132 | #133 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| page body | 0 | 0 | 0 | 208 | 208 | 208 | 211 |
+| bundle shape | 1 | 1 | 1 | 45 | 45 | 45 | 46 |
+| erased parameter types | 0 | 0 | 0 | 10 | 10 | 10 | 10 |
+| stored payload only | 0 | 0 | 0 | 2 | 2 | 2 | 2 |
+
+**Source for the build-backed versions.** The brief counted 168 live 0.8
+versions that came from a build (150 with a connected repository, 18 without).
+The census did not read their source, for these reasons:
+
+- **Build source archives** (`apps/control-plane/src/builds/source-archive-storage.ts`)
+  live on the Space's runtime box under `/build-sources/<buildId>`. The control
+  plane deletes each archive when its build ends (`cleanupBuildSourceArchive`
+  in `builds/runner.ts`), so no live version's archive remains. Reading one
+  would also need a runtime-management JWT signed with
+  `SPACEFAST_RUNTIME_JWT_PRIVATE_KEY`.
+- **Connected repositories** are the source of the 150. Reading them at the
+  version's `git_commit_sha` needs a GitHub App installation token
+  (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`) with read access to repository
+  contents for each installation.
+- The other 598 versions were direct uploads or settings republishes from a
+  local checkout. Their source exists nowhere on Spacefast.
+
+With read-only contents access, check out each version at its commit into
+`sources/<version_id>/` and rerun. `verifySource` uses only checkouts whose
+files match `sourceManifest.files`.
+
+**Rerun.** Export the payloads read-only from the replica into a scratch
+directory outside any repository, one `<version_id>.json` per Space:
+
+```sql
+-- page through the population by version id, 50 at a time
+select v.id, v.source_metadata_json -> 'statticZero' -> 'finalize'
+from stattic_channels c
+join stattic_versions v on v.id = c.version_id
+join stattic_spaces s on s.id = c.space_id
+where c.name = 'live' and s.deleted_at is null and v.zero_declared
+  and v.id > :after
+order by v.id limit 50;
+```
+
+Retry a read the replica cancels ("conflict with recovery"). Then:
+
+```sh
+node scripts/census-08/census.mjs --data <dir> --users \
+  --zero 118=<#118>/zero --zero head=target/debug/zero --json summary.json
+```
+
+The summary has counts only. `--per-space` writes version ids, so keep that
+file with the data and never commit it. Delete the directory when done.
+
+### Corpus census
+
+`scripts/migrate-census.py` runs the converter over known 0.8 source and
+counts refusal reasons. Rerun it with:
 
 ```sh
 cargo build
@@ -38,8 +304,8 @@ category, so the counts can sum to more than the number of refused apps.
 "Pages only", "endpoints only" and "both" partition the refused apps by
 whether `pages` and/or `endpoints` are among their categories.
 
-**Corpus.** The production replica is not reachable from the dev box, and the
-public API cannot serve 0.8 capsule source at all:
+**Why the API cannot serve source.** The public API cannot serve 0.8 capsule
+source at all:
 
 - `GET /v1/spaces/{id}/versions/{versionId}/files?view=uploaded` lists what
   the publisher uploaded. For a 0.8 Space (`start-map-studio`,
@@ -78,8 +344,8 @@ when recovered, `source/`) as one app, so a production census can run on the
 stored manifests. The `source` category counts apps refused for missing or
 differing source.
 
-So the census can only cover sources that exist outside Spacefast. Counting
-the live set needs one of these, read-only and scoped like the copier:
+Making more Spaces recoverable needs one of these, read-only and scoped like
+the copier:
 
 1. **Capture source at 0.8 publish time** from now on: upload the capsule tree
    (`server/`, `shared/`, `pages/`, `client/`, `content/`, `sf.jsonc`) as a
@@ -93,16 +359,12 @@ the live set needs one of these, read-only and scoped like the copier:
    unconnected local checkout have no recoverable source; their owners must
    publish once from source, or the census counts them as unknown.
 
-The corpus here is therefore the eight 0.8 projects in
+The corpus census uses the eight 0.8 projects in
 [`tests/fixtures/app-migrate/corpus`](../tests/fixtures/app-migrate/corpus):
 the four `sf init --runtime zero` starters, `start-map-studio`, the dashboard's
 `/push/new-repo` capsule, the compiler test's "Notes" capsule and the MCP test's
 contact capsule. Its README lists where each came from. Converter fixtures
 built for one mapping each are not counted.
-
-The prod census from 2026-11-07 (758 live Spaces: 512 with pages, 462 with
-custom endpoints) is not reproduced here. Rerun the script over real sources
-once they can be read safely; the formula does not change.
 
 Both columns use `--users`, as a Space with Space Users enabled would. Without
 it, `starter-todo` and `starter-guestbook` also refuse `ctx.auth.userId` on both

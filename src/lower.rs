@@ -1133,7 +1133,7 @@ impl Lowerer {
                             "build a new object without the key: `const { key, ...rest } = obj`",
                         );
                     }
-                    UO::BitwiseNot => return self.unsupported(u.span, "bitwise operators", ""),
+                    UO::BitwiseNot => UnOp::BitNot,
                 };
                 self.mk(span, ExprKind::Unary(op, Box::new(self.expr(&u.argument)?)))
             }
@@ -1176,7 +1176,12 @@ impl Lowerer {
                             ExprKind::Instanceof(Box::new(self.expr(&b.left)?), Box::new(self.expr(&b.right)?)),
                         ));
                     }
-                    _ => return self.unsupported(b.span, "bitwise operators", ""),
+                    BO::BitwiseAnd => BinOp::BitAnd,
+                    BO::BitwiseOR => BinOp::BitOr,
+                    BO::BitwiseXOR => BinOp::BitXor,
+                    BO::ShiftLeft => BinOp::Shl,
+                    BO::ShiftRight => BinOp::Shr,
+                    BO::ShiftRightZeroFill => BinOp::UShr,
                 };
                 self.mk(
                     span,
@@ -1214,7 +1219,12 @@ impl Lowerer {
                     AO::LogicalOr => Some(AssignOp::Log(LogOp::Or)),
                     AO::LogicalAnd => Some(AssignOp::Log(LogOp::And)),
                     AO::LogicalNullish => Some(AssignOp::Log(LogOp::Nullish)),
-                    _ => return self.unsupported(asg.span, "bitwise assignment", ""),
+                    AO::BitwiseAnd => Some(AssignOp::Bin(BinOp::BitAnd)),
+                    AO::BitwiseOR => Some(AssignOp::Bin(BinOp::BitOr)),
+                    AO::BitwiseXOR => Some(AssignOp::Bin(BinOp::BitXor)),
+                    AO::ShiftLeft => Some(AssignOp::Bin(BinOp::Shl)),
+                    AO::ShiftRight => Some(AssignOp::Bin(BinOp::Shr)),
+                    AO::ShiftRightZeroFill => Some(AssignOp::Bin(BinOp::UShr)),
                 };
                 let target = match asg.left.as_simple_assignment_target() {
                     Some(t) => self.simple_target(t)?,

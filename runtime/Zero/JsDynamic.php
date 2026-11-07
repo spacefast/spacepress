@@ -668,6 +668,7 @@ trait JsDynamic
     {
         if ($operator === '===' || $operator === '!==') { $equal = self::strictEq($left, $right); return $operator === '===' ? $equal : !$equal; }
         if ($operator === '==' || $operator === '!=') { $equal = self::looseEq($left, $right); return $operator === '==' ? $equal : !$equal; }
+        if (in_array($operator, ['&', '|', '^', '<<', '>>', '>>>'], true)) { return self::bitwise($operator, $left, $right); }
         $left = self::dynamicPrimitive($left); $right = self::dynamicPrimitive($right);
         if ($operator === '+') {
             return is_string($left) || is_string($right) ? self::str($left) . self::str($right) : self::add(self::toNumber($left), self::toNumber($right));

@@ -235,6 +235,62 @@ if ($phase === 'nested') {
     $wpdb->insert('wp_comments', ['comment_post_ID' => $post, 'comment_content' => 'Unsupported comment']);
 } elseif ($phase === 'clear-comments') {
     $wpdb->delete('wp_comments', ['comment_post_ID' => $post]);
+} elseif ($phase === 'content-drift') {
+    $plugin = \Zero\Wp\Runtime::plugin();
+    $db = $plugin->connection();
+    $copier = new \Zero\Wp\Legacy\Spacefast($db, $plugin->schema);
+    $verify = static function () use ($copier, $target): array {
+        try {
+            return $copier->run('imported-space', 'wp_', $target, false, true)['groups'];
+        } catch (\Zero\Wp\Legacy\SpacefastDrift $drift) {
+            return $drift->groups;
+        }
+    };
+    $statuses = static fn (array $groups): array => array_map(static fn ($g) => $g['status'], $groups);
+    $all = ['posts' => 'verified', 'users' => 'verified', 'sessions' => 'verified'];
+    proof($statuses($verify()) === $all && (int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations WHERE fingerprint LIKE 'v2:%'") === 3, 'content receipts verify an unchanged source');
+    $session = str_repeat('c', 32);
+    // Each edit keeps every COUNT/MAX the pre-content receipts hashed, so only row contents reveal it.
+    $edits = [
+        'posts' => [['wp_postmeta', 'meta_value', ['post_id' => $project, 'meta_key' => '_zero_projects_budget'], '43'], ['wp_posts', 'post_title', ['ID' => $post], 'Edited after copy'], ['wp_termmeta', 'meta_value', ['term_id' => $child, 'meta_key' => 'fixture'], 'edited']],
+        'users' => [['wp_users', 'user_email', ['ID' => $uid], 'changed@example.test'], ['wp_users', 'user_pass', ['ID' => $uid], md5('changed-password')], ['wp_usermeta', 'meta_value', ['user_id' => $uid, 'meta_key' => 'nickname'], 'Changed nickname'], ['wp_sfi_emails', 'normalized', ['wp_user_id' => $uid], 'changed@example.test']],
+        'sessions' => [['wp_sfi_sessions', 'secret_hash', ['id' => $session], hash_hmac('sha256', 'replaced-token', wp_salt('auth'))], ['wp_sfi_sessions', 'expires_at', ['id' => $session], $now + 7200]],
+    ];
+    foreach ($edits as $group => $changes) {
+        foreach ($changes as [$table, $column, $where, $value]) {
+            $before = $wpdb->get_var($wpdb->prepare("SELECT `$column` FROM `$table` WHERE " . implode(' AND ', array_map(static fn ($k) => "`$k`=%s", array_keys($where))), ...array_values($where)));
+            proof($before !== null && (string)$before !== (string)$value && $wpdb->update($table, [$column => $value], $where) === 1, "$table.$column edited in the source");
+            $observed = $statuses($verify());
+            proof($observed === array_replace($all, [$group => 'drifted']), "content receipt reports $group drifted after a $table.$column edit: " . json_encode($observed));
+            proof($wpdb->update($table, [$column => $before], $where) === 1, "$table.$column restored");
+        }
+    }
+    proof($statuses($verify()) === $all, 'content receipts verify again once the source is restored');
+    // Receipts written before content fingerprints hashed aggregate counters (formula pinned here).
+    $scope = (new ReflectionMethod($copier, 'scope'))->invoke($copier, 'imported-space', 'wp_');
+    [, $ids, $users] = $scope;
+    $legacy = static function (string $group) use ($db, $ids, $users): string {
+        $keys = $group === 'posts' ? $ids : $users;
+        $where = implode(',', array_fill(0, count($keys), '?'));
+        $values = match ($group) {
+            'posts' => [
+                $db->run("SELECT COUNT(*) AS count, MAX(post_modified_gmt) AS modified FROM `wp_posts` WHERE ID IN ($where)", $keys)[0],
+                $db->run("SELECT MAX(meta_id) AS meta FROM `wp_postmeta` WHERE post_id IN ($where)", $keys)[0],
+                $db->run("SELECT COUNT(*) AS relationships FROM `wp_term_relationships` WHERE object_id IN ($where)", $keys)[0],
+            ],
+            'users' => [
+                $db->run("SELECT COUNT(*) AS count, MAX(ID) AS id FROM `wp_users` WHERE ID IN ($where)", $keys)[0],
+                $db->run("SELECT MAX(umeta_id) AS meta FROM `wp_usermeta` WHERE user_id IN ($where)", $keys)[0],
+            ],
+            'sessions' => $db->run("SELECT COUNT(*) AS count, MAX(id) AS id, MAX(revoked_at) AS revoked FROM `wp_sfi_sessions` WHERE wp_user_id IN ($where)", $keys),
+        };
+        return hash('sha256', json_encode($values, JSON_THROW_ON_ERROR));
+    };
+    foreach (array_keys($all) as $group) {
+        $wpdb->update($target . 'zero_spacefast_migrations', ['fingerprint' => $legacy($group)], ['space_id' => 'imported-space', 'table_group' => $group]);
+    }
+    $groups = $verify();
+    proof($statuses($groups) === $all && array_filter($groups, static fn ($g) => !preg_match('/\A[0-9a-f]{64}\z/', $g['stored']) || $g['current'] !== $g['stored']) === [], 'receipts written before content fingerprints still verify an unchanged source');
 } elseif ($phase === 'drift') {
     $wpdb->update('wp_posts', ['post_modified_gmt' => '2099-01-01 00:00:00'], ['ID' => $post]);
 } elseif ($phase === 'dry') {
@@ -248,7 +304,7 @@ if ($phase === 'nested') {
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations")===0, 'failed group has no receipt');
     $wpdb->delete($target.'posts', ['ID'=>$post]);
 } elseif ($phase === 'copied') {
-    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations WHERE LENGTH(fingerprint)=64")===3, 'each group receipt stores a source fingerprint');
+    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations WHERE fingerprint REGEXP '^v2:[0-9a-f]{64}$'")===3, 'each group receipt stores a versioned source content fingerprint');
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}posts")===5, 'only fenced native and collection posts, revisions and attachment copied');
     $p = get_post($post);
     proof($p->post_type==='zero_posts' && $p->post_content==='<p>Preserved body</p>' && (int)$p->post_author===$uid, 'post ID, body and author retained with candidate type');

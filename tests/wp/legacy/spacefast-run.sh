@@ -93,6 +93,9 @@ assert all(g=={'copied':0,'status':'already-migrated'} for g in json.load(open(s
 CHECK
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php authenticated
 
+# Content edits invisible to counters drift content receipts; older counter receipts keep verifying.
+# The counter drift check below then runs against those older receipts.
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php content-drift
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php drift
 if "$wp/harness.sh" wp "${command[@]}" --verify > "$app/drift.json"; then
   echo 'Expected source post change to refuse verify' >&2; exit 1

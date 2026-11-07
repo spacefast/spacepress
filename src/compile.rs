@@ -3505,7 +3505,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let read = match target.kind {
                     WriteKind::Dynamic | WriteKind::Array => format!("\\Zero\\Js::dynamicGet({receiver}, {key})"),
                     // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
-                    WriteKind::NativeObject => format!("({receiver}->p[{key}] ?? \\Zero\\Js::dataGet({receiver}, {key}))"),
+                    WriteKind::NativeObject => {
+                        format!("({receiver}->p[{key}] ?? \\Zero\\Js::dataGet({receiver}, {key}))")
+                    }
                     WriteKind::Object => format!("\\Zero\\Js::dataGet({receiver}, {key})"),
                 };
                 let write = match target.kind {

@@ -763,8 +763,14 @@ fn compiled_php_matches_node_on_every_differential_case() {
             .any(|line| line.contains("->p[") && line.contains("] = "))
     );
     assert!(body("nativeMissing").contains("$input->p["));
-    assert!(body("reboundParameter").contains("\\Zero\\Js::dataGet($input, 'n')") && !body("reboundParameter").contains("->p["));
-    assert!(body("nullableParameter").contains("\\Zero\\Js::dataGet($input, 'n')") && !body("nullableParameter").contains("->p["));
+    assert!(
+        body("reboundParameter").contains("\\Zero\\Js::dataGet($input, 'n')")
+            && !body("reboundParameter").contains("->p[")
+    );
+    assert!(
+        body("nullableParameter").contains("\\Zero\\Js::dataGet($input, 'n')")
+            && !body("nullableParameter").contains("->p[")
+    );
 
     let mut mismatches = Vec::new();
     for (name, want) in expected.as_object().unwrap() {

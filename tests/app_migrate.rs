@@ -222,3 +222,31 @@ fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
     );
     assert!(!out.exists());
 }
+
+#[test]
+fn ctx_email_send_maps_to_mail_send_and_queries_still_refuse() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("email");
+    let (ok, report) = migrate(&fixture("email"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    assert!(report["entries"].as_array().unwrap().iter().any(|e| {
+        e["outcome"] == "review"
+            && e["reason"]
+                .as_str()
+                .unwrap()
+                .starts_with("ctx.email.send becomes mail.send")
+    }));
+    build(&out);
+    let root = temp.path().join("query");
+    project(
+        &root,
+        r#"{queries:{q:query(async (ctx) => ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, query }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/queries/q/ctx/email");
+}

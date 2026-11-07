@@ -307,6 +307,52 @@ Throwing anything aborts the request and rolls back every write in it.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
 
+## Email
+
+`mail.send(message)` from `"zero"` sends email from a hook, action, route or
+job:
+
+```ts
+import { action, defineConfig, email, mail, text } from "zero";
+
+export default defineConfig({
+  actions: {
+    invite: action({
+      input: { to: email().notNull(), name: text() },
+      access: "editor",
+      async handler({ to, name }) {
+        const queued = await mail.send({
+          to: { email: to, name: name ?? undefined },
+          subject: "You're invited",
+          text: "Open the link to join.",
+          html: "<p>Open the link to join.</p>",
+        });
+        return queued.id;
+      },
+    }),
+  },
+});
+```
+
+- The message has `to`, `subject` and `text` and/or `html`, plus optional
+  `from`, `cc`, `bcc`, `replyTo` and `headers`. Addresses are strings or
+  `{ email, name? }`; `to`, `cc` and `bcc` may be lists, 50 recipients in all.
+  `from` defaults to `noreply@` the site's host.
+- `send` validates the message, then queues it inside the handler's
+  transaction. It is handed off after the request commits, so a rolled-back
+  write sends nothing. A refused hand-off is retried by the job runner (5
+  attempts, with backoff) and shows in `wp zero jobs list`.
+- Delivery goes to `wp_mail`, so the site's mail plugin or SMTP configuration
+  applies. Display names are RFC 2047-encoded, and line breaks, commas inside
+  an address and reserved headers (`From`, `To`, `Content-Type`, ...) are
+  refused at `send`.
+- A managed host supplies its own transport through the
+  `zero_mail_transport` filter (`null, $message` → `true` when accepted). On
+  Spacefast that is the Space's sender, which requires `from` on the Space's
+  primary sending domain and counts recipients against the Space's daily
+  allowance. A managed host without a transport refuses rather than falling
+  back to `wp_mail`.
+
 ## Jobs and webhooks
 
 ```ts

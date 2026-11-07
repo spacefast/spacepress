@@ -75,6 +75,8 @@ pub enum Builtin {
     Env,
     Once,
     Jobs,
+    /// `mail.send(message)` from "zero", compiled to `Zero\Mail::send`.
+    Mail,
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,

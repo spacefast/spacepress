@@ -41,3 +41,13 @@ docker compose -p "$ZERO_WP_PROJECT" exec -T db mariadb -uroot -pzero-test-root 
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/content/.zero/wp-content" > "$work/content-harness.json"
 ZERO_WP_HARNESS="$work/content-harness.json" node --test "$here/identity.test.ts"
+# ctx.email.send through the migrated app: queued with the write, sent after commit.
+"$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/email --out "$work/email" --space spc_migrate_test > "$work/email-report.json"
+"$zero" build "$work/email" --quiet >/dev/null
+"$wp/harness.sh" down >/dev/null
+"$wp/harness.sh" up --wp-content "$work/email/.zero/wp-content" --bare > "$work/email-bare.json"
+docker compose -p "$ZERO_WP_PROJECT" cp "$here/email-seed.php" cli:/tmp/zero-app-migrate-email-seed.php >/dev/null 2>&1
+"$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-email-seed.php >/dev/null
+"$wp/harness.sh" up --wp-content "$work/email/.zero/wp-content" > "$work/email-harness.json"
+ZERO_WP_HARNESS="$work/email-harness.json" ZERO_SIGNUPS_HASH="$(python3 -c 'import hashlib; print(hashlib.sha256(b"spc_migrate_test\0signups").hexdigest()[:10])')" \
+  node --test "$here/email.test.ts"

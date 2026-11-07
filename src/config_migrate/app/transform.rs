@@ -547,7 +547,16 @@ pub(super) fn app(
                     let E::Func(f) = &a[0].kind else {
                         return Err(fail(&at, "handler must be an inline function"));
                     };
-                    handler(source, f, &tables, &at, &name, section == "mutations", signed_in)
+                    handler(
+                        source,
+                        f,
+                        &tables,
+                        &at,
+                        &name,
+                        section == "mutations",
+                        signed_in,
+                        section != "queries",
+                    )
                 })();
                 match result {
                     Ok(h) => {
@@ -559,8 +568,15 @@ pub(super) fn app(
             }
         }
     }
+    if handlers.iter().any(|h| h.contains("__z08Mail.send(")) {
+        entries.push(entry(
+            "",
+            "review",
+            "ctx.email.send becomes mail.send from \"zero\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
+        ));
+    }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, type InferSelectModel } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, mail as __z08Mail, type InferSelectModel } from \"zero\";\n",
     );
     config.push_str(&prelude);
     if content_config.is_some() {
@@ -781,6 +797,7 @@ fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Resul
     ))
 }
 
+#[allow(clippy::too_many_arguments)] // #130 groups these flags into a Mode struct.
 fn handler(
     source: &str,
     f: &Func,
@@ -789,6 +806,7 @@ fn handler(
     name: &str,
     writes: bool,
     signed_in: bool,
+    sends: bool,
 ) -> Result<String, Failure> {
     let Some(first) = f.params.first() else {
         return Err(fail(at, "handler must declare its context parameter"));
@@ -827,6 +845,17 @@ fn handler(
         tables,
         at,
         writes,
+        sends,
+        returned: match &f.body {
+            FnBody::Expr(e) => vec![e.span],
+            FnBody::Block(stmts) => stmts
+                .iter()
+                .filter_map(|s| match s {
+                    Stmt::Return(Some(e), _) => Some(e.span),
+                    _ => None,
+                })
+                .collect(),
+        },
         edits: vec![],
     };
     let body = match &f.body {
@@ -875,6 +904,10 @@ struct Rewrite<'a> {
     tables: &'a BTreeMap<String, Table>,
     at: &'a str,
     writes: bool,
+    /// 0.8 gave mutations and actions `ctx.email`; queries could be replayed, so they had none.
+    sends: bool,
+    /// Spans of values the handler returns directly (an expression body or `return <e>`).
+    returned: Vec<Span>,
     edits: Vec<(Span, String)>,
 }
 impl Rewrite<'_> {
@@ -908,6 +941,44 @@ impl Rewrite<'_> {
             && let Some(text) = self.db(inner)?
         {
             self.edits.push((e.span, text));
+            return Ok(());
+        }
+        // ctx.email.send(message) → mail.send(message): the same EmailMessage, queued in the
+        // handler's transaction and handed to the site's transport after commit, as 0.8's outbox did.
+        let (call, awaited) = match &e.kind {
+            E::Await(inner) => (inner.as_ref(), true),
+            _ => (e, false),
+        };
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &call.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && matches!(&obj.kind, E::Member { obj, prop: svc, .. } if svc == "email" && matches!(&obj.kind, E::Ident(n) if n == self.ctx))
+        {
+            let at = pointer(&pointer(self.at, "ctx"), "email");
+            if prop != "send" {
+                return Err(fail(&at, format!("ctx.email.{prop} has no v2 counterpart")));
+            }
+            if !self.sends {
+                return Err(fail(
+                    &at,
+                    "queries could not send email in 0.8 either; move the send to a mutation or action",
+                ));
+            }
+            let [ArrEl::Item(message)] = args.as_slice() else {
+                return Err(fail(&at, "ctx.email.send takes one message"));
+            };
+            let message = self.render(message)?;
+            // 0.8 resolved to true on transport acceptance; v2 resolves once the message is queued.
+            let send = format!("(await __z08Mail.send({message}), true)");
+            // A returned promise was awaited by the 0.8 runtime; one left floating raced the response.
+            if !awaited && !self.returned.contains(&e.span) {
+                return Err(fail(&at, "an unawaited ctx.email.send needs a manual port; await it"));
+            }
+            self.edits.push((e.span, format!("({send})")));
             return Ok(());
         }
         if let Some(text) = self.db(e)? {

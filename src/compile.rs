@@ -2771,6 +2771,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
             ),
+            Value::Builtin(Builtin::Mail) => err_help(
+                span,
+                "`mail` can't be used as a value",
+                "call `mail.send({ to, subject, text })` directly",
+            ),
             Value::Builtin(Builtin::Jobs) => err_help(
                 span,
                 "`jobs` can't be used as a value",
@@ -4058,7 +4063,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let builtin = |this: &mut Self, e: &Expr| -> Result<Option<Builtin>> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
-                Resolved::Value(Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env)), _) => Some(b),
+                Resolved::Value(
+                    Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env | Builtin::Mail)),
+                    _,
+                ) => Some(b),
                 _ => None,
             })
         };
@@ -4081,6 +4089,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 _ => Ok(None),
             },
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
+            {
+                self.mail_call(prop, args, span).map(Some)
+            }
             ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
                 ExprKind::Member {
                     obj: root, prop: job, ..
@@ -4091,6 +4105,81 @@ impl<'a, 'p> Compiler<'a, 'p> {
             },
             _ => Ok(None),
         }
+    }
+
+    /// `mail.send(message)`: queues inside the handler's transaction, hands off after commit.
+    fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name != "send" {
+            return err_help(
+                span,
+                format!("`mail` has no function `{name}`"),
+                "use `mail.send(message)`",
+            );
+        }
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't send mail",
+                "move it into a hook, action, route or job",
+            );
+        }
+        if args.len() != 1 {
+            return err_help(
+                span,
+                "mail.send() takes one message",
+                "write mail.send({ to, subject, text })",
+            );
+        }
+        let e = self.arg(args, 0, span, "a message")?;
+        let v = self.expr(e)?;
+        let v = self.finish_value(v, e.span)?;
+        let address = |t: &Ty| {
+            t.is_str() && !t.is_nullable()
+                || matches!(t, Ty::Obj(f) if f.keys().all(|k| k == "email" || k == "name")
+                    && f.get("email").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable()))
+        };
+        let list = |t: &Ty| {
+            address(t)
+                || matches!(t, Ty::Array(x) | Ty::NonEmptyArray(x) if address(x))
+                || matches!(t, Ty::ArrayLiteral(xs) | Ty::Tuple(xs) if xs.iter().all(address))
+        };
+        let optional = |t: &Ty, ok: &dyn Fn(&Ty) -> bool| t.all(|t| matches!(t, Ty::Null | Ty::Undefined) || ok(t));
+        let ok = match &v.ty {
+            Ty::Obj(f) => {
+                f.keys().all(|k| {
+                    [
+                        "from", "to", "subject", "text", "html", "cc", "bcc", "replyTo", "headers",
+                    ]
+                    .contains(&k.as_str())
+                }) && f.get("to").is_some_and(|(t, o)| !o && list(t))
+                    && f.get("subject")
+                        .is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())
+                    && (f.contains_key("text") || f.contains_key("html"))
+                    && f.iter().all(|(k, (t, _))| match k.as_str() {
+                        "to" | "subject" => true,
+                        "text" | "html" => optional(t, &|t| t.is_str()),
+                        "from" | "replyTo" => optional(t, &address),
+                        "cc" | "bcc" => optional(t, &list),
+                        "headers" => optional(t, &|t| matches!(t, Ty::Obj(_) | Ty::Map(_))),
+                        _ => false,
+                    })
+            }
+            _ => false,
+        };
+        if !ok {
+            return err_help(
+                e.span,
+                format!(
+                    "mail.send() needs {{ to, subject, text or html }}, not {}",
+                    v.ty.describe()
+                ),
+                "addresses are strings or { email, name? }; to/cc/bcc may be lists",
+            );
+        }
+        Ok(Out::atom(
+            format!("\\Zero\\Mail::send({})", v.php),
+            Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
+        ))
     }
 
     fn once_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {

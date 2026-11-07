@@ -10,12 +10,12 @@ cd "$(dirname "$0")"
 PHP="${PHP:-php}"
 status=0
 suites=("$@")
-[ ${#suites[@]} -eq 0 ] && suites=(js env db schema sql blog auth jobs webhooks services images files media locales sync legacy vendor)
+[ ${#suites[@]} -eq 0 ] && suites=(js env db schema sql blog auth jobs mail webhooks services images files media locales sync legacy vendor)
 for s in "${suites[@]}"; do
   case "$s" in
     js) "$PHP" -d zend.assertions=1 js_parity.php || status=1 ;;
     env|schema|sql|images|legacy) "$PHP" -d zend.assertions=1 "${s}_test.php" || status=1 ;;
-    db|blog|auth|jobs|webhooks|services|files|media|locales|sync) "$PHP" -d zend.assertions=1 -d memory_limit=512M "${s}_test.php" || status=1 ;;
+    db|blog|auth|jobs|mail|webhooks|services|files|media|locales|sync) "$PHP" -d zend.assertions=1 -d memory_limit=512M "${s}_test.php" || status=1 ;;
     vendor) "$PHP" -d zend.assertions=1 vendor_drift.php || status=1 ;;
     *) echo "unknown suite: $s" >&2; exit 2 ;;
   esac

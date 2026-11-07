@@ -629,6 +629,10 @@ pub fn action_input(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column
     )
 }
 
+pub fn obj_pub(fields: &[(&str, Ty)]) -> Ty {
+    obj(fields)
+}
+
 fn obj(fields: &[(&str, Ty)]) -> Ty {
     Ty::Obj(
         fields

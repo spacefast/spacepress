@@ -1161,6 +1161,28 @@ export type JobsApi = [RegisteredJobs] extends [never]
   : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };
 export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
+
+export type MailAddress = string | { email: string; name?: string };
+export interface MailMessage {
+  /** Defaults to `noreply@` the site's host. On Spacefast it must use the Space's sending domain. */
+  from?: MailAddress;
+  to: MailAddress | MailAddress[];
+  subject: string;
+  text?: string;
+  html?: string;
+  cc?: MailAddress | MailAddress[];
+  bcc?: MailAddress | MailAddress[];
+  replyTo?: MailAddress;
+  headers?: Record<string, string>;
+}
+/**
+ * Email from hooks, actions, routes and jobs. `send` queues the message in the handler's
+ * transaction and hands it to the site's mail transport after commit, retrying a refusal; a
+ * rollback sends nothing. It resolves to the queued delivery's id.
+ */
+export declare const mail: {
+  send(message: MailMessage): Promise<{ id: string }>;
+};
 export interface EnvValue { readonly [envBrand]: true }
 export declare function env(name: string): EnvValue;
 export interface Webhook { url: EnvValue | string; secret: EnvValue; events: WebhookEvent[] }

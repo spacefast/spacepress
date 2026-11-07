@@ -58,6 +58,21 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
+fn mail_send_needs_recipients_a_subject_and_a_body() {
+    rejects(
+        "reject-mail-message",
+        "mail.send() needs { to, subject, text or html }",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/mail-import"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",

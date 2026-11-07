@@ -9,9 +9,14 @@ import { createRequire } from "node:module";
 import { Compiler, type Compiled, type Request } from "../../src/lib/compiler.ts";
 import { repo, zeroBinary, wasmPath } from "./helpers.ts";
 
-/** Every file under a project except build output (symlinks not followed), as the browser would hold it. */
+/**
+ * Every file under a project except build output (symlinks not followed), as the browser would hold
+ * it. Of `zero/`, only the abilities lock is a compiler input; the rest is build output.
+ */
 function sources(dir: string): Request["files"] {
   const files: Request["files"] = {};
+  const lock = path.join(dir, "zero/abilities.json");
+  if (statSync(lock, { throwIfNoEntry: false })?.isFile()) files["zero/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
       if (name === "zero" || name === ".zero" || name === "node_modules" || name === "zero.gen.ts") continue;

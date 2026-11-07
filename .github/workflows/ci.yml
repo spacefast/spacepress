@@ -311,6 +311,8 @@ jobs:
         run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals
         run: ZERO_WP_PROJECT=zero-wp-fetch ZERO_WP_PORT=8899 tests/wp/fetch/run.sh
+      - name: WordPress abilities pulled, typed and called
+        run: ZERO_WP_PROJECT=zero-wp-abilities ZERO_WP_PORT=8898 tests/wp/abilities/run.sh
 
   wp-s3:
     runs-on: ubuntu-24.04

@@ -8,11 +8,13 @@
 //! Request:
 //! ```json
 //! { "name": "pantry",
-//!   "files": { "zero.config.ts": "…", "lib/fields.ts": "…" },
+//!   "files": { "zero.config.ts": "…", "lib/fields.ts": "…", "zero/abilities.json": "…" },
 //!   "previous": null, "migrationFiles": [] }
 //! ```
 //! `previous` is the last build's `zero/migrations/snapshot.json` (null for a first build) and
 //! `migrationFiles` the names beside it, which number the next migration like `zero build` does.
+//! `files` carries every compiler input, including the committed `zero/abilities.json` lock that
+//! types `abilities.call` from "php/wordpress".
 //! Directories exist as the parents of files: a project in memory has no empty directory, and git
 //! cannot hold one either, so that is the one shape of project the disk can have and this cannot.
 //!
@@ -482,5 +484,31 @@ mod tests {
         let expected = rendered();
         compile(r#"{"name":"p","files":{"zero.config.ts":"export default 1;"}}"#);
         assert_eq!(rendered(), expected);
+    }
+
+    /// The browser types `abilities.call` from the lock it is sent, exactly as the command line does.
+    #[test]
+    fn a_locked_ability_in_the_request_types_its_call() {
+        let config = r#"import { action, defineConfig } from "zero";
+import { abilities } from "php/wordpress";
+export default defineConfig({ actions: { a: action({ input: {}, access: "anyone", handler: () => abilities.call("acme/info", { field: "title" }) }) } });"#;
+        let lock = serde_json::json!({"version": 1, "abilities": [{"name": "acme/info",
+            "input_schema": {"type": "object", "properties": {"field": {"enum": ["name"]}}, "required": ["field"]}, "output_schema": {}}]});
+        let message = |files: serde_json::Value| {
+            let response: serde_json::Value =
+                serde_json::from_str(&compile(&serde_json::json!({"name": "p", "files": files}).to_string())).unwrap();
+            response["check"]["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(
+            message(serde_json::json!({"zero.config.ts": config, "zero/abilities.json": lock.to_string()})),
+            "`acme/info` takes { field: \"name\" }, not { field: \"title\" }"
+        );
+        assert_eq!(
+            message(serde_json::json!({"zero.config.ts": config})),
+            "unknown ability `acme/info`"
+        );
     }
 }

@@ -22,6 +22,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "src/wordpress/catalog.json"
+# The generated half of types/zero/wordpress.d.ts, between these markers.
+TYPES = ROOT / "types/zero/wordpress.d.ts"
+BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 
 # WordPress 7.1.x, as tests/wp/harness.sh and tests/php/wp.php boot it.
@@ -182,17 +185,48 @@ def render():
     }, indent=2) + "\n"
 
 
+def render_types(catalog):
+    """The catalog as declarations: class views and the hook map, for types/zero/wordpress.d.ts."""
+    lines = [BEGIN]
+    for cls, fields in catalog["classes"].items():
+        lines.append(f"/** A read-only view of `{cls}` as a hook handler receives it. */")
+        lines.append(f"export interface {cls} {{")
+        if "$methods" in fields:
+            for name, sig in fields["$methods"].items():
+                params = ", ".join(f"{p['name']}: {p['type']}" for p in sig["params"])
+                lines.append(f"  {name}({params}): {sig['returns']};")
+        else:
+            lines += [f"  readonly {k}: {t};" for k, t in fields.items()]
+        lines.append("}")
+    lines.append("/** The WordPress hooks `wp-hooks/` accepts: kind and arguments, from core's docblocks. */")
+    lines.append("export interface Hooks {")
+    for name, h in catalog["hooks"].items():
+        params = ", ".join(f"{p['name']}: {p['type']}" for p in h["params"])
+        lines.append(f"  /** {h['description']} ({h['source']}) */")
+        lines.append(f"  {name}: {{ kind: \"{h['kind']}\"; args: [{params}] }};")
+    lines.append("}")
+    lines.append(END)
+    return "\n".join(lines)
+
+
+def with_types(text, catalog):
+    start, end = text.index(BEGIN), text.index(END) + len(END)
+    return text[:start] + render_types(catalog) + text[end:]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     text = render()
+    types = with_types(TYPES.read_text(), json.loads(text))
     if args.check:
-        if not OUTPUT.exists() or OUTPUT.read_text() != text:
-            parser.exit(1, "src/wordpress/catalog.json is stale; run python3 scripts/wordpress-catalog.py\n")
+        if not OUTPUT.exists() or OUTPUT.read_text() != text or TYPES.read_text() != types:
+            parser.exit(1, "the WordPress catalog is stale; run python3 scripts/wordpress-catalog.py\n")
     else:
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT.write_text(text)
+        TYPES.write_text(types)
 
 
 if __name__ == "__main__":

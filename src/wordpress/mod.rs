@@ -152,33 +152,6 @@ fn split(text: &str, sep: char) -> Vec<&str> {
     out
 }
 
-/// The `"php/wordpress"` module augmentation for `zero.gen.ts`: one `Hooks` entry per catalog hook,
-/// so `Filter<"the_content">` / `Action<"save_post">` type a handler in the editor.
-pub fn hooks_ts() -> String {
-    let mut out = String::new();
-    for name in hook_names() {
-        let h = &catalog()["hooks"][name];
-        let params: Vec<String> = h["params"]
-            .as_array()
-            .expect("params")
-            .iter()
-            .map(|p| {
-                format!(
-                    "{}: {}",
-                    p["name"].as_str().expect("name"),
-                    p["type"].as_str().expect("type")
-                )
-            })
-            .collect();
-        out.push_str(&format!(
-            "    {name}: {{ kind: {:?}; args: [{}] }};\n",
-            h["kind"].as_str().expect("kind"),
-            params.join(", ")
-        ));
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

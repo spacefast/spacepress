@@ -22,3 +22,17 @@ export async function refused(): Promise<void> {
   // @ts-expect-error not an ability the app knows
   await abilities.call("acme/unknown", {});
 }
+
+import type { Handler, WP_Post, WP_Query } from "php/wordpress";
+
+export const frame: Handler<"the_content"> = (content) => `<div>${content}</div>`;
+export const saved: Handler<"save_post"> = (postId: number, post: WP_Post, update: boolean) => {
+  if (!update && postId > 0) void post.post_title.toUpperCase();
+};
+export const query: Handler<"pre_get_posts"> = (q: WP_Query) => {
+  if (q.is_main_query()) q.set("posts_per_page", 5);
+};
+// @ts-expect-error a filter returns the filtered value
+export const lost: Handler<"the_content"> = (content) => content.length;
+// @ts-expect-error views are read-only
+export const write: Handler<"save_post"> = (_id, post) => { post.post_title = "x"; };

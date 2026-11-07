@@ -1013,6 +1013,65 @@ impl<'p> Evaluator<'p> {
                 }))
             }
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
+            ExprKind::Delete(target) => {
+                let inner = match &target.kind {
+                    ExprKind::Chain(inner) => inner,
+                    _ => target,
+                };
+                let (object, key) = match &inner.kind {
+                    ExprKind::Member {
+                        obj, prop, optional, ..
+                    } => {
+                        let object = self.eval(obj, scope)?;
+                        if *optional && matches!(object, Value::Null | Value::Undef) {
+                            return Ok(Value::Bool(true));
+                        }
+                        (object, prop.clone())
+                    }
+                    ExprKind::Index { obj, index, optional } => {
+                        let object = self.eval(obj, scope)?;
+                        if *optional && matches!(object, Value::Null | Value::Undef) {
+                            return Ok(Value::Bool(true));
+                        }
+                        let key = self.eval(index, scope)?;
+                        require_static_data(&key, e.span)?;
+                        require_static_coercion(&key, e.span)?;
+                        let Some(key) = key.to_js_string() else {
+                            return err(e.span, "`delete` at build time needs a primitive property key");
+                        };
+                        (object, key)
+                    }
+                    _ => return err(e.span, "`delete` needs an object property"),
+                };
+                match &object {
+                    Value::Object(o) => {
+                        o.borrow_mut().shift_remove(&key);
+                    }
+                    Value::Array(a) => {
+                        let in_range = key
+                            .parse::<usize>()
+                            .is_ok_and(|i| i.to_string() == key && i < a.borrow().len());
+                        if key == "length" || in_range {
+                            return err_help(
+                                e.span,
+                                "`delete` would leave a hole in a dense Zero array",
+                                "use splice to remove elements",
+                            );
+                        }
+                    }
+                    Value::Null | Value::Undef => {
+                        return err(e.span, "`delete` on null or undefined throws a TypeError");
+                    }
+                    _ => {
+                        return err_help(
+                            e.span,
+                            "`delete` at build time removes only plain object properties",
+                            "move the deletion into a handler",
+                        );
+                    }
+                }
+                Value::Bool(true)
+            }
             ExprKind::In(key, object) => {
                 let key = self.eval(key, scope)?;
                 let object = self.eval(object, scope)?;

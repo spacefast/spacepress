@@ -1127,11 +1127,42 @@ impl Lowerer {
                         ));
                     }
                     UO::Delete => {
-                        return self.unsupported(
-                            u.span,
-                            "`delete`",
-                            "build a new object without the key: `const { key, ...rest } = obj`",
-                        );
+                        let mut target = u.argument.get_inner_expression();
+                        while let a::Expression::TSNonNullExpression(x) = target {
+                            target = x.expression.get_inner_expression();
+                        }
+                        let target = match target {
+                            a::Expression::StaticMemberExpression(_) | a::Expression::ComputedMemberExpression(_) => {
+                                self.member(target.as_member_expression().expect("member"))?
+                            }
+                            a::Expression::ChainExpression(c) => match &c.expression {
+                                a::ChainElement::StaticMemberExpression(_)
+                                | a::ChainElement::ComputedMemberExpression(_) => self.mk(
+                                    c.span,
+                                    ExprKind::Chain(Box::new(
+                                        self.member(c.expression.as_member_expression().expect("member"))?,
+                                    )),
+                                ),
+                                _ => {
+                                    return self.unsupported(
+                                        u.span,
+                                        "`delete` of a call result",
+                                        "delete an object property",
+                                    );
+                                }
+                            },
+                            a::Expression::PrivateFieldExpression(_) => {
+                                return self.unsupported(u.span, "private fields", "");
+                            }
+                            _ => {
+                                return self.unsupported(
+                                    u.span,
+                                    "`delete` of a variable or value",
+                                    "`delete` removes an object property: `delete obj.key`",
+                                );
+                            }
+                        };
+                        return Ok(self.mk(u.span, ExprKind::Delete(Box::new(target))));
                     }
                     UO::BitwiseNot => UnOp::BitNot,
                 };
@@ -1756,6 +1787,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
             }))
             .collect(),
         ExprKind::Unary(_, value)
+        | ExprKind::Delete(value)
         | ExprKind::IsNullish(value, _)
         | ExprKind::Chain(value)
         | ExprKind::Await(value)

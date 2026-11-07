@@ -333,6 +333,8 @@ pub enum Prop {
 pub enum ExprKind {
     Class(Rc<Class>),
     Instanceof(P<Expr>, P<Expr>),
+    /// `delete target`, where the target is a member or index read, possibly `?.` at its last step.
+    Delete(P<Expr>),
     /// `key in object`: own or inherited property presence. The key is evaluated first.
     In(P<Expr>, P<Expr>),
     Num(f64),

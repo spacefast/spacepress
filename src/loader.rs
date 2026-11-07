@@ -12,6 +12,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const ZERO_MODULE: &str = "zero";
+/// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
+pub const WORDPRESS_MODULE: &str = "php/wordpress";
+
+/// Modules the compiler provides itself; nothing is loaded for them.
+pub fn builtin_module(spec: &str) -> bool {
+    spec == ZERO_MODULE || spec == WORDPRESS_MODULE
+}
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
 /// are absolute either way, so diagnostics and module identity work the same.
@@ -67,6 +74,17 @@ pub struct Program {
     pub entry: usize,
     /// The source of these modules; later passes that look beside them (sync directories) ask it.
     pub fs: Rc<dyn Fs>,
+    /// `wp-hooks/` handler files beside the entry, in registration order (see [`wp_hook_files`]).
+    pub wp_hooks: Vec<WpHookFile>,
+}
+
+/// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
+#[derive(Debug, Clone)]
+pub struct WpHookFile {
+    pub hook: String,
+    pub module: usize,
+    /// Position among the files of its hook, from 0 in alphabetical order.
+    pub order: usize,
 }
 
 pub fn load(entry: &Path) -> Result<Program> {
@@ -83,6 +101,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         resolved: HashMap::new(),
         entry: 0,
         fs: fs.clone(),
+        wp_hooks: Vec::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let entry = fs
@@ -93,11 +112,79 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
+    let dir = entry.parent().expect("entry has a directory").join(WP_HOOKS_DIR);
+    match wp_hook_files(&*fs, &dir) {
+        Ok(files) => {
+            for (hook, order, path) in files {
+                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
+                    Ok(module) => program.wp_hooks.push(WpHookFile { hook, module, order }),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+        }
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
     if diagnostics.is_empty() {
         Ok(program)
     } else {
         Err(diagnostics)
     }
+}
+
+/// The WordPress hooks directory beside `zero.config.ts`.
+pub const WP_HOOKS_DIR: &str = "wp-hooks";
+
+/// `wp-hooks/<hook>.ts` and `wp-hooks/<hook>/*.ts`, as `(hook, order, path)` sorted by hook, then by
+/// file name. Anything else in the directory is an error that names it: a non-`.ts` file would
+/// otherwise be silently skipped, and the author would wonder why their handler never runs.
+pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, PathBuf)>> {
+    if !fs.exists(dir) {
+        return Ok(Vec::new());
+    }
+    let listing = |d: &Path| -> Result<Vec<PathBuf>> {
+        let mut entries = fs
+            .read_dir(d)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", d.display())))?;
+        entries.sort();
+        Ok(entries)
+    };
+    // Located at the offending path (registered with no source), so `check --json` names the file.
+    let refuse = |path: &Path, why: &str| {
+        let file = diag::register_file(path, "");
+        Diag::new(Span { file, start: 0, end: 0 }, why.to_string()).help(
+            "wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
+        )
+    };
+    let ts =
+        |p: &Path| p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p);
+    let mut out = Vec::new();
+    for path in listing(dir)? {
+        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if fs.is_dir(&path) {
+            for (order, file) in listing(&path)?.into_iter().enumerate() {
+                if !ts(&file) {
+                    return Err(refuse(&file, "not a .ts handler file"));
+                }
+                out.push((name.clone(), order, file));
+            }
+        } else if ts(&path) {
+            out.push((name.trim_end_matches(".ts").to_string(), 0, path));
+        } else {
+            return Err(refuse(&path, "not a .ts handler file"));
+        }
+    }
+    // A hook both as a file and as a directory would have two independent orders.
+    let mut seen: HashMap<&str, &Path> = HashMap::new();
+    for (hook, _, path) in &out {
+        let parent = path.parent().expect("listed under wp-hooks/");
+        if seen.insert(hook, parent).is_some_and(|p| p != parent) {
+            return Err(refuse(
+                path,
+                &format!("`{hook}` is both a file and a directory; keep one"),
+            ));
+        }
+    }
+    Ok(out)
 }
 
 fn load_module(
@@ -116,7 +203,11 @@ fn load_module(
     let file = diag::register_file(path, &source);
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
-    let (body, commonjs) = parse(fs, &source, path, file, id, diagnostics)?;
+    let Parsed {
+        body,
+        commonjs,
+        type_names,
+    } = parse(fs, &source, path, file, id, diagnostics)?;
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
     let commonjs = commonjs.map(|CommonJs { names, requires }| {
@@ -129,9 +220,19 @@ fn load_module(
         path: path.to_path_buf(),
         body,
         commonjs,
+        dynamic: crate::ir::dynamic_source(path),
+        type_names,
     }));
     for (index, (spec, span)) in imports.into_iter().enumerate() {
-        if spec == ZERO_MODULE {
+        if builtin_module(&spec) {
+            continue;
+        }
+        if spec == "php" || spec.starts_with("php/") {
+            diagnostics.push(
+                Diag::new(span, format!("\"{spec}\" isn't available"))
+                    .help("WordPress core is \"php/wordpress\"; plugin modules (\"php/<plugin>\") and PHP built-ins (\"php\") are not available yet")
+                    .code(diag::Code::Import),
+            );
             continue;
         }
         let required = index >= first_require;
@@ -184,7 +285,7 @@ fn parse(
     file: u32,
     module: usize,
     diagnostics: &mut Vec<Diag>,
-) -> Result<(Vec<Stmt>, Option<CommonJs>)> {
+) -> Result<Parsed> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
     if source_type.is_jsx() {
@@ -214,27 +315,40 @@ fn parse(
         diagnostics.push(Diag::new(span, format!("syntax error: {}", err.message)).code(diag::Code::Syntax));
     }
     if syntax_failed {
-        return Ok((Vec::new(), None));
+        return Ok(Parsed::default());
     }
-    let (body, errors) = Lowerer {
+    let lowerer = Lowerer {
         file,
         module,
         class_context: std::cell::Cell::new(false),
         super_call: std::cell::Cell::new(false),
-    }
-    .program_diagnostics(&ret.program);
+        erase_types: source_type.is_typescript() && crate::ir::dynamic_source(path),
+        erased_types: Default::default(),
+    };
+    let (body, errors) = lowerer.program_diagnostics(&ret.program);
     let mut commonjs = None;
     if errors.is_empty() {
         commonjs = commonjs_module(fs, path, &body)?;
     }
     diagnostics.extend(errors);
-    Ok((body, commonjs))
+    Ok(Parsed {
+        body,
+        commonjs,
+        type_names: lowerer.erased_types.into_inner(),
+    })
 }
 
 fn commonjs_error(span: Span, reason: &str) -> Diag {
     Diag::new(span, format!("unsupported CommonJS source: {reason}"))
         .code(diag::Code::NpmImport)
         .help("use static CommonJS: top-level `require(\"<literal>\")`, and `module.exports = …` or `exports.name = …` outside functions; Node wrapper globals and dynamic require() are unavailable")
+}
+
+#[derive(Default)]
+struct Parsed {
+    body: Vec<Stmt>,
+    commonjs: Option<CommonJs>,
+    type_names: std::collections::HashSet<String>,
 }
 
 /// What the loader learned about a CommonJS source.
@@ -737,6 +851,7 @@ impl CommonJsScope<'_> {
                 }
             }
             ExprKind::Unary(_, value)
+            | ExprKind::Delete(value)
             | ExprKind::IsNullish(value, _)
             | ExprKind::Update { target: value, .. }
             | ExprKind::Member { obj: value, .. }
@@ -745,6 +860,7 @@ impl CommonJsScope<'_> {
             | ExprKind::As(value, _)
             | ExprKind::NonNull(value) => self.expression(value)?,
             ExprKind::Instanceof(left, right)
+            | ExprKind::In(left, right)
             | ExprKind::Binary(_, left, right)
             | ExprKind::Logical(_, left, right)
             | ExprKind::Assign {
@@ -1250,6 +1366,64 @@ mod tests {
             ("/p/c.cjs", "if (true) { module.exports.z = 5; }"),
         ]);
         assert_eq!(json(&result), r#"[{x:2,default:"ignored"},2,{y:4},4,5]"#);
+    }
+
+    #[test]
+    fn installed_typescript_erases_types_and_elides_type_only_imports_and_re_exports() {
+        let fs = memory(&[
+            (
+                "/p/zero.config.ts",
+                "import { scale, Factor } from 'typed'; import { typeOnly } from './local'; export default [scale(2), typeOnly];",
+            ),
+            (
+                "/p/local.ts",
+                "export type Local = { n: number }; export const typeOnly = 1;",
+            ),
+            (
+                "/p/node_modules/typed/package.json",
+                r#"{"exports":{".":"./src/index.ts"}}"#,
+            ),
+            (
+                "/p/node_modules/typed/src/index.ts",
+                "export { scale } from './scale.js'; export type { Factor } from './types.js'; export { Shape } from './types.js'; export * from './types.js';",
+            ),
+            (
+                "/p/node_modules/typed/src/types.ts",
+                "export interface Shape { (n: number): number; new (n: number): object } export type Factor = <T>(value: T, ...rest: unknown[]) => T;",
+            ),
+            (
+                "/p/node_modules/typed/src/scale.ts",
+                "import { Shape } from './types.js'; declare const brand: unique symbol; export function scale<T extends number>(this: void, value: T, by?: number): number { assert(value); return (value as number) * (by ?? 3)!; } function assert(value: unknown): asserts value is number {}",
+            ),
+        ]);
+        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let package: Vec<_> = program.modules.iter().filter(|m| m.dynamic).collect();
+        assert_eq!(package.len(), 3);
+        assert!(package.iter().any(|m| m.type_names.contains("Factor")));
+        assert!(!program.modules[program.entry].dynamic);
+        // Authored modules keep their static type layer; only the app's lookup of a package type fails.
+        let error = crate::eval::Evaluator::new(&program).run().unwrap_err();
+        assert!(
+            error.message.contains("`Factor` comes from an installed package"),
+            "{error:?}"
+        );
+        let fs = memory(&[
+            (
+                "/p/zero.config.ts",
+                "import { scale } from 'typed'; export default scale(2);",
+            ),
+            (
+                "/p/node_modules/typed/package.json",
+                r#"{"exports":{".":"./index.ts"}}"#,
+            ),
+            (
+                "/p/node_modules/typed/index.ts",
+                "export function scale<T>(value: T & number, by?: number): number { return value * (by ?? 3); }",
+            ),
+        ]);
+        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let result = crate::eval::Evaluator::new(&program).run().unwrap();
+        assert!(matches!(result, crate::value::Value::Num(n) if n == 6.0), "{result:?}");
     }
 
     #[test]

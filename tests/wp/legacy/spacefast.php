@@ -372,6 +372,18 @@ if ($phase === 'nested') {
     proof(delete_user_meta($uid, 'zero_spacefastSubject'), 'copied subject removed after the users receipt');
 } elseif ($phase === 'restore-subject') {
     proof(add_user_meta($uid, 'zero_spacefastSubject', $subject, true) !== false, 'copied subject restored');
+} elseif ($phase === 'snapshot-users') {
+    // The operator's backup before the users copy: the target's users and usermeta as they were.
+    foreach (['users', 'usermeta'] as $table) {
+        proof($wpdb->query("CREATE TABLE {$target}{$table}_backup AS SELECT * FROM {$target}{$table}") !== false, "target $table backed up");
+    }
+} elseif ($phase === 'recover-subjects') {
+    // What the 409 tells an operator to do: restore the target users from that backup, delete the
+    // stale users receipt, and rerun. The rerun then copies the users and their subjects.
+    foreach (['users', 'usermeta'] as $table) {
+        proof($wpdb->query("DELETE FROM {$target}{$table}") !== false && $wpdb->query("INSERT INTO {$target}{$table} SELECT * FROM {$target}{$table}_backup") !== false, "target $table restored from the backup");
+    }
+    proof($wpdb->delete($target . 'zero_spacefast_migrations', ['space_id' => 'imported-space', 'table_group' => 'users']) === 1, 'stale users receipt deleted');
 } elseif ($phase === 'authenticated') {
     $s = $wpdb->get_row("SELECT * FROM {$target}zero_identity_sessions WHERE id='".str_repeat('a',32)."'", ARRAY_A);
     proof(hash_equals(Sessions::digest('old-token'),$s['secret_hash']) && (int)$s['expires_at']===$now+3600, 'old cookie upgraded to v2 hash without extending expiry');

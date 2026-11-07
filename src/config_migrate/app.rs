@@ -196,17 +196,41 @@ pub fn migrate_manifest(
         report.errors.rotate_left(1);
         return candidate;
     };
-    if let Err(e) = fs
+    let verified = match fs
         .canonicalize(root)
         .map_err(io)
         .and_then(|root| manifest.verify(fs.as_ref(), &root))
     {
-        let mut candidate = Candidate::refused(e);
-        manifest.check(&mut candidate.report.entries, &mut candidate.report.errors);
-        return candidate;
+        Ok(files) => files,
+        Err(e) => {
+            let mut candidate = Candidate::refused(e);
+            manifest.check(&mut candidate.report.entries, &mut candidate.report.errors);
+            return candidate;
+        }
+    };
+    // Convert from the verified files alone: a page, config or import the publish did not record
+    // is simply absent, so nothing added after the publish can reach the candidate.
+    let published = PathBuf::from("/published");
+    let memory: Rc<dyn Fs> = Rc::new(crate::wasm::Memory::new(
+        verified
+            .iter()
+            .map(|(path, text)| (published.join(path), text.clone()))
+            .collect(),
+    ));
+    // The source must also declare the entry the publish compiled.
+    if let Some(expected) = manifest.server_entry()
+        && let Ok(entry) = server_entry(memory.as_ref(), &published, &mut Report::new())
+        && entry != Path::new(expected.trim_start_matches("./"))
+    {
+        return Candidate::refused(fail(
+            "/source",
+            format!(
+                "source differs from the published version: its server entry is {}, the publish compiled {expected}",
+                entry.display()
+            ),
+        ));
     }
-    // Every recorded file, including the sf.jsonc that names the server entry, matched its hash.
-    migrate(fs, root, space, users)
+    migrate(memory, &published, space, users)
 }
 
 pub fn migrate(fs: Rc<dyn Fs>, input: &Path, space: Option<&str>, users: bool) -> Candidate {

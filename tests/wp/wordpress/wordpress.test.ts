@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { api, auth, harness } from "../env.ts";
+import { api, auth, harness, wp } from "../env.ts";
 
 async function count(headers: Record<string, string>): Promise<{ status: number; body: { data?: unknown; code?: string } }> {
   const response = await fetch(`${api}/actions/count`, {
@@ -28,4 +28,16 @@ test("wp-hooks/the_content filters change the rendered post, in file-name order"
   assert.equal(response.status, 200);
   // a-note appends inside the content, then b-frame wraps both.
   assert.match(html, /<div class="zero-frame"><p>Lane body<\/p>\n<p class="zero-lane">first<\/p><\/div>/);
+});
+
+test("core functions run as the signed-in user and return typed views", async () => {
+  const response = await fetch(`${api}/actions/draft`, {
+    method: "POST", headers: { "Content-Type": "application/json", ...auth("author") }, body: JSON.stringify({ title: "Tea & <cake>" }),
+  });
+  const body = (await response.json()) as { data: { id: number; title: string; status: string } };
+  assert.equal(response.status, 200, JSON.stringify(body));
+  // An author has no unfiltered_html, so WordPress's kses drops the tag before saving; esc_html then
+  // escapes the ampersand on the way out.
+  assert.deepEqual([body.data.title, body.data.status], ["Tea &amp; ", "draft"]);
+  assert.equal(wp("post", "get", String(body.data.id), "--field=post_author"), String(harness.users.author.id));
 });

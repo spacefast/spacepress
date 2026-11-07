@@ -8,6 +8,8 @@ use crate::schema::{Access, DefaultKind, Owner};
 use crate::{client, compile, diag, eval, extract, loader, migrate, schema, schema_php, wp_plugins};
 use std::path::Path;
 
+type HookFunctions = indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<usize>, String)>>;
+
 pub struct Built {
     pub plugins: Option<wp_plugins::Config>,
     /// Every file under `zero/client/`.
@@ -123,7 +125,8 @@ pub fn build(
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
-    let mut hooks: indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<usize>, String)>> = indexmap::IndexMap::new();
+    // Each collection hook kind: its compiled functions, by owning plugin (None: the app).
+    let mut hooks: HookFunctions = indexmap::IndexMap::new();
     let previous_value;
     let (functions, slots, settled) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
@@ -132,7 +135,10 @@ pub fn build(
         action_results = std::mem::take(&mut c.action_results);
         for ((slot, name), root) in slots.iter().zip(&roots) {
             if let Slot::Hook { table, kind } = slot {
-                hooks.entry((table.clone(), *kind)).or_default().push((root.plugin, name.clone()));
+                hooks
+                    .entry((table.clone(), *kind))
+                    .or_default()
+                    .push((root.plugin, name.clone()));
             }
         }
         // Plugins first, in `use` order, then the app's own hook.
@@ -172,13 +178,20 @@ pub fn build(
                     hosts.iter().map(|h| compile::php_str(h)).collect::<Vec<_>>().join(", ")
                 ),
             };
-            c.output.push_str(&format!("function {function}(): ?array\n{{\n    return {value};\n}}\n\n"));
+            c.output.push_str(&format!(
+                "function {function}(): ?array\n{{\n    return {value};\n}}\n\n"
+            ));
         }
         (std::mem::take(&mut c.output), slots, settled)
     };
     for ((table, kind), list) in hooks {
         let (_, name) = list.into_iter().next().expect("one hook per kind");
-        schema.collections.get_mut(&table).expect("collection").hooks.insert(kind, name);
+        schema
+            .collections
+            .get_mut(&table)
+            .expect("collection")
+            .hooks
+            .insert(kind, name);
     }
     for (slot, name) in slots {
         match slot {

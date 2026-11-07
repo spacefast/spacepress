@@ -388,7 +388,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         hooks(hooks_val, span_of(ev, config, "hooks", config_span), ev, &mut out, None)?;
     }
     if let Some(actions_val) = cfg_map.get("actions") {
-        actions(actions_val, span_of(ev, config, "actions", config_span), ev, &mut out, None)?;
+        actions(
+            actions_val,
+            span_of(ev, config, "actions", config_span),
+            ev,
+            &mut out,
+            None,
+        )?;
     }
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
     routes(&cfg_map, config_span, &mut out)?;
@@ -593,11 +599,22 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 .help("call the package's export: use: [seo({ ... })]"));
         };
         let o = object(&p.config, p.span, "definePlugin")?;
-        keys(&o, &["name", "hooks", "actions", "jobs", "routes"], p.span, "definePlugin")?;
+        keys(
+            &o,
+            &["name", "hooks", "actions", "jobs", "routes"],
+            p.span,
+            "definePlugin",
+        )?;
         let name = string(o.get("name"), p.span, "plugin name")?;
-        if !(valid_ident(&name) && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')) {
-            return Err(Diag::new(p.span, format!("plugin name \"{name}\" must be a lowercase identifier"))
-                .help("use letters, digits and underscores, like \"seo\""));
+        if !(valid_ident(&name)
+            && name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'))
+        {
+            return Err(
+                Diag::new(p.span, format!("plugin name \"{name}\" must be a lowercase identifier"))
+                    .help("use letters, digits and underscores, like \"seo\""),
+            );
         }
         if out.uses.iter().any(|u| u.name == name) {
             return Err(Diag::new(p.span, format!("two plugins are both named \"{name}\""))
@@ -2711,7 +2728,13 @@ fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span
 }
 
 /// `jobs.<name>`; a plugin's are registered as `<plugin>_<name>`.
-fn jobs(v: &Value, ev: &mut Evaluator<'_>, span: Span, out: &mut Extracted, plugin: Option<(usize, &str)>) -> Result<()> {
+fn jobs(
+    v: &Value,
+    ev: &mut Evaluator<'_>,
+    span: Span,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
     for (name, value) in object(v, span, "jobs")? {
         let Value::Job(j) = value else {
             return Err(Diag::new(span, "jobs entries must use job()").help("write job({ input, handler })"));
@@ -2804,7 +2827,12 @@ fn plugin_routes(v: &Value, span: Span, out: &mut Extracted, plugin: Option<(usi
         let path = route_path(&string(o.get("path"), r.span, "route path")?, r.span)?;
         let shape = route_shape(&path);
         let name = registered(plugin, &name);
-        if let Some((other, _)) = out.schema.routes.iter().find(|(_, r)| r.method == method && route_shape(&r.path) == shape) {
+        if let Some((other, _)) = out
+            .schema
+            .routes
+            .iter()
+            .find(|(_, r)| r.method == method && route_shape(&r.path) == shape)
+        {
             return Err(Diag::new(
                 r.span,
                 format!("routes.{name} and routes.{other} both match {method} {path}"),

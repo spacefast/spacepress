@@ -360,7 +360,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Slot::ActionHandler { action } => {
                 self.uses("actions", action.clone(), span);
-                if let Some(env) = self.schema.actions[action].signature.as_ref().and_then(|s| s["secret"]["env"].as_str()) {
+                if let Some(env) = self.schema.actions[action]
+                    .signature
+                    .as_ref()
+                    .and_then(|s| s["secret"]["env"].as_str())
+                {
                     self.uses("env", env.to_string(), span);
                 }
             }
@@ -378,7 +382,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// A before-hook writes the fields it sets on `data` (directly, through helpers it passes
     /// `data` to, or through `ctx.data`) and the fields of a replacement it returns.
     fn hook_writes(&mut self, root: &Root) {
-        let Slot::Hook { table, kind: HookKind::BeforeCreate | HookKind::BeforeUpdate } = &root.slot else {
+        let Slot::Hook {
+            table,
+            kind: HookKind::BeforeCreate | HookKind::BeforeUpdate,
+        } = &root.slot
+        else {
             return;
         };
         if self.plugin.is_none() {
@@ -441,7 +449,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             HookKind::BeforeUpdate => format!(
                 "function {name}(\\Zero\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
             ),
-            _ => format!("function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"),
+            _ => format!(
+                "function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"
+            ),
         };
         self.output.push_str(&body);
         name
@@ -693,7 +703,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             }
-            self.helpers.entry((self.owner(), key, no_db)).or_insert_with(|| name.clone());
+            self.helpers
+                .entry((self.owner(), key, no_db))
+                .or_insert_with(|| name.clone());
             self.hook_writes(root);
             out.push((root.slot.clone(), name));
         }
@@ -4446,7 +4458,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             argv.push(v.php);
         }
         if name == "hmacSha256"
-            && let Some(ArrEl::Item(Expr { kind: ExprKind::Object(props), .. })) = args.first()
+            && let Some(ArrEl::Item(Expr {
+                kind: ExprKind::Object(props),
+                ..
+            })) = args.first()
         {
             for p in props {
                 if let Prop::KV(PropKey::Static(k), v) = p
@@ -6014,7 +6029,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
     fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
-        self.uses(if m == "update" { "write" } else { "read" }, format!("globals.{name}"), m_span);
+        self.uses(
+            if m == "update" { "write" } else { "read" },
+            format!("globals.{name}"),
+            m_span,
+        );
         // Typed like collection rows: `json().$type<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
@@ -6231,13 +6250,19 @@ fn static_host(e: &Expr) -> Option<String> {
         ExprKind::As(inner, _) | ExprKind::NonNull(inner) => return static_host(inner),
         _ => return None,
     };
-    let rest = prefix.get(..8).filter(|p| p.eq_ignore_ascii_case("https://")).map(|_| &prefix[8..])?;
+    let rest = prefix
+        .get(..8)
+        .filter(|p| p.eq_ignore_ascii_case("https://"))
+        .map(|_| &prefix[8..])?;
     let end = rest.find(['/', '?', '#']).or(complete.then_some(rest.len()))?;
     let authority = &rest[..end];
     if authority.is_empty() || authority.contains('@') {
         return None;
     }
-    let host = authority.rsplit_once(':').filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit())).map_or(authority, |(h, _)| h);
+    let host = authority
+        .rsplit_once(':')
+        .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
+        .map_or(authority, |(h, _)| h);
     Some(host.trim_end_matches('.').to_ascii_lowercase())
 }
 

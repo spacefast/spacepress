@@ -88,7 +88,12 @@ impl Effects {
     /// through helpers, closures and other names for the same value. Every callee in compiled
     /// code is itself compiled, so an argument passed to a call has no unseen writer.
     pub fn writes_below(&self, binding: Span) -> Vec<Vec<Step>> {
-        self.binding_writes.get(&binding).into_iter().flatten().cloned().collect()
+        self.binding_writes
+            .get(&binding)
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect()
     }
 
     pub fn captured(&self, binding: Span) -> bool {

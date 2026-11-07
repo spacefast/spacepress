@@ -39,10 +39,16 @@ fn read_plugin_lock(project: &Path) -> Result<Option<serde_json::Value>, Diag> {
     let path = project.join(crate::plugins::LOCK_PATH);
     match std::fs::read_to_string(&path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(Diag::new(Span::NONE, format!("can't read {}: {e}", crate::plugins::LOCK_PATH))),
-        Ok(text) => serde_json::from_str(&text)
-            .map(Some)
-            .map_err(|e| Diag::new(Span::NONE, format!("{} is not valid JSON: {e}", crate::plugins::LOCK_PATH))),
+        Err(e) => Err(Diag::new(
+            Span::NONE,
+            format!("can't read {}: {e}", crate::plugins::LOCK_PATH),
+        )),
+        Ok(text) => serde_json::from_str(&text).map(Some).map_err(|e| {
+            Diag::new(
+                Span::NONE,
+                format!("{} is not valid JSON: {e}", crate::plugins::LOCK_PATH),
+            )
+        }),
     }
 }
 
@@ -347,7 +353,8 @@ fn check_json(project: &Path, frozen: bool) -> ExitCode {
             Err(d) => (vec![d], None),
         },
     };
-    let mut envelope = serde_json::to_value(diag::envelope(&diagnostics, project)).expect("diagnostic envelope serializes");
+    let mut envelope =
+        serde_json::to_value(diag::envelope(&diagnostics, project)).expect("diagnostic envelope serializes");
     // Each plugin's package, source integrity, locked and inferred grant, and read→send flows.
     if let Some(plugins) = plugins.filter(|p| p.as_array().is_some_and(|p| !p.is_empty())) {
         envelope["plugins"] = plugins;

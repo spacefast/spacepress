@@ -89,7 +89,10 @@ fn covers(locked: &Grant, kind: &str, value: &str) -> bool {
     let Some(set) = locked.get(kind) else { return false };
     set.contains(value)
         || (kind == "http" && value == "*")
-        || (kind == "write" && value.split_once('.').is_some_and(|(c, _)| set.contains(&format!("{c}.*"))))
+        || (kind == "write"
+            && value
+                .split_once('.')
+                .is_some_and(|(c, _)| set.contains(&format!("{c}.*"))))
 }
 
 /// The nearest enclosing package: a directory with a named package.json, or any package directly
@@ -103,7 +106,9 @@ pub fn package_root(program: &Program, file: &Path) -> Option<PathBuf> {
             let in_node_modules = d.parent().is_some_and(|p| {
                 p.file_name().is_some_and(|n| n == "node_modules")
                     || (p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('@'))
-                        && p.parent().and_then(Path::file_name).is_some_and(|n| n == "node_modules"))
+                        && p.parent()
+                            .and_then(Path::file_name)
+                            .is_some_and(|n| n == "node_modules"))
             });
             let named = program
                 .fs
@@ -148,9 +153,14 @@ pub fn identify(program: &Program, name: &str, span: Span) -> Result<Plugin> {
     let root = package_root(program, &module.path)
         .filter(|root| Some(root) != app.as_ref())
         .ok_or_else(|| {
-            Diag::new(span, format!("plugin \"{name}\" is defined in the app, not in an installed package"))
-                .code(Code::PluginIsolation)
-                .help("publish the plugin as a package and `npm install` it, or register the app's own hooks in defineConfig")
+            Diag::new(
+                span,
+                format!("plugin \"{name}\" is defined in the app, not in an installed package"),
+            )
+            .code(Code::PluginIsolation)
+            .help(
+                "publish the plugin as a package and `npm install` it, or register the app's own hooks in defineConfig",
+            )
         })?;
     let manifest: Json = program
         .fs
@@ -178,11 +188,7 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
         .map(Path::to_path_buf)
         .unwrap_or_default();
     let app = package_root(program, &program.modules[program.entry].path);
-    let roots: Vec<Option<PathBuf>> = program
-        .modules
-        .iter()
-        .map(|m| package_root(program, &m.path))
-        .collect();
+    let roots: Vec<Option<PathBuf>> = program.modules.iter().map(|m| package_root(program, &m.path)).collect();
     for i in 0..plugins.len() {
         let own = plugins[i].root.clone();
         let mut seen: HashSet<usize> = program
@@ -227,7 +233,10 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
             .map(|&m| {
                 let path = &program.modules[m].path;
                 (
-                    path.strip_prefix(&project).unwrap_or(path).to_string_lossy().replace('\\', "/"),
+                    path.strip_prefix(&project)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .replace('\\', "/"),
                     path.as_path(),
                 )
             })
@@ -344,13 +353,19 @@ pub fn settle(
             None if frozen => {
                 return Err(Diag::new(
                     p.span,
-                    format!("plugin \"{}\" ({}@{}) isn't in {LOCK_PATH}", p.name, p.package, p.version),
+                    format!(
+                        "plugin \"{}\" ({}@{}) isn't in {LOCK_PATH}",
+                        p.name, p.package, p.version
+                    ),
                 )
                 .code(Code::PluginCapability)
                 .help("run `zero build` without --frozen, review the plugin's grant, and commit the lock"));
             }
             None => {
-                changes.push(format!("plugin \"{}\" ({}@{}) is new in {LOCK_PATH}:", p.name, p.package, p.version));
+                changes.push(format!(
+                    "plugin \"{}\" ({}@{}) is new in {LOCK_PATH}:",
+                    p.name, p.package, p.version
+                ));
                 changes.extend(diff(&grant_of(&[], 0), &inferred).into_iter().map(|l| format!("  {l}")));
                 ("added", inferred.clone())
             }
@@ -390,7 +405,10 @@ pub fn settle(
                         if !granted["http"].contains("*") && !granted["http"].is_empty() {
                             next.get_mut("http").expect("every kind").remove("*");
                         }
-                        changes.push(format!("plugin \"{}\" ({}@{}) changed its grant:", p.name, p.package, p.version));
+                        changes.push(format!(
+                            "plugin \"{}\" ({}@{}) changed its grant:",
+                            p.name, p.package, p.version
+                        ));
                         changes.extend(diff(granted, &next).into_iter().map(|l| format!("  {l}")));
                         ("updated", next)
                     }

@@ -70,3 +70,26 @@ test("fetch refuses private targets, including through redirects, and bounds tim
   assert.equal(await refused({ url: `${origin}/slow` }), "zero_fetch_upstream_unavailable");
   assert.ok(Date.now() - started < 14000, "the 10 s budget ends the call before the origin answers");
 });
+
+test("redirect credentials and URLs follow the origin and RFC 3986", async () => {
+  // Same host, another port: another origin, so Authorization and Cookie stay behind.
+  const crossPort = await call("post", { url: `${origin}/to-other-port`, payload: "{}" });
+  assert.equal(crossPort.status, 200, JSON.stringify(crossPort.body));
+  assert.deepEqual(crossPort.body.data?.data, { path: "/echo", authorization: null, cookie: null });
+  // A query-only Location keeps the whole current path: /items/42?page=2, not /items/?page=2.
+  const paged = await call("get", { url: `${origin}/items/42` });
+  assert.equal(paged.body.data?.body, "/items/42?page=2");
+  assert.equal(paged.body.data?.url, `${origin}/items/42?page=2`);
+});
+
+test("without the cURL transport, fetch refuses instead of sending an unpinned request", async () => {
+  const before = seen().length;
+  const response = await fetch(`${api}/actions/get?zero-fetch-transport=streams`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: `${origin}/json` }),
+  });
+  const body = await response.json() as { code?: string; data?: { body?: string } };
+  // The stand-in transport answered "unpinned"; fetch() must not hand that body to the handler.
+  assert.notEqual(body.data?.body, "unpinned", "an unpinned answer reached the handler");
+  assert.equal(body.code, "zero_fetch_upstream_unavailable", JSON.stringify(body));
+  assert.equal(seen().length, before, "nothing reached the origin");
+});

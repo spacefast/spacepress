@@ -11,7 +11,8 @@ export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-wp-fetch}"
 export ZERO_WP_PORT="${ZERO_WP_PORT:-8899}"
 work="$(mktemp -d)"
 receiver=""
-cleanup() { [[ -n $receiver ]] && kill "$receiver" 2>/dev/null; "$wp/harness.sh" down >/dev/null; rm -rf "$work"; }
+other=""
+cleanup() { [[ -n $receiver ]] && kill "$receiver" 2>/dev/null; [[ -n $other ]] && kill "$other" 2>/dev/null; "$wp/harness.sh" down >/dev/null; rm -rf "$work"; }
 trap cleanup EXIT
 # A throwaway CA and a certificate for the lane's origin name; neither leaves $work.
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=zero fetch lane CA" \
@@ -21,7 +22,11 @@ printf 'subjectAltName=DNS:fetch-origin.test\n' > "$work/ext"
 openssl x509 -req -in "$work/origin.csr" -CA "$work/ca.pem" -CAkey "$work/ca.key" -CAcreateserial \
   -days 1 -extfile "$work/ext" -out "$work/origin.pem" 2>/dev/null
 : > "$work/requests.log"
-node "$here/receiver.mjs" "$work/origin.key" "$work/origin.pem" "$work/requests.log" > "$work/port" &
+# A second origin on the same name and another port, which a redirect may not carry credentials to.
+node "$here/receiver.mjs" "$work/origin.key" "$work/origin.pem" "$work/other.log" > "$work/other-port" &
+other=$!
+for _ in $(seq 50); do [[ -s $work/other-port ]] && break; sleep 0.1; done
+node "$here/receiver.mjs" "$work/origin.key" "$work/origin.pem" "$work/requests.log" "$(cat "$work/other-port")" > "$work/port" &
 receiver=$!
 for _ in $(seq 50); do [[ -s $work/port ]] && break; sleep 0.1; done
 port="$(cat "$work/port")"

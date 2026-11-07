@@ -90,8 +90,10 @@ final class Fetch
                     $body = null;
                     unset($headers['content-type']);
                 }
-                // Credentials never follow a redirect to another origin.
-                if (strtolower((string) parse_url($url, PHP_URL_HOST)) !== $host) {
+                // Credentials never follow a redirect to another origin: scheme, host and effective
+                // port (scheme is always https here, so host and port decide).
+                [$nextHost, $nextPort] = self::origin($url);
+                if ($nextHost !== $host || $nextPort !== $port) {
                     unset($headers['authorization'], $headers['cookie']);
                 }
                 continue;
@@ -232,11 +234,13 @@ final class Fetch
         if (!function_exists('wp_remote_request')) {
             throw new \LogicException('fetch() needs WordPress loaded (wp_remote_request)');
         }
-        // Pin the connection to the address checked above.
-        $pin = static function ($handle) use ($host, $port, $address): void {
+        // Pin the connection to the address checked above. Only the cURL transport can pin: any
+        // other transport would resolve the name again, and could connect to a rebound address.
+        $pinned = false;
+        $pin = static function ($handle) use ($host, $port, $address, &$pinned): void {
             $ip = str_contains($address, ':') ? '[' . $address . ']' : $address;
-            curl_setopt($handle, CURLOPT_RESOLVE, ["$host:$port:$ip"]);
-            curl_setopt($handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+            $pinned = curl_setopt($handle, CURLOPT_RESOLVE, ["$host:$port:$ip"])
+                && curl_setopt($handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
         };
         add_action('http_api_curl', $pin, PHP_INT_MAX);
         try {
@@ -254,6 +258,11 @@ final class Fetch
             ]);
         } finally {
             remove_action('http_api_curl', $pin, PHP_INT_MAX);
+        }
+        // Fail closed: a request the pin did not reach went out over another transport, unpinned,
+        // so nothing it returned is used.
+        if (!$pinned) {
+            throw self::refuse('zero_fetch_upstream_unavailable', 'Outbound fetch needs the cURL transport to pin the checked address.');
         }
         if (is_wp_error($response)) {
             throw self::refuse('zero_fetch_upstream_unavailable', 'The fetch target could not be reached.');
@@ -273,22 +282,59 @@ final class Fetch
         return ['status' => (int) wp_remote_retrieve_response_code($response), 'headers' => $out, 'body' => $raw];
     }
 
-    private static function resolveUrl(string $base, string $location): string
+    /** @return array{string, int} lowercase host and effective port of an https URL */
+    private static function origin(string $url): array
     {
+        $parts = parse_url($url);
+
+        return [strtolower((string) ($parts['host'] ?? '')), (int) ($parts['port'] ?? 443)];
+    }
+
+    /** A Location header resolved against the request URL as RFC 3986 §5.2 does; fragments drop. */
+    public static function resolveUrl(string $base, string $location): string
+    {
+        $location = (string) preg_replace('/#.*\z/s', '', $location);
         if (preg_match('#\A[a-z][a-z0-9+.-]*:#i', $location) === 1) {
             return $location;
         }
         $b = parse_url($base);
-        $origin = 'https://' . $b['host'] . (isset($b['port']) ? ':' . $b['port'] : '');
+        $authority = $b['host'] . (isset($b['port']) ? ':' . $b['port'] : '');
+        $basePath = $b['path'] ?? '/';
+        $baseQuery = isset($b['query']) ? '?' . $b['query'] : '';
         if (str_starts_with($location, '//')) {
             return 'https:' . $location;
         }
-        if (str_starts_with($location, '/')) {
-            return $origin . $location;
+        [$path, $query] = array_pad(explode('?', $location, 2), 2, null);
+        $query = $query === null ? '' : '?' . $query;
+        if ($path === '') {
+            // `?page=2` keeps the whole base path; an empty reference keeps the base query too.
+            return 'https://' . $authority . $basePath . ($query !== '' ? $query : $baseQuery);
         }
-        $dir = preg_replace('#/[^/]*\z#', '/', $b['path'] ?? '/');
+        $merged = str_starts_with($path, '/') ? $path : preg_replace('#/[^/]*\z#', '/', $basePath) . $path;
 
-        return $origin . $dir . $location;
+        return 'https://' . $authority . self::removeDots($merged) . $query;
+    }
+
+    /** RFC 3986 §5.2.4: drop `.` segments and fold `..` into their parent. */
+    private static function removeDots(string $path): string
+    {
+        $out = [];
+        $segments = explode('/', $path);
+        foreach ($segments as $i => $segment) {
+            if ($segment === '.' || $segment === '..') {
+                if ($segment === '..' && count($out) > 1) {
+                    array_pop($out);
+                }
+                if ($i === count($segments) - 1) {
+                    $out[] = '';
+                }
+                continue;
+            }
+            $out[] = $segment;
+        }
+        $result = implode('/', $out);
+
+        return str_starts_with($result, '/') ? $result : '/' . $result;
     }
 
     /** The Response a handler sees: status, ok, url, redirected, headers.get/has, text(), json(). */

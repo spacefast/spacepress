@@ -48,6 +48,9 @@ CATEGORIES = [
 REASON_CATEGORIES = [
     ("source-entry", r"server/index\.ts|cannot read capsule source|finalize payload"),
     ("npm-import", r"needs a manual port; only local TypeScript"),
+    ("build-global", r"names a build-time global"),
+    # A helper the app copies verbatim uses JavaScript the v2 subset does not compile.
+    ("v2-language", r"^error: .*(isn't supported|doesn't support|isn't defined)"),
     ("v2-compile", r"refused by v2 compiler"),
 ]
 

@@ -37,9 +37,10 @@ test("0.8 endpoints answer at their original paths with 0.8 result rules", async
   const tags = await at("/api/tags?t=a&t=b+c&user.id=7");
   assert.deepEqual(await tags.json(), { first: "a", all: ["a", "b c"], dotted: "7" });
 
-  // 0.8's *rest took the rest of the path, decoded and joined with /.
+  // 0.8's :splat took the rest of the path, decoded and joined with /, and also answered the bare prefix.
   assert.equal(await (await at("/api/files/docs/a%20b/c.txt")).text(), "file docs/a b/c.txt");
-  assert.equal((await at("/api/files")).status, 404);
+  assert.equal(await (await at("/api/files")).text(), "file ");
+  assert.equal((await at("/api/files/a/..%2F..%2Fwp-config.php")).status, 404);
 
   // A number is text, like 0.8.
   const total = await at("/api/total");

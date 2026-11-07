@@ -42,7 +42,8 @@ export default capsule({
       redirect("/?from=" + (request.query.has("ref") ? "ref" : "direct"), { status: 303 })),
     tags: endpoint({ method: "GET", path: "/api/tags" }, (_ctx, request) =>
       json({ first: request.query.get("t"), all: request.query.getAll("t"), dotted: request.query.get("user.id") })),
-    file: endpoint({ method: "GET", path: "/api/files/*path" }, (_ctx, request) => text("file " + request.params.path)),
+    // 0.8's catch-all: a final :splat, read as params.splat; it also answers /api/files itself.
+    file: endpoint({ method: "GET", path: "/api/files/:splat" }, (_ctx, request) => text("file " + request.params.splat)),
     total: endpoint({ method: "GET", path: "/api/total" }, async (ctx) => (await ctx.db.notes.withIndex("by_creation").count())),
   },
 });

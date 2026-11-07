@@ -44,6 +44,8 @@ pub(super) struct Route {
     pub method: String,
     pub path: String,
     pub writes: bool,
+    /// For a `:splat` route, the bare prefix 0.8 also answered (with an empty splat).
+    pub prefix: Option<String>,
 }
 
 /// Checks the literal route options; returns the v2 method, path and write mode.
@@ -66,11 +68,22 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
         n.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
             && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     };
+    let mut v2 = Vec::with_capacity(segments.len());
     for (i, s) in segments.iter().enumerate() {
-        // 0.8's `*rest` took the rest of the path, one or more segments joined with `/`, as v2's does.
-        let ok = if let Some(name) = s.strip_prefix('*') {
-            i + 1 == segments.len() && i > 0 && ident(name)
-        } else if let Some(name) = s.strip_prefix(':') {
+        // 0.8's catch-all is a final `:splat`, which takes the rest of the path as `params.splat`.
+        // It also matches no segment at all (`/files` for `/files/:splat`). v2's `*splat` takes one
+        // or more, so the bare prefix needs its own route.
+        if *s == ":splat" {
+            if i + 1 != segments.len() || i == 0 {
+                return Err(fail(
+                    &pointer(at, "path"),
+                    "a :splat must be the last segment and not the first; a catch-all at the root needs a manual port",
+                ));
+            }
+            v2.push("*splat".to_string());
+            continue;
+        }
+        let ok = if let Some(name) = s.strip_prefix(':') {
             ident(name)
         } else {
             s.chars().all(|c| c.is_ascii_alphanumeric() || "._~-".contains(c))
@@ -78,11 +91,10 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
         if !ok {
             return Err(fail(
                 &pointer(at, "path"),
-                format!(
-                    "segment {s:?} has no v2 route form; a *rest must be last and not first, and encoded segments need a manual port"
-                ),
+                format!("segment {s:?} has no v2 route form; encoded and wildcard segments need a manual port"),
             ));
         }
+        v2.push((*s).to_string());
     }
     if RESERVED.contains(&segments[0].to_ascii_lowercase().as_str()) {
         return Err(fail(
@@ -104,10 +116,13 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
             "a writing GET endpoint needs a manual port: v2 authenticates GET routes by cookie without a nonce, so a cross-site link could write as the visitor",
         ));
     }
+    let prefix =
+        (v2.last().map(String::as_str) == Some("*splat")).then(|| format!("/{}", v2[..v2.len() - 1].join("/")));
     Ok(Route {
         method,
-        path: format!("/{}", segments.join("/")),
+        path: format!("/{}", v2.join("/")),
         writes,
+        prefix,
     })
 }
 

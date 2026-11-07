@@ -41,16 +41,20 @@ fn lazy_registry(source: &str) -> Result<String> {
             "",
         )?;
     }
-    // Keep constructor signatures intact: the adapter owns this registry API. Projection
-    // remains in its existing revision-aware list/call paths, never in registration.
-    let start = source
-        .find("\t/**\n\t * Project one component through all supported revisions.")
-        .ok_or_else(|| invalid("missing MCP projection method"))?;
-    let end = source[start..]
-        .find("\t/**\n\t * Get a specific McpTool by tool name.")
-        .ok_or_else(|| invalid("missing MCP tool lookup"))?
-        + start;
-    source.replace_range(start..end, "");
+    // Preserve eager registration's precedence: a component invalid for every revision
+    // cannot reserve a name against a later valid component. Only collisions need this
+    // cross-revision check; ordinary registration stays neutral.
+    for (kind, key, registry) in [
+        ("tool", "tool_name", "mcp_tools"),
+        ("resource", "uri", "mcp_resources"),
+        ("prompt", "prompt_name", "mcp_prompts"),
+    ] {
+        let duplicate = format!("\t\tif ( isset( $this->{registry}[ ${key} ] ) ) {{");
+        let check = format!(
+            "\t\tif ( isset( $this->{registry}[ ${key} ] ) && ! $this->has_any_projection( $this->{registry}[ ${key} ], '{kind}', ${key} ) ) {{\n\t\t\tunset( $this->{registry}[ ${key} ] );\n\t\t}}\n\n{duplicate}"
+        );
+        source = replace_once(source, &duplicate, &check)?;
+    }
     Ok(source)
 }
 

@@ -31,8 +31,14 @@ $valid = \WP\MCP\Domain\Tools\McpTool::fromArray(['name' => 'valid', 'handler' =
 $invalid = \WP\MCP\Domain\Tools\McpTool::fromArray(['name' => 'invalid', 'inputSchema' => ['type' => 'string'], 'handler' => static fn () => []]);
 $registry->register_tools([$valid, $invalid]);
 $check($records->getValue($valid) === [], 'new tools stay neutral');
+$invalidFirst = \WP\MCP\Domain\Tools\McpTool::fromArray(['name' => 'recovered', 'inputSchema' => ['type' => 'string'], 'handler' => static fn () => []]);
+$validSecond = \WP\MCP\Domain\Tools\McpTool::fromArray(['name' => 'recovered', 'handler' => static fn () => []]);
+$duplicate = \WP\MCP\Domain\Tools\McpTool::fromArray(['name' => 'valid', 'handler' => static fn () => []]);
+$registry->register_tools([$invalidFirst, $validSecond, $duplicate]);
+$check($registry->get_mcp_tool('recovered') === $validSecond, 'invalid first registration cannot reserve a name');
+$check($registry->get_mcp_tool('valid') === $valid, 'first valid registration retains precedence');
 foreach (\WP\MCP\Core\McpVersionNegotiator::SUPPORTED_PROTOCOL_VERSIONS as $revision) {
     $tools = $registry->get_tools($server->get_schemas()->forVersion($revision));
-    $check(isset($tools['valid']) && !isset($tools['invalid']), 'selected revision excludes invalid projections');
+    $check(isset($tools['valid'], $tools['recovered']) && !isset($tools['invalid']), 'selected revision excludes invalid projections');
 }
 echo 'MCP lazy projection passed';

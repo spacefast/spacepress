@@ -40,7 +40,11 @@ The behavioral change for adapter diagnostics is deliberate: registration counts
 describe neutral components, including ones rejected by every revision. Projection
 errors become available when a revision first uses the component, rather than
 logging during unrelated requests. Duplicate detection and missing-ability
-validation still happen at registration. Each list and call retains the adapter's
+validation still happen at registration. On a name/URI collision, the existing
+component is checked across revisions: one invalid in every revision cannot
+reserve the key against a later valid registration. This preserves eager
+registration's duplicate precedence while keeping unique registrations neutral.
+Each list and call retains the adapter's
 revision-specific availability check, including when a client calls without
 listing first.
 

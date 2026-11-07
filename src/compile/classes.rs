@@ -14,11 +14,6 @@ pub(super) struct CompiledClass {
     _static_data: Value,
 }
 
-/// Classes carry static state, so each plugin compiles its own copy.
-fn key(class: &Rc<ClassValue>, owner: usize) -> usize {
-    (Rc::as_ptr(class) as usize) ^ (owner << 48)
-}
-
 impl<'a, 'p> Compiler<'a, 'p> {
     pub(super) fn class_shape(&self, id: usize) -> Ty {
         self.classes[&id].statics.clone()
@@ -112,7 +107,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     pub(super) fn ensure_class(&mut self, class: &Rc<ClassValue>) -> Result<usize> {
-        let id = key(class, self.owner());
+        // Classes carry static state, so each plugin compiles its own copy: the id is interned
+        // per (owner, class), never derived from the pointer's bits.
+        let next = self.class_ids.len();
+        let id = *self
+            .class_ids
+            .entry((self.owner(), Rc::as_ptr(class) as usize))
+            .or_insert(next);
         if self.classes.contains_key(&id) {
             return Ok(id);
         }

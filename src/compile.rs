@@ -277,6 +277,8 @@ struct FnCtx {
 
 pub struct Compiler<'a, 'p> {
     classes: HashMap<usize, classes::CompiledClass>,
+    /// Class ids by (owning plugin, class value).
+    class_ids: HashMap<(usize, usize), usize>,
     pub schema: &'a Schema,
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
@@ -331,6 +333,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         Compiler {
             classes: HashMap::new(),
+            class_ids: HashMap::new(),
             schema,
             ev,
             collections: &ext.collections,

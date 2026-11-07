@@ -9,12 +9,13 @@ import { createRequire } from "node:module";
 import { Compiler, type Compiled, type Request } from "../../src/lib/compiler.ts";
 import { repo, zeroBinary, wasmPath } from "./helpers.ts";
 
-/** Every file under a project except build output (symlinks not followed), as the browser would hold it. */
+/** Every file under a project except build output (symlinks not followed), as the browser would hold it.
+ *  A fixture's `node_modules` holds the plugin packages under test, so it travels too. */
 function sources(dir: string): Request["files"] {
   const files: Request["files"] = {};
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
-      if (name === "zero" || name === ".zero" || name === "node_modules" || name === "zero.gen.ts") continue;
+      if (name === "zero" || name === ".zero" || name === "zero.gen.ts") continue;
       const rel = sub ? `${sub}/${name}` : name;
       const full = path.join(dir, rel);
       const stat = lstatSync(full);
@@ -24,6 +25,16 @@ function sources(dir: string): Request["files"] {
   };
   walk("");
   return files;
+}
+
+/** The committed plugin lock, and whether this run refuses grants beyond it as the CLI would. */
+function plugins(dir: string): Pick<Request, "pluginLock" | "frozen"> {
+  const lock = path.join(dir, "zero/plugins.lock.json");
+  const ci = process.env.CI;
+  return {
+    pluginLock: statSync(lock, { throwIfNoEntry: false }) ? JSON.parse(readFileSync(lock, "utf8")) : null,
+    frozen: Boolean(ci) && ci !== "false",
+  };
 }
 
 /** `zero check --json`'s one line, as printed. */
@@ -123,7 +134,7 @@ test("every refused fixture is refused with the command line's envelope", async 
     await t.test(name, () => {
       const dir = path.join(fixtures, name);
       const native = nativeCheck(dir);
-      const { envelope, check, output } = browserCheck({ name, files: sources(dir), previous: null });
+      const { envelope, check, output } = browserCheck({ name, files: sources(dir), previous: null, ...plugins(dir) });
       if (hasSymlink(dir)) {
         // The browser holds sources only, no directories, so a sync directory that is a symlink out of
         // the project cannot be seen there; the config itself is fine and builds.

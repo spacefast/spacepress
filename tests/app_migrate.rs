@@ -344,7 +344,7 @@ fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
 fn endpoints_become_routes_and_unroutable_ones_refuse() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("endpoints");
-    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test"]);
+    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test", "--users"]);
     assert!(ok, "{report:#}");
     let routes: Vec<_> = report["entries"]
         .as_array()
@@ -366,6 +366,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "GET /go/home",
             "GET /api/tags",
             "GET /api/files/*splat",
+            "POST /api/marks",
             "GET /api/total"
         ]
     );
@@ -567,7 +568,7 @@ fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool
     let output = command
         .arg("--out")
         .arg(out)
-        .args(["--dry-run", "--space", "spc_migrate_test"])
+        .args(["--dry-run", "--space", "spc_migrate_test", "--users"])
         .output()
         .unwrap();
     let report = serde_json::from_slice(&output.stdout)
@@ -660,4 +661,3 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     assert!(!ok);
     assert_eq!(report["errors"][0]["pointer"], "/artifact/format");
 }
-

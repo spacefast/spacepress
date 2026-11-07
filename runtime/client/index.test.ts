@@ -824,3 +824,112 @@ test("guests refresh at <issuer>/token with the clientId they were issued, and u
     browser.restore();
   }
 });
+
+/** A transport the test drives: `push` delivers a notice, `set` reports live/down. */
+function fakeTransport() {
+  const t = {
+    connects: 0,
+    stops: 0,
+    push: (_n: unknown) => {},
+    set: (_s: "live" | "down") => {},
+    connect(deliver: (n: unknown) => void, status: (s: "live" | "down") => void) {
+      t.connects++;
+      t.push = deliver;
+      t.set = status;
+      return () => void t.stops++;
+    },
+  };
+  return t;
+}
+const tick = () => new Promise((r) => setTimeout(r, 20));
+const notice = (collection: string, ids: number[] | null = [1]) => ({ id: "n", at: "2026-11-07T00:00:00.000Z", changes: [{ collection, ops: ["update"], ids }] });
+
+test("watch re-runs the access-checked list on a matching notice, never trusting pushed data", async () => {
+  seen = [];
+  let n = 0;
+  reply = (s) => ok([{ id: 1, title: `v${++n}` }])();
+  const transport = fakeTransport();
+  const zero = mod.createClient({ url, realtime: { transport, pollMs: false } });
+  const got: unknown[] = [];
+  const stop = zero.posts.watch({ where: { title: { like: "%v%" } }, with: { author: true } }, (rows: unknown) => got.push(rows));
+  await tick();
+  assert.equal(transport.connects, 1, "the first watcher connects the transport");
+  assert.deepEqual(got, [[{ id: 1, title: "v1" }]], "an initial read");
+  transport.set("live");
+  await tick();
+  assert.equal(got.length, 2, "going live catches up once");
+
+  transport.push({ ...notice("posts"), changes: [{ collection: "posts", ops: ["update"], ids: [1], row: { title: "pushed" } }] });
+  await tick();
+  assert.deepEqual(got.at(-1), [{ id: 1, title: "v3" }], "the refresh is the server's answer, not the pushed payload");
+  assert.equal(last().path, "/wp-json/zero/v1/posts");
+  assert.deepEqual(JSON.parse(last().query.get("where") ?? ""), { title: { like: "%v%" } }, "the same query re-runs");
+
+  transport.push(notice("authors"));
+  await tick();
+  assert.equal(got.length, 4, "a change to a collection loaded through `with` refreshes too");
+  transport.push(notice("shoppingList"));
+  await tick();
+  assert.equal(got.length, 4, "an unrelated collection does not");
+
+  stop();
+  assert.equal(transport.stops, 1, "the last watcher disconnects");
+  transport.push(notice("posts"));
+  await tick();
+  assert.equal(got.length, 4, "nothing after stop");
+});
+
+test("watch coalesces a burst into one extra read and reports read errors", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  let calls = 0;
+  reply = () => ok([])();
+  const slowFetch: typeof fetch = async (input, init) => {
+    calls++;
+    if (calls === 2) await gate;
+    return fetch(input, init);
+  };
+  const transport = fakeTransport();
+  const zero = mod.createClient({ url, fetch: slowFetch, realtime: { transport, pollMs: false } });
+  const stop = zero.posts.watch(undefined, () => {});
+  await tick();
+  transport.push(notice("posts"));
+  transport.push(notice("posts"));
+  transport.push(notice("posts"));
+  await tick();
+  release();
+  await tick();
+  assert.equal(calls, 3, "initial read, one in flight, one more for the burst");
+  stop();
+
+  reply = () => problem(403, "forbidden");
+  const errors: string[] = [];
+  const stop2 = mod.createClient({ url, realtime: { transport: false, pollMs: false } }).posts.watch(undefined, () => {}, (e: { code: string }) => errors.push(e.code));
+  await tick();
+  assert.deepEqual(errors, ["forbidden"]);
+  stop2();
+});
+
+test("without a live transport, watch polls; a transport registered later is picked up", async () => {
+  reply = () => ok([])();
+  seen = [];
+  const zero = mod.createClient({ url, realtime: { pollMs: 30 } });
+  const stop = zero.posts.watch(undefined, () => {});
+  await new Promise((r) => setTimeout(r, 100));
+  const polled = seen.length;
+  assert.ok(polled >= 3, `polled ${polled} times`);
+
+  const transport = fakeTransport();
+  mod.registerRealtimeTransport(transport);
+  assert.equal(transport.connects, 1, "a host script registering after the client connects existing watchers");
+  transport.set("live");
+  await tick();
+  const atLive = seen.length;
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(seen.length, atLive, "polling stops while live");
+  transport.set("down");
+  await new Promise((r) => setTimeout(r, 100));
+  assert.ok(seen.length > atLive, "and resumes when the transport goes down");
+  stop();
+  delete (globalThis as Record<string, unknown>).__zeroRealtimeTransport;
+});

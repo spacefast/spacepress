@@ -4,8 +4,8 @@ Publish a project containing `zero.config.ts` to run its collections, hooks,
 and actions on Spacefast's WordPress runtime. Spacefast compiles the source
 on the host and initializes the candidate before making it ready.
 
-Generated REST endpoints and actions work on the Space hostname. Realtime is
-not supported. Zero Pages are not hosted yet. Keep your frontend in public
+Generated REST endpoints, actions and [live updates](#live-updates) work on
+the Space hostname. Zero Pages are not hosted yet. Keep your frontend in public
 assets or publish it separately.
 
 ## Publish an app
@@ -64,6 +64,21 @@ Port a 0.8 custom method/path endpoint to a named action and update its callers.
 The source migrator refuses old `endpoints` declarations with a pointer.
 Generated v2 endpoints and actions need no additional Spacefast route setup.
 
+## Live updates
+
+`watch` works with no setup on Spacefast:
+
+```ts
+import { createClient } from "/__spacefast/client.js";
+
+createClient().todos.watch({ where: { done: false } }, (todos) => render(todos));
+```
+
+Spacefast registers a Publisher that sends each commit's change notice to the
+Space's realtime room. The `/__spacefast/client.js` bundle registers the
+matching Cast transport, so every client on the page uses it. Without a live
+connection, watched reads poll. See [Live updates](realtime.md) for the API.
+
 ## Migrate an existing 0.8 Space
 
 Follow [Migrate a Spacefast app](migrating-from-zero.md#migrate-a-spacefast-app).
@@ -119,7 +134,7 @@ migration so pending imported sessions can authenticate once and upgrade.
 
 Unscoped cron and WP-CLI must load no app. Each scoped job needs the Space,
 environment, and version before entering the same database and cache scope as
-HTTP. Multisite, hosted Pages, realtime, and Atomic SQLite are outside this
+HTTP. Multisite, hosted Pages, and Atomic SQLite are outside this
 hosting contract. Qualify MU-plugin ordering, persistent object-cache isolation,
 auth-salt continuity, and action routing on the actual provider before rollout.
 

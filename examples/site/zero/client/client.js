@@ -112,6 +112,17 @@ export const SCHEMA = {
 	],
 	"buckets": ["manuscripts"]
 };
+const TRANSPORT_KEY = "__zeroRealtimeTransport";
+/** For host scripts: every client created on this page (before or after) uses this transport by default. */
+export function registerRealtimeTransport(transport) {
+	globalThis[TRANSPORT_KEY] = transport;
+	for (const wake of transportWaiters) wake();
+}
+const transportWaiters = new Set();
+function registeredTransport() {
+	const t = globalThis[TRANSPORT_KEY];
+	return typeof t === "object" && t !== null && typeof t.connect === "function" ? t : undefined;
+}
 /** Thrown for every non-2xx response; the fields are the problem document. Network failures: status 0, code "network". */
 export class ZeroError extends Error {
 	status;
@@ -567,12 +578,106 @@ export function createClient(options = {}) {
 			} : null;
 		}
 	};
+	// One transport connection per client while anything is watched; polling while it is not live.
+	const rtOpts = options.realtime ?? {};
+	const pollMs = rtOpts.pollMs === undefined ? 3e4 : rtOpts.pollMs;
+	const listeners = new Set();
+	let disconnect = null;
+	let live = false;
+	let poller = null;
+	const dispatch = (notice) => {
+		for (const l of [...listeners]) {
+			if (notice === null || notice.changes.some((c) => l.collections.has(c.collection))) l.onChange(notice);
+		}
+	};
+	const syncPolling = () => {
+		const want = listeners.size > 0 && !live && pollMs !== false;
+		if (want && poller === null) poller = setInterval(() => dispatch(null), pollMs);
+		if (!want && poller !== null) {
+			clearInterval(poller);
+			poller = null;
+		}
+	};
+	const connect = () => {
+		if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;
+		const transport = rtOpts.transport ?? registeredTransport();
+		if (!transport) return;
+		transportWaiters.delete(connect);
+		let current = true;
+		const stop = transport.connect((notice) => {
+			if (current && isObject(notice) && Array.isArray(notice.changes)) dispatch(notice);
+		}, (state) => {
+			if (!current) return;
+			const was = live;
+			live = state === "live";
+			syncPolling();
+			// Back online: catch up on whatever changed while the transport was down.
+			if (live && !was) dispatch(null);
+		});
+		disconnect = () => {
+			current = false;
+			live = false;
+			stop();
+		};
+	};
+	const realtime = { subscribe(collections, onChange) {
+		const entry = {
+			collections: new Set(collections),
+			onChange
+		};
+		listeners.add(entry);
+		transportWaiters.add(connect);
+		connect();
+		syncPolling();
+		return () => {
+			listeners.delete(entry);
+			if (listeners.size === 0) {
+				transportWaiters.delete(connect);
+				disconnect?.();
+				disconnect = null;
+			}
+			syncPolling();
+		};
+	} };
 	function collection(key) {
 		const desc = SCHEMA.collections[key];
 		const path = `/${seg(desc.path)}`;
 		const one = (id) => `${path}/${seg(id)}`;
+		const list = (q) => request("GET", path, { query: listParams(q) });
 		return {
-			list: (q) => request("GET", path, { query: listParams(q) }),
+			list,
+			watch(q, onRows, onError) {
+				// Coalesced: one read in flight; changes during it schedule exactly one more.
+				let stopped = false;
+				let running = false;
+				let again = false;
+				const refresh = async () => {
+					if (running) {
+						again = true;
+						return;
+					}
+					running = true;
+					try {
+						do {
+							again = false;
+							try {
+								const rows = await list(q);
+								if (!stopped) onRows(rows);
+							} catch (e) {
+								if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
+							}
+						} while (again && !stopped);
+					} finally {
+						running = false;
+					}
+				};
+				const unsubscribe = realtime.subscribe(dependencies(key, q?.with), () => void refresh());
+				void refresh();
+				return () => {
+					stopped = true;
+					unsubscribe();
+				};
+			},
 			get: (id, q) => request("GET", one(id), { query: listParams(q ? {
 				with: q.with,
 				locale: q.locale
@@ -620,6 +725,19 @@ export function createClient(options = {}) {
 	};
 	for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key);
 	return client;
+}
+/** The collection and every collection its `with` loads: a change to any of them refreshes the read. */
+function dependencies(key, w, seen = new Set()) {
+	seen.add(key);
+	const relations = SCHEMA.collections[key]?.relations ?? {};
+	if (isObject(w)) {
+		for (const [name, v] of Object.entries(w)) {
+			const target = relations[name]?.collection;
+			if (!v || typeof target !== "string" || seen.has(target)) continue;
+			dependencies(target, isObject(v) ? v.with : undefined, seen);
+		}
+	}
+	return [...seen];
 }
 /** Problem documents map field by field; WordPress core errors (`{ code, message, data: { status } }`) are mapped onto the same shape. */
 function toError(res, body) {

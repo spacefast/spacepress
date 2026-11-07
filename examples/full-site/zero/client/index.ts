@@ -82,12 +82,22 @@ export type ListQuery<K extends CollectionKey, W = Collections[K]["with"]> = {
 } & StatusQuery<K> & LocaleQuery<K>;
 
 export interface CollectionClient<K extends CollectionKey> {
-  list<const W extends Collections[K]["with"] = {}>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+  list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
   /** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
-  get<const W extends Collections[K]["with"] = {}>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
+  get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
   update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
   delete(id: IdOf<K>): Promise<Row<K>>;
+  /**
+   * Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
+   * changes. Every refresh is the normal access-checked read; change notices carry no rows.
+   * Returns a function that stops watching.
+   */
+  watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
+    q: ListQuery<K, ExactWith<K, W>> | undefined,
+    onRows: (rows: RowWith<K, W>[]) => void,
+    onError?: (error: ZeroError) => void,
+  ): () => void;
   revisions: {
     /** Newest first. Needs `update` access on the row. */
     list(id: IdOf<K>): Promise<RevisionSummary[]>;
@@ -172,6 +182,45 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   schema(): Promise<unknown>;
 };
 
+/** One committed transaction's changes, as the runtime's `zero_realtime_changes` hook sends them. */
+export interface ChangeNotice {
+  id: string;
+  at: string;
+  /** `ids: null` means "some rows changed": too many to list, or ids withheld from a shared room. */
+  changes: { collection: string; ops: ("create" | "update" | "delete")[]; ids: (string | number)[] | null }[];
+}
+
+/**
+ * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). Zero ships none.
+ * `connect` starts delivery and returns a stop function; call `status("live")` once notices flow
+ * and `status("down")` when they stop, so the client polls meanwhile.
+ */
+export interface RealtimeTransport {
+  connect(deliver: (notice: ChangeNotice) => void, status: (state: "live" | "down") => void): () => void;
+}
+
+export interface RealtimeOptions {
+  /** The transport. Default: the one a host registered with `registerRealtimeTransport`; `false` = polling only. */
+  transport?: RealtimeTransport | false;
+  /** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
+  pollMs?: number | false;
+}
+
+const TRANSPORT_KEY = "__zeroRealtimeTransport";
+
+/** For host scripts: every client created on this page (before or after) uses this transport by default. */
+export function registerRealtimeTransport(transport: RealtimeTransport): void {
+  (globalThis as Record<string, unknown>)[TRANSPORT_KEY] = transport;
+  for (const wake of transportWaiters) wake();
+}
+
+const transportWaiters = new Set<() => void>();
+
+function registeredTransport(): RealtimeTransport | undefined {
+  const t = (globalThis as Record<string, unknown>)[TRANSPORT_KEY];
+  return typeof t === "object" && t !== null && typeof (t as RealtimeTransport).connect === "function" ? (t as RealtimeTransport) : undefined;
+}
+
 export interface ClientOptions {
   /** Base URL including the REST prefix: "https://x.test/wp-json/zero/v1". Default: `/wp-json/zero/v1` on the page's origin. */
   url?: string;
@@ -182,6 +231,8 @@ export interface ClientOptions {
   headers?: Record<string, string>;
   /** Frontend sign-in (design §6.2). */
   auth?: AuthOptions;
+  /** Live updates for `watch`. */
+  realtime?: RealtimeOptions;
 }
 
 export interface AuthOptions {
@@ -702,12 +753,109 @@ export function createClient(options: ClientOptions = {}): Client {
     },
   };
 
+  // One transport connection per client while anything is watched; polling while it is not live.
+  const rtOpts = options.realtime ?? {};
+  const pollMs = rtOpts.pollMs === undefined ? 30_000 : rtOpts.pollMs;
+  const listeners = new Set<{ collections: ReadonlySet<string>; onChange: (n: ChangeNotice | null) => void }>();
+  let disconnect: (() => void) | null = null;
+  let live = false;
+  let poller: ReturnType<typeof setInterval> | null = null;
+  const dispatch = (notice: ChangeNotice | null) => {
+    for (const l of [...listeners]) {
+      if (notice === null || notice.changes.some((c) => l.collections.has(c.collection))) l.onChange(notice);
+    }
+  };
+  const syncPolling = () => {
+    const want = listeners.size > 0 && !live && pollMs !== false;
+    if (want && poller === null) poller = setInterval(() => dispatch(null), pollMs as number);
+    if (!want && poller !== null) {
+      clearInterval(poller);
+      poller = null;
+    }
+  };
+  const connect = () => {
+    if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;
+    const transport = rtOpts.transport ?? registeredTransport();
+    if (!transport) return;
+    transportWaiters.delete(connect);
+    let current = true;
+    const stop = transport.connect(
+      (notice) => {
+        if (current && isObject(notice) && Array.isArray(notice.changes)) dispatch(notice);
+      },
+      (state) => {
+        if (!current) return;
+        const was = live;
+        live = state === "live";
+        syncPolling();
+        // Back online: catch up on whatever changed while the transport was down.
+        if (live && !was) dispatch(null);
+      },
+    );
+    disconnect = () => {
+      current = false;
+      live = false;
+      stop();
+    };
+  };
+  const realtime = {
+    subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void {
+      const entry = { collections: new Set(collections), onChange };
+      listeners.add(entry);
+      transportWaiters.add(connect);
+      connect();
+      syncPolling();
+      return () => {
+        listeners.delete(entry);
+        if (listeners.size === 0) {
+          transportWaiters.delete(connect);
+          disconnect?.();
+          disconnect = null;
+        }
+        syncPolling();
+      };
+    },
+  };
+
   function collection(key: CollectionKey) {
     const desc: { path: string } = SCHEMA.collections[key];
     const path = `/${seg(desc.path)}`;
     const one = (id: string | number) => `${path}/${seg(id)}`;
+    const list = (q?: Json) => request("GET", path, { query: listParams(q) });
     return {
-      list: (q?: Json) => request("GET", path, { query: listParams(q) }),
+      list,
+      watch(q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: ZeroError) => void) {
+        // Coalesced: one read in flight; changes during it schedule exactly one more.
+        let stopped = false;
+        let running = false;
+        let again = false;
+        const refresh = async (): Promise<void> => {
+          if (running) {
+            again = true;
+            return;
+          }
+          running = true;
+          try {
+            do {
+              again = false;
+              try {
+                const rows = await list(q);
+                if (!stopped) onRows(rows);
+              } catch (e) {
+                if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
+              }
+            } while (again && !stopped);
+          } finally {
+            running = false;
+          }
+        };
+        const unsubscribe = realtime.subscribe(dependencies(key, q?.with), () => void refresh());
+        void refresh();
+        return () => {
+          stopped = true;
+          unsubscribe();
+        };
+      },
       get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
       create: (data: unknown) => request("POST", path, { json: data }),
       update: (id: string | number, patch: unknown) => request("PATCH", one(id), { json: patch }),
@@ -765,6 +913,20 @@ export function createClient(options: ClientOptions = {}): Client {
   };
   for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key as CollectionKey);
   return client as unknown as Client;
+}
+
+/** The collection and every collection its `with` loads: a change to any of them refreshes the read. */
+function dependencies(key: string, w: unknown, seen = new Set<string>()): string[] {
+  seen.add(key);
+  const relations: Record<string, { collection?: string }> = (SCHEMA.collections as Record<string, { relations?: Record<string, { collection?: string }> }>)[key]?.relations ?? {};
+  if (isObject(w)) {
+    for (const [name, v] of Object.entries(w)) {
+      const target = relations[name]?.collection;
+      if (!v || typeof target !== "string" || seen.has(target)) continue;
+      dependencies(target, isObject(v) ? v.with : undefined, seen);
+    }
+  }
+  return [...seen];
 }
 
 /** Problem documents map field by field; WordPress core errors (`{ code, message, data: { status } }`) are mapped onto the same shape. */

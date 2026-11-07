@@ -2,7 +2,7 @@
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
 import { job, jobs, once, env } from "zero"; // lane D
-import { jsCollections } from "./stdlib.js";
+import { jsAbort, jsCollections, jsPendingTimer } from "./stdlib.js";
 
 const n = table({ id: id() });
 
@@ -921,6 +921,7 @@ function stdlibActions() {
       return [byObj.get(k) ?? "none", byObj.has({ n: 9 }), nums.get(NaN) ?? "", nums.get(-0) ?? "", nums.size, 1 / ([...nums.keys()][1] ?? 1), mixed.get("1"), mixed.get(1), mixed.get(null), mixed.size];
     }),
     jsCollections: run(() => jsCollections()),
+    jsAbort: run(() => jsAbort()),
     setOps: run(() => {
       const s = new Set([3, 1, 3, 2]);
       const deleted = [s.delete(1), s.delete(1)];

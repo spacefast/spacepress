@@ -11,7 +11,7 @@ trait JsDynamic
 
     public static function dynamicNamespace(string $name): JsNamespace
     {
-        if ($name !== 'Math') { throw new JsError('Unsupported JavaScript namespace ' . $name, 'TypeError'); }
+        if ($name !== 'Math' && $name !== 'AbortSignal') { throw new JsError('Unsupported JavaScript namespace ' . $name, 'TypeError'); }
         return self::$dynamicNamespaces[$name] ??= new JsNamespace($name);
     }
 
@@ -27,6 +27,7 @@ trait JsDynamic
             $receiver instanceof RegExp => 'RegExp', $receiver instanceof JsDate => 'Date',
             $receiver instanceof JsError => 'Error',
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map', $receiver instanceof JsIterator => 'Iterator',
+            $receiver instanceof JsAbortSignal => 'AbortSignal', $receiver instanceof JsAbortController => 'AbortController',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
             is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
         };
@@ -35,16 +36,17 @@ trait JsDynamic
         }
         if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date'], true)
             || $name === 'toString' && in_array($owner, ['Math', 'Set', 'Map'], true)) { $owner = 'Object'; }
-        $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
+        $static = $receiver instanceof JsNamespace;
+        $surface = $static ? $owner : match ($owner) { 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
             if (Builtins::has('object', $name)) { throw new JsError('Unsupported inherited method ' . $name, 'TypeError'); }
             return JsUndefined::Value;
         }
-        $key = $owner . ':' . $name;
+        $key = ($static ? 'static:' : '') . $owner . ':' . $name;
         if (!isset(self::$dynamicMethods[$key])) {
             $invoke = match (true) {
                 $owner === 'Array' && $name === 'slice' => self::dynamicBorrowedSlice(...),
-                $owner === 'Math' && Builtins::has('Math', $name) => static fn ($thisArg, JsArray $args) => self::dynamicStaticCall($owner, $name, $args),
+                $static && Builtins::has($owner, $name) => static fn ($thisArg, JsArray $args) => self::dynamicStaticCall($owner, $name, $args),
                 default => static fn ($thisArg, JsArray $args) => self::dynamicBorrowedMethod($owner, $thisArg, $name, $args),
             };
             $function = static fn (...$args) => $invoke(JsUndefined::Value, new JsArray($args));
@@ -69,6 +71,7 @@ trait JsDynamic
             'RegExp' => $receiver instanceof RegExp, 'Date' => $receiver instanceof JsDate,
             'Error' => $receiver instanceof JsError,
             'Set' => $receiver instanceof JsSet, 'Map' => $receiver instanceof JsMap,
+            'AbortSignal' => $receiver instanceof JsAbortSignal, 'AbortController' => $receiver instanceof JsAbortController,
             'Function' => $receiver instanceof \Closure, 'Object' => $receiver instanceof JsObject,
             default => false,
         };
@@ -117,6 +120,13 @@ trait JsDynamic
             return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
         }
         if ($value instanceof JsClass) { return $value->get($key); }
+        if ($value instanceof JsNamespace && $value->name === 'AbortSignal') {
+            return in_array($key, ['abort', 'any', 'timeout'], true) ? self::dynamicMethodValue($value, $key) : JsUndefined::Value;
+        }
+        if ($value instanceof JsAbortSignal) {
+            return match ($key) { 'aborted' => $value->aborted, 'reason' => $value->reason, 'onabort' => $value->onabort() ?? null, default => self::dynamicMethodValue($value, $key) };
+        }
+        if ($value instanceof JsAbortController && $key === 'signal') { return $value->signal; }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -170,6 +180,8 @@ trait JsDynamic
             return self::set($target, $key, $value);
         }
         if ($target instanceof RegExp && $key === 'lastIndex') { $target->lastIndex = $value; return $value; }
+        if ($target instanceof JsAbortSignal && $key === 'onabort') { $target->setOnabort($value); return $value; }
+        if ($target instanceof JsAbortSignal || $target instanceof JsAbortController) { throw new JsError('Cannot assign to ' . $key . ' on an abort object', 'TypeError'); }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
             if ($key === '__proto__' && !array_key_exists($key, $target->p)) {
                 throw new JsError('Prototype mutation is not supported', 'TypeError');
@@ -202,7 +214,7 @@ trait JsDynamic
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
-        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
+        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsAbortSignal || $value instanceof JsAbortController || $value instanceof JsTimeout || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
 
@@ -261,6 +273,8 @@ trait JsDynamic
             $value instanceof JsArray => 'Array', $value instanceof JsArguments => 'Arguments', $value instanceof JsSet => 'Set',
             $value instanceof JsMap => 'Map', $value instanceof JsDate => 'Date', $value instanceof RegExp => 'RegExp',
             $value instanceof JsIterator => $value->tag,
+            $value instanceof JsAbortSignal => 'AbortSignal', $value instanceof JsAbortController => 'AbortController',
+            $value instanceof JsTimeout => 'Timeout',
             $value instanceof JsNamespace => $value->name,
             $value instanceof JsError => 'Error',
             $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
@@ -322,6 +336,7 @@ trait JsDynamic
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
             $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map', $receiver instanceof JsIterator => 'iterator',
+            $receiver instanceof JsAbortSignal => 'abortsignal', $receiver instanceof JsAbortController => 'abortcontroller',
             is_bool($receiver) => 'boolean', $receiver instanceof \Closure => 'function',
             default => 'object',
         };
@@ -369,6 +384,17 @@ trait JsDynamic
                 'entries' => new JsIterator($receiver->entriesIterator(), 'Map Iterator'),
                 default => throw new JsError($name . ' is not a function', 'TypeError'),
             };
+        }
+        if ($receiver instanceof JsAbortSignal) {
+            return match ($name) {
+                'throwIfAborted' => $receiver->throwIfAborted(),
+                'addEventListener' => $receiver->addEventListener($get(0), $get(1), $get(2)),
+                'removeEventListener' => $receiver->removeEventListener($get(0), $get(1), $get(2)),
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
+        }
+        if ($receiver instanceof JsAbortController) {
+            return match ($name) { 'abort' => $receiver->abort($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
         }
         if ($receiver instanceof JsIterator) {
             return match ($name) { 'next' => $receiver->next(), default => throw new JsError($name . ' is not a function', 'TypeError') };
@@ -573,6 +599,13 @@ trait JsDynamic
         Builtins::check($owner, $method, count($args->a));
         $a = $args->a;
         $get = static fn (int $i, mixed $default = JsUndefined::Value): mixed => array_key_exists($i, $a) ? $a[$i] : $default;
+        if ($owner === 'AbortSignal') {
+            return match ($method) {
+                'abort' => JsAbortSignal::aborted($get(0)), 'timeout' => JsAbortSignal::timeout($get(0)),
+                'any' => JsAbortSignal::any(iterator_to_array(self::dynamicIterator($get(0)), false)),
+                default => throw new JsError('AbortSignal.' . $method . ' is not a function', 'TypeError'),
+            };
+        }
         if ($owner === 'Array') {
             if ($method === 'isArray') { return $get(0) instanceof JsArray; }
             if ($method === 'from') {
@@ -681,6 +714,7 @@ trait JsDynamic
             $value = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             return new JsDate($a === [] ? self::now() : ($value instanceof JsDate ? $value->milliseconds : self::date($value)));
         }
+        if ($constructor === 'AbortController') { return new JsAbortController(); }
         if ($constructor === 'Set' || $constructor === 'Map') {
             $result = $constructor === 'Set' ? new JsSet() : new JsMap();
             if (!self::isNullish($a[0] ?? JsUndefined::Value)) {

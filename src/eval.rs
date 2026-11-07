@@ -308,6 +308,9 @@ pub const GLOBALS: &[&str] = &[
     "Promise",
     "setTimeout",
     "crypto",
+    "clearTimeout",
+    "AbortController",
+    "AbortSignal",
 ];
 
 pub struct Evaluator<'p> {

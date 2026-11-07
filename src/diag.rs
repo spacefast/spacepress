@@ -131,6 +131,19 @@ pub fn register_file(path: &Path, source: &str) -> u32 {
     })
 }
 
+/// `file:line:col` for a span, relative to the file's own directory name, for runtime messages.
+pub fn site(span: Span) -> String {
+    FILES.with(|files| {
+        let files = files.borrow();
+        let Some((path, src)) = files.get(span.file as usize) else {
+            return String::new();
+        };
+        let (line, col) = line_col(src, span.start as usize);
+        let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        format!("{name}:{line}:{col}")
+    })
+}
+
 fn line_col(src: &str, offset: usize) -> (usize, usize) {
     let offset = boundary(src, offset);
     let before = &src[..offset];

@@ -2923,6 +2923,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Global("NaN") => Ok(Out::atom("NAN", Ty::Num)),
             Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
             Resolved::Global("Math") => Ok(Out::atom("\\Zero\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
+            Resolved::Global("AbortSignal") if self.javascript_module(self.fx.as_ref().expect("fn").module) => Ok(Out::atom(
+                "\\Zero\\Js::dynamicNamespace('AbortSignal')",
+                Ty::Dynamic,
+            )),
             Resolved::Global(g) => err_help(
                 span,
                 format!("`{g}` can't be used as a value; call one of its functions"),
@@ -3815,6 +3819,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ),
                     Ty::Dynamic,
                 )),
+                ("AbortSignal", method @ ("any" | "abort" | "timeout"))
+                    if self.javascript_module(self.fx.as_ref().expect("fn").module) =>
+                {
+                    if method == "timeout" {
+                        self.uses("timers", "AbortSignal.timeout", span);
+                    }
+                    Ok(Out::atom(
+                        format!(
+                            "\\Zero\\Js::dynamicGet(\\Zero\\Js::dynamicNamespace('AbortSignal'), {})",
+                            php_str(method)
+                        ),
+                        Ty::Dynamic,
+                    ))
+                }
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
         }
@@ -4163,7 +4181,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
             if let ExprKind::Ident(name) = &callee.kind
-                && matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp")
+                && matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp" | "AbortController")
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
                 if name == "Date" {
@@ -4874,6 +4892,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(format!("\\Zero\\Js::dynamicRegExpCall({argv})"), Ty::Dynamic));
         }
+        if matches!(g, "setTimeout" | "clearTimeout") {
+            return self.timer_call(g, args, span);
+        }
         let argv = self.plain_args(args)?;
         let a0 = argv.first();
         Ok(match (g, a0) {
@@ -4912,8 +4933,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Bool,
             ),
             (
-                "fetch" | "process" | "require" | "eval" | "Function" | "setTimeout" | "crypto" | "globalThis"
-                | "Promise",
+                "fetch" | "process" | "require" | "eval" | "Function" | "crypto" | "globalThis" | "Promise",
                 _,
             ) => {
                 return err_help(
@@ -4930,6 +4950,61 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
+    /// `setTimeout(callback, delay?, ...args)` / `clearTimeout(id)`: a `Zero\\Timers` entry that runs
+    /// only while the request waits. The site names the call in the handler-end refusal.
+    fn timer_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if g == "clearTimeout" {
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\Zero\\Timers::clear(({argv})->a[0] ?? \\Zero\\Js::undefined())"),
+                Ty::Undefined,
+            ));
+        }
+        self.uses("timers", "setTimeout", span);
+        let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+        let callback = self.arg(args, 0, span, "a callback")?;
+        let cb = if javascript {
+            let v = self.expr(callback)?;
+            format!("\\Zero\\Js::timerCallback({})", v.php)
+        } else {
+            self.callback(callback, &[])?.php
+        };
+        let mut rest = Vec::new();
+        for a in args.iter().skip(1) {
+            let ArrEl::Item(x) = a else { return err(span, "spread arguments aren't supported here") };
+            let v = self.expr(x)?;
+            rest.push(self.finish_value(v, x.span)?);
+        }
+        if !javascript {
+            if let Some(d) = rest.first()
+                && !d.ty.is_num()
+            {
+                return err_help(span, "setTimeout's delay must be a number", "pass the delay in milliseconds");
+            }
+            if rest.len() > 1 {
+                return err_help(span, "extra setTimeout arguments aren't supported in typed code", "capture them in the callback");
+            }
+        }
+        let delay = rest.first().map_or_else(|| "0".to_string(), |d| d.php.clone());
+        let extra: Vec<String> = rest.iter().skip(1).map(|v| v.php.clone()).collect();
+        let site = self.site(span);
+        let set = format!("\\Zero\\Timers::set({cb}, {delay}, [{}], {})", extra.join(", "), php_str(&site));
+        // Node returns a Timeout object, so typed code gets the same opaque handle: only clearTimeout uses it.
+        Ok(Out::atom(
+            format!("\\Zero\\Timers::handle({set})"),
+            if javascript { Ty::Dynamic } else { Ty::Unknown },
+        ))
+    }
+
+    fn site(&self, span: Span) -> String {
+        crate::diag::site(span)
+    }
+
+    /// The capability recognition point `feat/plugin-capabilities` (#142) defines: there it records
+    /// a plugin's use for the lock. Until it lands, app code has no capability gate, so recording is
+    /// a no-op; the merge keeps #142's body and these call sites.
+    fn uses(&mut self, _kind: &'static str, _value: impl Into<String>, _span: Span) {}
+
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         self.builtin_args(g, m, args, span)?;
         if (g, m) == ("Math", "pow") {
@@ -4943,8 +5018,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
-            && matches!(g, "Math" | "Array" | "Object" | "Number" | "JSON")
+            && matches!(g, "Math" | "Array" | "Object" | "Number" | "JSON" | "AbortSignal")
         {
+            if (g, m) == ("AbortSignal", "timeout") {
+                self.uses("timers", "AbortSignal.timeout", span);
+            }
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
                 format!("\\Zero\\Js::dynamicStaticCall({}, {}, {argv})", php_str(g), php_str(m)),

@@ -265,6 +265,72 @@ export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {
 }
 
 #[test]
+fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
+    // A timer still pending when the handler returns would fire after the response in Node; the PHP
+    // request ends first, so the runtime refuses at handler end and names the creation site.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("timers.js"),
+        "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {pending,cleared,late} from './timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
+        $out=[];
+        foreach (['pending','cleared','late'] as $a) {
+            $fn='\\ZeroApp\\'.$s['actions'][$a]['handler'];
+            try { $out[]=['ok', \Zero\Timers::run(fn() => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])))]; }
+            catch (\Zero\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
+            $out[]=\Zero\Timers::pending();
+        }
+        echo json_encode($out);"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-timers/zero/app"),
+        ],
+    );
+    assert_eq!(
+        result,
+        json!([
+            [
+                "Error",
+                "A setTimeout callback is still pending when the handler returns (timers.js:1:28); await it or clearTimeout it first"
+            ],
+            0,
+            ["ok", 2],
+            0,
+            [
+                "Error",
+                "A setTimeout callback is still pending when the handler returns (timers.js:3:35); await it or clearTimeout it first"
+            ],
+            0
+        ])
+    );
+    // runNext() advances a pinned clock instead of sleeping, runs exactly one callback in
+    // (due, creation) order, and refuses waits past the request budget.
+    let order = php(
+        r#"require $argv[1];
+        putenv('ZERO_NOW=1000'); putenv('ZERO_TIMER_BUDGET_MS=100');
+        $log=[];
+        \Zero\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
+        \Zero\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
+        \Zero\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
+        $signal = \Zero\JsAbortSignal::timeout(15);
+        while (\Zero\Timers::runNext()) { $log[] = \Zero\Timers::clock(); }
+        \Zero\Timers::set(function() {}, 500);
+        try { \Zero\Timers::runNext(); $log[]='slept'; } catch (\Zero\JsError $e) { $log[]=$e->jsName; }
+        echo json_encode([$log, $signal->aborted, $signal->reason->jsName]);"#,
+        &[&root().join("runtime/Zero/bootstrap.php")],
+    );
+    assert_eq!(
+        order,
+        json!([["a", 1010, 1015, "b", 1020, "c", 1020, "RangeError"], true, "TimeoutError"])
+    );
+}
+
+#[test]
 fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
     let tmp = tempfile::tempdir().unwrap();
     let (out, missing) = checked(tmp.path());

@@ -77,6 +77,8 @@ pub enum Builtin {
     Env,
     Once,
     Jobs,
+    /// `fetch(url, init?)`: outbound HTTPS, compiled to `Zero\Fetch::call`.
+    Fetch,
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,

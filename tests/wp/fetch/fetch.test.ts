@@ -20,12 +20,13 @@ test("handlers fetch public HTTPS and read the response like a WHATWG Response",
   const json = await call("get", { url: `${origin}/json` });
   assert.equal(json.status, 200, JSON.stringify(json.body));
   assert.deepEqual(json.body.data, {
-    status: 200, ok: true, url: `${origin}/json`, redirected: false, type: "application/json", origin: "ok",
+    status: 200, statusText: "OK", ok: true, url: `${origin}/json`, redirected: false, type: "application/json", origin: "ok",
     cookie: false, body: JSON.stringify({ hello: "world", method: "GET", received: "" }),
   });
   // A non-2xx answer is a response, not an error.
   const teapot = await call("get", { url: `${origin}/text` });
   assert.equal(teapot.body.data?.status, 418);
+  assert.equal(teapot.body.data?.statusText, "I'm a Teapot");
   assert.equal(teapot.body.data?.ok, false);
   assert.equal(teapot.body.data?.body, "short and stout");
 
@@ -41,6 +42,19 @@ test("handlers fetch public HTTPS and read the response like a WHATWG Response",
   assert.deepEqual([moved.body.data?.status, moved.body.data?.redirected, moved.body.data?.url], [200, true, `${origin}/json`]);
   const other = await call("post", { url: `${origin}/see-other`, payload: "{}" });
   assert.equal((other.body.data?.data as { method: string }).method, "GET");
+
+  // redirect: "manual" returns the 3xx itself; "error" refuses it.
+  const manual = await call("manual", { url: `${origin}/redirect`, mode: "manual" });
+  assert.deepEqual(manual.body.data, { status: 302, location: "/json" });
+  const error = await call("manual", { url: `${origin}/redirect`, mode: "error" });
+  assert.deepEqual([error.status, error.body.code], [502, "zero_fetch_redirect_denied"]);
+
+  // A URLSearchParams body is sent form-encoded with its content type.
+  const form = await call("form", { url: `${origin}/json` });
+  assert.equal((form.body.data as { received: string }).received, "q=a+b");
+  const sent = seen().at(-1)!;
+  assert.equal(sent.headers["content-type"], "application/x-www-form-urlencoded;charset=UTF-8");
+  assert.equal(sent.headers["x-pair"], "1");
 });
 
 test("fetch refuses private targets, including through redirects, and bounds time and size", async () => {

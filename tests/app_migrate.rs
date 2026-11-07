@@ -1,5 +1,6 @@
 #![cfg(feature = "cli")]
 use serde_json::Value;
+use sha2::Digest;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -63,6 +64,17 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     assert!(ok, "{written:#}");
     assert_eq!(written["status"], "written");
     assert_eq!(dry["adoption_sql"], written["adoption_sql"]);
+    // Realtime maps: v2 announces every committed write, so the declaration and ctx.invalidate go.
+    assert!(
+        written["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped"),
+        "{written:#}"
+    );
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(!config.contains("invalidate"), "{config}");
     let snapshot: Value =
         serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(snapshot["tables"]["tasks"]["columns"]["id"]["autoIncrement"], true);
@@ -146,7 +158,7 @@ fn project(root: &Path, capsule: &str) {
 }
 
 #[test]
-fn spacefast_content_only_root_adopts_native_posts_and_drops_realtime() {
+fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("source");
     project(&root, r#"{name:"spacefast-posts", realtime:{enabled:true}}"#);
@@ -163,7 +175,7 @@ fn spacefast_content_only_root_adopts_native_posts_and_drops_realtime() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "review")
+            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped")
     );
     assert_eq!(
         serde_json::from_slice::<Value>(&std::fs::read(out.join("connector-roles.json")).unwrap()).unwrap(),
@@ -344,7 +356,7 @@ fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
 fn endpoints_become_routes_and_unroutable_ones_refuse() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("endpoints");
-    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test"]);
+    let (ok, report) = migrate(&fixture("endpoints"), &out, &["--space", "spc_migrate_test", "--users"]);
     assert!(ok, "{report:#}");
     let routes: Vec<_> = report["entries"]
         .as_array()
@@ -366,6 +378,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "GET /go/home",
             "GET /api/tags",
             "GET /api/files/*splat",
+            "POST /api/marks",
             "GET /api/total"
         ]
     );
@@ -450,8 +463,8 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     }
     let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
     assert!(
-        pricing.starts_with("import { plans } from \"../../shared/plans\";"),
-        "{pricing}"
+        pricing.contains("import { plans } from '../../shared/plans';"),
+        "a single-quoted relative import moves with the page: {pricing}"
     );
     // Interactive starters keep a pointer per page saying what to port.
     let (ok, refused) = migrate(
@@ -579,6 +592,23 @@ fn ctx_crypto_maps_to_the_zero_crypto_namespace() {
         "{config}"
     );
     build(&out);
+    // A webhook endpoint's ctx.crypto is a route, not an action; it gets the mapping entry too.
+    let root = temp.path().join("webhook");
+    project(
+        &root,
+        r#"{endpoints:{hook:endpoint({method:"POST",path:"/hooks/in"},async (ctx, request) => text(await ctx.crypto.sha256(await request.text())))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, endpoint, text }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, report) = migrate(&root, &temp.path().join("webhook-out"), &["--dry-run"]);
+    assert!(ok, "{report:#}");
+    assert!(
+        report["entries"].as_array().unwrap().iter().any(|e| e["outcome"] == "mapped"
+            && e["reason"].as_str().unwrap().starts_with("ctx.crypto becomes crypto")),
+        "{report:#}"
+    );
     let root = temp.path().join("jwt");
     project(
         &root,
@@ -619,6 +649,32 @@ fn ctx_email_send_maps_to_mail_send_and_queries_still_refuse() {
     let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
     assert!(!ok);
     assert_eq!(refused["errors"][0]["pointer"], "/queries/q/ctx/email");
+    // A send returned from inside control flow was awaited by 0.8 as well; it maps.
+    let root = temp.path().join("nested");
+    project(
+        &root,
+        r#"{mutations:{m:mutation(async (ctx, enabled: boolean) => { if (enabled) { return ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }); } return false; })}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, mutation }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, report) = migrate(&root, &temp.path().join("nested-out"), &[]);
+    assert!(ok, "{report:#}");
+    build(&temp.path().join("nested-out"));
+    // A send left floating inside a nested function is still refused.
+    let root = temp.path().join("floating");
+    project(
+        &root,
+        r#"{mutations:{m:mutation(async (ctx) => { [1].forEach(() => { ctx.email.send({ from: "a@example.test", to: "b@example.test", subject: "s", text: "t" }); }); return true; })}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts"))
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, mutation }");
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("floating-out"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/mutations/m/ctx/email");
 }
 
 /// A run from a stored 0.8 finalize payload (`--manifest`), as a production census drives it.
@@ -633,7 +689,7 @@ fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool
     let output = command
         .arg("--out")
         .arg(out)
-        .args(["--dry-run", "--space", "spc_migrate_test"])
+        .args(["--dry-run", "--space", "spc_migrate_test", "--users"])
         .output()
         .unwrap();
     let report = serde_json::from_slice(&output.stdout)
@@ -680,6 +736,57 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     let (ok, report) = migrate_manifest(&manifest, Some(&source), &temp.path().join("b"));
     assert!(ok, "{report:#}");
     assert_eq!(report["status"], "dry-run");
+
+    // Files the publish did not record are not part of the published version: a page added later
+    // and an sf.jsonc naming another entry are both ignored, so the candidate is the publish's.
+    std::fs::create_dir_all(source.join("pages")).unwrap();
+    std::fs::write(
+        source.join("pages/added.tsx"),
+        "export default function Added() { return <p>later</p>; }\n",
+    )
+    .unwrap();
+    std::fs::write(source.join("sf.jsonc"), r#"{"runtime":{"server":"server/other.ts"}}"#).unwrap();
+    let out = temp.path().join("b2");
+    let output = Command::new(env!("CARGO_BIN_EXE_zero"))
+        .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
+        .arg(&manifest)
+        .arg(&source)
+        .arg("--out")
+        .arg(&out)
+        .args(["--space", "spc_migrate_test", "--users"])
+        .output()
+        .unwrap();
+    let written: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(output.status.success(), "{written:#}");
+    assert!(
+        !out.join("pages/added/page.tsx").exists(),
+        "an unrecorded page reached the candidate"
+    );
+    assert!(!out.join("pages").exists());
+    std::fs::remove_dir_all(source.join("pages")).unwrap();
+    std::fs::remove_file(source.join("sf.jsonc")).unwrap();
+
+    // A recorded sf.jsonc that names another entry than the publish compiled is refused.
+    let mut renamed: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    let config = r#"{"runtime":{"server":"server/main.ts"}}"#;
+    std::fs::write(source.join("sf.jsonc"), config).unwrap();
+    renamed["artifact"]["sourceManifest"]["files"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"path": "sf.jsonc", "size": config.len(), "sha256": sha2::Sha256::digest(config.as_bytes()).iter().map(|b| format!("{b:02x}")).collect::<String>()}));
+    let renamed_path = temp.path().join("renamed.json");
+    std::fs::write(&renamed_path, renamed.to_string()).unwrap();
+    let (ok, report) = migrate_manifest(&renamed_path, Some(&source), &temp.path().join("b3"));
+    assert!(!ok);
+    assert_eq!(report["errors"][0]["pointer"], "/source");
+    assert!(
+        report["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("the publish compiled server/index.ts"),
+        "{report:#}"
+    );
+    std::fs::remove_file(source.join("sf.jsonc")).unwrap();
 
     // A later edit is not the published version.
     std::fs::write(source.join("server/index.ts"), "// edited\n").unwrap();

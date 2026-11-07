@@ -36,6 +36,13 @@ probe = """    // Probes: undefined optional fields, and once() keyed to the req
     probeRestLiteral: route({ method: "GET", path: "/files/readme.txt", access: "anyone", handler() {
       return { body: "readme" };
     } }),
+    // Who the route sees: per channel, as WordPress REST decides it.
+    probeWhoGet: route({ method: "GET", path: "/api/probe-who", access: "anyone", handler(_req, ctx) {
+      return { body: ctx.user === null ? "anonymous" : "user " + String(ctx.user.id) };
+    } }),
+    probeWhoPost: route({ method: "POST", path: "/api/probe-who", access: "anyone", handler(_req, ctx) {
+      return { body: ctx.user === null ? "anonymous" : "user " + String(ctx.user.id) };
+    } }),
     // The query as URLSearchParams reads it.
     probeQuery: route({ method: "GET", path: "/api/probe-query", access: "anyone", handler(req) {
       return { headers: { "content-type": "application/json" }, body: JSON.stringify({

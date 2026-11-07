@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { auth, harness } from "../env.ts";
+import { auth, harness, sql } from "../env.ts";
+
+const marks = () => sql("SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'sf_spc_migrate_test_marks_%'")[0]?.t;
 
 const at = (path: string, init: RequestInit = {}) => fetch(`${harness.url}${path}`, { redirect: "manual", ...init });
 
@@ -70,6 +72,13 @@ test("0.8 endpoints answer at their original paths with 0.8 result rules", async
   assert.equal(home.status, 303);
   assert.equal(home.headers.get("location"), "/?from=ref");
   assert.equal((await at("/go/home")).headers.get("location"), "/?from=direct");
+
+  // A writing route that reads ctx.auth.userId refuses an anonymous caller with 401 before writing,
+  // so the v2 client can start a guest session; 0.8 always had a guest identity here.
+  const anonymous = await at("/api/marks", { method: "POST", body: "anonymous" });
+  assert.equal(anonymous.status, 401);
+  assert.equal((await anonymous.json()).code, "unauthorized");
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM ${marks()} WHERE label = 'anonymous'`)[0]?.n, "0", "nothing was written");
 
   // A method the path does not declare answers 405; HEAD follows GET.
   assert.equal((await at("/api/ping", { method: "POST" })).status, 405);

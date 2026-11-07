@@ -55,7 +55,8 @@ final class Crypto
             if (array_keys($key) !== ['value'] || !is_string($key['value'])) {
                 throw new JsError('crypto.hmacSha256 key must be a variable name or { value }', 'TypeError');
             }
-            $secret = $key['value'];
+            // An inline key can come from request input, so it gets the same cap as the data.
+            $secret = self::bounded($key['value'], 'crypto.hmacSha256');
         } elseif (is_string($key) && $key !== '') {
             $value = Env::get($key);
             $secret = $value === null ? '' : self::trim($value);

@@ -3,7 +3,11 @@
 Migrate a Spacefast app with the hosted operation below. It converts supported
 source, preserves content and user IDs, and carries existing logins into v2.
 Generated endpoints, actions, [HTTP routes](config-api.md#http-routes) and
-[TSX pages](pages.md) work on Spacefast. Realtime is not supported.
+[live updates](realtime.md) work on Spacefast. [TSX pages](pages.md) do not
+yet: the Spacefast host mounts the runtime, the app and identity for a v2
+version, but not the compiled pages plugin, and it does not serve its assets.
+Until it does, keep any 0.8 Space whose visitors depend on its pages on 0.8;
+this guide's commit step retires the 0.8 site.
 
 The baseline is `@spacefast/zero` and `@spacefast/zero-compile` 0.8.1. A
 successful source conversion proves that the candidate compiles. Complete the
@@ -26,10 +30,19 @@ standalone in-place commands later in this guide target a different deployment.
 2. Inspect the capsule, frontend callers, content, and Space Users settings.
    Identify custom endpoints, `pages/`, `layouts/`, and `islands/`. The converter
    turns endpoints into v2 [routes](config-api.md#http-routes) at the same
-   method and path, and static pages into [TSX pages](pages.md). It refuses
+   method and path (a final `:splat` becomes `*splat` plus a route at the bare
+   prefix), and static pages into [TSX pages](pages.md). It refuses
    interactive pages, layouts and islands with pointers; port those before
-   continuing. [Zero 0.8 parity](zero-08-parity.md) lists every capability. Realtime declarations produce a review hint and are removed.
-   Realtime is not supported.
+   continuing. [Zero 0.8 parity](zero-08-parity.md) lists every capability.
+   Realtime declarations and `ctx.invalidate(...)` calls are removed: v2
+   announces every committed write. Replace `useQuery` subscriptions with
+   [`watch`](realtime.md).
+
+   A hand-ported TSX page cannot go into the 0.8 project: the converter
+   refuses any page it can't convert and writes no candidate. Write it in a
+   separate directory and add it to the converted candidate after step 3.
+   Spacefast does not host TSX pages yet, so only Spaces that can go without
+   their pages should continue.
 3. Request the conversion report without changing the Space:
 
    ```sh
@@ -124,6 +137,12 @@ receipt in `<target-prefix>zero_spacefast_migrations`. A conflicting row refuses
 the group with `zero_spacefast_conflict` and rolls that group back. Earlier
 groups remain committed and are skipped on retry. On a completed rerun, each
 group reports `copied: 0` and `status: "already-migrated"`. Keep the receipts.
+Each receipt holds a digest of the source rows its group copied. `--verify`
+reports a group as `drifted` when any of those rows changed afterwards,
+including edits that keep row counts and IDs, such as a changed email,
+password hash, metadata value or session secret. Receipts written before
+content digests (bare 64-hex values) are still checked with the earlier
+count-based digest, so they keep verifying while the source is unchanged.
 
 ## Application source migration
 
@@ -218,7 +237,10 @@ keep their roles. The file carries no credentials or grants and is not part of
 the portable v2 config. Connector calls in handlers are refused. Spacefast's
 hosting integration owns applying this overlay and account sessions.
 
-Realtime declarations are dropped with a review hint: realtime is not supported.
+Realtime declarations map: v2 announces every committed write, so `realtime`
+and `ctx.invalidate(...)` (which named the live queries a mutation refreshed)
+are removed with a `mapped` entry. Old `useQuery` subscriptions are frontend code
+the migrator does not see; replace them with [`watch`](realtime.md).
 Endpoints become [routes](config-api.md#http-routes) with 0.8's result rules
 (`json()`, `text()`, `empty()`, `redirect()`, plain values). `paginate()`
 becomes a keyset read with the same order and result shape; old cursors are
@@ -239,7 +261,7 @@ source using only relative imports and `zero`. The embedded server compiler emit
 PHP at finalize. Migration never requires uploading generated PHP. Published
 versions share the current database schema, so forward migrations can break older
 code; the command adds no schema versioning or down migrations. Spacefast owns
-readiness, activation, and hosted client URLs. Realtime is not supported.
+readiness, activation, hosted client URLs and the live-update transport.
 
 The executable proof is `cargo test --test app_migrate` plus
 `tests/wp/app-migrate/run.sh`. The former compiles the generated apps with Zero
@@ -469,8 +491,8 @@ before activating an app.
 | Connector roles | Emits `connector-roles.json`; maps `owner` to `personal` and retains `team` and `visitor` | The overlay grants no credentials or permissions; old connector calls require a port |
 | REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | HEAD/OPTIONS, a `:splat` that is not last, writing GETs, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
-| Realtime | Unsupported; source conversion drops the declaration with a review hint | Replace subscription-dependent behavior before cutover |
-| Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `zero-pages build` and commit `zero/pages.json` |
+| Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
+| Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `zero-pages build` and commit `zero/pages.json`. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over |
 | Content sync | Local `zero sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |
 | Publication and rollback | Spacefast migration commits a one-way transition to v2 | 0.8 publication and promotion are refused after commit; immutable 0.8 URLs return `410 zero_legacy_retired`; older v2 code still shares the latest schema |

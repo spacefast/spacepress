@@ -213,8 +213,14 @@ fn relocate(text: &str, extra: usize) -> String {
         return text.to_string();
     }
     let up = "../".repeat(extra);
-    text.replace("from \"../", &format!("from \"{up}../"))
-        .replace("from \"./", &format!("from \"{up}"))
+    // Both quote styles: `from '../shared/plans'` is as valid as `from "../shared/plans"`.
+    let mut out = text.to_string();
+    for quote in ['"', '\''] {
+        out = out
+            .replace(&format!("from {quote}../"), &format!("from {quote}{up}../"))
+            .replace(&format!("from {quote}./"), &format!("from {quote}{up}"));
+    }
+    out
 }
 
 /// Why a page needs a manual port: what it uses, and what replaces it on v2.

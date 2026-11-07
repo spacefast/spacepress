@@ -330,7 +330,7 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     );
     rejects(
         "reject-db-globals-patch",
-        "`stats` must be { visits: number } | null, not number",
+        "`stats` must be { visits: number } | null | undefined, not number",
         "zero.config.ts:4:",
     );
 }
@@ -816,6 +816,32 @@ fn compiled_php_matches_node_on_every_differential_case() {
         .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("zero-app-"))
         .expect("the app plugin");
     let runtime = plugins.join("zero-runtime");
+
+    let functions = std::fs::read_to_string(app.join("zero/app/functions.php")).unwrap();
+    let body = |name: &str| {
+        functions
+            .split(&format!("function {name}("))
+            .nth(1)
+            .expect("differential helper is emitted")
+            .split("\nfunction ")
+            .next()
+            .unwrap()
+    };
+    assert!(body("nativeParameter").contains("$input->p['n'] ?? \\Zero\\Js::dataGet($input, 'n')"));
+    assert!(
+        body("nativeParameter")
+            .lines()
+            .any(|line| line.contains("->p[") && line.contains("] = "))
+    );
+    assert!(body("nativeMissing").contains("$input->p["));
+    assert!(
+        body("reboundParameter").contains("\\Zero\\Js::dataGet($input, 'n')")
+            && !body("reboundParameter").contains("->p[")
+    );
+    assert!(
+        body("nullableParameter").contains("\\Zero\\Js::dataGet($input, 'n')")
+            && !body("nullableParameter").contains("->p[")
+    );
 
     let mut mismatches = Vec::new();
     for (name, want) in expected.as_object().unwrap() {
@@ -1467,17 +1493,47 @@ fn rejects_phase2_static_contracts() {
         assert_eq!(out.status.code(), Some(1), "{stderr}");
         assert!(stderr.contains(diagnostic), "{stderr}");
     }
-    for invocation in [
-        "[1, 2].reduce((acc, item) => { value++; return acc; }, 0)",
-        "[1, 2].flatMap(item => { value++; return [item]; })",
-        "[1, 2].findLast(item => { value++; return false; })",
-        "[1, 2].findLastIndex(item => { value++; return false; })",
-        "[2, 1].sort((a, b) => { value += 2; return a - b; })",
-        "[2, 1].toSorted((a, b) => { value += 2; return a - b; })",
-        "Array.from({ length: 2 }, () => { value++; return 1; })",
-        "const items = [1, 2]; Array.from(items, item => { value++; return item; })",
-        "'aa'.replace(/a/g, () => { value++; return 'b'; })",
-        "'aa'.replaceAll('a', () => { value++; return 'b'; })",
+    for (invocation, diagnostic) in [
+        (
+            "[1, 2].reduce((acc, item) => { value++; return acc; }, 0)",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[1, 2].flatMap(item => { value++; return [item]; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[1, 2].findLast(item => { value++; return false; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[1, 2].findLastIndex(item => { value++; return false; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "[2, 1].sort((a, b) => { value += 2; return a - b; })",
+            "sorting requires a numeric key-difference comparator",
+        ),
+        (
+            "[2, 1].toSorted((a, b) => { value += 2; return a - b; })",
+            "sorting requires a numeric key-difference comparator",
+        ),
+        (
+            "Array.from({ length: 2 }, () => { value++; return 1; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const items = [1, 2]; Array.from(items, item => { value++; return item; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "'aa'.replace(/a/g, () => { value++; return 'b'; })",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "'aa'.replaceAll('a', () => { value++; return 'b'; })",
+            "field rules must return a boolean on every path",
+        ),
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
@@ -1485,10 +1541,7 @@ fn rejects_phase2_static_contracts() {
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{invocation}: {stderr}");
-        assert!(
-            stderr.contains("field rules must return a boolean on every path"),
-            "{invocation}: {stderr}"
-        );
+        assert!(stderr.contains(diagnostic), "{invocation}: {stderr}");
     }
     for extraction in [
         "const write = writers.at(0)!; write()",
@@ -1649,10 +1702,10 @@ fn phase2_schema_and_closures_match_the_contract() {
     let text = String::from_utf8_lossy(&out.stdout);
     let result: serde_json::Value =
         serde_json::from_str(text.lines().next_back().unwrap_or("")).unwrap_or_else(|_| panic!("{text}"));
-    let nullable_arguments = serde_json::json!({"local": 1, "module": 2, "sibling": 3, "stable": "a", "unchecked": {"empty": null, "shortened": null, "tail": [null], "reversed": "b", "captured": "b", "forwarded": "b", "grown": "a", "optional": null, "present": true, "defaulted": true, "moduleDefaulted": true, "moduleProvided": false, "destructuredDefault": true, "destructuredProvided": false, "early": null, "late": "b"}, "ordered": 4, "looped": "b", "earlier": 0});
+    let nullable_arguments = serde_json::json!({"local": 1, "module": 2, "sibling": 3, "stable": "a", "unchecked": {"tail": [null], "reversed": "b", "captured": "b", "forwarded": "b", "grown": "a", "present": true, "defaulted": true, "moduleDefaulted": true, "moduleProvided": false, "destructuredDefault": true, "destructuredProvided": false, "early": null, "late": "b"}, "ordered": 4, "looped": "b", "earlier": 0});
     assert_eq!(
         result,
-        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 1, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 1, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "shadow": 1, "early": 0, "byValue": 1, "passed": {"object": {"keep": 0}, "destructured": {"keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0"}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

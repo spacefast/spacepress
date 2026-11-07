@@ -68,6 +68,7 @@ fn callable_at(value: &Place, callee: &Place) -> bool {
 
 #[derive(Default)]
 pub(super) struct Effects {
+    reassigned: HashSet<Span>,
     captured: HashSet<Span>,
     captured_data: HashMap<(u8, usize), Place>,
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
@@ -96,6 +97,9 @@ impl Effects {
             .collect()
     }
 
+    pub fn binding_reassigned(&self, binding: Span) -> bool {
+        self.reassigned.contains(&binding)
+    }
     pub fn captured(&self, binding: Span) -> bool {
         self.captured.contains(&binding)
     }
@@ -751,6 +755,7 @@ impl Graph {
         env.vars.borrow_mut().insert(
             ":class".into(),
             Binding {
+                initialized: true,
                 value: Value::Class(class.clone()),
                 mutable: false,
                 module_level: false,
@@ -763,6 +768,7 @@ impl Graph {
             method_env.vars.borrow_mut().insert(
                 ":static".into(),
                 Binding {
+                    initialized: true,
                     value: Value::Bool(*is_static),
                     mutable: false,
                     module_level: false,
@@ -1998,6 +2004,13 @@ impl Graph {
         }
         let mut effects = Effects {
             binding_writes,
+            reassigned: self
+                .write_events
+                .values()
+                .flatten()
+                .filter(|place| place.path.is_empty())
+                .map(|place| place.binding)
+                .collect(),
             captured: self.captured,
             captured_data: self.captured_data,
             numeric: HashMap::new(),

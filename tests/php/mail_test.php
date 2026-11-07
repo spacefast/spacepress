@@ -98,6 +98,45 @@ eq('the queue hands the message to wp_mail once',
     [count($sent), $sent[0]['to'], $sent[0]['subject'], $sent[0]['message'], $jobs()[0]['state']],
     [1, ['ok@example.test'], 'Hello', '<p>rich</p>', 'done']);
 
+// ---- one PHPMailer serves the whole queue run: a text alternative never carries over
+// WordPress's own mailer; preSend() builds each message, nothing is sent.
+remove_all_filters('pre_wp_mail');
+$bodies = [];
+add_action('phpmailer_init', static function ($mailer) use (&$bodies): void {
+    $mailer->isSendmail();
+    $mailer->Sendmail = '/bin/true';
+}, PHP_INT_MIN);
+add_action('phpmailer_init', static function ($mailer) use (&$bodies): void {
+    $bodies[] = ['to' => array_keys($mailer->getAllRecipientAddresses())[0], 'alt' => $mailer->AltBody];
+}, PHP_INT_MAX);
+// The queued job input is the normalized message send() stores.
+$rich = static fn (string $to) => ['message' => Mail::payload(['to' => $to, 'subject' => 'S', 'html' => '<p>rich</p>', 'text' => "private text for $to"])];
+$plain = static fn (string $to) => ['message' => Mail::payload(['to' => $to, 'subject' => 'S', 'html' => '<p>html only</p>'])];
+Mail::deliver($rich('first@example.test'), []);
+Mail::deliver($plain('second@example.test'), []);
+eq('a later html-only message does not inherit the previous message\'s text part', $bodies, [
+    ['to' => 'first@example.test', 'alt' => 'private text for first@example.test'],
+    ['to' => 'second@example.test', 'alt' => ''],
+]);
+global $phpmailer;
+eq('the shared mailer is left as it was found', $phpmailer->AltBody, '');
+remove_all_actions('phpmailer_init');
+add_filter('pre_wp_mail', static function ($short, array $atts) use (&$sent) {
+    $sent[] = $atts;
+    return true;
+}, 10, 2);
+
+// ---- a host transport at priority 0 is still the transport (has_filter() answers 0)
+$zero = [];
+add_filter('zero_mail_transport', static function ($accepted, array $payload) use (&$zero) {
+    $zero[] = $payload['to'][0]['email'];
+    return true;
+}, 0, 2);
+$sent = [];
+Mail::deliver($plain('zero@example.test'), []);
+eq('a priority-0 transport receives the message and wp_mail is not used', [$zero, $sent], [['zero@example.test'], []]);
+remove_all_filters('zero_mail_transport');
+
 // ---- the host transport replaces wp_mail and a refusal is retried
 $offered = [];
 $accept = false;

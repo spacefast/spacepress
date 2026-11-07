@@ -6,6 +6,11 @@ import { api, auth, http, ok, qs, run, sql, wp, zero } from "./env.ts";
 
 const tree = (rows: any[]) => rows.map((r) => [`${r.locale}:${r.title}`, r.legs.map((l: any) => `${l.locale}:${l.title}`)]);
 
+test("a generated object handler trims, updates and returns its validated input", async () => {
+  assert.deepEqual(await ok("POST", "/actions/nativeHandler", { body: { title: "  A native handler  ", count: 1 } }),
+    { title: "A native handler", count: 2 });
+});
+
 test("with: a localized `many` resolves to each parent row's locale through Polylang, falling back per group", async () => {
   const en = await ok("POST", "/tours", { as: "editor", body: { title: `Legs ${run}` } });
   const fr = await ok("POST", "/tours", { as: "editor", body: { title: `Legs FR ${run}`, locale: "fr", translationOf: en.id } });

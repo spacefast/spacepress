@@ -54,8 +54,29 @@ public API cannot serve 0.8 capsule source at all:
   (`source.kind: "git"`, `commit`, `repository`), which needs access to that
   repository, not to Spacefast.
 - What the finalizer keeps (`sourceMetadata.statticZero.finalize`) is the
-  compiled endpoint and run bundles, not capsule source; the converter refuses
-  those, as the `zero-all-features` fixture shows.
+  artifact (schema, handler names, endpoint routes, pages and a list of source
+  files with their SHA-256) and one esbuild bundle per endpoint and handler.
+  The bundles are compiled JavaScript without types, so they cannot be turned
+  back into the authored TypeScript.
+
+**Converting from a finalize manifest.** `zero migrate app --from zero-0.8
+--manifest <finalize.json> [<source-dir>]` reads that stored payload (or its
+bare `artifact`):
+
+- Without a source directory, it reports what the manifest decides on its own:
+  sockets, endpoint methods and paths (reserved prefixes, HEAD/OPTIONS, writing
+  GETs, `:splat` placement) and document pages, with the same pointers as a
+  source run. It then refuses at `/source` with "source not recoverable". Such
+  an app is never counted as accepted.
+- With a source directory (for example a checkout at the published commit),
+  every file in `sourceManifest.files` must match its recorded SHA-256, or the
+  app is refused at `/source` ("source differs from the published version").
+  Then it converts as a source run does.
+
+`scripts/migrate-census.py` counts a directory holding `finalize.json` (and,
+when recovered, `source/`) as one app, so a production census can run on the
+stored manifests. The `source` category counts apps refused for missing or
+differing source.
 
 So the census can only cover sources that exist outside Spacefast. Counting
 the live set needs one of these, read-only and scoped like the copier:
@@ -178,7 +199,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `request.url`, `bytes()`, `arrayBuffer()`, `headers.entries` | **missing** on `RouteRequest` | Refused with pointer | Port |
 | `HEAD`, `OPTIONS` endpoints | GET answers HEAD; **missing** OPTIONS | Refused | Port |
 | `:param` segments | `:param` | Auto, **WP** | — |
-| `*rest` catch-all segments | `*rest` (#134): one or more decoded segments joined with `/` | Auto, **WP** | — |
+| A final `:splat` (0.8's only catch-all; `*` is refused at publish) | `*splat` (#134), one or more decoded segments joined with `/`, plus a second route at the bare prefix, which 0.8's `:splat` also answered with an empty `params.splat` | Auto, **WP** | — |
 | A writing `GET` (`readOnly: false`) | **missing** by design: GET routes take cookies without a nonce | Refused | Move to POST |
 | Paths under `wp-*`, `feed`, `auth`, `__zero`, … | Owned by WordPress or Zero | Refused | Move the endpoint |
 | `ImageResponse` | **missing** (PHP has no JSX renderer) | Refused | Pre-render the image |
@@ -224,7 +245,8 @@ PR stacked on #118, implemented in PHP:
 2. **Hashing builtins** (`ctx.crypto`): done in #132.
 3. **Free-form email from handlers** (`ctx.email.send`): done in #133. The
    Spacefast engine still has to connect its sender (see #133).
-4. **Catch-all route segments** (`*rest`): done in #134.
+4. **Catch-all route segments**: done in #134 as v2's `*rest`. The converter
+   maps 0.8's final `:splat` onto it.
 5. **`RouteRequest.url` and raw bytes**. Small, but the route request belongs to
    #129, so it is left to that PR.
 6. **Gravatar, spam and JWT services**. Each is small to medium. Spam needs a

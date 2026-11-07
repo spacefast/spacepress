@@ -668,8 +668,9 @@ pub(super) fn app(
         }
     }
     let mut routes: Vec<(String, String)> = Vec::new();
+    let mut prefixes: Vec<(String, String, String, String)> = Vec::new();
+    let mut seen = BTreeSet::new();
     if let Some(group) = root.get("endpoints") {
-        let mut seen = BTreeSet::new();
         for (name, e) in obj(group, "/endpoints")? {
             let at = pointer("/endpoints", &name);
             let result = (|| {
@@ -702,20 +703,7 @@ pub(super) fn app(
                     Some(_) => return Err(fail(&pointer(&at, "readOnly"), "readOnly must be a literal boolean")),
                 };
                 let route = super::endpoints::route(&method, &path, read_only, &at)?;
-                let shape = route
-                    .path
-                    .split('/')
-                    .map(|s| {
-                        if s.starts_with(':') {
-                            ":"
-                        } else if s.starts_with('*') {
-                            "*"
-                        } else {
-                            s
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("/");
+                let shape = route_shape(&route.path);
                 if !seen.insert((route.method.clone(), shape)) {
                     return Err(fail(&at, "two endpoints share a method and path shape"));
                 }
@@ -743,7 +731,17 @@ pub(super) fn app(
             })();
             match result {
                 Ok(((code, generated), route)) => {
+                    let (prefixed, generated): (Vec<_>, Vec<_>) =
+                        generated.into_iter().partition(|g| g.starts_with(PREFIX_MARK));
                     helpers.extend(generated);
+                    if let (Some(prefix), Some(code)) = (&route.prefix, prefixed.into_iter().next()) {
+                        prefixes.push((
+                            route.method.clone(),
+                            prefix.clone(),
+                            at.clone(),
+                            code[PREFIX_MARK.len()..].to_string(),
+                        ));
+                    }
                     routes.push((route.path.clone(), code));
                     entries.push(entry(
                         &at,
@@ -762,6 +760,17 @@ pub(super) fn app(
                 }
                 Err(e) => errors.push(e),
             }
+        }
+    }
+    // An exact endpoint at the prefix wins over the splat in 0.8 (exact paths are served first).
+    for (method, prefix, at, code) in prefixes {
+        if seen.insert((method.clone(), route_shape(&prefix))) {
+            entries.push(entry(
+                &at,
+                "mapped",
+                format!("{method} {prefix} also reaches this handler with an empty splat, as in 0.8"),
+            ));
+            routes.push((prefix, code));
         }
     }
     if handlers
@@ -911,6 +920,22 @@ fn uses_global_fetch(body: &[&Stmt], source: &str) -> bool {
             && after.starts_with('(')
     });
     calls && !binds
+}
+
+/// A route path with parameter names erased, so two routes v2 would refuse as ambiguous compare equal.
+fn route_shape(path: &str) -> String {
+    path.split('/')
+        .map(|s| {
+            if s.starts_with(':') {
+                ":"
+            } else if s.starts_with('*') {
+                "*"
+            } else {
+                s
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Names declared with `declare const|let|var` at module level.
@@ -1349,13 +1374,29 @@ fn endpoint(
     if r.logs {
         r.helpers.push(LOG.into());
     }
-    let code = format!(
-        "{}: __z08Route({{ method: {}, path: {}, access: \"anyone\", async handler({req}, __z08ctx) {{\n{gate}{subject}{body}\n}} }})",
-        q(name),
-        q(&route.method),
-        q(&route.path),
-    );
+    let handler = format!("access: \"anyone\", async handler({req}, __z08ctx) {{\n{gate}{subject}{body}\n}}");
+    let code = route_entry(name, &route.method, &route.path, &handler);
+    // 0.8's `/a/:splat` answered `/a` too; v2's `*splat` needs a segment, so the same handler can
+    // also take the bare prefix, where `params.splat` reads "". The caller decides whether it may.
+    if let Some(prefix) = &route.prefix {
+        r.helpers.push(format!(
+            "{PREFIX_MARK}{}",
+            route_entry(&format!("{name}__z08prefix"), &route.method, prefix, &handler)
+        ));
+    }
     Ok((code, r.helpers))
+}
+
+/// Marks the bare-prefix route `endpoint()` returns among its helpers.
+const PREFIX_MARK: &str = "\0prefix-route\0";
+
+fn route_entry(name: &str, method: &str, path: &str, handler: &str) -> String {
+    format!(
+        "{}: __z08Route({{ method: {}, path: {}, {handler} }})",
+        q(name),
+        q(method),
+        q(path)
+    )
 }
 
 struct Rewrite<'a> {

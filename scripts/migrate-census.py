@@ -3,6 +3,12 @@
 
 Usage: scripts/migrate-census.py [--zero target/debug/zero] [--json] [--flag <converter flag>]... [corpus-dir ...]
 
+An app is a 0.8 project directory, or a stored finalize payload: a directory with
+`finalize.json` (the `{ artifact, endpointSources }` a 0.8 publish kept) and, when the
+published source was recovered, a `source/` directory beside it. Such an app runs as
+`zero migrate app --from zero-0.8 --manifest finalize.json [source]`; without `source/`
+it is refused at `/source` ("source not recoverable"), never accepted.
+
 The default corpus is tests/fixtures/app-migrate/corpus: 0.8 projects copied from
 spacefast/monorepo (see its README). The purpose-built converter fixtures beside it are not
 counted, so the census does not grade the converter on its own tests. Each immediate
@@ -30,6 +36,8 @@ DEFAULT = [os.path.join(ROOT, "tests/fixtures/app-migrate/corpus")]
 
 # Ordered: the first match wins.
 CATEGORIES = [
+    # A manifest app whose source is missing, or differs from the published hashes.
+    ("source", r"^/source$"),
     ("pages", r"^/(pages|layouts|islands)(/|$)"),
     ("endpoints", r"^/endpoints(/|$)"),
     ("auth-callbacks", r"^/auth/"),
@@ -67,7 +75,8 @@ def category(error):
 
 def projects(paths):
     for path in paths:
-        if os.path.isdir(os.path.join(path, "server")) or os.path.exists(os.path.join(path, "sf.jsonc")):
+        if (os.path.isdir(os.path.join(path, "server")) or os.path.exists(os.path.join(path, "sf.jsonc"))
+                or os.path.exists(os.path.join(path, "finalize.json"))):
             yield path
             continue
         for name in sorted(os.listdir(path)):
@@ -86,8 +95,14 @@ def flags(project):
 
 def run(zero, project, scratch, extra):
     out = os.path.join(scratch, os.path.basename(project))
+    manifest = os.path.join(project, "finalize.json")
+    if os.path.exists(manifest):
+        source = os.path.join(project, "source")
+        inputs = ["--manifest", manifest, *([source] if os.path.isdir(source) else [])]
+    else:
+        inputs = [project]
     proc = subprocess.run(
-        [zero, "migrate", "app", "--from", "zero-0.8", project, "--out", out,
+        [zero, "migrate", "app", "--from", "zero-0.8", *inputs, "--out", out,
          "--space", "spc_census", "--dry-run", "--json", *sorted(set(flags(project) + extra))],
         capture_output=True, text=True,
     )

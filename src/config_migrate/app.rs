@@ -1,5 +1,6 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
 mod endpoints;
+mod manifest;
 mod pages;
 mod spacefast;
 mod transform;
@@ -26,11 +27,12 @@ pub struct Report {
 }
 
 #[cfg(feature = "cli")]
-const USAGE: &str = "usage: zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <space-id>] [--users] [--dry-run] [--json]";
+const USAGE: &str = "usage: zero migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id>] [--users] [--dry-run] [--json]";
 
 #[cfg(feature = "cli")]
 struct Args {
-    input: PathBuf,
+    input: Option<PathBuf>,
+    manifest: Option<PathBuf>,
     out: PathBuf,
     space: Option<String>,
     dry_run: bool,
@@ -41,6 +43,7 @@ struct Args {
 fn args(raw: &[String]) -> Result<Args, String> {
     let mut from = None;
     let mut input = None;
+    let mut manifest = None;
     let mut out = None;
     let mut space = None;
     let mut dry_run = false;
@@ -50,6 +53,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--from" if from.is_none() => from = Some(it.next().ok_or(USAGE)?.as_str()),
+            "--manifest" if manifest.is_none() => manifest = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--out" if out.is_none() => out = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--space" if space.is_none() => space = Some(it.next().ok_or(USAGE)?.clone()),
             "--users" if !users => users = true,
@@ -63,8 +67,12 @@ fn args(raw: &[String]) -> Result<Args, String> {
     if from != Some("zero-0.8") {
         return Err(USAGE.into());
     }
+    if input.is_none() && manifest.is_none() {
+        return Err(USAGE.into());
+    }
     Ok(Args {
-        input: input.ok_or(USAGE)?,
+        input,
+        manifest,
         out: out.ok_or(USAGE)?,
         space,
         dry_run,
@@ -81,7 +89,24 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let mut candidate = migrate(Rc::new(loader::Disk), &args.input, args.space.as_deref(), args.users);
+    let mut candidate = match &args.manifest {
+        None => migrate(
+            Rc::new(loader::Disk),
+            args.input.as_deref().expect("input"),
+            args.space.as_deref(),
+            args.users,
+        ),
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(text) => migrate_manifest(
+                Rc::new(loader::Disk),
+                &text,
+                args.input.as_deref(),
+                args.space.as_deref(),
+                args.users,
+            ),
+            Err(e) => Candidate::refused(fail("", format!("cannot read finalize manifest: {e}"))),
+        },
+    };
     if std::fs::symlink_metadata(&args.out).is_ok() {
         candidate.report.errors.push(fail(
             "",
@@ -115,6 +140,73 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
 pub struct Candidate {
     pub report: Report,
     pub files: BTreeMap<String, String>,
+}
+
+impl Candidate {
+    fn refused(error: Failure) -> Candidate {
+        let mut candidate = Candidate {
+            report: Report::new(),
+            files: BTreeMap::new(),
+        };
+        candidate.report.errors.push(error);
+        candidate
+    }
+}
+
+impl Report {
+    fn new() -> Report {
+        Report {
+            version: 1,
+            source: "zero-0.8",
+            status: "refused",
+            entries: vec![],
+            errors: vec![],
+            adoption_sql: None,
+            connector_roles: serde_json::json!({}),
+        }
+    }
+}
+
+/// Converts from a stored 0.8 finalize manifest (`{ artifact, endpointSources }`). With `source`,
+/// the original files must match the manifest's hashes and then convert as a source run does.
+/// Without it, the manifest's own refusals are reported, and the app is refused at `/source`:
+/// bundled endpoint JavaScript has no types, so it cannot become authored TypeScript.
+pub fn migrate_manifest(
+    fs: Rc<dyn Fs>,
+    text: &str,
+    source: Option<&Path>,
+    space: Option<&str>,
+    users: bool,
+) -> Candidate {
+    let manifest = match manifest::parse(text) {
+        Ok(m) => m,
+        Err(e) => return Candidate::refused(e),
+    };
+    let Some(root) = source else {
+        let mut candidate = Candidate::refused(fail(
+            "/source",
+            format!(
+                "{}: the finalize manifest keeps bundled JavaScript, not the authored TypeScript; supply the source at the published commit",
+                manifest::NOT_RECOVERABLE
+            ),
+        ));
+        let report = &mut candidate.report;
+        manifest.check(&mut report.entries, &mut report.errors);
+        // The source refusal stays last, so an app's own blockers rank first.
+        report.errors.rotate_left(1);
+        return candidate;
+    };
+    if let Err(e) = fs
+        .canonicalize(root)
+        .map_err(io)
+        .and_then(|root| manifest.verify(fs.as_ref(), &root))
+    {
+        let mut candidate = Candidate::refused(e);
+        manifest.check(&mut candidate.report.entries, &mut candidate.report.errors);
+        return candidate;
+    }
+    // Every recorded file, including the sf.jsonc that names the server entry, matched its hash.
+    migrate(fs, root, space, users)
 }
 
 pub fn migrate(fs: Rc<dyn Fs>, input: &Path, space: Option<&str>, users: bool) -> Candidate {

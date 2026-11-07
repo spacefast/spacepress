@@ -223,7 +223,7 @@ jobs:
 
   wp:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 35
     env:
       ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
     steps:
@@ -254,21 +254,11 @@ jobs:
         working-directory: runtime/admin/apps
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: runtime/admin/apps
+      # Main suites and the native admin journey, on one stack. The migration and S3 lanes run as
+      # their own jobs below: on one runner the three together reached the 40-minute limit.
       - run: tests/wp/run.sh
-      - name: Spacefast cross-prefix migration and session continuity
-        run: ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
-      - name: Outbound fetch with SSRF refusals
-        run: ZERO_WP_PROJECT=zero-wp-fetch ZERO_WP_PORT=8899 tests/wp/fetch/run.sh
-      - name: First-publish seed and sync adoption
-        run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
-      - name: Hosted pages, island, action and HTTP routes from compile-sources
-        run: |
-          (cd packages/blocks && pnpm install --frozen-lockfile && pnpm build)
-          (cd packages/pages && pnpm install --frozen-lockfile)
-          npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
-          ZERO_WP_PROJECT=zero-wp-pages ZERO_WP_PORT=8873 tests/wp/hosted-pages-run.sh
-      - name: Shared S3 storage across disposable replicas
-        run: ZERO_WP_PROJECT=zero-wp-s3 ZERO_WP_PORT=8792 ZERO_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
+        env:
+          ZERO_WP_SKIP_MIGRATE: '1'
       - name: Preserve failed native admin browser evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -277,6 +267,113 @@ jobs:
           path: /tmp/zero-admin-browser
           if-no-files-found: ignore
           retention-days: 7
+
+  wp-migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .zero/cache/plugins
+            tests/wp/cache
+          key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: cargo build --locked --bin zero
+      - name: Zero 0.8 site, app-user and application migrations
+        run: ZERO_WP_PROJECT=zero-wp-migrate ZERO_WP_PORT=8794 tests/wp/migrate-run.sh
+      - name: Spacefast cross-prefix migration and session continuity
+        run: ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+      - name: First-publish seed and sync adoption
+        run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
+      - name: Outbound fetch with SSRF refusals
+        run: ZERO_WP_PROJECT=zero-wp-fetch ZERO_WP_PORT=8899 tests/wp/fetch/run.sh
+
+  wp-s3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .zero/cache/plugins
+            tests/wp/cache
+          key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - name: Shared S3 storage across disposable replicas
+        run: ZERO_WP_PROJECT=zero-wp-s3 ZERO_WP_PORT=8792 ZERO_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
+
+  # Hosted TSX pages, the island in Chromium and custom HTTP routes, from `zero compile-sources`.
+  wp-pages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .zero/cache/plugins
+            tests/wp/cache
+          key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: corepack enable
+      - run: cargo build --locked --bin zero
+      - name: Hosted pages, island, action and HTTP routes from compile-sources
+        run: |
+          (cd packages/blocks && pnpm install --frozen-lockfile && pnpm build)
+          (cd packages/pages && pnpm install --frozen-lockfile)
+          npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
+          ZERO_WP_PROJECT=zero-wp-pages ZERO_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 
   # `zero dev` from a release binary after removing its build checkout.
   installed:

@@ -31,13 +31,15 @@ async function walk(name: string, input: object, numItems: number): Promise<stri
 
 test("migrated paginate keeps the 0.8 keyset order and cursor contract", async () => {
   // by_creation desc: createdAt desc, then id desc on the minute ties.
-  assert.deepEqual(await walk("latest", {}, 2), [["7", "5"], ["4", "3"], ["2", "6"], ["1"]]);
-  assert.deepEqual(await walk("latest", {}, 7), [["7", "5", "4", "3", "2", "6", "1"]]);
+  assert.deepEqual(await walk("latest", {}, 2), [["9", "8"], ["7", "5"], ["4", "3"], ["2", "6"], ["1"]]);
+  assert.deepEqual(await walk("latest", {}, 9), [["9", "8", "7", "5", "4", "3", "2", "6", "1"]]);
   // by_channel asc after channel = "a": score, createdAt, id.
   assert.deepEqual(await walk("channel", { channel: "a" }, 2), [["6", "2"], ["4", "5"], ["1"]]);
   // numItems clamps to 1..1000 like 0.8.
-  assert.deepEqual((await page("latest", { options: { numItems: 0, cursor: null } })).page.map((r) => r.id), ["7"]);
-  assert.equal((await page("latest", { options: { numItems: 5000, cursor: null } })).page.length, 7);
+  assert.deepEqual((await page("latest", { options: { numItems: 0, cursor: null } })).page.map((r) => r.id), ["9"]);
+  assert.equal((await page("latest", { options: { numItems: 5000, cursor: null } })).page.length, 9);
+  // A key holding NUL still round-trips: the cursor encodes keys as a JSON array, not joined text.
+  assert.deepEqual(await walk("channel", { channel: "nul\u0000x" }, 1), [["8"], ["9"]]);
 
   const first = await page("channel", { channel: "a", options: { numItems: 2, cursor: null } });
   assert.ok(first.continueCursor);
@@ -46,7 +48,9 @@ test("migrated paginate keeps the 0.8 keyset order and cursor contract", async (
     const { status, body } = await call(name, { ...input, options: { numItems: 2, cursor: first.continueCursor } });
     assert.equal(status, 400, JSON.stringify(body));
   }
-  for (const cursor of ["not json", JSON.stringify({ site: "x", keys: "1" }), JSON.stringify({ site: "channel:0:posts:by_channel:asc", scope: '["a"]', keys: "a\u0000NaN\u0000x\u00001" })]) {
+  for (const cursor of ["not json", JSON.stringify({ site: "x", keys: "1" }), JSON.stringify({ site: "channel:0:posts:by_channel:asc", scope: '["a"]', keys: JSON.stringify(["a", "NaN", "x", "1"]) }),
+    JSON.stringify({ site: "channel:0:posts:by_channel:asc", scope: '["a"]', keys: JSON.stringify(["a", 1, "x", "1"]) }),
+    JSON.stringify({ site: "channel:0:posts:by_channel:asc", scope: '["a"]', keys: JSON.stringify(["a", "1", "x"]) })]) {
     const { status } = await call("channel", { channel: "a", options: { numItems: 2, cursor } });
     assert.equal(status, 400, cursor);
   }

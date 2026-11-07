@@ -324,6 +324,7 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/examples.md`](docs/examples.md): the examples, how to run each, and the suites that prove them
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
 - [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
+- [`docs/realtime.md`](docs/realtime.md): live updates with `watch`, the change hook and pluggable transports
 - [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
 - [`docs/pages.md`](docs/pages.md): optional TSX routes, layouts and viewer-bound pages, with a complete site example
 - [`docs/identity-api.md`](docs/identity-api.md) and [`docs/identity-security.md`](docs/identity-security.md): the `zero-identity` plugin

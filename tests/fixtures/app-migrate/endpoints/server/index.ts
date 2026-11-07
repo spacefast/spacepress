@@ -5,7 +5,11 @@ const LIMIT = 3;
 // Every 0.8 endpoint result shape, the request API, and both execution modes.
 export default capsule({
   name: "Legacy Endpoints",
-  schema: { notes: table({ body: string(), tag: string().default("") }).index("by_tag", ["tag"]) },
+  schema: {
+    notes: table({ body: string(), tag: string().default("") }).index("by_tag", ["tag"]),
+    // Owned by the 0.8 caller's identity (`--users`): its anonymous write route must 401 first.
+    marks: table({ owner: string(), label: string() }),
+  },
   mutations: {
     add: mutation(async (ctx, body: string) => ctx.db.notes.insert({ body })),
   },
@@ -44,6 +48,10 @@ export default capsule({
       json({ first: request.query.get("t"), all: request.query.getAll("t"), dotted: request.query.get("user.id") })),
     // 0.8's catch-all: a final :splat, read as params.splat; it also answers /api/files itself.
     file: endpoint({ method: "GET", path: "/api/files/:splat" }, (_ctx, request) => text("file " + request.params.splat)),
+    mark: endpoint({ method: "POST", path: "/api/marks" }, async (ctx, request) => {
+      await ctx.db.marks.insert({ owner: ctx.auth.userId, label: await request.text() });
+      return text("marked", { status: 201 });
+    }),
     total: endpoint({ method: "GET", path: "/api/total" }, async (ctx) => (await ctx.db.notes.withIndex("by_creation").count())),
   },
 });

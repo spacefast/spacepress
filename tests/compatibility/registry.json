@@ -623,6 +623,29 @@
       "fixture": "tests/fixtures/reject-zero-fetch-import",
       "message": "\"zero\" has no export named `fetch`",
       "guidance": "fetch and crypto are the standard globals, not \"zero\" exports. Remove them from the import."
+    },
+    {
+      "id": "build-time-namespaces",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "build_time_namespaces_resolve_members_and_refuse_whole_values",
+      "guidance": "A member chain rooted at a module-level object that holds functions (`import * as ns`, `const o = { f }`, `export default { f }`) resolves at compile time: functions compile to helpers and data to the shared captured singleton for that sub-value. Functions may carry own properties set with `f.x = v` or build-time `Object.assign(f, ...)`; they are called and their properties are read the same way. The differential cases `namespaceImport`, `namespaceLocal`, `namespaceDefault`, `functionProperties` and `functionAssign` run in Node and PHP."
+    },
+    {
+      "id": "namespace-value",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-namespace-value",
+      "message": "holds functions, so it exists only while the config is built",
+      "guidance": "An object that holds functions has no PHP form. Call or read its members directly (`ns.fn(x)`, `ns.value`) instead of passing, storing, spreading, iterating or writing the object."
+    },
+    {
+      "id": "function-properties-value",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-function-properties-value",
+      "message": "is a function with properties, which can't be used as a value in PHP",
+      "guidance": "A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value."
     }
   ]
 }

@@ -99,7 +99,39 @@ pub struct ClassValue {
 pub struct Closure {
     pub func: Rc<Func>,
     pub env: Rc<Scope>,
+    /// Own properties written at build time (`f.x = 1`, `Object.assign(f, ...)`).
+    /// Compiled code reads them through static member chains; PHP closures can't carry them.
+    pub props: RefCell<IndexMap<String, Value>>,
 }
+
+impl Closure {
+    pub fn new(func: Rc<Func>, env: Rc<Scope>) -> Closure {
+        Closure {
+            func,
+            env,
+            props: RefCell::default(),
+        }
+    }
+
+    pub fn has_props(&self) -> bool {
+        !self.props.borrow().is_empty()
+    }
+}
+
+/// Function properties Zero doesn't model: built-in own properties and `Function.prototype`.
+pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
+    "name",
+    "length",
+    "prototype",
+    "arguments",
+    "caller",
+    "call",
+    "apply",
+    "bind",
+    "toString",
+    "valueOf",
+    "__proto__",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {

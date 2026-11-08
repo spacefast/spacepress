@@ -378,10 +378,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(_) => {
                     let helper = self.unique_name(&format!("{}_init_{}", c.name, field.name));
                     let f = field.initializer(class.env.module).expect("initialized field");
-                    let closure = Rc::new(Closure {
-                        func: f,
-                        env: constructing_env.clone(),
-                    });
+                    let closure = Rc::new(Closure::new(f, constructing_env.clone()));
                     let initializing = if javascript {
                         Ty::Dynamic
                     } else {
@@ -424,10 +421,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let Ty::Fn(params, _) = self.classes[&id].constructor.clone() else {
                 unreachable!()
             };
-            let closure = Rc::new(Closure {
-                func: f.clone(),
-                env: constructing_env.clone(),
-            });
+            let closure = Rc::new(Closure::new(f.clone(), constructing_env.clone()));
             self.compile_function(
                 &closure,
                 &helper,
@@ -464,10 +458,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } else {
                 vec![receiver]
             };
-            let closure = Rc::new(Closure {
-                func: accessor.func.clone(),
-                env: env.clone(),
-            });
+            let closure = Rc::new(Closure::new(accessor.func.clone(), env.clone()));
             self.compile_function(&closure, &helper, Some(params), None, no_db)?;
             if !accessor.setter && !javascript {
                 let Ty::Fn(_, ret) = self.helper_types[&closure_key(&closure)].clone() else {
@@ -520,10 +511,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } else {
                 instance.clone()
             };
-            let closure = Rc::new(Closure {
-                func: f.clone(),
-                env: env.clone(),
-            });
+            let closure = Rc::new(Closure::new(f.clone(), env.clone()));
             self.compile_function(
                 &closure,
                 &helper,

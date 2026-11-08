@@ -557,6 +557,17 @@ impl<'p> Evaluator<'p> {
                 }
                 Ok(())
             }
+            Value::Closure(c) => {
+                if crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&key) {
+                    return err_help(
+                        span,
+                        format!("can't set `{key}` on a function while the config is built"),
+                        "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled; use another property name",
+                    );
+                }
+                c.props.borrow_mut().insert(key.to_string(), value);
+                Ok(())
+            }
             other => err(span, format!("can't set `{key}` on {}", other.describe())),
         }
     }
@@ -1597,10 +1608,7 @@ impl<'p> Evaluator<'p> {
                 }
                 v
             }
-            ExprKind::Func(f) => Value::Closure(Rc::new(Closure {
-                func: f.clone(),
-                env: scope.clone(),
-            })),
+            ExprKind::Func(f) => Value::Closure(Rc::new(Closure::new(f.clone(), scope.clone()))),
             ExprKind::Unary(op, x) => {
                 let v = self.eval_static_data(x, scope)?;
                 if matches!(op, UnOp::Neg | UnOp::Plus | UnOp::BitNot) {
@@ -2112,6 +2120,15 @@ impl<'p> Evaluator<'p> {
                     format!("unsupported built-in property `{g}.{prop}`"),
                     "use a property listed in the supported built-in contract",
                 ),
+            },
+            Value::Closure(c) => match c.props.borrow().get(prop) {
+                Some(value) => self.stored_property(value.clone(), span),
+                None if crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&prop) => err_help(
+                    span,
+                    format!("reading `{prop}` of a function isn't supported while the config is built"),
+                    "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled",
+                ),
+                None => Ok(Value::Undef),
             },
             other => err(span, format!("can't read `{prop}` of {}", other.describe())),
         }
@@ -2703,6 +2720,34 @@ impl<'p> Evaluator<'p> {
                 }
                 Value::array(values)
             }
+            ("Object", "assign") => {
+                let target = arg(0);
+                if !matches!(target, Value::Object(_) | Value::Closure(_)) {
+                    return err_help(
+                        span,
+                        format!(
+                            "Object.assign at build time needs an object or function target, not {}",
+                            target.describe()
+                        ),
+                        "assign into a plain object or a function",
+                    );
+                }
+                for source in args.iter().skip(1) {
+                    if matches!(source, Value::Undef | Value::Null) {
+                        continue;
+                    }
+                    for key in enumerable_keys(source, span)? {
+                        let value = match source {
+                            Value::Str(_) => {
+                                self.get_index(source, &Value::Num(key.parse().expect("string index")), span)?
+                            }
+                            _ => self.get_prop(source, &key, span)?,
+                        };
+                        self.set_key(&target, &key, value, span)?;
+                    }
+                }
+                target
+            }
             ("Object", "fromEntries") => match arg(0) {
                 Value::Array(a) => {
                     let mut map = IndexMap::new();
@@ -3150,10 +3195,7 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
             predeclare(pat, scope, *kind == DeclKind::Let);
         }
         let Stmt::Func(f) = stmt else { continue };
-        let closure = Value::Closure(Rc::new(Closure {
-            func: f.clone(),
-            env: scope.clone(),
-        }));
+        let closure = Value::Closure(Rc::new(Closure::new(f.clone(), scope.clone())));
         let name = f.name.clone().expect("declared functions have names");
         scope.vars.borrow_mut().insert(
             name,
@@ -3270,31 +3312,37 @@ fn arguments_items(object: &Obj, span: Span) -> R<Vec<Value>> {
         .collect())
 }
 
+/// OrdinaryOwnPropertyKeys for string keys: array indexes ascending, then the rest in insertion order.
+fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<String> {
+    let mut indexes = Vec::new();
+    let mut names = Vec::new();
+    for key in keys {
+        if let Ok(index) = key.parse::<u32>()
+            && index < u32::MAX
+            && index.to_string() == *key
+        {
+            indexes.push(index);
+        } else {
+            names.push(key.clone());
+        }
+    }
+    indexes.sort_unstable();
+    indexes
+        .into_iter()
+        .map(|index| index.to_string())
+        .chain(names)
+        .collect()
+}
+
 fn enumerable_keys(value: &Value, span: Span) -> R<Vec<String>> {
     Ok(match value {
-        Value::Object(object) | Value::Arguments(object) => {
-            let mut indexes = Vec::new();
-            let mut names = Vec::new();
-            for key in object.borrow().keys() {
-                if matches!(value, Value::Arguments(_)) && key == "length" {
-                    continue;
-                }
-                if let Ok(index) = key.parse::<u32>()
-                    && index < u32::MAX
-                    && index.to_string() == *key
-                {
-                    indexes.push(index);
-                } else {
-                    names.push(key.clone());
-                }
-            }
-            indexes.sort_unstable();
-            indexes
-                .into_iter()
-                .map(|index| index.to_string())
-                .chain(names)
-                .collect()
-        }
+        Value::Object(object) | Value::Arguments(object) => ordered_keys(
+            object
+                .borrow()
+                .keys()
+                .filter(|key| !(matches!(value, Value::Arguments(_)) && *key == "length")),
+        ),
+        Value::Closure(c) => ordered_keys(c.props.borrow().keys()),
         Value::Array(array) => (0..array.borrow().len()).map(|index| index.to_string()).collect(),
         Value::Str(value) => (0..value.encode_utf16().count())
             .map(|index| index.to_string())

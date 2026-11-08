@@ -121,6 +121,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("Object", &["hasOwn"], overload("receiver: data, key: propertyKey (evaluator: primitive)", arity(2, 2), arity(2, 2), arity(2, 2))),
     ("Object", &["defineProperty"], overload("runtime-only target: plain object, key: symbol | string, descriptor: data descriptor", None, None, arity(3, 3))),
     ("Object", &["freeze"], overload("refused: object freezing is not modeled", None, None, None)),
+    ("Object", &["assign"], overload("target: object | function, ...sources: object (build time only)", arity(1, VARIADIC), None, None)),
     ("Array", &["isArray"], overload("value?: unknown", arity(0, 1), arity(1, 1), arity(0, 1))),
     ("Array", &["from"], overload("source: iterable | {length: number}, mapper?: function", arity(1, 2), arity(1, 2), arity(1, 2))),
     ("Array", &["of"], overload("...values: unknown[]", None, None, arity(0, VARIADIC))),

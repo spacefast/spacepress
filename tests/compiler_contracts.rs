@@ -3334,3 +3334,141 @@ fn language_construct_type_rules() {
         }
     }
 }
+
+#[test]
+fn build_time_namespaces_resolve_members_and_refuse_whole_values() {
+    // picomatch's shape: a function with own properties, Object.assign onto it, a default export
+    // object, and helper objects called as `utils.f(x)` from another module.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("utils.mjs"),
+        r#"
+export const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+export const constants = { REGEX_SLASH: /\//g, DEFAULT: { depth: 1 } };
+const pico = (glob) => (input) => input.startsWith(glob);
+pico.scan = (input) => ({ base: input.split('/')[0] });
+pico.constants = constants;
+function main(glob, options) { return pico(isObject(options) ? options.prefix + glob : glob); }
+Object.assign(main, pico, undefined, { version: '4.0.7' });
+main.makeRe = (glob) => new RegExp('^' + glob.replace(constants.REGEX_SLASH, '\\/'));
+export default main;
+"#,
+    )
+    .unwrap();
+    let expression = r#"[match('src')('src/a.ts'), match('a', { prefix: 'src/' })('src/a.ts'), match.version, match.scan('src/b').base,
+  match.makeRe('a/b').source, match.makeRe('a/b').test('a/bc'), match.constants.DEFAULT.depth, utils.isObject({}), utils.isObject(null),
+  utils.constants.REGEX_SLASH.flags, utils.constants.DEFAULT === match.constants.DEFAULT]"#;
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args([
+            "--input-type=module",
+            "-e",
+            &format!("import match from './utils.mjs'; import * as utils from './utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
+        ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        format!(
+            r#"
+import {{ action, defineConfig }} from 'zero';
+import match from './utils.mjs';
+import * as utils from './utils.mjs';
+export default defineConfig({{ name: 'namespaces', actions: {{ probe: action({{ input: {{}}, handler: () => {expression} }}) }} }});
+"#
+        ),
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), new \Zero\JsObject()));
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-namespaces/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+    // The namespace object and the function with properties are never built in PHP.
+    let functions =
+        std::fs::read_to_string(content.join("plugins/zero-app-namespaces/zero/app/functions.php")).unwrap();
+    assert!(!functions.contains("'version'"), "{functions}");
+
+    for (declarations, handler, message, help) in [
+        (
+            "const o = { f: (n: number) => n };",
+            "{ const copy = { ...o }; return 1; }",
+            "`o` holds functions",
+            "o.f(...)",
+        ),
+        (
+            "const o = { f: (n: number) => n };",
+            "{ o.f = (n: number) => n + 1; return 1; }",
+            "`o` holds functions",
+            "o.f(...)",
+        ),
+        (
+            "const o = { f: (n: number) => n };",
+            "o.missing",
+            "`o.missing` doesn't exist",
+            "",
+        ),
+        (
+            "const o = { f: (n: number) => n };",
+            "o.hasOwnProperty('f')",
+            "reads an inherited property",
+            "own property",
+        ),
+        (
+            "function f() { return 1; } f.x = 1;",
+            "typeof f",
+            "function with properties",
+            "f.x",
+        ),
+        (
+            "function f() { return 1; } f.x = 1;",
+            "f.name",
+            "isn't supported on a function with properties",
+            "name",
+        ),
+        (
+            "function f() { return 1; } f.name = 'g';",
+            "f()",
+            "can't set `name` on a function",
+            "aren't modeled",
+        ),
+        (
+            "function f() { return 1; } const n = f.length;",
+            "n",
+            "reading `length` of a function",
+            "aren't modeled",
+        ),
+        (
+            "const target = Object.assign(1, {});",
+            "target",
+            "needs an object or function target",
+            "plain object",
+        ),
+        (
+            "function f() { return 1; }",
+            "Object.assign({}, { a: 1 })",
+            "unsupported overload of `Object.assign`",
+            "build time only",
+        ),
+    ] {
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\n{declarations}\nexport default defineConfig({{name:'namespaces',actions:{{probe:action({{input:{{}},handler:()=>{handler}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let d = &report["diagnostics"][0];
+        assert!(d["message"].as_str().unwrap().contains(message), "{message}: {report}");
+        assert!(d["location"].is_object(), "{report}");
+        assert!(d["help"].as_str().unwrap_or("").contains(help), "{help}: {report}");
+    }
+}

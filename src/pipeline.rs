@@ -115,10 +115,7 @@ pub fn build(
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
     let wordpress_uses;
-    let catalog = crate::wordpress::abilities::Catalog::new(
-        &schema,
-        &read_lock(program, &project.join(crate::wordpress::abilities::LOCK))?,
-    );
+    let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program)?);
     let (functions, slots) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
         c.abilities = catalog.clone();
@@ -321,9 +318,16 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
     Ok(())
 }
 
-/// `zero/abilities.json` through the program's file system (so a hosted source bundle captures it);
-/// absent means no locked abilities.
-fn read_lock(program: &loader::Program, path: &Path) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
+/// `zero/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
+/// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
+/// browser read the same lock the command line does. Absent means no locked abilities.
+fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
+    let entry = &program.modules[program.entry].path;
+    let path = entry
+        .parent()
+        .expect("the entry has a directory")
+        .join(crate::wordpress::abilities::LOCK);
+    let path = path.as_path();
     if !program.fs.exists(path) {
         return Ok(Vec::new());
     }

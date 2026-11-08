@@ -68,6 +68,7 @@ fn callable_at(value: &Place, callee: &Place) -> bool {
 
 #[derive(Default)]
 pub(super) struct Effects {
+    reassigned: HashSet<Span>,
     captured: HashSet<Span>,
     captured_data: HashMap<(u8, usize), Place>,
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
@@ -81,6 +82,9 @@ pub(super) struct Effects {
 }
 
 impl Effects {
+    pub fn binding_reassigned(&self, binding: Span) -> bool {
+        self.reassigned.contains(&binding)
+    }
     pub fn captured(&self, binding: Span) -> bool {
         self.captured.contains(&binding)
     }
@@ -1976,6 +1980,13 @@ impl Graph {
         let expression_writes = summaries(&self.expression_events);
         let loop_writes = summaries(&self.loop_events);
         let mut effects = Effects {
+            reassigned: self
+                .write_events
+                .values()
+                .flatten()
+                .filter(|place| place.path.is_empty())
+                .map(|place| place.binding)
+                .collect(),
             captured: self.captured,
             captured_data: self.captured_data,
             numeric: HashMap::new(),

@@ -2331,3 +2331,52 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
         })
     );
 }
+
+/// The compiler's own-app ability types and the runtime's registered abilities come from the same
+/// schema; this runs both and compares names, input properties and required inputs, so a new
+/// operation in runtime/Zero/Wp/Abilities/Register.php can't go untyped.
+#[test]
+fn wordpress_own_abilities_match_the_registered_ones() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("own");
+    copy_dir(&root().join("tests/fixtures/abilities-own"), &project);
+    let content = build_wp(&project);
+    let program = zero::loader::load(&project.join("zero.config.ts")).unwrap();
+    let built = zero::pipeline::build(&project, &program, || Ok(zero::pipeline::Previous::none()), |_| None).unwrap();
+    let compiled: Value = serde_json::to_value(zero::wordpress::abilities::own_inputs(&built.schema)).unwrap();
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $out = [];
+            foreach (\Zero\Wp\Abilities\Register::operations() as $op) {
+                $keys = array_map('strval', array_keys($op['input']['properties'] ?? []));
+                $required = array_map('strval', $op['input']['required'] ?? []);
+                sort($keys);
+                sort($required);
+                $out[$op['name']] = [$keys, $required];
+            }
+            ksort($out);
+            echo json_encode($out), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let registered: Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next_back().unwrap()).unwrap();
+    // Both include `-revisions`, the sync trio, the auth create's `password` and the agent job.
+    assert!(
+        registered["own/notes-revisions"].is_array()
+            && registered["own/members-create"][0].to_string().contains("password")
+    );
+    assert_eq!(compiled, registered);
+}

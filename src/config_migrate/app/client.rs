@@ -89,6 +89,8 @@ pub(super) const TAG_DYNAMIC: &str = "dynamic import in the client";
 pub(super) const TAG_ASSET: &str = "client import of a non-script file";
 pub(super) const TAG_SYNTAX: &str = "client source the browser build cannot compile";
 pub(super) const TAG_NATIVE: &str = "client app conversion outside the native CLI";
+pub(super) const TAG_PUBLIC: &str = "client app over an existing public/";
+pub(super) const TAG_UNREADABLE: &str = "client module that cannot be read";
 
 /// The refusal tag for a 0.8 client name the bridge does not provide.
 fn unbridged(name: &str) -> &'static str {
@@ -172,8 +174,11 @@ impl Walk<'_> {
         let text = match self.fs.read_to_string(&self.root.join(relative)) {
             Ok(t) => t,
             Err(e) => {
-                self.errors
-                    .push(super::super::fail(&at, format!("cannot read the client module: {e}")));
+                self.errors.push(fail(&at, format!("{TAG_UNREADABLE}: {e}")).located(
+                    relative.to_string_lossy().replace('\\', "/"),
+                    1,
+                    1,
+                ));
                 return target;
             }
         };

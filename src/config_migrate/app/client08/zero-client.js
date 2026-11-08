@@ -123,13 +123,14 @@ export async function run(name, args = []) {
       await startGuest();
       ({ res, parsed } = await send("POST", path, body));
     } else if (parsed?.code === "unauthenticated") {
-      // The held token was rejected (expired or revoked): renew it and keep the same user. A
-      // refused renewal ends the session; the next request starts a new guest.
-      if (await renew(session)) ({ res, parsed } = await send("POST", path, body));
-      else {
+      // The held token was rejected (access tokens live five minutes): renew it with the refresh
+      // token, as runtime/client does, and keep the same user. Only a session that cannot be
+      // renewed (no refresh token, or the issuer refused it) falls back to a new guest.
+      if (!(await renew(session).catch(() => false))) {
         hold(null);
-        emitAuth();
+        await startGuest();
       }
+      ({ res, parsed } = await send("POST", path, body));
     }
     // Any other 401 is the handler refusing this user (a guest where sign-in is required): the
     // session stays as it is.

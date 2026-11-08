@@ -149,6 +149,22 @@ pub static RULES: &[Rule] = &[
         example: ("/client/index.tsx", "client app conversion outside the native CLI: x"),
     },
     Rule {
+        code: "Z08_CLIENT_PUBLIC",
+        feature: "client app with its own public/ directory",
+        v2: "public/, which holds the converted client",
+        fix: "Move the files in public/ into the client, or out of the capsule, and convert again.",
+        test: |_, r| r.starts_with(client::TAG_PUBLIC),
+        example: ("/public", "client app over an existing public/: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_UNREADABLE",
+        feature: "client module that cannot be read",
+        v2: "a UTF-8 TypeScript, JavaScript or CSS file in the capsule",
+        fix: "Make the module a readable UTF-8 file in the capsule, or remove the import.",
+        test: |_, r| r.starts_with(client::TAG_UNREADABLE),
+        example: ("/client/Logo.tsx", "client module that cannot be read: x"),
+    },
+    Rule {
         code: "Z08_SOURCE_NOT_RECOVERABLE",
         feature: "a published 0.8 version without its authored source",
         v2: "the authored TypeScript at the published commit",

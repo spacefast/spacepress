@@ -288,7 +288,7 @@ function isDeclarationName(ts, node) {
 export function clientFacts(ts, finalize, pages, clientEntry) {
   const present = pages.some((p) => p.render === "client") || (pages.length === 0 && clientEntry);
   const file = (finalize.staticFiles ?? []).find((f) => f?.path === CLIENT_BUNDLE && f.contentBase64);
-  if (!present || !file) return { present, measured: false, zero: new Set(), modules: new Set(), preactHooks: false };
+  if (!present || !file) return { present, measured: false, zero: new Set(), modules: new Set(), preactHooks: false, dynamicImport: false };
   return { present, measured: true, ...clientBundleFacts(ts, Buffer.from(file.contentBase64, "base64").toString("utf8")) };
 }
 
@@ -311,6 +311,8 @@ export function clientBundleFacts(ts, text) {
   const zero = new Set();
   const modules = new Set();
   let preactHooks = false;
+  // esbuild keeps `import()` when it can't resolve the target statically.
+  const dynamicImport = /\bimport\(/.test(text);
   for (const st of sf.statements) {
     if (!ts.isImportDeclaration(st) && !(ts.isExportDeclaration(st) && st.moduleSpecifier)) continue;
     const spec = st.moduleSpecifier.text;
@@ -324,7 +326,7 @@ export function clientBundleFacts(ts, text) {
   for (const n of CLIENT_NAMES) {
     if (new RegExp(`function ${n}\\d*\\(`).test(text)) zero.add(n);
   }
-  return { zero, modules, preactHooks };
+  return { zero, modules, preactHooks, dynamicImport };
 }
 
 export const _test = { reserved };

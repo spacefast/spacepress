@@ -306,10 +306,13 @@ fn convert(
     let client_files = match &client_app {
         Some(file) => {
             if fs.exists(&root.join("public")) {
-                report.errors.push(fail(
-                    "/public",
-                    "the capsule already has public/, where the converted client app goes; move those files into the client or out of the capsule",
-                ));
+                report.errors.push(
+                    fail(
+                        "/public",
+                        format!("{}: the converted client app goes to public/", client::TAG_PUBLIC),
+                    )
+                    .located("public".into(), 1, 1),
+                );
             }
             client::convert(
                 &*fs,

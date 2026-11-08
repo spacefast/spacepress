@@ -29,8 +29,30 @@ const LANGUAGE = [
   ["`do ... while`", "do-while"],
 ];
 
+// A client app without pages (src/config_migrate/app/client.rs): each reason starts with a fixed
+// tag the converter's Z08_CLIENT_* rule matches. Same tags, same labels as census.mjs CLIENT_RULES.
+const CLIENT = [
+  ["0.8 client storage uploads", "client: storage uploads"],
+  ["0.8 authenticatedFetch", "client: authenticatedFetch"],
+  ["0.8 client connector state", "client: connector state"],
+  ["0.8 client content reads", "client: content reads"],
+  ["0.8 client sign-in", "client: 0.8 sign-in"],
+  ["0.8 client API without a v2 bridge", "client: other 0.8 client API"],
+  ["0.8 kit components in the client", "client: kit components"],
+  ["0.8 charts in the client", "client: charts"],
+  ["npm package in the client", "client: npm package"],
+  ["client import outside the capsule", "client: import outside the capsule"],
+  ["dynamic import in the client", "client: dynamic import"],
+  ["client import of a non-script file", "client: non-script import"],
+  ["client source the browser build cannot compile", "client: source the browser build cannot compile"],
+  ["client app over an existing public/", "client: existing public/"],
+  ["client module that cannot be read", "client: unreadable module"],
+  ["client app conversion outside the native CLI", "client: needs the native CLI"],
+];
+
 // [label, kind, test(pointer, reason)]
 const RULES = [
+  ...CLIENT.map(([tag, label]) => [label, "refusal", (p, r) => r.startsWith(`${tag}: `)]),
   // What the rebuild cannot know.
   // Only the first line is the message; the rest quotes source, which contains the placeholder.
   ["erased parameter types", "source", (p, r) => /refused by v2 compiler: error: .*(\bunknown\b|__Census08Erased)/.test(first(r))],

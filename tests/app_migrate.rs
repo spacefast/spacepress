@@ -1481,6 +1481,19 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
         .iter()
         .any(|e| e["pointer"] == "/client/index.tsx" && e["outcome"] == "review");
     assert!(review, "{report:#}");
+    // No client file is dropped: every module reaches public/app/ and every stylesheet public/.
+    for source in walk(&fixture("client-app/client"))
+        .into_iter()
+        .chain(walk(&fixture("client-app/shared")))
+    {
+        let relative = source.strip_prefix(fixture("client-app")).unwrap();
+        let emitted = if relative.extension().is_some_and(|e| e == "css") {
+            out.join("public").join(relative)
+        } else {
+            out.join("public/app").join(relative.with_extension("js"))
+        };
+        assert!(emitted.is_file(), "{} was dropped", relative.display());
+    }
     let checked = Command::new(env!("CARGO_BIN_EXE_zero"))
         .args(["check", "--json"])
         .arg(&out)
@@ -1583,6 +1596,31 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
         assert_eq!(e["pointer"], "/client/Shelf.tsx");
         assert!(!e["fix"].as_str().unwrap().is_empty());
     }
+    // An existing public/ (where the client goes) and an unreadable module have their own codes.
+    std::fs::write(&shelf, text).unwrap();
+    std::fs::create_dir_all(root.join("public")).unwrap();
+    std::fs::write(root.join("public/robots.txt"), "").unwrap();
+    std::fs::write(root.join("client/Feed.tsx"), [0xff, 0xfe, 0x00]).unwrap();
+    let (ok, report) = migrate(
+        &root,
+        &temp.path().join("out2"),
+        &["--space", "s", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let codes: Vec<(&str, &str)> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            ("Z08_CLIENT_PUBLIC", "public"),
+            ("Z08_CLIENT_UNREADABLE", "client/Feed.tsx")
+        ],
+        "{report:#}"
+    );
 }
 
 fn copy_dir(from: &Path, to: &Path) {
@@ -1644,7 +1682,8 @@ console.log(JSON.stringify(sent[0]));
 }
 
 /// A guest whose access token expired is refreshed and stays the same guest; a handler that refuses
-/// guests leaves the session alone; only a visitor with no session gets a new guest.
+/// guests leaves the session alone; a new guest is minted only without a session, or when the
+/// session can't be renewed.
 #[test]
 fn the_client_bridge_keeps_a_guest_identity_across_token_expiry() {
     let temp = tempfile::tempdir().unwrap();
@@ -1667,7 +1706,10 @@ const json = (status, body) => new Response(JSON.stringify(body), { status });
 globalThis.fetch = async (url, init) => {
   const auth = init.headers?.authorization ?? null;
   calls.push(`${init.method} ${url} ${auth ?? "-"}`);
-  if (url.endsWith("/auth/guest")) return json(201, { data: { accessToken: "a1", refreshToken: "r1", clientId: "guests", user: { id: ++guests } } });
+  if (url.endsWith("/auth/guest")) {
+    const n = ++guests;
+    return json(201, { data: { accessToken: n === 1 ? "a1" : `g${n}`, refreshToken: n === 1 ? "r1" : `rg${n}`, clientId: "guests", user: { id: n } } });
+  }
   if (url.endsWith("/auth/config")) return json(200, { data: { issuer: "https://site.test/identity" } });
   if (url === "https://site.test/identity/token") {
     const form = new URLSearchParams(init.body);
@@ -1685,7 +1727,11 @@ const first = await bridge.run("add", ["inbox", "x"]);
 store.set("expired", "1");
 const second = await bridge.run("add", ["inbox", "y"]);
 const refused = await bridge.run("banner", ["ab", 1]).then(() => "ok", (e) => e.code);
-console.log(JSON.stringify({ first, second, refused, guests, session: JSON.parse(store.get("zero08.session")), calls: calls.filter((c) => !c.includes("/me")) }));
+const kept = JSON.parse(store.get("zero08.session"));
+// A session the issuer won't renew (a refresh token it refused) falls back to a new guest, once.
+store.set("zero08.session", JSON.stringify({ accessToken: "a1", refreshToken: "stale", clientId: "guests" }));
+const fallback = await bridge.run("add", ["inbox", "z"]);
+console.log(JSON.stringify({ first, second, refused, guests, session: kept, fallback, calls: calls.filter((c) => !c.includes("/me")) }));
 "#,
     );
     assert_eq!(ran["first"], "Bearer a1", "{ran:#}");
@@ -1694,9 +1740,11 @@ console.log(JSON.stringify({ first, second, refused, guests, session: JSON.parse
         "the refreshed token, not a new guest: {ran:#}"
     );
     assert_eq!(ran["refused"], "unauthorized", "{ran:#}");
-    assert_eq!(ran["guests"], 1, "one guest for the whole visit: {ran:#}");
     assert_eq!(
         ran["session"],
         serde_json::json!({ "accessToken": "a2", "refreshToken": "r2", "clientId": "guests" })
     );
+    // Only the unrenewable session minted a second guest; refresh and refusal minted none.
+    assert_eq!(ran["guests"], 2, "{ran:#}");
+    assert_eq!(ran["fallback"], "Bearer g2", "the new guest's token: {ran:#}");
 }

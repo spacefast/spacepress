@@ -97,14 +97,31 @@ export function verifySource(artifact, dir) {
  * Its body is not in the payload, so the census decides only what the uploaded `client.js` shows: the
  * platform modules it imports and the SDK names it uses. Each label matches a Z08_CLIENT_* code.
  */
+// The 0.8 client names the bridge provides (BRIDGED in app/client.rs).
+const BRIDGED = new Set(["useQuery", "useMutation", "useAction", "usePaginatedQuery", "queryOptions", "createClient", "useAuth", "signOut", "Router", "Routes", "Route", "Link", "navigate", "useLocation", "useNavigate", "useParams"]);
+const SIGN_IN = ["SignInWithGoogle", "SignInWithGravatar", "SignInWithSpacefast", "signInWithGoogle", "signInWithGravatar", "signInWithSpacefast", "getIdentity", "getCurrentUser", "retryAuth", "canAccessApp"];
+const CONNECTORS = ["useConnectorState", "useConnectorRoleState", "retryConnectorQueries"];
+// What the 0.8 import map answered (`platform()` in app/client.rs); anything else bare is a package.
+const PLATFORM = /^(?:@spacefast\/zero\/(?:client|kit|charts)|(?:@spacefast\/compat-lakebed|lakebed)\/client|preact(?:\/.*)?|react(?:\/.*)?|react-dom(?:\/.*)?|react-is|lucide-react|recharts)$/;
+
+// The labels match classify.mjs's client rules, so a census refusal and a converter refusal of the
+// same thing count as one reason.
 export const CLIENT_RULES = [
   ["client: kit components", (c) => c.modules.has("@spacefast/zero/kit")],
   ["client: charts", (c) => c.modules.has("@spacefast/zero/charts") || c.modules.has("recharts")],
   ["client: storage uploads", (c) => c.zero.has("storage")],
   ["client: authenticatedFetch", (c) => c.zero.has("authenticatedFetch")],
-  ["client: connector state", (c) => ["useConnectorState", "useConnectorRoleState", "retryConnectorQueries"].some((n) => c.zero.has(n))],
+  ["client: connector state", (c) => CONNECTORS.some((n) => c.zero.has(n))],
   ["client: content reads", (c) => c.zero.has("contentQueryOptions")],
-  ["client: 0.8 sign-in", (c) => ["SignInWithGoogle", "SignInWithGravatar", "SignInWithSpacefast", "signInWithGoogle", "signInWithGravatar", "signInWithSpacefast", "getIdentity", "getCurrentUser", "retryAuth", "canAccessApp"].some((n) => c.zero.has(n))],
+  ["client: 0.8 sign-in", (c) => SIGN_IN.some((n) => c.zero.has(n))],
+  // Any other name the 0.8 SDK module gives that the bridge lacks.
+  ["client: other 0.8 client API", (c) => [...c.zero].some((n) => !BRIDGED.has(n) && n !== "storage" && n !== "authenticatedFetch" && n !== "contentQueryOptions" && !SIGN_IN.includes(n) && !CONNECTORS.includes(n))],
+  // client.js leaves only platform modules external, so a bare import that isn't one is a package
+  // 0.8's import map answered (lucide-react) or the client bundled; both need a prebuilt bundle.
+  ["client: npm package", (c) => [...c.modules].some((m) => !m.startsWith(".") && !m.startsWith("/") && (!PLATFORM.test(m) || m === "lucide-react"))],
+  ["client: import outside the capsule", (c) => [...c.modules].some((m) => m.startsWith("/") || m.startsWith("../"))],
+  ["client: dynamic import", (c) => c.dynamicImport],
+  ["client: non-script import", (c) => [...c.modules].some((m) => /\.(svg|png|jpe?g|gif|webp|woff2?|json|wasm)$/i.test(m))],
 ];
 
 /** True for a capsule 0.8 served as a single-page client app. */

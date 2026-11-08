@@ -719,6 +719,14 @@
       "feature": "client app converted by the browser compiler"
     },
     {
+      "code": "Z08_CLIENT_PUBLIC",
+      "feature": "client app with its own public/ directory"
+    },
+    {
+      "code": "Z08_CLIENT_UNREADABLE",
+      "feature": "client module that cannot be read"
+    },
+    {
       "code": "Z08_SOURCE_NOT_RECOVERABLE",
       "feature": "a published 0.8 version without its authored source"
     },

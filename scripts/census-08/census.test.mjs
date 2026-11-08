@@ -82,6 +82,11 @@ test("a client app without pages is refused only for what its client.js shows", 
     payloadCensus(ts, clientJs('import{storage}from"@spacefast/zero/client";import{Card}from"@spacefast/zero/kit";')).refusals,
     ["client: kit components", "client: storage uploads"],
   );
+  // Packages, imports outside the capsule, dynamic imports and other 0.8 API, from client.js alone.
+  assert.deepEqual(
+    payloadCensus(ts, clientJs('import{useQuery,retryAuth2}from"@spacefast/zero/client";import x from"date-fns";import"../escape.js";const m=()=>import("./lazy.js");')).refusals.sort(),
+    ["client: dynamic import", "client: import outside the capsule", "client: npm package", "client: other 0.8 client API"],
+  );
   // A capsule with pages is not a client app.
   assert.deepEqual(payloadCensus(ts, { ...fixture, artifact: { ...fixture.artifact, pages: [{ file: "pages/index.tsx", render: "client" }] } }), { refusals: [], missing: [] });
   assert.deepEqual(outcome({ verified: false, report: { status: "dry-run", errors: [] }, census: [], missing: ["client app body"] }), {
@@ -89,6 +94,19 @@ test("a client app without pages is refused only for what its client.js shows", 
     refusals: [],
     missing: ["client app body"],
   });
+});
+
+test("the converter's client refusals classify as client reasons, not bundle shape", () => {
+  for (const [reason, label] of [
+    ["0.8 client storage uploads: `storage` from @spacefast/zero/client", "client: storage uploads"],
+    ["npm package in the client: date-fns", "client: npm package"],
+    ["client import outside the capsule: ../x", "client: import outside the capsule"],
+    ["dynamic import in the client: import()", "client: dynamic import"],
+    ["0.8 authenticatedFetch: `authenticatedFetch` from @spacefast/zero/client", "client: authenticatedFetch"],
+    ["client app over an existing public/: the converted client app goes to public/", "client: existing public/"],
+  ]) {
+    assert.deepEqual(classify({ pointer: "/client/index.tsx", reason }), { label, kind: "refusal" }, reason);
+  }
 });
 
 test("only verified source can be accepted", () => {

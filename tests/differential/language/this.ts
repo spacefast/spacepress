@@ -20,6 +20,20 @@ const api = {
   nested: { v: 7, read() { return this.v; } },
 };
 const annotated = { n: 4, half(this: { n: number }) { return this.n / 2; }, twice(this: void, x: number) { return x * 2; } };
+// A method read through `this` and called without its object gets an undefined `this` and throws
+// a catchable TypeError, as in Node. A field written `value as T` is typed `T` through `this`.
+const detachable = {
+  n: 1,
+  f() { return this.n; },
+  viaLocal() { const h = this.f; try { return h(); } catch { return "threw"; } },
+  viaCall() { try { return this.f.call(null); } catch { return "threw"; } },
+  getF() { return this.f; },
+};
+const declared = {
+  v: null as string | null,
+  x: 1 as number | string,
+  set(s: string) { this.v = s; this.x = s.length; return [this.v, this.x]; },
+};
 
 function who(this: unknown): string {
   return typeof this;
@@ -90,5 +104,10 @@ export default defineConfig({
       annotated.half(),
       annotated.twice(3),
     ]),
+    thisModuleDetached: run(() => {
+      let fromGetter: unknown;
+      try { fromGetter = detachable.getF()(); } catch { fromGetter = "threw"; }
+      return [detachable.viaLocal(), detachable.viaCall(), fromGetter, declared.set("abc"), declared.v];
+    }),
   },
 });

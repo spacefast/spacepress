@@ -1224,7 +1224,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
-                    let hint = php_hint(&t);
+                    // A hidden receiver is whatever the call supplies, undefined for a detached
+                    // call, so it takes no PHP type: reading through it throws as in JavaScript.
+                    let hint = if i == 0 && receives_this(f) { "" } else { php_hint(&t) };
                     if hint == "\\Zero\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
@@ -4449,21 +4451,52 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let result = self
             .home_this_type(home, home_path, &c.func.this_reads, &binding, span, &mut Vec::new())
             .and_then(|(this, left_out)| {
-                self.compile_helper_now(c, name, Some(this)).map_err(|d| {
-                    let method = path.rsplit('.').next().unwrap_or(path);
-                    match left_out
-                        .iter()
-                        .find(|m| d.message.ends_with(&format!("has no field `{m}`")))
-                    {
-                        Some(m) => d.help(format!(
-                            "`{m}` and `{method}` call each other through `this`; annotate the return type of `{m}`, e.g. `{m}(): number`"
-                        )),
-                        None => d,
-                    }
-                })
+                self.compile_helper_now(c, name, Some(this))
+                    .map_err(|d| self.this_cycle_help(d, home, path, &left_out))
             });
         self.typing_this.remove(&typing);
         result
+    }
+
+    /// The fix for a `this` read refused because a sibling method had no type yet: a method that
+    /// calls itself, or methods calling each other, need one return type annotated; a method
+    /// reached through `this` held in a variable, spread or destructured isn't compiled first.
+    fn this_cycle_help(&self, d: Diag, home: &Obj, path: &str, left_out: &[String]) -> Diag {
+        let method = path.rsplit('.').next().unwrap_or(path);
+        let Some(m) = left_out
+            .iter()
+            .find(|m| d.message.ends_with(&format!("has no field `{m}`")))
+        else {
+            return d;
+        };
+        let Some(Value::Closure(c)) = home.borrow().get(m).cloned() else {
+            return d;
+        };
+        let params = c
+            .func
+            .params
+            .iter()
+            .skip(usize::from(receives_this(&c.func)))
+            .map(|p| match &p.pat {
+                Pat::Id(n, _) => format!("{n}: number"),
+                _ => "value: number".into(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let calls_back = c.func.this_reads.iter().any(|r| r == method || r == m);
+        let reads_directly = path_reads(home, method).is_some_and(|reads| reads.iter().any(|r| r == m));
+        let help = if m == method {
+            format!("`{m}` calls itself through `this`; annotate its return type, e.g. `{m}({params}): number`")
+        } else if calls_back && reads_directly {
+            format!(
+                "`{m}` and `{method}` call each other through `this`; annotate the return type of `{m}`, e.g. `{m}({params}): number`"
+            )
+        } else {
+            format!(
+                "`{method}` reaches `{m}` through `this` held in a variable, spread or destructured, so `{m}` isn't typed first; call it as `this.{m}(...)`, or annotate its parameters and return type, e.g. `{m}({params}): number`"
+            )
+        };
+        d.help(help)
     }
 
     /// The type of `home` as a method's `this`, and the keys left out because their method is
@@ -4511,10 +4544,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Some(self.home_this_type(o, &member_path, &all, binding, span, seen)?.0)
                     }
                 }
-                _ => match self.captured_use(&member_path, member.clone(), binding, span, false, true) {
-                    Ok(out) => Some(out.ty),
-                    Err(d) if needed => return Err(d),
-                    Err(_) => None,
+                _ => match self
+                    .ev
+                    .method_home_fields
+                    .get(&(Rc::as_ptr(home) as usize, key.clone()))
+                    .cloned()
+                {
+                    Some((ann, module)) => Some(self.resolve_runtime_ann(&ann, module)?),
+                    None => match self.captured_use(&member_path, member.clone(), binding, span, false, true) {
+                        Ok(out) => Some(out.ty),
+                        Err(d) if needed => return Err(d),
+                        Err(_) => None,
+                    },
                 },
             };
             match ty {
@@ -9803,6 +9844,14 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
         " = \\Zero\\JsUndefined::Value"
     } else {
         ""
+    }
+}
+
+/// The `this.<key>` names the method stored under `key` in `home` reads (`Func::this_reads`).
+fn path_reads(home: &Obj, key: &str) -> Option<Vec<String>> {
+    match home.borrow().get(key) {
+        Some(Value::Closure(c)) => Some(c.func.this_reads.clone()),
+        _ => None,
     }
 }
 

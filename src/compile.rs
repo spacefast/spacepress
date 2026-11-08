@@ -3877,8 +3877,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(n) => n.clone(),
                     None => {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
-                        self.helpers.insert(helper_key, name.clone());
-                        self.compile_helper_now(c, &name)?;
+                        self.attempt(|this| {
+                            this.helpers.insert(helper_key, name.clone());
+                            this.compile_helper_now(c, &name)
+                        })?;
                         name
                     }
                 };
@@ -4005,23 +4007,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     name.clone()
                 } else {
                     let name = self.unique_name("captured_collection");
-                    self.data_helpers.insert(key, name.clone());
-                    let mut body = format!(
-                        "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
-                        if c.set { "JsSet" } else { "JsMap" }
-                    );
-                    for (k, v) in &c.entries {
-                        validate_captured_data(k, span, &mut HashSet::new())?;
-                        validate_captured_data(v, span, &mut HashSet::new())?;
-                        let k = self.captured_data(k)?;
-                        if c.set {
-                            let _ = writeln!(body, "        $value->add({k});");
-                        } else {
-                            let v = self.captured_data(v)?;
-                            let _ = writeln!(body, "        $value->set({k}, {v});");
+                    let body = self.attempt(|this| {
+                        this.data_helpers.insert(key, name.clone());
+                        let mut body = format!(
+                            "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
+                            if c.set { "JsSet" } else { "JsMap" }
+                        );
+                        for (k, v) in &c.entries {
+                            validate_captured_data(k, span, &mut HashSet::new())?;
+                            validate_captured_data(v, span, &mut HashSet::new())?;
+                            let k = this.captured_data(k)?;
+                            if c.set {
+                                let _ = writeln!(body, "        $value->add({k});");
+                            } else {
+                                let v = this.captured_data(v)?;
+                                let _ = writeln!(body, "        $value->set({k}, {v});");
+                            }
                         }
-                    }
-                    body.push_str("    }\n    return $value;\n}\n\n");
+                        body.push_str("    }\n    return $value;\n}\n\n");
+                        Ok(body)
+                    })?;
                     self.output.push_str(&body);
                     name
                 };
@@ -4324,45 +4329,73 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(format!("\\ZeroApp\\{name}()"));
         }
         let name = self.unique_name("receiver");
-        self.data_helpers.insert(key, name.clone());
         let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let mut body = format!(
-            "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
-        );
-        for (key, member) in fields {
-            let member_path = format!("{path}.{key}");
-            // Every member gets its run-time form or a compile error: a dropped field would read
-            // as undefined through `this`.
-            let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
-                self.receiver_value(&member_path, &member, binding, span)?
-            } else if matches!(&member, Value::Closure(c) if c.has_props()) {
-                // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
-                return Err(Diag::new(
-                    span,
-                    format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
-                )
-                .code(crate::diag::Code::Unsupported)
-                .help(format!(
-                    "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
-                )));
-            } else {
-                self.captured_use(&member_path, member, binding, span, true, true)
-                    .map_err(|d| {
-                        if d.help.is_some() {
-                            return d;
-                        }
-                        let help = format!(
-                            "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
-                        );
-                        d.help(help)
-                    })?
-                    .php
-            };
-            let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
-        }
-        body.push_str("    }\n    return $value;\n}\n\n");
+        let body = self.attempt(|this| {
+            this.data_helpers.insert(key, name.clone());
+            let mut body = format!(
+                "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
+            );
+            for (key, member) in fields {
+                let member_path = format!("{path}.{key}");
+                // Every member gets its run-time form or a compile error: a dropped field would read
+                // as undefined through `this`.
+                let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
+                    this.receiver_value(&member_path, &member, binding, span)?
+                } else if matches!(&member, Value::Closure(c) if c.has_props()) {
+                    // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
+                    return Err(Diag::new(
+                        span,
+                        format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
+                    )
+                    .code(crate::diag::Code::Unsupported)
+                    .help(format!(
+                        "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
+                    )));
+                } else {
+                    this.captured_use(&member_path, member, binding, span, true, true)
+                        .map_err(|d| {
+                            if d.help.is_some() {
+                                return d;
+                            }
+                            let help = format!(
+                                "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                            );
+                            d.help(help)
+                        })?
+                        .php
+                };
+                let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+            }
+            body.push_str("    }\n    return $value;\n}\n\n");
+            Ok(body)
+        })?;
         self.output.push_str(&body);
         Ok(format!("\\ZeroApp\\{name}()"))
+    }
+
+    /// Builds a helper, class or captured-value helper so that a refusal registers nothing.
+    /// Narrowing and path typing compile an expression only for its type and drop the error. If a
+    /// failed build kept a name, signature or class it added, including a nested helper that
+    /// compiled fine but names the failed class, the real compile would reuse it: the refusal
+    /// would be lost, or a later read would find a class id that was never finished.
+    fn attempt<T>(&mut self, build: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        fn keys<K: Clone + Eq + std::hash::Hash, V>(map: &HashMap<K, V>) -> HashSet<K> {
+            map.keys().cloned().collect()
+        }
+        let classes = keys(&self.classes);
+        let helpers = keys(&self.helpers);
+        let helper_types = keys(&self.helper_types);
+        let helper_values = keys(&self.helper_values);
+        let data_helpers = keys(&self.data_helpers);
+        let built = build(self);
+        if built.is_err() {
+            self.classes.retain(|k, _| classes.contains(k));
+            self.helpers.retain(|k, _| helpers.contains(k));
+            self.helper_types.retain(|k, _| helper_types.contains(k));
+            self.helper_values.retain(|k, _| helper_values.contains(k));
+            self.data_helpers.retain(|k, _| data_helpers.contains(k));
+        }
+        built
     }
 
     fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {

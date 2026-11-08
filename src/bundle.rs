@@ -586,11 +586,16 @@ pub(crate) fn compile_tree(
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
-    // The URLs the app answers outside /wp-json, so the host can hand them to WordPress without
-    // booting it to ask. `routes` (any method) and `pagePaths` (GET and HEAD) use the route path
-    // grammar: a leading `/`, literal segments, `:name` for one segment and a final `*name` for
-    // one or more. The runtime picks the most specific match (Zero\App::routeFor); this only says
-    // whether one exists.
+    // The app's zero.config.ts routes and TSX pages, so the host can tell which of its URLs outside
+    // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the pages
+    // plugin's assets/ are the host's own and not listed. Both lists use the route path grammar: a
+    // leading `/`, no trailing slash except `/`, literal segments, `:name` for one segment and a
+    // final `*name` for one or more. A host matching against them should:
+    // - trim one trailing `/` from the request path first (pages canonicalize `/about/` to `/about`);
+    // - treat HEAD as GET, as Zero\App::routeFor does;
+    // - hand over any request whose path matches an entry, whatever its method, so a known path with
+    //   the wrong method gets the runtime's 405 rather than the host's 404.
+    // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
     let mut routes: Vec<(&str, &str)> = built
         .schema
         .routes

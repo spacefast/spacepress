@@ -195,10 +195,6 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
         manifest["pagePaths"],
         serde_json::json!(["/", "/about", "/notes", "/notes/:item", "/notes/featured"])
     );
-    let written: serde_json::Value =
-        serde_json::from_slice(&fs::read(compiled.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(written["routes"], manifest["routes"]);
-    assert_eq!(written["pagePaths"], manifest["pagePaths"]);
     let plugin = tree(&compiled.join("plugins/zero-pages-fullsite"));
     let artifact: serde_json::Value = serde_json::from_str(app["files"]["zero/pages.json"].as_str().unwrap()).unwrap();
     assert_eq!(

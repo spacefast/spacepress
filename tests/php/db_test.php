@@ -319,6 +319,15 @@ eq('activation applied the init migration and recorded it in the per-app ledger'
 eq('the app plugin is active with current storage', [$wp->plugin()->unavailable(), $wp->plugin()->pendingMigrations()], [null, []]);
 eq('the runtime describes its database as SQLite through the official plugin', \Zero\Wp\Platform::versions()['database']['kind'], 'sqlite');
 eq('platform problems accept SQLite Database Integration', \Zero\Wp\Platform::problems(), []);
+// Akismet and Two Factor count when loaded, not when stored as active, and Akismet needs no key: the
+// host's v2 scope activates them per request, and a Space without an Akismet key still mounts.
+eq('the app mounted with Akismet and Two Factor loaded and no Akismet key', [defined('WPCOM_API_KEY'), (bool) \Akismet::get_api_key(), \Zero\Wp\Platform::versions()['akismet'], \Zero\Wp\Platform::versions()['twoFactor']],
+    [false, false, '5.7.2', '0.17.0']);
+$stored = get_option('active_plugins');
+add_filter('pre_option_active_plugins', static fn (): array => array_values(array_diff($stored, ['akismet/akismet.php', 'two-factor/two-factor.php'])));
+eq('platform problems read the loaded plugins, not the stored active list', \Zero\Wp\Platform::problems(), []);
+remove_all_filters('pre_option_active_plugins');
+eq('an Akismet check without a key passes the comment through unchanged', \Akismet::auto_check_comment(['comment_content' => 'x', 'comment_post_ID' => 1]), ['comment_content' => 'x', 'comment_post_ID' => 1]);
 
 // ================================================================ write pipeline: create
 

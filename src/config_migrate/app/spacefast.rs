@@ -54,10 +54,12 @@ pub(super) fn posts(value: &Value, entries: &mut Vec<Entry>) -> Result<String, F
     };
     entries.push(entry(at,"mapped","Adopt native posts into the posts collection, keeping IDs, authors, body, dates and revisions. Spacefast copies fenced rows into its scoped prefix before activation."));
     if options.contains_key("sync") {
-        entries.push(entry(
+        return Err(fail(
             &pointer(at, "sync"),
-            "review",
-            "Legacy content sync is dropped. Use v2 collection operations; hosted static pages are not rebuilt.",
+            format!(
+                "{}: 0.8 rebuilt the posts from their content files on publish; v2 syncs collections with `sync` in zero.config.ts",
+                super::omitted::SYNC
+            ),
         ));
     }
     Ok(format!(

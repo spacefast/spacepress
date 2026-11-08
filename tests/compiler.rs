@@ -359,13 +359,26 @@ fn context_values_pass_through_typed_helpers() {
         .arg(tmp.join(".zero/wp-content"))
         .arg(
             r#"$route = $app->matchRoute("POST", "/echo");
-               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"));
+               // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
+               // share-link secret redacted and the share parameter kept out of the query.
+               $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
+                   \Zero\Wp\HttpRoutes::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
+                   \Zero\Wp\HttpRoutes::url($host, $uri))[2], true);
+               $urls = [
+                 $at("Site.Example.:8443", "/echo?a=1&__=secret&b=2"),
+                 $at("site.example", "/echo?token=t1&purchaseToken=p1&tokens=kept"),
+                 $at("site.example", "/__/secret/echo"),
+                 $at("site.example", "/__/collab?x=1"),
+                 $at("[::1]:8080", "/echo"),
+               ];
+               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"), "https://site.example/echo");
                echo json_encode([
                  "id" => $wp->userId("ada"),
                  "signedIn" => $wp->call("POST", "/actions/whoami", "{}", "ada")[1],
                  "guest" => $wp->call("POST", "/actions/whoami", "{}")[1],
                  "note" => $wp->call("POST", "/actions/note", ["body" => "x"], "ada")[1],
                  "echo" => json_decode($echo, true),
+                 "urls" => array_map(fn ($r) => [$r["url"], $r["share"]], $urls),
                ]);"#,
         )
         .arg("null")
@@ -383,7 +396,14 @@ fn context_values_pass_through_typed_helpers() {
             "signedIn": { "label": ada, "role": "editor", "anonymous": false, "viaIndex": false },
             "guest": { "label": "guest", "role": "guest", "anonymous": true, "viaIndex": true },
             "note": [ada],
-            "echo": { "method": "POST", "path": "/echo", "body": "raw body", "role": "editor" },
+            "echo": { "method": "POST", "url": "https://site.example/echo", "share": false, "path": "/echo", "body": "raw body", "role": "editor" },
+            "urls": [
+                ["https://site.example/echo?a=1&__=[redacted]&b=2", false],
+                ["https://site.example/echo?token=[redacted]&purchaseToken=[redacted]&tokens=kept", false],
+                ["https://site.example/__/[redacted]/echo", false],
+                ["https://site.example/__/collab?x=1", false],
+                ["https://[::1]/echo", false],
+            ],
         })
     );
     // Only a key no type can bound is refused, with the fix.
@@ -1944,5 +1964,88 @@ fn a_plugin_package_runs_under_its_locked_grant() {
             "body": "seen: HELLO PLUGIN | Site",
             "denied": "zero_fetch_host_denied",
         })
+    );
+}
+
+/// One large imported function in the shape of picomatch's `parse.js`: a token loop whose
+/// branches push, pop, slice and copy token objects that point at each other through `prev`.
+/// The effects solver once re-ran every rule over every fact on each pass, which took minutes
+/// here. It now reads only new facts, so its work stays a small multiple of the facts it
+/// produces. Debug builds count that work (`ZERO_DEBUG_EFFECTS_WORK`). On this program the
+/// old solver made 51M path projections for 1.36M facts (37 per fact) and took 20 s in a
+/// release build; the incremental solver makes 3.5M (2.6 per fact).
+#[test]
+fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
+    let mut body = String::from(
+        "export function run(input) {
+  const state = { index: -1, output: '', tokens: [], prev: null, depth: 0 };
+  const bos = { type: 'bos', value: '', output: '' };
+  const tokens = [bos];
+  let prev = bos;
+  let value = '';
+  const advance = () => input[++state.index];
+  const append = tok => { state.output += tok.output != null ? tok.output : tok.value; };
+  const push = tok => {
+    if (prev && prev.type === tok.type) { prev.value += tok.value; prev.output = (prev.output || '') + tok.value; return; }
+    tok.prev = prev; tokens.push(tok); prev = tok; state.prev = tok;
+  };
+  const pop = () => { const tok = tokens.pop(); prev = tokens[tokens.length - 1]; return tok; };
+  while (state.index < input.length - 1) {
+    value = advance();
+",
+    );
+    for i in 0..60 {
+        body.push_str(&match i % 6 {
+            0 => format!("    if (value === 'a{i}') {{ push({{ type: 't{}', value, output: prev.output + value }}); continue; }}\n", i % 7),
+            1 => format!("    if (value === 'b{i}') {{ const t = {{ type: 'p', value, prev: prev.prev }}; t.output = prev.value; push(t); append(t); continue; }}\n"),
+            2 => format!("    if (value === 'c{i}' && prev.prev) {{ prev.prev.output = prev.output; prev.value = state.output; state.depth++; continue; }}\n"),
+            3 => format!("    if (value === 'd{i}') {{ const last = pop(); if (last) {{ last.output = value; push(last); }} continue; }}\n"),
+            4 => format!("    if (value === 'e{i}') {{ const s = tokens.slice(-2); state.tokens = s; prev.output = s.length + ''; continue; }}\n"),
+            _ => format!("    if (value === 'f{i}') {{ const o = {{ ...prev, value: prev.value + value }}; append(o); push({{ type: 'f', value: o.value, output: o.output }}); continue; }}\n"),
+        });
+    }
+    body.push_str(
+        "    push({ type: 'text', value, output: value });
+  }
+  return state.output + ':' + tokens.length + ':' + state.depth;
+}
+",
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { action, defineConfig, text } from "zero";
+import { run } from "./run.mjs";
+export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+"#,
+    )
+    .unwrap();
+    let work = tmp.path().join("work.txt");
+    let out = zero()
+        .args(["check", "--json"])
+        .arg(tmp.path())
+        .env("ZERO_DEBUG_EFFECTS_WORK", &work)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let work = std::fs::read_to_string(&work).expect("debug builds record the solver's work");
+    let (projections, facts) = work
+        .lines()
+        .map(|line| {
+            let field = |name: &str| -> u64 {
+                line.split(' ')
+                    .find_map(|part| part.strip_prefix(name)?.strip_prefix('='))
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or_else(|| panic!("{name} in {line:?}"))
+            };
+            (field("projections"), field("facts"))
+        })
+        .max_by_key(|(_, facts)| *facts)
+        .expect("one solve");
+    assert!(facts > 1_000_000, "the program no longer stresses the solver: {work}");
+    assert!(
+        projections < 5 * facts,
+        "the effects solver repeats work: {projections} projections for {facts} facts"
     );
 }

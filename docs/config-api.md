@@ -439,6 +439,10 @@ Throwing anything aborts the request and rolls back every write in it.
 
 ## HTTP routes
 
+> On a hosted Spacefast Space, routes outside `/wp-json` aren't served yet: the host doesn't hand those paths to WordPress. The compiled manifest lists them (`routes`, and `pagePaths` for pages) for the host change that will. On your own WordPress they work today.
+>
+> For a host reading those lists: trim one trailing `/` from the request path, treat `HEAD` as `GET`, and hand over any request whose path matches an entry whatever its method, so the app answers a wrong method with 405. `*name` takes one or more segments.
+
 `routes` serves your own method and path on the site, outside `/wp-json`: a
 feed, a sitemap, a payment provider's webhook, anything that is not a JSON
 action call.
@@ -490,8 +494,11 @@ export default defineConfig({
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
-- `req` is `{ method, path, params, query, headers, body }`. Header names are
-  lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
+- `req` is `{ method, url, path, params, query, headers, body }`. `url` is the
+  absolute URL: `https://`, the hostname (lowercase, no port), then the path and
+  query. A share-link secret never reaches the handler: `__`, `token` and
+  `purchaseToken` values and a `/__/<token>` segment read `[redacted]` in `url`,
+  and `__` is left out of `query`. Header names are lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
 - `req.query` reads the raw query string the way `URLSearchParams` does:
   `get(name)` (the first value, or `null`), `getAll(name)`, `has(name)` and
   `entries()`. Names are kept exactly (`a.b`, `x[]`), `+` is a space, and a

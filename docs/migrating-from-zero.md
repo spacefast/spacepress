@@ -172,7 +172,10 @@ To start from what a 0.8 publish stored instead, pass its finalize payload:
 `--manifest finalize.json ./old-app` checks that every source file matches the
 published SHA-256 before converting, and `--manifest finalize.json` alone
 reports the manifest's own refusals and then refuses at `/source`, because the
-stored bundles are compiled JavaScript, not source.
+stored bundles are compiled JavaScript, not source. The manifest records only
+the capsule source, never the static files 0.8 served beside it, so each of
+those in `./old-app` is refused with `Z08_OMITTED_UNVERIFIED`: the candidate
+can't check it is the published file.
 
 The input may be a Spacefast 0.8 project root with `sf.jsonc`, a server entry
 and `content/`. The server entry is `sf.jsonc`'s `runtime.server`, or
@@ -187,6 +190,43 @@ The report contains `entries` with `mapped` or `review` outcomes, an `errors`
 list with RFC 6901 pointers, `adoption_sql`, and `connector_roles`. Pointers name
 capsule declarations; `/pages/...`, `/layouts/...`, and `/islands/...` name project
 files. All independently unsupported handlers and features are reported together.
+
+### Nothing is dropped silently
+
+A candidate replaces the published version, so whatever the 0.8 publish
+served that the candidate doesn't reproduce is an error, not a note. A
+candidate with no errors can be published in place of the 0.8 version.
+
+Static files that 0.8 served from the project root, such as `index.html`,
+`assets/*.css`, `assets/*.js` and `docs/guide.html`, are carried into the candidate's
+`public/`. v2 serves that directory at the same URLs. Files that are carried
+are UTF-8 text, aren't 0.8 source (TypeScript anywhere, or code under
+`client/`, `server/`, `shared/`, `pages/` or `content/`), repository files
+or config, and don't sit
+under a path WordPress or Zero owns. Each one gets a `mapped` entry. A client
+app without pages had an `index.html` that 0.8 generated, so the author's own
+`index.html` was never served there and isn't carried.
+
+Everything else gets a `Z08_OMITTED_*` error:
+
+| Code | What the candidate doesn't reproduce |
+| --- | --- |
+| `Z08_OMITTED_CLIENT` | The `client/` app 0.8 built into the Space's browser bundle. |
+| `Z08_OMITTED_PAGES` | A 0.8 page that has no other refusal and no v2 counterpart. |
+| `Z08_OMITTED_STATIC` | A static file that isn't UTF-8 text (images, fonts), or one under a path WordPress or Zero owns. |
+| `Z08_OMITTED_PUBLIC` | A file in the 0.8 project's `public/`, which 0.8 served at `/public/...`; v2 serves `public/` at the site root. |
+| `Z08_OMITTED_REDIRECTS` | `_redirects` and `_headers` rule files. Move redirects into `sf.jsonc` `redirects`, which carries over; port rewrites and headers to v2 routes. |
+| `Z08_OMITTED_SERVE` | `rewrites`, `headers`, `listing`, `fallback`, `serve` and `inject` in `sf.jsonc`. The engine checks a rewrite's path, and compiles a listing, against 0.8 pages only, so on v2 a catch-all rewrite or a root listing would take over the app's URLs; header rules reach only static files, not v2's WordPress-rendered pages. Move rewrites and headers into v2 routes. |
+| `Z08_OMITTED_CONFIG` | An `sf.jsonc` key the v2 app doesn't reproduce the same way, and `theme.json`, which 0.8 turned into the pages' `theme.css`. That covers `meta`, `theme`, `templates`, `superpowers`, `collab` and `markdownNegotiation`; path rules, because the app's data URLs move from 0.8's `/__zero/*` to v2's `/wp-json/zero/v1/*` (`cache`, `firewall`, and `access` with path patterns); `crons`, which on v2 doesn't send `CRON_SECRET`; `sell`, whose product file and paid assets would become public files; and the Space settings `network`, `dataSources` and `defaultDataSource`, which the file can't set. Set these again on the v2 Space. The keys that apply the same way travel unchanged in the candidate's `sf.jsonc`: `redirects` when every source is exactly `/` or starts with a plain literal segment that WordPress, Zero and the candidate don't use, `cleanUrls`, `index`, `analytics`, `system`, `build`, `placement`, and `access` as `"public"`. A redirect source counts as used when its first segment holds `:` or `*`, starts with `wp-`, is one WordPress or Zero reserves, or is a folder the candidate serves files from (`app/`, `zero/`, a converted client's stylesheet folders and the carried static files): on v2 those answer the app, while 0.8 kept its own files out of the redirect stage. |
+| `Z08_OMITTED_UNVERIFIED_CONFIG` | With `--manifest`, a Space config or `theme.json` the finalize manifest doesn't record. |
+| `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
+| `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/`, `.wrangler/`, `.vercel/`, `.netlify/`, `.turbo/`, `.cache/`, `.zero/`, `.gitignore` and `_routes.json` at any depth, and OS metadata are skipped without an error, as 0.8 never published them. |
+| `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |
+| `Z08_OMITTED_POSTS` | Files under `content/posts/`: 0.8 rebuilt them into the Space's posts on every publish. |
+| `Z08_OMITTED_SYNC` | Content sync of native posts. |
+
+When a later release carries one of these over, its error goes away and
+nothing changes for callers.
 
 Each error has this shape:
 

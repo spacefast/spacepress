@@ -146,6 +146,36 @@ impl Compiler<'_, '_> {
                     }
                     return Ok(self.classes[&id].instance.clone());
                 }
+                // The context and request types `"zero"` exports, so a helper can take what a
+                // handler received: `HookCtx<T>`, `AccessCtx<T>` and `ValidateCtx` take the data.
+                if let Some(imported) = self.zero_type_import(module, name).as_deref().filter(|imported| {
+                    matches!(
+                        *imported,
+                        "User" | "Role" | "HookCtx" | "AccessCtx" | "ValidateCtx" | "RouteRequest" | "RouteResponse"
+                    )
+                }) {
+                    let data = match args.as_slice() {
+                        [] => None,
+                        [t] if matches!(imported, "HookCtx" | "AccessCtx") => {
+                            Some(self.resolve_ann(t, module, generics)?)
+                        }
+                        _ => return err(*span, format!("`{name}` takes at most one type argument")),
+                    };
+                    let any_data = || Ty::Map(Box::new(Ty::Unknown));
+                    let ty = match imported {
+                        "User" if data.is_none() => Some(types::user()),
+                        "Role" if data.is_none() => Some(types::role()),
+                        "HookCtx" => Some(types::hook_ctx_with(data.unwrap_or_else(any_data))),
+                        "AccessCtx" => Some(types::access_ctx(data.unwrap_or_else(any_data))),
+                        "ValidateCtx" if data.is_none() => Some(types::data_ctx(any_data())),
+                        "RouteRequest" if data.is_none() => Some(types::route_request()),
+                        "RouteResponse" if data.is_none() => Some(types::route_response()),
+                        _ => None,
+                    };
+                    if let Some(ty) = ty {
+                        return Ok(ty);
+                    }
+                }
                 if args.is_empty() {
                     for stmt in &self.ev_program().modules[module].body {
                         if let Stmt::Import { source, specs, .. } = stmt
@@ -555,6 +585,22 @@ impl Compiler<'_, '_> {
             return self.resolve_ann(&body, owner, &g);
         }
         err(span, format!("unknown type `{name}`"))
+    }
+
+    /// The `"zero"` export a local type name was imported as, if it was.
+    fn zero_type_import(&self, module: usize, name: &str) -> Option<String> {
+        self.ev_program().modules[module]
+            .body
+            .iter()
+            .find_map(|stmt| match stmt {
+                Stmt::Import { source, specs, .. } if source == crate::loader::ZERO_MODULE => {
+                    specs.iter().find_map(|spec| match &spec.imported {
+                        ImportName::Named(imported) if spec.local == name => Some(imported.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
     }
 
     fn imported_type(&self, module: usize, name: &str) -> Option<(usize, String)> {

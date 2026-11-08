@@ -1443,6 +1443,152 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
 }
 
 #[test]
+fn symbols_and_weak_collections_match_node_in_imported_javascript() {
+    let tmp = tempfile::tempdir().unwrap();
+    // The files-sdk patterns: a registered brand defined nonenumerable on an object, a
+    // symbol-keyed spread wrapper, and module-level WeakMap state per instance.
+    let helper = r#"
+const BRAND = Symbol.for("files-sdk.FilesError");
+const LOCAL = Symbol("local");
+const BARE = Symbol();
+const internals = new WeakMap;
+const seen = new WeakSet();
+const isObject = (value) => typeof value === "object" && value !== null;
+const attempt = (f) => { try { return f(); } catch (e) { return e.name; } };
+export function brand(target) { Object.defineProperty(target, BRAND, { value: true }); return target; }
+export function isBranded(value) { return isObject(value) && Object.hasOwn(value, BRAND) && value[BRAND] === true; }
+export function local() { return LOCAL; }
+// Built-in prototypes carry well-known symbol methods Zero doesn't model: refused, not guessed.
+export function unmodeled() {
+  const list = [1];
+  return [() => Symbol.iterator in list, () => list[Symbol.iterator], () => Symbol.hasInstance in isObject, () => class_instance()[BRAND]].map((f) => { try { return f(); } catch (e) { return [e.name, e.message]; } });
+}
+class Holder {}
+const class_instance = () => new Holder();
+export function probe() {
+  const branded = brand({ code: "NotFound" });
+  const plain = { code: "x" };
+  const wrapped = { ...plain, [LOCAL]: 3, extra: 1, ["__proto__"]: 4 };
+  const copy = { ...wrapped, ..."ab", ...null, ...[7] };
+  internals.set(plain, { loaded: 0 });
+  internals.get(plain).loaded += 5;
+  seen.add(plain).add(LOCAL);
+  const forIn = []; for (const key in wrapped) forIn.push(key);
+  const fresh = Symbol("local");
+  const list = [1];
+  return {
+    typeofs: [typeof BRAND, typeof Symbol.iterator, typeof Symbol, typeof WeakMap, typeof globalThis.Symbol, typeof globalThis.window, typeof globalThis.Bun, typeof internals],
+    identity: [BRAND === Symbol.for("files-sdk.FilesError"), LOCAL === fresh, LOCAL === local(), Symbol.keyFor(BRAND), Symbol.keyFor(LOCAL) === undefined, Symbol.iterator === Symbol.iterator, BRAND == Symbol.for("files-sdk.FilesError")],
+    strings: [String(BRAND), LOCAL.toString(), LOCAL.description, BARE.description === undefined, String(BARE), String(Symbol.asyncIterator), Symbol.hasInstance.description, Symbol.toStringTag.toString(), String(Symbol(42))],
+    branded: [isBranded(branded), isBranded(plain), Object.keys(branded), JSON.stringify(branded), branded[BRAND], attempt(() => { branded[BRAND] = false; return branded[BRAND]; })],
+    wrapped: [Object.keys(wrapped), wrapped[LOCAL], copy[LOCAL], JSON.stringify(copy), Object.hasOwn(copy, LOCAL), Object.hasOwn(copy, BRAND), copy[BRAND] === undefined, forIn, Object.entries(wrapped).length],
+    json: [JSON.stringify([LOCAL, 1]), JSON.stringify({ s: LOCAL }), JSON.stringify(LOCAL) === undefined],
+    weak: [internals.get(plain).loaded, internals.has(plain), internals.has({}), internals.get("text") === undefined, internals.delete(plain), internals.has(plain), seen.has(plain), seen.has(LOCAL), seen.delete(plain), seen.has(plain), new WeakMap([[plain, 2]]).get(plain), String(internals)],
+    errors: [attempt(() => internals.set("text", 1)), attempt(() => internals.set(undefined, 1)), attempt(() => seen.add(BRAND)), attempt(() => `${LOCAL}`), attempt(() => LOCAL + 1), attempt(() => +LOCAL), attempt(() => new WeakSet([1]))],
+    detect: [globalThis.window === undefined, globalThis.Bun !== undefined],
+    operators: [BRAND in branded, BRAND in plain, LOCAL in wrapped, LOCAL in copy, "code" in branded, BRAND in list, list[BRAND] === undefined, attempt(() => delete branded[BRAND]), delete copy[LOCAL], LOCAL in copy, delete plain[BRAND], attempt(() => BRAND in "text")],
+  };
+}
+"#;
+    std::fs::write(tmp.path().join("helpers.mjs"), helper).unwrap();
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args([
+            "--input-type=module",
+            "-e",
+            "import {probe} from './helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
+        ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        "import { action, defineConfig } from 'zero'; import { probe, unmodeled } from './helpers.mjs'; export default defineConfig({ name: 'symbols', actions: { probe: action({ input: {}, handler: () => probe() }), unmodeled: action({ input: {}, handler: () => unmodeled() }) } });",
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$run = fn ($name) => ('\\ZeroApp\\' . $schema['actions'][$name]['handler'])(new \Zero\JsObject(), new \Zero\JsObject());
+echo \Zero\Js::jsonStringify(new \Zero\JsArray([$run('probe'), $run('unmodeled')]));
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-symbols/zero/app"),
+        ],
+    );
+    let refused = json!([
+        "TypeError",
+        "Symbol-keyed properties are only supported on plain objects"
+    ]);
+    assert_eq!(actual, json!([expected, [refused, refused, refused, refused]]));
+
+    // Authored TypeScript has no symbol type and no weak collections; both are located refusals.
+    for (source, message) in [
+        (
+            "const s = Symbol('x'); export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof s }) } });",
+            "symbols aren't supported in TypeScript code yet",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof Symbol.for('x') }) } });",
+            "symbols aren't supported in TypeScript code yet",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => { const m = new WeakMap(); return 1; } }) } });",
+            "`new WeakMap` isn't supported",
+        ),
+        (
+            "const m = new WeakMap(); export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof m }) } });",
+            "which TypeScript code here can't use",
+        ),
+        (
+            "const m = new WeakMap([[{}, 1]]); export default defineConfig({});",
+            "unsupported overload of `constructor.WeakMap`",
+        ),
+        (
+            "const k = Symbol('k'); const o = { [k]: 1 }; export default defineConfig({});",
+            "symbol-keyed properties can't be created while the config is evaluated",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof globalThis.Buffer }) } });",
+            "`globalThis.Buffer` depends on the host",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof globalThis.myPolyfill }) } });",
+            "`globalThis.myPolyfill` depends on the host",
+        ),
+        (
+            "const f = typeof globalThis.fetch; export default defineConfig({});",
+            "`globalThis.fetch` depends on the host",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => globalThis.Bun() }) } });",
+            "`globalThis.Bun` is undefined in Zero",
+        ),
+    ] {
+        std::fs::remove_file(tmp.path().join("helpers.mjs")).ok();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{source}"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains(message),
+            "{source}: {report}"
+        );
+        assert!(diagnostic["location"].is_object(), "{source}: {report}");
+        assert!(diagnostic["help"].is_string(), "{source}: {report}");
+    }
+}
+
+#[test]
 fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     let vectors: Value = serde_json::from_str(include_str!("differential/builtin-vectors.json")).unwrap();
     let tmp = tempfile::tempdir().unwrap();
@@ -1516,8 +1662,8 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         r#"new RegExp("(*ACCEPT)")"#,
         "typeof process",
         "typeof require",
-        "typeof globalThis",
         "typeof crypto",
+        "typeof globalThis.process",
         "(() => { const o = {n: 1}; Object.freeze(o); try {o.n = 2;} catch {} return o.n; })()",
         "(() => { const o: Record<string, number> = {}; o['__proto__'] = 1; return Object.hasOwn(o, '__proto__'); })()",
         "JSON.stringify({toJSON: () => 42})",

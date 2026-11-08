@@ -344,6 +344,9 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    for w in &built.unsupported_plugins {
+        eprintln!("warning: {w}");
+    }
     if args.command == "check" {
         if !args.quiet {
             for h in &built.hints {

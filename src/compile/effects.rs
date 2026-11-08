@@ -93,13 +93,7 @@ impl Effects {
         let javascript_modules = program
             .modules
             .iter()
-            .filter(|module| {
-                module
-                    .path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| matches!(extension, "js" | "mjs" | "cjs"))
-            })
+            .filter(|module| module.dynamic)
             .map(|module| module.id)
             .collect();
         let mut graph = Graph {
@@ -921,6 +915,16 @@ impl Graph {
                 self.history.entry(owner).or_default().insert(e.span);
                 return target;
             }
+            // `delete` writes its target place: the property becomes absent.
+            ExprKind::Delete(target) => {
+                if let Some(p) = self.expr(target, names, env, owner) {
+                    self.write_events.entry(e.span).or_default().insert(p.clone());
+                    self.function_writes.entry(owner).or_default().insert(p.clone());
+                    self.events.entry(e.span).or_default().insert(p);
+                }
+                self.history.entry(owner).or_default().insert(e.span);
+                return None;
+            }
             ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
                 let callee_value = self.expr(callee, names, env, owner);
                 let argv: Vec<_> = args
@@ -1295,7 +1299,7 @@ impl Graph {
                     self.copy(src, Some(value.clone()), owner);
                 }
             }
-            ExprKind::Binary(_, a, b) | ExprKind::Instanceof(a, b) => {
+            ExprKind::Binary(_, a, b) | ExprKind::Instanceof(a, b) | ExprKind::In(a, b) => {
                 self.expr(a, names, env, owner);
                 self.expr(b, names, env, owner);
                 return None;
@@ -1392,6 +1396,14 @@ impl Graph {
                 self.block(b, names, env, owner);
                 self.loop_history(owner, first_call, &before, e.span);
             }
+            Stmt::DoWhile(b, e) => {
+                let first_call = self.calls.len();
+                let before = self.history.get(&owner).cloned().unwrap_or_default();
+                self.block(b, names, env, owner);
+                self.expr(e, names, env, owner);
+                self.loop_history(owner, first_call, &before, e.span);
+            }
+            Stmt::Labeled(_, s, _) => self.stmt(s, names, env, owner),
             Stmt::For {
                 init,
                 test,
@@ -1503,8 +1515,8 @@ impl Graph {
             }
             Stmt::Exported(s) => self.stmt(s, names, env, owner),
             Stmt::Return(None, _)
-            | Stmt::Break(_)
-            | Stmt::Continue(_)
+            | Stmt::Break(..)
+            | Stmt::Continue(..)
             | Stmt::TypeAlias { .. }
             | Stmt::Import { .. }
             | Stmt::ExportNames { .. }

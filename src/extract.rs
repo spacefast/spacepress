@@ -15,15 +15,40 @@ use std::rc::Rc;
 /// Where a compiled function's PHP name goes once it's known.
 #[derive(Debug, Clone)]
 pub enum Slot {
-    Hook { table: String, kind: HookKind },
-    Default { at: ColPath },
-    OnUpdate { at: ColPath },
-    Validate { at: ColPath },
-    ActionHandler { action: String },
-    Access { owner: Owner, op: String },
-    FieldAccess { at: ColPath, op: String },
-    JobHandler { job: String },
-    RouteHandler { route: String },
+    Hook {
+        table: String,
+        kind: HookKind,
+    },
+    Default {
+        at: ColPath,
+    },
+    OnUpdate {
+        at: ColPath,
+    },
+    Validate {
+        at: ColPath,
+    },
+    ActionHandler {
+        action: String,
+    },
+    Access {
+        owner: Owner,
+        op: String,
+    },
+    FieldAccess {
+        at: ColPath,
+        op: String,
+    },
+    JobHandler {
+        job: String,
+    },
+    RouteHandler {
+        route: String,
+    },
+    /// A `wp-hooks/` handler; `index` is its place in `Schema::wp_hooks`.
+    WpHook {
+        index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -1935,7 +1960,8 @@ fn scan_stmts(stmts: &[Stmt], param: &str, out: &mut Vec<String>) {
                     scan_stmts(b, param, out);
                 }
             }
-            Stmt::Block(b) | Stmt::While(_, b) => scan_stmts(b, param, out),
+            Stmt::Block(b) | Stmt::While(_, b) | Stmt::DoWhile(b, _) => scan_stmts(b, param, out),
+            Stmt::Labeled(_, s, _) => scan_stmts(std::slice::from_ref(s), param, out),
             Stmt::For { body, .. } | Stmt::ForOf { body, .. } | Stmt::ForIn { body, .. } => {
                 scan_stmts(body, param, out)
             }
@@ -2816,29 +2842,7 @@ fn route_path(path: &str, span: Span) -> Result<String> {
     Ok(format!("/{rest}"))
 }
 
-fn kebab(name: &str) -> String {
-    let mut s = String::new();
-    let chars: Vec<char> = name.chars().collect();
-    for (i, c) in chars.iter().enumerate() {
-        if *c == '_' || *c == '-' {
-            if !s.ends_with('-') {
-                s.push('-');
-            }
-        } else {
-            if c.is_uppercase()
-                && i > 0
-                && !s.ends_with('-')
-                && (chars[i - 1].is_lowercase()
-                    || chars[i - 1].is_ascii_digit()
-                    || chars.get(i + 1).is_some_and(|c| c.is_lowercase()))
-            {
-                s.push('-');
-            }
-            s.extend(c.to_lowercase());
-        }
-    }
-    s
-}
+use crate::wordpress::abilities::kebab;
 
 fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
     if let Some(v) = cfg.get("globals") {

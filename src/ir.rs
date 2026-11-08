@@ -15,6 +15,22 @@ pub struct Module {
     pub file: u32,
     pub path: std::path::PathBuf,
     pub body: Vec<Stmt>,
+    /// Compiled in the checked-dynamic domain: raw JavaScript, and installed
+    /// package TypeScript, whose annotations are erased while lowering.
+    pub dynamic: bool,
+    /// Type declarations erased from a dynamic module. Imports and re-exports
+    /// of these names are elided, as TypeScript elides them.
+    pub type_names: std::collections::HashSet<String>,
+}
+
+/// Raw JavaScript and installed package TypeScript (not declarations) share
+/// the checked-dynamic domain. Authored TypeScript keeps static checking.
+pub fn dynamic_source(path: &std::path::Path) -> bool {
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    if matches!(extension, Some("js" | "mjs" | "cjs")) {
+        return true;
+    }
+    matches!(extension, Some("ts" | "mts" | "cts")) && path.components().any(|part| part.as_os_str() == "node_modules")
 }
 
 #[derive(Debug)]
@@ -203,8 +219,14 @@ pub enum Stmt {
         span: Span,
     },
     While(Expr, Vec<Stmt>),
-    Break(Span),
-    Continue(Span),
+    /// `do { body } while (test)`: the body runs before the first test.
+    DoWhile(Vec<Stmt>, Expr),
+    /// `label: statement`. `break label` leaves it; `continue label` needs a loop body.
+    Labeled(String, P<Stmt>, Span),
+    /// An unlabeled `break` leaves the innermost loop or switch.
+    Break(Option<String>, Span),
+    /// An unlabeled `continue` continues the innermost loop.
+    Continue(Option<String>, Span),
     Throw(Expr),
     Try {
         block: Vec<Stmt>,
@@ -257,6 +279,8 @@ pub enum UnOp {
     Plus,
     Not,
     TypeOf,
+    /// `~x`: ToInt32, then bitwise complement.
+    BitNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -276,6 +300,30 @@ pub enum BinOp {
     Ne,
     LooseEq,
     LooseNe,
+    /// `&`, `|`, `^`: both operands through ToInt32; the result is a signed 32-bit integer.
+    BitAnd,
+    BitOr,
+    BitXor,
+    /// `<<`, `>>`: the left operand through ToInt32, the count through ToUint32 masked to 5 bits.
+    Shl,
+    Shr,
+    /// `>>>`: the left operand through ToUint32; the result is unsigned.
+    UShr,
+}
+
+impl BinOp {
+    /// The JavaScript spelling of a bitwise operator.
+    pub fn bitwise_symbol(self) -> Option<&'static str> {
+        Some(match self {
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
+            BinOp::Shl => "<<",
+            BinOp::Shr => ">>",
+            BinOp::UShr => ">>>",
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -307,6 +355,10 @@ pub enum Prop {
 pub enum ExprKind {
     Class(Rc<Class>),
     Instanceof(P<Expr>, P<Expr>),
+    /// `delete target`, where the target is a member or index read, possibly `?.` at its last step.
+    Delete(P<Expr>),
+    /// `key in object`: own or inherited property presence. The key is evaluated first.
+    In(P<Expr>, P<Expr>),
     Num(f64),
     Str(String),
     Bool(bool),

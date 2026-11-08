@@ -479,10 +479,22 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     p.rejects("check", "Blueprint steps and activation are unsupported");
     p.config(&[org("secure-custom-fields")]);
     p.rejects("check", "platform plugin secure-custom-fields requires >= 6.9.7");
+    // A plugin outside src/wp_plugins/supported.json still checks, with a warning.
     p.config(&[org("alpha")]);
     let out = p.run("check", &[]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("warning: plugin alpha 1.0 is not supported by the Zero team.")
+            && stderr.contains("https://github.com/spacefast/zero/issues"),
+        "{stderr}"
+    );
     assert!(!p.root.join(".zero").exists());
+    let mut supported = org("classic-editor");
+    supported["version"] = json!("1.6.7");
+    p.config(&[supported]);
+    let out = p.run("check", &[]);
+    assert!(out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("warning:"));
 }
 
 /// `admin: true` ships the optional admin screens as a fourth plugin, complete and versioned like

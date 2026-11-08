@@ -656,6 +656,10 @@ pub fn action_input(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column
     )
 }
 
+pub fn obj_pub(fields: &[(&str, Ty)]) -> Ty {
+    obj(fields)
+}
+
 fn obj(fields: &[(&str, Ty)]) -> Ty {
     Ty::Obj(
         fields
@@ -675,6 +679,26 @@ pub fn user() -> Ty {
 }
 
 /// `ctx` for hooks and actions (§1.7).
+/// What `await fetch(...)` returns: the parts of a WHATWG Response a handler reads.
+pub fn fetch_response() -> Ty {
+    obj(&[
+        ("status", Ty::Num),
+        ("ok", Ty::Bool),
+        ("url", Ty::Str),
+        ("redirected", Ty::Bool),
+        (
+            "headers",
+            obj(&[
+                ("get", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str.nullable()))),
+                ("has", Ty::Fn(vec![Ty::Str], Box::new(Ty::Bool))),
+            ]),
+        ),
+        // Promises, as in JavaScript; PHP reads the body before the call returns.
+        ("text", Ty::Fn(vec![], Box::new(Ty::Promise(Box::new(Ty::Str))))),
+        ("json", Ty::Fn(vec![], Box::new(Ty::Promise(Box::new(Ty::Unknown))))),
+    ])
+}
+
 pub fn hook_ctx() -> Ty {
     obj(&[("user", user().nullable())])
 }

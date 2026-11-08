@@ -314,6 +314,10 @@ $convert = static fn (string $direction, string $text) => req('POST', '/sync/not
 $markdown = file_get_contents("$fixtures/document.md");
 $blocks = $convert('toBlocks', $markdown)[1]['text'];
 eq('Markdown is a fixed point through blocks', $convert('toMarkdown', $blocks)[1]['text'], $markdown);
+// The fence language becomes a className attribute; core escapes its backslash as \.
+$fenced = $convert('toBlocks', "```a\\b\nx\n```\n")[1]['text'];
+eq('block attributes are spelled as WordPress serializes them', [$fenced, serialize_blocks(parse_blocks($fenced))],
+    array_fill(0, 2, "<!-- wp:code {\"className\":\"language-a\\u005cb\"} -->\n<pre class=\"wp-block-code language-a\\b\"><code>x<br></code></pre>\n<!-- /wp:code -->\n\n"));
 eq('editor-saved blocks pull as Markdown', $convert('toMarkdown', file_get_contents("$fixtures/editor.blocks"))[1]['text'], file_get_contents("$fixtures/editor.md"));
 foreach (['table' => 'core/table', 'aligned' => 'core/paragraph', 'widget' => 'acme/widget'] as $name => $block) {
     $r = $convert('toMarkdown', file_get_contents("$fixtures/$name.blocks"));

@@ -44,6 +44,8 @@ pub struct Func {
     pub params: Vec<Param>,
     pub body: FnBody,
     pub is_async: bool,
+    /// `function*`: the body compiles to a PHP Generator behind the JavaScript iterator protocol.
+    pub is_generator: bool,
     pub ret: Option<TyAnn>,
     pub type_params: Vec<String>,
     pub span: Span,
@@ -74,7 +76,17 @@ pub struct Class {
     pub fields: Vec<ClassField>,
     pub methods: Vec<(String, bool, Rc<Func>)>,
     pub constructor: Option<Rc<Func>>,
+    /// `get`/`set` members in declaration order; they live on the prototype, never as own fields.
+    pub accessors: Vec<ClassAccessor>,
     pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct ClassAccessor {
+    pub name: String,
+    pub is_static: bool,
+    pub setter: bool,
+    pub func: Rc<Func>,
 }
 
 #[derive(Debug)]
@@ -107,6 +119,7 @@ impl ClassField {
             }],
             body: FnBody::Expr(self.init.as_ref()?.clone()),
             is_async: false,
+            is_generator: false,
             ret: self.ann.clone(),
             type_params: vec![],
             span: self.span,
@@ -207,6 +220,8 @@ pub enum Stmt {
         span: Span,
     },
     ForOf {
+        /// `for await (... of ...)`.
+        is_await: bool,
         kind: DeclKind,
         pat: Pat,
         iter: Expr,
@@ -429,6 +444,11 @@ pub enum ExprKind {
     /// Optional-chain boundary: a nullish `?.` inside short-circuits to undefined here.
     Chain(P<Expr>),
     Await(P<Expr>),
+    /// `yield arg` / `yield* arg` (delegate) inside a generator.
+    Yield {
+        arg: Option<P<Expr>>,
+        delegate: bool,
+    },
     /// `e as T` / `<T>e` / `e satisfies T`. `as const` is dropped during lowering.
     As(P<Expr>, TyAnn),
     NonNull(P<Expr>),

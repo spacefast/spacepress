@@ -828,6 +828,9 @@ impl CommonJsScope<'_> {
                 if let Some(constructor) = &class.constructor {
                     self.function(constructor)?;
                 }
+                for accessor in &class.accessors {
+                    self.function(&accessor.func)?;
+                }
             }
             ExprKind::Array(items) => {
                 for ArrEl::Item(value) | ArrEl::Spread(value) in items {
@@ -859,8 +862,10 @@ impl CommonJsScope<'_> {
             | ExprKind::Member { obj: value, .. }
             | ExprKind::Chain(value)
             | ExprKind::Await(value)
+            | ExprKind::Yield { arg: Some(value), .. }
             | ExprKind::As(value, _)
             | ExprKind::NonNull(value) => self.expression(value)?,
+            ExprKind::Yield { arg: None, .. } => {}
             ExprKind::Instanceof(left, right)
             | ExprKind::In(left, right)
             | ExprKind::Binary(_, left, right)

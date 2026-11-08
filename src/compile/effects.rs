@@ -963,9 +963,14 @@ impl Graph {
                 }
                 return member;
             }
-            ExprKind::NonNull(e) | ExprKind::As(e, _) | ExprKind::Chain(e) | ExprKind::Await(e) => {
+            ExprKind::NonNull(e)
+            | ExprKind::As(e, _)
+            | ExprKind::Chain(e)
+            | ExprKind::Await(e)
+            | ExprKind::Yield { arg: Some(e), .. } => {
                 return self.expr(e, names, env, owner);
             }
+            ExprKind::Yield { arg: None, .. } => {}
             ExprKind::Update { target, .. } => {
                 if let Some(p) = self.expr(target, names, env, owner) {
                     self.write_events.entry(e.span).or_default().insert(p.clone());

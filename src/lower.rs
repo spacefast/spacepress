@@ -437,13 +437,6 @@ impl Lowerer {
                 }
             }
             a::Statement::ForOfStatement(f) => {
-                if f.r#await {
-                    return self.unsupported(
-                        f.span,
-                        "`for await`",
-                        "Zero's async calls already block; use `for ... of`",
-                    );
-                }
                 let a::ForStatementLeft::VariableDeclaration(v) = &f.left else {
                     return self.unsupported(
                         f.span,
@@ -458,6 +451,7 @@ impl Lowerer {
                     _ => return self.unsupported(v.span, "this loop declaration", "use `const`"),
                 };
                 Stmt::ForOf {
+                    is_await: f.r#await,
                     kind,
                     pat: self.pattern(&v.declarations[0].id)?,
                     iter: self.expr(&f.right)?,
@@ -627,6 +621,8 @@ impl Lowerer {
             let mut methods = Vec::new();
             let mut constructor = None;
             let mut names = std::collections::HashSet::new();
+            let mut accessors = Vec::new();
+            let mut accessor_names = std::collections::HashSet::new();
             for element in &c.body.body {
                 match element {
                     // Erased members have no runtime form: abstract members,
@@ -664,7 +660,10 @@ impl Lowerer {
                         if matches!(
                             name.as_str(),
                             "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
-                        ) || !names.insert((p.r#static, name.to_string()))
+                        ) || accessor_names
+                            .iter()
+                            .any(|(s, _, n): &(bool, bool, String)| *s == p.r#static && *n == name)
+                            || !names.insert((p.r#static, name.to_string()))
                         {
                             return self.unsupported(
                                 p.span,
@@ -694,14 +693,14 @@ impl Lowerer {
                         if m.computed
                             || !m.decorators.is_empty()
                             || type_only(m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public))
-                            || matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set)
                         {
                             return self.unsupported(
                                 m.span,
-                                "computed, decorated, private or accessor class methods",
+                                "computed, decorated or private class methods",
                                 "use public named methods",
                             );
                         }
+                        let accessor = matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set);
                         if type_only(m.value.type_parameters.is_some()) || m.value.params.rest.is_some() {
                             return self.unsupported(
                                 m.span,
@@ -830,10 +829,35 @@ impl Lowerer {
                                 }
                             }
                             constructor = Some(f);
+                        } else if accessor {
+                            let setter = m.kind == a::MethodDefinitionKind::Set;
+                            if matches!(name.as_str(), "__proto__" | "prototype" | "constructor")
+                                || names.contains(&(m.r#static, name.clone()))
+                                || !accessor_names.insert((m.r#static, setter, name.clone()))
+                            {
+                                return self.unsupported(
+                                    m.span,
+                                    "duplicate or protocol class members",
+                                    "use distinct ordinary member names",
+                                );
+                            }
+                            accessors.push(ClassAccessor {
+                                name: name.clone(),
+                                is_static: m.r#static,
+                                setter,
+                                func: f,
+                            });
                         } else {
+                            if accessor_names.iter().any(|(s, _, n)| *s == m.r#static && *n == name) {
+                                return self.unsupported(
+                                    m.span,
+                                    "duplicate or protocol class members",
+                                    "use distinct ordinary member names",
+                                );
+                            }
                             if matches!(
                                 name.as_str(),
-                                "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
+                                "__proto__" | "prototype" | "constructor" | "toString" | "valueOf"
                             ) || !names.insert((m.r#static, name.to_string()))
                             {
                                 return self.unsupported(
@@ -865,6 +889,7 @@ impl Lowerer {
                 fields,
                 methods,
                 constructor,
+                accessors,
                 span: self.sp(c.span),
             }))
         })();
@@ -875,9 +900,6 @@ impl Lowerer {
     fn function_inner(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
         if let Some(id) = &f.id {
             self.binding_name(id.name.as_str(), id.span)?;
-        }
-        if f.generator {
-            return self.unsupported(f.span, "generators", "return an array");
         }
         let Some(body) = &f.body else {
             return self.unsupported(f.span, "a function without a body", "");
@@ -897,6 +919,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
+            is_generator: f.generator,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -917,6 +940,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
+            is_generator: false,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -1404,7 +1428,13 @@ impl Lowerer {
                     type_args: vec![],
                 },
             ),
-            E::YieldExpression(y) => return self.unsupported(y.span, "generators", ""),
+            E::YieldExpression(y) => self.mk(
+                span,
+                ExprKind::Yield {
+                    arg: y.argument.as_ref().map(|a| self.expr(a).map(Box::new)).transpose()?,
+                    delegate: y.delegate,
+                },
+            ),
             E::ImportExpression(i) => return self.unsupported(i.span, "dynamic `import()`", "use a static import"),
             E::Super(s) if self.class_context.get() => self.mk(s.span, ExprKind::Ident("super".into())),
             E::Super(s) => return self.unsupported(s.span, "`super` outside a class", ""),
@@ -1944,7 +1974,9 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
                 ArrEl::Item(v) | ArrEl::Spread(v) => v,
             }))
             .collect(),
-        ExprKind::Unary(_, value)
+        ExprKind::Yield { arg: None, .. } => vec![],
+        ExprKind::Yield { arg: Some(value), .. }
+        | ExprKind::Unary(_, value)
         | ExprKind::Delete(value)
         | ExprKind::IsNullish(value, _)
         | ExprKind::Chain(value)

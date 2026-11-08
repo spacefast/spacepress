@@ -16,9 +16,9 @@ my-project/
 ├── zero.config.ts     # imports only from ./zero/** and npm packages
 ├── zero/
 │   ├── lib/fields.ts  # your modules, any names
+│   ├── wp-hooks/      # WordPress actions and filters (see below)
 │   ├── _generated/    # written by zero build, committed
 │   └── dist/          # written by zero build, gitignored
-└── wp-hooks/          # WordPress actions and filters (see below)
 ```
 
 A relative import from `zero.config.ts` or from a module under `zero/` must
@@ -798,12 +798,12 @@ return post === null ? "" : esc_html(post.post_title);
 
 ## WordPress hooks
 
-`wp-hooks/` beside `zero.config.ts` adds WordPress actions and filters. Name a
+`zero/wp-hooks/` adds WordPress actions and filters. Name a
 file after the hook, or make a directory of that name for several handlers.
 Each file default-exports its handler:
 
 ```text
-wp-hooks/
+zero/wp-hooks/
 ├── save_post.ts
 └── the_content/
     ├── 10-reading-time.ts
@@ -811,7 +811,7 @@ wp-hooks/
 ```
 
 ```ts
-// wp-hooks/the_content/20-frame.ts
+// zero/wp-hooks/the_content/20-frame.ts
 import type { Handler } from "php/wordpress";
 
 const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
@@ -819,7 +819,7 @@ export default frame;
 ```
 
 ```ts
-// wp-hooks/save_post.ts
+// zero/wp-hooks/save_post.ts
 import type { WP_Post } from "php/wordpress";
 
 export const priority = 20;
@@ -850,7 +850,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   run in that order after core's own callbacks at 10. `export const priority =
   <integer>` moves a file; lower runs first. A file exports only `default` and
   `priority`; share code through an ordinary imported module.
-- `wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
+- `zero/wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
   file without a default export, another file type, or the same hook as both a
   file and a directory is a build error at that path.
 - Handlers run in WordPress's own request, whichever it is: a page view, an

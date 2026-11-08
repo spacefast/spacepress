@@ -14,11 +14,13 @@ use std::rc::Rc;
 pub const ZERO_MODULE: &str = "zero";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
+/// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `zero/_generated/db.d.ts`.
+pub const DB_MODULE: &str = "zero:db";
 
 /// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
 /// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || crate::builtins::module(spec).is_some()
+    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || spec == DB_MODULE || crate::builtins::module(spec).is_some()
 }
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
@@ -79,6 +81,9 @@ pub struct Program {
     pub fs: Rc<dyn Fs>,
     /// `wp-hooks/` handler files beside the entry, in registration order (see [`wp_hook_files`]).
     pub wp_hooks: Vec<WpHookFile>,
+    /// Every app module under `zero/` (see [`app_files`]), in path order. Each one's exported kinds,
+    /// actions and jobs register by export name, whatever imports it.
+    pub app_modules: Vec<usize>,
 }
 
 /// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
@@ -109,11 +114,23 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         entry: 0,
         fs: fs.clone(),
         wp_hooks: Vec::new(),
+        app_modules: Vec::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let mut diagnostics = Vec::new();
     match load_module(&*fs, &entry, &mut program, &mut by_path, &mut diagnostics) {
         Ok(id) => program.entry = id,
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    match app_files(&*fs, &program.root.join(crate::layout::ROOT)) {
+        Ok(files) => {
+            for path in files {
+                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
+                    Ok(module) => program.app_modules.push(module),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+        }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
     let dir = program.root.join(WP_HOOKS_DIR);
@@ -135,8 +152,53 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     }
 }
 
-/// The WordPress hooks directory beside `zero.config.ts`.
-pub const WP_HOOKS_DIR: &str = "wp-hooks";
+/// Folders under `zero/` whose names Zero reads, or that it writes: no app module is loaded from
+/// them (docs/spec/spec.md §1.1).
+pub const RESERVED_DIRS: &[&str] = &[
+    "app",
+    "components",
+    "wp-hooks",
+    "content",
+    "public",
+    "_generated",
+    "dist",
+    "node_modules",
+];
+
+/// Every `.ts` file under `zero/` outside [`RESERVED_DIRS`], in path order: app modules load whatever
+/// their names are. Declaration files are types only, and dot-entries and symlinked directories
+/// are skipped, so editor and VCS state never become code.
+pub fn app_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    if !fs.is_dir(root) {
+        return Ok(out);
+    }
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs
+            .read_dir(&dir)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", dir.display())))?;
+        for path in entries {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            if fs.is_dir(&path) {
+                let top = dir == root && RESERVED_DIRS.contains(&name.as_ref());
+                if !top && name != "node_modules" && !fs.is_symlink(&path) {
+                    stack.push(path);
+                }
+            } else if name.ends_with(".ts") && !name.ends_with(".d.ts") && fs.is_file(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// The WordPress hooks directory: one file or directory per hook name (docs/spec/spec.md §1).
+pub const WP_HOOKS_DIR: &str = "zero/wp-hooks";
 
 /// `wp-hooks/<hook>.ts` and `wp-hooks/<hook>/*.ts`, as `(hook, order, path)` sorted by hook, then by
 /// file name. Anything else in the directory is an error that names it: a non-`.ts` file would
@@ -156,7 +218,7 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
     let refuse = |path: &Path, why: &str| {
         let file = diag::register_file(path, "");
         Diag::new(Span { file, start: 0, end: 0 }, why.to_string()).help(
-            "wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
+            "zero/wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
         )
     };
     let ts =

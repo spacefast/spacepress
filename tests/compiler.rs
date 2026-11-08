@@ -61,6 +61,18 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "zero/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside zero/",
         "zero/tags.ts:2:1",
     );
+    // Export names are unique across the app (Z1221): an action named like a kind.
+    rejects(
+        "reject-duplicate-export",
+        "`notes` is exported twice: at zero/a.ts:2 and here",
+        "zero/b.ts:3:22",
+    );
+    // "zero:db" names only registered kinds, and suggests the closest one.
+    rejects(
+        "reject-db-unknown",
+        "\"zero:db\" has no kind named `note`",
+        "zero/app.ts:2:10",
+    );
 }
 
 #[test]

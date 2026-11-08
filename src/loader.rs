@@ -77,6 +77,8 @@ pub struct Program {
     pub fs: Rc<dyn Fs>,
     /// `wp-hooks/` handler files beside the entry, in registration order (see [`wp_hook_files`]).
     pub wp_hooks: Vec<WpHookFile>,
+    /// `zero/components/**/*.tsx` beside the entry: (path relative to `zero/`, module), sorted.
+    pub components: Vec<(String, usize)>,
 }
 
 /// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
@@ -103,6 +105,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         entry: 0,
         fs: fs.clone(),
         wp_hooks: Vec::new(),
+        components: Vec::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let entry = fs
@@ -125,11 +128,57 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
+    let zero_dir = entry.parent().expect("entry has a directory").join("zero");
+    match component_files(&*fs, &zero_dir.join(COMPONENTS_DIR)) {
+        Ok(files) => {
+            for path in files {
+                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
+                    Ok(module) => {
+                        let relative = path.strip_prefix(&zero_dir).unwrap_or(&path);
+                        let relative = relative.to_string_lossy().replace('\\', "/");
+                        program.components.push((relative, module));
+                    }
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+        }
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
     if diagnostics.is_empty() {
         Ok(program)
     } else {
         Err(diagnostics)
     }
+}
+
+/// Server components compiled to PHP, under the Zero root (`zero/components/`).
+pub const COMPONENTS_DIR: &str = "components";
+
+/// Every `.tsx` file under `dir`, recursively, sorted. Other files (CSS, images, `.ts`
+/// helpers the components import) are left to the imports that name them.
+fn component_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<PathBuf>> {
+    if !fs.is_dir(dir) {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let entries = fs
+            .read_dir(&d)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", d.display())))?;
+        for path in entries {
+            if fs.is_symlink(&path) {
+                continue;
+            }
+            if fs.is_dir(&path) {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "tsx") && fs.is_file(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
 }
 
 /// The WordPress hooks directory beside `zero.config.ts`.
@@ -289,11 +338,12 @@ fn parse(
 ) -> Result<Parsed> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
-    if source_type.is_jsx() {
+    if source_type.is_jsx() && !jsx_admitted(path, source) {
         return Err(Diag::new(
             Span { file, start: 0, end: 0 },
             "JSX files can't be part of a Zero config",
-        ));
+        )
+        .help("JSX compiles in components (`zero/components/`), pages, and files that start with \"use client\""));
     }
     let ret = Parser::new(&allocator, source, source_type)
         .with_options(ParseOptions {
@@ -344,6 +394,23 @@ fn parse(
         commonjs,
         type_names: lowerer.erased_types.into_inner(),
     })
+}
+
+/// JSX compiles only in `.tsx` components, pages and `"use client"` files
+/// (docs/decisions/2026-11-08-tsx-to-php.md); the config graph itself never renders.
+fn jsx_admitted(path: &Path, source: &str) -> bool {
+    if path.extension().and_then(|e| e.to_str()) != Some("tsx") {
+        return false;
+    }
+    let in_folder = path
+        .components()
+        .any(|part| matches!(part.as_os_str().to_str(), Some("components" | "pages" | "app")));
+    let use_client = source
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .strip_prefix(['"', '\''])
+        .is_some_and(|rest| rest.starts_with("use client"));
+    in_folder || use_client
 }
 
 /// Whether a source can be CommonJS before it's lowered: `.cjs`, or `.js` with no import/export
@@ -942,6 +1009,11 @@ impl CommonJsScope<'_> {
             | ExprKind::As(value, _)
             | ExprKind::NonNull(value) => self.expression(value)?,
             ExprKind::Yield { arg: None, .. } => {}
+            ExprKind::Jsx(jsx) => {
+                for value in jsx.exprs() {
+                    self.expression(value)?;
+                }
+            }
             ExprKind::Instanceof(left, right)
             | ExprKind::In(left, right)
             | ExprKind::Binary(_, left, right)
@@ -1046,11 +1118,13 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
     candidates.extend([
         base.to_path_buf(),
         base.with_extension("ts"),
+        base.with_extension("tsx"),
         base.with_extension("mts"),
         base.with_extension("mjs"),
         base.with_extension("js"),
         base.with_extension("cjs"),
         base.join("index.ts"),
+        base.join("index.tsx"),
         base.join("index.mts"),
         base.join("index.mjs"),
         base.join("index.js"),
@@ -1061,7 +1135,7 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
             && !c.to_string_lossy().ends_with(".d.ts")
             && matches!(
                 c.extension().and_then(|e| e.to_str()),
-                Some("ts" | "mts" | "js" | "mjs" | "cjs")
+                Some("ts" | "tsx" | "mts" | "js" | "mjs" | "cjs")
             )
         {
             return fs.canonicalize(&c).map_err(|e| Diag::new(span, e.to_string()));

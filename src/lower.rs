@@ -1146,6 +1146,199 @@ impl Lowerer {
         Expr { kind, span: self.sp(s) }
     }
 
+    // ---- JSX (docs/decisions/2026-11-08-tsx-to-php.md) ---------------------------------------
+
+    fn jsx_element(&self, j: &a::JSXElement<'_>) -> Result<Expr> {
+        use a::JSXElementName as N;
+        let opening = &j.opening_element;
+        let kind = match &opening.name {
+            N::Identifier(id) => {
+                let name = id.name.as_str();
+                // React treats a lowercase first letter, or a dash, as an HTML tag.
+                if name.starts_with(|c: char| c.is_ascii_lowercase()) || name.contains('-') {
+                    JsxKind::Intrinsic(name.to_string())
+                } else {
+                    JsxKind::Component(Box::new(self.mk(id.span, ExprKind::Ident(name.to_string()))))
+                }
+            }
+            N::IdentifierReference(id) => {
+                JsxKind::Component(Box::new(self.mk(id.span, ExprKind::Ident(id.name.to_string()))))
+            }
+            N::MemberExpression(m) => JsxKind::Component(Box::new(self.jsx_member(m)?)),
+            N::NamespacedName(n) => {
+                return self.unsupported(
+                    n.span,
+                    "namespaced JSX tags",
+                    "write the tag without a namespace prefix",
+                );
+            }
+            N::ThisExpression(t) => {
+                return self.unsupported(t.span, "`<this>` as a JSX tag", "import the component and use its name");
+            }
+        };
+        if opening.type_arguments.is_some() {
+            return self.unsupported(
+                opening.span,
+                "type arguments on a JSX tag",
+                "annotate the component's props instead",
+            );
+        }
+        let mut attrs = Vec::new();
+        for item in &opening.attributes {
+            match item {
+                a::JSXAttributeItem::Attribute(attr) => {
+                    let name = match &attr.name {
+                        a::JSXAttributeName::Identifier(id) => id.name.to_string(),
+                        a::JSXAttributeName::NamespacedName(n) => {
+                            return self.unsupported(
+                                n.span,
+                                "namespaced JSX attributes",
+                                "use React's camelCase name, e.g. `xlinkHref` for `xlink:href`",
+                            );
+                        }
+                    };
+                    let value = match &attr.value {
+                        None => self.mk(attr.span, ExprKind::Bool(true)),
+                        Some(a::JSXAttributeValue::StringLiteral(text)) => {
+                            self.mk(text.span, ExprKind::Str(decode_jsx_entities(text.value.as_str())))
+                        }
+                        Some(a::JSXAttributeValue::ExpressionContainer(c)) => match &c.expression {
+                            a::JSXExpression::EmptyExpression(e) => {
+                                return self.unsupported(
+                                    e.span,
+                                    "an empty attribute expression",
+                                    "give the attribute a value, or leave it out",
+                                );
+                            }
+                            e => self.expr(e.to_expression())?,
+                        },
+                        Some(a::JSXAttributeValue::Element(e)) => self.jsx_element(e)?,
+                        Some(a::JSXAttributeValue::Fragment(f)) => self.jsx_fragment(f)?,
+                    };
+                    // `key` identifies list items for React's reconciler; server HTML never shows it.
+                    if name == "key" {
+                        continue;
+                    }
+                    if name == "ref" {
+                        return self.unsupported(
+                            attr.span,
+                            "`ref` in a server component",
+                            "move the element into a \"use client\" component",
+                        );
+                    }
+                    attrs.push(JsxAttr::Named {
+                        name,
+                        value,
+                        span: self.sp(attr.span),
+                    });
+                }
+                a::JSXAttributeItem::SpreadAttribute(spread) => {
+                    attrs.push(JsxAttr::Spread(self.expr(&spread.argument)?))
+                }
+            }
+        }
+        let children = self.jsx_children(&j.children)?;
+        let JsxKind::Component(callee) = kind else {
+            return Ok(self.mk(j.span, ExprKind::Jsx(Box::new(Jsx { kind, attrs, children }))));
+        };
+        // A component is a call with one props object, in source order; `children` is the
+        // rendered fragment, as React passes it.
+        let mut props: Vec<Prop> = attrs
+            .into_iter()
+            .map(|attr| match attr {
+                JsxAttr::Named { name, value, .. } => Prop::KV(PropKey::Static(name), value),
+                JsxAttr::Spread(value) => Prop::Spread(value),
+            })
+            .collect();
+        if !children.is_empty() {
+            props.push(Prop::KV(
+                PropKey::Static("children".into()),
+                Expr {
+                    kind: ExprKind::Jsx(Box::new(Jsx {
+                        kind: JsxKind::Fragment,
+                        attrs: Vec::new(),
+                        children,
+                    })),
+                    span: self.sp(j.span),
+                },
+            ));
+        }
+        let call = self.mk(
+            j.span,
+            ExprKind::Call {
+                callee,
+                args: vec![ArrEl::Item(self.mk(opening.span, ExprKind::Object(props)))],
+                optional: false,
+                type_args: Vec::new(),
+            },
+        );
+        Ok(self.mk(
+            j.span,
+            ExprKind::Jsx(Box::new(Jsx {
+                kind: JsxKind::Component(Box::new(call)),
+                attrs: Vec::new(),
+                children: Vec::new(),
+            })),
+        ))
+    }
+
+    fn jsx_member(&self, m: &a::JSXMemberExpression<'_>) -> Result<Expr> {
+        let obj = match &m.object {
+            a::JSXMemberExpressionObject::IdentifierReference(id) => {
+                self.mk(id.span, ExprKind::Ident(id.name.to_string()))
+            }
+            a::JSXMemberExpressionObject::MemberExpression(inner) => self.jsx_member(inner)?,
+            a::JSXMemberExpressionObject::ThisExpression(t) => {
+                return self.unsupported(t.span, "`this` in a JSX tag", "import the component and use its name");
+            }
+        };
+        Ok(self.mk(
+            m.span,
+            ExprKind::Member {
+                obj: Box::new(obj),
+                prop: m.property.name.to_string(),
+                optional: false,
+                prop_span: self.sp(m.property.span),
+            },
+        ))
+    }
+
+    fn jsx_fragment(&self, f: &a::JSXFragment<'_>) -> Result<Expr> {
+        let children = self.jsx_children(&f.children)?;
+        Ok(self.mk(
+            f.span,
+            ExprKind::Jsx(Box::new(Jsx {
+                kind: JsxKind::Fragment,
+                attrs: Vec::new(),
+                children,
+            })),
+        ))
+    }
+
+    fn jsx_children(&self, children: &[a::JSXChild<'_>]) -> Result<Vec<Expr>> {
+        let mut out = Vec::new();
+        for child in children {
+            match child {
+                a::JSXChild::Text(t) => {
+                    if let Some(text) = jsx_text(t.value.as_str()) {
+                        out.push(self.mk(t.span, ExprKind::Str(text)));
+                    }
+                }
+                a::JSXChild::Element(e) => out.push(self.jsx_element(e)?),
+                a::JSXChild::Fragment(f) => out.push(self.jsx_fragment(f)?),
+                a::JSXChild::ExpressionContainer(c) => match &c.expression {
+                    // `{/* comment */}` renders nothing.
+                    a::JSXExpression::EmptyExpression(_) => {}
+                    e => out.push(self.expr(e.to_expression())?),
+                },
+                a::JSXChild::Spread(s) => {
+                    return self.unsupported(s.span, "spread children", "render the array as `{items}`");
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub fn expr(&self, e: &a::Expression<'_>) -> Result<Expr> {
         use a::Expression as E;
         let span = e.span();
@@ -1617,20 +1810,8 @@ impl Lowerer {
                     "call the parent's function directly, or move this code into a class method",
                 );
             }
-            E::JSXElement(j) => {
-                return self.unsupported(
-                    j.span,
-                    "JSX",
-                    "build the value with function calls; JSX compiles only in pages (`.tsx` files under `pages/`)",
-                );
-            }
-            E::JSXFragment(j) => {
-                return self.unsupported(
-                    j.span,
-                    "JSX",
-                    "build the value with function calls; JSX compiles only in pages (`.tsx` files under `pages/`)",
-                );
-            }
+            E::JSXElement(j) => self.jsx_element(j)?,
+            E::JSXFragment(j) => self.jsx_fragment(j)?,
             other => {
                 return self.unsupported(
                     other.span(),
@@ -2229,6 +2410,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
         ExprKind::Cond(a, b, c) => vec![a, b, c],
         ExprKind::AssignPattern(pattern, value) => pattern.exprs().into_iter().chain([&**value]).collect(),
         ExprKind::Template(_, values) | ExprKind::Sequence(values) => values.iter().collect(),
+        ExprKind::Jsx(jsx) => jsx.exprs(),
         ExprKind::Ident(_)
         | ExprKind::Num(_)
         | ExprKind::Str(_)
@@ -2610,6 +2792,69 @@ fn expr_children<'a>(x: &'a Expr, out: &mut Vec<&'a Expr>) {
         }
         ExprKind::Cond(a, b, c) => out.extend([&**a, &**b, &**c]),
         ExprKind::Template(_, values) | ExprKind::Sequence(values) => out.extend(values.iter()),
+        ExprKind::Jsx(jsx) => out.extend(jsx.exprs()),
         _ => {}
     }
+}
+
+/// JSX text as React sees it (Babel's `cleanJSXElementLiteralChild`): lines are trimmed, lines
+/// holding only whitespace disappear, the rest join with one space, and entities are decoded.
+/// `None` when nothing is left.
+fn jsx_text(raw: &str) -> Option<String> {
+    let lines: Vec<&str> = raw.split(['\n', '\r', '\u{2028}', '\u{2029}']).collect();
+    let last = lines.len() - 1;
+    let mut parts = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let is_ws = |c: char| c == ' ' || c == '\t' || c.is_whitespace() && !matches!(c, '\n' | '\r');
+        let mut text = *line;
+        if i != 0 {
+            text = text.trim_start_matches(is_ws);
+        }
+        if i != last {
+            text = text.trim_end_matches(is_ws);
+        }
+        if !text.is_empty() {
+            parts.push(text);
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(decode_jsx_entities(&parts.join(" ")))
+}
+
+/// HTML entities in JSX text and attribute strings, decoded the way TypeScript and Babel do.
+fn decode_jsx_entities(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(at) = rest.find('&') {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + 1..];
+        let decoded = tail.find(';').and_then(|end| {
+            let word = &tail[..end];
+            let c = if let Some(hex) = word.strip_prefix("#x") {
+                u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+            } else if let Some(dec) = word.strip_prefix('#') {
+                dec.parse::<u32>().ok().and_then(char::from_u32)
+            } else {
+                oxc_syntax::xml_entities::XML_ENTITIES.get(word).copied()
+            };
+            c.map(|c| (c, end))
+        });
+        match decoded {
+            Some((c, end)) => {
+                out.push(c);
+                rest = &tail[end + 1..];
+            }
+            None => {
+                out.push('&');
+                rest = tail;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }

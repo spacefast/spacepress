@@ -1904,6 +1904,13 @@ impl<'p> Evaluator<'p> {
                     "call generators inside hooks and actions, which run in PHP",
                 );
             }
+            ExprKind::Jsx(_) => {
+                return err_help(
+                    e.span,
+                    "JSX can't run while the config is evaluated",
+                    "render JSX inside a component, which compiles to PHP",
+                );
+            }
             ExprKind::Await(_) => {
                 return err_help(
                     e.span,

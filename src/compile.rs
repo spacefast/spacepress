@@ -906,6 +906,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .map(|(_, t)| t)
                 .collect(),
             Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
+            // A component's own annotation types its props (see `compile_function`).
+            Slot::Component { .. } => vec![],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,
@@ -1012,6 +1014,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
             );
         }
+        if matches!(slot, Some(Slot::Component { .. })) {
+            if f.params.len() > 1 {
+                return err_help(
+                    f.span,
+                    "a component takes one props object",
+                    "destructure every prop from the first parameter",
+                );
+            }
+            if let Some(p) = f.params.first()
+                && p.ann.is_none()
+            {
+                return err_help(
+                    p.span,
+                    "a component's props need a type",
+                    "annotate them, e.g. `({ title }: { title: string })`",
+                );
+            }
+        }
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
             let declared = match &p.ann {
@@ -1057,6 +1077,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             });
         }
         if let Some(ps) = &params
+            && !matches!(slot, Some(Slot::Component { .. }))
             && ps.len()
                 < f.params
                     .iter()
@@ -3531,6 +3552,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.expr(inner)?
             }
             ExprKind::Await(x) => self.await_expr(x, span)?,
+            ExprKind::Jsx(jsx) => self.jsx(jsx, span)?,
             ExprKind::Yield { arg, delegate } => self.yield_expr(arg.as_deref(), *delegate, span)?,
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
@@ -5950,6 +5972,214 @@ impl<'a, 'p> Compiler<'a, 'p> {
             out.place = None;
         }
         Ok(out)
+    }
+
+    // ---- JSX (docs/decisions/2026-11-08-tsx-to-php.md) -----------------------------------------
+
+    /// A JSX node as rendered HTML. Literal parts fold to escaped strings at build time; every
+    /// value goes through `\Zero\Html`, which follows react-dom/server's child and attribute rules.
+    fn jsx(&mut self, jsx: &Jsx, span: Span) -> Result<Out> {
+        match &jsx.kind {
+            JsxKind::Component(call) => {
+                let ExprKind::Call { callee, args, .. } = &call.kind else {
+                    unreachable!("lowering builds component calls")
+                };
+                let [ArrEl::Item(props_expr)] = args.as_slice() else {
+                    unreachable!("a component call has one props object")
+                };
+                let f = self.expr(callee)?;
+                let f = self.finish_value(f, callee.span)?;
+                let Ty::Fn(params, ret) = f.ty.clone() else {
+                    return err_help(
+                        callee.span,
+                        format!("{} isn't a component", f.ty.describe()),
+                        "use a function that takes one props object and returns JSX",
+                    );
+                };
+                // React builds the element now and calls the component when it renders it.
+                let props = self.expr(props_expr)?;
+                let props = self.finish_value(props, props_expr.span)?;
+                match callable_argument(&params, 0) {
+                    Some(want) if !assignable(&props.ty, &want) => {
+                        return err(
+                            props_expr.span,
+                            format!(
+                                "these props are {}, but the component expects {}",
+                                props.ty.describe(),
+                                want.describe()
+                            ),
+                        );
+                    }
+                    None if !matches!(&props_expr.kind, ExprKind::Object(p) if p.is_empty()) => {
+                        return err_help(
+                            props_expr.span,
+                            "this component takes no props",
+                            "remove the attributes and children",
+                        );
+                    }
+                    _ => {}
+                }
+                // An async server component blocks until its data is in (handlers' blocking `await`).
+                let ret = match *ret {
+                    Ty::Promise(t) => *t,
+                    t => t,
+                };
+                self.jsx_child_type(&ret, callee.span).map_err(|_| {
+                    Diag::new(
+                        callee.span,
+                        format!("this component returns {}, which JSX can't render", ret.describe()),
+                    )
+                    .help("return JSX, a string, a number or null")
+                })?;
+                Ok(Out::atom(
+                    format!("\\Zero\\Html::component({}, {})", f.php, props.php),
+                    Ty::Html,
+                ))
+            }
+            JsxKind::Fragment => {
+                let children = self.jsx_children(&jsx.children)?;
+                Ok(Out::atom(
+                    format!("\\Zero\\Html::children({})", children.join(", ")),
+                    Ty::Html,
+                ))
+            }
+            JsxKind::Intrinsic(tag) => self.jsx_element(tag, jsx, span),
+        }
+    }
+
+    fn jsx_children(&mut self, children: &[Expr]) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        for child in children {
+            if let ExprKind::Str(text) = &child.kind {
+                out.push(format!("\\Zero\\Html::raw({})", php_str(&jsx_escape(text))));
+                continue;
+            }
+            let v = self.expr(child)?;
+            let v = self.finish_value(v, child.span)?;
+            self.jsx_child_type(&v.ty, child.span)?;
+            out.push(v.php);
+        }
+        Ok(out)
+    }
+
+    /// What React accepts as a child: text, numbers, booleans and nullish (which render nothing),
+    /// rendered JSX, and arrays of those.
+    fn jsx_child_type(&self, ty: &Ty, span: Span) -> Result<()> {
+        let ok = ty.all(|t| match t {
+            Ty::Html
+            | Ty::Str
+            | Ty::StrLit(_)
+            | Ty::FreshStrLit(_)
+            | Ty::Num
+            | Ty::NumLit(_)
+            | Ty::FreshNumLit(_)
+            | Ty::BigInt
+            | Ty::Bool
+            | Ty::BoolLit(_)
+            | Ty::FreshBoolLit(_)
+            | Ty::Null
+            | Ty::Undefined
+            | Ty::Void
+            | Ty::Never
+            | Ty::Dynamic => true,
+            Ty::Array(inner) | Ty::NonEmptyArray(inner) => self.jsx_child_type(inner, span).is_ok(),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) => items.iter().all(|t| self.jsx_child_type(t, span).is_ok()),
+            _ => false,
+        });
+        if ok {
+            Ok(())
+        } else {
+            err_help(
+                span,
+                format!("{} can't be rendered as a JSX child", ty.describe()),
+                "render one of its fields, e.g. `{item.title}`, or map it to elements",
+            )
+        }
+    }
+
+    fn jsx_element(&mut self, tag: &str, jsx: &Jsx, span: Span) -> Result<Out> {
+        // React hoists or preloads these into the document head, which a fragment of a page can't
+        // reproduce; workstream 6's root layout owns the head.
+        if matches!(tag, "title" | "meta" | "link" | "script" | "style" | "base") {
+            return err_help(
+                span,
+                format!("a component can't render `<{tag}>`"),
+                "set titles and meta tags with `export const metadata`, and import styles and scripts as modules",
+            );
+        }
+        if tag == "select"
+            && let Some(JsxAttr::Named { span, .. }) = jsx
+                .attrs
+                .iter()
+                .find(|a| matches!(a, JsxAttr::Named { name, .. } if name == "value" || name == "defaultValue"))
+        {
+            return err_help(*span, "`value` on `<select>`", "mark the chosen option with `selected`");
+        }
+        let mut entries = Vec::new();
+        let mut spread = false;
+        for attr in &jsx.attrs {
+            match attr {
+                JsxAttr::Named { name, value, span } => {
+                    if name == "dangerouslySetInnerHTML" {
+                        return err_help(
+                            *span,
+                            "`dangerouslySetInnerHTML` isn't supported",
+                            "render the value as a child, which is escaped; raw HTML output isn't supported yet",
+                        );
+                    }
+                    if name.starts_with("on") && name.len() > 2 && name.as_bytes()[2].is_ascii_uppercase() {
+                        return err_help(
+                            *span,
+                            format!("server components can't handle events (`{name}`)"),
+                            "move the handler into a \"use client\" component",
+                        );
+                    }
+                    if is_url_attribute(name)
+                        && let ExprKind::Str(url) = &value.kind
+                        && !safe_url(url)
+                    {
+                        return err_help(
+                            value.span,
+                            format!("`{name}` is an unsafe URL"),
+                            "use an http(s), mailto, root-relative or fragment URL",
+                        );
+                    }
+                    let v = self.expr(value)?;
+                    let v = self.finish_value(v, value.span)?;
+                    entries.push(format!("{} => {}", php_str(name), v.php));
+                }
+                JsxAttr::Spread(value) => {
+                    let v = self.expr(value)?;
+                    if !matches!(v.ty.non_null(), Ty::Obj(_) | Ty::Map(_) | Ty::Dynamic) {
+                        return err(value.span, format!("can't spread {} into attributes", v.ty.describe()));
+                    }
+                    spread = true;
+                    entries.push(format!("...(({})->p ?? [])", v.wrapped()));
+                }
+            }
+        }
+        let attrs = if spread {
+            // A later attribute replaces an earlier spread key, as object spread does.
+            format!(
+                "array_merge({})",
+                entries
+                    .iter()
+                    .map(|e| match e.strip_prefix("...") {
+                        Some(s) => s.to_string(),
+                        None => format!("[{e}]"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            format!("[{}]", entries.join(", "))
+        };
+        let mut args = vec![php_str(tag), attrs];
+        args.extend(self.jsx_children(&jsx.children)?);
+        Ok(Out::atom(
+            format!("\\Zero\\Html::element({})", args.join(", ")),
+            Ty::Html,
+        ))
     }
 
     fn await_expr(&mut self, x: &Expr, span: Span) -> Result<Out> {
@@ -9469,6 +9699,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Regex
         | Ty::Host(_)
         | Ty::Error
+        | Ty::Html
         | Ty::Collection(_)
         | Ty::Db
         | Ty::DbQuery
@@ -9755,6 +9986,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Regex
         | Ty::Host(_)
         | Ty::Error
+        | Ty::Html
         | Ty::Collection(_)
         | Ty::Db
         | Ty::DbQuery
@@ -10124,4 +10356,41 @@ fn literal_position(e: &Expr) -> bool {
         ExprKind::As(x, _) | ExprKind::NonNull(x) | ExprKind::Unary(UnOp::Plus | UnOp::Neg, x) => literal_position(x),
         _ => false,
     }
+}
+
+/// Text React would escape, escaped the same way (`&`, `<`, `>`, `"`, `'`).
+fn jsx_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn is_url_attribute(name: &str) -> bool {
+    matches!(name, "href" | "src" | "action" | "formAction" | "xlinkHref")
+}
+
+/// `\Zero\Html::safeUrl` at build time, for literal URLs.
+fn safe_url(url: &str) -> bool {
+    let url: String = url
+        .trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    if url.is_empty() || url.starts_with('#') {
+        return true;
+    }
+    if url.starts_with('/') {
+        return !url.starts_with("//") && !url.starts_with("/\\");
+    }
+    let lower = url.to_ascii_lowercase();
+    lower.starts_with("http:") || lower.starts_with("https:") || lower.starts_with("mailto:")
 }

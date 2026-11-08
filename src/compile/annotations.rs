@@ -245,6 +245,11 @@ impl Compiler<'_, '_> {
                     ("URL", []) => Ty::Url,
                     ("URLSearchParams", []) => Ty::UrlParams,
                     ("Error", []) => Ty::Error,
+                    // JSX's result type, with the names TypeScript's React typings use for it.
+                    ("JSX.Element" | "React.JSX.Element" | "React.ReactElement" | "ReactElement", []) => Ty::Html,
+                    ("React.ReactNode" | "ReactNode", []) => {
+                        Ty::union([Ty::Html, Ty::Str, Ty::Num, Ty::Bool, Ty::Null, Ty::Undefined])
+                    }
                     ("Record", [k, v]) => {
                         let keys = self.resolve_ann(k, module, generics)?;
                         let value = self.resolve_ann(v, module, generics)?;

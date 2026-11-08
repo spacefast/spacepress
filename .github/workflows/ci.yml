@@ -73,6 +73,8 @@ jobs:
           key: wp-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json', 'tests/php/wp.php') }}
       # Migrated apps are type-checked with the standard Node declarations (tests/app_migrate.rs).
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
+      # React renders the Node half of the TSX parity test (tests/compiler.rs); esbuild compiles it.
+      - run: npm ci --prefix tests/differential/html --ignore-scripts --no-audit --no-fund
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked

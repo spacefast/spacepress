@@ -460,6 +460,58 @@ pub enum ExprKind {
     /// `e as T` / `<T>e` / `e satisfies T`. `as const` is dropped during lowering.
     As(P<Expr>, TyAnn),
     NonNull(P<Expr>),
+    /// A JSX element, fragment or component call (docs/decisions/2026-11-08-tsx-to-php.md).
+    Jsx(P<Jsx>),
+}
+
+/// One JSX node. Its value is rendered HTML (`\Zero\Html` at run time).
+#[derive(Debug, Clone)]
+pub struct Jsx {
+    pub kind: JsxKind,
+    /// Attributes in source order. `key` is already dropped: it never reaches the output.
+    /// Empty for a component, whose attributes are its call's props object.
+    pub attrs: Vec<JsxAttr>,
+    /// Children in source order: text (entities decoded, JSX whitespace rules applied) is a
+    /// string literal, `{expr}` is the expression, and nested JSX is `ExprKind::Jsx`.
+    /// Empty for a component, whose children are its props' `children`.
+    pub children: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum JsxKind {
+    /// `<div>`: a lowercase or dashed tag name.
+    Intrinsic(String),
+    /// `<>…</>`
+    Fragment,
+    /// `<Card a={x}>…</Card>` lowered to the plain call `Card({ a: x, children: <>…</> })`, so
+    /// props type-check like any call. Props and child expressions evaluate where the JSX is,
+    /// as in React; the call itself runs only when the element is placed.
+    Component(P<Expr>),
+}
+
+#[derive(Debug, Clone)]
+pub enum JsxAttr {
+    /// `name="text"`, `name={expr}`, or a bare `name` (the literal `true`).
+    Named { name: String, value: Expr, span: Span },
+    /// `{...props}`
+    Spread(Expr),
+}
+
+impl Jsx {
+    /// Every expression the node holds, in evaluation order: callee, attributes, children.
+    pub fn exprs(&self) -> Vec<&Expr> {
+        let mut out = Vec::new();
+        if let JsxKind::Component(callee) = &self.kind {
+            out.push(&**callee);
+        }
+        for attr in &self.attrs {
+            match attr {
+                JsxAttr::Named { value, .. } | JsxAttr::Spread(value) => out.push(value),
+            }
+        }
+        out.extend(&self.children);
+        out
+    }
 }
 
 /// The left side of a destructuring assignment. Leaves are ordinary assignment targets

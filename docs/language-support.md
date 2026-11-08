@@ -735,3 +735,67 @@ Status: **supported**.
 An ordinary function or object-literal method that reads `this` gets its call receiver: the object for a method call (`obj.m()`, `obj[k]()`), the first argument of `call`/`apply`, and undefined for a plain call (strict mode). Arrows inside see the same `this`. In authored TypeScript, `this` is typed by a `this:` parameter, or for an object-literal method by the literal's own fields. `this` at module level, in a module-level arrow, or before `super()` in a derived constructor is refused with a fix.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## tsx-server-components
+
+Status: **supported**.
+
+Functions exported from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\Zero\Html`), listed in schema.php `components`. Output matches react-dom/server 19 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean and style rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is rendered JSX placed where the component puts it, and a component runs only when its element is placed. Async components block until their data is in. URL attributes allow http(s), mailto, root-relative and fragment URLs; others are a build error when literal and dropped when computed. See docs/decisions/2026-11-08-tsx-to-php.md.
+
+[Evidence](../tests/compiler.rs) (`compiled_tsx_renders_the_html_react_renders`)
+
+## jsx-unsafe-url
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Use an http(s), mailto, root-relative or fragment URL. A computed URL that fails the same check drops the attribute at render time.
+
+[Evidence](../tests/fixtures/reject-jsx-unsafe-url)
+
+## jsx-server-event-handler
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Event handlers run in the browser; move them into a "use client" component.
+
+[Evidence](../tests/fixtures/reject-jsx-handler)
+
+## jsx-dangerously-set-inner-html
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Render the value as a child, which is escaped. Raw HTML output isn't supported yet.
+
+[Evidence](../tests/fixtures/reject-jsx-inner-html)
+
+## jsx-object-child
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+React throws on an object child; render one of its fields, or map a list to elements.
+
+[Evidence](../tests/fixtures/reject-jsx-object-child)
+
+## jsx-component-props
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Props are type-checked against the component's annotation like any call; pass values of the declared types.
+
+[Evidence](../tests/fixtures/reject-jsx-props)
+
+## jsx-head-elements
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, and import styles and scripts as modules.
+
+[Evidence](../tests/fixtures/reject-jsx-head)
+
+## jsx-in-config
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+JSX compiles in `zero/components/`, pages and "use client" files; modules the config imports stay plain TypeScript.
+
+[Evidence](../tests/fixtures/reject-jsx-config)

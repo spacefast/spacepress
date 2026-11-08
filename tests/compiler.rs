@@ -57,6 +57,47 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects("reject-infinite-loop", "step budget exceeded", "zero.config.ts:2:");
 }
 
+/// JSX outside the subset fails the build at its source, saying what to write instead
+/// (docs/decisions/2026-11-08-tsx-to-php.md, "Errors").
+#[test]
+fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
+    rejects(
+        "reject-jsx-unsafe-url",
+        "`href` is an unsafe URL",
+        "zero/components/Link.tsx:2:18",
+    );
+    rejects(
+        "reject-jsx-handler",
+        "server components can't handle events (`onClick`)",
+        "zero/components/Button.tsx:2:18",
+    );
+    rejects(
+        "reject-jsx-inner-html",
+        "`dangerouslySetInnerHTML` isn't supported",
+        "zero/components/Raw.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-object-child",
+        "{ title: string } can't be rendered as a JSX child",
+        "zero/components/Show.tsx:2:14",
+    );
+    rejects(
+        "reject-jsx-props",
+        "these props are { text: number }, but the component expects { text: string }",
+        "zero/components/Card.tsx:6:10",
+    );
+    rejects(
+        "reject-jsx-head",
+        "a component can't render `<title>`",
+        "zero/components/Head.tsx:2:10",
+    );
+    rejects(
+        "reject-jsx-config",
+        "JSX files can't be part of a Zero config",
+        "view.tsx:1:1",
+    );
+}
+
 #[test]
 fn a_catch_all_route_segment_comes_last() {
     rejects(
@@ -938,6 +979,92 @@ fn compiled_php_matches_node_on_every_differential_case() {
         "compiled PHP disagrees with Node:\n{}",
         mismatches.join("\n")
     );
+}
+
+/// Every case in tests/differential/html/cases.json renders a compiled TSX component under PHP
+/// and the same TSX under React 19 (react-dom/static `prerender`); the HTML must be identical
+/// (docs/decisions/2026-11-08-tsx-to-php.md, "Parity tests"). Two things are normalized: React's
+/// `<!-- -->` text separators, and the `<link rel="preload" as="image">` React hoists for an
+/// eager `<img>`, which the page head will own.
+#[test]
+fn compiled_tsx_renders_the_html_react_renders() {
+    let dir = root().join("tests/differential/html");
+    assert!(
+        dir.join("node_modules/react-dom").is_dir(),
+        "run: npm ci --prefix tests/differential/html"
+    );
+    let tmp = std::env::temp_dir().join(format!("zero-tsx-parity-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&dir.join("project"), &tmp);
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(
+        built.status.success(),
+        "build failed:\n{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let node = Command::new("node")
+        .arg(dir.join("render-node.mjs"))
+        .arg(&tmp)
+        .arg(dir.join("cases.json"))
+        .output()
+        .expect("node is required for differential tests");
+    assert!(
+        node.status.success(),
+        "node failed:\n{}",
+        String::from_utf8_lossy(&node.stderr)
+    );
+    let plugins = tmp.join(".zero/wp-content/plugins");
+    let app = plugins.join(format!(
+        "zero-app-{}",
+        tmp.file_name().unwrap().to_string_lossy().replace('_', "-")
+    ));
+    let php = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(dir.join("cases.json"))
+        .output()
+        .unwrap();
+    assert!(
+        php.status.success() && php.stderr.is_empty(),
+        "php failed:\n{}{}",
+        String::from_utf8_lossy(&php.stdout),
+        String::from_utf8_lossy(&php.stderr)
+    );
+    let react: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
+    let compiled: serde_json::Value = serde_json::from_slice(&php.stdout).unwrap();
+    let cases = react.as_object().expect("case map");
+    assert!(!cases.is_empty());
+    let mut mismatches = Vec::new();
+    for (index, want) in cases {
+        let want = match want.get("html").and_then(serde_json::Value::as_str) {
+            Some(html) => serde_json::json!({ "html": without_image_preloads(&html.replace("<!-- -->", "")) }),
+            None => want.clone(),
+        };
+        let got = &compiled[index];
+        if *got != want {
+            mismatches.push(format!("case {index}\n  react: {want}\n  php:   {got}"));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(
+        mismatches.is_empty(),
+        "compiled TSX disagrees with React:\n{}",
+        mismatches.join("\n")
+    );
+}
+
+/// Drops `<link rel="preload" as="image" …/>`, which React emits ahead of an eager `<img>`.
+fn without_image_preloads(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find("<link rel=\"preload\" as=\"image\"") {
+        out.push_str(&rest[..at]);
+        let end = rest[at..].find("/>").expect("closed link") + at + 2;
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn php_case(runtime: &Path, app: &Path, case: &str, args: serde_json::Value) -> std::process::Output {

@@ -124,6 +124,7 @@ pub fn build(
     let mut ext =
         extract::extract(&config, &mut ev, config_span, &dir_name).map_err(|d| d.phase(diag::Code::Schema))?;
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
@@ -212,6 +213,9 @@ pub fn build(
             Slot::JobHandler { job } => schema.jobs.get_mut(&job).expect("job").handler = name,
             Slot::RouteHandler { route } => schema.routes.get_mut(&route).expect("route").handler = name,
             Slot::WpHook { index } => schema.wp_hooks[index].handler = name,
+            Slot::Component { name: component } => {
+                schema.components.insert(component, name);
+            }
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
             Slot::Access { owner, op } => {
                 let rule = Access::Fn(name);
@@ -390,6 +394,29 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
             name: format!("wp_hook__{}_{}", file.hook, file.order),
             plugin: None,
         });
+    }
+    Ok(())
+}
+
+/// Every function exported from a `zero/components/` file becomes a compiled component, called
+/// with one props object (docs/decisions/2026-11-08-tsx-to-php.md). Other exports are ignored, as
+/// for any helper module.
+fn components(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
+    use crate::value::Value;
+    for (path, module) in &program.components {
+        let exports = ev.run_module(*module)?;
+        for (export, value) in &exports {
+            let Value::Closure(closure) = value else { continue };
+            let stem = path.trim_end_matches(".tsx");
+            ext.roots.push(extract::Root {
+                closure: closure.clone(),
+                slot: Slot::Component {
+                    name: format!("{path}#{export}"),
+                },
+                name: format!("component__{}__{export}", extract::slugify_name(stem).replace('-', "_")),
+                plugin: None,
+            });
+        }
     }
     Ok(())
 }

@@ -57,6 +57,11 @@ eq('a plugin\'s locked hosts are checked before resolution, on every hop',
         }
     }, ['https://public.example/x', 'https://PUBLIC.example./y', 'https://other.example/', 'https://internal.example/']),
     ['allowed', 'allowed', 'zero_fetch_host_denied', 'zero_fetch_host_denied']);
+eq('a trailing root dot and case name the same host the policy checks and the pin covers',
+    [Fetch::target('https://PUBLIC.example./a'), $code('https://internal.example./'), $code('https://site.space.fast./'),
+        $code('https://a..example/'), Fetch::target('https://public.example./', ['public.example'])],
+    [['public.example', 443, '93.184.216.34'], 'zero_fetch_address_denied', 'zero_fetch_host_denied', 'zero_fetch_host_denied',
+        ['public.example', 443, '93.184.216.34']]);
 eq('the checked address is the one the connection is pinned to',
     Fetch::target('https://public.example:8443/a'), ['public.example', 8443, '93.184.216.34']);
 Fetch::$resolver = null;
@@ -78,9 +83,25 @@ eq('request shape is checked before any network work',
         $type(fn () => Fetch::call('https://a.example/', ['method' => 'GET', 'body' => 'x'])),
         $type(fn () => Fetch::call('https://a.example/', ['headers' => ['x-a' => "b\r\nInjected: 1"]])),
         $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => str_repeat('x', Fetch::MAX_BODY + 1)])),
+        $type(fn () => Fetch::call('https://a.example/', ['redirect' => 'never'])),
+        $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => new \Zero\JsArray([])])),
+        $type(fn () => Fetch::call('https://a.example/', ['signal' => true])),
+        $type(fn () => Fetch::call('https://a.example/', ['method' => 1])),
     ],
     ['fetch() needs a URL string', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
-        'fetch() header names and values must be valid strings', 'zero_fetch_payload_too_large']);
+        'Headers: invalid header value', 'zero_fetch_payload_too_large',
+        "fetch() redirect must be 'follow', 'manual' or 'error'", 'fetch() body must be a string or URLSearchParams',
+        "fetch() init option signal isn't available in Zero code", 'fetch() method must be a string']);
+
+// Headers, URLSearchParams and Response, as the WHATWG classes behave (Node prints the same).
+$h = new \Zero\FetchHeaders(new \Zero\JsArray([new \Zero\JsArray(['X-A', ' 1 ']), new \Zero\JsArray(['x-a', '2'])]));
+$p = new \Zero\SearchParams('a=1&b=two+words&a=%C3%A9&c&%zz=%');
+$r = new \Zero\FetchResponse(200, 'OK', 'https://a.example/', false, \Zero\FetchHeaders::received(['x' => 'y']), '{"a":1}');
+eq('Headers join repeated names; URLSearchParams parse and serialize like the URL Standard; a body reads once',
+    [$h->get('x-A'), $h->sorted(), (string) $p, $p->getAll('a')->a, $p->get('%zz'),
+        $r->ok, $r->json()->p, $r->bodyUsed(), $type(fn () => $r->text()), $type(fn () => $r->headers->set('x', 'z'))],
+    ['1, 2', ['x-a' => '1, 2'], 'a=1&b=two+words&a=%C3%A9&c=&%25zz=%25', ['1', 'é'], '%',
+        true, ['a' => 1], true, 'Body is unusable: Body has already been read', 'immutable']);
 
 // Location resolution, RFC 3986 §5.2: query-only and fragment-only references keep the base path.
 foreach ([
@@ -94,5 +115,34 @@ foreach ([
 ] as [$base, $location, $expected]) {
     eq("Location $location against $base", Fetch::resolveUrl($base, $location), $expected);
 }
+
+// The pin fails closed before anything is sent. A local listener stands in for the target, and the
+// handle names it `localhost`, which resolves to the listener on its own: an unpinned handle would
+// reach it. When the pin can't be set, the handle must not connect there or send anything.
+$server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+$port = (int) substr(strrchr(stream_socket_get_name($server, false), ':'), 1);
+stream_set_blocking($server, false);
+$attempt = static function (?callable $setopt) use ($port): array {
+    $curl = curl_init("https://localhost:$port/secret?token=1");
+    curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 2, CURLOPT_CONNECTTIMEOUT => 2,
+        CURLOPT_SSL_VERIFYPEER => false, CURLOPT_POSTFIELDS => 'leak']);
+    $pinned = Fetch::pin($curl, 'localhost', $port, '127.0.0.1', $setopt);
+    curl_exec($curl);
+    return [$pinned, (string) curl_getinfo($curl, CURLINFO_PRIMARY_IP), (int) curl_getinfo($curl, CURLINFO_REQUEST_SIZE)];
+};
+$accepted = static function () use ($server): int {
+    $n = 0;
+    while (($peer = @stream_socket_accept($server, 0)) !== false) {
+        $n++;
+        fclose($peer);
+    }
+    return $n;
+};
+[$pinned, $ip] = $attempt(null);
+eq('a pinned handle connects to the checked address, not wherever the name resolves', [$pinned, $ip, $accepted()], [true, '127.0.0.1', 1]);
+$failing = static fn (\CurlHandle $c, int $option, mixed $value): bool => $option === CURLOPT_RESOLVE ? false : curl_setopt($c, $option, $value);
+[$pinned, $ip, $sent] = $attempt($failing);
+eq('when the pin can\'t be set, the handle never reaches the target and sends no request', [$pinned, $accepted(), $sent], [false, 0, 0]);
+fclose($server);
 
 finish('fetch');

@@ -1954,7 +1954,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // Database and validation errors propagate: they must roll back the request.
                     let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {caught}) {{");
                     if let Some((n, span)) = param {
-                        let var = self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
+                        let var =
+                            self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
                         // Typed catch bindings are Errors: Error subclass instances pass, other values are refused.
                         let unwrap = if javascript { "thrownValue" } else { "caughtError" };
                         let _ = writeln!(out, "{p}    {var} = \\Zero\\Js::{unwrap}({caught});");

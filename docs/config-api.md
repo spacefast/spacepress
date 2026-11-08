@@ -262,6 +262,11 @@ Core `/wp/v2/<post type>` speaks Zero's fields and queries too:
   and richText field the viewer may read). They run as the viewer, so a filter
   or sort on a hidden field is the same 403 as on Zero's API. Core keeps
   pagination (`page`, `per_page`, `X-WP-Total`) and `_fields`.
+- The users kind does the same on core `/wp/v2/users`: member fields are
+  registered user meta under `meta`, shown only to a viewer whose read rule
+  covers the member. A `meta` write runs Zero's update as the viewer (rules,
+  validation, hooks) in one transaction with core's own user save, so a
+  refusal keeps nothing. The list takes `where` and `orderBy`.
 
 ## Globals
 

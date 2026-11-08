@@ -816,3 +816,47 @@ test("identity storage failures refuse every authentication path in the runtime"
   const probe = readFileSync(new URL("../identity/native-auth-storage.php", import.meta.url), "utf8").replace(/^<\?php\s*/, "");
   assert.match(wp("eval", probe), /PASS identity storage failures refuse cookie, native password, application password, Bearer\/OAuth and runtime authentication/);
 });
+
+// Core /wp/v2/users for the users kind (spec §2.2, §3a): member fields under `meta`, read and
+// written through Zero as the viewer, and Zero's `where`/`orderBy` on the list.
+const coreUsers = `${harness.url}/wp-json/wp/v2/users`;
+
+test("core users meta holds member fields as Zero reads them, for whoever may read the member", async () => {
+  const sub = harness.users.subscriber.id;
+  zero("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ points: 3, tags: ["early"], notes: { private: "admin only" } }));
+  const self = await http("GET", `${coreUsers}/me?context=edit`, { as: "subscriber" });
+  assert.equal(self.status, 200, JSON.stringify(self.json));
+  assert.deepEqual([self.json.meta.plan, self.json.meta.points, self.json.meta.tags, self.json.meta.notes], ["free", 3, ["early"], {}]);
+  assert.doesNotMatch(JSON.stringify(self.json.meta), HIDDEN);
+  // `self` read rule: another member's fields are not in core's answer either.
+  const other = await http("GET", `${coreUsers}/${sub}?context=edit`, { as: "admin" });
+  assert.equal(other.status, 200);
+  assert.equal("points" in other.json.meta, false);
+  const schema = (await http("OPTIONS", coreUsers, { as: "admin" })).json.schema.properties.meta.properties;
+  assert.deepEqual([schema.points.type, schema.tags.items.enum, "passwordHash" in schema], ["integer", ["early", "beta"], false]);
+});
+
+test("core users meta writes run Zero's update: rules, validation, one transaction with core's save", async () => {
+  const sub = harness.users.subscriber.id;
+  const ok = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { meta: { points: 11, tags: ["beta"] } } });
+  assert.deepEqual([ok.status, ok.json.meta?.points, ok.json.meta?.tags], [200, 11, ["beta"]], JSON.stringify(ok.json));
+  assert.deepEqual(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${sub} AND meta_key = 'zero_tags'`)[0], { meta_value: 'a:1:{i:0;s:4:"beta";}' });
+  const name = sql(`SELECT display_name FROM wp_users WHERE ID = ${sub}`)[0].display_name;
+  const bad = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { name: `Renamed ${run}`, meta: { plan: "gold" } } });
+  assert.deepEqual([bad.status, bad.json.code, bad.json.data?.pointer], [422, "invalid_input", "/plan"]);
+  assert.equal(sql(`SELECT display_name FROM wp_users WHERE ID = ${sub}`)[0].display_name, name, "core's own change rolled back too");
+  // A field only admins may set, and a member the update rule doesn't cover: the facade's answers.
+  const sealed = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { meta: { address: { source: "forged" } } } });
+  assert.deepEqual([sealed.status, sealed.json.data?.pointer], [403, "/address/source"]);
+  const another = await http("POST", `${coreUsers}/${sub}`, { as: "admin", body: { meta: { points: 99 } } });
+  assert.equal(another.status, 404, JSON.stringify(another.json));
+  assert.equal(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: sub } }))).data[0].points, 11);
+});
+
+test("core users list takes Zero's where and orderBy as the viewer", async () => {
+  const admin = harness.users.admin.id;
+  const listed = await http("GET", `${coreUsers}?` + new URLSearchParams({ where: JSON.stringify({ plan: "free" }), context: "edit" }), { as: "admin" });
+  assert.deepEqual(listed.json.map((u: any) => u.id), [admin], "the read rule (`self`) still decides");
+  const hidden = await http("GET", `${coreUsers}?` + new URLSearchParams({ where: JSON.stringify({ suspendedAt: null }) }), { as: "admin" });
+  assert.deepEqual([hidden.status, hidden.json.code], [403, "forbidden"]);
+});

@@ -271,9 +271,8 @@ final class CoreAccess
         if (is_array($data['meta'] ?? null) && $stored !== null) {
             // Zero values, judged on the same row: a revision's `meta` is its own snapshot, not the
             // raw postmeta core's revisions controller would read.
-            foreach (PostMeta::fields($spec) as $col => $_) {
-                $data['meta'][$col] = \Zero\Js::jsonTree($stored[$col] ?? null);
-            }
+            $fields = array_keys(PostMeta::fields($spec));
+            $data['meta'] = PostMeta::values($collection, $stored, $fields) + array_fill_keys($fields, null) + $data['meta'];
         }
         $visible = $viewer === null || $stored === null ? null : (self::visibleFields($stored, $collection, $viewer));
         $dropped = false;

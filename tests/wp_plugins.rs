@@ -412,6 +412,23 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     p.rejects("build", "locally modified");
     assert_eq!(before, tree(&p.out));
     assert!(!p.root.join("escape.php").exists());
+    // The project's build lock never lives inside a replaceable output root: with `--out
+    // zero/dist`, publication renames that directory, which would drop a lock held inside it.
+    std::fs::remove_file(p.out.join("plugins/good/local.txt")).unwrap();
+    let dist = p.root.join("zero/dist");
+    let held = p.root.join("zero/.wp-plugins.build.lock");
+    std::fs::write(&held, "").unwrap();
+    let out = p.run("build", &["--out", dist.to_str().unwrap()]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cannot acquire build lock") && stderr.contains("zero/.wp-plugins.build.lock"),
+        "{stderr}"
+    );
+    std::fs::remove_file(&held).unwrap();
+    let out = p.run("build", &["--out", dist.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(!dist.join(".wp-plugins.build.lock").exists() && !held.exists());
 }
 
 #[test]

@@ -1900,14 +1900,29 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
     let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(!migrations.join("0002_update.sql").exists());
-    // A checkout from before `zero/_generated/`: the ledger still in `zero/migrations/`. Building
-    // beside it would start a second 0001_init.sql, so the build names the move instead.
+    // A checkout from before `zero/_generated/`: the ledger still in `zero/migrations/` and nothing
+    // generated beside it. Building there would start a second 0001_init.sql, so the build names
+    // the move; running exactly the command it prints is enough.
     let old = tmp.join("zero/migrations");
     std::fs::rename(&migrations, &old).unwrap();
-    refused(
-        "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ (git mv zero/migrations zero/_generated/migrations)",
-    );
-    std::fs::rename(&old, &migrations).unwrap();
+    std::fs::remove_dir_all(tmp.join("zero/_generated")).unwrap();
+    std::fs::remove_dir_all(tmp.join("zero/dist")).unwrap();
+    let fix = "mkdir -p zero/_generated && git mv zero/migrations zero/_generated/migrations";
+    refused(&format!(
+        "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ ({fix})"
+    ));
+    let git = |args: &[&str]| {
+        let out = Command::new("git").args(args).current_dir(&tmp).output().unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    let moved = Command::new("sh").args(["-c", fix]).current_dir(&tmp).output().unwrap();
+    assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
     let moved = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
     assert!(!migrations.join("0002_update.sql").exists());

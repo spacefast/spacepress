@@ -1,4 +1,3 @@
 public/client/
 .zero/*
 !.zero/sync-base.json
-zero/dist/

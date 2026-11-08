@@ -443,8 +443,20 @@ pub(crate) fn compile_tree(
         {
             return Err(failure("app and vendor module ownership mismatch"));
         }
-        sources.files.extend(bundle.files);
-        sources.canonical.extend(bundle.canonical);
+        // A bundle captured before `zero/_generated/` names its locks and ledger at their old paths.
+        // The hashes above cover the bytes as captured; only the paths are read on this layout.
+        sources.files.extend(
+            bundle
+                .files
+                .into_iter()
+                .map(|(path, text)| (crate::layout::current(&path), text)),
+        );
+        sources.canonical.extend(
+            bundle
+                .canonical
+                .into_iter()
+                .map(|(path, real)| (crate::layout::current(&path), crate::layout::current(&real))),
+        );
     }
     let name = manifest.name;
     let root = source.join("modules");

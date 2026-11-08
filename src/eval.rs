@@ -250,8 +250,6 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "env",
     "once",
     "jobs",
-    "fetch",
-    "crypto",
     "mail",
     "definePlugin",
 ];
@@ -342,6 +340,15 @@ pub const GLOBALS: &[&str] = &[
     "Symbol",
     "WeakMap",
     "WeakSet",
+    "Buffer",
+    "Headers",
+    "URLSearchParams",
+    "URL",
+    "Request",
+    "Response",
+    "FormData",
+    "Blob",
+    "AbortController",
 ];
 
 /// `globalThis` members that host-globals work owns. Detecting them stays refused
@@ -687,6 +694,10 @@ impl<'p> Evaluator<'p> {
         let [Value::Str(spec)] = args else {
             return err(span, "require() needs one string literal");
         };
+        // Node built-ins resolve through the same lookup as `import` (`builtins::module`).
+        if crate::builtins::module(spec).is_some() {
+            return Ok(Value::Builtin(Builtin::NodeCrypto(None)));
+        }
         let Some(&target) = self.program.resolved.get(&(from, spec.to_string())) else {
             return err(
                 span,
@@ -750,6 +761,9 @@ impl<'p> Evaluator<'p> {
         if source == ZERO_MODULE {
             return zero_export(name, span);
         }
+        if let Some(module) = crate::builtins::module(source) {
+            return node_crypto_export(module, source, name, span);
+        }
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
         }
@@ -786,6 +800,9 @@ impl<'p> Evaluator<'p> {
             }
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
+                ImportName::Default if crate::builtins::module(source).is_some() => {
+                    Value::Builtin(Builtin::NodeCrypto(None))
+                }
                 ImportName::Default => {
                     if crate::loader::builtin_module(source) {
                         return err_help(
@@ -795,6 +812,9 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                     self.import_value(id, source, "default", spec.span)?
+                }
+                ImportName::Namespace if crate::builtins::module(source).is_some() => {
+                    Value::Builtin(Builtin::NodeCrypto(None))
                 }
                 ImportName::Namespace => {
                     if source == WORDPRESS_MODULE {
@@ -855,6 +875,21 @@ impl<'p> Evaluator<'p> {
                 self.initialize_pattern(inner, v, scope, declaration)
             }
             Pat::Obj { props, rest, span } => {
+                if let Value::Builtin(Builtin::NodeCrypto(None)) = &value {
+                    // `const { createHash } = require("node:crypto")`: each name is that function.
+                    if rest.is_some() {
+                        return err(
+                            *span,
+                            "list the node:crypto functions you use; a rest binding isn't supported",
+                        );
+                    }
+                    for (key, p) in props {
+                        let f =
+                            node_crypto_export(crate::builtins::BuiltinModule::NodeCrypto, "node:crypto", key, *span)?;
+                        self.initialize_pattern(p, f, scope, declaration)?;
+                    }
+                    return Ok(());
+                }
                 let Value::Object(obj) = &value else {
                     return err(*span, format!("can't destructure {} as an object", value.describe()));
                 };
@@ -1965,6 +2000,9 @@ impl<'p> Evaluator<'p> {
                     Err(Ctl::Err(d))
                 }
             }
+            Value::Builtin(Builtin::NodeCrypto(None)) => {
+                node_crypto_export(crate::builtins::BuiltinModule::NodeCrypto, "node:crypto", prop, span)
+            }
             Value::Builtin(Builtin::Db) => err(
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
@@ -1986,6 +2024,15 @@ impl<'p> Evaluator<'p> {
             Value::Symbol(symbol) if prop == "description" => {
                 Ok(symbol.description().map_or(Value::Undef, |d| Value::str(&d)))
             }
+            Value::Builtin(Builtin::Global(g @ ("process" | "fetch" | "crypto" | "Buffer"))) => err_help(
+                span,
+                format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),
+                if *g == "process" {
+                    "read `process.env.NAME` inside the handler; for webhook and upload settings use env(\"NAME\") from \"zero\""
+                } else {
+                    "move the call into a handler"
+                },
+            ),
             Value::Builtin(Builtin::Global(g)) => match (*g, prop) {
                 ("Math", "PI") => Ok(Value::Num(std::f64::consts::PI)),
                 ("Math", "E") => Ok(Value::Num(std::f64::consts::E)),
@@ -2277,13 +2324,12 @@ impl<'p> Evaluator<'p> {
             }
             Builtin::Once
             | Builtin::Jobs
-            | Builtin::Fetch
-            | Builtin::Crypto
             | Builtin::Mail
             | Builtin::Abilities
-            | Builtin::WpFunction(_) => err_help(
+            | Builtin::WpFunction(_)
+            | Builtin::NodeCrypto(_) => err_help(
                 span,
-                "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
             Builtin::Action | Builtin::Job | Builtin::Route => {
@@ -2914,8 +2960,6 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "route" => Builtin::Route,
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
-        "fetch" => Builtin::Fetch,
-        "crypto" => Builtin::Crypto,
         "mail" => Builtin::Mail,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
@@ -2930,6 +2974,20 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
         n if ZERO_TYPES.contains(&n) => return Ok(Value::Undef),
+        "fetch" | "crypto" => {
+            return err_help(
+                span,
+                format!("\"zero\" has no export named `{name}`"),
+                format!(
+                    "`{name}` is the standard global: remove it from this import{}",
+                    if name == "crypto" {
+                        ", or import { createHash, createHmac, randomBytes } from \"node:crypto\""
+                    } else {
+                        ""
+                    }
+                ),
+            );
+        }
         _ => {
             let mut d = Diag::new(span, format!("\"zero\" has no export named `{name}`"));
             if let Some(s) = suggest(name, ZERO_EXPORTS.iter().copied()) {
@@ -2938,6 +2996,22 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
             return Err(Ctl::Err(d));
         }
     }))
+}
+
+fn node_crypto_export(module: crate::builtins::BuiltinModule, source: &str, name: &str, span: Span) -> R<Value> {
+    let exports = module.exports();
+    if let Some(f) = exports.iter().find(|f| **f == name) {
+        return Ok(Value::Builtin(Builtin::NodeCrypto(Some(f))));
+    }
+    let mut d = Diag::new(span, format!("\"{source}\" has no `{name}` in Zero code"));
+    d = match suggest(name, exports.iter().copied()) {
+        Some(s) => d.help(format!("did you mean `{s}`?")),
+        None => d.help(format!(
+            "Zero compiles {} from node:crypto to PHP; other functions, keys, ciphers and streams aren't available",
+            exports.join(", ")
+        )),
+    };
+    Err(Ctl::Err(d))
 }
 
 /// Names exported by `"php/wordpress"`.

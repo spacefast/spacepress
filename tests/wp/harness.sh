@@ -11,6 +11,9 @@
 #   harness.sh up --wp-content <dir> --bare
 #                                    a fresh WordPress with users only: no plugin is installed or
 #                                    activated, so the caller installs an artifact as a site owner would
+#   harness.sh up --wp-content <dir> --platform
+#                                    install and activate only the manifest's platform dependencies; Zero
+#                                    itself arrives another way (the build store's must-use loader)
 #   harness.sh wp <args...>          WP-CLI inside the stack
 #   harness.sh sql "<query>"         run SQL in MariaDB; tab-separated rows with a header line
 #   harness.sh down                  remove containers and volumes
@@ -60,12 +63,13 @@ s3_setup() {
 }
 
 up() {
-  local content="${ZERO_WP_CONTENT}" env=0 bare=0 subdir=""
+  local content="${ZERO_WP_CONTENT}" env=0 bare=0 platform=0 subdir=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --wp-content) content="$2"; shift 2 ;;
       --env) env=1; shift ;;
       --bare) bare=1; shift ;;
+      --platform) platform=1; shift ;;
       --path) subdir="${2#/}"; subdir="${subdir%/}"; shift 2 ;;
       *) echo "unknown argument $1; use --wp-content <dir>" >&2; exit 2 ;;
     esac
@@ -131,12 +135,13 @@ PINS
     php -r 'exit(version_compare($argv[1],$argv[2],">=") ? 0 : 1);' "$installed" "$version" || { echo "$slug $version+ required" >&2; exit 1; }
   done
   local app=null
-  [[ $bare == 1 ]] || app=$(python3 -c 'import json,sys; print(json.dumps("zero-app-"+json.load(open(sys.argv[1]))["app"]))' "$ZERO_WP_CONTENT/zero-manifest.json")
+  [[ $bare == 1 || $platform == 1 ]] || app=$(python3 -c 'import json,sys; print(json.dumps("zero-app-"+json.load(open(sys.argv[1]))["app"]))' "$ZERO_WP_CONTENT/zero-manifest.json")
   local -a activation=()
-  [[ $bare == 1 ]] || mapfile -t activation < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" <<'ACTIVATE'
+  [[ $bare == 1 ]] || mapfile -t activation < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" "$platform" <<'ACTIVATE'
 import json,sys,os
 manifest=json.load(open(sys.argv[1]))
 for dependency in manifest['dependencies']: print(dependency['slug'])
+if sys.argv[2] == '1': sys.exit()
 print('zero-runtime')
 if 'zero-identity' in manifest['plugins']: print('zero-identity')
 print('zero-app-'+manifest['app'])

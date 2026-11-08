@@ -5,7 +5,9 @@ one of them at a time, never both in the same version.
 
 ## No 0.8 code in this repository
 
-This repository carries no Zero 0.8 code and converts nothing. Apps already
+This repository drops Zero 0.8 code and converts nothing. The 0.8 code still on
+`main` is deleted by workstream 1's first PR; until then it is unmaintained, and
+nothing new depends on it. Apps already
 running on 0.8 keep running unchanged: Spacefast serves and publishes them with
 its own 0.8 compiler and runtime. New apps start on v2. An owner who wants a
 0.8 app on v2 rewrites it on v2.

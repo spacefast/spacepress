@@ -6,4 +6,5 @@ node_modules/
 .DS_Store
 *.log
 
-# Keep zero/migrations, zero/client and zero.gen.ts in version control.
+# zero/_generated/ is committed; zero/dist/ is build output.
+zero/dist/

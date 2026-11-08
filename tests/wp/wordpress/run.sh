@@ -21,7 +21,7 @@ import { defineConfig } from "zero";
 export default defineConfig({ name: "abilities-lane" });
 TS
 "$zero" build "$work/app" --quiet >/dev/null
-"$wp/harness.sh" up --wp-content "$work/app/.zero/wp-content" > "$work/harness.json"
+"$wp/harness.sh" up --wp-content "$work/app/zero/dist/wp-content" > "$work/harness.json"
 "$wp/harness.sh" compose cp "$here/mu-plugin.php" wordpress:/var/www/html/wp-content/mu-plugins/zero-abilities-lane.php >/dev/null 2>&1
 url=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "$work/harness.json")
 password=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["users"]["admin"]["appPassword"])' "$work/harness.json")
@@ -37,7 +37,7 @@ PY
 cp "$here/zero.config.ts" "$work/app/zero.config.ts"
 cp -r "$here/wp-hooks" "$work/app/wp-hooks"
 "$zero" build "$work/app" --out "$work/next" --quiet >/dev/null
-rsync -a --delete "$work/next/plugins/zero-app-abilities-lane/" "$work/app/.zero/wp-content/plugins/zero-app-abilities-lane/"
+rsync -a --delete "$work/next/plugins/zero-app-abilities-lane/" "$work/app/zero/dist/wp-content/plugins/zero-app-abilities-lane/"
 grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/zero.gen.ts"
 # Doctor reports the lock as satisfied, then the change once the site's schema moves.
 ZERO_APP_PASSWORD="admin:$password" "$zero" doctor "$work/app" --out "$work/next" --site "$url" > "$work/doctor.txt" || true

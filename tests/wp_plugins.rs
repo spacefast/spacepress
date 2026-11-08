@@ -126,7 +126,7 @@ impl Project {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("app");
         std::fs::create_dir(&root).unwrap();
-        let out = root.join(".zero/wp-content");
+        let out = root.join("zero/dist/wp-content");
         Self { _temp: temp, root, out }
     }
     fn config(&self, plugins: &[Value]) {
@@ -247,7 +247,7 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
     );
     assert!(p.out.join("plugins/zero-app-fixtures/zero-app-fixtures.php").is_file());
     assert!(p.out.join("plugins/zero-app-fixtures.zip").is_file());
-    let lock_path = p.root.join("zero/wp-plugins.lock.json");
+    let lock_path = p.root.join("zero/_generated/wp-plugins.lock.json");
     let locked = std::fs::read(&lock_path).unwrap();
     let lock: Value = serde_json::from_slice(&locked).unwrap();
     let entries = lock["plugins"].as_array().unwrap();
@@ -340,7 +340,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     plugins.push(declared(&server, "good", "1.0", &routes["/good.zip"], &[]));
     p.config(&plugins);
     p.build();
-    let lock = std::fs::read(p.root.join("zero/wp-plugins.lock.json")).unwrap();
+    let lock = std::fs::read(p.root.join("zero/_generated/wp-plugins.lock.json")).unwrap();
     for (name, error) in [
         ("duplicate", "duplicate archive paths"),
         ("header-mismatch", "header inconsistency"),
@@ -359,7 +359,10 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
         p.config(&invalid);
         p.rejects("build", error);
         assert_eq!(before, tree(&p.out));
-        assert_eq!(lock, std::fs::read(p.root.join("zero/wp-plugins.lock.json")).unwrap());
+        assert_eq!(
+            lock,
+            std::fs::read(p.root.join("zero/_generated/wp-plugins.lock.json")).unwrap()
+        );
     }
     let before = tree(&p.out);
     let mut missing = plugins.clone();
@@ -374,7 +377,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     p.rejects("build", "sha256 mismatch");
     assert_eq!(before, tree(&p.out));
     // An ergonomic repeat of the same platform source/version must retain the required checksum.
-    let lock_path = p.root.join("zero/wp-plugins.lock.json");
+    let lock_path = p.root.join("zero/_generated/wp-plugins.lock.json");
     let mut substituted: Value = serde_json::from_slice(&lock).unwrap();
     let scf = substituted["plugins"]
         .as_array_mut()

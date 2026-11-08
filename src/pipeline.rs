@@ -12,7 +12,7 @@ type HookFunctions = indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<
 
 pub struct Built {
     pub plugins: Option<wp_plugins::Config>,
-    /// Every file under `zero/client/`.
+    /// Every file under `zero/_generated/client/`.
     pub client_files: Vec<(String, Vec<u8>)>,
     pub schema: schema::Schema,
     pub functions_php: String,
@@ -25,7 +25,7 @@ pub struct Built {
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
     pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
-    /// `zero/plugins.lock.json` as this build settled it (None without plugins or a lock).
+    /// `zero/_generated/plugins.lock.json` as this build settled it (None without plugins or a lock).
     pub plugin_lock: Option<serde_json::Value>,
     /// What changed in the lock, one line each, for the command line.
     pub plugin_changes: Vec<String>,
@@ -40,7 +40,7 @@ pub struct Built {
 pub struct Previous {
     pub snapshot: serde_json::Value,
     pub next_migration: u32,
-    /// Refuse any plugin grant `zero/plugins.lock.json` doesn't already hold (CI, `--frozen`).
+    /// Refuse any plugin grant `zero/_generated/plugins.lock.json` doesn't already hold (CI, `--frozen`).
     pub frozen: bool,
 }
 
@@ -50,8 +50,8 @@ impl Previous {
         Self::from_project(None, []).expect("an absent snapshot is valid")
     }
 
-    /// From a committed `zero/migrations/snapshot.json` (absent on a first build) and the names of
-    /// everything beside it in `zero/migrations/`. The numbering follows the files whether or not the
+    /// From a committed `zero/_generated/migrations/snapshot.json` (absent on a first build) and the
+    /// names of everything beside it. The numbering follows the files whether or not the
     /// snapshot is there, so a deleted snapshot never produces a second `0001_init.sql` over the first.
     /// An older snapshot or layout is refused rather than diffed: its shape would plan the wrong
     /// migration.
@@ -68,7 +68,7 @@ impl Previous {
                 return Err(Diag::new(
                     Span::NONE,
                     format!(
-                        "zero/migrations/{legacy}/ is from an earlier layout; move zero/migrations/wp/*.sql into zero/migrations/, then delete the zero/migrations/wp/ and zero/migrations/sqlite/ directories (or delete zero/migrations/ to start over)"
+                        "zero/_generated/migrations/{legacy}/ is from an earlier layout; move zero/_generated/migrations/wp/*.sql into zero/_generated/migrations/, then delete the wp/ and sqlite/ directories (or delete zero/_generated/migrations/ to start over)"
                     ),
                 ));
             }
@@ -80,7 +80,7 @@ impl Previous {
                 return Err(Diag::new(
                     Span::NONE,
                     format!(
-                        "zero/migrations/snapshot.json is a version {} snapshot; this compiler writes version 2 (delete zero/migrations/ to start over)",
+                        "zero/_generated/migrations/snapshot.json is a version {} snapshot; this compiler writes version 2 (delete zero/_generated/migrations/ to start over)",
                         snapshot["version"]
                     ),
                 ));
@@ -406,7 +406,7 @@ fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<ser
     serde_json::from_str(&text).map(Some).map_err(|e| bad(e.to_string()))
 }
 
-/// `zero/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
+/// `zero/_generated/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
 /// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
 /// browser read the same lock the command line does. Absent means no locked abilities.
 fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
@@ -469,7 +469,7 @@ mod tests {
         assert!(
             error
                 .message
-                .starts_with("zero/migrations/wp/ is from an earlier layout"),
+                .starts_with("zero/_generated/migrations/wp/ is from an earlier layout"),
             "{}",
             error.message
         );
@@ -477,7 +477,7 @@ mod tests {
         assert!(
             error
                 .message
-                .starts_with("zero/migrations/sqlite/ is from an earlier layout"),
+                .starts_with("zero/_generated/migrations/sqlite/ is from an earlier layout"),
             "{}",
             error.message
         );

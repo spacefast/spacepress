@@ -136,7 +136,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     crate::pages::check(&*recording, &project, &built)?;
     let mut app = SourceBundle::default();
     let mut vendor = SourceBundle::default();
-    let migration_dir = project.join("zero/migrations");
+    let migration_dir = project.join(crate::layout::MIGRATIONS);
     if fs.is_dir(&migration_dir) {
         for path in fs.read_dir(&migration_dir).map_err(io)? {
             safe_migration_name(&path.file_name().unwrap_or_default().to_string_lossy())?;
@@ -451,7 +451,11 @@ pub(crate) fn compile_tree(
     let source_migrations = sources
         .files
         .iter()
-        .filter_map(|(path, text)| path.strip_prefix("zero/migrations/").map(|name| (name, text)))
+        .filter_map(|(path, text)| {
+            path.strip_prefix(crate::layout::MIGRATIONS)
+                .and_then(|rest| rest.strip_prefix('/'))
+                .map(|name| (name, text))
+        })
         .map(|(name, text)| {
             safe_migration_name(name)?;
             Ok((name.to_owned(), text.clone()))

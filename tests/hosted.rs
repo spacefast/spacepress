@@ -29,10 +29,14 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
         "export const suffix = '-installed';",
     );
     write(&project, "public/logo.svg", "<svg/>");
-    write(&project, "zero/migrations/0001_adopt.sql", "SELECT 'archived only';");
     write(
         &project,
-        "zero/migrations/snapshot.json",
+        "zero/_generated/migrations/0001_adopt.sql",
+        "SELECT 'archived only';",
+    );
+    write(
+        &project,
+        "zero/_generated/migrations/snapshot.json",
         r#"{"version":2,"tables":{}}"#,
     );
     write(&project, "unrelated.ts", "this is not an input");
@@ -171,14 +175,14 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     }
 }
 
-/// A hosted compile types `abilities.call` from the captured `zero/abilities.json`: the bundle's
+/// A hosted compile types `abilities.call` from the captured `zero/_generated/abilities.json`: the bundle's
 /// file system is rooted at its own module directory, not at the app's name.
 #[test]
 fn captured_ability_lock_types_hosted_calls() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("calls");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/abilities-call");
-    for file in ["zero.config.ts", "zero/abilities.json"] {
+    for file in ["zero.config.ts", "zero/_generated/abilities.json"] {
         write(&project, file, &fs::read_to_string(fixture.join(file)).unwrap());
     }
     let bundle = work.path().join("bundle");

@@ -4,7 +4,7 @@
 // group merges reach postmeta. The policy matrix lives in tests/php/db_test.php.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "./app/zero/client/index.ts";
+import { createClient } from "./app/zero/_generated/client/index.ts";
 import { api, auth, harness, ok, problem, qs, run, zero } from "./env.ts";
 
 let team: { id: number };

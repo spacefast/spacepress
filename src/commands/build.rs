@@ -1,7 +1,7 @@
 use crate::diag::{Diag, Span};
 use crate::emit::{emit_generated, plugin_vars, runtime_file, write};
 use crate::pipeline::{self, Built};
-use crate::{diag, loader, platform, schema_php, wp_plugins};
+use crate::{diag, layout, loader, platform, schema_php, wp_plugins};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -33,11 +33,14 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
-    project.join("zero").join("migrations")
+    project.join(layout::MIGRATIONS)
 }
 
-/// The last build, from `zero/migrations/`: the snapshot and everything beside it.
+/// The last build, from the migration ledger: the snapshot and everything beside it.
 fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
+    if let Some(problem) = layout::old_migrations(|p| p.exists(), project) {
+        return Err(Diag::new(Span::NONE, problem));
+    }
     let dir = migrations_dir(project);
     // Only a missing file is a first build. A snapshot that is there but cannot be read (permissions,
     // a directory in its place, not UTF-8) is an error: diffing against an empty schema would plan a
@@ -47,13 +50,13 @@ fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
         Err(e) => {
             return Err(Diag::new(
                 Span::NONE,
-                format!("can't read zero/migrations/snapshot.json: {e}"),
+                format!("can't read {}/snapshot.json: {e}", layout::MIGRATIONS),
             ));
         }
         Ok(text) => Some(serde_json::from_str(&text).map_err(|e| {
             Diag::new(
                 Span::NONE,
-                format!("zero/migrations/snapshot.json is not valid JSON: {e}"),
+                format!("{}/snapshot.json is not valid JSON: {e}", layout::MIGRATIONS),
             )
         })?),
     };
@@ -61,23 +64,29 @@ fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
     pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str))
 }
 
-/// Every name in `zero/migrations/`. The next migration's number comes from these, so an entry that
+/// Every name in the migration ledger. The next migration's number comes from these, so an entry that
 /// cannot be listed or named is an error: skipping it could reuse a number that is already taken.
 fn migration_names(dir: &Path) -> Result<Vec<String>, Diag> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(Diag::new(Span::NONE, format!("can't read zero/migrations/: {e}"))),
+        Err(e) => {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("can't read {}/: {e}", layout::MIGRATIONS),
+            ));
+        }
     };
     let mut names = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|e| Diag::new(Span::NONE, format!("can't read zero/migrations/: {e}")))?;
+        let entry = entry.map_err(|e| Diag::new(Span::NONE, format!("can't read {}/: {e}", layout::MIGRATIONS)))?;
         let name = entry.file_name();
         let Some(name) = name.to_str() else {
             return Err(Diag::new(
                 Span::NONE,
                 format!(
-                    "zero/migrations/{} is not a UTF-8 file name; rename or remove it",
+                    "{}/{} is not a UTF-8 file name; rename or remove it",
+                    layout::MIGRATIONS,
                     name.to_string_lossy()
                 ),
             ));
@@ -103,7 +112,7 @@ fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     file.write_all(content.as_ref())
 }
 
-/// Writes migrations, the snapshot, zero.gen.ts and the typed client into the project (committed).
+/// Writes `zero/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks and the typed client.
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
@@ -115,14 +124,14 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
             serde_json::to_string_pretty(&built.snapshot)? + "\n",
         )?;
     }
-    write(&project.join("zero.gen.ts"), &built.gen_ts)?;
+    write(&project.join(layout::DB_TYPES), &built.gen_ts)?;
     if let Some(lock) = &built.plugin_lock {
         write(
             &project.join(crate::plugins::LOCK_PATH),
             serde_json::to_string_pretty(lock)? + "\n",
         )?;
     }
-    let client_dir = project.join("zero").join("client");
+    let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
     }
@@ -199,10 +208,11 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
             .map_err(|e| std::io::Error::other(format!("cannot acquire build lock {}: {e}", path.display())))?;
         Ok(Guard(path, file))
     }
-    let lock = project.join("zero/wp-plugins.lock.json");
+    let lock = project.join(layout::WP_PLUGINS_LOCK);
     std::fs::create_dir_all(lock.parent().unwrap())?;
     // Serialize the project lockfile and publication to a shared output root.
-    let _project_guard = guard(project.join("zero/.wp-plugins.build.lock"))?;
+    std::fs::create_dir_all(project.join(layout::DIST))?;
+    let _project_guard = guard(project.join(layout::DIST).join(".wp-plugins.build.lock"))?;
     let _output_guard = guard(parent.join(format!(
         ".{}.zero-build.lock",
         root.file_name().unwrap().to_string_lossy()
@@ -414,7 +424,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("error: {e}");
         return ExitCode::from(1);
     }
-    let root = args.out.clone().unwrap_or_else(|| project.join(".zero/wp-content"));
+    let root = args.out.clone().unwrap_or_else(|| project.join(layout::WP_CONTENT));
     let out = match emit_wp_content(&project, &root, &built) {
         Ok(directory) => directory,
         Err(error) => {
@@ -434,7 +444,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     let new: Vec<String> = built
         .migrations
         .iter()
-        .map(|(n, _)| format!("zero/migrations/{n}"))
+        .map(|(n, _)| format!("{}/{n}", layout::MIGRATIONS))
         .collect();
     let suffix = if new.is_empty() {
         String::new()
@@ -469,15 +479,30 @@ fn php_lint_tree(directory: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::read_previous;
+    use crate::layout;
+
+    #[test]
+    fn a_checkout_with_the_old_ledger_directory_is_refused_with_the_move() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(project.path().join("zero/migrations")).unwrap();
+        std::fs::write(project.path().join("zero/migrations/0001_init.sql"), "").unwrap();
+        let error = read_previous(project.path()).unwrap_err();
+        assert_eq!(
+            error.message,
+            "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ (git mv zero/migrations zero/_generated/migrations)"
+        );
+    }
 
     #[test]
     fn a_snapshot_that_cannot_be_read_is_an_error_not_a_first_build() {
         let project = tempfile::tempdir().unwrap();
         // A directory where the file should be: readable as a path, not as a snapshot.
-        std::fs::create_dir_all(project.path().join("zero/migrations/snapshot.json")).unwrap();
+        std::fs::create_dir_all(project.path().join(layout::MIGRATIONS).join("snapshot.json")).unwrap();
         let error = read_previous(project.path()).unwrap_err();
         assert!(
-            error.message.starts_with("can't read zero/migrations/snapshot.json: "),
+            error
+                .message
+                .starts_with("can't read zero/_generated/migrations/snapshot.json: "),
             "{}",
             error.message
         );
@@ -487,7 +512,7 @@ mod tests {
     fn a_migration_file_name_that_is_not_utf8_is_an_error_not_skipped() {
         use std::os::unix::ffi::OsStrExt as _;
         let project = tempfile::tempdir().unwrap();
-        let dir = project.path().join("zero/migrations");
+        let dir = project.path().join(layout::MIGRATIONS);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("0001_init.sql"), "").unwrap();
         std::fs::write(dir.join(std::ffi::OsStr::from_bytes(b"0002_\xff.sql")), "").unwrap();
@@ -498,7 +523,7 @@ mod tests {
     #[test]
     fn a_new_migration_never_replaces_a_file_that_is_already_there() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("zero/migrations/0002_update.sql");
+        let path = dir.path().join(layout::MIGRATIONS).join("0002_update.sql");
         super::write_new(&path, "first").unwrap();
         let error = super::write_new(&path, "second").unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);

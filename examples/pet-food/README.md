@@ -200,7 +200,7 @@ followed by:
 zero dev: Failed (1): build
 ```
 
-Generated `zero/client/`, `zero/migrations/`, `zero.gen.ts`, and plugin locks
+Generated `zero/_generated/client/`, `zero/_generated/migrations/`, `zero/_generated/db.d.ts`, and plugin locks
 are absent because the build exits before emission. They have not been
 handwritten. The local collection probe reports `fetch failed: ECONNREFUSED`.
 `verify.mjs` passed `node --check` only. Local actions, CRUD, the scheduler,

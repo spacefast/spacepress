@@ -158,10 +158,10 @@ A capsule with a schema needs a table mode, set by one of two flags:
 
 - `--space <id>` adopts the published Space's existing 0.8 tables
   (`sf_<space>_<table>_<hash>`). The first migration is
-  `zero/migrations/0001_adopt.sql`.
+  `zero/_generated/migrations/0001_adopt.sql`.
 - `--fresh` declares plain v2 tables and creates them empty. Use it for a Space
   that has no 0.8 tables yet. The first migration is
-  `zero/migrations/0001_init.sql`, and no rows are copied.
+  `zero/_generated/migrations/0001_init.sql`, and no rows are copied.
 
 The two flags exclude each other. With neither, the schema is refused with
 `Z08_SPACE_REQUIRED`. The browser build takes the same choice as
@@ -257,8 +257,8 @@ Each error has this shape:
 Compiler failures point to the generated source and refuse the whole candidate.
 A `written` candidate can still contain review entries. It is not a live deployment.
 
-The command writes compiler-readable TypeScript, `zero/migrations/0001_adopt.sql`,
-and `zero/migrations/snapshot.json`. It does not connect to a database. The SQL
+The command writes compiler-readable TypeScript, `zero/_generated/migrations/0001_adopt.sql`,
+and `zero/_generated/migrations/snapshot.json`. It does not connect to a database. The SQL
 checks that the existing table and columns exist and creates v2's revisions
 system table. It does not copy rows, rename columns, or convert column types.
 `zero build` accepts this snapshot without generating a second initial migration.
@@ -430,7 +430,7 @@ collection, for example:
 zero build app
 ```
 
-Deactivate the original runtime, upload `app/.zero/wp-content/plugins/`, and
+Deactivate the original runtime, upload `app/zero/dist/wp-content/plugins/`, and
 activate the dependencies, then `zero-runtime`, then `zero-app-<name>`. The new
 post types exist now, but your content is still tagged with the original
 `zero_collection` taxonomy, so they're empty.

@@ -3,3 +3,4 @@ public/
 web/node_modules/
 web/*.tsbuildinfo
 .spacefast/
+zero/dist/

@@ -26,14 +26,14 @@ export function artifactText(example: Example, artifact: Artifact): { label: str
       return { label: "zero/app/functions.php", lang: "php", text: output.functionsPhp };
     case "migration": {
       const [name, sql] = output.migrations[0] ?? ["0001_init.sql", ""];
-      return { label: `zero/migrations/${name}`, lang: "sql", text: sql };
+      return { label: `zero/_generated/migrations/${name}`, lang: "sql", text: sql };
     }
     case "types.ts":
-      return { label: "zero/client/types.ts", lang: "ts", text: output.client["types.ts"] ?? "" };
+      return { label: "zero/_generated/client/types.ts", lang: "ts", text: output.client["types.ts"] ?? "" };
     case "schema.ts":
-      return { label: "zero/client/schema.ts", lang: "ts", text: output.client["schema.ts"] ?? "" };
-    case "zero.gen.ts":
-      return { label: "zero.gen.ts", lang: "ts", text: output.genTs };
+      return { label: "zero/_generated/client/schema.ts", lang: "ts", text: output.client["schema.ts"] ?? "" };
+    case "zero/_generated/db.d.ts":
+      return { label: "zero/_generated/db.d.ts", lang: "ts", text: output.genTs };
   }
 }
 

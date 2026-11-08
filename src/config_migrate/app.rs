@@ -500,9 +500,9 @@ fn convert(
     } else {
         "0001_init.sql"
     };
-    files.insert(format!("zero/migrations/{first}"), sql);
+    files.insert(format!("{}/{first}", crate::layout::MIGRATIONS), sql);
     files.insert(
-        "zero/migrations/snapshot.json".into(),
+        format!("{}/snapshot.json", crate::layout::MIGRATIONS),
         serde_json::to_string_pretty(&built.snapshot).unwrap(),
     );
     files.insert(

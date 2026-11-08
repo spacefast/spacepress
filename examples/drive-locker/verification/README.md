@@ -11,7 +11,7 @@ $ ./target/release/zero check examples/drive-locker --frozen --json
 {"schema":"zero-diagnostics","version":1,"compilerVersion":"0.3.0","ok":true,"offsetEncoding":"utf-8","positionEncoding":"utf-16","diagnostics":[],"groups":[]}
 
 $ ./target/release/zero build examples/drive-locker --frozen
-built 0 collections, 4 tables, 1 user projections, 0 globals, 8 hooks, 5 actions -> .zero/wp-content
+built 0 collections, 4 tables, 1 user projections, 0 globals, 8 hooks, 5 actions -> zero/dist/wp-content
 
 $ tsc -p examples/drive-locker
 exit 0

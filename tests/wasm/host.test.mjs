@@ -29,7 +29,7 @@ test('wasm migrates real source and returns a compilable file map without writes
   const candidate = call(exports, 'zero_migrate_app', { project, space: 'spc_migrate_test' });
   assert.deepEqual(candidate.report.errors, []);
   assert.equal(candidate.report.status, 'candidate');
-  assert.ok(candidate.files['zero/migrations/snapshot.json']);
+  assert.ok(candidate.files['zero/_generated/migrations/snapshot.json']);
   assert.deepEqual(call(exports, 'zero_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);
   // A new Space has no 0.8 tables: `fresh: true` creates them instead of adopting; a schema with
   // neither `fresh` nor `space` is refused with the choice.
@@ -39,9 +39,9 @@ test('wasm migrates real source and returns a compilable file map without writes
     const fresh = call(exports, 'zero_migrate_app', request);
     assert.deepEqual(fresh.report.errors, [], JSON.stringify(request));
     assert.equal(fresh.report.tables, 'fresh');
-    assert.ok(fresh.files['zero/migrations/0001_init.sql'].includes('CREATE TABLE'));
+    assert.ok(fresh.files['zero/_generated/migrations/0001_init.sql'].includes('CREATE TABLE'));
     assert.ok(!fresh.files['server/index.ts'].includes('existingTable'));
-    assert.equal(JSON.parse(fresh.files['zero/migrations/snapshot.json']).tables.tasks.existingTable, undefined);
+    assert.equal(JSON.parse(fresh.files['zero/_generated/migrations/snapshot.json']).tables.tasks.existingTable, undefined);
     assert.deepEqual(call(exports, 'zero_check', { project: '/candidate', files: fresh.files }).check.diagnostics, []);
   }
   const config = call(exports, 'zero_migrate_config', { project: path.resolve('tests/wp/legacy'), input: 'capsule.ts' });
@@ -101,8 +101,8 @@ test('wasm captures the full-site pages bundle byte for byte like native sources
     for (const name of ['zero/pages.json', 'pages/notes/[slug]/page.tsx', 'islands/cheer.client.ts', 'pages/about/compass.svg']) {
       assert.equal(typeof files[name], 'string', name);
     }
-    const memory = Object.fromEntries(Object.entries(files).filter(([name]) => !name.startsWith('zero/migrations/')));
-    for (const name of fs.readdirSync(path.join(project, 'zero/migrations'))) memory[`zero/migrations/${name}`] = fs.readFileSync(path.join(project, 'zero/migrations', name), 'utf8');
+    const memory = Object.fromEntries(Object.entries(files).filter(([name]) => !name.startsWith('zero/_generated/migrations/')));
+    for (const name of fs.readdirSync(path.join(project, 'zero/_generated/migrations'))) memory[`zero/_generated/migrations/${name}`] = fs.readFileSync(path.join(project, 'zero/_generated/migrations', name), 'utf8');
     assert.equal(call(exports, 'zero_sources', { project: '/site', files: memory }).app, capture.app, 'an in-memory project captures the same bytes');
     fs.writeFileSync(path.join(project, 'pages/page.tsx'), fs.readFileSync(path.join(project, 'pages/page.tsx'), 'utf8') + '\n');
     assert.equal(call(exports, 'zero_sources', { project }).check.diagnostics[0].code, 'zero_source_needs_local_capture');

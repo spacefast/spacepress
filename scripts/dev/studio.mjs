@@ -114,7 +114,7 @@ export async function lock(state) {
 }
 
 async function migrationHistory(project) {
-  const directory = join(project, 'zero/migrations');
+  const directory = join(project, 'zero/_generated/migrations');
   if (!await exists(directory)) return {};
   const history = {};
   for (const name of (await readdir(directory)).filter((name) => name.endsWith('.sql')).sort()) {
@@ -190,7 +190,7 @@ export async function sourceDigest(project) {
     entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       const name = prefix + entry.name;
-      if (['.zero', '.git', 'node_modules', 'zero'].includes(entry.name) || name === 'zero.gen.ts' || entry.isSymbolicLink()) continue;
+      if (['.zero', '.git', 'node_modules', 'zero'].includes(entry.name) || entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path, `${name}/`);
       else if (/\.[cm]?[jt]sx?$/.test(name) || name.startsWith('public/')) {
@@ -235,7 +235,6 @@ export async function watchSources(project, onChange, onError) {
               const watcher = watch(directory, (event, filename) => {
                 if (closed || !filename || ignored.has(String(filename))) return;
                 const name = relative(project, join(directory, String(filename)));
-                if (name === 'zero.gen.ts') return;
                 if (event === 'rename') {
                   // Discover new directories before notifying: files may have been created
                   // before their directory acquired its own watch handle.
@@ -348,12 +347,12 @@ async function main() {
     await execute(zero, args, { timeout: 300000 });
     managed.owner.pending = {
       migrations: await migrationHistory(project),
-      snapshot: await json(join(project, 'zero/migrations/snapshot.json')),
+      snapshot: await json(join(project, 'zero/_generated/migrations/snapshot.json')),
     };
     await atomicJson(managed.marker, managed.owner);
   };
   const configure = async () => {
-    const snapshot = await json(join(project, 'zero/migrations/snapshot.json'));
+    const snapshot = await json(join(project, 'zero/_generated/migrations/snapshot.json'));
     const manifest = await json(join(content, 'zero-manifest.json'));
     const retired = managed.owner.generated.filter((slug) => !(slug in manifest.plugins));
     for (const slug of retired) await plainDirectory(join(managed.owner.site, 'wp-content/plugins', slug));

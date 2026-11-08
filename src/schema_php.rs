@@ -1,6 +1,6 @@
 //! Emits `zero/app/schema.php` (version 3, phase-2 §3.1: the runtime's whole view
-//! of the app, WordPress identifiers included) and `zero.gen.ts` (registers the
-//! schema with the `"zero"` types).
+//! of the app, WordPress identifiers included) and `zero/_generated/db.d.ts`
+//! (registers the schema with the `"zero"` types).
 
 use crate::compile::{php_json, php_str};
 use crate::num::php_number;
@@ -424,7 +424,7 @@ pub fn gen_ts(schema: &Schema) -> String {
     );
     let has_config = !schema.globals.is_empty() || !schema.jobs.is_empty();
     if has_config {
-        out.push_str("import type config from \"./zero.config\";\n");
+        out.push_str("import type config from \"../../zero.config\";\n");
     }
     out.push_str("type Entities = {\n");
     for c in schema.collections.values() {

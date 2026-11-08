@@ -83,18 +83,18 @@ export default defineConfig({
 
 ```sh
 $ zero build
-built 2 collections, 0 globals, 1 hooks, 1 actions -> .zero/wp-content in 6s
+built 2 collections, 0 globals, 1 hooks, 1 actions -> zero/dist/wp-content in 6s
 ```
 
 | You get | Where |
 |---|---|
-| MySQL migrations, diffed against the last build | `zero/migrations/0001_init.sql` |
-| A typed client: `zero.posts.list({ with: { author: true } })` and friends | `zero/client/` |
-| Editor types, so `db` in your hooks knows your schema | `zero.gen.ts` |
+| MySQL migrations, diffed against the last build | `zero/_generated/migrations/0001_init.sql` |
+| A typed client: `zero.posts.list({ with: { author: true } })` and friends | `zero/_generated/client/` |
+| Editor types, so `db` in your hooks knows your schema | `zero/_generated/db.d.ts` |
 | REST endpoints for every collection, global and action, with relations loaded through `with` | `/wp-json/zero/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `zero-identity` plugin |
 | A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | Posts and Authors menus in `wp-admin` |
-| Three WordPress plugins plus the pinned platform plugins, as folders and ZIPs | `.zero/wp-content/plugins/` |
+| Three WordPress plugins plus the pinned platform plugins, as folders and ZIPs | `zero/dist/wp-content/plugins/` |
 
 Hooks and actions are compiled, not interpreted. Your `beforeCreate` becomes
 plain PHP:
@@ -173,9 +173,9 @@ curl -u "$AUTH" -X POST $BASE/actions/consume -d '{"itemId":1}'
 ```
 
 `zero check` compiles without writing anything; `zero build` writes the
-plugins to `.zero/wp-content/` without booting anything. Commit
-`zero/migrations/`, `zero/client/`, `zero.gen.ts` and
-`zero/wp-plugins.lock.json`; `.zero/` is local build and development state.
+plugins to `zero/dist/wp-content/` without booting anything. Commit
+`zero/_generated/migrations/`, `zero/_generated/client/`, `zero/_generated/db.d.ts` and
+`zero/_generated/wp-plugins.lock.json`; `.zero/` is local build and development state.
 
 Want a seeded app to click through? [The showcase](examples/showcase/README.md)
 includes structured fields, collection/table relations, image delivery, a
@@ -188,7 +188,7 @@ the [agent connection guide](docs/agents.md).
 ## Use it from a frontend
 
 The generated client is dependency-free, erasable TypeScript over `fetch`.
-Copy `zero/client/` into any frontend, or import it by path. To try it against
+Copy `zero/_generated/client/` into any frontend, or import it by path. To try it against
 the `journal` config from the top of this page: stop the pantry site, save the
 config as `journal/zero.config.ts`, then
 
@@ -201,7 +201,7 @@ Node 22.18+ runs this as-is from the `journal` directory, with the admin
 application password from that command:
 
 ```ts
-import { createClient } from "./zero/client/index.ts";
+import { createClient } from "./zero/_generated/client/index.ts";
 
 const zero = createClient({
   url: "http://localhost:8787/wp-json/zero/v1",
@@ -304,8 +304,8 @@ with `zero-pages build` before publishing. Realtime is not supported.
 See the [Spacefast deploy guide](docs/spacefast-deploy.md) and, for an existing
 Space, the [migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
 
-Anywhere else: the build is `.zero/wp-content/plugins/*.zip`, which you upload
-or copy like any plugin, and `.zero/wp-content/zero-manifest.json` records the
+Anywhere else: the build is `zero/dist/wp-content/plugins/*.zip`, which you upload
+or copy like any plugin, and `zero/dist/wp-content/zero-manifest.json` records the
 versions and the activation order. Jobs run through Action Scheduler, so make
 sure WP-Cron or a real cron reaches the site.
 

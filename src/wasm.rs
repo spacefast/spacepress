@@ -8,15 +8,15 @@
 //! Request:
 //! ```json
 //! { "name": "pantry",
-//!   "files": { "zero.config.ts": "…", "lib/fields.ts": "…", "zero/abilities.json": "…",
-//!              "zero/plugins.lock.json": "…" },,
+//!   "files": { "zero.config.ts": "…", "lib/fields.ts": "…", "zero/_generated/abilities.json": "…",
+//!              "zero/_generated/plugins.lock.json": "…" },,
 //!   "previous": null, "migrationFiles": [], "frozen": false }
 //! ```
-//! `previous` is the last build's `zero/migrations/snapshot.json` (null for a first build) and
+//! `previous` is the last build's `zero/_generated/migrations/snapshot.json` (null for a first build) and
 //! `migrationFiles` the names beside it, which number the next migration like `zero build` does.
-//! `files` carries every compiler input, including the committed `zero/abilities.json` lock that
+//! `files` carries every compiler input, including the committed `zero/_generated/abilities.json` lock that
 //! types `abilities.call` from "php/wordpress".
-//! `zero/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
+//! `zero/_generated/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
 //! `zero check --frozen` (or `CI`) does.
 //! Directories exist as the parents of files: a project in memory has no empty directory, and git
 //! cannot hold one either, so that is the one shape of project the disk can have and this cannot.
@@ -317,12 +317,15 @@ pub fn operation(operation: &str, request: &str) -> String {
                 }
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
-                    let previous = root.join("zero/migrations/snapshot.json");
+                    let previous = root.join(crate::layout::MIGRATIONS).join("snapshot.json");
                     let built = loader::load_from(fs.clone(), &root.join("zero.config.ts")).and_then(|program| {
                         pipeline::build(
                             &root,
                             &program,
                             || {
+                                if let Some(problem) = crate::layout::old_migrations(|p| fs.exists(p), &root) {
+                                    return Err(diag::Diag::new(diag::Span::NONE, problem));
+                                }
                                 let snapshot = if fs.exists(&previous) {
                                     Some(
                                         serde_json::from_str(
@@ -334,7 +337,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                                 } else {
                                     None
                                 };
-                                let dir = root.join("zero/migrations");
+                                let dir = root.join(crate::layout::MIGRATIONS);
                                 let paths = if fs.is_dir(&dir) {
                                     fs.read_dir(&dir)
                                         .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?
@@ -525,7 +528,10 @@ export default defineConfig({ actions: { a: action({ input: {}, access: "anyone"
                 .to_string()
         };
         assert_eq!(
-            message(serde_json::json!({"zero.config.ts": config, "zero/abilities.json": lock.to_string()})),
+            message(serde_json::Value::Object(serde_json::Map::from_iter([
+                ("zero.config.ts".to_string(), config.into()),
+                (crate::wordpress::abilities::LOCK.to_string(), lock.to_string().into()),
+            ]))),
             "`acme/info` takes { field: \"name\" }, not { field: \"title\" }"
         );
         assert_eq!(

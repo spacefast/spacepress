@@ -36,7 +36,7 @@ fn php(script: &str, args: &[&Path]) -> Value {
 }
 
 fn build_wp(project: &Path) -> PathBuf {
-    let output = project.join(".zero/wp-content");
+    let output = project.join("zero/dist/wp-content");
     let out = zero().arg("build").arg(project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     output
@@ -180,7 +180,7 @@ export default defineConfig({ name: "presentation", collections: { notes } });"#
     assert_eq!(field["placeholder"], "Jane");
     assert_eq!(field["wrapper"]["width"], 50);
     assert_eq!(got["json"]["instructions"], "Enter valid JSON.");
-    let snapshot = tmp.path().join("zero/migrations/snapshot.json");
+    let snapshot = tmp.path().join("zero/_generated/migrations/snapshot.json");
     let before = std::fs::read(&snapshot).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
@@ -194,7 +194,7 @@ export default defineConfig({ name: "presentation", collections: { notes } });"#
         "presentation changes cannot change storage"
     );
     assert_eq!(
-        std::fs::read_dir(tmp.path().join("zero/migrations"))
+        std::fs::read_dir(tmp.path().join("zero/_generated/migrations"))
             .unwrap()
             .filter(|entry| entry.as_ref().unwrap().path().extension().is_some_and(|e| e == "sql"))
             .count(),
@@ -1118,7 +1118,7 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     std::fs::write(
         tmp.path().join("class-client.ts"),
         r#"
-import type { Actions } from './zero/client/types';
+import type { Actions } from './zero/_generated/client/types';
 declare const instance: Actions['classesWire']['output'];
 const count: number = instance.count;
 const label: string = instance.label;
@@ -1535,7 +1535,7 @@ export default () => definePlugin({
         report["diagnostics"][0]["message"]
             .as_str()
             .unwrap()
-            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/plugins.lock.json"),
+            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/_generated/plugins.lock.json"),
         "{report}"
     );
 }
@@ -3176,7 +3176,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
-/// compiler and for tsc (zero.gen.ts), and the compiled handler calls `Call::run` with the input as
+/// compiler and for tsc (zero/_generated/db.d.ts), and the compiled handler calls `Call::run` with the input as
 /// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
 #[test]
 fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
@@ -3220,7 +3220,7 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
                 "paths": { "zero": [root().join("types/zero/index.d.ts")], "php/wordpress": [root().join("types/zero/wordpress.d.ts")] }
             },
-            "files": ["zero.config.ts", "zero.gen.ts"]
+            "files": ["zero.config.ts", "zero/_generated/db.d.ts"]
         }))
         .unwrap(),
     )

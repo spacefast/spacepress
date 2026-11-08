@@ -319,7 +319,7 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     // One site, three trusted CLI actions in a row (the global's first write, its second, a json filter).
     let out = wp_eval_json(
-        &tmp.join(".zero/wp-content"),
+        &tmp.join("zero/dist/wp-content"),
         r#"$run = static fn (string $name) => json_decode($app->cli(['action', $name])[1], true);
            echo json_encode([$run('visit'), $run('visit'), $run('emptyMeta')]);"#,
         &serde_json::Value::Null,
@@ -348,7 +348,7 @@ fn context_values_pass_through_typed_helpers() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(tmp.join(".zero/wp-content"))
+        .arg(tmp.join("zero/dist/wp-content"))
         .arg(
             r#"$route = $app->matchRoute("POST", "/echo");
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
@@ -585,15 +585,16 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "build failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let init = std::fs::read_to_string(project.join("zero/migrations/0001_init.sql")).unwrap();
+    let init = std::fs::read_to_string(project.join("zero/_generated/migrations/0001_init.sql")).unwrap();
     assert!(init.contains("CREATE TABLE `{prefix}zero_items`"), "{init}");
     // A second build with no changes adds no migration.
     let again = zero().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert!(!project.join("zero/migrations/0002_update.sql").exists());
+    assert!(!project.join("zero/_generated/migrations/0002_update.sql").exists());
     for example in ["pantry", "blog", "site"] {
         let stored: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(root().join(format!("examples/{example}/zero/migrations/snapshot.json"))).unwrap(),
+            &std::fs::read(root().join(format!("examples/{example}/zero/_generated/migrations/snapshot.json")))
+                .unwrap(),
         )
         .unwrap();
         let persisted = tmp.join(format!("preserved-{example}"));
@@ -605,17 +606,18 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             String::from_utf8_lossy(&result.stderr)
         );
         let actual: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(persisted.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(persisted.join("zero/_generated/migrations/snapshot.json")).unwrap())
+                .unwrap();
         assert_eq!(
             actual, stored,
             "{example}: the authoring change must preserve stored resources"
         );
-        let migrations = std::fs::read_dir(persisted.join("zero/migrations"))
+        let migrations = std::fs::read_dir(persisted.join("zero/_generated/migrations"))
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
             .count();
-        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/migrations")))
+        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/_generated/migrations")))
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
@@ -633,12 +635,17 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     for file in ["snapshot.json", "0001_init.sql"] {
         assert_eq!(
-            std::fs::read(upgraded.join("zero/migrations").join(file)).unwrap(),
-            std::fs::read(fixture.join("zero/migrations").join(file)).unwrap(),
+            std::fs::read(upgraded.join("zero/_generated/migrations").join(file)).unwrap(),
+            std::fs::read(fixture.join("zero/_generated/migrations").join(file)).unwrap(),
             "the historical ledger must remain unchanged"
         );
     }
-    assert_eq!(std::fs::read_dir(upgraded.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(upgraded.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
 
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
@@ -646,7 +653,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     let built = zero().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let ledger = conflict.join("zero/migrations/snapshot.json");
+    let ledger = conflict.join("zero/_generated/migrations/snapshot.json");
     let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
     for stored_name in ["stockItems", "inventory"] {
         let mut legacy = canonical.clone();
@@ -664,7 +671,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{error}"
         );
         assert_eq!(std::fs::read(&ledger).unwrap(), legacy_bytes);
-        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        assert_eq!(
+            std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+                .unwrap()
+                .count(),
+            2
+        );
         std::fs::write(conflict.join("zero.config.ts"), format!("import {{ table, defineConfig }} from 'zero'; export default defineConfig({{ tables: {{ stockItems: table({{}}, {{ storageName: \"{stored_name}\" }}) }} }});")).unwrap();
         let preserved = zero().arg("build").arg(&conflict).output().unwrap();
         assert!(
@@ -674,7 +686,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         );
         let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
         assert_eq!(actual, legacy);
-        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        assert_eq!(
+            std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+                .unwrap()
+                .count(),
+            2
+        );
         std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     }
     // Physical-only siblings do not establish who owned the retained resource.
@@ -695,10 +712,15 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "{error}"
     );
     assert_eq!(std::fs::read(&ledger).unwrap(), sibling_bytes);
-    assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
 
     // Writes default to editor access: the site's editor signs in with an application password.
-    let content = project.join(".zero/wp-content");
+    let content = project.join("zero/dist/wp-content");
     let mut server = Server::start(&content, &["kim=editor"]);
     let (s, denied) = server.send("POST", "/locations", Some(r#"{"name":"Shed"}"#));
     assert_eq!((s, denied["code"].as_str()), (401, Some("unauthenticated")));
@@ -868,7 +890,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
         String::from_utf8_lossy(&built.stderr)
     );
     // The compiled app plugin (named after the project directory) and the runtime beside it.
-    let plugins = tmp.join(".zero/wp-content/plugins");
+    let plugins = tmp.join("zero/dist/wp-content/plugins");
     let app = std::fs::read_dir(&plugins)
         .unwrap()
         .filter_map(Result::ok)
@@ -926,7 +948,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
             }
             // Actions run through the trusted CLI on a site: they may use db(), once() and jobs.
             _ => wp_eval(
-                &tmp.join(".zero/wp-content"),
+                &tmp.join("zero/dist/wp-content"),
                 "echo $app->cli(['action', $arg])[1];",
                 &serde_json::Value::String(name.clone()),
             ),
@@ -986,7 +1008,7 @@ fn localized_generated_client_types() {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
                 "paths": { "zero": [root().join("types/zero/index.d.ts")] }
             },
-            "files": ["client.ts", "zero.gen.ts"]
+            "files": ["client.ts", "zero/_generated/db.d.ts"]
         }))
         .unwrap(),
     )
@@ -1039,7 +1061,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     let out = zero().arg("build").arg(&frozen).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(
-        as_json(&frozen.join(".zero/wp-content/plugins/zero-app-blog/zero/app/schema.php")),
+        as_json(&frozen.join("zero/dist/wp-content/plugins/zero-app-blog/zero/app/schema.php")),
         golden,
         "schema.php drifted from tests/fixtures/blog/schema.php"
     );
@@ -1054,7 +1076,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let plugin = project.join(".zero/wp-content/plugins/zero-app-blog");
+    let plugin = project.join("zero/dist/wp-content/plugins/zero-app-blog");
     for rel in [
         "zero-app-blog.php",
         "zero/app/functions.php",
@@ -1062,8 +1084,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     ] {
         assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
     }
-    assert!(project.join(".zero/wp-content/plugins/zero-app-blog.zip").is_file());
-    let content = project.join(".zero/wp-content");
+    assert!(project.join("zero/dist/wp-content/plugins/zero-app-blog.zip").is_file());
+    let content = project.join("zero/dist/wp-content");
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(content.join("zero-manifest.json")).unwrap()).unwrap();
     assert_eq!(manifest["runtime"], "0.3");
@@ -1133,12 +1155,12 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "{mysql}"
     );
     // The typed client: generated types and the descriptor, next to the migrations.
-    let types = std::fs::read_to_string(project.join("zero/client/types.ts")).unwrap();
+    let types = std::fs::read_to_string(project.join("zero/_generated/client/types.ts")).unwrap();
     assert!(
         types.contains("tags: (\"news\" | \"guide\" | \"release\")[];"),
         "{types}"
     );
-    assert!(project.join("zero/client/schema.ts").is_file());
+    assert!(project.join("zero/_generated/client/schema.ts").is_file());
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -1661,7 +1683,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join(".zero/wp-content/plugins/zero-app-phase2/zero/app/schema.php"))
+        .arg(tmp.join("zero/dist/wp-content/plugins/zero-app-phase2/zero/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -1671,11 +1693,11 @@ fn phase2_schema_and_closures_match_the_contract() {
     let again = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(
-        !tmp.join("zero/migrations/0002_update.sql").exists(),
+        !tmp.join("zero/_generated/migrations/0002_update.sql").exists(),
         "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
-    let wpml = tmp.join(".zero/wp-content/plugins/zero-app-phase2/wpml-config.xml");
+    let wpml = tmp.join("zero/dist/wp-content/plugins/zero-app-phase2/wpml-config.xml");
     assert_eq!(
         std::fs::read_to_string(&wpml).expect("localized post types ship wpml-config.xml"),
         std::fs::read_to_string(root().join("tests/fixtures/phase2.wpml-config.xml")).unwrap(),
@@ -1707,7 +1729,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     // The compiled closures run on a WordPress site with the plugins active (fields rules, actions,
     // a job handler writing through db()).
     let out = wp_eval(
-        &tmp.join(".zero/wp-content"),
+        &tmp.join("zero/dist/wp-content"),
         r#"
 
         $db = \Zero\Db::instance();
@@ -1799,8 +1821,8 @@ fn builds_wordpress_and_knows_no_target_option() {
     std::fs::write(tmp.join("zero.config.ts"), config).unwrap();
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    assert!(tmp.join(".zero/wp-content/zero-manifest.json").is_file());
-    assert!(tmp.join("zero/migrations/0001_init.sql").is_file());
+    assert!(tmp.join("zero/dist/wp-content/zero-manifest.json").is_file());
+    assert!(tmp.join("zero/_generated/migrations/0001_init.sql").is_file());
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -1814,7 +1836,7 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let migrations = tmp.join("zero/migrations");
+    let migrations = tmp.join("zero/_generated/migrations");
     let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
     let snapshot = std::fs::read_to_string(migrations.join("snapshot.json")).unwrap();
     /// Every file under the project with its bytes, so a refusal is proven to write nothing anywhere.
@@ -1841,11 +1863,15 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
     for legacy in ["wp", "sqlite"] {
         std::fs::create_dir_all(migrations.join(legacy)).unwrap();
         std::fs::write(migrations.join(legacy).join("0001_init.sql"), &init).unwrap();
-        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
+        refused(&format!(
+            "zero/_generated/migrations/{legacy}/ is from an earlier layout"
+        ));
         // Following the message: the SQL moved out, the directory deleted. An emptied directory
         // left behind is still the earlier layout.
         std::fs::remove_file(migrations.join(legacy).join("0001_init.sql")).unwrap();
-        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
+        refused(&format!(
+            "zero/_generated/migrations/{legacy}/ is from an earlier layout"
+        ));
         std::fs::remove_dir(migrations.join(legacy)).unwrap();
     }
     let mut v1: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
@@ -1860,6 +1886,17 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
     std::fs::write(migrations.join("snapshot.json"), &snapshot).unwrap();
     let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
+    assert!(!migrations.join("0002_update.sql").exists());
+    // A checkout from before `zero/_generated/`: the ledger still in `zero/migrations/`. Building
+    // beside it would start a second 0001_init.sql, so the build names the move instead.
+    let old = tmp.join("zero/migrations");
+    std::fs::rename(&migrations, &old).unwrap();
+    refused(
+        "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ (git mv zero/migrations zero/_generated/migrations)",
+    );
+    std::fs::rename(&old, &migrations).unwrap();
+    let moved = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
     assert!(!migrations.join("0002_update.sql").exists());
     let _ = std::fs::remove_dir_all(tmp);
 }
@@ -1876,7 +1913,7 @@ fn auth_fixture_matches_the_compiler() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join(".zero/wp-content/plugins/zero-app-club/zero/app/schema.php"))
+        .arg(tmp.join("zero/dist/wp-content/plugins/zero-app-club/zero/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -1934,7 +1971,9 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(
-        stderr.contains("plugin \"seo\" writes posts.body; zero/plugins.lock.json grants it only posts.summary"),
+        stderr.contains(
+            "plugin \"seo\" writes posts.body; zero/_generated/plugins.lock.json grants it only posts.summary"
+        ),
         "{stderr}"
     );
     assert!(!project.join(".zero").exists(), "a refused plugin generates nothing");
@@ -1943,7 +1982,7 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     let out = zero().args(["build", "--frozen"]).arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let got = wp_eval_json(
-        &project.join(".zero/wp-content"),
+        &project.join("zero/dist/wp-content"),
         r#"$row = json_decode($app->cli(['insert', 'posts', '{"title":"Hello plugins"}'])[1], true)['data'][0];
            $denied = json_decode($app->cli(['action', 'seo_lookup', '{"url":"https://elsewhere.example/x"}'])[1], true);
            echo json_encode(['summary' => $row['summary'], 'body' => $row['body'], 'denied' => $denied['error']['code'] ?? $denied]);"#,

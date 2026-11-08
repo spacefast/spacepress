@@ -355,6 +355,12 @@ pub enum Prop {
 pub enum ExprKind {
     Class(Rc<Class>),
     Instanceof(P<Expr>, P<Expr>),
+    /// The strings array of a tagged template call site: `cooked` strings (None where an escape is
+    /// invalid, which JavaScript passes as undefined) with a `raw` property. One array per site.
+    TemplateStrings {
+        cooked: Vec<Option<String>>,
+        raw: Vec<String>,
+    },
     /// `pattern = value` with an array or object pattern on the left. The value is the result.
     AssignPattern(P<AssignPat>, P<Expr>),
     /// `delete target`, where the target is a member or index read, possibly `?.` at its last step.

@@ -2691,6 +2691,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }
             ExprKind::Delete(target) => self.delete(target, span)?,
+            // A tagged template's strings: one frozen-in-spirit array per call site with a `raw`
+            // property. Cached per site, as JavaScript reuses the same array for every call.
+            ExprKind::TemplateStrings { cooked, raw } => {
+                let items = cooked
+                    .iter()
+                    .map(|c| c.as_deref().map_or("\\Zero\\Js::undefined()".to_string(), php_str))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let raw = raw.iter().map(|r| php_str(r)).collect::<Vec<_>>().join(", ");
+                // The site key keeps one array per call site across calls, as in JavaScript.
+                let site = format!("{}:{}:{}", span.file, span.start, span.end);
+                Out::atom(
+                    format!("\\Zero\\Js::templateStrings({}, [{items}], [{raw}])", php_str(&site)),
+                    Ty::NonEmptyArray(Box::new(if cooked.iter().all(Option::is_some) {
+                        Ty::Str
+                    } else {
+                        Ty::union([Ty::Str, Ty::Undefined])
+                    })),
+                )
+            }
             ExprKind::AssignPattern(pattern, value) => self.assign_pattern(pattern, value)?,
             ExprKind::In(key, object) => {
                 let key = self.expr(key)?;
@@ -4614,6 +4634,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("count(({x})->a)"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
+            // `TemplateStringsArray.raw`: a tagged template's strings carry their source text.
+            // The annotation resolves to a non-empty string array; a plain array has no `raw`,
+            // so the checked read throws instead of returning a wrong value.
+            (Ty::NonEmptyArray(element) | Ty::Array(element), "raw") if **element == Ty::Str => {
+                let php = guarded(self, &|x| format!("\\Zero\\Js::templateRaw({x})"));
+                Out::atom(php, suffix_null(Ty::Array(Box::new(Ty::Str))))
+            }
             (Ty::Error, "message" | "name") => {
                 let php = guarded(self, &|x| {
                     if prop == "message" {
@@ -5819,6 +5846,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (g, m) == ("Number", "parseInt") {
             crate::builtins::check_parse_int_literals(args, span)?;
+        }
+        if (g, m) == ("String", "raw") {
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(format!("\\Zero\\Js::stringRaw(...({argv})->a)"), Ty::Str));
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))

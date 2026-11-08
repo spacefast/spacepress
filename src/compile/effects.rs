@@ -1400,7 +1400,7 @@ impl Graph {
             ExprKind::Num(_) | ExprKind::Str(_) | ExprKind::Bool(_) | ExprKind::Null | ExprKind::Undefined => {
                 return None;
             }
-            ExprKind::Class(_) | ExprKind::Regex { .. } => {}
+            ExprKind::Class(_) | ExprKind::Regex { .. } | ExprKind::TemplateStrings { .. } => {}
         }
         Some(value)
     }

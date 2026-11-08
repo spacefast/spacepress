@@ -754,7 +754,8 @@ impl CommonJsScope {
             | ExprKind::Bool(_)
             | ExprKind::Null
             | ExprKind::Undefined
-            | ExprKind::Regex { .. } => {}
+            | ExprKind::Regex { .. }
+            | ExprKind::TemplateStrings { .. } => {}
         }
         Ok(())
     }

@@ -437,13 +437,6 @@ impl Lowerer {
                 }
             }
             a::Statement::ForOfStatement(f) => {
-                if f.r#await {
-                    return self.unsupported(
-                        f.span,
-                        "`for await`",
-                        "Zero's async calls already block; use `for ... of`",
-                    );
-                }
                 let a::ForStatementLeft::VariableDeclaration(v) = &f.left else {
                     return self.unsupported(
                         f.span,
@@ -458,6 +451,7 @@ impl Lowerer {
                     _ => return self.unsupported(v.span, "this loop declaration", "use `const`"),
                 };
                 Stmt::ForOf {
+                    is_await: f.r#await,
                     kind,
                     pat: self.pattern(&v.declarations[0].id)?,
                     iter: self.expr(&f.right)?,
@@ -907,9 +901,6 @@ impl Lowerer {
         if let Some(id) = &f.id {
             self.binding_name(id.name.as_str(), id.span)?;
         }
-        if f.generator {
-            return self.unsupported(f.span, "generators", "return an array");
-        }
         let Some(body) = &f.body else {
             return self.unsupported(f.span, "a function without a body", "");
         };
@@ -928,6 +919,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
+            is_generator: f.generator,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -948,6 +940,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
+            is_generator: false,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -1431,7 +1424,13 @@ impl Lowerer {
                     type_args: vec![],
                 },
             ),
-            E::YieldExpression(y) => return self.unsupported(y.span, "generators", ""),
+            E::YieldExpression(y) => self.mk(
+                span,
+                ExprKind::Yield {
+                    arg: y.argument.as_ref().map(|a| self.expr(a).map(Box::new)).transpose()?,
+                    delegate: y.delegate,
+                },
+            ),
             E::ImportExpression(i) => return self.unsupported(i.span, "dynamic `import()`", "use a static import"),
             E::Super(s) if self.class_context.get() => self.mk(s.span, ExprKind::Ident("super".into())),
             E::Super(s) => return self.unsupported(s.span, "`super` outside a class", ""),
@@ -1971,7 +1970,9 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
                 ArrEl::Item(v) | ArrEl::Spread(v) => v,
             }))
             .collect(),
-        ExprKind::Unary(_, value)
+        ExprKind::Yield { arg: None, .. } => vec![],
+        ExprKind::Yield { arg: Some(value), .. }
+        | ExprKind::Unary(_, value)
         | ExprKind::Delete(value)
         | ExprKind::IsNullish(value, _)
         | ExprKind::Chain(value)

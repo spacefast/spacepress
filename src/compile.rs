@@ -268,6 +268,8 @@ struct FnCtx {
     function: Span,
     scopes: Vec<HashMap<String, Local>>,
     is_async: bool,
+    /// `function*`: `yield` is legal and the body compiles to a PHP Generator.
+    is_generator: bool,
     ret: Option<Ty>,
     /// Inferred return types (when no annotation).
     returns: Vec<Ty>,
@@ -329,6 +331,8 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// Generated code queues promise jobs, so each root drains them and checks rejections at its end.
+    uses_jobs: bool,
     /// Every ability `abilities.call` may name, typed (src/abilities.rs).
     pub abilities: crate::wordpress::abilities::Catalog,
     /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
@@ -397,6 +401,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             annotation_steps: 0,
             resolving_json_types: HashSet::new(),
             async_callback: false,
+            uses_jobs: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
             helper_closures: HashMap::new(),
@@ -819,6 +824,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         while let Some((closure, name, params)) = self.pending.pop() {
             self.compile_function(&closure, &name, params, None, false)?;
         }
+        if self.uses_jobs {
+            self.wrap_roots_with_job_queue(&out);
+        }
         Ok(out)
     }
 
@@ -898,6 +906,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .entry(closure_key(closure))
             .or_insert_with(|| closure.clone());
         let f = closure.func.clone();
+        if f.is_generator && !self.javascript_module(f.module) {
+            return err_help(
+                f.span,
+                "generators only work in imported JavaScript",
+                "return an array, or move the generator into a .js module",
+            );
+        }
         if matches!(slot, Some(Slot::FieldAccess { .. })) && f.is_async {
             return err_help(
                 f.span,
@@ -909,6 +924,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
+            is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
             diverging: HashSet::new(),
@@ -1037,7 +1053,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }),
             ),
         );
-        let _ = writeln!(self.output, "function {name}({params_php})\n{{\n{body}}}\n");
+        if self.suspends(&f) {
+            let wrapper = self.suspending_wrapper(&f, &format!("\\ZeroApp\\{name}__body"));
+            let _ = writeln!(
+                self.output,
+                "function {name}__body({params_php})\n{{\n{body}}}\n\nfunction {name}(mixed ...$args)\n{{\n    return {wrapper};\n}}\n"
+            );
+        } else {
+            let _ = writeln!(self.output, "function {name}({params_php})\n{{\n{body}}}\n");
+        }
         Ok(())
     }
 
@@ -1155,6 +1179,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let mut body = arguments + &self.javascript_prologue(f, 1)?;
         body.push_str(&prologue);
+        body.push_str(&self.generator_prologue(f, 1));
         match &f.body {
             FnBody::Expr(e) => {
                 let v = self.return_value(e)?;
@@ -1657,12 +1682,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.pop();
             }
             Stmt::ForOf {
+                is_await,
                 kind,
                 pat,
                 iter,
                 body,
                 span,
             } => {
+                let module = self.fx().module;
+                if *is_await && !self.javascript_module(module) {
+                    return err_help(
+                        *span,
+                        "`for await` only works in imported JavaScript",
+                        "await each value inside a `for ... of` loop",
+                    );
+                }
+                if *is_await && !self.fx().is_async {
+                    return err_help(
+                        *span,
+                        "`for await` only works in async functions",
+                        "mark the function `async`",
+                    );
+                }
                 self.fx().scopes.push(HashMap::new());
                 if *kind != DeclKind::Var {
                     self.predeclare_lexical(pat, *kind == DeclKind::Let);
@@ -1683,12 +1724,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "check it first, or use `?? []`",
                     );
                 }
-                let el = widen_fresh_literals(&el);
+                // Each `for await` value is awaited, so its type is the awaited one.
+                let el = if *is_await {
+                    Ty::Dynamic
+                } else {
+                    widen_fresh_literals(&el)
+                };
                 let mutable = *kind != DeclKind::Const;
                 let source = self.tmp_var();
                 let index = self.tmp_var();
                 let value = self.tmp_var();
-                if it.ty == Ty::Dynamic {
+                // Checked JavaScript iterates by protocol and closes the iterator on any early exit.
+                let protocol = (it.ty == Ty::Dynamic || *is_await) && self.javascript_module(module);
+                if protocol {
+                    let open = if *is_await { "openAsync" } else { "open" };
+                    if *is_await {
+                        self.uses_jobs = true;
+                    }
+                    let _ = writeln!(
+                        out,
+                        "{p}{source} = \\Zero\\JsIter::{open}({});\n{p}try {{\n{p}while ({source}->step()) {{",
+                        it.php
+                    );
+                    let _ = writeln!(out, "{}{value} = {source}->value;", pad(indent + 1));
+                } else if it.ty == Ty::Dynamic {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
                     let _ = writeln!(
@@ -1714,6 +1773,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.invalidate_loop(*span);
                 out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
+                if protocol {
+                    // A throw closes quietly; break/return/normal completion close and may throw.
+                    let _ = writeln!(
+                        out,
+                        "{p}}} catch (\\Throwable {value}) {{\n{p}    {source}->abrupt();\n{p}    throw {value};\n{p}}} finally {{\n{p}    {source}->close();\n{p}}}"
+                    );
+                }
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
                     && let Resolved::Local(local) = self.resolve(&name, *span)?
@@ -1881,14 +1947,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 out.push_str(&inner?);
                 if let Some(h) = handler {
                     self.fx().scopes.push(HashMap::new());
-                    // JavaScript binds the thrown value itself; JsThrown carries non-JsError values.
-                    let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+                    // JavaScript binds the thrown value itself; JsThrow carries non-JsError values.
+                    let module = self.fx().module;
+                    let javascript = self.javascript_module(module);
                     let caught = self.tmp_var();
                     // Database and validation errors propagate: they must roll back the request.
                     let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {caught}) {{");
                     if let Some((n, span)) = param {
-                        let var = self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, false, *span);
-                        let _ = writeln!(out, "{p}    {var} = \\Zero\\Js::caught({caught});");
+                        let var = self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
+                        // Typed catch bindings are Errors: Error subclass instances pass, other values are refused.
+                        let unwrap = if javascript { "thrownValue" } else { "caughtError" };
+                        let _ = writeln!(out, "{p}    {var} = \\Zero\\Js::{unwrap}({caught});");
                     }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
@@ -2117,9 +2186,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         let v = self.expr(e)?;
-        let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
-        if v.ty == Ty::Error || javascript || self.error_instance(&v.ty) {
-            return Ok(format!("\\Zero\\Js::thrown({})", v.php));
+        if v.ty == Ty::Error {
+            return Ok(v.php);
+        }
+        let module = self.fx().module;
+        if self.javascript_module(module) || self.error_instance(&v.ty) {
+            let v = self.finish_value(v, e.span)?;
+            return Ok(format!("\\Zero\\Js::throwable({})", v.php));
         }
         err_help(
             e.span,
@@ -2775,6 +2848,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
+                // Host classes Zero implements answer `instanceof` from imported JavaScript.
+                if let ExprKind::Ident(name) = &right.kind
+                    && matches!(
+                        name.as_str(),
+                        "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
+                    )
+                    && self.javascript_module(self.fx.as_ref().expect("fn").module)
+                    && matches!(self.resolve(name, right.span)?, Resolved::Global(_))
+                {
+                    let left = self.expr(left)?;
+                    let class = match name.as_str() {
+                        "Promise" => "JsPromise",
+                        "ReadableStream" => "JsReadableStream",
+                        "WritableStream" => "JsWritableStream",
+                        _ => "JsTransformStream",
+                    };
+                    return Ok(Out::atom(
+                        format!("({} instanceof \\Zero\\{class})", left.php),
+                        Ty::Bool,
+                    ));
+                }
                 if let ExprKind::Ident(name) = &right.kind
                     && let Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) =
                         self.resolve(name, right.span)?
@@ -3200,6 +3294,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.expr(inner)?
             }
             ExprKind::Await(x) => self.await_expr(x, span)?,
+            ExprKind::Yield { arg, delegate } => self.yield_expr(arg.as_deref(), *delegate, span)?,
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
                 let module = self.fx().module;
@@ -3883,7 +3978,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         }
-        body = arguments + &self.javascript_prologue(f, 2)? + &body;
+        body = arguments + &self.javascript_prologue(f, 2)? + &body + &self.generator_prologue(f, 2);
         match &f.body {
             FnBody::Expr(e) => {
                 let v = self.expr(e)?;
@@ -3969,6 +4064,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
+            is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
             diverging: HashSet::new(),
@@ -3986,7 +4082,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             no_db: self.fx().no_db,
             access: None,
         };
-        if f.is_async && !std::mem::take(&mut self.async_callback) {
+        if f.is_generator && !self.javascript_module(module) {
+            return err_help(
+                f.span,
+                "generators only work in imported JavaScript",
+                "return an array, or move the generator into a .js module",
+            );
+        }
+        if f.is_async && !self.javascript_module(module) && !std::mem::take(&mut self.async_callback) {
             return err_help(
                 f.span,
                 "async callbacks aren't supported",
@@ -4036,6 +4139,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             _ => format!("function ({params_php}){use_clause} {{\n{body}{}}}", pad(1)),
+        };
+        let php = if self.suspends(f) {
+            self.suspending_closure(f, php)
+        } else {
+            php
         };
         let php = if let Some((keys, descending)) = crate::builtins::sort_key(f) {
             let keys = keys.iter().map(|key| php_str(key)).collect::<Vec<_>>().join(", ");
@@ -5191,9 +5299,36 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let v = self.expr(x)?;
+        let module = self.fx().module;
+        // Zero's own typed async calls (fetch, database builders, typed helpers) block, as in
+        // TypeScript; any other awaited value from checked JavaScript goes through the job queue.
+        if self.javascript_module(module) && !matches!(v.ty, Ty::Promise(_) | Ty::Builder(_)) {
+            let v = self.finish_value(v, x.span)?;
+            self.uses_jobs = true;
+            return Ok(Out::atom(
+                format!(
+                    "\\Zero\\JsJobs::await({}, {})",
+                    v.php,
+                    php_str(&crate::diag::site(span))
+                ),
+                Ty::Dynamic,
+            ));
+        }
         Ok(match v.ty {
             Ty::Promise(t) => Out { ty: *t, ..v },
             Ty::Builder(b) => Out::new(b.php(), b.result(self.schema)),
+            // A call into imported JavaScript may return a promise; awaiting it drives the job queue.
+            Ty::Dynamic => {
+                self.uses_jobs = true;
+                Out::atom(
+                    format!(
+                        "\\Zero\\JsJobs::await({}, {})",
+                        v.php,
+                        php_str(&crate::diag::site(span))
+                    ),
+                    Ty::Dynamic,
+                )
+            }
             other => {
                 return err_help(
                     span,
@@ -5224,6 +5359,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(Out::atom(
                 format!("\\Zero\\Js::dynamicConstruct('RegExp', {argv})"),
                 Ty::Regex,
+            ));
+        }
+        if self.javascript_module(self.fx.as_ref().expect("fn").module)
+            && let ExprKind::Ident(name) = &callee.kind
+            && matches!(
+                name.as_str(),
+                "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
+            )
+            && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
+        {
+            let argv = self.javascript_args(args)?;
+            self.uses_jobs = true;
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicConstruct({}, {argv})", php_str(name)),
+                Ty::Dynamic,
             ));
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
@@ -6176,6 +6326,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let method = if m == "for" { "for" } else { "keyFor" };
             return Ok(Out::atom(
                 format!("\\Zero\\JsSymbol::{method}(...({argv})->a)"),
+                Ty::Dynamic,
+            ));
+        }
+        if g == "Promise" && self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            let argv = self.javascript_args(args)?;
+            self.uses_jobs = true;
+            return Ok(Out::atom(
+                format!("\\Zero\\JsPromise::staticCall({}, ({argv})->a)", php_str(m)),
                 Ty::Dynamic,
             ));
         }

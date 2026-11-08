@@ -336,6 +336,9 @@ pub const GLOBALS: &[&str] = &[
     "eval",
     "Function",
     "Promise",
+    "ReadableStream",
+    "WritableStream",
+    "TransformStream",
     "setTimeout",
     "crypto",
     "Symbol",
@@ -1130,12 +1133,20 @@ impl<'p> Evaluator<'p> {
                 }
             }
             Stmt::ForOf {
+                is_await,
                 kind,
                 pat,
                 iter,
                 body,
                 span,
             } => {
+                if *is_await {
+                    return err_help(
+                        *span,
+                        "`for await` can't run while the config is evaluated",
+                        "iterate asynchronously inside hooks and actions, which run in PHP",
+                    );
+                }
                 if *kind == DeclKind::Var && !matches!(pat, Pat::Id(..)) {
                     return err_help(
                         *span,
@@ -1828,6 +1839,13 @@ impl<'p> Evaluator<'p> {
                 Err(Ctl::Short) => Value::Undef,
                 other => other?,
             },
+            ExprKind::Yield { .. } => {
+                return err_help(
+                    e.span,
+                    "generators can't run while the config is evaluated",
+                    "call generators inside hooks and actions, which run in PHP",
+                );
+            }
             ExprKind::Await(_) => {
                 return err_help(
                     e.span,

@@ -13,6 +13,7 @@ namespace Zero;
 final class Js
 {
     use JsDynamic;
+    use JsAsync;
     /** JS WhiteSpace + LineTerminator, as a PCRE class body. */
     public const WS = '\x{9}-\x{D}\x{20}\x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}';
 

@@ -17,6 +17,11 @@ trait JsDynamic
 
     private static function dynamicMethodValue(mixed $receiver, string $name): mixed
     {
+        if ($receiver instanceof JsPromise || $receiver instanceof JsGenerator || $receiver instanceof JsAsyncGenerator) {
+            $methods = $receiver instanceof JsPromise ? ['then', 'catch', 'finally'] : ['next', 'return', 'throw'];
+            if (!in_array($name, $methods, true)) { return JsUndefined::Value; }
+            return static fn (...$args) => $receiver->call($name, $args);
+        }
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
             return $receiver->class->methodValue($name, false);
         }
@@ -133,6 +138,7 @@ trait JsDynamic
             return self::dynamicMethodValue($value, $key);
         }
         if ($value instanceof JsClass) { return $value->has($key) || !$value->hasStaticMethod($key) ? $value->get($key) ?? JsUndefined::Value : self::dynamicMethodValue($value, $key); }
+        if ($value instanceof JsReadableStream || $value instanceof JsWritableStream || $value instanceof JsTransformStream) { return $value->get($key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -141,7 +147,7 @@ trait JsDynamic
                     : throw new JsError('Unsupported Math property ' . $key, 'TypeError'),
             };
         }
-        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'stack' => self::str($value), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue($value, $key) }; }
+        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str($value), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue($value, $key) }; }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             if ($value instanceof JsArguments && $key === 'callee') { throw new JsError('Restricted arguments property', 'TypeError'); }
             if ($key === 'length') { return $value instanceof JsArguments ? $value->length : count($value->a); }
@@ -382,6 +388,15 @@ trait JsDynamic
             for ($i = 0; $i < count($value->values); $i++) { yield $value->values[$i]; }
         } elseif ($value instanceof JsMap) {
             for ($i = 0; $i < count($value->entries); $i++) { yield new JsArray($value->entries[$i]); }
+        } elseif ($value instanceof JsGenerator || $value instanceof JsObject && JsIter::wellKnownMethod($value, 'iterator') !== null) {
+            // Spread, Array.from and the combinators follow the iterator protocol, closing on a throw.
+            $iter = JsIter::open($value);
+            try {
+                while ($iter->step()) { yield $iter->value; }
+            } catch (\Throwable $error) {
+                $iter->abrupt();
+                throw $error;
+            }
         } else {
             throw new JsError('Value is not iterable', 'TypeError');
         }
@@ -426,18 +441,6 @@ trait JsDynamic
             return $name === 'Error' || $value->jsName === $name;
         }
         return $value instanceof JsObject && ($value->class?->extendsBuiltin($name) ?? false);
-    }
-
-    /** The value a JavaScript `catch` binds: the original thrown value. */
-    public static function caught(JsError $error): mixed
-    {
-        return $error instanceof JsThrown ? $error->value : $error;
-    }
-
-    /** `throw value`: built-in errors throw directly, everything else travels in JsThrown. */
-    public static function thrown(mixed $value): JsError
-    {
-        return $value instanceof JsError ? $value : new JsThrown($value);
     }
 
     public static function dynamicCall(mixed $function, JsArray $args): mixed
@@ -512,6 +515,9 @@ trait JsDynamic
                 default => throw new JsError($name . ' is not a function', 'TypeError'),
             };
         }
+        if ($receiver instanceof JsPromise) { Builtins::check('promise', $name, count($a)); return $receiver->call($name, $a); }
+        if ($receiver instanceof JsReadableStream || $receiver instanceof JsWritableStream) { return $receiver->call($name, $a); }
+        if ($receiver instanceof JsGenerator || $receiver instanceof JsAsyncGenerator) { Builtins::check('generator', $name, count($a)); return $receiver->call($name, $a); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
@@ -829,6 +835,10 @@ trait JsDynamic
         $a = $args->a;
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
+        if ($constructor === 'Promise') { return JsPromise::construct($a[0] ?? JsUndefined::Value); }
+        if ($constructor === 'ReadableStream') { return new JsReadableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
+        if ($constructor === 'WritableStream') { return new JsWritableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
+        if ($constructor === 'TransformStream') { return new JsTransformStream($a[0] ?? JsUndefined::Value); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             $text = $message === JsUndefined::Value ? '' : self::str($message);

@@ -2140,6 +2140,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
         ExprKind::Cond(a, b, c) => r(a) || r(b) || r(c),
         ExprKind::Unary(_, x)
         | ExprKind::Await(x)
+        | ExprKind::Yield { arg: Some(x), .. }
         | ExprKind::Chain(x)
         | ExprKind::As(x, _)
         | ExprKind::NonNull(x)

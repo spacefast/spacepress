@@ -16,6 +16,30 @@ Named module-level classes compile inside callbacks: constructors, public fields
 
 [Evidence](../tests/compiler_contracts.rs) (`classes_match_node_through_generated_php_and_wire_client_types`)
 
+## javascript-promises
+
+Status: **supported**.
+
+Imported JavaScript can hold promises as values: new Promise, then/catch/finally, Promise.resolve/reject/all/allSettled/any/race/withResolvers and async callbacks. Reactions run on a deterministic per-request job queue in ECMA-262 order, and async bodies run on PHP Fibers. The queue drains to empty at handler end; an unhandled rejection is then a runtime error, and so is a promise nothing can settle (no job or timer is left). Real I/O completes in issue order. See docs/decisions/2026-11-07-promises-generators-streams.md.
+
+[Evidence](../tests/compiler_contracts.rs) (`promise_jobs_generators_and_async_iteration_match_node_in_generated_php`)
+
+## javascript-generators
+
+Status: **supported**.
+
+Imported JavaScript generators and async generators compile to PHP Generators behind the iterator protocol: yield, yield*, next/return/throw, and finally on early exit. for…of and for await…of follow the protocol and close the iterator when the loop breaks, returns or throws. Authored TypeScript still refuses generators and for await.
+
+[Evidence](../tests/compiler_contracts.rs) (`promise_jobs_generators_and_async_iteration_match_node_in_generated_php`)
+
+## javascript-streams
+
+Status: **supported**.
+
+ReadableStream (start/pull/cancel, default reader, tee, async iteration), WritableStream and TransformStream, with pipeTo and pipeThrough, are pull-driven chunk queues over the job queue. Byte streams, BYOB readers, size() strategies and pipeTo signals are refused at runtime. Zero\JsReadableStream::fromResource wraps a PHP stream resource.
+
+[Evidence](../tests/compiler_contracts.rs) (`promise_jobs_generators_and_async_iteration_match_node_in_generated_php`)
+
 ## class-metaprogramming
 
 Status: **refused**. Diagnostic: `Z1101`.

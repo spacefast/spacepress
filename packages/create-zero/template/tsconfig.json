@@ -7,7 +7,10 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "types": [],
-    "paths": { "zero": ["./node_modules/@spacefast/zero-cli/types/index.d.ts"] }
+    "paths": {
+      "zero": ["./node_modules/@spacefast/zero-cli/types/index.d.ts"],
+      "php/wordpress": ["./node_modules/@spacefast/zero-cli/types/wordpress.d.ts"]
+    }
   },
   "include": ["zero.config.ts", "zero.gen.ts", "client.ts", "zero/client/**/*.ts"]
 }

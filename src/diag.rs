@@ -55,6 +55,12 @@ pub enum Code {
     Compile,
     #[serde(rename = "Z4101")]
     AccessQuery,
+    /// A plugin package imports the app's modules or another plugin's package.
+    #[serde(rename = "Z1201")]
+    PluginIsolation,
+    /// A plugin's compiled code uses a capability its `zero/plugins.lock.json` entry doesn't grant.
+    #[serde(rename = "Z4201")]
+    PluginCapability,
 }
 
 impl Code {

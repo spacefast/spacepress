@@ -104,6 +104,22 @@ Status: **supported**.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## destructuring-assignment
+
+Status: **supported**.
+
+Array and object patterns on the left of `=` assign existing variables, object fields and array elements, including elisions, defaults, rest elements, nested patterns and computed keys. The right side is evaluated once and is the expression's value. Each leaf runs in JavaScript order: computed key, target reference, read, default (only for undefined), write. Typed targets must accept the value, so a missing optional field needs a default or an optional target; computed keys need an open map or a literal key. Compound destructuring assignment does not exist in JavaScript.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## tagged-templates
+
+Status: **supported**.
+
+tag`…${x}…` calls the tag with the call site's strings array, then the substitutions, in typed code and imported JavaScript. The strings array has a `raw` property with the source text, cooked strings are undefined where an escape is invalid, and each call site keeps one array across calls. String.raw is supported, including its object form in imported JavaScript. Configuration evaluation refuses tagged templates; call the tag inside a handler.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.
@@ -399,3 +415,27 @@ Status: **supported**.
 wp-hooks/<hook>.ts and wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
 
 [Evidence](../tests/compiler_contracts.rs) (`wp_hooks_register_in_file_order_with_their_priorities`)
+
+## plugin-narrowed-write
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+
+[Evidence](../tests/fixtures/reject-plugin-write)
+
+## plugin-static-host
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop.
+
+[Evidence](../tests/fixtures/reject-plugin-http)
+
+## plugin-cross-import
+
+Status: **refused**. Diagnostic: `Z1201`.
+
+A plugin package imports its own modules, "zero" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+
+[Evidence](../tests/fixtures/reject-plugin-isolation)

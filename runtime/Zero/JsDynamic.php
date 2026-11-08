@@ -551,6 +551,7 @@ trait JsDynamic
             }
             if ($method === 'of') { return new JsArray($a); }
         }
+        if ($owner === 'String' && $method === 'raw') { return self::stringRaw(...$a); }
         if ($owner === 'Object') {
             $source = $get(0);
             if (in_array($method, ['keys', 'values', 'entries'], true)) {

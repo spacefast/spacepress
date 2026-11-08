@@ -737,6 +737,12 @@ impl CommonJsScope {
                     self.expression(expression)?;
                 }
             }
+            ExprKind::AssignPattern(pattern, value) => {
+                for expression in pattern.exprs() {
+                    self.expression(expression)?;
+                }
+                self.expression(value)?;
+            }
             ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
                 self.expression(callee)?;
                 for ArrEl::Item(value) | ArrEl::Spread(value) in args {
@@ -748,7 +754,8 @@ impl CommonJsScope {
             | ExprKind::Bool(_)
             | ExprKind::Null
             | ExprKind::Undefined
-            | ExprKind::Regex { .. } => {}
+            | ExprKind::Regex { .. }
+            | ExprKind::TemplateStrings { .. } => {}
         }
         Ok(())
     }

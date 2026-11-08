@@ -56,6 +56,12 @@ impl Compiler<'_, '_> {
             BinOp::LooseNe => ("!=", Ty::Bool),
             bitwise => (bitwise.bitwise_symbol().expect("bitwise operator"), Ty::Num),
         };
+        // A numeric result may be a BigInt when either operand is unchecked JavaScript.
+        let ty = if ty == Ty::Num && (a.ty == Ty::Dynamic || b.ty == Ty::Dynamic) {
+            Ty::Dynamic
+        } else {
+            ty
+        };
         Ok(Out::atom(
             format!("\\Zero\\Js::dynamicBinary({}, {}, {})", php_str(operator), a.php, b.php),
             ty,
@@ -88,6 +94,37 @@ impl Compiler<'_, '_> {
                 kind: WriteKind::Dynamic,
             }),
         }
+    }
+
+    /// Object literals in imported JavaScript with computed keys or spreads. Keys may be
+    /// symbols and spread sources may be any value, so both are resolved at run time.
+    pub(super) fn javascript_object(&mut self, props: &[Prop]) -> Result<Out> {
+        let mut parts = Vec::new();
+        for p in props {
+            match p {
+                Prop::KV(key, value) => {
+                    let key = match key {
+                        PropKey::Static(k) => php_str(k),
+                        PropKey::Computed(k) => {
+                            let k = self.expr(k)?;
+                            k.php
+                        }
+                    };
+                    let v = self.expr(value)?;
+                    let v = self.finish_value(v, value.span)?;
+                    parts.push(format!("['k', {key}, {}]", v.php));
+                }
+                Prop::Spread(x) => {
+                    let v = self.expr(x)?;
+                    let v = self.finish_value(v, x.span)?;
+                    parts.push(format!("['s', {}]", v.php));
+                }
+            }
+        }
+        Ok(Out::atom(
+            format!("\\Zero\\Js::dynamicObject({})", parts.join(", ")),
+            Ty::Dynamic,
+        ))
     }
 
     pub(super) fn javascript_args(&mut self, args: &[ArrEl]) -> Result<String> {

@@ -367,6 +367,30 @@ filters cannot probe them. Media and private file references work on both kinds.
 
 `ctx` is `{ user: { id, name, role } | null }`.
 
+`ctx` is an ordinary value. Pass it to helpers, return it, and read its keys,
+including `ctx["user"]` and keys typed `keyof HookCtx`. Type a helper's
+parameters with the types `"zero"` exports:
+
+- `HookCtx` for the context of an action, hook or route;
+- `JobCtx` for a job's context, which adds `attempt` and `jobId`;
+- `User` and `Role` for `ctx.user` and its role;
+- `RouteRequest` and `RouteResponse` for a route's request and result.
+
+```ts
+import { db, type HookCtx, type User } from "zero";
+
+function author(ctx: HookCtx): string {
+  return ctx.user === null ? "guest" : ctx.user.name;
+}
+async function addNote(ctx: HookCtx, body: string) {
+  await db.insert(notes).values({ body, author: author(ctx) });
+}
+```
+
+A key read whose value no type bounds, such as `ctx[name]` with
+`name: string`, is refused. Use a `keyof` type, a `switch` or a
+`Record<string, T>` instead.
+
 Throwing anything aborts the request and rolls back every write in it.
 `throw new HttpError(status, code, message)` picks the HTTP response.
 
@@ -1042,7 +1066,8 @@ switches and blocks (`break label`, `continue label`) follow JavaScript.
 Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
 assigns existing variables and fields in JavaScript order. Tagged templates
 call the tag with the call site's strings array (with `raw`) and the
-substitutions; `String.raw` is supported.
+substitutions; `String.raw` is supported. BigInt (`10n`, `bigint`, `BigInt(x)`)
+is exact; mixing it with numbers in arithmetic is a TypeError, as in JavaScript.
 
 Host globals: `fetch`, `Headers`, `URLSearchParams`, `process.env.NAME`,
 `crypto.randomUUID()`, `Buffer.from`/`Buffer.byteLength` in the forms above, and
@@ -1052,7 +1077,7 @@ Host globals: `fetch`, `Headers`, `URLSearchParams`, `process.env.NAME`,
 
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,
-getters/setters, BigInt, dynamic `import()`, `any`,
+getters/setters, dynamic `import()`, `any`,
 `eval`/`Function`, `setTimeout`, `globalThis`, `Promise`, `URL`, `Request`,
 `Response`, `FormData`, `Blob`, `AbortController`, `require` outside static
 CommonJS sources, assigning to module-level state from a hook,
@@ -1157,12 +1182,46 @@ include methods or class metadata. Object spread copies own fields shallowly.
 produce plain data without class identity. Use object types in `json().$type<T>()`;
 class types and assertions that would pretend to hydrate a class are refused.
 
+Private names (`#field`, `#method()`, `static #x` and `#x in value`) belong to
+the class that declares them, as in JavaScript. A subclass declaring the same
+`#x` gets a separate slot, and only code inside the declaring class body can
+name it. Private state is invisible to `Object.keys`, JSON, spread and
+`structuredClone`; a clone does not carry the brand. Reading a private member
+from an object the class did not initialize throws `TypeError`.
+
+Classes in imported JavaScript (`.js`, `.mjs`, `.cjs`) need no annotations:
+fields, parameters and returns use checked JavaScript values, and method values
+such as `instance.method` keep one identity per class, so `call` supplies the
+receiver.
+
+Class `get`/`set` accessors, including `static` ones, live on the class like
+prototype members: they are not own fields, so `Object.keys` and JSON skip them.
+Own data wins over an accessor, and an accessor wins over a method. Assigning a
+getter without a setter is a compile error in typed code and a `TypeError` in
+imported JavaScript. Redefining either half in a subclass replaces the inherited
+pair, and `super.name` reads the parent getter with the current receiver. A
+getter's type comes from its return annotation, its setter's parameter, or its
+body. A class `toJSON()` method is called by `JSON.stringify` with the property
+key; actions that return such an instance directly are refused, because the
+generated client describes own fields.
+
+Classes can extend `Error`, `TypeError` and `RangeError`. `super(message,
+options)` sets non-enumerable `message`, `cause` (from `options.cause`) and
+`stack`, so `Object.keys` and JSON show only fields and an assigned `name`.
+`name` and `message` otherwise come from the prototype, and `String(error)`
+follows `Error.prototype.toString`. `instanceof` sees the whole chain, including
+`Error`. Any such instance can be thrown and caught with its identity and fields
+intact. `stack` is the `Name: message` header without frames; Zero does not
+expose PHP frames. `Error.captureStackTrace(target)` gives `target` that same
+header-only stack. In typed code, `catch (e)` narrows with
+`e instanceof AppError`.
+
 These class features remain outside the supported surface, with located errors:
 class expressions, default-export class declarations and
 anonymous/local/abstract/ambient/generic classes;
-decorators; private/protected/`#` members; accessors; static blocks; computed names;
-generic/rest methods; dynamic or built-in inheritance; constructor return values;
-prototype/reflection machinery and custom coercion/serialization protocol members.
+decorators; private/protected members; private accessors; static blocks; computed names;
+generic/rest methods; dynamic inheritance and built-in bases other than the Error family; constructor return values;
+prototype/reflection machinery and custom coercion members (`toString`, `valueOf`).
 Indexed class members and recursive class field types are also refused.
 Uninitialized optional fields follow the same missing-to-null boundary. Class
 values are limited to construction, `instanceof`, `typeof` and static access.

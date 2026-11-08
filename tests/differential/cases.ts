@@ -2,6 +2,9 @@
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
 import { job, jobs, once } from "zero"; // lane D
+import * as ns from "./namespace.mjs";
+import picoish from "./namespace.mjs";
+import { jsCollections } from "./stdlib.js";
 
 const n = table({ id: id() });
 
@@ -272,6 +275,16 @@ class LanguageDraftView extends LanguageView {
 }
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
+// Feature detection on globalThis is resolved at compile time in both phases.
+const GLOBAL_DETECTION = [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.Math, typeof globalThis.window, typeof globalThis.location, globalThis.Deno === undefined];
+
+// Build-time namespaces: objects holding functions, and functions with own properties,
+// are resolved member by member at compile time; they never exist in PHP.
+const local = { twice: (n: number) => n * 2, deep: { label: (s: string) => `<${s}>`, size: 4 }, list: ["a", "b"] };
+function tagged(s: string) { return `#${s}`; }
+tagged.prefix = "p";
+tagged.upper = (s: string) => s.toUpperCase();
+Object.assign(tagged, { count: 2, nested: { flag: true } });
 
 
 // Each action is independent: Node shares one module; PHP starts a process per case.
@@ -457,6 +470,20 @@ export default defineConfig({
       nullableParameter(null), nullableParameter({ n: 3 }),
     ]),
     ...laneRefs,
+    namespaceImport: run(() => {
+      const record = { count: 1 };
+      return [ns.shout("hi"), ns.touch(record), record.count, ns.utils.isObject({}), ns.utils.isObject([]), ns.utils.join("a", "b"),
+        ns.constants.SEP, ns.constants.limits.depth, ns.constants.REGEX_DOTS.source];
+    }),
+    namespaceLocal: run(() => [local.twice(3), local.deep.label("x"), local.deep.size + 1, local.list.length, local.list[1]]),
+    namespaceDefault: run(() => [picoish.count, picoish.utils.join("x", "y"), picoish.matcher("*.md")("*.md"), picoish.matcher("b", { prefix: "a" })("ab")]),
+    functionProperties: run(() => [tagged("x"), tagged.prefix, tagged.upper("y"), tagged.count, tagged.nested.flag]),
+    functionAssign: run(() => [picoish.matcher.version, picoish.matcher.test("a", "a"), picoish.matcher.test("a", "b").isMatch,
+      picoish.matcher.makeRe("a.b").source, picoish.matcher.makeRe("a..b").test("a.b"), picoish.matcher.scan("src/*.ts"), picoish.matcher.constants.SEP]),
+    globalDetection: run(() => ({
+      buildTime: GLOBAL_DETECTION,
+      runtime: [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.WeakMap, typeof globalThis.JSON, typeof globalThis.window, typeof globalThis.Bun, typeof globalThis.Deno, typeof globalThis.document, globalThis.window === undefined, globalThis.Bun !== undefined, typeof Symbol, typeof WeakSet],
+    })),
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
     argumentSerialization: run(() => argumentSerialization("original", "tail")),
@@ -820,6 +847,7 @@ export default defineConfig({
     }),
     ...laneDActions(),
     ...laneSActions(),
+    ...stdlibActions(),
   },
   jobs: laneDJobs(),
 });
@@ -891,6 +919,46 @@ function laneSActions() {
     utf16Units: run(() => {
       const s = "\u{1F600}a\u00e9";
       return [s.length, s[2.5] ?? "missing", s.indexOf("a"), s.lastIndexOf("\u00e9"), s.slice(2), s.substring(0, 2), s.charAt(2), s.at(-1), s.padStart(6, "-"), s.padEnd(5, "."), s.replace("a", (m, at: number) => `${m}@${at}`)];
+    }),
+  };
+}
+
+// ---- standard objects: Map and Set in typed code (docs/decisions/2026-11-07-stdlib-objects.md).
+type Entry = { n: number };
+// Module-level collections are built once at configuration time and captured as one runtime handle.
+const NOT_FOUND = new Set([404, 410]);
+const OPS = new Map<string, "read" | "write">([["get", "read"], ["put", "write"]]);
+function stdlibActions() {
+  return {
+    mapOrder: run(() => {
+      const m = new Map<string, Entry>();
+      m.set("b", { n: 1 }).set("a", { n: 2 }).set("b", { n: 4 });
+      const seen: string[] = [];
+      // Entries added during iteration are visited; deleted ones are skipped.
+      for (const [key, v] of m) {
+        seen.push(`${key}=${v.n}`);
+        if (key === "b") { m.set("c", { n: 3 }); m.delete("a"); }
+      }
+      m.forEach((v, key, self) => { seen.push(`${key}${v.n}${self.size}`); });
+      return [seen, [...m.keys()], m.size, m.get("c")?.n ?? -1, m.get("z") === undefined, m.delete("z"), m.delete("c"), m.size];
+    }),
+    mapKeys: run(() => {
+      const k = { n: 9 };
+      const byObj = new Map<Entry, string>([[k, "obj"]]);
+      const nums = new Map<number, string>([[NaN, "nan"], [0, "zero"], [-0, "negzero"]]);
+      const mixed = new Map<string | number | null, number>([["1", 1], [1, 2], [null, 3]]);
+      return [byObj.get(k) ?? "none", byObj.has({ n: 9 }), nums.get(NaN) ?? "", nums.get(-0) ?? "", nums.size, 1 / ([...nums.keys()][1] ?? 1), mixed.get("1"), mixed.get(1), mixed.get(null), mixed.size];
+    }),
+    jsCollections: run(() => jsCollections()),
+    moduleCollections: run(() => [NOT_FOUND.has(404), NOT_FOUND.has(500), NOT_FOUND.size, OPS.get("put") ?? "none", [...OPS.keys()]]),
+    setOps: run(() => {
+      const s = new Set([3, 1, 3, 2]);
+      const deleted = [s.delete(1), s.delete(1)];
+      const visited: number[] = [];
+      for (const v of s) { visited.push(v); if (v === 3) s.add(7); }
+      const copy = new Set<number>(s);
+      copy.clear();
+      return [deleted, visited, [...s], [...s.entries()], Array.from(s.keys(), (v, i) => v * 10 + i), s.has(7), s.size, copy.size, new Set("abca").size];
     }),
   };
 }

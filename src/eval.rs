@@ -314,6 +314,7 @@ pub const GLOBALS: &[&str] = &[
     "String",
     "structuredClone",
     "Number",
+    "BigInt",
     "Boolean",
     "parseInt",
     "parseFloat",
@@ -340,6 +341,9 @@ pub const GLOBALS: &[&str] = &[
     "TransformStream",
     "setTimeout",
     "crypto",
+    "Symbol",
+    "WeakMap",
+    "WeakSet",
     "Buffer",
     "Headers",
     "URLSearchParams",
@@ -350,6 +354,89 @@ pub const GLOBALS: &[&str] = &[
     "Blob",
     "AbortController",
 ];
+
+/// `globalThis` members that host-globals work owns. Detecting them stays refused
+/// until that work defines what Zero provides.
+const HOST_GLOBALS: &[&str] = &[
+    "fetch",
+    "process",
+    "require",
+    "crypto",
+    "Buffer",
+    "atob",
+    "btoa",
+    "setTimeout",
+    "setInterval",
+    "clearTimeout",
+    "clearInterval",
+    "queueMicrotask",
+    "setImmediate",
+    "Promise",
+    "eval",
+    "Function",
+];
+
+/// Browser, worker and other server-runtime globals that neither the PHP runtime
+/// nor Node provides, so `undefined` matches the Node oracle. `navigator` is not
+/// here: Node 21+ defines it.
+pub const ABSENT_GLOBALS: &[&str] = &[
+    "window",
+    "document",
+    "self",
+    "location",
+    "Bun",
+    "Deno",
+    "EdgeRuntime",
+    "DOMParser",
+    "WebSocketPair",
+    "XMLHttpRequest",
+    "importScripts",
+    "WorkerGlobalScope",
+];
+
+/// What `globalThis.<name>` is in the PHP runtime, decided at compile time.
+pub enum GlobalMember {
+    /// One of Zero's globals, read as that global.
+    Provided(&'static str),
+    /// A host Zero never provides: `undefined`.
+    Absent,
+    /// Unknown or owned by host-global work: refused.
+    Refused,
+}
+
+pub fn global_member(name: &str) -> GlobalMember {
+    if HOST_GLOBALS.contains(&name) {
+        return GlobalMember::Refused;
+    }
+    if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
+        return GlobalMember::Provided(g);
+    }
+    if ABSENT_GLOBALS.contains(&name) {
+        return GlobalMember::Absent;
+    }
+    GlobalMember::Refused
+}
+
+/// `typeof` of a provided global, matching JavaScript.
+pub fn global_type_of(g: &str) -> &'static str {
+    match g {
+        "Math" | "JSON" | "console" | "globalThis" => "object",
+        "Infinity" | "NaN" => "number",
+        _ => "function",
+    }
+}
+
+pub fn refused_global_member(name: &str, span: Span) -> Diag {
+    Diag::new(
+        span,
+        format!("`globalThis.{name}` depends on the host and can't be resolved at compile time"),
+    )
+    .help(if HOST_GLOBALS.contains(&name) {
+        format!("remove the `{name}` detection and use a capability Zero supports in the handler")
+    } else {
+        "only Zero's own globals and absent browser or server runtimes (window, document, Bun, Deno, ...) can be detected; remove the detection".into()
+    })
+}
 
 pub struct Evaluator<'p> {
     program: &'p Program,
@@ -468,6 +555,17 @@ impl<'p> Evaluator<'p> {
                 if map.borrow_mut().insert(key.to_string(), value).is_some() {
                     self.record_duplicates(obj, vec![(key.to_string(), span)]);
                 }
+                Ok(())
+            }
+            Value::Closure(c) => {
+                if crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&key) {
+                    return err_help(
+                        span,
+                        format!("can't set `{key}` on a function while the config is built"),
+                        "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled; use another property name",
+                    );
+                }
+                c.props.borrow_mut().insert(key.to_string(), value);
                 Ok(())
             }
             other => err(span, format!("can't set `{key}` on {}", other.describe())),
@@ -1286,13 +1384,19 @@ impl<'p> Evaluator<'p> {
                 if !scope.is_module_scope() {
                     return err(e.span, "class declarations must be at module scope");
                 }
+                let mut builtin_base = None;
                 let base = match &class.base {
                     Some(name) => match self.lookup(name, scope, e.span)? {
                         Value::Class(c) => Some(c),
+                        Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
+                            builtin_base = Some(g);
+                            None
+                        }
                         _ => {
-                            return err(
+                            return err_help(
                                 e.span,
-                                "extend a named Zero class; built-in and dynamic inheritance are unsupported",
+                                "extend a named Zero class or Error; other built-in and dynamic inheritance are unsupported",
+                                "extend Error, TypeError, RangeError or a class declared in this program",
                             );
                         }
                     },
@@ -1311,6 +1415,7 @@ impl<'p> Evaluator<'p> {
                 Value::Class(Rc::new(ClassValue {
                     class: class.clone(),
                     base,
+                    builtin_base,
                     env: scope.clone(),
                     statics,
                 }))
@@ -1318,6 +1423,13 @@ impl<'p> Evaluator<'p> {
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
             // Evaluator arrays carry no named properties, so the strings array's `raw` can't be
             // modeled during configuration evaluation; handlers compile tagged templates.
+            ExprKind::BigInt(_) => {
+                return err_help(
+                    e.span,
+                    "BigInt is only available inside compiled callbacks",
+                    "compute it inside a handler, or use a number in configuration",
+                );
+            }
             ExprKind::TemplateStrings { .. } => {
                 return err_help(
                     e.span,
@@ -1448,6 +1560,13 @@ impl<'p> Evaluator<'p> {
                                 PropKey::Computed(x) => match self.eval_static_data(x, scope)? {
                                     Value::Str(s) => s.to_string(),
                                     Value::Num(n) => js_number_to_string(n),
+                                    Value::Symbol(_) => {
+                                        return err_help(
+                                            x.span,
+                                            "symbol-keyed properties can't be created while the config is evaluated",
+                                            "create the object inside a function that runs in PHP, or use a string key",
+                                        );
+                                    }
                                     other => return err(x.span, format!("can't use {} as a key", other.describe())),
                                 },
                             };
@@ -1496,10 +1615,7 @@ impl<'p> Evaluator<'p> {
                 }
                 v
             }
-            ExprKind::Func(f) => Value::Closure(Rc::new(Closure {
-                func: f.clone(),
-                env: scope.clone(),
-            })),
+            ExprKind::Func(f) => Value::Closure(Rc::new(Closure::new(f.clone(), scope.clone()))),
             ExprKind::Unary(op, x) => {
                 let v = self.eval_static_data(x, scope)?;
                 if matches!(op, UnOp::Neg | UnOp::Plus | UnOp::BitNot) {
@@ -1511,10 +1627,7 @@ impl<'p> Evaluator<'p> {
                     UnOp::Plus => Value::Num(to_number(&v)),
                     UnOp::BitNot => Value::Num(f64::from(!crate::num::to_int32(to_number(&v)))),
                     UnOp::TypeOf => {
-                        if let Value::Builtin(Builtin::Global(
-                            name @ ("process" | "require" | "globalThis" | "crypto"),
-                        )) = &v
-                        {
+                        if let Value::Builtin(Builtin::Global(name @ ("process" | "require" | "crypto"))) = &v {
                             return err_help(
                                 x.span,
                                 format!("typeof `{name}` depends on the host and isn't supported"),
@@ -1672,7 +1785,7 @@ impl<'p> Evaluator<'p> {
                     self.call(&f, argv, call_span)?
                 }
             }
-            ExprKind::New { callee, args } => {
+            ExprKind::New { callee, args, .. } => {
                 let f = self.eval(callee, scope)?;
                 let argv = self.eval_args(args, scope)?;
                 let constructor = match &f {
@@ -1696,6 +1809,46 @@ impl<'p> Evaluator<'p> {
                             e.span,
                             "class instances are only constructed inside compiled callbacks; configuration stays plain data",
                         );
+                    }
+                    Value::Builtin(Builtin::Global(g @ ("Map" | "Set"))) => {
+                        // Module constants like `new Set([404])`: build-time contents, one runtime collection.
+                        let set = g == "Set";
+                        let mut entries: Vec<(Value, Value)> = Vec::new();
+                        if let Some(source) = argv
+                            .into_iter()
+                            .next()
+                            .filter(|v| !matches!(v, Value::Undef | Value::Null))
+                        {
+                            let mut items = ValueIterator::new(source, e.span)?;
+                            while let Some(item) = items.next(e.span)? {
+                                self.tick(e.span)?;
+                                let (key, value) = if set {
+                                    (item.clone(), item)
+                                } else {
+                                    let Value::Array(pair) = &item else {
+                                        return err(e.span, "Map entries must be [key, value] arrays");
+                                    };
+                                    let pair = pair.borrow();
+                                    (
+                                        pair.first().cloned().unwrap_or(Value::Undef),
+                                        pair.get(1).cloned().unwrap_or(Value::Undef),
+                                    )
+                                };
+                                // SameValueZero stores -0 as +0.
+                                let key = match key {
+                                    Value::Num(n) => Value::Num(n + 0.0),
+                                    k => k,
+                                };
+                                match entries.iter_mut().find(|(k, _)| k.same_value_zero(&key)) {
+                                    Some(entry) => entry.1 = value,
+                                    None => entries.push((key, value)),
+                                }
+                            }
+                        }
+                        return Ok(Value::Coll(Rc::new(crate::value::CollVal { set, entries })));
+                    }
+                    Value::Builtin(Builtin::Global(kind @ ("WeakMap" | "WeakSet"))) => {
+                        Value::Weak(Rc::new(WeakVal { set: kind == "WeakSet" }))
                     }
                     Value::Builtin(Builtin::Global("Date")) => {
                         return err_help(
@@ -1908,6 +2061,8 @@ impl<'p> Evaluator<'p> {
                 "length" => Ok(Value::Num(s.encode_utf16().count() as f64)),
                 _ => bound(),
             },
+            Value::Coll(c) if prop == "size" => Ok(Value::Num(c.entries.len() as f64)),
+            Value::Coll(_) => bound(),
             Value::Regex(p, _) if prop == "source" => Ok(Value::str(&crate::builtins::regex_source(p))),
             Value::Regex(_, f) if prop == "flags" => Ok(Value::str(f)),
             Value::Num(_) | Value::Column(_) | Value::Regex(..) => bound(),
@@ -1932,6 +2087,23 @@ impl<'p> Evaluator<'p> {
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
             ),
+            Value::Builtin(Builtin::Global("globalThis")) => match global_member(prop) {
+                GlobalMember::Provided("Infinity") => Ok(Value::Num(f64::INFINITY)),
+                GlobalMember::Provided("NaN") => Ok(Value::Num(f64::NAN)),
+                GlobalMember::Provided(g) => Ok(Value::Builtin(Builtin::Global(g))),
+                GlobalMember::Absent => Ok(Value::Undef),
+                GlobalMember::Refused => Err(Ctl::Err(refused_global_member(prop, span))),
+            },
+            Value::Builtin(Builtin::Global("Symbol")) if crate::value::WELL_KNOWN_SYMBOLS.contains(&prop) => {
+                let name = crate::value::WELL_KNOWN_SYMBOLS
+                    .iter()
+                    .find(|n| **n == prop)
+                    .expect("well-known");
+                Ok(Value::Symbol(Rc::new(SymbolVal::WellKnown(name))))
+            }
+            Value::Symbol(symbol) if prop == "description" => {
+                Ok(symbol.description().map_or(Value::Undef, |d| Value::str(&d)))
+            }
             Value::Builtin(Builtin::Global(g @ ("process" | "fetch" | "crypto" | "Buffer"))) => err_help(
                 span,
                 format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),
@@ -1955,6 +2127,15 @@ impl<'p> Evaluator<'p> {
                     format!("unsupported built-in property `{g}.{prop}`"),
                     "use a property listed in the supported built-in contract",
                 ),
+            },
+            Value::Closure(c) => match c.props.borrow().get(prop) {
+                Some(value) => self.stored_property(value.clone(), span),
+                None if crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&prop) => err_help(
+                    span,
+                    format!("reading `{prop}` of a function isn't supported while the config is built"),
+                    "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled",
+                ),
+                None => Ok(Value::Undef),
             },
             other => err(span, format!("can't read `{prop}` of {}", other.describe())),
         }
@@ -2472,6 +2653,29 @@ impl<'p> Evaluator<'p> {
             }
         }
         // hasOwn reads an object's keys only; env() tokens among its values are carried, not consumed.
+        if g == "Symbol" {
+            crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
+            return match (m, args.first()) {
+                ("for", Some(key)) => {
+                    require_static_coercion(key, span)?;
+                    let Some(key) = key.to_js_string() else {
+                        return err(span, format!("`Symbol.for` needs a string key, not {}", key.describe()));
+                    };
+                    Ok(Value::Symbol(Rc::new(SymbolVal::Registered(Rc::from(key.as_str())))))
+                }
+                ("keyFor", Some(Value::Symbol(symbol))) => Ok(match &**symbol {
+                    SymbolVal::Registered(key) => Value::Str(key.clone()),
+                    _ => Value::Undef,
+                }),
+                (_, other) => err(
+                    span,
+                    format!(
+                        "`Symbol.keyFor` needs a symbol, not {}",
+                        other.map_or("nothing".into(), Value::describe)
+                    ),
+                ),
+            };
+        }
         if (g, m) == ("Object", "hasOwn") {
             if let Some(receiver @ Value::Env(_)) = args.first() {
                 require_static_data(receiver, span)?;
@@ -2522,6 +2726,34 @@ impl<'p> Evaluator<'p> {
                     });
                 }
                 Value::array(values)
+            }
+            ("Object", "assign") => {
+                let target = arg(0);
+                if !matches!(target, Value::Object(_) | Value::Closure(_)) {
+                    return err_help(
+                        span,
+                        format!(
+                            "Object.assign at build time needs an object or function target, not {}",
+                            target.describe()
+                        ),
+                        "assign into a plain object or a function",
+                    );
+                }
+                for source in args.iter().skip(1) {
+                    if matches!(source, Value::Undef | Value::Null) {
+                        continue;
+                    }
+                    for key in enumerable_keys(source, span)? {
+                        let value = match source {
+                            Value::Str(_) => {
+                                self.get_index(source, &Value::Num(key.parse().expect("string index")), span)?
+                            }
+                            _ => self.get_prop(source, &key, span)?,
+                        };
+                        self.set_key(&target, &key, value, span)?;
+                    }
+                }
+                target
             }
             ("Object", "fromEntries") => match arg(0) {
                 Value::Array(a) => {
@@ -2671,6 +2903,22 @@ impl<'p> Evaluator<'p> {
                 }
             }
             Value::Array(a) => self.array_method(a, m, args, span),
+            Value::Coll(c) => {
+                let find = |key: &Value| c.entries.iter().find(|(k, _)| k.same_value_zero(key));
+                let key = args.first().cloned().unwrap_or(Value::Undef);
+                match (c.set, m) {
+                    (_, "has") => Ok(Value::Bool(find(&key).is_some())),
+                    (false, "get") => Ok(find(&key).map_or(Value::Undef, |(_, v)| v.clone())),
+                    _ => err_help(
+                        span,
+                        format!(
+                            "`{m}` on a {} isn't available while the config is evaluated",
+                            if c.set { "Set" } else { "Map" }
+                        ),
+                        "build the collection with its entries; mutate it inside a hook or action",
+                    ),
+                }
+            }
             other => err(span, format!("{} has no method `{m}`", other.describe())),
         }
     }
@@ -2954,10 +3202,7 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
             predeclare(pat, scope, *kind == DeclKind::Let);
         }
         let Stmt::Func(f) = stmt else { continue };
-        let closure = Value::Closure(Rc::new(Closure {
-            func: f.clone(),
-            env: scope.clone(),
-        }));
+        let closure = Value::Closure(Rc::new(Closure::new(f.clone(), scope.clone())));
         let name = f.name.clone().expect("declared functions have names");
         scope.vars.borrow_mut().insert(
             name,
@@ -3074,31 +3319,37 @@ fn arguments_items(object: &Obj, span: Span) -> R<Vec<Value>> {
         .collect())
 }
 
+/// OrdinaryOwnPropertyKeys for string keys: array indexes ascending, then the rest in insertion order.
+fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<String> {
+    let mut indexes = Vec::new();
+    let mut names = Vec::new();
+    for key in keys {
+        if let Ok(index) = key.parse::<u32>()
+            && index < u32::MAX
+            && index.to_string() == *key
+        {
+            indexes.push(index);
+        } else {
+            names.push(key.clone());
+        }
+    }
+    indexes.sort_unstable();
+    indexes
+        .into_iter()
+        .map(|index| index.to_string())
+        .chain(names)
+        .collect()
+}
+
 fn enumerable_keys(value: &Value, span: Span) -> R<Vec<String>> {
     Ok(match value {
-        Value::Object(object) | Value::Arguments(object) => {
-            let mut indexes = Vec::new();
-            let mut names = Vec::new();
-            for key in object.borrow().keys() {
-                if matches!(value, Value::Arguments(_)) && key == "length" {
-                    continue;
-                }
-                if let Ok(index) = key.parse::<u32>()
-                    && index < u32::MAX
-                    && index.to_string() == *key
-                {
-                    indexes.push(index);
-                } else {
-                    names.push(key.clone());
-                }
-            }
-            indexes.sort_unstable();
-            indexes
-                .into_iter()
-                .map(|index| index.to_string())
-                .chain(names)
-                .collect()
-        }
+        Value::Object(object) | Value::Arguments(object) => ordered_keys(
+            object
+                .borrow()
+                .keys()
+                .filter(|key| !(matches!(value, Value::Arguments(_)) && *key == "length")),
+        ),
+        Value::Closure(c) => ordered_keys(c.props.borrow().keys()),
         Value::Array(array) => (0..array.borrow().len()).map(|index| index.to_string()).collect(),
         Value::Str(value) => (0..value.encode_utf16().count())
             .map(|index| index.to_string())
@@ -3135,6 +3386,28 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
     crate::builtins::check("global", g, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     for value in args {
         require_static_data(value, span)?;
+    }
+    if g == "Symbol" {
+        let description = match args.first() {
+            None | Some(Value::Undef) => None,
+            Some(value) => {
+                require_static_coercion(value, span)?;
+                let Some(text) = value.to_js_string() else {
+                    return err(
+                        span,
+                        format!("can't convert {} to a symbol description", value.describe()),
+                    );
+                };
+                Some(Rc::from(text.as_str()))
+            }
+        };
+        return Ok(Value::Symbol(Rc::new(SymbolVal::Unique(description))));
+    }
+    if let ("String", Some(Value::Symbol(symbol))) = (g, args.first()) {
+        return Ok(Value::str(&format!(
+            "Symbol({})",
+            symbol.description().unwrap_or_default()
+        )));
     }
     if matches!(
         g,
@@ -3431,7 +3704,7 @@ fn returns_new_date(f: &Func) -> bool {
             _ => return false,
         },
     };
-    matches!(&body.kind, ExprKind::New { callee, args }
+    matches!(&body.kind, ExprKind::New { callee, args, .. }
         if args.is_empty() && matches!(&callee.kind, ExprKind::Ident(n) if n == "Date"))
 }
 

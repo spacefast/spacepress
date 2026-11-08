@@ -617,6 +617,109 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
 }
 
 #[test]
+fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
+    // Job order is observable in JavaScript: every log must match Node exactly.
+    let cases = [
+        "interleaving",
+        "adoption",
+        "combinators",
+        "lateHandling",
+        "generators",
+        "pagination",
+        "streams",
+    ];
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        root().join("tests/differential/async.mjs"),
+        tmp.path().join("async.mjs"),
+    )
+    .unwrap();
+    let script = format!(
+        "import * as m from './async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
+    );
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args(["--input-type=module", "-e", &script])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let actions = cases
+        .iter()
+        .map(|name| format!("  {name}: action({{ input: {{}}, handler: async () => await {name}() }}),"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        format!(
+            "import {{ action, defineConfig }} from 'zero';\nimport {{ {} }} from './async.mjs';\nexport default defineConfig({{ name: 'async-diff', actions: {{\n{actions}\n}} }});\n",
+            cases.join(", ")
+        ),
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        &format!(
+            r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$result = [];
+foreach ({} as $key) {{
+  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \Zero\JsObject(), new \Zero\JsObject());
+}}
+echo \Zero\Js::jsonStringify(new \Zero\JsArray($result));
+"#,
+            serde_json::to_string(&cases).unwrap()
+        ),
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-async-diff/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+
+    // Handler end: an unhandled rejection and a promise nothing can settle are runtime errors.
+    std::fs::write(
+        tmp.path().join("async.mjs"),
+        "export async function lost() { Promise.reject(new Error('lost')); return 1; }\nexport async function stuck() { await new Promise(() => {}); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        "import { action, defineConfig } from 'zero';\nimport { lost, stuck } from './async.mjs';\nexport default defineConfig({ name: 'async-diff', actions: {\n  lost: action({ input: {}, handler: async () => await lost() }),\n  stuck: action({ input: {}, handler: async () => await stuck() }),\n} });\n",
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let errors = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$result = [];
+foreach (['lost', 'stuck'] as $key) {
+  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
+  try { $fn(new \Zero\JsObject(), new \Zero\JsObject()); $result[] = 'completed'; }
+  catch (\Zero\JsError $e) { $result[] = $e->getMessage(); }
+}
+echo json_encode($result);
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-async-diff/zero/app"),
+        ],
+    );
+    assert_eq!(
+        errors,
+        json!([
+            "lost",
+            "This promise can never settle: nothing left to run (awaited at zero.config.ts:5:51)"
+        ])
+    );
+}
+
+#[test]
 fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() {
     let expression = r#"[{ omitted: undefined, nested: { omitted: undefined, keep: 1 }, slots: [undefined] }, typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1), typeof [][0]]"#;
     let node = Command::new("node")

@@ -116,6 +116,8 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("constructor", &["Error", "TypeError", "RangeError"], overload("runtime-only message?: string; options without cause", None, arity(0, 2), arity(0, 2))),
     ("constructor", &["Map", "Set"], overload("entries?: iterable", None, None, arity(0, 1))),
     ("constructor", &["Promise"], overload("executor: (resolve, reject) => void; imported JavaScript only", None, None, arity(1, 1))),
+    ("constructor", &["ReadableStream", "WritableStream"], overload("source?: object, strategy?: { highWaterMark }; imported JavaScript only", None, None, arity(0, 2))),
+    ("constructor", &["TransformStream"], overload("transformer?: object; imported JavaScript only", None, None, arity(0, 1))),
     ("Promise", &["resolve", "reject"], overload("value?: unknown; imported JavaScript only", None, None, arity(0, 1))),
     ("Promise", &["all", "allSettled", "any", "race"], overload("values: iterable; imported JavaScript only", None, None, arity(1, 1))),
     ("Promise", &["withResolvers"], overload("no arguments; imported JavaScript only", None, None, arity(0, 0))),

@@ -643,6 +643,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .entry(closure_key(closure))
             .or_insert_with(|| closure.clone());
         let f = closure.func.clone();
+        if f.is_generator && !self.javascript_module(f.module) {
+            return err_help(
+                f.span,
+                "generators only work in imported JavaScript",
+                "return an array, or move the generator into a .js module",
+            );
+        }
         if matches!(slot, Some(Slot::FieldAccess { .. })) && f.is_async {
             return err_help(
                 f.span,
@@ -1423,7 +1430,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 if *is_await && !self.fx().is_async {
-                    return err_help(*span, "`for await` only works in async functions", "mark the function `async`");
+                    return err_help(
+                        *span,
+                        "`for await` only works in async functions",
+                        "mark the function `async`",
+                    );
                 }
                 self.fx().scopes.push(HashMap::new());
                 if *kind != DeclKind::Var {
@@ -1446,7 +1457,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 // Each `for await` value is awaited, so its type is the awaited one.
-                let el = if *is_await { Ty::Dynamic } else { widen_fresh_literals(&el) };
+                let el = if *is_await {
+                    Ty::Dynamic
+                } else {
+                    widen_fresh_literals(&el)
+                };
                 let mutable = *kind != DeclKind::Const;
                 let source = self.tmp_var();
                 let index = self.tmp_var();
@@ -1621,7 +1636,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let module = self.fx().module;
                     let javascript = self.javascript_module(module);
                     let var = match param {
-                        Some((n, span)) => self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span),
+                        Some((n, span)) => {
+                            self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span)
+                        }
                         None => self.tmp_var(),
                     };
                     // Database and validation errors propagate: they must roll back the request.
@@ -2385,6 +2402,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
+                // Host classes Zero implements answer `instanceof` from imported JavaScript.
+                if let ExprKind::Ident(name) = &right.kind
+                    && matches!(
+                        name.as_str(),
+                        "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
+                    )
+                    && self.javascript_module(self.fx.as_ref().expect("fn").module)
+                    && matches!(self.resolve(name, right.span)?, Resolved::Global(_))
+                {
+                    let left = self.expr(left)?;
+                    let class = match name.as_str() {
+                        "Promise" => "JsPromise",
+                        "ReadableStream" => "JsReadableStream",
+                        "WritableStream" => "JsWritableStream",
+                        _ => "JsTransformStream",
+                    };
+                    return Ok(Out::atom(
+                        format!("({} instanceof \\Zero\\{class})", left.php),
+                        Ty::Bool,
+                    ));
+                }
                 let left = self.expr(left)?;
                 let right = self.expr(right)?;
                 if !matches!(right.ty, Ty::Class(_)) {
@@ -3346,6 +3384,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             no_db: self.fx().no_db,
             access: None,
         };
+        if f.is_generator && !self.javascript_module(module) {
+            return err_help(
+                f.span,
+                "generators only work in imported JavaScript",
+                "return an array, or move the generator into a .js module",
+            );
+        }
         if f.is_async && !self.javascript_module(module) && !std::mem::take(&mut self.async_callback) {
             return err_help(
                 f.span,
@@ -4146,7 +4191,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let v = self.finish_value(v, x.span)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
-                format!("\\Zero\\JsJobs::await({}, {})", v.php, php_str(&crate::diag::site(span))),
+                format!(
+                    "\\Zero\\JsJobs::await({}, {})",
+                    v.php,
+                    php_str(&crate::diag::site(span))
+                ),
                 Ty::Dynamic,
             ));
         }
@@ -4157,7 +4206,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::Dynamic => {
                 self.uses_jobs = true;
                 Out::atom(
-                    format!("\\Zero\\JsJobs::await({}, {})", v.php, php_str(&crate::diag::site(span))),
+                    format!(
+                        "\\Zero\\JsJobs::await({}, {})",
+                        v.php,
+                        php_str(&crate::diag::site(span))
+                    ),
                     Ty::Dynamic,
                 )
             }
@@ -4191,13 +4244,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module)
             && let ExprKind::Ident(name) = &callee.kind
-            && name == "Promise"
+            && matches!(
+                name.as_str(),
+                "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
+            )
             && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
         {
             let argv = self.javascript_args(args)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicConstruct('Promise', {argv})"),
+                format!("\\Zero\\Js::dynamicConstruct({}, {argv})", php_str(name)),
                 Ty::Dynamic,
             ));
         }

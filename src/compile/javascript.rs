@@ -248,7 +248,9 @@ impl Compiler<'_, '_> {
     pub(super) fn wrap_roots_with_job_queue(&mut self, roots: &[(Slot, String)]) {
         for (_, name) in roots {
             let header = format!("function {name}(");
-            let Some(start) = self.output.find(&header) else { continue };
+            let Some(start) = self.output.find(&header) else {
+                continue;
+            };
             let renamed = format!("function {name}__root(");
             self.output.replace_range(start..start + header.len(), &renamed);
             let _ = writeln!(

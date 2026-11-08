@@ -306,6 +306,9 @@ pub const GLOBALS: &[&str] = &[
     "eval",
     "Function",
     "Promise",
+    "ReadableStream",
+    "WritableStream",
+    "TransformStream",
     "setTimeout",
     "crypto",
 ];

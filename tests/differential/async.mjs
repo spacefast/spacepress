@@ -174,3 +174,46 @@ export async function pagination() {
   log.push(JSON.stringify(await it.return("stop")));
   return log;
 }
+
+// WHATWG streams as pull-driven chunk queues: pull on demand, transforms, tee and pipeTo.
+export async function streams() {
+  const log = [];
+  let n = 0;
+  const source = new ReadableStream({
+    start() { log.push("start"); },
+    async pull(controller) {
+      log.push("pull" + n);
+      await null;
+      if (n < 3) controller.enqueue("c" + n++);
+      else controller.close();
+    },
+  });
+  const reader = source.getReader();
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    log.push("read:" + result.value);
+  }
+  reader.releaseLock();
+  const upper = new TransformStream({
+    transform(chunk, controller) { controller.enqueue(chunk.toUpperCase()); },
+    flush(controller) { controller.enqueue("END"); },
+  });
+  const letters = new ReadableStream({ start(controller) { controller.enqueue("a"); controller.enqueue("b"); controller.close(); } });
+  for await (const chunk of letters.pipeThrough(upper)) log.push("piped:" + chunk);
+  const branches = new ReadableStream({ start(controller) { controller.enqueue("x"); controller.close(); } }).tee();
+  for await (const chunk of branches[0]) log.push("tee0:" + chunk);
+  for await (const chunk of branches[1]) log.push("tee1:" + chunk);
+  const sink = [];
+  const writable = new WritableStream({
+    async write(chunk) { await null; sink.push(chunk); },
+    close() { log.push("sink:" + sink.join("")); },
+  });
+  await new ReadableStream({ start(controller) { for (const x of ["1", "2", "3"]) controller.enqueue(x); controller.close(); } }).pipeTo(writable);
+  let cancelled = "no";
+  const endless = new ReadableStream({ pull(controller) { controller.enqueue("tick"); }, cancel(reason) { cancelled = String(reason); } });
+  for await (const chunk of endless) { log.push(chunk); break; }
+  log.push("cancelled:" + cancelled);
+  try { new ReadableStream().getReader(); source.getReader(); source.getReader(); } catch (error) { log.push(error.name); }
+  return log;
+}

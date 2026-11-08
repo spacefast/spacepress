@@ -431,6 +431,7 @@ fn convert(
         page_files.contains_key("pages/layout.tsx") || client_app.is_some(),
         client_app.is_some(),
         declares_posts,
+        &client_files.keys().cloned().collect::<Vec<_>>(),
         &mut report.errors,
     );
     // A static file never replaces a generated client file; that would be a silent drop.
@@ -449,14 +450,8 @@ fn convert(
     }
     // The platform keys travel in the candidate's own sf.jsonc, unchanged and in their order;
     // every other key was refused above, or changes nothing the candidate serves.
-    if let Some((name, value, _)) = &config {
-        let kept: serde_json::Map<String, serde_json::Value> = value
-            .as_object()
-            .into_iter()
-            .flatten()
-            .filter(|(k, v)| omitted::carries(k, v))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+    if let Some((name, _, _)) = &config {
+        let kept = std::mem::take(&mut static_files.kept);
         if !kept.is_empty() {
             for key in kept.keys() {
                 report.entries.push(super::entry(

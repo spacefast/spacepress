@@ -2179,13 +2179,14 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let checked: Value = serde_json::from_slice(&checked.stdout).unwrap();
     assert_eq!(checked["ok"], true, "{checked}");
     assert_eq!(checked["diagnostics"].as_array().unwrap().len(), 0, "{checked}");
-    // The candidate serves the client from public/app/ and public/zero/, where 0.8 served nothing
-    // of the app, so a 0.8 redirect under them would now break it: refused, not carried.
+    // The candidate serves the client from public/app/, public/zero/ and its stylesheet folders
+    // (here public/client/), where 0.8 served nothing of the app, so a 0.8 redirect under them
+    // would now break it: refused, not carried.
     let moved = temp.path().join("client-app-redirect");
     copy_tree(&fixture("client-app"), &moved);
     let config = std::fs::read_to_string(moved.join("sf.jsonc")).unwrap().replacen(
         "\"name\": \"Shelf Notes\",",
-        "\"name\": \"Shelf Notes\",\n  \"redirects\": [{ \"source\": \"/app/*\", \"destination\": \"/moved\", \"status\": 301 }],",
+        "\"name\": \"Shelf Notes\",\n  \"redirects\": [{ \"source\": \"/app/*\", \"destination\": \"/moved\", \"status\": 301 }, { \"source\": \"/client/*\", \"destination\": \"/moved\", \"status\": 301 }],",
         1,
     );
     std::fs::write(moved.join("sf.jsonc"), config).unwrap();

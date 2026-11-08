@@ -10,7 +10,7 @@
 use super::super::{Failure, fail, pointer};
 use crate::loader::Fs;
 use regex::{Regex, RegexBuilder};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -150,30 +150,35 @@ pub(super) const PLATFORM_KEYS: &[&str] = &[
 ];
 
 /// Whether the candidate carries `key` with `value`: every platform key, `access` only as
-/// `"public"`, and `redirects` only when no rule can reach the app's `/wp-json` data URLs.
-pub(super) fn carries(key: &str, value: &serde_json::Value) -> bool {
+/// `"public"`, and `redirects` only when no rule can reach a URL the v2 app answers that 0.8 kept
+/// out of the redirect stage. `served` holds the first segments of every file the candidate
+/// writes under public/ (see `redirect_reaches_app`).
+pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<String>) -> bool {
     PLATFORM_KEYS.contains(&key)
         && match key {
             "access" => value.as_str() == Some("public"),
             "redirects" => value
                 .as_array()
-                .is_some_and(|rules| rules.iter().all(|r| !redirect_reaches_wp_json(r))),
+                .is_some_and(|rules| rules.iter().all(|r| !redirect_reaches_app(r, served))),
             _ => true,
         }
 }
 
-/// First segments under which the candidate puts what 0.8 kept elsewhere, so a 0.8 redirect there
-/// never touched the app but would on v2: a converted client app's modules (`public/app/`) and its
-/// bridge and runtime (`public/zero/`).
-const CANDIDATE_SEGMENTS: &[&str] = &["app", "zero"];
-
-/// Whether a redirect rule's `source` can reach a path the v2 app answers that 0.8 kept out of the
-/// rules stage: an absolute URL, an empty source, a first segment that holds a pattern character
-/// (the engine compiles `:name` anywhere in a segment to `[^/]+`, so `/w:x` matches `/wp-json`, and
-/// `*` to a splat), or a first segment WordPress or Zero owns (`endpoints::RESERVED`, `wp-json`
-/// among them) or the candidate writes to (`CANDIDATE_SEGMENTS`). Exactly `/` matches only the
+/// Whether a redirect rule's `source` can reach a URL the v2 app answers that 0.8 kept out of the
+/// redirect stage, so a carried rule would catch requests it never caught on 0.8. That is any of:
+/// - an absolute URL or an empty source;
+/// - a first segment holding a pattern character (the engine compiles `:name` anywhere in a
+///   segment to `[^/]+`, so `/w:x` matches `/wp-json`, and `*` to a splat);
+/// - a first segment WordPress or Zero owns (`endpoints::RESERVED`, `wp-json` among them), or one
+///   starting with `wp-` (WordPress's own entry points);
+/// - a first segment the candidate serves files under (`served`, from its public/ tree: the
+///   converted client's `app/`, `zero/` and stylesheet folders, and the carried static files).
+///
+/// The last one is read from what the candidate writes, so it covers every folder the converter
+/// adds. A carried static file keeps its 0.8 path and was a table entry on 0.8 too, so a rule
+/// there behaves the same; refusing it only refuses more than needed. Exactly `/` matches only the
 /// root. Anything this can't read counts as reaching one.
-fn redirect_reaches_wp_json(rule: &serde_json::Value) -> bool {
+fn redirect_reaches_app(rule: &serde_json::Value, served: &BTreeSet<String>) -> bool {
     let Some(source) = rule.get("source").and_then(serde_json::Value::as_str) else {
         return true;
     };
@@ -187,8 +192,9 @@ fn redirect_reaches_wp_json(rule: &serde_json::Value) -> bool {
     let lower = first.to_ascii_lowercase();
     first.is_empty()
         || first.contains([':', '*'])
+        || lower.starts_with("wp-")
         || super::endpoints::RESERVED.contains(&lower.as_str())
-        || CANDIDATE_SEGMENTS.contains(&lower.as_str())
+        || served.contains(&lower)
 }
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
@@ -215,6 +221,8 @@ pub(super) struct Omitted {
     pub carried: Vec<String>,
     /// The candidate's sf.jsonc: the 0.8 config's platform keys, when it has any.
     pub config: Option<String>,
+    /// The 0.8 config keys the candidate carries, in their order (`carries`).
+    pub kept: serde_json::Map<String, serde_json::Value>,
 }
 
 /// What the sweep does with a capsule-relative path before deciding whether 0.8 served it.
@@ -465,12 +473,14 @@ pub(super) fn sweep(
     client_carried: bool,
     client_app_converted: bool,
     declares_posts: bool,
+    client_public: &[String],
     errors: &mut Vec<Failure>,
 ) -> Omitted {
     let mut out = Omitted {
         files: BTreeMap::new(),
         carried: vec![],
         config: None,
+        kept: serde_json::Map::new(),
     };
     let mut tree = Tree::default();
     walk(fs, root, root, &mut tree, false);
@@ -600,13 +610,26 @@ pub(super) fn sweep(
             ))),
         }
     }
+    // The first segment of every file the candidate serves from public/, lowercased.
+    let served: BTreeSet<String> = client_public
+        .iter()
+        .chain(out.files.keys())
+        .filter_map(|p| p.strip_prefix("public/"))
+        .filter_map(|p| p.split('/').next())
+        .filter(|first| !first.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect();
     if let Some((config_file, config, text)) = config {
         // The key's line in the config file, where the fix goes.
         let keys = top_level_keys(text);
         let line_of = |key: &str| -> (usize, usize) { keys.get(key).copied().unwrap_or((1, 1)) };
         // Fail closed: every key 0.8 applied is refused unless it is known to change nothing.
         for (key, value) in config.as_object().into_iter().flatten() {
-            if NO_OP_KEYS.contains(&key.as_str()) || carries(key, value) {
+            if NO_OP_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+            if carries(key, value, &served) {
+                out.kept.insert(key.clone(), value.clone());
                 continue;
             }
             let reason = SERVING_KEYS
@@ -641,16 +664,18 @@ pub(super) fn sweep(
 
 #[cfg(test)]
 mod tests {
-    use super::redirect_reaches_wp_json;
+    use super::redirect_reaches_app;
 
     /// A redirect is carried only when its source can't match the app's `/wp-json` data URLs.
     #[test]
     fn a_redirect_reaches_the_app_unless_its_first_segment_is_a_free_literal() {
+        let served: std::collections::BTreeSet<String> = ["app", "zero", "client", "assets"].map(String::from).into();
         for (source, reaches) in [
             ("/", false),
             ("/old", false),
             ("/blog/:slug", false),
-            ("/wp-jsonx/a", false),
+            // Any wp- first segment is WordPress territory, so even an unknown one is refused.
+            ("/wp-jsonx/a", true),
             ("/wp-json/*", true),
             ("/WP-JSON/zero", true),
             ("/*", true),
@@ -668,12 +693,19 @@ mod tests {
             ("/wp-content/uploads/*", true),
             ("/zero-admin", true),
             ("/apps/old", false),
+            // Any folder the candidate serves, read from its public/ tree, and WordPress's wp-*.
+            ("/client/*", true),
+            ("/assets/logo.png", true),
+            ("/wp-comments-post.php", true),
             ("https://old.example/*", true),
             ("", true),
         ] {
             let rule = serde_json::json!({ "source": source, "destination": "/" });
-            assert_eq!(redirect_reaches_wp_json(&rule), reaches, "{source}");
+            assert_eq!(redirect_reaches_app(&rule, &served), reaches, "{source}");
         }
-        assert!(redirect_reaches_wp_json(&serde_json::json!({ "destination": "/" })));
+        assert!(redirect_reaches_app(
+            &serde_json::json!({ "destination": "/" }),
+            &served
+        ));
     }
 }

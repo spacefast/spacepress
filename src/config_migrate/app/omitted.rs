@@ -124,13 +124,16 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
 ///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php).
 /// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
-/// - `cache`, `firewall`: placed as edge rules matched before the origin, so they reach
-///   WordPress-rendered pages.
-/// - `analytics`, `system`, `placement`, `build`: frozen from the file config whatever the runtime.
+/// - `analytics`, `system`: frozen from the file config whatever the runtime.
+/// - `build`, `placement`: read from the repository or the Space at build or creation time, never
+///   from the version, so carrying them changes nothing; kept so the file still says what it said.
+/// - `access` in its string form (`"public"`/`"private"`): no path patterns, and v2's `/wp-json`
+///   lane enforces it through the same access engine (see `carries`).
 ///
-/// Every other key is refused, among them: `access` (path patterns written for 0.8's transport
-/// don't cover v2's), `crons` (on v2 the request carries no `CRON_SECRET` and may not reach a v2
-/// route), and `sell` (its product file and paid assets would be swept into public/).
+/// Every other key is refused. Path rules don't survive the move, because the app's data URLs
+/// move from 0.8's `/__zero/*` to v2's `/wp-json/zero/v1/*`: so `access` path patterns, `cache`
+/// and `firewall` are refused, as are `crons` (no `CRON_SECRET` on v2) and `sell` (its product file
+/// and paid assets would be swept into public/).
 pub(super) const PLATFORM_KEYS: &[&str] = &[
     "redirects",
     "cleanUrls",
@@ -139,9 +142,13 @@ pub(super) const PLATFORM_KEYS: &[&str] = &[
     "build",
     "placement",
     "system",
-    "cache",
-    "firewall",
+    "access",
 ];
+
+/// Whether the candidate carries `key` with `value`: every platform key, `access` only as a string.
+pub(super) fn carries(key: &str, value: &serde_json::Value) -> bool {
+    PLATFORM_KEYS.contains(&key) && (key != "access" || value.is_string())
+}
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
 /// The serving keys with their own error; any other key raises `CONFIG`.
@@ -540,8 +547,8 @@ pub(super) fn sweep(
         let keys = top_level_keys(text);
         let line_of = |key: &str| -> (usize, usize) { keys.get(key).copied().unwrap_or((1, 1)) };
         // Fail closed: every key 0.8 applied is refused unless it is known to change nothing.
-        for key in config.as_object().into_iter().flat_map(|o| o.keys()) {
-            if NO_OP_KEYS.contains(&key.as_str()) || PLATFORM_KEYS.contains(&key.as_str()) {
+        for (key, value) in config.as_object().into_iter().flatten() {
+            if NO_OP_KEYS.contains(&key.as_str()) || carries(key, value) {
                 continue;
             }
             let reason = SERVING_KEYS

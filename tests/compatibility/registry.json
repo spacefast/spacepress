@@ -726,7 +726,7 @@
     },
     {
       "code": "Z08_OMITTED_CONFIG",
-      "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, access, crons or sell, or theme.json)"
+      "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall, crons or sell, or theme.json)"
     },
     {
       "code": "Z08_OMITTED_UNVERIFIED_CONFIG",

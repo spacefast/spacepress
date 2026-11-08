@@ -452,7 +452,7 @@ fn convert(
             .as_object()
             .into_iter()
             .flatten()
-            .filter(|(k, _)| omitted::PLATFORM_KEYS.contains(&k.as_str()))
+            .filter(|(k, v)| omitted::carries(k, v))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         if !kept.is_empty() {

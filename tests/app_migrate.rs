@@ -488,6 +488,8 @@ fn omissions_are_errors_and_static_files_carry_over() {
     let settings = serde_json::json!({
         "redirects": [{ "source": "/old", "destination": "/new", "status": 301 }],
         "cleanUrls": false,
+        // The string form has no path patterns, and v2's /wp-json lane enforces it the same way.
+        "access": "public",
         "build": { "outputDirectory": "dist" },
     });
     let mut config = settings.clone();
@@ -508,7 +510,11 @@ fn omissions_are_errors_and_static_files_carry_over() {
     overlay["listing"] = true.into();
     // access path patterns, crons (no CRON_SECRET on v2) and sell (its product file and paid
     // assets would be swept into public/) don't apply the same way: refused.
-    overlay["access"] = "public".into();
+    overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
+    // Path rules don't survive the move: the app's data URLs move to /wp-json/zero/v1/*.
+    overlay["firewall"] =
+        serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
+    overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
     overlay["crons"] = serde_json::json!([{ "path": "/api/nightly", "schedule": "daily" }]);
     overlay["sell"] = serde_json::json!({ "mode": "test", "products": "sell/products.json" });
     // Header rules apply to response-table entries only, so on v2 they would skip the app's
@@ -535,11 +541,14 @@ fn omissions_are_errors_and_static_files_carry_over() {
     assert_eq!(
         refused,
         [
+            // access keeps its place in the file; with path patterns it is refused.
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/access"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/dataSources"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/network"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/rewrites"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/listing"),
-            ("Z08_OMITTED_CONFIG", "/sf.jsonc/access"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/firewall"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/cache"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/crons"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/sell"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/headers"),

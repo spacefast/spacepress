@@ -18,6 +18,8 @@ pub struct Lowerer {
     pub function_this: std::cell::Cell<bool>,
     /// Set when the current ordinary function's body (or one of its arrows) reads `this`.
     pub reads_this: std::cell::Cell<bool>,
+    /// The `this.<key>` names the current ordinary function reads (`Func::this_reads`).
+    pub this_reads: std::cell::RefCell<Vec<String>>,
     /// Inside a derived constructor's parameters, before `super()`: `this` doesn't exist yet.
     pub before_super: std::cell::Cell<bool>,
     /// A CommonJS source: module-level `this` is the module's initial `module.exports`.
@@ -613,6 +615,7 @@ impl Lowerer {
         let super_call = self.super_call.replace(false);
         let function_this = self.function_this.replace(true);
         let reads_this = self.reads_this.replace(false);
+        let this_reads = self.this_reads.replace(Vec::new());
         let this_ann = f
             .this_param
             .as_ref()
@@ -629,6 +632,7 @@ impl Lowerer {
             // class methods do; calls supply it (see Js::receiverFunction).
             let mut func = Rc::try_unwrap(func).expect("new function");
             func.receives_this = true;
+            func.this_reads = self.this_reads.take();
             func.params.insert(
                 0,
                 Param {
@@ -652,6 +656,7 @@ impl Lowerer {
         self.super_call.set(super_call);
         self.function_this.set(function_this);
         self.reads_this.set(reads_this);
+        self.this_reads.replace(this_reads);
         result
     }
 
@@ -994,6 +999,7 @@ impl Lowerer {
             is_async: f.r#async,
             is_generator: f.generator,
             receives_this: false,
+            this_reads: vec![],
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -1016,6 +1022,7 @@ impl Lowerer {
             is_async: f.r#async,
             is_generator: false,
             receives_this: false,
+            this_reads: vec![],
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -1313,6 +1320,7 @@ impl Lowerer {
                     is_async: false,
                     is_generator: false,
                     receives_this: false,
+                    this_reads: vec![],
                     ret: None,
                     type_params: vec![],
                     span: self.sp(f.span),
@@ -1685,15 +1693,23 @@ impl Lowerer {
 
     fn member(&self, m: &a::MemberExpression<'_>) -> Result<Expr> {
         Ok(match m {
-            a::MemberExpression::StaticMemberExpression(s) => self.mk(
-                s.span,
-                ExprKind::Member {
-                    obj: Box::new(self.expr(&s.object)?),
-                    prop: s.property.name.to_string(),
-                    optional: s.optional,
-                    prop_span: self.sp(s.property.span),
-                },
-            ),
+            a::MemberExpression::StaticMemberExpression(s) => {
+                if matches!(s.object, a::Expression::ThisExpression(_))
+                    && self.function_this.get()
+                    && !self.class_context.get()
+                {
+                    self.this_reads.borrow_mut().push(s.property.name.to_string());
+                }
+                self.mk(
+                    s.span,
+                    ExprKind::Member {
+                        obj: Box::new(self.expr(&s.object)?),
+                        prop: s.property.name.to_string(),
+                        optional: s.optional,
+                        prop_span: self.sp(s.property.span),
+                    },
+                )
+            }
             a::MemberExpression::ComputedMemberExpression(c) => self.mk(
                 c.span,
                 ExprKind::Index {

@@ -3239,9 +3239,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if !deferred.is_empty() {
                     // `this` is typed by the finished fields plus the methods typed so far: those
                     // whose annotations give their signature first (so a method may call itself),
-                    // then each method that compiles. A method calling one not yet typed is tried
-                    // again once a pass types another; the first refusal of a pass that types
-                    // none is the error.
+                    // then each method once, after the sibling methods it reads through `this`
+                    // (`Func::this_reads`). A method reading one that isn't typed yet (a cycle
+                    // without annotations) sees no such field and is refused.
                     let live = |i: usize, name: &str, owner: &HashMap<String, usize>| owner.get(name) == Some(&i);
                     for (i, (_, f, _, name)) in deferred.iter().enumerate() {
                         if live(i, name, &owner)
@@ -3260,37 +3260,60 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         })
                         .map(|(_, (_, _, _, name))| name.clone())
                         .collect();
-                    let mut pending: Vec<usize> = (0..deferred.len()).collect();
-                    while !pending.is_empty() {
+                    let by_name: HashMap<&str, usize> = owner.iter().map(|(k, i)| (k.as_str(), *i)).collect();
+                    let mut order = Vec::with_capacity(deferred.len());
+                    let mut state = vec![0u8; deferred.len()];
+                    fn visit(
+                        i: usize,
+                        deferred: &[(usize, &Rc<Func>, String, String)],
+                        by_name: &HashMap<&str, usize>,
+                        untyped: &HashSet<String>,
+                        state: &mut [u8],
+                        order: &mut Vec<usize>,
+                    ) {
+                        if state[i] != 0 {
+                            return;
+                        }
+                        state[i] = 1;
+                        for read in &deferred[i].1.this_reads {
+                            if untyped.contains(read)
+                                && let Some(&j) = by_name.get(read.as_str())
+                            {
+                                visit(j, deferred, by_name, untyped, state, order);
+                            }
+                        }
+                        state[i] = 2;
+                        order.push(i);
+                    }
+                    for i in 0..deferred.len() {
+                        visit(i, &deferred, &by_name, &untyped, &mut state, &mut order);
+                    }
+                    for i in order {
                         let this: IndexMap<String, (Ty, bool)> = fields
                             .iter()
                             .filter(|(k, _)| !untyped.contains(*k))
                             .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
                             .collect();
-                        let mut failed = Vec::new();
-                        let mut first_error = None;
-                        for &i in &pending {
-                            let (slot, f, key_php, name) = &deferred[i];
-                            match self.method_with_this(f, Ty::Obj(this.clone())) {
-                                Ok(v) => {
-                                    if live(i, name, &owner)
-                                        && let Some(entry) = fields.get_mut(name)
-                                    {
-                                        entry.0 = v.ty.clone();
-                                        untyped.remove(name);
-                                    }
-                                    parts[*slot] = format!("[{key_php} => {}]", v.php);
-                                }
-                                Err(e) => {
-                                    first_error.get_or_insert(e);
-                                    failed.push(i);
-                                }
-                            }
+                        let (slot, f, key_php, name) = &deferred[i];
+                        // A cycle without annotations reads a method before it has a type.
+                        let early = f
+                            .this_reads
+                            .iter()
+                            .find(|r| untyped.contains(*r) && *r != name)
+                            .cloned();
+                        let v = self.method_with_this(f, Ty::Obj(this)).map_err(|d| match &early {
+                            Some(m) if d.message.ends_with(&format!("has no field `{m}`")) => d.help(format!(
+                                "`{m}` and `{name}` call each other through `this`; annotate the return type of `{m}`, e.g. `{m}(): number`"
+                            )),
+                            _ => d,
+                        })?;
+                        if live(i, name, &owner)
+                            && let Some(entry) = fields.get_mut(name)
+                        {
+                            entry.0 = v.ty.clone();
+                            untyped.remove(name);
                         }
-                        if failed.len() == pending.len() {
-                            return Err(first_error.expect("a failed method"));
-                        }
-                        pending = failed;
+                        parts[*slot] = format!("[{key_php} => {}]", v.php);
                     }
                 }
                 let ty = if is_map {

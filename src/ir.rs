@@ -50,6 +50,8 @@ pub struct Func {
     /// the body reads `this`. Calls supply it; it is not an argument. Class methods also take
     /// `this` first but their callers pass it explicitly, so this is false for them.
     pub receives_this: bool,
+    /// The `this.<key>` names the body (or one of its arrows) reads, in source order.
+    pub this_reads: Vec<String>,
     pub ret: Option<TyAnn>,
     pub type_params: Vec<String>,
     pub span: Span,
@@ -125,6 +127,7 @@ impl ClassField {
             is_async: false,
             is_generator: false,
             receives_this: false,
+            this_reads: vec![],
             ret: self.ann.clone(),
             type_params: vec![],
             span: self.span,

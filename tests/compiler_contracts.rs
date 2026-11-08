@@ -3415,6 +3415,39 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
+/// Methods that read `this` compile once each, in the order of the siblings they read, so a
+/// refusal inside a helper or class they call is reported, never retried past into a build that
+/// calls a function PHP never got.
+#[test]
+fn a_refusal_inside_a_this_method_helper_is_reported() {
+    for (declarations, call) in [
+        (
+            "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }",
+            "first([1, 3, 2])",
+        ),
+        (
+            "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }",
+            "new Box(1).top([1, 3, 2])",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => ({{ a() {{ return {call} + this.b(); }}, b() {{ return this.n; }}, n: 1 }}).a() }}) }} }});\n"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{call}: {report}");
+        assert!(
+            report["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("sorting requires a numeric key-difference comparator"),
+            "{call}: {report}"
+        );
+    }
+}
+
 /// An object literal's method that reads `this` is typed after the other properties, so a later
 /// property or spread with its key must win: calling the replaced method is refused, as Node
 /// would throw.
@@ -3812,6 +3845,11 @@ fn language_refusals_carry_a_location_and_a_fix() {
             "function with properties in a this receiver",
             "import { withHelper } from './ns.mjs';",
             "withHelper.read()",
+        ),
+        (
+            "methods calling each other without return types",
+            "",
+            "({ a() { return this.b(); }, b() { return this.a(); } }).a()",
         ),
         (
             "handler reading this",

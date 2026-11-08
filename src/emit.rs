@@ -49,6 +49,15 @@ pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
         ("wpVersion", platform::WORDPRESS.to_string()),
         ("phpVersion", platform::PHP.to_string()),
         ("zeroVersion", env!("CARGO_PKG_VERSION").to_string()),
+        // Every platform plugin Runtime::activate() requires; Polylang only with an app's `locales`.
+        (
+            "runtimeRequires",
+            platform::plugins(false)
+                .into_iter()
+                .map(|p| p.slug)
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
     ];
     let template = runtime_file("wp-plugin/zero-runtime.php").expect("embedded plugin template");
     let uninstall = runtime_file("wp-plugin/zero-runtime-uninstall.php").expect("embedded uninstall template");

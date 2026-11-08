@@ -152,7 +152,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
   install(artifact);
   // Requires Plugins refuses to activate a plugin before its dependencies, so order matters.
   assert.match(wpFails("plugin", "activate", "zero-app-site"), /requires 7 plugins.*Action Scheduler, Akismet Anti-spam: Spam Protection, MCP Adapter, Polylang, Secure Custom Fields, Two Factor, Zero Runtime/s);
-  assert.match(wpFails("plugin", "activate", "zero-runtime"), /requires 3 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields/s);
+  assert.match(wpFails("plugin", "activate", "zero-runtime"), /requires 5 plugins.*Action Scheduler, Akismet Anti-spam: Spam Protection, MCP Adapter, Secure Custom Fields, Two Factor/s);
   assert.deepEqual(active(), []);
   // This site sits behind a published port its own container can't reach, so the owner routes the
   // private-files probe to the web server's in-network name, with the filter that exists for hosts.

@@ -265,6 +265,194 @@ export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {
 }
 
 #[test]
+fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
+    // A timer still pending when the handler returns would fire after the response in Node; the PHP
+    // request ends first, so the runtime refuses at handler end and names the creation site.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("timers.js"),
+        "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {pending,cleared,late} from './timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
+        $out=[];
+        foreach (['pending','cleared','late'] as $a) {
+            $fn='\\ZeroApp\\'.$s['actions'][$a]['handler'];
+            try { $out[]=['ok', \Zero\Timers::run(fn() => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])))]; }
+            catch (\Zero\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
+            $out[]=\Zero\Timers::pending();
+        }
+        echo json_encode($out);"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-timers/zero/app"),
+        ],
+    );
+    assert_eq!(
+        result,
+        json!([
+            [
+                "Error",
+                "A setTimeout callback is still pending when the handler returns (timers.js:1:28); await it or clearTimeout it first"
+            ],
+            0,
+            ["ok", 2],
+            0,
+            [
+                "Error",
+                "A setTimeout callback is still pending when the handler returns (timers.js:3:35); await it or clearTimeout it first"
+            ],
+            0
+        ])
+    );
+    // runNext() advances a pinned clock instead of sleeping, runs exactly one callback in
+    // (due, creation) order, and refuses waits past the request budget.
+    let order = php(
+        r#"require $argv[1];
+        putenv('ZERO_NOW=1000'); putenv('ZERO_TIMER_BUDGET_MS=100');
+        $log=[];
+        \Zero\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
+        \Zero\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
+        \Zero\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
+        $signal = \Zero\JsAbortSignal::timeout(15);
+        while (\Zero\Timers::runNext()) { $log[] = \Zero\Timers::clock(); }
+        \Zero\Timers::set(function() {}, 500);
+        try { \Zero\Timers::runNext(); $log[]='slept'; } catch (\Zero\JsError $e) { $log[]=$e->jsName; }
+        // A throwing abort listener: dispatch continues (as in Node), then the error ends the
+        // request where Node would report it as uncaught.
+        $faulty = new \Zero\JsAbortController(); $seen = [];
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \Zero\JsError('listener'); });
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 2; });
+        try { $faulty->abort(); } catch (\Zero\JsError $e) { $seen[] = $e->getMessage(); }
+        echo json_encode([$log, $signal->aborted, $signal->reason->jsName, $seen]);"#,
+        &[&root().join("runtime/Zero/bootstrap.php")],
+    );
+    assert_eq!(
+        order,
+        json!([
+            ["a", 1010, 1015, "b", 1020, "c", 1020, "RangeError"],
+            true,
+            "TimeoutError",
+            [1, 2, "listener"]
+        ])
+    );
+}
+
+#[test]
+fn url_vectors_agree_in_node_and_generated_php() {
+    // Every WHATWG urltestdata.json case (tests/differential/URL-WPT-NOTICE.txt) plus URLSearchParams
+    // and setter cases, through checked JavaScript, compared with Node byte for byte.
+    let dir = root().join("tests/differential");
+    let wpt: Value = serde_json::from_str(include_str!("differential/url-wpt.json")).unwrap();
+    let cases: Vec<Value> = wpt
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c.is_object())
+        .map(|c| json!({ "input": c["input"], "base": c["base"] }))
+        .collect();
+    assert!(cases.len() > 800, "WPT subset shrank: {}", cases.len());
+    let script = format!(
+        "const m = await import({:?}); const cases = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify([m.parseAll(cases), m.searchParams(), m.invalid()]));",
+        format!("file://{}", dir.join("url.js").display())
+    );
+    let node = Command::new("node")
+        .args(["--input-type=module", "-e", &script])
+        .arg(Value::Array(cases.clone()).to_string())
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(dir.join("url.js"), tmp.path().join("url.js")).unwrap();
+    std::fs::write(tmp.path().join("cases.json"), Value::Array(cases).to_string()).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { action, defineConfig } from "zero";
+import { parseAll, searchParams, invalid } from "./url.js";
+export default defineConfig({ name: "url", actions: { probe: action({ input: {}, handler: () => [searchParams(), invalid()] }) } });
+"#,
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let app = content.join("plugins/zero-app-url/zero/app");
+    // parseAll takes a data argument the action input can't carry at this size; call the compiled
+    // module function directly with the decoded cases.
+    let result = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+        $probe = $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]));
+        $cases = \Zero\Js::decodeJson(file_get_contents($argv[3]));
+        $parse = static function ($cases) {
+            $props = ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'];
+            $out = [];
+            foreach ($cases->a as $c) {
+                $base = \Zero\Js::dynamicGet($c, 'base');
+                $parsed = \Zero\Js::dynamicStaticCall('URL', 'parse', new \Zero\JsArray($base === null ? [\Zero\Js::dynamicGet($c, 'input')] : [\Zero\Js::dynamicGet($c, 'input'), $base]));
+                $out[] = $parsed === null ? null : new \Zero\JsArray(array_map(static fn ($p) => \Zero\Js::dynamicGet($parsed, $p), $props));
+            }
+            return new \Zero\JsArray($out);
+        };
+        echo \Zero\Js::jsonStringify(new \Zero\JsArray([$parse($cases), ...$probe->a]));
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &app,
+            &tmp.path().join("cases.json"),
+        ],
+    );
+    // URL parsing is checked against WPT's own expected values: Node lags the URL Standard on a
+    // few newer cases, which the bundled parser already implements. Node remains the oracle for
+    // the URLSearchParams and setter vectors, which WPT's urltestdata doesn't cover.
+    let props = [
+        "href", "origin", "protocol", "username", "password", "host", "hostname", "port", "pathname", "search", "hash",
+    ];
+    let mut node_lags = 0;
+    let cases_wpt: Vec<&Value> = wpt.as_array().unwrap().iter().filter(|c| c.is_object()).collect();
+    for (i, (case, (have, node))) in cases_wpt
+        .iter()
+        .zip(
+            result[0]
+                .as_array()
+                .unwrap()
+                .iter()
+                .zip(expected[0].as_array().unwrap()),
+        )
+        .enumerate()
+    {
+        let want = if case["failure"] == true {
+            Value::Null
+        } else {
+            Value::Array(
+                props
+                    .iter()
+                    .map(|p| match case.get(*p) {
+                        Some(v) => v.clone(),
+                        // origin is absent from a few cases; compare what Node computes there.
+                        None => node[props.iter().position(|q| q == p).unwrap()].clone(),
+                    })
+                    .collect(),
+            )
+        };
+        assert_eq!(have, &want, "WPT urltestdata case {i}: {}", case["input"]);
+        node_lags += usize::from(node != &want);
+    }
+    // Node 22 fails 7 newer cases (trailing spaces in opaque paths, `^` in paths); more means drift.
+    assert!(node_lags <= 7, "Node disagrees with WPT on {node_lags} cases");
+    assert_eq!(
+        result[1], expected[1],
+        "URLSearchParams and setter vectors differ from Node"
+    );
+    assert_eq!(result[2], expected[2], "invalid URLs differ from Node");
+}
+
+#[test]
 fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
     let tmp = tempfile::tempdir().unwrap();
     let (out, missing) = checked(tmp.path());
@@ -1210,7 +1398,7 @@ fn host_globals_match_node_through_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     assert_eq!(expected["complete"], true);
     let mut expected = expected["cases"].clone();
-    assert_eq!(expected.as_object().unwrap().len(), 10, "{expected}");
+    assert_eq!(expected.as_object().unwrap().len(), 11, "{expected}");
     assert!(
         expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
         "{expected}"
@@ -2936,7 +3124,8 @@ fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
 }
 
 #[test]
-fn named_function_expressions_refuse_with_a_source_position() {
+fn named_function_expressions_bind_their_name_inside_themselves() {
+    // The inner name shadows an outer binding of the same name, at build time and in a handler.
     for declaration in [
         "const x=7;const folded=(function x(){return typeof x;})();",
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
@@ -2944,22 +3133,26 @@ fn named_function_expressions_refuse_with_a_source_position() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{report}");
-        let diagnostic = &report["diagnostics"][0];
-        assert_eq!(diagnostic["code"], "Z1002", "{report}");
-        assert!(
-            diagnostic["message"]
-                .as_str()
-                .unwrap()
-                .contains("named function expressions"),
-            "{report}"
-        );
-        assert!(diagnostic["location"].is_object(), "{report}");
-        assert_eq!(
-            diagnostic["help"], "use an anonymous function expression or a function declaration",
-            "{report}"
-        );
+        assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
+    // Strict JavaScript throws on a write to the name, so it is refused where it is written.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nconst f=function g(){ g = () => 1; return 1; };\nexport default defineConfig({actions:{probe:action({handler:()=>f()})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    let diagnostic = &report["diagnostics"][0];
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .unwrap()
+            .contains("assigning to a named function expression's own name"),
+        "{report}"
+    );
+    assert_eq!(diagnostic["location"]["line"], 2, "{report}");
+    assert!(
+        diagnostic["help"].as_str().unwrap().contains("local variable"),
+        "{report}"
+    );
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the

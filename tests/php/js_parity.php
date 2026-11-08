@@ -27,6 +27,9 @@ mb_internal_encoding('ISO-8859-1');
 $re = Js::re(...);
 
 $cases = [
+    // for-in over a subclass visits inherited static fields after its own; Object.keys doesn't.
+    ['(() => { class A { static x = 1; static z = 0; } class B extends A { static y = 2; static x = 3; } const k = []; for (const n in B) k.push(n); return [k, Object.keys(B)]; })()',
+        function () { $a = new \Zero\JsClass(null, null, static function () {}, [], [], new JsObject(['x' => 1, 'z' => 0])); $b = new \Zero\JsClass($a, null, static function () {}, [], [], new JsObject(['y' => 2, 'x' => 3])); return [new JsArray(iterator_to_array(Js::dynamicForIn($b), false)), Js::dynamicKeys($b)]; }],
     // Object rest over a class collects its static fields; methods are non-enumerable.
     ['(() => { class C { static theme = "dark"; static size = 3; static describe() { return 1; } } const { ...rest } = C; return [Object.keys(C), rest]; })()',
         function () { $c = new \Zero\JsClass(null, null, static function () {}, [], ['describe' => static fn () => 1], new JsObject(['theme' => 'dark', 'size' => 3])); return [Js::dynamicKeys($c), Js::dynamicRest($c, [])]; }],

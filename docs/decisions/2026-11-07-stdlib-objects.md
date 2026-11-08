@@ -57,21 +57,23 @@ dispatch uses the same methods.
 
 ## URL and URLSearchParams
 
-Don't port anything. `rowbot/url` (MIT, a WHATWG URL Standard implementation that
-passes the WPT suite) is already in the runtime bundle, Strauss-prefixed as
-`Zero\Vendor\Rowbot\URL`, through `wp-php-toolkit/data-liberation`. It wasn't
-usable as shipped: Strauss rewrote rowbot/idna's `use const DIRECTORY_SEPARATOR as DS`
-alias into an undefined `ZERO_VENDOR_DS`, so every host parse fataled. The fix
-adds `DS` to `exclude_constants` and regenerates the bundle. That changes no lock
-and adds no package.
+Don't port anything. `rowbot/url` 4.2.1 (MIT, a WHATWG URL Standard implementation that
+passes the WPT suite) is a direct runtime dependency, Strauss-prefixed as
+`Zero\Vendor\Rowbot\URL`. Earlier, a copy came in through `wp-php-toolkit/data-liberation`,
+but #150 removed that copy as unused. It pulls in `rowbot/idna`, `rowbot/punycode`,
+`brick/math` and `symfony/polyfill-intl-normalizer`, all MIT. `DS` is excluded from
+constant prefixing: rowbot/idna aliases `DIRECTORY_SEPARATOR` as `DS`, and Strauss would
+otherwise rewrite it to an undefined `ZERO_VENDOR_DS`, so every host parse would fatal.
 
 `Zero\JsUrl` and `Zero\JsUrlSearchParams` wrap the vendored classes and expose
 JavaScript property and method names. Parse failures throw `TypeError`, matching
 `new URL`'s error, and `URL.canParse` / `URL.parse` exist. The contract test runs
-every case in WPT `urltestdata.json` (886, at a pinned revision) and compares each
-one with Node 22. All 886 match. Against WPT's own expectations, rowbot and Node
-both pass 879: the seven they share as failures are newer spec changes (opaque
-path trailing spaces, and `^` in paths).
+every case in WPT `urltestdata.json` (886, at a pinned revision) through compiled
+checked JavaScript and compares each one with WPT's own expected values. All 886
+pass. Node 22 passes 879: it lags the standard on seven newer cases (spaces before
+`?`/`#` in opaque paths, and `^` in paths) that rowbot/url 4.2.1 already implements.
+So WPT is the oracle for parsing, and Node remains the oracle for the URLSearchParams
+and setter vectors, which urltestdata doesn't cover.
 
 One rowbot defect diverged from Node: its percent-encoder used `rawurlencode()`,
 which leaves `~` alone although the form-urlencoded set contains it. Vendoring now
@@ -133,16 +135,15 @@ is the only point where it can run.
 - `setTimeout` returns an opaque `Zero\JsTimeout` handle, as Node's Timeout
   object, and `clearTimeout` accepts it. `Timers::run()` wraps every action, route
   and job handler, and nested handlers share the outermost timer list.
-- `new Promise` is agent 4's, so there is no interim await shape here. Until their
-  queue lands, a timer can only be created, cleared and checked at handler end.
-  That covers files-sdk's per-attempt timeout (`mergeSignals` + `cleanup`). Its
-  backoff sleep needs `new Promise` and arrives with agent 4's queue.
+- `new Promise` is agent 4's, and it lives on main (#174). `JsJobs` drains
+  `Timers::runNext()` when its microtasks are empty, and calls
+  `Timers::assertNonePending()` at handler end. So files-sdk's backoff sleep
+  (`await new Promise((r) => setTimeout(r, ms))`) waits the delay in imported
+  JavaScript, and on a pinned clock it waits instantly.
 
-Capability: `setTimeout` and `AbortSignal.timeout` call
-`Compiler::uses("timers", ..)`, the recognition point `feat/plugin-capabilities`
-(#142) defines. Until #142 lands, `uses` is a no-op stub with #142's signature.
-Whichever PR merges second keeps #142's body and adds a `("timers", "sets timers
-with")` row to `src/plugins.rs` `KINDS`.
+Capability: `setTimeout` and `AbortSignal.timeout` record a `timers` use at
+`Compiler::uses`, the recognition point #142 defines, so a plugin's lock lists the
+timers it sets. `src/plugins.rs` `KINDS` has the `("timers", "sets timers with")` row.
 
 ## Date, Math, JSON
 

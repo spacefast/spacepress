@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { classify } from "./classify.mjs";
-import { outcome, payloadRefusals, RULES, verifySource } from "./census.mjs";
+import { converterReport, outcome, payloadRefusals, RULES, verifySource } from "./census.mjs";
 import { ERASED, pageStub, PAGE_MARKER, serverSource, writeCapsule } from "./reconstruct.mjs";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
@@ -87,6 +87,21 @@ test("only verified source can be accepted", () => {
   assert.deepEqual(outcome({ verified: false, report: erased, census: [] }), { outcome: "not recoverable", refusals: [], missing: ["erased parameter types"] });
 });
 
+test("a crashed or truncated converter run is a tool failure, not a census outcome", () => {
+  const refused = { status: "refused", errors: [{ pointer: "/source", reason: "source not recoverable: x" }] };
+  const text = JSON.stringify(refused);
+  assert.deepEqual(converterReport({ code: 1, signal: null, stdout: text }), refused);
+  assert.deepEqual(converterReport({ code: 0, signal: null, stdout: '{"status":"dry-run","errors":[]}' }).status, "dry-run");
+  // A panic (exit 101), a kill, empty output, output cut off mid-report, and a status the exit contradicts.
+  assert.equal(converterReport({ code: 101, signal: null, stdout: "" }), null);
+  assert.equal(converterReport({ code: null, signal: "SIGKILL", stdout: text }), null);
+  assert.equal(converterReport({ code: 1, signal: null, stdout: "" }), null);
+  assert.equal(converterReport({ code: 1, signal: null, stdout: text.slice(0, -10) }), null);
+  assert.equal(converterReport({ code: 0, signal: null, stdout: text }), null);
+  assert.equal(converterReport({ code: 1, signal: null, stdout: '{"status":"refused","errors":[]}' }), null);
+  assert.equal(converterReport({ code: 1, signal: null, stdout: "null" }), null);
+});
+
 test("source verification uses the recorded hashes", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "census-src-"));
   try {
@@ -112,8 +127,8 @@ test("the converter's refusals on a rebuilt capsule keep their reasons", { skip:
   assert.ok(labels(services).includes("refusal:ctx.jwt"), labels(services).join());
 
   // A language construct outside the v2 subset, in a copied helper.
-  const language = convert(payload('function mask(n){return n&255}var app_default=capsule({name:"t",schema:{notes:table({body:string()})},queries:{n:query(async ctx=>mask(1))}});', { pages: [] }));
-  assert.ok(labels(language).includes("refusal:language: bitwise operators"), labels(language).join());
+  const language = convert(payload('function big(n){return n*10n}var app_default=capsule({name:"t",schema:{notes:table({body:string()})},queries:{n:query(async ctx=>String(big(1n)))}});', { pages: [] }));
+  assert.ok(labels(language).includes("refusal:language: BigInt"), labels(language).join());
 
   // An erased input is not a refusal: only the source can say what it was.
   const erased = convert(payload('var app_default=capsule({name:"t",schema:{notes:table({body:string()})},mutations:{add:mutation(async(ctx,body)=>ctx.db.notes.insert({body}))}});', { pages: [] }));

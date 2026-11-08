@@ -1083,7 +1083,7 @@ class expressions, default-export class declarations and
 anonymous/local/abstract/ambient/generic classes;
 decorators; private/protected members; private accessors; static blocks; computed names;
 generic/rest methods; dynamic or built-in inheritance; constructor return values;
-prototype/reflection machinery and custom coercion/serialization protocol members.
+prototype/reflection machinery and custom coercion members (`toString`, `valueOf`).
 Indexed class members and recursive class field types are also refused.
 Uninitialized optional fields follow the same missing-to-null boundary. Class
 values are limited to construction, `instanceof`, `typeof` and static access.

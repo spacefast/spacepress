@@ -1240,4 +1240,26 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
             "{refused:#}"
         );
     }
+
+    // The context's name in a string or as a property key isn't a read of the context.
+    for (case, capsule) in [
+        (
+            "string",
+            r#"{ name: "params", queries: { page: query(async (ctx, label: string = "ctx") => label) } }"#,
+        ),
+        (
+            "key",
+            r#"{ name: "params", queries: { page: query(async (ctx, { ctx: value = "v" }: { ctx?: string } = {}) => value) } }"#,
+        ),
+    ] {
+        let root = temp.path().join(case);
+        project(&root, capsule);
+        let index = root.join("server/index.ts");
+        let text = std::fs::read_to_string(&index)
+            .unwrap()
+            .replace("import { capsule }", "import { capsule, query }");
+        std::fs::write(&index, text).unwrap();
+        let (ok, report) = migrate(&root, &temp.path().join(format!("{case}-out")), &["--dry-run"]);
+        assert!(ok, "{capsule}: {report:#}");
+    }
 }

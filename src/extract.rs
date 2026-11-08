@@ -2130,7 +2130,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
             _ => r(obj),
         },
         ExprKind::Ident(n) => n == param,
-        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
+        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => {
             r(callee)
                 || args
                     .iter()
@@ -2140,6 +2140,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
         ExprKind::Cond(a, b, c) => r(a) || r(b) || r(c),
         ExprKind::Unary(_, x)
         | ExprKind::Await(x)
+        | ExprKind::Yield { arg: Some(x), .. }
         | ExprKind::Chain(x)
         | ExprKind::As(x, _)
         | ExprKind::NonNull(x)

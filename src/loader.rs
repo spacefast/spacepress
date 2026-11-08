@@ -828,6 +828,9 @@ impl CommonJsScope<'_> {
                 if let Some(constructor) = &class.constructor {
                     self.function(constructor)?;
                 }
+                for accessor in &class.accessors {
+                    self.function(&accessor.func)?;
+                }
             }
             ExprKind::Array(items) => {
                 for ArrEl::Item(value) | ArrEl::Spread(value) in items {
@@ -859,8 +862,10 @@ impl CommonJsScope<'_> {
             | ExprKind::Member { obj: value, .. }
             | ExprKind::Chain(value)
             | ExprKind::Await(value)
+            | ExprKind::Yield { arg: Some(value), .. }
             | ExprKind::As(value, _)
             | ExprKind::NonNull(value) => self.expression(value)?,
+            ExprKind::Yield { arg: None, .. } => {}
             ExprKind::Instanceof(left, right)
             | ExprKind::In(left, right)
             | ExprKind::Binary(_, left, right)
@@ -889,7 +894,7 @@ impl CommonJsScope<'_> {
                 }
                 self.expression(value)?;
             }
-            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
+            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => {
                 self.expression(callee)?;
                 for ArrEl::Item(value) | ArrEl::Spread(value) in args {
                     self.expression(value)?;
@@ -901,6 +906,7 @@ impl CommonJsScope<'_> {
             | ExprKind::Null
             | ExprKind::Undefined
             | ExprKind::Regex { .. }
+            | ExprKind::BigInt(_)
             | ExprKind::TemplateStrings { .. } => {}
         }
         Ok(())

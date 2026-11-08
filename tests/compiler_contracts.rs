@@ -617,6 +617,110 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
 }
 
 #[test]
+fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
+    // Job order is observable in JavaScript: every log must match Node exactly.
+    let cases = [
+        "interleaving",
+        "adoption",
+        "combinators",
+        "lateHandling",
+        "generators",
+        "pagination",
+        "streams",
+        "failures",
+    ];
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        root().join("tests/differential/async.mjs"),
+        tmp.path().join("async.mjs"),
+    )
+    .unwrap();
+    let script = format!(
+        "import * as m from './async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
+    );
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args(["--input-type=module", "-e", &script])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let actions = cases
+        .iter()
+        .map(|name| format!("  {name}: action({{ input: {{}}, handler: async () => await {name}() }}),"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        format!(
+            "import {{ action, defineConfig }} from 'zero';\nimport {{ {} }} from './async.mjs';\nexport default defineConfig({{ name: 'async-diff', actions: {{\n{actions}\n}} }});\n",
+            cases.join(", ")
+        ),
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        &format!(
+            r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$result = [];
+foreach ({} as $key) {{
+  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \Zero\JsObject(), new \Zero\JsObject());
+}}
+echo \Zero\Js::jsonStringify(new \Zero\JsArray($result));
+"#,
+            serde_json::to_string(&cases).unwrap()
+        ),
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-async-diff/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+
+    // Handler end: an unhandled rejection and a promise nothing can settle are runtime errors.
+    std::fs::write(
+        tmp.path().join("async.mjs"),
+        "export async function lost() { Promise.reject(new Error('lost')); return 1; }\nexport async function stuck() { await new Promise(() => {}); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        "import { action, defineConfig } from 'zero';\nimport { lost, stuck } from './async.mjs';\nexport default defineConfig({ name: 'async-diff', actions: {\n  lost: action({ input: {}, handler: async () => await lost() }),\n  stuck: action({ input: {}, handler: async () => await stuck() }),\n} });\n",
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let errors = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$result = [];
+foreach (['lost', 'stuck'] as $key) {
+  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
+  try { $fn(new \Zero\JsObject(), new \Zero\JsObject()); $result[] = 'completed'; }
+  catch (\Zero\JsError $e) { $result[] = $e->getMessage(); }
+}
+echo json_encode($result);
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-async-diff/zero/app"),
+        ],
+    );
+    assert_eq!(
+        errors,
+        json!([
+            "lost",
+            "This promise can never settle: nothing left to run (awaited at zero.config.ts:5:51)"
+        ])
+    );
+}
+
+#[test]
 fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() {
     let expression = r#"[{ omitted: undefined, nested: { omitted: undefined, keep: 1 }, slots: [undefined] }, typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1), typeof [][0]]"#;
     let node = Command::new("node")
@@ -873,6 +977,58 @@ const sharedLiteral: 0 | 1 = effects.sharedCount;
 }
 
 #[test]
+fn private_names_accessors_and_imported_javascript_classes_match_node() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = root().join("tests/differential");
+    std::fs::copy(dir.join("class-private.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(
+        dir.join("class-private-lib.mjs"),
+        tmp.path().join("class-private-lib.mjs"),
+    )
+    .unwrap();
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(tmp.path().join("zero.config.ts"))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    assert_eq!(expected["cases"].as_object().unwrap().len(), 7);
+    assert!(
+        expected["cases"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|r| r.get("data").is_some()),
+        "{expected}"
+    );
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\ZeroApp\\' . $action['handler'];
+            try { $out[$name] = ['data' => $fn()]; }
+            catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+        }
+        echo \Zero\Js::jsonStringify($out);
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-class-private/zero/app"),
+        ],
+    );
+    assert_eq!(
+        actual, expected["cases"],
+        "private names or JavaScript classes differ from Node"
+    );
+}
+
+#[test]
 fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     for (declarations, handler, message) in [
         (
@@ -915,7 +1071,16 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
             "new D()",
             "`this` outside a class",
         ),
-        ("class C { #secret = 1; }", "new C()", "private class fields"),
+        (
+            "class C { #secret = 1; } class D { static read(d: D) { return d.#secret; } }",
+            "D.read(new D())",
+            "private name `#secret` must be declared in an enclosing class",
+        ),
+        (
+            "class C { #n = 1; constructor() { this.#check(); } #check(): number { return this.#n; } }",
+            "new C()",
+            "method calls during construction",
+        ),
         (
             "class C { constructor(public toJSON: () => number) {} }",
             "new C(() => 1)",
@@ -923,8 +1088,18 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         ),
         (
             "class C { get value() { return 1; } }",
+            "(() => { const c = new C(); c.value = 2; return 1; })()",
+            "getter without a setter",
+        ),
+        (
+            "class C { set value(v: number) {} }",
+            "new C().value",
+            "has only a setter",
+        ),
+        (
+            "class C { toJSON(): string { return 'c'; } }",
             "new C()",
-            "accessor class methods",
+            "class instances with a toJSON method",
         ),
         (
             "class C {} const factory = () => C; class D extends factory() {}",
@@ -1334,7 +1509,7 @@ echo \Zero\Js::jsonStringify($fn($input, new \Zero\JsObject()));
 }
 
 #[test]
-fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefined() {
+fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("helper.js"),
@@ -1349,6 +1524,7 @@ fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefin
             for (const f of [() => read(instance, 'm'), () => invoke(instance, 'm')]) {
                 try { results.push(f()); } catch (e) { results.push([e.name, e.message]); }
             }
+            results.push(instance.m === new C().m, instance.m.call({}), read(instance, 'missing'));
             return results;
         }
     "#,
@@ -1365,19 +1541,165 @@ fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefin
     "#,
         &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
     );
-    assert_eq!(
-        actual,
-        json!([
-            [
-                "TypeError",
-                "Class method values are not supported by checked JavaScript"
-            ],
-            [
-                "TypeError",
-                "Class method values are not supported by checked JavaScript"
-            ]
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args([
+            "--input-type=module",
+            "-e",
+            "import {test} from './helper.js'; process.stdout.write(JSON.stringify(test()));",
         ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected, json!(["function", 4, true, 4, "undefined"]));
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn symbols_and_weak_collections_match_node_in_imported_javascript() {
+    let tmp = tempfile::tempdir().unwrap();
+    // The files-sdk patterns: a registered brand defined nonenumerable on an object, a
+    // symbol-keyed spread wrapper, and module-level WeakMap state per instance.
+    let helper = r#"
+const BRAND = Symbol.for("files-sdk.FilesError");
+const LOCAL = Symbol("local");
+const BARE = Symbol();
+const internals = new WeakMap;
+const seen = new WeakSet();
+const isObject = (value) => typeof value === "object" && value !== null;
+const attempt = (f) => { try { return f(); } catch (e) { return e.name; } };
+export function brand(target) { Object.defineProperty(target, BRAND, { value: true }); return target; }
+export function isBranded(value) { return isObject(value) && Object.hasOwn(value, BRAND) && value[BRAND] === true; }
+export function local() { return LOCAL; }
+// Built-in prototypes carry well-known symbol methods Zero doesn't model: refused, not guessed.
+export function unmodeled() {
+  const list = [1];
+  return [() => Symbol.iterator in list, () => list[Symbol.iterator], () => Symbol.hasInstance in isObject, () => class_instance()[BRAND]].map((f) => { try { return f(); } catch (e) { return [e.name, e.message]; } });
+}
+class Holder {}
+const class_instance = () => new Holder();
+export function probe() {
+  const branded = brand({ code: "NotFound" });
+  const plain = { code: "x" };
+  const wrapped = { ...plain, [LOCAL]: 3, extra: 1, ["__proto__"]: 4 };
+  const copy = { ...wrapped, ..."ab", ...null, ...[7] };
+  internals.set(plain, { loaded: 0 });
+  internals.get(plain).loaded += 5;
+  seen.add(plain).add(LOCAL);
+  const forIn = []; for (const key in wrapped) forIn.push(key);
+  const fresh = Symbol("local");
+  const list = [1];
+  return {
+    typeofs: [typeof BRAND, typeof Symbol.iterator, typeof Symbol, typeof WeakMap, typeof globalThis.Symbol, typeof globalThis.window, typeof globalThis.Bun, typeof internals],
+    identity: [BRAND === Symbol.for("files-sdk.FilesError"), LOCAL === fresh, LOCAL === local(), Symbol.keyFor(BRAND), Symbol.keyFor(LOCAL) === undefined, Symbol.iterator === Symbol.iterator, BRAND == Symbol.for("files-sdk.FilesError")],
+    strings: [String(BRAND), LOCAL.toString(), LOCAL.description, BARE.description === undefined, String(BARE), String(Symbol.asyncIterator), Symbol.hasInstance.description, Symbol.toStringTag.toString(), String(Symbol(42))],
+    branded: [isBranded(branded), isBranded(plain), Object.keys(branded), JSON.stringify(branded), branded[BRAND], attempt(() => { branded[BRAND] = false; return branded[BRAND]; })],
+    wrapped: [Object.keys(wrapped), wrapped[LOCAL], copy[LOCAL], JSON.stringify(copy), Object.hasOwn(copy, LOCAL), Object.hasOwn(copy, BRAND), copy[BRAND] === undefined, forIn, Object.entries(wrapped).length],
+    json: [JSON.stringify([LOCAL, 1]), JSON.stringify({ s: LOCAL }), JSON.stringify(LOCAL) === undefined],
+    weak: [internals.get(plain).loaded, internals.has(plain), internals.has({}), internals.get("text") === undefined, internals.delete(plain), internals.has(plain), seen.has(plain), seen.has(LOCAL), seen.delete(plain), seen.has(plain), new WeakMap([[plain, 2]]).get(plain), String(internals)],
+    errors: [attempt(() => internals.set("text", 1)), attempt(() => internals.set(undefined, 1)), attempt(() => seen.add(BRAND)), attempt(() => `${LOCAL}`), attempt(() => LOCAL + 1), attempt(() => +LOCAL), attempt(() => new WeakSet([1]))],
+    detect: [globalThis.window === undefined, globalThis.Bun !== undefined],
+    operators: [BRAND in branded, BRAND in plain, LOCAL in wrapped, LOCAL in copy, "code" in branded, BRAND in list, list[BRAND] === undefined, attempt(() => delete branded[BRAND]), delete copy[LOCAL], LOCAL in copy, delete plain[BRAND], attempt(() => BRAND in "text")],
+  };
+}
+"#;
+    std::fs::write(tmp.path().join("helpers.mjs"), helper).unwrap();
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args([
+            "--input-type=module",
+            "-e",
+            "import {probe} from './helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
+        ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        "import { action, defineConfig } from 'zero'; import { probe, unmodeled } from './helpers.mjs'; export default defineConfig({ name: 'symbols', actions: { probe: action({ input: {}, handler: () => probe() }), unmodeled: action({ input: {}, handler: () => unmodeled() }) } });",
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$run = fn ($name) => ('\\ZeroApp\\' . $schema['actions'][$name]['handler'])(new \Zero\JsObject(), new \Zero\JsObject());
+echo \Zero\Js::jsonStringify(new \Zero\JsArray([$run('probe'), $run('unmodeled')]));
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-symbols/zero/app"),
+        ],
     );
+    let refused = json!([
+        "TypeError",
+        "Symbol-keyed properties are only supported on plain objects"
+    ]);
+    assert_eq!(actual, json!([expected, [refused, refused, refused, refused]]));
+
+    // Authored TypeScript has no symbol type and no weak collections; both are located refusals.
+    for (source, message) in [
+        (
+            "const s = Symbol('x'); export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof s }) } });",
+            "symbols aren't supported in TypeScript code yet",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof Symbol.for('x') }) } });",
+            "symbols aren't supported in TypeScript code yet",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => { const m = new WeakMap(); return 1; } }) } });",
+            "`new WeakMap` isn't supported",
+        ),
+        (
+            "const m = new WeakMap(); export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof m }) } });",
+            "which TypeScript code here can't use",
+        ),
+        (
+            "const m = new WeakMap([[{}, 1]]); export default defineConfig({});",
+            "unsupported overload of `constructor.WeakMap`",
+        ),
+        (
+            "const k = Symbol('k'); const o = { [k]: 1 }; export default defineConfig({});",
+            "symbol-keyed properties can't be created while the config is evaluated",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof globalThis.Buffer }) } });",
+            "`globalThis.Buffer` depends on the host",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof globalThis.myPolyfill }) } });",
+            "`globalThis.myPolyfill` depends on the host",
+        ),
+        (
+            "const f = typeof globalThis.fetch; export default defineConfig({});",
+            "`globalThis.fetch` depends on the host",
+        ),
+        (
+            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => globalThis.Bun() }) } });",
+            "`globalThis.Bun` is undefined in Zero",
+        ),
+    ] {
+        std::fs::remove_file(tmp.path().join("helpers.mjs")).ok();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{source}"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains(message),
+            "{source}: {report}"
+        );
+        assert!(diagnostic["location"].is_object(), "{source}: {report}");
+        assert!(diagnostic["help"].is_string(), "{source}: {report}");
+    }
 }
 
 #[test]
@@ -1454,8 +1776,8 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         r#"new RegExp("(*ACCEPT)")"#,
         "typeof process",
         "typeof require",
-        "typeof globalThis",
         "typeof crypto",
+        "typeof globalThis.process",
         "(() => { const o = {n: 1}; Object.freeze(o); try {o.n = 2;} catch {} return o.n; })()",
         "(() => { const o: Record<string, number> = {}; o['__proto__'] = 1; return Object.hasOwn(o, '__proto__'); })()",
         "JSON.stringify({toJSON: () => 42})",
@@ -1587,7 +1909,15 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ),
         ("function* numbers() { yield 1; } return [...numbers()];", "generators"),
         ("return process.cwd();", "isn't available on `process`"),
-        ("return new Map<string, number>();", "new Map"),
+        ("return new Map().size;", "an empty `new Map()` needs type arguments"),
+        (
+            "const m = new Map<string, number>(); m.set('a', 'b'); return m.size;",
+            "\"b\" isn't assignable to number",
+        ),
+        (
+            "const s: Set<number> = new Set<number>(); const t: Set<number | string> = s; return t.size;",
+            "isn't assignable to Set<number | string>",
+        ),
         (
             "const f=(value:string)=>typeof value; return f();",
             "missing required function arguments",
@@ -2214,7 +2544,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 #[test]
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'clear'),read([],'entries'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
+    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -2227,8 +2557,8 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     assert_eq!(
         result,
         json!([
-            ["TypeError", "Unsupported built-in set.clear"],
-            ["TypeError", "Unsupported built-in array.entries"],
+            ["TypeError", "Unsupported built-in set.union"],
+            ["TypeError", "Unsupported built-in array.copyWithin"],
             "undefined",
             2,
             "undefined"
@@ -3002,5 +3332,143 @@ fn language_construct_type_rules() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn build_time_namespaces_resolve_members_and_refuse_whole_values() {
+    // picomatch's shape: a function with own properties, Object.assign onto it, a default export
+    // object, and helper objects called as `utils.f(x)` from another module.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("utils.mjs"),
+        r#"
+export const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+export const constants = { REGEX_SLASH: /\//g, DEFAULT: { depth: 1 } };
+const pico = (glob) => (input) => input.startsWith(glob);
+pico.scan = (input) => ({ base: input.split('/')[0] });
+pico.constants = constants;
+function main(glob, options) { return pico(isObject(options) ? options.prefix + glob : glob); }
+Object.assign(main, pico, undefined, { version: '4.0.7' });
+main.makeRe = (glob) => new RegExp('^' + glob.replace(constants.REGEX_SLASH, '\\/'));
+export default main;
+"#,
+    )
+    .unwrap();
+    let expression = r#"[match('src')('src/a.ts'), match('a', { prefix: 'src/' })('src/a.ts'), match.version, match.scan('src/b').base,
+  match.makeRe('a/b').source, match.makeRe('a/b').test('a/bc'), match.constants.DEFAULT.depth, utils.isObject({}), utils.isObject(null),
+  utils.constants.REGEX_SLASH.flags, utils.constants.DEFAULT === match.constants.DEFAULT]"#;
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args([
+            "--input-type=module",
+            "-e",
+            &format!("import match from './utils.mjs'; import * as utils from './utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
+        ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        format!(
+            r#"
+import {{ action, defineConfig }} from 'zero';
+import match from './utils.mjs';
+import * as utils from './utils.mjs';
+export default defineConfig({{ name: 'namespaces', actions: {{ probe: action({{ input: {{}}, handler: () => {expression} }}) }} }});
+"#
+        ),
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), new \Zero\JsObject()));
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-namespaces/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+    // The namespace object and the function with properties are never built in PHP.
+    let functions =
+        std::fs::read_to_string(content.join("plugins/zero-app-namespaces/zero/app/functions.php")).unwrap();
+    assert!(!functions.contains("'version'"), "{functions}");
+
+    for (declarations, handler, message, help) in [
+        (
+            "const o = { f: (n: number) => n };",
+            "{ const copy = { ...o }; return 1; }",
+            "`o` holds functions",
+            "o.f(...)",
+        ),
+        (
+            "const o = { f: (n: number) => n };",
+            "{ o.f = (n: number) => n + 1; return 1; }",
+            "`o` holds functions",
+            "o.f(...)",
+        ),
+        (
+            "const o = { f: (n: number) => n };",
+            "o.missing",
+            "`o.missing` doesn't exist",
+            "",
+        ),
+        (
+            "const o = { f: (n: number) => n };",
+            "o.hasOwnProperty('f')",
+            "reads an inherited property",
+            "own property",
+        ),
+        (
+            "function f() { return 1; } f.x = 1;",
+            "typeof f",
+            "function with properties",
+            "f.x",
+        ),
+        (
+            "function f() { return 1; } f.x = 1;",
+            "f.name",
+            "isn't supported on a function with properties",
+            "name",
+        ),
+        (
+            "function f() { return 1; } f.name = 'g';",
+            "f()",
+            "can't set `name` on a function",
+            "aren't modeled",
+        ),
+        (
+            "function f() { return 1; } const n = f.length;",
+            "n",
+            "reading `length` of a function",
+            "aren't modeled",
+        ),
+        (
+            "const target = Object.assign(1, {});",
+            "target",
+            "needs an object or function target",
+            "plain object",
+        ),
+        (
+            "function f() { return 1; }",
+            "Object.assign({}, { a: 1 })",
+            "unsupported overload of `Object.assign`",
+            "build time only",
+        ),
+    ] {
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\n{declarations}\nexport default defineConfig({{name:'namespaces',actions:{{probe:action({{input:{{}},handler:()=>{handler}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let d = &report["diagnostics"][0];
+        assert!(d["message"].as_str().unwrap().contains(message), "{message}: {report}");
+        assert!(d["location"].is_object(), "{report}");
+        assert!(d["help"].as_str().unwrap_or("").contains(help), "{help}: {report}");
     }
 }

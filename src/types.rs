@@ -19,6 +19,8 @@ pub enum Ty {
     Num,
     NumLit(f64),
     FreshNumLit(f64),
+    /// A JavaScript BigInt (`Zero\JsBigInt` at runtime).
+    BigInt,
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
     StrLit(String),
@@ -54,6 +56,12 @@ pub enum Ty {
     Obj(IndexMap<String, (Ty, bool)>),
     /// `Record<string, T>`
     Map(Box<Ty>),
+    /// A JavaScript `Map<K, V>` (`Zero\JsMap`): SameValueZero keys, insertion order, object keys by identity.
+    MapOf(Box<Ty>, Box<Ty>),
+    /// A JavaScript `Set<T>` (`Zero\JsSet`).
+    SetOf(Box<Ty>),
+    /// A built-in iterator (`map.keys()`, `array.entries()`, ...) yielding T, consumed once.
+    Iter(Box<Ty>),
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
     /// Callable parameter metadata; inner type is the rest binding's array.
@@ -289,12 +297,16 @@ impl Ty {
                 format!("{{ {}{} }}", f.join("; "), if fields.len() > 4 { "; ..." } else { "" })
             }
             Ty::Map(t) => format!("Record<string, {}>", t.describe()),
+            Ty::MapOf(k, v) => format!("Map<{}, {}>", k.describe(), v.describe()),
+            Ty::SetOf(t) => format!("Set<{}>", t.describe()),
+            Ty::Iter(t) => format!("IterableIterator<{}>", t.describe()),
             Ty::Union(ts) => ts.iter().map(Ty::describe).collect::<Vec<_>>().join(" | "),
             Ty::Fn(..) => "a function".into(),
             Ty::Rest(t) => format!("...{}", t.describe()),
             Ty::Predicate(_, target) => format!("a type predicate for {}", target.describe()),
             Ty::Promise(t) => format!("Promise<{}>", t.describe()),
             Ty::Date => "Date".into(),
+            Ty::BigInt => "bigint".into(),
             Ty::Regex => "RegExp".into(),
             Ty::Host(h) => h.name().into(),
             Ty::Error => "Error".into(),
@@ -694,11 +706,20 @@ fn obj(fields: &[(&str, Ty)]) -> Ty {
 
 /// `{ id, name, role }` (§5.1).
 pub fn user() -> Ty {
-    obj(&[
-        ("id", Ty::Num),
-        ("name", Ty::Str),
-        ("role", Ty::union(ROLES.map(|role| Ty::StrLit(role.into())))),
-    ])
+    obj(&[("id", Ty::Num), ("name", Ty::Str), ("role", role())])
+}
+
+/// `Role`: the roles a `User` can have.
+pub fn role() -> Ty {
+    Ty::union(ROLES.map(|role| Ty::StrLit(role.into())))
+}
+
+/// `HookCtx<T>` as a helper names it: what every hook and action handler receives. Before-hooks
+/// also carry their data, so `data` is optional and the action and after-hook context fit too.
+pub fn hook_ctx_with(data: Ty) -> Ty {
+    let Ty::Obj(mut f) = hook_ctx() else { unreachable!() };
+    f.insert("data".into(), (data, true));
+    Ty::Obj(f)
 }
 
 /// `ctx` for hooks and actions (§1.7).

@@ -437,13 +437,6 @@ impl Lowerer {
                 }
             }
             a::Statement::ForOfStatement(f) => {
-                if f.r#await {
-                    return self.unsupported(
-                        f.span,
-                        "`for await`",
-                        "Zero's async calls already block; use `for ... of`",
-                    );
-                }
                 let a::ForStatementLeft::VariableDeclaration(v) = &f.left else {
                     return self.unsupported(
                         f.span,
@@ -458,6 +451,7 @@ impl Lowerer {
                     _ => return self.unsupported(v.span, "this loop declaration", "use `const`"),
                 };
                 Stmt::ForOf {
+                    is_await: f.r#await,
                     kind,
                     pat: self.pattern(&v.declarations[0].id)?,
                     iter: self.expr(&f.right)?,
@@ -627,6 +621,8 @@ impl Lowerer {
             let mut methods = Vec::new();
             let mut constructor = None;
             let mut names = std::collections::HashSet::new();
+            let mut accessors = Vec::new();
+            let mut accessor_names = std::collections::HashSet::new();
             for element in &c.body.body {
                 match element {
                     // Erased members have no runtime form: abstract members,
@@ -640,9 +636,16 @@ impl Lowerer {
                                 || m.r#type == a::MethodDefinitionType::TSAbstractMethodDefinition) => {}
                     a::ClassElement::TSIndexSignature(_) if self.erase_types => {}
                     a::ClassElement::PropertyDefinition(p) => {
-                        let Some(name) = p.key.static_name() else {
-                            return self.unsupported(p.span, "private class fields", "use public fields");
+                        let Some(name) = class_member_name(&p.key) else {
+                            return self.unsupported(p.span, "computed class fields", "use named fields");
                         };
+                        if name.starts_with('#') != p.key.is_private_identifier() {
+                            return self.unsupported(
+                                p.span,
+                                "quoted class member names starting with #",
+                                "rename the member",
+                            );
+                        }
                         if p.computed
                             || !p.decorators.is_empty()
                             || p.declare
@@ -655,9 +658,12 @@ impl Lowerer {
                             );
                         }
                         if matches!(
-                            name.as_ref(),
+                            name.as_str(),
                             "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
-                        ) || !names.insert((p.r#static, name.to_string()))
+                        ) || accessor_names
+                            .iter()
+                            .any(|(s, _, n): &(bool, bool, String)| *s == p.r#static && *n == name)
+                            || !names.insert((p.r#static, name.to_string()))
                         {
                             return self.unsupported(
                                 p.span,
@@ -674,20 +680,27 @@ impl Lowerer {
                         });
                     }
                     a::ClassElement::MethodDefinition(m) => {
-                        let Some(name) = m.key.static_name() else {
-                            return self.unsupported(m.span, "private class methods", "use public methods");
+                        let Some(name) = class_member_name(&m.key) else {
+                            return self.unsupported(m.span, "computed class methods", "use named methods");
                         };
+                        if name.starts_with('#') != m.key.is_private_identifier() {
+                            return self.unsupported(
+                                m.span,
+                                "quoted class member names starting with #",
+                                "rename the member",
+                            );
+                        }
                         if m.computed
                             || !m.decorators.is_empty()
                             || type_only(m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public))
-                            || matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set)
                         {
                             return self.unsupported(
                                 m.span,
-                                "computed, decorated, private or accessor class methods",
+                                "computed, decorated or private class methods",
                                 "use public named methods",
                             );
                         }
+                        let accessor = matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set);
                         if type_only(m.value.type_parameters.is_some()) || m.value.params.rest.is_some() {
                             return self.unsupported(
                                 m.span,
@@ -816,10 +829,35 @@ impl Lowerer {
                                 }
                             }
                             constructor = Some(f);
+                        } else if accessor {
+                            let setter = m.kind == a::MethodDefinitionKind::Set;
+                            if matches!(name.as_str(), "__proto__" | "prototype" | "constructor")
+                                || names.contains(&(m.r#static, name.clone()))
+                                || !accessor_names.insert((m.r#static, setter, name.clone()))
+                            {
+                                return self.unsupported(
+                                    m.span,
+                                    "duplicate or protocol class members",
+                                    "use distinct ordinary member names",
+                                );
+                            }
+                            accessors.push(ClassAccessor {
+                                name: name.clone(),
+                                is_static: m.r#static,
+                                setter,
+                                func: f,
+                            });
                         } else {
+                            if accessor_names.iter().any(|(s, _, n)| *s == m.r#static && *n == name) {
+                                return self.unsupported(
+                                    m.span,
+                                    "duplicate or protocol class members",
+                                    "use distinct ordinary member names",
+                                );
+                            }
                             if matches!(
-                                name.as_ref(),
-                                "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
+                                name.as_str(),
+                                "__proto__" | "prototype" | "constructor" | "toString" | "valueOf"
                             ) || !names.insert((m.r#static, name.to_string()))
                             {
                                 return self.unsupported(
@@ -851,6 +889,7 @@ impl Lowerer {
                 fields,
                 methods,
                 constructor,
+                accessors,
                 span: self.sp(c.span),
             }))
         })();
@@ -861,9 +900,6 @@ impl Lowerer {
     fn function_inner(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
         if let Some(id) = &f.id {
             self.binding_name(id.name.as_str(), id.span)?;
-        }
-        if f.generator {
-            return self.unsupported(f.span, "generators", "return an array");
         }
         let Some(body) = &f.body else {
             return self.unsupported(f.span, "a function without a body", "");
@@ -883,6 +919,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
+            is_generator: f.generator,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -903,6 +940,7 @@ impl Lowerer {
             params,
             body,
             is_async: f.r#async,
+            is_generator: false,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -1019,7 +1057,7 @@ impl Lowerer {
             }
             E::BooleanLiteral(b) => self.mk(span, ExprKind::Bool(b.value)),
             E::NullLiteral(_) => self.mk(span, ExprKind::Null),
-            E::BigIntLiteral(b) => return self.unsupported(b.span, "BigInt", "use numbers"),
+            E::BigIntLiteral(b) => self.mk(span, ExprKind::BigInt(b.value.to_string())),
             E::RegExpLiteral(r) => self.mk(
                 span,
                 ExprKind::Regex {
@@ -1336,6 +1374,10 @@ impl Lowerer {
                 ExprKind::New {
                     callee: Box::new(self.expr(&n.callee)?),
                     args: self.args(&n.arguments)?,
+                    type_args: match &n.type_arguments {
+                        Some(t) => t.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
+                        None => vec![],
+                    },
                 },
             ),
             E::ChainExpression(c) => {
@@ -1374,7 +1416,25 @@ impl Lowerer {
                     "use a named module-level class declaration",
                 );
             }
-            E::YieldExpression(y) => return self.unsupported(y.span, "generators", ""),
+            E::PrivateInExpression(p) => self.mk(
+                p.span,
+                ExprKind::Call {
+                    callee: Box::new(self.mk(p.span, ExprKind::Ident(":private_in".into()))),
+                    args: vec![
+                        ArrEl::Item(self.mk(p.left.span, ExprKind::Str(format!("#{}", p.left.name)))),
+                        ArrEl::Item(self.expr(&p.right)?),
+                    ],
+                    optional: false,
+                    type_args: vec![],
+                },
+            ),
+            E::YieldExpression(y) => self.mk(
+                span,
+                ExprKind::Yield {
+                    arg: y.argument.as_ref().map(|a| self.expr(a).map(Box::new)).transpose()?,
+                    delegate: y.delegate,
+                },
+            ),
             E::ImportExpression(i) => return self.unsupported(i.span, "dynamic `import()`", "use a static import"),
             E::Super(s) if self.class_context.get() => self.mk(s.span, ExprKind::Ident("super".into())),
             E::Super(s) => return self.unsupported(s.span, "`super` outside a class", ""),
@@ -1453,9 +1513,15 @@ impl Lowerer {
                     optional: c.optional,
                 },
             ),
-            a::MemberExpression::PrivateFieldExpression(p) => {
-                return self.unsupported(p.span, "private fields", "");
-            }
+            a::MemberExpression::PrivateFieldExpression(p) => self.mk(
+                p.span,
+                ExprKind::Member {
+                    obj: Box::new(self.expr(&p.object)?),
+                    prop: format!("#{}", p.field.name),
+                    optional: p.optional,
+                    prop_span: self.sp(p.field.span),
+                },
+            ),
         })
     }
 
@@ -1546,6 +1612,7 @@ impl Lowerer {
         use a::TSType as T;
         Ok(match t {
             T::TSNumberKeyword(_) => TyAnn::Num,
+            T::TSBigIntKeyword(_) => TyAnn::BigInt,
             T::TSStringKeyword(_) => TyAnn::Str,
             T::TSBooleanKeyword(_) => TyAnn::Bool,
             T::TSNullKeyword(_) => TyAnn::Null,
@@ -1847,6 +1914,11 @@ fn initialized(pattern: &Pat, pending: &mut Vec<(&str, Span)>) {
     pending.retain(|(name, span)| !bound.iter().any(|(b, s)| b == name && s == span));
 }
 
+/// Whether `value` reads the identifier `name` (not a string or a property key with that text).
+pub fn reads_identifier(value: &Expr, name: &str) -> bool {
+    check_parameter_default(value, &[(name, value.span)], true).is_err_and(|d| d.message.contains("current or a later"))
+}
+
 fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_functions: bool) -> Result<()> {
     let children: Vec<&Expr> = match &value.kind {
         ExprKind::Func(function) if allow_functions => {
@@ -1897,12 +1969,14 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
             }
             children
         }
-        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => std::iter::once(callee.as_ref())
+        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => std::iter::once(callee.as_ref())
             .chain(args.iter().map(|v| match v {
                 ArrEl::Item(v) | ArrEl::Spread(v) => v,
             }))
             .collect(),
-        ExprKind::Unary(_, value)
+        ExprKind::Yield { arg: None, .. } => vec![],
+        ExprKind::Yield { arg: Some(value), .. }
+        | ExprKind::Unary(_, value)
         | ExprKind::Delete(value)
         | ExprKind::IsNullish(value, _)
         | ExprKind::Chain(value)
@@ -1929,6 +2003,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
         | ExprKind::Null
         | ExprKind::Undefined
         | ExprKind::Regex { .. }
+        | ExprKind::BigInt(_)
         | ExprKind::TemplateStrings { .. } => Vec::new(),
     };
     for child in children {
@@ -2075,4 +2150,12 @@ fn check_parameter_defaults(parameters: &[Param], body: &FnBody) -> Result<()> {
         check_parameter_pattern(&parameter.pat, &uninitialized, allow_functions)?;
     }
     Ok(())
+}
+
+/// Class member names; private names keep their `#` so they can never collide with public keys.
+fn class_member_name(key: &a::PropertyKey<'_>) -> Option<String> {
+    match key {
+        a::PropertyKey::PrivateIdentifier(p) => Some(format!("#{}", p.name)),
+        other => other.static_name().map(|n| n.to_string()),
+    }
 }

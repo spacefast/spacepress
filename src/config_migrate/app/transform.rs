@@ -1122,6 +1122,19 @@ fn legacy_type(name: &str) -> Option<&'static str> {
     })
 }
 
+/// The default expressions inside a binding pattern (`{ a = x }`, `[b = y]`).
+fn pattern_defaults<'a>(pattern: &'a Pat, out: &mut Vec<&'a Expr>) {
+    match pattern {
+        Pat::Id(..) => {}
+        Pat::Default(inner, value) => {
+            out.push(value);
+            pattern_defaults(inner, out);
+        }
+        Pat::Obj { props, .. } => props.iter().for_each(|(_, p)| pattern_defaults(p, out)),
+        Pat::Arr { elems, .. } => elems.iter().flatten().for_each(|p| pattern_defaults(p, out)),
+    }
+}
+
 /// A destructured parameter's source text split into its pattern and its type annotation,
 /// without a `= default`. Uses the parser, so object types and nested patterns are read exactly.
 fn destructured_parameter(text: &str) -> Option<(String, String)> {
@@ -1210,14 +1223,9 @@ fn handler(
     for (position, p) in f.params.iter().skip(1).enumerate() {
         // A default runs in the handler's bindings, where the 0.8 context parameter no longer
         // exists (it became `__z08ctx`); a default that reads it needs a manual port.
-        let default_text = p.default.as_ref().map(|d| raw(source, d.span)).unwrap_or("");
-        let pattern_text = raw(source, p.pat.span());
-        if ctx != "__z08unused"
-            && [default_text, pattern_text].iter().any(|t| {
-                t.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
-                    .any(|w| w == ctx)
-            })
-        {
+        let mut defaults: Vec<&Expr> = p.default.iter().collect();
+        pattern_defaults(&p.pat, &mut defaults);
+        if ctx != "__z08unused" && defaults.iter().any(|d| crate::lower::reads_identifier(d, ctx)) {
             return Err(fail(
                 at,
                 "rest and default parameters need a manual input schema when a default reads the context",
@@ -1904,7 +1912,7 @@ impl Rewrite<'_> {
                 self.expr(b)?;
                 self.expr(c)?;
             }
-            E::Call { callee, args, .. } | E::New { callee, args } => {
+            E::Call { callee, args, .. } | E::New { callee, args, .. } => {
                 self.expr(callee)?;
                 for a in args {
                     self.arr(a)?;

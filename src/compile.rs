@@ -295,6 +295,10 @@ pub struct Compiler<'a, 'p> {
     helper_values: HashMap<(usize, usize), String>,
     helper_closures: HashMap<usize, Rc<Closure>>,
     helper_types: HashMap<usize, Ty>,
+    /// Emitted helpers for captured values: (plugin owner, kind, allocation). Kinds in use:
+    /// 0 array, 1 object, 2 regex, 5 unregistered symbol, 6 WeakMap/WeakSet. Other branches
+    /// claim 3 (Value::Coll, feat/stdlib-objects) and 4 (Value::Native, feat/binary-data); a
+    /// new value kind takes the next unused number so addresses of different kinds never collide.
     data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
     used_names: HashSet<String>,
@@ -3430,7 +3434,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     SymbolVal::Registered(key) => format!("\\Zero\\JsSymbol::for({})", php_str(key)),
                     SymbolVal::WellKnown(name) => format!("\\Zero\\JsSymbol::wellKnown({})", php_str(name)),
                     SymbolVal::Unique(description) => {
-                        let key = (self.owner(), 3, Rc::as_ptr(symbol) as usize);
+                        let key = (self.owner(), 5, Rc::as_ptr(symbol) as usize);
                         let name = match self.data_helpers.get(&key) {
                             Some(name) => name.clone(),
                             None => {
@@ -3458,7 +3462,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("use the {kind} from imported JavaScript, or key a Record<string, T> by a string id"),
                     );
                 }
-                let key = (self.owner(), 4, Rc::as_ptr(weak) as usize);
+                let key = (self.owner(), 6, Rc::as_ptr(weak) as usize);
                 let name = match self.data_helpers.get(&key) {
                     Some(name) => name.clone(),
                     None => {

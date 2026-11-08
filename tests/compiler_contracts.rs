@@ -1355,7 +1355,10 @@ echo \Zero\Js::jsonStringify(new \Zero\JsArray([$run('probe'), $run('unmodeled')
             &content.join("plugins/zero-app-symbols/zero/app"),
         ],
     );
-    let refused = json!(["TypeError", "Symbol-keyed properties are only supported on plain objects"]);
+    let refused = json!([
+        "TypeError",
+        "Symbol-keyed properties are only supported on plain objects"
+    ]);
     assert_eq!(actual, json!([expected, [refused, refused, refused, refused]]));
 
     // Authored TypeScript has no symbol type and no weak collections; both are located refusals.

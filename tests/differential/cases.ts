@@ -272,6 +272,8 @@ class LanguageDraftView extends LanguageView {
 }
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
+// Feature detection on globalThis is resolved at compile time in both phases.
+const GLOBAL_DETECTION = [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.Math, typeof globalThis.window, typeof globalThis.location, globalThis.Deno === undefined];
 
 
 // Each action is independent: Node shares one module; PHP starts a process per case.
@@ -457,6 +459,10 @@ export default defineConfig({
       nullableParameter(null), nullableParameter({ n: 3 }),
     ]),
     ...laneRefs,
+    globalDetection: run(() => ({
+      buildTime: GLOBAL_DETECTION,
+      runtime: [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.WeakMap, typeof globalThis.JSON, typeof globalThis.window, typeof globalThis.Bun, typeof globalThis.Deno, typeof globalThis.document, globalThis.window === undefined, globalThis.Bun !== undefined, typeof Symbol, typeof WeakSet],
+    })),
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
     argumentSerialization: run(() => argumentSerialization("original", "tail")),

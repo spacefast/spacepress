@@ -4738,6 +4738,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if g == "Symbol" {
+            self.require_javascript_symbols(span)?;
+        }
         self.builtin_args("global", g, args, span)?;
         if g == "parseInt" {
             crate::builtins::check_parse_int_literals(args, span)?;
@@ -4757,7 +4760,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(Out::atom(format!("\\Zero\\Js::dynamicRegExpCall({argv})"), Ty::Dynamic));
         }
         if g == "Symbol" {
-            self.require_javascript_symbols(span)?;
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(format!("\\Zero\\JsSymbol::create({argv})"), Ty::Dynamic));
         }
@@ -4835,9 +4837,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::eval::GlobalMember::Refused => Err(crate::eval::refused_global_member(m, span)),
             };
         }
+        if g == "Symbol" {
+            self.require_javascript_symbols(span)?;
+        }
         self.builtin_args(g, m, args, span)?;
         if g == "Symbol" && matches!(m, "for" | "keyFor") {
-            self.require_javascript_symbols(span)?;
             let argv = self.javascript_args(args)?;
             let method = if m == "for" { "for" } else { "keyFor" };
             return Ok(Out::atom(

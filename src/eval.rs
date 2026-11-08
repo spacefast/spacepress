@@ -334,11 +334,12 @@ const HOST_GLOBALS: &[&str] = &[
     "Function",
 ];
 
-/// Browser, worker and other server-runtime globals the PHP runtime never provides.
+/// Browser, worker and other server-runtime globals that neither the PHP runtime
+/// nor Node provides, so `undefined` matches the Node oracle. `navigator` is not
+/// here: Node 21+ defines it.
 pub const ABSENT_GLOBALS: &[&str] = &[
     "window",
     "document",
-    "navigator",
     "self",
     "location",
     "Bun",
@@ -389,7 +390,7 @@ pub fn refused_global_member(name: &str, span: Span) -> Diag {
         format!("`globalThis.{name}` depends on the host and can't be resolved at compile time"),
     )
     .help(if HOST_GLOBALS.contains(&name) {
-        format!("call `{name}` directly where Zero supports it, instead of detecting it on globalThis")
+        format!("remove the `{name}` detection and use a capability Zero supports in the handler")
     } else {
         "only Zero's own globals and absent browser or server runtimes (window, document, Bun, Deno, ...) can be detected; remove the detection".into()
     })

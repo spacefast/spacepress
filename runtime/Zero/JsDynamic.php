@@ -216,36 +216,39 @@ trait JsDynamic
         throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
     }
 
-    /** Object literals with runtime keys or spreads: ['k', key, value] and ['s', source] in source order. */
+    /**
+     * Object literals with runtime keys or spreads: ['k', key, value] and ['s', source] in
+     * source order. Both define own data properties, so a '__proto__' key is ordinary data.
+     */
     public static function dynamicObject(array ...$parts): JsObject
     {
         $out = new JsObject();
         foreach ($parts as $part) {
             if ($part[0] === 'k') {
-                if ($part[1] instanceof JsSymbol) { $out->setSymbol($part[1], $part[2]); }
-                else { self::set($out, self::key($part[1]), $part[2]); }
+                if ($part[1] instanceof JsSymbol) { self::defineSymbol($out, $part[1], $part[2]); }
+                else { $out->p[self::key($part[1])] = $part[2]; }
                 continue;
             }
             $source = $part[1];
             if (self::isNullish($source) || is_bool($source) || is_int($source) || is_float($source) || $source instanceof JsSymbol) { continue; }
             if (is_string($source)) {
-                foreach (self::from($source)->a as $index => $char) { $out->p[$index] = $char; }
+                for ($index = 0, $length = self::length($source); $index < $length; $index++) { $out->p[$index] = self::strAt($source, $index); }
                 continue;
             }
             if ($source instanceof JsObject) {
-                foreach (self::ownKeys($source->p) as $key) { self::set($out, (string) $key, $source->p[$key]); }
+                foreach (self::ownKeys($source->p) as $key) { $out->p[$key] = $source->p[$key]; }
                 foreach ($source->symbols as [$symbol, $value, $enumerable]) {
-                    if ($enumerable) { $out->setSymbol($symbol, $value); }
+                    if ($enumerable) { self::defineSymbol($out, $symbol, $value); }
                 }
                 continue;
             }
             if ($source instanceof JsArray) {
                 foreach ($source->a as $index => $item) { $out->p[$index] = $item; }
-                foreach (self::ownKeys($source->p) as $key) { self::set($out, (string) $key, $source->p[$key]); }
+                foreach (self::ownKeys($source->p) as $key) { $out->p[$key] = $source->p[$key]; }
                 continue;
             }
             if ($source instanceof JsArguments) {
-                foreach (self::dynamicKeys($source)->a as $key) { self::set($out, $key, self::dynamicGet($source, $key)); }
+                foreach (self::dynamicKeys($source)->a as $key) { $out->p[$key] = self::dynamicGet($source, $key); }
                 continue;
             }
             if ($source instanceof JsSet || $source instanceof JsMap || $source instanceof JsWeakMap || $source instanceof JsWeakSet
@@ -253,6 +256,12 @@ trait JsDynamic
             throw new JsError('Unsupported object spread source', 'TypeError');
         }
         return $out;
+    }
+
+    /** CreateDataProperty for a symbol key: an ordinary writable, enumerable, configurable slot. */
+    private static function defineSymbol(JsObject $target, JsSymbol $key, mixed $value): void
+    {
+        $target->symbols[spl_object_id($key)] = [$key, $value, true, true, true];
     }
 
     /**

@@ -191,6 +191,88 @@ fn served(relative: &str) -> bool {
         || runtime_owned(relative))
 }
 
+/// Where each key of the config's top-level object starts (1-based line, UTF-16 column), first
+/// occurrence wins. Scans the JSONC text itself, skipping strings and comments, so a nested key
+/// or a string value with the same text is never mistaken for it.
+fn top_level_keys(text: &str) -> BTreeMap<String, (usize, usize)> {
+    let mut keys = BTreeMap::new();
+    let (mut depth, mut line, mut column) = (0usize, 1usize, 1usize);
+    // The string just closed at depth 1 and where it started; a `:` next makes it a key.
+    let mut pending: Option<(String, usize, usize)> = None;
+    let mut chars = text.char_indices().peekable();
+    let advance = |c: char, line: &mut usize, column: &mut usize| {
+        if c == '\n' {
+            *line += 1;
+            *column = 1;
+        } else {
+            *column += c.len_utf16();
+        }
+    };
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '"' => {
+                let (start_line, start_column) = (line, column);
+                advance(c, &mut line, &mut column);
+                let mut end = text.len();
+                while let Some((j, s)) = chars.next() {
+                    advance(s, &mut line, &mut column);
+                    if s == '\\' {
+                        if let Some((_, e)) = chars.next() {
+                            advance(e, &mut line, &mut column);
+                        }
+                    } else if s == '"' {
+                        end = j + 1;
+                        break;
+                    }
+                }
+                pending = (depth == 1)
+                    .then(|| serde_json::from_str::<String>(&text[i..end]).ok())
+                    .flatten()
+                    .map(|key| (key, start_line, start_column));
+                continue;
+            }
+            '/' if matches!(chars.peek(), Some((_, '/'))) => {
+                for (_, s) in chars.by_ref() {
+                    if s == '\n' {
+                        advance(s, &mut line, &mut column);
+                        break;
+                    }
+                }
+                continue;
+            }
+            '/' if matches!(chars.peek(), Some((_, '*'))) => {
+                advance(c, &mut line, &mut column);
+                let mut previous = ' ';
+                for (_, s) in chars.by_ref() {
+                    advance(s, &mut line, &mut column);
+                    if previous == '*' && s == '/' {
+                        break;
+                    }
+                    previous = s;
+                }
+                continue;
+            }
+            ':' => {
+                if let Some((key, l, col)) = pending.take() {
+                    keys.entry(key).or_insert((l, col));
+                }
+            }
+            '{' | '[' => {
+                depth += 1;
+                pending = None;
+            }
+            '}' | ']' => {
+                depth = depth.saturating_sub(1);
+                pending = None;
+            }
+            c if c.is_whitespace() => {}
+            _ => pending = None,
+        }
+        advance(c, &mut line, &mut column);
+    }
+    keys
+}
+
 /// A capsule's files, capsule-relative, sorted.
 #[derive(Default)]
 struct Tree {
@@ -428,13 +510,8 @@ pub(super) fn sweep(
     });
     if let Some((config_file, config, text)) = config {
         // The key's line in the config file, where the fix goes.
-        let line_of = |key: &str| -> (usize, usize) {
-            let needle = format!("\"{key}\"");
-            text.lines()
-                .enumerate()
-                .find_map(|(i, l)| l.find(&needle).map(|c| (i + 1, l[..c].encode_utf16().count() + 1)))
-                .unwrap_or((1, 1))
-        };
+        let keys = top_level_keys(text);
+        let line_of = |key: &str| -> (usize, usize) { keys.get(key).copied().unwrap_or((1, 1)) };
         // Fail closed: every key 0.8 applied is refused unless it is known to change nothing.
         for key in config.as_object().into_iter().flat_map(|o| o.keys()) {
             if NO_OP_KEYS.contains(&key.as_str()) {

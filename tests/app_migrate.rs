@@ -291,7 +291,9 @@ fn omissions_are_errors_and_static_files_carry_over() {
             ("Z08_OMITTED_REDIRECTS", "/sf.jsonc/redirects", "sf.jsonc", 4),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/fallback", "sf.jsonc", 5),
             // A key the converter doesn't know to be a no-op is refused, not passed through.
-            ("Z08_OMITTED_CONFIG", "/sf.jsonc/theme", "sf.jsonc", 6),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/meta", "sf.jsonc", 6),
+            // Located at the top-level key, not at the "theme" string inside meta.
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/theme", "sf.jsonc", 7),
             ("Z08_OMITTED_CLEAN_URLS", "/sf.jsonc/cleanUrls", "sf.jsonc", 1),
             ("Z08_OMITTED_CONFIG", "/theme.json", "theme.json", 1),
         ],

@@ -288,13 +288,11 @@ fn omissions_are_errors_and_static_files_carry_over() {
             ("Z08_OMITTED_STATIC", "/assets/logo.png", "assets/logo.png", 1),
             ("Z08_OMITTED_CLIENT", "/client", "client/index.tsx", 1),
             ("Z08_OMITTED_PUBLIC", "/public/site.css", "public/site.css", 1),
-            ("Z08_OMITTED_REDIRECTS", "/sf.jsonc/redirects", "sf.jsonc", 4),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/fallback", "sf.jsonc", 5),
             // A key the converter doesn't know to be a no-op is refused, not passed through.
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/meta", "sf.jsonc", 6),
             // Located at the top-level key, not at the "theme" string inside meta.
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/theme", "sf.jsonc", 7),
-            ("Z08_OMITTED_CLEAN_URLS", "/sf.jsonc/cleanUrls", "sf.jsonc", 1),
             ("Z08_OMITTED_CONFIG", "/theme.json", "theme.json", 1),
         ],
         "{report:#}"
@@ -483,13 +481,35 @@ fn omissions_are_errors_and_static_files_carry_over() {
     );
 
     // A server-only project: no errors, and its static files land in public/ at the same URLs.
+    // The keys Spacefast applies to the Space travel unchanged in the candidate's own sf.jsonc,
+    // which the v2 publish uploads; the 0.8 runtime and name don't.
+    let platform = temp.path().join("server-only-source");
+    copy_tree(&fixture("server-only"), &platform);
+    let settings = serde_json::json!({
+        "redirects": [{ "source": "/old", "destination": "/new", "status": 301 }],
+        "headers": [{ "source": "/(.*)", "headers": [{ "key": "x-frame-options", "value": "DENY" }] }],
+        "cleanUrls": false,
+        "access": "public",
+        "crons": { "nightly": { "path": "/api/nightly", "schedule": "daily" } },
+        "build": { "outputDirectory": "dist" },
+    });
+    let mut config = settings.clone();
+    config["runtime"] = serde_json::json!({ "kind": "zero", "server": "server/index.ts" });
+    config["name"] = "Server only".into();
+    std::fs::write(
+        platform.join("sf.jsonc"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
     let out = temp.path().join("server-only");
-    let (ok, report) = migrate(&fixture("server-only"), &out, &["--space", "spc_migrate_test"]);
+    let (ok, report) = migrate(&platform, &out, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
     assert_eq!(report["errors"], serde_json::json!([]));
+    let carried: Value = serde_json::from_str(&std::fs::read_to_string(out.join("sf.jsonc")).unwrap()).unwrap();
+    assert_eq!(carried, settings);
     assert_eq!(
         std::fs::read_to_string(out.join("public/index.html")).unwrap(),
-        std::fs::read_to_string(fixture("server-only").join("index.html")).unwrap()
+        std::fs::read_to_string(platform.join("index.html")).unwrap()
     );
     assert!(out.join("public/humans.txt").is_file());
     // Repository files and source are not content.
@@ -498,20 +518,17 @@ fn omissions_are_errors_and_static_files_carry_over() {
     }
     build(&out);
 
-    // With no config file, 0.8 still served `<name>.htm` at `/<name>`; the error is at the page.
+    // With no config file, the engine serves `<name>.htm` at `/<name>` for files published from
+    // public/, by default, as it did for 0.8; the page carries over with no error and no sf.jsonc.
     let bare = temp.path().join("bare");
     copy_tree(&fixture("server-only"), &bare);
     std::fs::remove_file(bare.join("sf.jsonc")).unwrap();
     std::fs::write(bare.join("about.htm"), "<p>About</p>\n").unwrap();
-    let (ok, report) = migrate(&bare, &temp.path().join("bare-out"), &["--space", "spc_migrate_test"]);
-    assert!(!ok);
-    let refused: Vec<(&str, &str)> = report["errors"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
-        .collect();
-    assert_eq!(refused, [("Z08_OMITTED_CLEAN_URLS", "about.htm")], "{report:#}");
+    let out = temp.path().join("bare-out");
+    let (ok, report) = migrate(&bare, &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    assert!(out.join("public/about.htm").is_file());
+    assert!(!out.join("sf.jsonc").exists());
 }
 
 #[test]

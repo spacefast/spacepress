@@ -99,22 +99,14 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_OMITTED_REDIRECTS",
-        feature: "redirect, rewrite and header rules (_redirects, _headers, sf.jsonc)",
-        v2: "routes in zero.config.ts or the Space's own rules",
-        fix: "Recreate each rule as a v2 route or a Space rule before publishing.",
+        feature: "redirect and header rule files (_redirects, _headers)",
+        v2: "redirects, rewrites and headers in sf.jsonc",
+        fix: "Move each rule into sf.jsonc `redirects`, `rewrites` or `headers`; the candidate carries those.",
         test: |_, r| r.starts_with(omitted::REDIRECTS),
         example: (
             "/_redirects",
             "the redirect, rewrite and header rules are not carried over: x",
         ),
-    },
-    Rule {
-        code: "Z08_OMITTED_CLEAN_URLS",
-        feature: "clean URLs (/<name> serving <name>.html)",
-        v2: "<name>/index.html in public/",
-        fix: "Move each <name>.html to <name>/index.html in public/ so /<name> keeps working.",
-        test: |_, r| r.starts_with(omitted::CLEAN_URLS),
-        example: ("/cleanUrls", "clean URLs are not carried over: x"),
     },
     Rule {
         code: "Z08_OMITTED_SERVE",

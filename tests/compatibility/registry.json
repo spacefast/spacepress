@@ -710,11 +710,7 @@
     },
     {
       "code": "Z08_OMITTED_REDIRECTS",
-      "feature": "redirect, rewrite and header rules (_redirects, _headers, sf.jsonc)"
-    },
-    {
-      "code": "Z08_OMITTED_CLEAN_URLS",
-      "feature": "clean URLs (/<name> serving <name>.html)"
+      "feature": "redirect and header rule files (_redirects, _headers)"
     },
     {
       "code": "Z08_OMITTED_SERVE",

@@ -18,7 +18,6 @@ pub(super) const CLIENT: &str = "the 0.8 client app is not carried over";
 pub(super) const PAGES: &str = "the 0.8 page is not carried over";
 pub(super) const STATIC: &str = "the static file is not carried over";
 pub(super) const REDIRECTS: &str = "the redirect, rewrite and header rules are not carried over";
-pub(super) const CLEAN_URLS: &str = "clean URLs are not carried over";
 pub(super) const SERVE: &str = "the serving settings are not carried over";
 pub(super) const CONNECTORS: &str = "the connector role is not carried over";
 pub(super) const SYNC: &str = "content sync is not carried over";
@@ -113,32 +112,53 @@ const REPOSITORY_ROOTS: &[&str] = &[".github", "test", "tests", "tools"];
 const CODE: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
 /// zero-compile's `TYPESCRIPT_SOURCE_FILE`, never served wherever it is.
 const TYPESCRIPT: &[&str] = &["ts", "tsx", "mts", "cts"];
-/// The rule files 0.8 compiled into routing instead of serving.
+/// The rule files 0.8 compiled into routing instead of serving. The candidate doesn't carry them:
+/// in public/ they would publish at the root, which this converter hasn't shown to apply the same.
 const RULE_FILES: &[&str] = &["_redirects", "_headers"];
 /// Config keys the candidate reproduces or that change nothing it serves: the converted runtime,
 /// the Space's display name (and the old CLI's `space` key) and the editor's schema pointer.
 const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
+/// Keys Spacefast applies to the Space, not the Zero app, the same under v2: written unchanged
+/// into the candidate's own sf.jsonc, which the v2 publish uploads and finalize compiles.
+/// - Engine serving rules that run before an unmatched request falls through to WordPress, where
+///   v2 renders (monorepo runtime/engine/runtime/serve.php): `redirects`, `rewrites`, `headers`,
+///   and `cleanUrls`, `index` and `listing` over the static files published from public/.
+/// - Platform settings the control plane applies whatever the runtime: access, crons, analytics,
+///   sell, build, placement, network, data sources, the system manifest, edge cache and firewall.
+pub(super) const PLATFORM_KEYS: &[&str] = &[
+    "redirects",
+    "rewrites",
+    "headers",
+    "cleanUrls",
+    "index",
+    "listing",
+    "access",
+    "crons",
+    "analytics",
+    "sell",
+    "build",
+    "placement",
+    "network",
+    "dataSources",
+    "defaultDataSource",
+    "system",
+    "cache",
+    "firewall",
+];
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
 /// The serving keys with their own error; any other key raises `CONFIG`.
-const SERVING_KEYS: &[(&str, &str)] = &[
-    ("redirects", REDIRECTS),
-    ("rewrites", REDIRECTS),
-    ("headers", REDIRECTS),
-    ("cleanUrls", CLEAN_URLS),
-    ("fallback", SERVE),
-    ("index", SERVE),
-    ("listing", SERVE),
-    ("serve", SERVE),
-    ("inject", SERVE),
-    ("firewall", SERVE),
-    ("cache", SERVE),
-];
+/// - `fallback`: an SPA fallback answers before the WordPress fallthrough, shadowing v2's pages.
+/// - `inject`: not shown to reach WordPress-rendered HTML.
+/// - `serve`: 0.8's own serving block.
+const SERVING_KEYS: &[(&str, &str)] = &[("fallback", SERVE), ("serve", SERVE), ("inject", SERVE)];
 
 /// Files this sweep carries over (`public/<path>` → contents) and the errors for the rest.
 pub(super) struct Omitted {
     pub files: BTreeMap<String, String>,
     pub carried: Vec<String>,
+    /// The candidate's sf.jsonc: the 0.8 config's platform keys, when it has any.
+    pub config: Option<String>,
 }
 
 /// What the sweep does with a capsule-relative path before deciding whether 0.8 served it.
@@ -393,6 +413,7 @@ pub(super) fn sweep(
     let mut out = Omitted {
         files: BTreeMap::new(),
         carried: vec![],
+        config: None,
     };
     let mut tree = Tree::default();
     walk(fs, root, root, &mut tree, false);
@@ -506,19 +527,13 @@ pub(super) fn sweep(
             ))),
         }
     }
-    // 0.8 served `<name>.html` (or `.htm`) at `/<name>` unless cleanUrls was false; v2 serves files
-    // as named.
-    let clean_page = out.carried.iter().find(|f| {
-        let base = f.rsplit('/').next().unwrap_or(f);
-        (base.ends_with(".html") || base.ends_with(".htm")) && !base.starts_with("index.")
-    });
     if let Some((config_file, config, text)) = config {
         // The key's line in the config file, where the fix goes.
         let keys = top_level_keys(text);
         let line_of = |key: &str| -> (usize, usize) { keys.get(key).copied().unwrap_or((1, 1)) };
         // Fail closed: every key 0.8 applied is refused unless it is known to change nothing.
         for key in config.as_object().into_iter().flat_map(|o| o.keys()) {
-            if NO_OP_KEYS.contains(&key.as_str()) {
+            if NO_OP_KEYS.contains(&key.as_str()) || PLATFORM_KEYS.contains(&key.as_str()) {
                 continue;
             }
             let reason = SERVING_KEYS
@@ -534,26 +549,9 @@ pub(super) fn sweep(
                 .located(config_file.to_string(), line, column),
             );
         }
-        if let Some(page) = clean_page
-            && config.get("cleanUrls").is_none()
-        {
-            errors.push(
-                fail(
-                    &pointer(&format!("/{config_file}"), "cleanUrls"),
-                    format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default, {page} included"),
-                )
-                .located(config_file.to_string(), 1, 1),
-            );
-        }
-    } else if let Some(page) = clean_page {
-        errors.push(
-            fail(
-                "/cleanUrls",
-                format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default, {page} included"),
-            )
-            .located(page.clone(), 1, 1),
-        );
     }
+    // Clean URLs need no error: the engine serves `<name>.html` at `/<name>` for the static files a
+    // v2 version publishes from public/, by default as for 0.8, and `cleanUrls` travels in sf.jsonc.
     // 0.8 inferred the pages' theme tokens from theme.json and linked the generated theme.css.
     if fs.is_file(&root.join(THEME_JSON)) {
         errors.push(

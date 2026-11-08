@@ -215,10 +215,9 @@ Everything else gets a `Z08_OMITTED_*` error:
 | `Z08_OMITTED_PAGES` | A 0.8 page that has no other refusal and no v2 counterpart. |
 | `Z08_OMITTED_STATIC` | A static file that isn't UTF-8 text (images, fonts), or one under a path WordPress or Zero owns. |
 | `Z08_OMITTED_PUBLIC` | A file in the 0.8 project's `public/`, which 0.8 served at `/public/...`; v2 serves `public/` at the site root. |
-| `Z08_OMITTED_REDIRECTS` | `_redirects`, `_headers`, and `redirects`, `rewrites` or `headers` in `sf.jsonc`. |
-| `Z08_OMITTED_CLEAN_URLS` | `cleanUrls`, or carried `<name>.html` or `<name>.htm` files that 0.8 served at `/<name>` by default. |
+| `Z08_OMITTED_REDIRECTS` | `_redirects` and `_headers` rule files. Move their rules into `sf.jsonc`, which carries over. |
 | `Z08_OMITTED_SERVE` | `fallback`, `index`, `listing`, `serve`, `inject`, `firewall` and `cache` in `sf.jsonc`. |
-| `Z08_OMITTED_CONFIG` | Any other `sf.jsonc` key except `$schema`, `runtime`, `name` and `space`, and `theme.json`, which 0.8 turned into the pages' `theme.css`. |
+| `Z08_OMITTED_CONFIG` | An `sf.jsonc` key the v2 app doesn't reproduce (`meta`, `theme`, `templates`, `superpowers`, `collab`, `markdownNegotiation` and the rest), and `theme.json`, which 0.8 turned into the pages' `theme.css`. The keys Spacefast applies to the Space travel unchanged in the candidate's `sf.jsonc`: `redirects`, `rewrites`, `headers`, `cleanUrls`, `index`, `listing`, `access`, `crons`, `analytics`, `sell`, `build`, `placement`, `network`, `dataSources`, `defaultDataSource`, `system`, `cache` and `firewall`. |
 | `Z08_OMITTED_UNVERIFIED_CONFIG` | With `--manifest`, a Space config or `theme.json` the finalize manifest doesn't record. |
 | `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
 | `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/`, `.wrangler/`, `.vercel/`, `.netlify/`, `.turbo/`, `.cache/`, `.zero/`, `.gitignore` and `_routes.json` at any depth, and OS metadata are skipped without an error, as 0.8 never published them. |

@@ -445,6 +445,28 @@ fn convert(
             );
         }
     }
+    // The platform keys travel in the candidate's own sf.jsonc, unchanged and in their order;
+    // every other key was refused above, or changes nothing the candidate serves.
+    if let Some((name, value, _)) = &config {
+        let kept: serde_json::Map<String, serde_json::Value> = value
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(k, _)| omitted::PLATFORM_KEYS.contains(&k.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        if !kept.is_empty() {
+            for key in kept.keys() {
+                report.entries.push(super::entry(
+                    &format!("/{name}/{key}"),
+                    "mapped",
+                    format!("Spacefast applies `{key}` to the Space; it travels unchanged in the candidate's sf.jsonc"),
+                ));
+            }
+            let text = serde_json::to_string_pretty(&serde_json::Value::Object(kept)).expect("config json");
+            static_files.config = Some(format!("{text}\n"));
+        }
+    }
     for name in &static_files.carried {
         report.entries.push(super::entry(
             &format!("/{name}"),
@@ -493,6 +515,9 @@ fn convert(
     }
     for (path, text) in static_files.files {
         files.insert(path, text);
+    }
+    if let Some(text) = static_files.config {
+        files.insert("sf.jsonc".into(), text);
     }
     // A Space binding adopts its tables; without one the candidate creates them.
     let first = if matches!(tables, Tables::Adopt(_)) {

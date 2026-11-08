@@ -1874,12 +1874,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 out.push_str(&inner?);
                 if let Some(h) = handler {
                     self.fx().scopes.push(HashMap::new());
-                    let var = match param {
-                        Some((n, span)) => self.declare_local(n, Ty::Error, false, *span),
-                        None => self.tmp_var(),
-                    };
+                    // JavaScript binds the thrown value itself; JsThrown carries non-JsError values.
+                    let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+                    let caught = self.tmp_var();
                     // Database and validation errors propagate: they must roll back the request.
-                    let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {var}) {{");
+                    let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {caught}) {{");
+                    if let Some((n, span)) = param {
+                        let var = self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, false, *span);
+                        let _ = writeln!(out, "{p}    {var} = \\Zero\\Js::caught({caught});");
+                    }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
                 }
@@ -2107,8 +2110,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         let v = self.expr(e)?;
-        if v.ty == Ty::Error {
-            return Ok(v.php);
+        let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+        if v.ty == Ty::Error || javascript || self.error_instance(&v.ty) {
+            return Ok(format!("\\Zero\\Js::thrown({})", v.php));
         }
         err_help(
             e.span,
@@ -2700,6 +2704,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
+                if let ExprKind::Ident(name) = &right.kind
+                    && let Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) =
+                        self.resolve(name, right.span)?
+                {
+                    let left = self.expr(left)?;
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Js::isError({}, {})", left.php, php_str(g)),
+                        Ty::Bool,
+                    ));
+                }
                 let left = self.expr(left)?;
                 let right = self.expr(right)?;
                 if right.ty == Ty::Dynamic {
@@ -4711,12 +4725,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Out::atom(php, suffix_null(Ty::Array(Box::new(Ty::Str))))
             }
             (Ty::Error, "message" | "name") => {
+                // A caught value may be an Error subclass instance, so read through JavaScript lookup.
                 let php = guarded(self, &|x| {
-                    if prop == "message" {
-                        format!("({x})->getMessage()")
-                    } else {
-                        format!("({x})->jsName")
-                    }
+                    format!("\\Zero\\Js::str(\\Zero\\Js::dynamicGet({x}, {}))", php_str(prop))
                 });
                 Out::atom(php, suffix_null(Ty::Str))
             }
@@ -5909,6 +5920,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if (g, m) == ("Error", "captureStackTrace") {
+            // Zero records no frames; the target gets Error's header-only stack.
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\Zero\\JsClass::captureStackTrace((({argv})->a)[0] ?? \\Zero\\Js::undefined())"),
+                Ty::Undefined,
+            ));
+        }
         self.builtin_args(g, m, args, span)?;
         if (g, m) == ("Math", "pow") {
             crate::builtins::check_power_literals(args, span)?;

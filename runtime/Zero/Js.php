@@ -1213,9 +1213,9 @@ final class Js
         $key = self::key($key);
         $index = static fn (int $length): bool => preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && (float) $key < 4294967295 && (int) $key < $length;
         if ($object instanceof JsObject) {
-            if (array_key_exists($key, $object->p)) { return true; }
+            if (array_key_exists($key, $object->p) || array_key_exists($key, $object->hidden)) { return true; }
             if ($object->nullPrototype) { return false; }
-            return ($object->class?->hasMethod($key) ?? false) || self::prototypeHas('Object', $key);
+            return ($object->class?->hasMember($key) ?? false) || self::prototypeHas('Object', $key);
         }
         if ($object instanceof JsArray) {
             return array_key_exists($key, $object->p) || $index(count($object->a)) || self::prototypeHas('Array', $key);

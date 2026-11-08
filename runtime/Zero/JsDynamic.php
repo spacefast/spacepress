@@ -118,6 +118,7 @@ trait JsDynamic
         if ($value instanceof JsObject) {
             if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
             if (array_key_exists($key, $value->p)) { return $value->p[$key]; }
+            if (array_key_exists($key, $value->hidden)) { return self::hiddenValue($value, $key); }
             if ($value->class !== null && ($inherited = $value->class->readInherited($value, $key, false)) !== JsClass::absent()) { return $inherited; }
             return self::dynamicMethodValue($value, $key);
         }
@@ -157,6 +158,17 @@ trait JsDynamic
         return self::dynamicMethodValue($value, $key);
     }
 
+    /** A hidden own property; a lazy stack is formatted from the error's current name and message. */
+    private static function hiddenValue(JsObject $value, string $key): mixed
+    {
+        $hidden = $value->hidden[$key];
+        if ($key === 'stack' && $hidden === JsClass::lazyStack()) {
+            // V8 formats the header from the error at the first read; Zero records no frames.
+            $hidden = $value->hidden['stack'] = self::str($value);
+        }
+        return $hidden;
+    }
+
     public static function dataGet(mixed $value, mixed $key): mixed
     {
         self::requirePresent($value);
@@ -172,6 +184,10 @@ trait JsDynamic
     {
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
         $key = self::key($key);
+        if ($target instanceof JsObject && array_key_exists($key, $target->hidden)) {
+            $target->hidden[$key] = $value;
+            return $value;
+        }
         if ($target instanceof JsObject || $target instanceof JsClass) {
             return self::set($target, $key, $value);
         }
@@ -252,7 +268,7 @@ trait JsDynamic
             $value instanceof JsArray => 'Array', $value instanceof JsArguments => 'Arguments', $value instanceof JsSet => 'Set',
             $value instanceof JsMap => 'Map', $value instanceof JsDate => 'Date', $value instanceof RegExp => 'RegExp',
             $value instanceof JsNamespace => $value->name,
-            $value instanceof JsError => 'Error',
+            $value instanceof JsError, $value instanceof JsObject && $value->class?->builtinRoot() !== null => 'Error',
             $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
         };
         return '[object ' . $tag . ']';
@@ -270,8 +286,30 @@ trait JsDynamic
     public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
     {
         if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
+        if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) { return self::isError($value, $constructor); }
         if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
         throw new JsError("Right-hand side of 'instanceof' is not callable", 'TypeError');
+    }
+
+    /** `value instanceof Error` (or TypeError/RangeError) for built-in errors and Error subclasses. */
+    public static function isError(mixed $value, string $name = 'Error'): bool
+    {
+        if ($value instanceof JsError) {
+            return $name === 'Error' || $value->jsName === $name;
+        }
+        return $value instanceof JsObject && ($value->class?->extendsBuiltin($name) ?? false);
+    }
+
+    /** The value a JavaScript `catch` binds: the original thrown value. */
+    public static function caught(JsError $error): mixed
+    {
+        return $error instanceof JsThrown ? $error->value : $error;
+    }
+
+    /** `throw value`: built-in errors throw directly, everything else travels in JsThrown. */
+    public static function thrown(mixed $value): JsError
+    {
+        return $value instanceof JsError ? $value : new JsThrown($value);
     }
 
     public static function dynamicCall(mixed $function, JsArray $args): mixed
@@ -575,6 +613,7 @@ trait JsDynamic
                     if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
                     return $key === 'message' && $source->hasMessage;
                 }
+                if ($source instanceof JsObject && array_key_exists($key, $source->hidden)) { return true; }
                 if ($key === 'length' && ($source instanceof JsArray || $source instanceof JsArguments || is_string($source))) { return true; }
                 if ($key === 'callee' && $source instanceof JsArguments || $key === 'lastIndex' && $source instanceof RegExp) { return true; }
                 return in_array($key, self::dynamicKeys($source)->a, true);
@@ -688,6 +727,12 @@ trait JsDynamic
                     if (!$value->p[$method] instanceof \Closure) { continue; }
                     $result = self::dynamicInvoke($value->p[$method], $value, new JsArray());
                 } elseif ($value instanceof JsObject && $value->nullPrototype) { continue; }
+                elseif ($value instanceof JsObject && $value->class !== null
+                    && ($inherited = $value->class->readInherited($value, $method, false)) !== JsClass::absent()) {
+                    // Class methods and Error.prototype.toString come before Object.prototype's.
+                    if (!$inherited instanceof \Closure) { continue; }
+                    $result = self::dynamicInvoke($inherited, $value, new JsArray());
+                }
                 else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
                 if ($result === JsUndefined::Value || !is_object($result)) { return $result; }
             }

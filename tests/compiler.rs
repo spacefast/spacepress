@@ -351,13 +351,26 @@ fn context_values_pass_through_typed_helpers() {
         .arg(tmp.join(".zero/wp-content"))
         .arg(
             r#"$route = $app->matchRoute("POST", "/echo");
-               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"));
+               // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
+               // share-link secret redacted and the share parameter kept out of the query.
+               $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
+                   \Zero\Wp\HttpRoutes::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
+                   \Zero\Wp\HttpRoutes::url($host, $uri))[2], true);
+               $urls = [
+                 $at("Site.Example.:8443", "/echo?a=1&__=secret&b=2"),
+                 $at("site.example", "/echo?token=t1&purchaseToken=p1&tokens=kept"),
+                 $at("site.example", "/__/secret/echo"),
+                 $at("site.example", "/__/collab?x=1"),
+                 $at("[::1]:8080", "/echo"),
+               ];
+               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"), "https://site.example/echo");
                echo json_encode([
                  "id" => $wp->userId("ada"),
                  "signedIn" => $wp->call("POST", "/actions/whoami", "{}", "ada")[1],
                  "guest" => $wp->call("POST", "/actions/whoami", "{}")[1],
                  "note" => $wp->call("POST", "/actions/note", ["body" => "x"], "ada")[1],
                  "echo" => json_decode($echo, true),
+                 "urls" => array_map(fn ($r) => [$r["url"], $r["share"]], $urls),
                ]);"#,
         )
         .arg("null")
@@ -375,7 +388,14 @@ fn context_values_pass_through_typed_helpers() {
             "signedIn": { "label": ada, "role": "editor", "anonymous": false, "viaIndex": false },
             "guest": { "label": "guest", "role": "guest", "anonymous": true, "viaIndex": true },
             "note": [ada],
-            "echo": { "method": "POST", "path": "/echo", "body": "raw body", "role": "editor" },
+            "echo": { "method": "POST", "url": "https://site.example/echo", "share": false, "path": "/echo", "body": "raw body", "role": "editor" },
+            "urls": [
+                ["https://site.example/echo?a=1&__=[redacted]&b=2", false],
+                ["https://site.example/echo?token=[redacted]&purchaseToken=[redacted]&tokens=kept", false],
+                ["https://site.example/__/[redacted]/echo", false],
+                ["https://site.example/__/collab?x=1", false],
+                ["https://[::1]/echo", false],
+            ],
         })
     );
     // Only a key no type can bound is refused, with the fix.

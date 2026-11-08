@@ -854,7 +854,7 @@
     },
     {
       "code": "Z08_ENDPOINT_REQUEST_API",
-      "feature": "endpoint request API (url, bytes, headers.entries)"
+      "feature": "endpoint request API (bytes, entries, path, the request as a value)"
     },
     {
       "code": "Z08_ENDPOINT_NAME",

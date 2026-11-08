@@ -117,6 +117,14 @@ pub static RULES: &[Rule] = &[
         example: ("/connectors/calendar", "the connector role is not carried over: x"),
     },
     Rule {
+        code: "Z08_OMITTED_SYMLINK",
+        feature: "symbolic link in the project",
+        v2: "a regular file in public/",
+        fix: "Replace the link with the file it points to, inside the project, or remove it.",
+        test: |_, r| r.starts_with(omitted::SYMLINK),
+        example: ("/latest.txt", "the symbolic link is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_SYNC",
         feature: "content sync of native posts",
         v2: "sync on a v2 collection",

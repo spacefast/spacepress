@@ -406,16 +406,33 @@ fn convert(
     let reported: BTreeSet<String> = report.errors.iter().map(|e| e.pointer_file()).collect();
     let mut handled: Vec<String> = page_sources.clone();
     handled.extend(reported.iter().cloned());
-    let static_files = omitted::sweep(
+    // The 0.8 client entry wherever `runtime.client` puts it, pages or not.
+    let resolved_client = client_entry(&*fs, &root)?;
+    let mut static_files = omitted::sweep(
         &*fs,
         &root,
         config.as_ref().map(|(name, value, text)| (*name, value, text.as_str())),
         &handled,
+        resolved_client.as_deref(),
         // The client is reproduced as the pages layout, or converted to public/ by `client`.
         page_files.contains_key("pages/layout.tsx") || client_app.is_some(),
         client_app.is_some(),
         &mut report.errors,
     );
+    // A static file never replaces a generated client file; that would be a silent drop.
+    for path in client_files.keys() {
+        if static_files.files.remove(path).is_some() {
+            let name = path.trim_start_matches("public/").to_string();
+            static_files.carried.retain(|c| *c != name);
+            report.errors.push(
+                fail(
+                    &format!("/{name}"),
+                    format!("{}: the converted client app writes public/{name}", omitted::STATIC),
+                )
+                .located(name, 1, 1),
+            );
+        }
+    }
     for name in &static_files.carried {
         report.entries.push(super::entry(
             &format!("/{name}"),

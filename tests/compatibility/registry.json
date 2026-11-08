@@ -718,6 +718,10 @@
       "feature": "connector role and its credentials"
     },
     {
+      "code": "Z08_OMITTED_SYMLINK",
+      "feature": "symbolic link in the project"
+    },
+    {
       "code": "Z08_OMITTED_SYNC",
       "feature": "content sync of native posts"
     },

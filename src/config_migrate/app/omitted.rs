@@ -21,6 +21,7 @@ pub(super) const SERVE: &str = "the serving settings are not carried over";
 pub(super) const CONNECTORS: &str = "the connector role is not carried over";
 pub(super) const SYNC: &str = "content sync is not carried over";
 pub(super) const PUBLIC: &str = "public/ is not carried over";
+pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
 
 /// Roots that hold the capsule's source, never served as content.
 const SOURCE_ROOTS: &[&str] = &["client", "server", "shared", "pages"];
@@ -115,8 +116,9 @@ fn served(relative: &str) -> bool {
         || ignored(relative))
 }
 
-/// Every file under `dir`, capsule-relative, without following links.
-fn walk(fs: &dyn Fs, root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
+/// Every file under `dir`, capsule-relative, and every symbolic link (never followed: a link can
+/// point outside the project or at a secret the ignore list would have kept out).
+fn walk(fs: &dyn Fs, root: &Path, dir: &Path, out: &mut Vec<PathBuf>, links: &mut Vec<PathBuf>) {
     let mut entries = fs.read_dir(dir).unwrap_or_default();
     entries.sort();
     for path in entries {
@@ -124,8 +126,10 @@ fn walk(fs: &dyn Fs, root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
         if ignored(&relative.to_string_lossy().replace('\\', "/")) {
             continue;
         }
-        if fs.is_dir(&path) && !fs.is_symlink(&path) {
-            walk(fs, root, &path, out);
+        if fs.is_symlink(&path) {
+            links.push(relative);
+        } else if fs.is_dir(&path) {
+            walk(fs, root, &path, out, links);
         } else {
             out.push(relative);
         }
@@ -135,11 +139,13 @@ fn walk(fs: &dyn Fs, root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
 /// The candidate's omissions. `converted_pages` lists the page files that converted or were
 /// already refused (capsule paths); `client_carried` says whether `client/` was reproduced, as the
 /// pages layout or as a converted client app (which then owns `public/`).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn sweep(
     fs: &dyn Fs,
     root: &Path,
     config: Option<(&str, &serde_json::Value, &str)>,
     converted_pages: &[String],
+    client_entry: Option<&Path>,
     client_carried: bool,
     client_app_converted: bool,
     errors: &mut Vec<Failure>,
@@ -149,20 +155,46 @@ pub(super) fn sweep(
         carried: vec![],
     };
     let mut files = vec![];
-    walk(fs, root, root, &mut files);
+    let mut links = vec![];
+    walk(fs, root, root, &mut files, &mut links);
+    // A link inside a source root is the converters' to refuse; anywhere else it would be served.
+    for link in &links {
+        let name = link.to_string_lossy().replace('\\', "/");
+        let first = name.split('/').next().unwrap_or("");
+        if SOURCE_ROOTS.contains(&first) && first != "pages" {
+            continue;
+        }
+        errors.push(
+            fail(
+                &format!("/{}", name.replace('~', "~0")),
+                format!("{SYMLINK}: {name} is a symbolic link, and the candidate copies only regular files inside the project"),
+            )
+            .located(name.clone(), 1, 1),
+        );
+    }
     let mut client_reported = false;
     // 0.8 built a client with no pages as the whole site and generated its index.html, shadowing
-    // the author's (zero-compile's `standaloneClient`).
-    let client_app = fs.is_dir(&root.join("client"))
+    // the author's (zero-compile's `standaloneClient`). The client is `runtime.client` wherever it
+    // lives, as the client conversion resolves it.
+    let client_app = client_entry.is_some()
         && !files
             .iter()
             .any(|f| f.starts_with("pages") && f.extension().is_some_and(|e| e == "tsx" || e == "md" || e == "html"));
+    let client_root = client_entry
+        .and_then(|e| e.iter().next())
+        .map(|c| c.to_string_lossy().into_owned())
+        .filter(|c| {
+            !SOURCE_ROOTS.contains(&c.as_str()) && client_entry.is_some_and(|e| e.parent() != Some(Path::new("")))
+        });
     for relative in files {
         let name = relative.to_string_lossy().replace('\\', "/");
         let at = format!("/{}", name.replace('~', "~0"));
         let first = name.split('/').next().unwrap_or("");
         let file = |e: Failure| e.located(name.clone(), 1, 1);
-        if first == "client" {
+        // The client app's own directory (runtime.client outside client/), and its entry file.
+        let in_client =
+            first == "client" || client_root.as_deref() == Some(first) || client_entry.is_some_and(|e| relative == e);
+        if in_client {
             // One error for the client: its files are one app, built by 0.8 into client.js.
             if !client_carried && !client_reported {
                 client_reported = true;

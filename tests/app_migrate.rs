@@ -343,6 +343,49 @@ fn omissions_are_errors_and_static_files_carry_over() {
             .any(|e| e["pointer"] == "/index.html" && e["reason"].as_str().unwrap().starts_with("static file"))
     );
 
+    // runtime.client outside client/ (web/main.tsx), no pages: the client converts and its
+    // generated shell stays public/index.html; the author's index.html, which 0.8 never served,
+    // neither overwrites it nor travels.
+    let elsewhere = temp.path().join("client-elsewhere");
+    let (ok, report) = migrate(
+        &fixture("client-elsewhere"),
+        &elsewhere,
+        &["--space", "spc_migrate_test"],
+    );
+    assert!(ok, "{report:#}");
+    let shell = std::fs::read_to_string(elsewhere.join("public/index.html")).unwrap();
+    assert!(
+        shell.contains("<div id=\"root\"></div>") && !shell.contains("Author shell"),
+        "{shell}"
+    );
+    assert!(elsewhere.join("public/notes.css").is_file());
+
+    // A symbolic link is never followed: it could reach a secret or a file outside the project.
+    let linked = temp.path().join("linked");
+    copy_tree(&fixture("server-only"), &linked);
+    std::fs::write(linked.join(".env.server"), "SECRET=1\n").unwrap();
+    std::os::unix::fs::symlink(".env.server", linked.join("public-secret.txt")).unwrap();
+    std::fs::create_dir(linked.join("docs")).unwrap();
+    std::os::unix::fs::symlink(std::env::temp_dir(), linked.join("docs/outside")).unwrap();
+    let out = temp.path().join("linked-out");
+    let (ok, report) = migrate(&linked, &out, &["--space", "spc_migrate_test"]);
+    assert!(!ok);
+    let refused: Vec<(&str, &str)> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        refused,
+        [
+            ("Z08_OMITTED_SYMLINK", "docs/outside"),
+            ("Z08_OMITTED_SYMLINK", "public-secret.txt")
+        ],
+        "{report:#}"
+    );
+    assert!(!out.exists());
+
     // A server-only project: no errors, and its static files land in public/ at the same URLs.
     let out = temp.path().join("server-only");
     let (ok, report) = migrate(&fixture("server-only"), &out, &["--space", "spc_migrate_test"]);

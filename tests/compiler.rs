@@ -114,6 +114,21 @@ fn a_catch_all_route_segment_comes_last() {
 }
 
 #[test]
+fn destructured_defaults_may_read_earlier_siblings_only() {
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/sibling-parameter-defaults"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    rejects(
+        "reject-later-sibling-default",
+        "parameter defaults can't reference the current or a later parameter",
+        "zero.config.ts:3:",
+    );
+}
+
+#[test]
 fn mail_send_needs_recipients_a_subject_and_a_body() {
     rejects(
         "reject-mail-message",

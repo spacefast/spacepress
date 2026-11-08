@@ -396,7 +396,14 @@ pub(super) fn app(
                     }
                     // Structural 0.8 types the migrated handlers still name.
                     if let Some(shape) = legacy_type(name) {
-                        prelude.push_str(&format!("type {} = {shape};\n", s.local));
+                        // 0.8's `Id<"table">` names its table; v2 ids are strings, and the parameter
+                        // stays so every `Id<...>` in the source still type-checks.
+                        let params = if name == "Id" {
+                            "<_Table extends string = string>"
+                        } else {
+                            ""
+                        };
+                        prelude.push_str(&format!("type {}{params} = {shape};\n", s.local));
                     }
                     if let Some(helper) = super::endpoints::helper(&s.local, name) {
                         responses.push_str(&helper);
@@ -1334,7 +1341,9 @@ fn endpoint(
     let body = match &f.body {
         FnBody::Expr(e) => {
             r.expr(e)?;
-            format!("return __z08EndpointValue({});", r.apply(e.span))
+            // `async () => response.json()` returned the promise and 0.8 awaited it, as handlers do.
+            let await_body = if returns_body_read(e) { "await " } else { "" };
+            format!("return __z08EndpointValue({await_body}{});", r.apply(e.span))
         }
         FnBody::Block(stmts) => {
             for s in stmts {

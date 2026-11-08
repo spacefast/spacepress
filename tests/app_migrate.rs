@@ -317,6 +317,59 @@ fn space_user_subjects_back_owner_scoped_handlers() {
 }
 
 #[test]
+fn a_page_importing_a_component_module_refuses_at_the_page() {
+    let temp = tempfile::tempdir().unwrap();
+    for import in ["../shared/Widget", "../shared/Widget.tsx"] {
+        let root = temp.path().join(import.replace(['.', '/'], "_"));
+        project(&root, r#"{name:"p"}"#);
+        std::fs::create_dir_all(root.join("shared")).unwrap();
+        std::fs::create_dir_all(root.join("pages")).unwrap();
+        std::fs::write(
+            root.join("shared/Widget.tsx"),
+            "export function Widget() { return <b>w</b>; }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("pages/index.tsx"),
+            format!("import {{ Widget }} from \"{import}\";\nexport default function Home() {{ return <main><Widget /></main>; }}\n"),
+        )
+        .unwrap();
+        let (ok, refused) = migrate(&root, &root.with_extension("out"), &["--dry-run"]);
+        assert!(!ok);
+        assert_eq!(
+            refused["errors"][0]["pointer"], "/pages/index.tsx",
+            "{import}: {refused:#}"
+        );
+        assert!(
+            refused["errors"][0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("component module shared/Widget.tsx"),
+            "{import}: {refused:#}"
+        );
+    }
+}
+
+#[test]
+fn a_0_8_id_type_keeps_its_table_argument() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("ids");
+    project(
+        &root,
+        r#"{schema:{notes:table({body:string()})},queries:{get:query(async (ctx, id: Id<"notes">) => ctx.db.notes.get(id))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts")).unwrap().replace(
+        "import { capsule }",
+        "import { capsule, query, string, table, type Id }",
+    );
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    build(&out);
+}
+
+#[test]
 fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("feed");
@@ -597,6 +650,10 @@ fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
     let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
     assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
     assert!(config.contains("__z08EndpointValue(await response.json())"), "{config}");
+    assert!(
+        config.contains("__z08EndpointValue(await (await fetch(\"https://api.example.com/status\")).json())"),
+        "an expression-bodied endpoint's body read is awaited too: {config}"
+    );
     build(&out);
 }
 
@@ -785,6 +842,34 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     assert!(!out.join("pages").exists());
     std::fs::remove_dir_all(source.join("pages")).unwrap();
     std::fs::remove_file(source.join("sf.jsonc")).unwrap();
+
+    // A recorded binary asset is compared by its bytes, not refused as unreadable text.
+    let mut with_image: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    let png: &[u8] = &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe];
+    std::fs::create_dir_all(source.join("public")).unwrap();
+    std::fs::write(source.join("public/logo.png"), png).unwrap();
+    with_image["artifact"]["sourceManifest"]["files"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "path": "public/logo.png", "size": png.len(),
+            "sha256": sha2::Sha256::digest(png).iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        }));
+    let image_path = temp.path().join("with-image.json");
+    std::fs::write(&image_path, with_image.to_string()).unwrap();
+    let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b4"));
+    assert!(ok, "{report:#}");
+    std::fs::write(source.join("public/logo.png"), b"\xff\xfe changed").unwrap();
+    let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b5"));
+    assert!(!ok);
+    assert!(
+        report["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("public/logo.png (changed)"),
+        "{report:#}"
+    );
+    std::fs::remove_dir_all(source.join("public")).unwrap();
 
     // A recorded sf.jsonc that names another entry than the publish compiled is refused.
     let mut renamed: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();

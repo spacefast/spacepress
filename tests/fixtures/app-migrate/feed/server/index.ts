@@ -3,6 +3,8 @@ import { capsule, mutation, number, query, string, table, type PaginationOptions
 // Paginated reads over the creation index and a declared index with an equality prefix.
 export default capsule({
   name: "Legacy Feed",
+  // 0.8 type-checked favicon and never served it; the converter drops it.
+  favicon: "/favicon.png",
   schema: {
     posts: table({
       channel: string(),

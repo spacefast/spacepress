@@ -417,7 +417,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto, **WP** | Native `pages` and `media` collections; rich blocks; multiple references |
 | `sync` declarations | `zero sync` (local) | Dropped with review | Hosted edits do not rebuild a frontend |
 | `connectors` | `connector-roles.json` overlay | Role map only | Connector calls (`ctx.connectors`) |
-| `favicon` | **missing** in config | Refused | Ship the file under `public/` |
+| `favicon` | Nothing to map: no 0.8 compiler, engine or runner read it, so the icon was always the published `/favicon.ico` | Dropped with a review entry | Keep the icon file in `public/` |
 | Pure helpers, classes, local `shared/` modules | Copied | Auto | Helpers outside the v2 subset (for example `in`, `URL`) |
 | `declare const NAME` build globals | `process.env.NAME` in handlers, `env("NAME")` in webhook and upload settings | Refused, names the fix | Replace the global |
 

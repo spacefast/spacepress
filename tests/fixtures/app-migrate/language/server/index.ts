@@ -5,6 +5,7 @@ import { forget, publicProfile } from "../shared/delete";
 import { firstMatch, uniqueSlug } from "../shared/control-flow";
 import { range, split } from "../shared/destructuring";
 import { card } from "../shared/tagged";
+import { nextId, totalCents } from "../shared/bigint";
 
 // Each language construct the v2 compiler learned for live 0.8 apps (zero#138), used from a
 // handler. tests/app_migrate.rs converts this capsule and builds the candidate.
@@ -24,6 +25,7 @@ export default capsule({
     destructuring: query(async (ctx, title: string, score: number) =>
       [range([score, 1, 2]), split({ title })]),
     taggedTemplates: query(async (ctx, title: string) => card(title)),
+    bigints: query(async (ctx, title: string, score: number) => [nextId("9007199254740993"), totalCents([score, 1.25])]),
   },
   mutations: {
     add: mutation(async (ctx, title: string, score: number) =>

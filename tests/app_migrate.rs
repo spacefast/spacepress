@@ -30,9 +30,13 @@ fn build(project: &Path) {
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    let types = Path::new(env!("CARGO_MANIFEST_DIR")).join("types/zero/index.d.ts");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let types = root.join("types/zero/index.d.ts");
+    // fetch, process and node:crypto come from the standard declarations (tests/host-types).
+    let node = root.join("tests/host-types/node_modules/@types");
+    assert!(node.join("node").is_dir(), "run: npm ci --prefix tests/host-types");
     std::fs::write(project.join("tsconfig.json"), serde_json::json!({
-        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":[],"paths":{"zero":[types]}},
+        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"zero":[types]}},
         "include":["zero.config.ts","zero.gen.ts","server/**/*.ts","shared/**/*.ts"]
     }).to_string()).unwrap();
     let checked = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
@@ -641,34 +645,120 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     assert!(out.join("pages/docs/data.ts").is_file());
 }
 
+/// Runs each named action of a built app in PHP with `inputs`, under `env`, and returns the results.
+fn run_actions(project: &Path, env: &[(&str, &str)], calls: &Value) -> Value {
+    let content = project.join(".zero/wp-content/plugins");
+    let app = std::fs::read_dir(&content)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("zero-app-"))
+        .unwrap()
+        .join("zero/app");
+    let script = r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$out = [];
+foreach (json_decode(file_get_contents('php://stdin'), true) as [$name, $input, $env]) {
+  \Zero\Env::isolate($env);
+  $fn = '\\ZeroApp\\' . $schema['actions'][$name]['handler'];
+  try { $out[] = ['data' => $fn(\Zero\Seam::toJs($input, ['type' => 'json']), \Zero\Seam::ctx(['user' => null]))]; }
+  catch (\Zero\HttpError $e) { $out[] = ['error' => $e->errorCode]; }
+}
+echo \Zero\Js::jsonStringify($out);
+"#;
+    let env: serde_json::Map<String, Value> = env.iter().map(|(k, v)| (k.to_string(), Value::from(*v))).collect();
+    let calls: Vec<Value> = calls
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            let mut call = c.as_array().unwrap().clone();
+            if call.len() == 2 {
+                call.push(Value::Object(env.clone()));
+            }
+            Value::Array(call)
+        })
+        .collect();
+    let mut child = Command::new("php")
+        .args(["-r", script])
+        .arg(content.join("zero-runtime/zero/bootstrap.php"))
+        .arg(app)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    use std::io::Write as _;
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(Value::Array(calls).to_string().as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
 #[test]
-fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
+fn the_global_fetch_needs_no_rewrite() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("fetch");
     let (ok, report) = migrate(&fixture("fetch"), &out, &[]);
     assert!(ok, "{report:#}");
-    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
-    assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
-    assert!(config.contains("__z08EndpointValue(await response.json())"), "{config}");
-    assert!(
-        config.contains("__z08EndpointValue(await (await fetch(\"https://api.example.com/status\")).json())"),
-        "an expression-bodied endpoint's body read is awaited too: {config}"
-    );
+    // Building runs the v2 compiler, which refuses an unawaited body read: both endpoints await.
     build(&out);
 }
 
+/// ctx.crypto through node:crypto gives the original runtime's output on every recorded vector
+/// (tests/php/crypto-parity), with named keys trimmed and a missing one refused.
 #[test]
-fn ctx_crypto_maps_to_the_zero_crypto_namespace() {
+fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("crypto");
     let (ok, report) = migrate(&fixture("crypto"), &out, &[]);
     assert!(ok, "{report:#}");
-    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
-    assert!(
-        !config.contains("ctx.crypto") && config.contains("__z08Crypto.hmacSha256("),
-        "{config}"
-    );
     build(&out);
+    let parity = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/crypto-parity");
+    let read = |f: &str| -> Value { serde_json::from_str(&std::fs::read_to_string(parity.join(f)).unwrap()).unwrap() };
+    let expected = read("expected.json");
+    let trim = |k: &str| k.trim().to_string();
+    let inline: Vec<Value> = read("cases.json")
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| serde_json::json!(["vector", {"key": trim(c[0].as_str().unwrap()), "data": c[1]}, {}]))
+        .collect();
+    let named: Vec<Value> = read("named.json")
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| serde_json::json!(["named", {"key": c[0], "data": c[1]}, {"K": c[0]}]))
+        .collect();
+    let data = |v: Value| -> Vec<Value> { v.as_array().unwrap().iter().map(|r| r["data"].clone()).collect() };
+    // 0.8 compared the untrimmed key with the data; the inline vector passes the trimmed key to
+    // the MAC only, so compare its digest and MAC columns and take the comparison from `named`.
+    let inline_actual = data(run_actions(&out, &[], &Value::Array(inline.clone())));
+    let inline_expected = expected["inline"].as_array().unwrap();
+    assert_eq!(inline_actual.len(), 201);
+    for (i, (actual, want)) in inline_actual.iter().zip(inline_expected).enumerate() {
+        assert_eq!(actual[0], want[0], "inline case {i}");
+        assert_eq!(actual[1], want[1], "inline case {i}");
+    }
+    let named_actual = data(run_actions(&out, &[], &Value::Array(named)));
+    assert_eq!(named_actual.len(), 251);
+    assert_eq!(Value::Array(named_actual), expected["named"], "named keys");
+    let refused = run_actions(
+        &out,
+        &[],
+        &serde_json::json!([["named", {"key": "k", "data": "d"}, {}], ["named", {"key": "k", "data": "d"}, {"K": " \n"}]]),
+    );
+    assert_eq!(
+        refused,
+        serde_json::json!([{"error": "crypto_key_unavailable"}, {"error": "crypto_key_unavailable"}])
+    );
     // A webhook endpoint's ctx.crypto is a route, not an action; it gets the mapping entry too.
     let root = temp.path().join("webhook");
     project(
@@ -682,10 +772,30 @@ fn ctx_crypto_maps_to_the_zero_crypto_namespace() {
     let (ok, report) = migrate(&root, &temp.path().join("webhook-out"), &["--dry-run"]);
     assert!(ok, "{report:#}");
     assert!(
-        report["entries"].as_array().unwrap().iter().any(|e| e["outcome"] == "mapped"
-            && e["reason"].as_str().unwrap().starts_with("ctx.crypto becomes crypto")),
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["outcome"] == "mapped"
+                && e["reason"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("ctx.crypto becomes node:crypto")),
         "{report:#}"
     );
+    // `{ value: ctx.env.SECRET }` keeps the untrimmed value, unlike the named key "K".
+    let key = " k \n";
+    let env_key = run_actions(
+        &out,
+        &[],
+        &serde_json::json!([
+            ["inlineEnv", {"data": "d"}, {"SECRET": key}],
+            ["vector", {"key": key, "data": "d"}, {}],
+            ["named", {"key": key, "data": "d"}, {"K": key}],
+        ]),
+    );
+    assert_eq!(env_key[0]["data"], env_key[1]["data"][1], "{env_key}");
+    assert_ne!(env_key[0]["data"], env_key[2]["data"][1], "{env_key}");
     let root = temp.path().join("jwt");
     project(
         &root,
@@ -1021,4 +1131,34 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
         refused["errors"][0]["reason"].as_str().unwrap().contains("allows null"),
         "{refused:#}"
     );
+
+    // A default typed by a named alias may allow null, and a default that reads the context has
+    // no context binding in the generated handler: both need a manual port.
+    for (case, capsule, reason) in [
+        (
+            "alias",
+            r#"{ name: "params", queries: { page: query(async (ctx, label: Label = "all") => label) } }"#,
+            "allows null",
+        ),
+        (
+            "context",
+            r#"{ name: "params", queries: { page: query(async (ctx, mine: boolean = ctx.auth.isSignedIn) => mine) } }"#,
+            "reads the context",
+        ),
+    ] {
+        let root = temp.path().join(case);
+        project(&root, capsule);
+        let index = root.join("server/index.ts");
+        let text = std::fs::read_to_string(&index).unwrap().replace(
+            "import { capsule }",
+            "type Label = string | null;\nimport { capsule, query }",
+        );
+        std::fs::write(&index, text).unwrap();
+        let (ok, refused) = migrate(&root, &temp.path().join(format!("{case}-out")), &["--dry-run"]);
+        assert!(!ok, "{capsule}");
+        assert!(
+            refused["errors"][0]["reason"].as_str().unwrap().contains(reason),
+            "{refused:#}"
+        );
+    }
 }

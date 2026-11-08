@@ -9,6 +9,7 @@
 mod annotations;
 mod classes;
 mod effects;
+mod host;
 mod javascript;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -169,14 +170,33 @@ enum WriteKind {
     NativeObject,
     Array,
     Dynamic,
+    /// A `#name` slot owned by the PHP class descriptor expression.
+    Private(String),
 }
 
 enum CapturedPlace {
     Binding(String),
-    Object { receiver: String, key: String },
-    NativeObject { receiver: String, key: String },
-    Array { receiver: String, key: String },
-    Dynamic { receiver: String, key: String },
+    Object {
+        receiver: String,
+        key: String,
+    },
+    NativeObject {
+        receiver: String,
+        key: String,
+    },
+    Array {
+        receiver: String,
+        key: String,
+    },
+    Dynamic {
+        receiver: String,
+        key: String,
+    },
+    Private {
+        class: String,
+        receiver: String,
+        key: String,
+    },
 }
 
 impl Out {
@@ -2174,8 +2194,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let _ = writeln!(out, "{p}{source} = \\Zero\\Js::requirePresent({src});");
                 let src = &source;
                 let t = ty.non_null();
-                if ty.is_nullable() {
+                if ty.is_nullable() && ty != Ty::Dynamic {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                // Imported JavaScript: any field may be read, and an absent one is undefined.
+                if ty == Ty::Dynamic {
+                    for (key, p2) in props {
+                        let access = format!("\\Zero\\Js::dynamicGet({src}, {})", php_str(key));
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        self.bind_pattern_types(p2, &access, types, mutable, out, indent)?;
+                    }
+                    if let Some((name, span)) = rest {
+                        let keys: Vec<String> = props.iter().map(|(k, _)| php_str(k)).collect();
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        let php = self.declare_binding(name, types, mutable, *span);
+                        self.fresh_binding(&php, *span, out, indent);
+                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::dynamicRest({src}, [{}]);", keys.join(", "));
+                    }
+                    return Ok(());
                 }
                 for (key, p2) in props {
                     let Some((ft, optional)) = t.field(key) else {
@@ -2223,6 +2265,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Pat::Arr { elems, rest, span } => {
                 let source = self.tmp_var();
+                // Imported JavaScript destructures any iterable, read once.
+                if ty == Ty::Dynamic {
+                    let _ = writeln!(out, "{p}{source} = \\Zero\\Js::dynamicIterable({src});");
+                    for (i, e) in elems.iter().enumerate() {
+                        if let Some(e) = e {
+                            let access = format!("\\Zero\\Js::dynamicGet({source}, {i})");
+                            let types = BindingTypes {
+                                read: Ty::Dynamic,
+                                constraint: Ty::Dynamic,
+                            };
+                            self.bind_pattern_types(e, &access, types, mutable, out, indent)?;
+                        }
+                    }
+                    if let Some((name, span)) = rest {
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        let php = self.declare_binding(name, types, mutable, *span);
+                        self.fresh_binding(&php, *span, out, indent);
+                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::arrSlice({source}, {});", elems.len());
+                    }
+                    return Ok(());
+                }
                 let _ = writeln!(out, "{p}{source} = {src};");
                 let src = &source;
                 if ty.is_nullable() {
@@ -2684,6 +2750,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Instanceof(left, right) => {
                 let left = self.expr(left)?;
                 let right = self.expr(right)?;
+                if right.ty == Ty::Dynamic {
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Js::dynamicInstanceof({}, {})", left.php, right.php),
+                        Ty::Bool,
+                    ));
+                }
                 if !matches!(right.ty, Ty::Class(_)) {
                     return err(span, "instanceof requires a named Zero class");
                 }
@@ -2706,11 +2778,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let site = format!("{}:{}:{}", span.file, span.start, span.end);
                 Out::atom(
                     format!("\\Zero\\Js::templateStrings({}, [{items}], [{raw}])", php_str(&site)),
-                    Ty::NonEmptyArray(Box::new(if cooked.iter().all(Option::is_some) {
-                        Ty::Str
-                    } else {
-                        Ty::union([Ty::Str, Ty::Undefined])
-                    })),
+                    // TypeScript types every cooked string as `string`, so a TemplateStringsArray
+                    // tag still accepts an invalid escape; its element is undefined at runtime.
+                    Ty::NonEmptyArray(Box::new(Ty::Str)),
                 )
             }
             ExprKind::AssignPattern(pattern, value) => self.assign_pattern(pattern, value)?,
@@ -2730,6 +2800,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
+            ExprKind::BigInt(digits) => {
+                Out::atom(format!("\\Zero\\JsBigInt::literal({})", php_str(digits)), Ty::BigInt)
+            }
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
             ExprKind::Undefined => Out::atom("\\Zero\\Js::undefined()", Ty::Undefined),
@@ -2906,6 +2979,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         Out::new(format!("!{}", paren(&self.truthy(&v))), ty)
                     }
+                    UnOp::Neg if v.ty == Ty::BigInt => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::BigInt),
+                    UnOp::BitNot if v.ty == Ty::BigInt => {
+                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::BigInt)
+                    }
+                    UnOp::Plus if v.ty == Ty::BigInt => {
+                        return err_help(
+                            x.span,
+                            "unary `+` on a bigint throws a TypeError",
+                            "use Number(b) to convert",
+                        );
+                    }
                     UnOp::Neg => {
                         if v.ty != Ty::Dynamic {
                             self.need_num(&v, x.span, "`-`")?;
@@ -2914,15 +2998,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             Ty::NumLit(n) | Ty::FreshNumLit(n) if matches!(x.kind, ExprKind::Num(_)) => {
                                 Out::atom(php_number(-n), Ty::FreshNumLit(-n))
                             }
-                            // Js::neg: the operand as a JS number, like the binary operators.
-                            _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
+                            // Js::neg: the operand as a JS number, like the binary operators (or a
+                            // BigInt, which checked JavaScript can't rule out).
+                            _ => Out::atom(
+                                format!("\\Zero\\Js::neg({})", v.php),
+                                if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
+                            ),
                         }
                     }
                     UnOp::BitNot => {
                         if v.ty != Ty::Dynamic {
                             self.need_num(&v, x.span, "`~`")?;
                         }
-                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::Num)
+                        Out::atom(
+                            format!("\\Zero\\Js::bitNot({})", v.php),
+                            if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
+                        )
                     }
                     UnOp::Plus => {
                         if v.ty.is_num() {
@@ -3071,8 +3162,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "a class instance must come from new; assertions cannot restore class identity",
                     );
                 }
-                if !(assignable(&v.ty, &t) || assignable(&t, &v.ty) || v.ty == Ty::Unknown) {
+                // `b as unknown` and `x as bigint` are TypeScript's escape hatches; a value asserted
+                // away from bigint is still a BigInt at runtime, so it stays on the checked path.
+                if v.ty == Ty::BigInt && t == Ty::Unknown {
+                    return Ok(Out { ty: Ty::Dynamic, ..v });
+                }
+                if !(assignable(&v.ty, &t) || assignable(&t, &v.ty) || v.ty == Ty::Unknown || v.ty == Ty::Dynamic) {
                     return err(span, format!("can't treat {} as {}", v.ty.describe(), t.describe()));
+                }
+                if v.ty == Ty::Dynamic {
+                    return Ok(v);
                 }
                 Out { ty: t, ..v }
             }
@@ -3141,6 +3240,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
             Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\Zero\\Js::numStr({})", v.php),
+            Ty::BigInt => format!("(string) ({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
         })
@@ -3174,6 +3274,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn binary(&mut self, op: BinOp, a: Out, b: Out, span: Span) -> Result<Out> {
+        let bigint = |t: &Ty| *t == Ty::BigInt;
+        if bigint(&a.ty) || bigint(&b.ty) {
+            return self.bigint_binary(op, a, b, span);
+        }
         if op == BinOp::Add {
             crate::builtins::check_string_coercion_type(&a.ty, span)?;
             crate::builtins::check_string_coercion_type(&b.ty, span)?;
@@ -3268,6 +3372,64 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }
         })
+    }
+
+    /// An operator with a BigInt operand. Arithmetic, shifts and bitwise operators need both sides
+    /// BigInt (JavaScript throws TypeError on a mix); comparisons and equality compare
+    /// mathematically across BigInt and number, as JavaScript does. `+` with a string concatenates.
+    fn bigint_binary(&mut self, op: BinOp, a: Out, b: Out, span: Span) -> Result<Out> {
+        // Checked JavaScript can't rule out a BigInt in a dynamic operand; the runtime decides.
+        let both = matches!(a.ty, Ty::BigInt | Ty::Dynamic) && matches!(b.ty, Ty::BigInt | Ty::Dynamic);
+        let symbol = match op {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
+            BinOp::Exp => "**",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::Eq => "===",
+            BinOp::Ne => "!==",
+            BinOp::LooseEq => "==",
+            BinOp::LooseNe => "!=",
+            BinOp::UShr => {
+                return err_help(
+                    span,
+                    "BigInts have no unsigned right shift",
+                    "use `>>`, as JavaScript requires",
+                );
+            }
+            other => other.bitwise_symbol().expect("bitwise operator"),
+        };
+        let result = match op {
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Eq | BinOp::Ne | BinOp::LooseEq | BinOp::LooseNe => {
+                Ty::Bool
+            }
+            BinOp::Add if a.ty.is_str() || b.ty.is_str() => Ty::Str,
+            _ if !both => {
+                // A static mix is a TypeError in JavaScript, so it is refused at the source.
+                return err_help(
+                    span,
+                    format!(
+                        "can't mix bigint and {} in `{symbol}`",
+                        if a.ty == Ty::BigInt {
+                            b.ty.describe()
+                        } else {
+                            a.ty.describe()
+                        }
+                    ),
+                    "convert explicitly with BigInt(n) or Number(b), as JavaScript requires",
+                );
+            }
+            _ => Ty::BigInt,
+        };
+        Ok(Out::atom(
+            format!("\\Zero\\Js::dynamicBinary({}, {}, {})", php_str(symbol), a.php, b.php),
+            result,
+        ))
     }
 
     fn strict_eq(&self, a: &Out, b: &Out) -> String {
@@ -3373,15 +3535,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Str.nullable(),
                 ))
             }
-            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
+            Value::Builtin(Builtin::Env) => err_help(
+                span,
+                "env() is a config reference for webhooks, signatures and upload credentials",
+                "read runtime variables in handlers with `process.env.NAME`",
+            ),
+            Value::Builtin(Builtin::Once) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
             ),
-            Value::Builtin(Builtin::Crypto) => err_help(
+            Value::Builtin(Builtin::NodeCrypto(_)) => err_help(
                 span,
-                "`crypto` can't be used as a value",
-                "call its functions directly: `crypto.sha256(text)`",
+                format!("`{n}` from \"node:crypto\" can't be used as a value"),
+                "call it where it's used, e.g. `createHash(\"sha256\").update(text).digest(\"hex\")`",
             ),
             Value::Builtin(Builtin::Mail) => err_help(
                 span,
@@ -3819,7 +3986,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if op.is_none()
             && !statement
             && let Some(target) = place.target.as_ref()
-            && !matches!(target.kind, WriteKind::NativeObject)
+            && !matches!(target.kind, WriteKind::NativeObject | WriteKind::Private(_))
         {
             let v = self.expr(value)?;
             let v = self.finish_value(v, value.span)?;
@@ -3840,7 +4007,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         WriteKind::Dynamic => "dynamicSet",
                         WriteKind::Array => "setAt",
                         WriteKind::Object => "set",
-                        WriteKind::NativeObject => unreachable!(),
+                        WriteKind::NativeObject | WriteKind::Private(_) => unreachable!(),
                     },
                     target.receiver,
                     target.key,
@@ -3855,7 +4022,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             steps.push(format!("{old} = {read}"));
             let present = if matches!(op, AssignOp::Bin(_)) {
                 match &write {
-                    CapturedPlace::Binding(_) | CapturedPlace::Dynamic { .. } => None,
+                    CapturedPlace::Binding(_) | CapturedPlace::Dynamic { .. } | CapturedPlace::Private { .. } => None,
                     CapturedPlace::Array { receiver, key }
                     | CapturedPlace::Object { receiver, key }
                     | CapturedPlace::NativeObject { receiver, key } => {
@@ -3983,7 +4150,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let object = self.tmp_var();
                 steps.push(format!("{object} = \\Zero\\Js::requirePresent({src})"));
                 let mut keys = Vec::new();
+                let mut literal_keys: Vec<Option<String>> = Vec::new();
                 for (key, p) in props {
+                    let mut computed_literal = None;
                     let (key_php, field_ty) = match key {
                         PropKey::Static(k) => {
                             let field = if *ty == Ty::Dynamic {
@@ -4011,6 +4180,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
                                 _ => None,
                             };
+                            computed_literal = literal.clone();
                             let field = match ty.non_null() {
                                 Ty::Dynamic => Ty::Dynamic,
                                 Ty::Map(t) => Ty::union([*t, Ty::Undefined]),
@@ -4035,6 +4205,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     };
                     keys.push(key_php.clone());
+                    literal_keys.push(match key {
+                        PropKey::Static(k) => Some(k.clone()),
+                        PropKey::Computed(_) => computed_literal.clone(),
+                    });
                     let read = self.tmp_var();
                     let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };
                     let pending = format!("{read} = \\Zero\\Js::{getter}({object}, {key_php})");
@@ -4046,9 +4220,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let rest_ty = match ty.non_null() {
                         Ty::Obj(f) => Ty::Obj(
                             f.into_iter()
-                                .filter(|(k, _)| {
-                                    !props.iter().any(|(pk, _)| matches!(pk, PropKey::Static(s) if s == k))
-                                })
+                                .filter(|(k, _)| !literal_keys.iter().flatten().any(|taken| taken == k))
                                 .collect(),
                         ),
                         other => other,
@@ -4068,11 +4240,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if ty.is_nullable() && *ty != Ty::Dynamic {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
-                // The iterable is read once; for checked JavaScript it may be any iterable.
+                // An array is read live, element by element, as JavaScript's array iterator does,
+                // so an earlier target write is seen by later reads. Checked JavaScript may pass any
+                // other iterable, which is read once up front.
                 let list = self.tmp_var();
                 steps.push(match element {
-                    None => format!("{list} = \\Zero\\Js::dynamicIterable({src})"),
-                    Some(_) => format!("{list} = \\Zero\\Js::arrSlice({src}, 0)"),
+                    None => format!("{list} = \\Zero\\Js::dynamicIterableLive({src})"),
+                    Some(_) => format!("{list} = {src}"),
                 });
                 for (i, p) in elems.iter().enumerate() {
                     let Some(p) = p else { continue };
@@ -4087,7 +4261,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if let Some(r) = rest {
                     let value = self.tmp_var();
-                    let pending = format!("{value} = \\Zero\\Js::arrSlice({list}, {})", elems.len());
+                    let pending = format!("{value} = \\Zero\\Js::restFrom({list}, {})", elems.len());
                     let rest_ty = match (&element, ty.non_null()) {
                         (None, _) => Ty::Dynamic,
                         (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => {
@@ -4188,8 +4362,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("({receiver}->p[{key}] ?? \\Zero\\Js::dataGet({receiver}, {key}))")
                     }
                     WriteKind::Object => format!("\\Zero\\Js::dataGet({receiver}, {key})"),
+                    WriteKind::Private(ref class) => format!("{class}->privateGet({receiver}, {key})"),
                 };
                 let write = match target.kind {
+                    WriteKind::Private(class) => CapturedPlace::Private { class, receiver, key },
                     WriteKind::Dynamic => CapturedPlace::Dynamic { receiver, key },
                     WriteKind::Array => CapturedPlace::Array { receiver, key },
                     WriteKind::NativeObject => CapturedPlace::NativeObject { receiver, key },
@@ -4207,12 +4383,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             CapturedPlace::NativeObject { receiver, key } => format!("({receiver}->p[{key}] = {value})"),
             CapturedPlace::Array { receiver, key } => format!("\\Zero\\Js::setAt({receiver}, {key}, {value})"),
             CapturedPlace::Dynamic { receiver, key } => format!("\\Zero\\Js::dynamicSet({receiver}, {key}, {value})"),
+            CapturedPlace::Private { class, receiver, key } => {
+                format!("{class}->privateSet({receiver}, {key}, {value})")
+            }
         }
     }
 
     fn update(&mut self, target: &Expr, inc: bool, prefix: bool) -> Result<Out> {
         let place = self.place(target)?;
-        let property_number = place.target.is_some() && place.constraint.non_null().is_num();
+        // Private slots always exist once read; the presence check only applies to properties.
+        let property_number = place
+            .target
+            .as_ref()
+            .is_some_and(|t| !matches!(t.kind, WriteKind::Private(_)))
+            && place.constraint.non_null().is_num();
         if !property_number && place.read.ty != Ty::Dynamic {
             self.need_num(&place.read, target.span, if inc { "`++`" } else { "`--`" })?;
         }
@@ -4245,6 +4429,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
+        self.host_place(target)?;
         match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
@@ -4267,6 +4452,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
+                if prop.starts_with('#') {
+                    let (class, ty) = self.private_member(prop, *prop_span)?;
+                    let o = self.private_receiver(obj)?;
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(format!("{class}->privateGet({}, {})", o.php, php_str(prop)), ty.clone()),
+                        constraint: ty,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Private(class),
+                        }),
+                    });
+                }
                 let mut o = self.expr(obj)?;
                 if o.ty == Ty::Dynamic {
                     return Ok(self.javascript_place(o, Out::atom(php_str(prop), Ty::Str)));
@@ -4471,6 +4669,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "make the property optional (`key?: T`), as TypeScript requires for `delete`",
                 );
             }
+            // A closed object type without the property: TypeScript rejects the read, and a typo
+            // here would silently delete nothing.
+            let closed_without = |ty: &Ty| match ty {
+                Ty::Obj(fields) => !fields.contains_key(&prop),
+                Ty::Instance(_, fields) => matches!(&**fields, Ty::Obj(f) if !f.contains_key(&prop)),
+                _ => false,
+            };
+            if members.iter().any(closed_without) {
+                return Err(self.no_field(&receiver_ty, &prop, span));
+            }
         } else if matches!(receiver_ty.non_null(), Ty::Obj(_) | Ty::Instance(..)) {
             return err_help(
                 span,
@@ -4511,6 +4719,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if prop.starts_with('#') {
+            return self.private_read(obj, prop, optional, prop_span);
+        }
+        if let Some(out) = self.host_member(obj, prop, prop_span)? {
+            return Ok(out);
+        }
         let native_object = self.native_object_receiver(obj);
         // Namespaces: Math.PI etc.
         if let ExprKind::Ident(n) = &obj.kind
@@ -4662,6 +4876,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("({x})->{prop}"));
                 Out::atom(php, suffix_null(Ty::Str))
             }
+            (Ty::Host(h), _) => self.host_property(h, &o, prop, prop_span)?,
             (Ty::Obj(_) | Ty::Map(_) | Ty::Union(_), _) => {
                 let Some((ft, opt_field)) = base.field(prop) else {
                     if matches!(base, Ty::Union(_)) {
@@ -4708,6 +4923,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn index(&mut self, obj: &Expr, index: &Expr, optional: bool, span: Span) -> Result<Out> {
+        if let Some(out) = self.host_index(obj, index)? {
+            return Ok(out);
+        }
         let o = self.expr(obj)?;
         let mut o = self.finish_value(o, obj.span)?;
         let i = self.expr(index)?;
@@ -4854,6 +5072,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+        if let Some(out) = self.host_new(callee, args, span)? {
+            return Ok(out);
+        }
         if let ExprKind::Ident(name) = &callee.kind
             && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             && (name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module))
@@ -5065,6 +5286,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
         }
+        if let Some(out) = self.host_call(callee, args, span)? {
+            return Ok(out);
+        }
         if let Some(out) = self.jobs_call(callee, args, span)? {
             return Ok(out);
         }
@@ -5077,6 +5301,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } => {
                 if matches!(&obj.kind, ExprKind::Ident(n) if n == "super") {
                     return self.super_method(prop, args, span);
+                }
+                if prop.starts_with('#') {
+                    return self.private_call(obj, prop, *opt, *prop_span, args, span);
                 }
                 // Static functions on globals: Math.max, Object.keys, ...
                 if let ExprKind::Ident(n) = &obj.kind
@@ -5157,8 +5384,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         b @ (Builtin::Once
                         | Builtin::Jobs
                         | Builtin::Env
-                        | Builtin::Fetch
-                        | Builtin::Crypto
                         | Builtin::Mail
                         | Builtin::Abilities
                         | Builtin::WpFunction(_)),
@@ -5171,35 +5396,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &callee.kind {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
-                Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
                 Some(Builtin::WpFunction(name)) => self.wp_function_call(&name, args, span).map(Some),
-                Some(Builtin::Env) => {
-                    let name = self.arg(args, 0, span, "an environment variable name")?;
-                    match &name.kind {
-                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => {
-                            self.uses("env", s.clone(), name.span);
-                            Ok(Some(Out::atom(
-                                format!("\\Zero\\Env::get({})", php_str(s)),
-                                Ty::Str.nullable(),
-                            )))
-                        }
-                        _ => err_help(
-                            name.span,
-                            "env() needs an environment variable name",
-                            "use env(\"HOOK_SECRET\")",
-                        ),
-                    }
-                }
+                Some(Builtin::Env) => err_help(
+                    callee.span,
+                    "env() is a config reference for webhooks, signatures and upload credentials",
+                    "read runtime variables in handlers with `process.env.NAME`",
+                ),
                 _ => Ok(None),
             },
-            // Only a name that resolves to the imported `crypto` is ours; `super`, unbound and
-            // shadowed names fall through to ordinary member calls.
-            ExprKind::Member { obj, prop, .. }
-                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
-                    && builtin(self, obj).ok().flatten() == Some(Builtin::Crypto) =>
-            {
-                self.crypto_call(prop, args, span).map(Some)
-            }
             ExprKind::Member { obj, prop, .. }
                 if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
                     && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
@@ -5224,162 +5428,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// `fetch(url, { method?, headers?, body? })` → `Promise<FetchResponse>`, see `types::fetch_response`.
-    fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
-        if self.fx().no_db {
-            return err_help(
-                span,
-                "access rules can't use fetch()",
-                "move it into a hook, action or route",
-            );
-        }
-        if args.is_empty() || args.len() > 2 {
-            return err_help(
-                span,
-                "fetch() takes a URL and optional init",
-                "write fetch(url, { method, headers, body })",
-            );
-        }
-        let url_expr = self.arg(args, 0, span, "a URL")?;
-        let host = static_host(url_expr);
-        self.uses("http", host.clone().unwrap_or_else(|| "*".into()), url_expr.span);
-        let url = self.expr(url_expr)?;
-        let url = self.finish_value(url, url_expr.span)?;
-        if !url.ty.is_str() || url.ty.is_nullable() {
-            return err_help(url_expr.span, "fetch() needs a URL string", "pass the URL as a string");
-        }
-        let init = match args.get(1) {
-            None => "null".to_string(),
-            Some(_) => {
-                let init_expr = self.arg(args, 1, span, "init")?;
-                let init = self.expr(init_expr)?;
-                let init = self.finish_value(init, init_expr.span)?;
-                let ok = match &init.ty {
-                    Ty::Obj(fields) => fields.iter().all(|(k, (t, _))| match k.as_str() {
-                        "method" | "body" => t.all(|t| t.is_str() || matches!(t, Ty::Null | Ty::Undefined)),
-                        "headers" => t.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Null | Ty::Undefined)),
-                        _ => false,
-                    }),
-                    _ => false,
-                };
-                if !ok {
-                    return err_help(
-                        init_expr.span,
-                        format!(
-                            "fetch() init must be {{ method?, headers?, body? }} with strings, not {}",
-                            init.ty.describe()
-                        ),
-                        "stringify JSON bodies with JSON.stringify(...)",
-                    );
-                }
-                init.php
-            }
-        };
-        // A plugin's fetches are checked against its locked hosts on every hop, so a runtime-built
-        // URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
-        let allow = match &self.plugin {
-            Some((i, _)) => format!(", \\ZeroApp\\{}()", self.host_functions[*i]),
-            None => String::new(),
-        };
-        Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({}, {init}{allow})", url.php),
-            Ty::Promise(Box::new(types::fetch_response())),
-        ))
-    }
-
-    /// `crypto.<fn>(...)`: synchronous digests and comparisons over `Zero\Crypto`. Every result is
-    /// lowercase hex (or a boolean / UUID), matching the original runtime's `ctx.crypto`.
-    fn crypto_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
-        let (arity, ret, php) = match name {
-            "sha256" | "sha1" | "sha512" | "md5" => (1, Ty::Str, name),
-            "hmacSha256" => (1, Ty::Str, "hmacSha256"),
-            "timingSafeEqual" => (2, Ty::Bool, "timingSafeEqual"),
-            "randomHex" => (1, Ty::Str, "randomHex"),
-            "randomUUID" => (0, Ty::Str, "randomUUID"),
-            _ => {
-                let mut d = Diag::new(span, format!("`crypto` has no function `{name}`"));
-                let names = [
-                    "sha256",
-                    "sha1",
-                    "sha512",
-                    "md5",
-                    "hmacSha256",
-                    "timingSafeEqual",
-                    "randomHex",
-                    "randomUUID",
-                ];
-                if let Some(s) = suggest(name, names.iter().copied()) {
-                    d = d.help(format!("did you mean `crypto.{s}`?"));
-                }
-                return Err(d);
-            }
-        };
-        if args.len() != arity {
-            return err(
-                span,
-                format!(
-                    "crypto.{name}() takes {arity} argument{}",
-                    if arity == 1 { "" } else { "s" }
-                ),
-            );
-        }
-        let mut argv = Vec::new();
-        for i in 0..arity {
-            let e = self.arg(args, i, span, "an argument")?;
-            let v = self.expr(e)?;
-            let v = self.finish_value(v, e.span)?;
-            let ok = match (name, i) {
-                ("randomHex", _) => v.ty.is_num() && !v.ty.is_nullable(),
-                ("hmacSha256", _) => match &v.ty {
-                    Ty::Obj(f) => {
-                        f.keys().all(|k| k == "key" || k == "data")
-                            && f.get("data").is_some_and(|(t, opt)| !opt && t.is_str() && !t.is_nullable())
-                            && f.get("key").is_some_and(|(t, opt)| {
-                                !opt && (t.is_str() && !t.is_nullable()
-                                    || matches!(t, Ty::Obj(k) if k.len() == 1 && k.get("value").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())))
-                            })
-                    }
-                    _ => false,
-                },
-                _ => v.ty.is_str() && !v.ty.is_nullable(),
-            };
-            if !ok {
-                return err_help(
-                    e.span,
-                    format!("crypto.{name}() can't take {}", v.ty.describe()),
-                    match name {
-                        "hmacSha256" => "pass { key: \"VAR_NAME\" | { value }, data: string }",
-                        "randomHex" => "pass a number of bytes",
-                        _ => "pass a string",
-                    },
-                );
-            }
-            argv.push(v.php);
-        }
-        if name == "hmacSha256"
-            && let Some(ArrEl::Item(Expr {
-                kind: ExprKind::Object(props),
-                ..
-            })) = args.first()
-        {
-            for p in props {
-                if let Prop::KV(PropKey::Static(k), v) = p
-                    && k == "key"
-                {
-                    match &v.kind {
-                        ExprKind::Str(var) => self.uses("env", var.clone(), v.span),
-                        ExprKind::Object(_) => {}
-                        _ => self.uses("env", "*", v.span),
-                    }
-                }
-            }
-        } else if name == "hmacSha256" {
-            self.uses("env", "*", span);
-        }
-        Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
-    }
-
-    /// `mail.send(message)`: queues inside the handler's transaction, hands off after commit.
     fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if name != "send" {
             return err_help(
@@ -5848,11 +5896,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("structuredClone", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::clone({})", v.php), classes::wire_type(&v.ty))
             }
+            ("BigInt", Some(v)) => Out::atom(format!("\\Zero\\JsBigInt::of({})", v.php), Ty::BigInt),
+            ("Number", Some(v)) if v.ty == Ty::BigInt => Out::atom(format!("({})->toNumber()", v.php), Ty::Num),
             ("Number", Some(v)) => {
                 if v.ty.is_num() {
                     v.clone()
                 } else {
-                    Out::atom(format!("\\Zero\\Js::toNumber({})", v.php), Ty::Num)
+                    // Number(value): ToNumeric, then a BigInt becomes its nearest double.
+                    Out::atom(format!("\\Zero\\Js::number({})", v.php), Ty::Num)
                 }
             }
             ("Boolean", Some(v)) => Out::new(self.truthy(v), Ty::Bool),
@@ -5874,19 +5925,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Js::isFinite(\\Zero\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
+            ("process" | "crypto" | "Buffer", _) => {
+                return err_help(
+                    span,
+                    format!("`{g}` can't be called"),
+                    "use `process.env.NAME`, `crypto.randomUUID()` or \"node:crypto\"",
+                );
+            }
+            ("Headers" | "URLSearchParams", _) => {
+                return err_help(span, format!("`{g}` needs `new`"), format!("write `new {g}(...)`"));
+            }
             (
-                "fetch" | "process" | "require" | "eval" | "Function" | "setTimeout" | "crypto" | "globalThis"
-                | "Promise",
+                "eval" | "Function" | "setTimeout" | "globalThis" | "Promise" | "URL" | "Request" | "Response"
+                | "FormData" | "Blob" | "AbortController",
                 _,
             ) => {
                 return err_help(
                     span,
                     format!("`{g}` isn't available in Zero code"),
-                    if g == "fetch" {
-                        "use a job or webhook for network effects; fetch is not a supported HTTP capability"
-                    } else {
-                        "use supported server capabilities in a hook or action"
-                    },
+                    "use supported server capabilities in a hook or action",
                 );
             }
             _ => return err(span, format!("`{g}(...)` isn't supported")),
@@ -5897,6 +5954,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.builtin_args(g, m, args, span)?;
         if (g, m) == ("Math", "pow") {
             crate::builtins::check_power_literals(args, span)?;
+        }
+        if g == "BigInt" {
+            let argv = self.plain_args(args)?;
+            return Ok(Out::atom(
+                format!(
+                    "\\Zero\\JsBigInt::asIntN({}, {}, {})",
+                    argv[0].php,
+                    argv[1].php,
+                    if m == "asIntN" { "true" } else { "false" }
+                ),
+                Ty::BigInt,
+            ));
         }
         if g == "Math" && matches!(m, "log" | "exp") {
             crate::builtins::check_transcendental_literals(m, args, span)?;
@@ -6203,6 +6272,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::DbGlobal(name) => return self.db_global_call(&name, m, args, m_span),
             _ => {}
         }
+        if recv.ty == Ty::BigInt {
+            self.builtin_args("bigint", m, args, span)?;
+            let argv = self.plain_args(args)?;
+            return match m {
+                "toString" => Ok(Out::atom(
+                    match argv.first() {
+                        Some(radix) => format!("({})->toRadixArg({})", recv.php, radix.php),
+                        None => format!("(string) ({})", recv.php),
+                    },
+                    Ty::Str,
+                )),
+                _ => err(m_span, format!("bigint has no method `{m}` in Zero code")),
+            };
+        }
         let family = match recv.ty.non_null() {
             Ty::Date => Some("date"),
             t if t.is_num() => Some("number"),
@@ -6294,6 +6377,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             },
+            Ty::Host(h) => self.host_method(h, &recv, m, args, m_span, span)?,
             Ty::Regex => match m {
                 "test" => {
                     let argv = self.plain_args(args)?;
@@ -7500,7 +7584,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
 /// The host of a URL whose `https://host/` prefix is written in the source: a string, a template
 /// or a `+` chain starting with one. Anything else is built at runtime.
-fn static_host(e: &Expr) -> Option<String> {
+pub(super) fn static_host(e: &Expr) -> Option<String> {
     let complete = matches!(e.kind, ExprKind::Str(_));
     let prefix = match &e.kind {
         ExprKind::Str(s) => s.clone(),
@@ -7751,7 +7835,10 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::Null | Ty::Undefined | Ty::Void => t.clone(),
         Ty::Str if !truthy => Ty::StrLit(String::new()),
         Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
-        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Dynamic | Ty::Never => t.clone(),
+        // `0n` is falsy, so a bigint stays on both branches, like a number.
+        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::BigInt | Ty::Unknown | Ty::Dynamic | Ty::Never => {
+            t.clone()
+        }
         Ty::Arguments
         | Ty::Array(_)
         | Ty::NonEmptyArray(_)
@@ -7766,6 +7853,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Promise(_)
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db
@@ -7958,7 +8046,8 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
             Box::new(widen_fresh_literals(ret)),
         ),
         Ty::Promise(t) => Ty::Promise(Box::new(widen_fresh_literals(t))),
-        Ty::Num
+        Ty::BigInt
+        | Ty::Num
         | Ty::NumLit(_)
         | Ty::Str
         | Ty::StrLit(_)
@@ -7973,6 +8062,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Never
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db
@@ -8226,7 +8316,10 @@ fn stmt_completions(
             let mut flow = block_completions(body, diverging, exhaustive_switches);
             let breaks = flow.remove(&Break);
             let tested = flow.remove(&Normal) | flow.remove(&Continue);
-            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) {
+            if tested && diverging.contains(&test.span) {
+                flow.insert(Throw);
+            }
+            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) && !diverging.contains(&test.span) {
                 flow.insert(Normal);
             }
             flow

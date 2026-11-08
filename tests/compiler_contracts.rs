@@ -3443,6 +3443,10 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
             first,
             "() => ({ a() { if (first([1, 3, 2])) return this.n; return 0; }, n: 1 }).a()",
         ),
+        (
+            boxed,
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box) return 1; return 0; }",
+        ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(

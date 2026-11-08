@@ -136,6 +136,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if self.classes.contains_key(&id) {
             return Ok(id);
         }
+        // A refused class leaves no entry, so the next reference compiles it again and reports
+        // the refusal instead of naming a class function PHP never got (`instanceof` narrowing
+        // compiles the class speculatively and drops the error).
+        let compiled = self.compile_class(id, class);
+        if compiled.is_err() {
+            self.classes.remove(&id);
+        }
+        compiled
+    }
+
+    fn compile_class(&mut self, id: usize, class: &Rc<ClassValue>) -> Result<usize> {
         let parent = class.base.as_ref().map(|c| self.ensure_class(c)).transpose()?;
         let c = &class.class;
         let javascript = self.javascript_module(class.env.module);

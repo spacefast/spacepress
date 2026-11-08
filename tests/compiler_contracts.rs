@@ -977,7 +977,7 @@ const sharedLiteral: 0 | 1 = effects.sharedCount;
 }
 
 #[test]
-fn private_names_and_imported_javascript_classes_match_node() {
+fn private_names_accessors_and_imported_javascript_classes_match_node() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = root().join("tests/differential");
     std::fs::copy(dir.join("class-private.ts"), tmp.path().join("zero.config.ts")).unwrap();
@@ -994,7 +994,7 @@ fn private_names_and_imported_javascript_classes_match_node() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     assert_eq!(expected["complete"], true);
-    assert_eq!(expected["cases"].as_object().unwrap().len(), 3);
+    assert_eq!(expected["cases"].as_object().unwrap().len(), 5);
     assert!(
         expected["cases"]
             .as_object()
@@ -1088,8 +1088,18 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         ),
         (
             "class C { get value() { return 1; } }",
+            "(() => { const c = new C(); c.value = 2; return 1; })()",
+            "getter without a setter",
+        ),
+        (
+            "class C { set value(v: number) {} }",
+            "new C().value",
+            "has only a setter",
+        ),
+        (
+            "class C { toJSON(): string { return 'c'; } }",
             "new C()",
-            "accessor class methods",
+            "class instances with a toJSON method",
         ),
         (
             "class C {} const factory = () => C; class D extends factory() {}",

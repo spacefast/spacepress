@@ -828,6 +828,9 @@ impl CommonJsScope<'_> {
                 if let Some(constructor) = &class.constructor {
                     self.function(constructor)?;
                 }
+                for accessor in &class.accessors {
+                    self.function(&accessor.func)?;
+                }
             }
             ExprKind::Array(items) => {
                 for ArrEl::Item(value) | ArrEl::Spread(value) in items {

@@ -26,7 +26,53 @@ final class JsClass
         private readonly array $privateMethods = [],
         private readonly array $staticPrivateMethods = [],
         private readonly ?JsObject $privateStatics = null,
+        /** @var array<string, array{0: ?\Closure, 1: ?\Closure}> getter/setter pairs on the prototype */
+        private readonly array $accessors = [],
+        /** @var array<string, array{0: ?\Closure, 1: ?\Closure}> static getter/setter pairs */
+        private readonly array $staticAccessors = [],
     ) {}
+
+    /** The nearest accessor pair for a key along the prototype chain, or null. */
+    public function accessor(string $name, bool $static): ?array
+    {
+        $own = ($static ? $this->staticAccessors : $this->accessors)[$name] ?? null;
+        if ($own !== null) { return $own; }
+        if (isset(($static ? $this->staticMethods : $this->methods)[$name])) { return null; }
+        if ($static && array_key_exists($name, $this->statics->p)) { return null; }
+        return $this->parent?->accessor($name, $static);
+    }
+
+    /** Returned by readInherited when no prototype member has the name; compared by identity. */
+    public static function absent(): \stdClass
+    {
+        static $absent;
+        return $absent ??= new \stdClass();
+    }
+
+    /** [[Get]] for a name that is not an own data property: accessor first, then methods. */
+    public function readInherited(JsObject|self $receiver, string $name, bool $static): mixed
+    {
+        $accessor = $this->accessor($name, $static);
+        if ($accessor !== null) {
+            return $accessor[0] === null ? JsUndefined::Value : ($accessor[0])($receiver);
+        }
+        if ($static ? $this->hasStaticMethod($name) : $this->hasMethod($name)) {
+            return $this->methodValue($name, $static);
+        }
+        return self::absent();
+    }
+
+    /** [[Set]] through an inherited accessor; returns false when no accessor intercepts the write. */
+    public function writeInherited(JsObject|self $receiver, string $name, mixed $value, bool $static): bool
+    {
+        $accessor = $this->accessor($name, $static);
+        if ($accessor === null) { return false; }
+        if ($accessor[1] === null) {
+            throw new JsError("Cannot set property $name of #<Object> which has only a getter", 'TypeError');
+        }
+        ($accessor[1])($receiver, $value);
+        return true;
+    }
 
     public function construct(mixed ...$args): JsObject
     {
@@ -96,17 +142,27 @@ final class JsClass
 
     public function get(string $key): mixed
     {
+        return $this->getFor($this, $key);
+    }
+
+    /** Static [[Get]] keeps the original class as the receiver for inherited static getters. */
+    private function getFor(self $receiver, string $key): mixed
+    {
         if (array_key_exists($key, $this->statics->p)) { return $this->statics->p[$key]; }
-        return $this->parent?->get($key);
+        $accessor = $this->staticAccessors[$key] ?? null;
+        if ($accessor !== null) { return $accessor[0] === null ? JsUndefined::Value : ($accessor[0])($receiver); }
+        return $this->parent?->getFor($receiver, $key);
     }
 
     public function has(string $key): bool
     {
-        return array_key_exists($key, $this->statics->p) || ($this->parent?->has($key) ?? false);
+        return array_key_exists($key, $this->statics->p) || isset($this->staticAccessors[$key])
+            || ($this->parent?->has($key) ?? false);
     }
 
     public function set(string $key, mixed $value): mixed
     {
+        if (!array_key_exists($key, $this->statics->p) && $this->writeInherited($this, $key, $value, true)) { return $value; }
         $this->statics->p[$key] = $value;
         return $value;
     }

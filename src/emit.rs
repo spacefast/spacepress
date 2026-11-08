@@ -63,7 +63,7 @@ pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
             "zero-runtime/readme.txt".into(),
             Cow::Owned(readme("zero-runtime").into_bytes()),
         ),
-        // The build store's loader: a must-use plugin on plain sites, required by hosts.
+        // The build store's loader, which the host requires to mount one build.
         (
             "zero-loader.php".into(),
             Cow::Borrowed(runtime_file("wp-plugin/zero-loader.php").expect("embedded loader")),

@@ -14,7 +14,6 @@ defined('ABSPATH') || exit;
         return;
     }
     $manifest = json_decode((string) file_get_contents("$root/build/$build.json"), true);
-    define('ZERO_BUILD_HOST', true);
     require_once "$root/runtime/{$manifest['runtime']}/zero-loader.php";
     if (!defined('ZERO_TEST_BUILD') && \Zero\Loader\Store::receipt($root, $build) === null) {
         return;

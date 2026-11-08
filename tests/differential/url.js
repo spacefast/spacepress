@@ -32,9 +32,13 @@ export function searchParams() {
   encoded.append("a", "é");
   encoded.append("d", "x&y=z ü");
   encoded.append("t", "*-._~!'()");
+  // Iteration reads the live list: a deleted pair is skipped, an appended one is visited.
+  const live = [];
+  const mutating = new URLSearchParams("a=1&b=2");
+  for (const [n] of mutating) { live.push(n); if (n === "a") { mutating.delete("b"); mutating.append("c", "3"); } }
   const tilde = new URL("http://h/a~b?c~d#e~f");
   tilde.searchParams.append("x", "~");
-  return [p.get("a"), p.get("missing"), p.getAll("a"), p.has("c"), p.has("a", "z"), p.size, seen, before, p.toString(), [...p.keys()], [...fromPairs], fromPairs.toString(), fromRecord.toString(), url.href, url.search, String(url), JSON.stringify({ url }), relative.href, URL.canParse("nope"), URL.canParse("/x", "http://h"), String(encoded), new URLSearchParams("x=%zz").get("x"), String(new URLSearchParams(encoded)), tilde.href];
+  return [p.get("a"), p.get("missing"), p.getAll("a"), p.has("c"), p.has("a", "z"), p.size, seen, before, p.toString(), [...p.keys()], [...fromPairs], fromPairs.toString(), fromRecord.toString(), url.href, url.search, String(url), JSON.stringify({ url }), relative.href, URL.canParse("nope"), URL.canParse("/x", "http://h"), String(encoded), new URLSearchParams("x=%zz").get("x"), String(new URLSearchParams(encoded)), tilde.href, live];
 }
 
 export function invalid() {

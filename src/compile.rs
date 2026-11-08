@@ -4917,6 +4917,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }),
                     });
                 }
+                // URL component setters (`u.pathname = "/x"`) run the URL Standard's setter steps in
+                // `JsUrl::set` through checked property assignment.
+                if o.ty == Ty::Url {
+                    if !URL_SETTERS.contains(&prop.as_str()) {
+                        return err_help(
+                            *prop_span,
+                            format!("URL has no writable property `{prop}`"),
+                            format!("assign one of {}", URL_SETTERS.join(", ")),
+                        );
+                    }
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(format!("{}->get({})", o.wrapped(), php_str(prop)), Ty::Str),
+                        constraint: Ty::Str,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Dynamic,
+                        }),
+                    });
+                }
                 if let Ty::Class(id) = o.ty {
                     o.ty = self.class_shape(id);
                 }
@@ -7084,6 +7104,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.require_javascript_symbols(span)?;
         }
         self.builtin_args(g, m, args, span)?;
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) && matches!(g, "URL" | "AbortSignal") {
+            return self.typed_standard_static(g, m, args, span);
+        }
         if g == "Symbol" && matches!(m, "for" | "keyFor") {
             let argv = self.javascript_args(args)?;
             let method = if m == "for" { "for" } else { "keyFor" };
@@ -7120,9 +7143,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (g, m) == ("Number", "parseInt") {
             crate::builtins::check_parse_int_literals(args, span)?;
-        }
-        if !self.javascript_module(self.fx.as_ref().expect("fn").module) && matches!(g, "URL" | "AbortSignal") {
-            return self.typed_standard_static(g, m, args, span);
         }
         if (g, m) == ("String", "raw") {
             let argv = self.javascript_args(args)?;
@@ -9336,6 +9356,11 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         _ => false,
     }
 }
+
+/// URL's writable accessors (`origin` and `searchParams` are read-only).
+const URL_SETTERS: &[&str] = &[
+    "href", "protocol", "username", "password", "host", "hostname", "port", "pathname", "search", "hash",
+];
 
 /// URL's string-valued accessors.
 const URL_PROPERTIES: &[&str] = &[

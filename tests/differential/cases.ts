@@ -992,7 +992,15 @@ function stdlibActions() {
       params.forEach((v, n) => { names.push(`${n}:${v}`); });
       const pairs = new URLSearchParams([["a", "1"], ["b", "2"], ["a", "3"]]);
       pairs.delete("a", "1");
-      return [query, u.href, u.origin, u.host, u.pathname, params.get("y"), params.get("nope"), params.getAll("w"), params.has("y"), names, pairs.toString(), pairs.size, [...pairs.keys()], String(u), u.toJSON()];
+      // Component setters and static parsing from typed code; iteration sees mutations live.
+      u.pathname = "/a b";
+      u.port = "8443";
+      u.hash = "";
+      const live: string[] = [];
+      const mutating = new URLSearchParams("a=1&b=2");
+      mutating.forEach((v, n) => { live.push(n); if (n === "a") { mutating.delete("b"); mutating.append("c", "3"); } });
+      const parsed = URL.parse("https://example.com/p?q=1");
+      return [query, u.href, u.origin, u.host, u.pathname, params.get("y"), params.get("nope"), params.getAll("w"), params.has("y"), names, pairs.toString(), pairs.size, [...pairs.keys()], String(u), u.toJSON(), live, parsed?.search ?? "none", URL.parse("nope") === null, URL.canParse("/x", "http://h")];
     }),
     moduleCollections: run(() => [NOT_FOUND.has(404), NOT_FOUND.has(500), NOT_FOUND.size, OPS.get("put") ?? "none", [...OPS.keys()]]),
     setOps: run(() => {

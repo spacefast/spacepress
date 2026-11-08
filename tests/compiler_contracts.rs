@@ -3857,6 +3857,26 @@ fn language_refusals_carry_a_location_and_a_fix() {
             "{ return 1; } }), other: action({ input: {}, handler: function () { return typeof this; }",
         ),
         (
+            "module-level literal method used apart from its object",
+            "const api = { n: 1, f() { return this.n; } };",
+            "{ const g = api.f; return g(); }",
+        ),
+        (
+            "module-level literal method copied onto another object",
+            "const api = { n: 1, f() { return this.n; } }; const copy = { ...api, n: 2 };",
+            "copy.f()",
+        ),
+        (
+            "untyped this outside an object literal",
+            "const api = { n: 1, f() { return this.n; } }; api.f = function () { return this.n; };",
+            "api.f()",
+        ),
+        (
+            "module-level literal methods calling each other without return types",
+            "const api = { a() { return this.b(); }, b() { return this.a(); } };",
+            "api.a()",
+        ),
+        (
             "receiver-typed callback",
             "",
             "[1].map(function (this: { x: number }, value) { return this.x + value; })",

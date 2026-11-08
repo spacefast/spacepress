@@ -154,6 +154,20 @@ zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_exam
 zero check ./migrated-app
 ```
 
+A capsule with a schema needs a table mode, set by one of two flags:
+
+- `--space <id>` adopts the published Space's existing 0.8 tables
+  (`sf_<space>_<table>_<hash>`). The first migration is
+  `zero/migrations/0001_adopt.sql`.
+- `--fresh` declares plain v2 tables and creates them empty. Use it for a Space
+  that has no 0.8 tables yet. The first migration is
+  `zero/migrations/0001_init.sql`, and no rows are copied.
+
+The two flags exclude each other. With neither, the schema is refused with
+`Z08_SPACE_REQUIRED`. The browser build takes the same choice as
+`space: "<id>"` or `fresh: true`; `fresh` wins when both are given. The report's
+`tables` field says which mode ran: `adopt`, `fresh` or `unset`.
+
 To start from what a 0.8 publish stored instead, pass its finalize payload:
 `--manifest finalize.json ./old-app` checks that every source file matches the
 published SHA-256 before converting, and `--manifest finalize.json` alone
@@ -551,6 +565,7 @@ before activating an app.
 | REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | HEAD/OPTIONS, a `:splat` that is not last, writing GETs, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
+| Client app without pages | The 0.8 SPA (`client/index.tsx` exporting `App`, no `pages/`) becomes static files in `public/`, served by v2 as they are. Each module is compiled to a browser module; `@spacefast/zero/client` resolves to a generated bridge, `public/zero/client.js`, that keeps the 0.8 hooks (`useQuery`, `useMutation`, `useAction`, `usePaginatedQuery`, `createClient`, `useAuth`, `signOut`, `Router`, `Routes`, `Route`, `Link`, `navigate`) and runs each call as the converted v2 action at `/wp-json/zero/v1/actions/<name>`; Preact and the React names resolve to a vendored Preact | Reads refresh after this browser's own writes and on focus, not on other visitors' writes. Kit, charts, client storage, 0.8 sign-in, connector state and npm packages are refused with `Z08_CLIENT_*` codes at the import. The browser compiler (WebAssembly) has no TypeScript-to-browser compiler, so it refuses a client app with `Z08_CLIENT_NATIVE`; convert it with the native CLI |
 | Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `zero-pages build` and commit `zero/pages.json`. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over |
 | Content sync | Local `zero sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |

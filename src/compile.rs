@@ -370,6 +370,9 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// A named function expression passed as a callback: its inner declaration's span and the
+    /// callback's parameter types.
+    named_callback: Option<(Span, Vec<Ty>)>,
     /// Generated code queues promise jobs, so each root drains them and checks rejections at its end.
     uses_jobs: bool,
     /// Every ability `abilities.call` may name, typed (src/abilities.rs).
@@ -440,6 +443,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             annotation_steps: 0,
             resolving_json_types: HashSet::new(),
             async_callback: false,
+            named_callback: None,
             uses_jobs: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
@@ -1462,10 +1466,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         for s in stmts {
             if let Stmt::Func(f) = s {
                 let name = f.name.clone().expect("named");
+                let context = self
+                    .named_callback
+                    .take_if(|(span, _)| *span == f.span)
+                    .map(|(_, params)| params);
                 let signature = self.declared_signature(f)?;
                 let recursive = signature.is_some();
                 let php = self.declare_local(&name, signature.unwrap_or(Ty::Unknown), recursive, f.span);
-                let c = self.closure_expr(f)?;
+                let c = match &context {
+                    Some(params) => self.closure_with_types(f, Some(params))?,
+                    None => self.closure_expr(f)?,
+                };
                 self.set_local_ty(&name, c.ty.clone());
                 let _ = writeln!(out, "{}{php} = {};", pad(indent), c.php);
             }
@@ -4264,6 +4275,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if let ExprKind::Func(f) = &e.kind {
             return self.closure_with_types(f, Some(params));
+        }
+        // A named function expression lowers to `(() => { function name() {} return name; })()`;
+        // its inner declaration takes the callback's parameter types, as the bare function would.
+        if let Some(inner) = named_function_expression(e) {
+            let saved = self.named_callback.replace((inner.span, params.to_vec()));
+            let v = self.expr(e);
+            self.named_callback = saved;
+            return v;
         }
         let v = self.expr(e)?;
         let Ty::Fn(declared, _) = &v.ty else {
@@ -9291,6 +9310,39 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
         " = \\Zero\\JsUndefined::Value"
     } else {
         ""
+    }
+}
+
+/// The inner function of a lowered named function expression: an immediately called
+/// parameterless arrow whose body declares one named function and returns it.
+fn named_function_expression(e: &Expr) -> Option<&Rc<Func>> {
+    let ExprKind::Call { callee, args, .. } = &e.kind else {
+        return None;
+    };
+    let ExprKind::Func(wrapper) = &callee.kind else {
+        return None;
+    };
+    let FnBody::Block(body) = &wrapper.body else {
+        return None;
+    };
+    match (
+        args.is_empty() && wrapper.is_arrow && wrapper.params.is_empty(),
+        body.as_slice(),
+    ) {
+        (
+            true,
+            [
+                Stmt::Func(inner),
+                Stmt::Return(
+                    Some(Expr {
+                        kind: ExprKind::Ident(name),
+                        ..
+                    }),
+                    _,
+                ),
+            ],
+        ) if inner.name.as_deref() == Some(name.as_str()) => Some(inner),
+        _ => None,
     }
 }
 

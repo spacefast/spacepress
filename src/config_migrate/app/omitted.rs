@@ -132,14 +132,16 @@ fn walk(fs: &dyn Fs, root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The candidate's omissions. `pages` says which page files converted (by capsule path);
-/// `client_layout` whether `client/` was reproduced as the pages layout.
+/// The candidate's omissions. `converted_pages` lists the page files that converted or were
+/// already refused (capsule paths); `client_carried` says whether `client/` was reproduced, as the
+/// pages layout or as a converted client app (which then owns `public/`).
 pub(super) fn sweep(
     fs: &dyn Fs,
     root: &Path,
     config: Option<(&str, &serde_json::Value, &str)>,
     converted_pages: &[String],
-    client_layout: bool,
+    client_carried: bool,
+    client_app_converted: bool,
     errors: &mut Vec<Failure>,
 ) -> Omitted {
     let mut out = Omitted {
@@ -162,9 +164,9 @@ pub(super) fn sweep(
         let file = |e: Failure| e.located(name.clone(), 1, 1);
         if first == "client" {
             // One error for the client: its files are one app, built by 0.8 into client.js.
-            if !client_layout && !client_reported {
+            if !client_carried && !client_reported {
                 client_reported = true;
-                errors.push(fail("/client", format!("{CLIENT}: 0.8 built client/ into the Space's browser app; a v2 candidate has no client bundle yet, so publishing it would remove the app's interface")).located(name.clone(), 1, 1));
+                errors.push(fail("/client", format!("{CLIENT}: 0.8 built client/ into the Space's browser app beside its pages; only a client app without pages is converted, so publishing would remove this interface")).located(name.clone(), 1, 1));
             }
             continue;
         }
@@ -177,6 +179,10 @@ pub(super) fn sweep(
                     format!("{PAGES}: 0.8 served {name} as a page and the candidate has no counterpart"),
                 )));
             }
+            continue;
+        }
+        // A converted client app owns public/ and reports a clash there itself.
+        if (name == "public" || name.starts_with("public/")) && client_app_converted {
             continue;
         }
         if name == "public" || name.starts_with("public/") {
@@ -203,7 +209,10 @@ pub(super) fn sweep(
         }
         let reserved = super::endpoints::RESERVED.contains(&first.to_ascii_lowercase().as_str());
         match fs.read_to_string(&root.join(&relative)) {
-            Ok(text) if text == super::manifest::BINARY => errors.push(file(fail(&at, format!("{STATIC}: {name} is not UTF-8 text, and the candidate carries text files only")))),
+            Ok(text) if text == super::manifest::BINARY => errors.push(file(fail(
+                &at,
+                format!("{STATIC}: {name} is not UTF-8 text, and the candidate carries text files only"),
+            ))),
             Ok(text) if !reserved => {
                 out.files.insert(format!("public/{name}"), text);
                 out.carried.push(name);

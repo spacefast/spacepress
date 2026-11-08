@@ -182,12 +182,13 @@ impl Field {
 }
 struct Table {
     name: String,
-    physical: String,
+    /// The 0.8 table this adopts (`sf_<space>_<table>_<hash>`), or None for a new v2 table.
+    physical: Option<String>,
     fields: Vec<Field>,
     indexes: BTreeMap<String, Vec<String>>,
 }
 
-fn table(e: &Expr, name: &str, space: Option<&str>, aliases: &BTreeMap<String, String>) -> Result<Table, Failure> {
+fn table(e: &Expr, name: &str, tables: super::Tables, aliases: &BTreeMap<String, String>) -> Result<Table, Failure> {
     let at = pointer("/schema", name);
     ident(name, &at)?;
     let mut e = e;
@@ -273,15 +274,15 @@ fn table(e: &Expr, name: &str, space: Option<&str>, aliases: &BTreeMap<String, S
                         }
                     }
                 }
-                let space = space.filter(|s| !s.is_empty()).ok_or_else(|| {
-                    fail(
-                        &at,
-                        "--space is required to bind the actual sf_<space>_<table>_<hash> table",
-                    )
-                })?;
+                // Without a table mode the table still converts as fresh, so handlers check
+                // against it; `app` reports the one SPACE_REQUIRED refusal for the schema.
+                let physical = match tables {
+                    super::Tables::Adopt(space) => Some(physical(space, name)),
+                    super::Tables::Fresh | super::Tables::Unset => None,
+                };
                 return Ok(Table {
                     name: name.into(),
-                    physical: physical(space, name),
+                    physical,
                     fields,
                     indexes,
                 });
@@ -352,15 +353,56 @@ function __z08RangeBoolean(value: boolean | null | undefined): boolean { if (val
 "#;
 
 pub(super) struct Transformed {
+    /// The 0.8 display name, else the v2 app name.
+    pub title: String,
     pub config: String,
     pub content_config: Option<String>,
     pub connector_roles: Value,
+    /// Each converted query, mutation and action, as the client bridge calls it.
+    pub handlers: Vec<ClientHandler>,
+}
+
+/// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
+fn input_names(f: &Func, aliases: &BTreeMap<String, String>) -> ClientHandler {
+    let mut names = vec![];
+    for (position, p) in f.params.iter().skip(1).enumerate() {
+        names.push(match &p.pat {
+            Pat::Id(n, _) => n.clone(),
+            Pat::Default(inner, _) => match &**inner {
+                Pat::Id(n, _) => n.clone(),
+                _ => format!("arg{}", position + 1),
+            },
+            Pat::Obj { .. } | Pat::Arr { .. } => format!("arg{}", position + 1),
+        });
+    }
+    // The parameter typed with 0.8's `PaginationOptions` (under any local alias) receives
+    // `usePaginatedQuery`'s `{ numItems, cursor }`.
+    let paginated = f.params.iter().skip(1).position(|p| {
+        matches!(&p.ann, Some(TyAnn::Ref(n, _, _)) if aliases.get(n).map(String::as_str) == Some("PaginationOptions"))
+    });
+    ClientHandler {
+        name: String::new(),
+        rest: f.params.last().is_some_and(|p| p.rest) && f.params.len() > 1,
+        pagination: paginated.map(|i| names[i].clone()),
+        inputs: names,
+    }
+}
+
+/// What the client bridge needs to call one converted handler.
+pub(super) struct ClientHandler {
+    pub name: String,
+    /// The v2 input names, in 0.8's positional order.
+    pub inputs: Vec<String>,
+    /// The last input collects the rest arguments.
+    pub rest: bool,
+    /// The input `usePaginatedQuery`'s `{ numItems, cursor }` goes to.
+    pub pagination: Option<String>,
 }
 
 pub(super) fn app(
     path: &Path,
     source: &str,
-    space: Option<&str>,
+    table_mode: super::Tables,
     users: bool,
     content_posts: bool,
     entries: &mut Vec<Entry>,
@@ -495,11 +537,20 @@ pub(super) fn app(
         ));
     }
     let mut tables = BTreeMap::new();
+    if let Some(schema) = root.get("schema")
+        && table_mode == super::Tables::Unset
+        && !obj(schema, "/schema")?.is_empty()
+    {
+        errors.push(fail("/schema", super::SPACE_REQUIRED).spanned(schema.span, Path::new("")));
+    }
     if let Some(schema) = root.get("schema") {
         for (name, e) in obj(schema, "/schema")? {
-            match table(e, &name, space, &aliases) {
+            match table(e, &name, table_mode, &aliases) {
                 Ok(t) => {
-                    entries.push(entry(&pointer("/schema",&name),"mapped",format!("bind existing SQL table {}; BIGINT id, TEXT metadata/scalars and DOUBLE numbers; no rows copied",t.physical)));
+                    entries.push(entry(&pointer("/schema", &name), "mapped", match &t.physical {
+                        Some(physical) => format!("bind existing SQL table {physical}; BIGINT id, TEXT metadata/scalars and DOUBLE numbers; no rows copied"),
+                        None => "new v2 table, created by the candidate's first migration; TEXT metadata/scalars and DOUBLE numbers".into(),
+                    }));
                     tables.insert(name, t);
                 }
                 Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
@@ -657,6 +708,7 @@ pub(super) fn app(
             .get("auth")
             .is_some_and(|auth| !matches!(literal(auth), Ok(Value::Bool(false))));
     let mut handlers = Vec::new();
+    let mut client_handlers = Vec::new();
     let mut names = BTreeSet::new();
     // Helpers a handler may pass the context to: function declarations and `const f = (...) =>`.
     let module_functions: BTreeMap<String, &Func> = body
@@ -699,7 +751,7 @@ pub(super) fn app(
                     let E::Func(f) = &a[0].kind else {
                         return Err(fail(&at, "handler must be an inline function"));
                     };
-                    handler(
+                    let converted = handler(
                         source,
                         f,
                         &tables,
@@ -713,7 +765,12 @@ pub(super) fn app(
                             route: None,
                             functions: &functions,
                         },
-                    )
+                    )?;
+                    client_handlers.push(ClientHandler {
+                        name: name.clone(),
+                        ..input_names(f, &aliases)
+                    });
+                    Ok(converted)
                 })();
                 match result {
                     Ok((h, generated, ctx_calls)) => {
@@ -1057,11 +1114,17 @@ pub(super) fn app(
         config.push_str(&format!("routes: {{\n{}\n}},", routes.join(",\n")));
     }
     config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
-    entries.push(entry("","review","Adoption requires the original MariaDB database and --space binding. IDs above Number.MAX_SAFE_INTEGER, existing sessions, client routes, realtime and deployment activation need separate validation. No deployment is performed."));
+    entries.push(if tables.values().any(|t| t.physical.is_none()) {
+        entry("", "review", "Fresh tables: the candidate creates new, empty v2 tables and copies no 0.8 rows. Bind --space instead to adopt a published Space's tables. Sessions, client routes and deployment activation need separate validation. No deployment is performed.")
+    } else {
+        entry("","review","Adoption requires the original MariaDB database and --space binding. IDs above Number.MAX_SAFE_INTEGER, existing sessions, client routes, realtime and deployment activation need separate validation. No deployment is performed.")
+    });
     Ok(Transformed {
+        title: title.clone().unwrap_or_else(|| name.clone()),
         config,
         content_config,
         connector_roles: Value::Object(connector_roles),
+        handlers: client_handlers,
     })
 }
 
@@ -1161,7 +1224,12 @@ fn table_code(t: &Table) -> String {
     for f in &t.fields {
         out.push_str(&format!("{}: {},\n", q(&f.name), f.builder()));
     }
-    out.push_str(&format!("}}, {{ existingTable: {}, api: {{ list:false, get:false, create:false, update:false, delete:false }}, agents:false }});\n",q(&t.physical)));
+    let existing = t
+        .physical
+        .as_deref()
+        .map(|p| format!("existingTable: {}, ", q(p)))
+        .unwrap_or_default();
+    out.push_str(&format!("}}, {{ {existing}api: {{ list:false, get:false, create:false, update:false, delete:false }}, agents:false }});\n"));
     out.push_str(&format!("function __z08_{n}_row(row: InferSelectModel<typeof __z08_{n}>) {{ return {{ id: String(row.id), createdAt: row.createdAt, updatedAt: row.updatedAt,"));
     for f in &t.fields {
         out.push_str(&format!(

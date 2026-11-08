@@ -4,6 +4,7 @@
 //! app, so codes never change meaning; a new refusal kind gets a new code. Every code is listed in
 //! `tests/compatibility/registry.json` under `zero08`.
 use super::super::Failure;
+use super::client;
 use super::omitted;
 use serde::Serialize;
 
@@ -33,6 +34,17 @@ pub struct Rule {
 
 const LANGUAGE: &str = "error: Zero code doesn't support ";
 
+/// `Z08_SCHEMA` when the candidate creates new tables: nothing is adopted, so the fix names the
+/// v2 declaration to write, not the 0.8 table to match.
+pub static SCHEMA_FRESH: Rule = Rule {
+    code: "Z08_SCHEMA_FRESH",
+    feature: "schema table or field, for a new v2 table",
+    v2: "table() with text, real, boolean and json columns",
+    fix: "Declare the table with literal field types and literal defaults; it is created empty.",
+    test: |p, _| p.starts_with("/schema"),
+    example: ("/schema/tasks/title", "default must be a literal scalar"),
+};
+
 /// First match wins, so specific rules come before the general ones they overlap.
 pub static RULES: &[Rule] = &[
     // Whatever 0.8 served that the candidate does not reproduce (app/omitted.rs). Each is removed
@@ -41,7 +53,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_OMITTED_CLIENT",
         feature: "0.8 client app (client/)",
         v2: "a browser app in public/ calling the generated v2 client",
-        fix: "Port the client to public/ with the generated v2 client before publishing, or keep the Space on 0.8.",
+        fix: "Port the client into the pages (a TSX layout and Islands) or into public/ with the generated v2 client, or keep the Space on 0.8.",
         test: |_, r| r.starts_with(omitted::CLIENT),
         example: ("/client", "the 0.8 client app is not carried over: x"),
     },
@@ -111,6 +123,146 @@ pub static RULES: &[Rule] = &[
         fix: "Declare the collection in zero.config.ts with `sync` over the content files.",
         test: |_, r| r.starts_with(omitted::SYNC),
         example: ("/collections/posts/sync", "content sync is not carried over: x"),
+    },
+    // A client app without pages (app/client.rs): each tag is a fixed reason prefix.
+    Rule {
+        code: "Z08_CLIENT_STORAGE",
+        feature: "0.8 client storage uploads",
+        v2: "v2 file buckets (files in zero.config.ts)",
+        fix: "Declare a file bucket and upload with client.files.<bucket>.upload from the generated v2 client.",
+        test: |_, r| r.starts_with(client::TAG_STORAGE),
+        example: ("/client/index.tsx", "0.8 client storage uploads: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_FETCH",
+        feature: "0.8 authenticatedFetch",
+        v2: "a v2 action or route",
+        fix: "Call a v2 action or route instead; the bridge sends the session's bearer token.",
+        test: |_, r| r.starts_with(client::TAG_FETCH),
+        example: ("/client/index.tsx", "0.8 authenticatedFetch: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_CONNECTORS",
+        feature: "0.8 client connector state",
+        v2: "nothing yet: connector calls are not in v2",
+        fix: "Remove the connector state from the client until v2 has connectors.",
+        test: |_, r| r.starts_with(client::TAG_CONNECTORS),
+        example: ("/client/index.tsx", "0.8 client connector state: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_CONTENT",
+        feature: "0.8 content reads from the client",
+        v2: "a v2 collection read (client.<collection>.list)",
+        fix: "Read the collection with the generated v2 client instead of contentQueryOptions.",
+        test: |_, r| r.starts_with(client::TAG_CONTENT),
+        example: ("/client/index.tsx", "0.8 client content reads: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_SIGN_IN",
+        feature: "0.8 client sign-in",
+        v2: "zero-identity sign-in (client.auth.signIn())",
+        fix: "Replace the 0.8 sign-in calls with client.auth.signIn() from the generated v2 client.",
+        test: |_, r| r.starts_with(client::TAG_SIGN_IN),
+        example: ("/client/index.tsx", "0.8 client sign-in: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_API",
+        feature: "0.8 client API without a v2 bridge",
+        v2: "the generated v2 client in zero/client/",
+        fix: "Port the call to the generated v2 client; the bridge covers the 0.8 hooks, useAuth, signOut and the router.",
+        test: |_, r| r.starts_with(client::TAG_API),
+        example: ("/client/index.tsx", "0.8 client API without a v2 bridge: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_KIT",
+        feature: "0.8 kit components in a client app",
+        v2: "plain markup and CSS",
+        fix: "Replace the kit components with your own markup and styles.",
+        test: |_, r| r.starts_with(client::TAG_KIT),
+        example: ("/client/index.tsx", "0.8 kit components in the client: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_CHARTS",
+        feature: "0.8 charts in a client app",
+        v2: "nothing yet: charts are not in v2",
+        fix: "Draw the chart with your own SVG, or vendor a chart library into public/.",
+        test: |_, r| r.starts_with(client::TAG_CHARTS),
+        example: ("/client/index.tsx", "0.8 charts in the client: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_PACKAGE",
+        feature: "npm package in a client app",
+        v2: "a prebuilt browser bundle in public/",
+        fix: "Build the client with its packages (for example Vite into public/) and publish that bundle.",
+        test: |_, r| r.starts_with(client::TAG_PACKAGE),
+        example: ("/client/index.tsx", "npm package in the client: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_IMPORT",
+        feature: "client import outside the capsule",
+        v2: "modules inside the capsule",
+        fix: "Add the module to the capsule or remove the import.",
+        test: |_, r| r.starts_with(client::TAG_IMPORT),
+        example: ("/client/index.tsx", "client import outside the capsule: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_DYNAMIC_IMPORT",
+        feature: "dynamic import() in a client app",
+        v2: "static imports",
+        fix: "Import the module statically.",
+        test: |_, r| r.starts_with(client::TAG_DYNAMIC),
+        example: ("/client/index.tsx", "dynamic import in the client: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_ASSET",
+        feature: "client import of a non-script file",
+        v2: "static files in public/",
+        fix: "Move the file into public/ and reference it by URL.",
+        test: |_, r| r.starts_with(client::TAG_ASSET),
+        example: ("/client/index.tsx", "client import of a non-script file: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_SYNTAX",
+        feature: "client source the browser build cannot compile",
+        v2: "a browser module compiled from TypeScript/TSX",
+        fix: "Fix the reported line in the 0.8 client so it parses as TypeScript/TSX.",
+        test: |_, r| r.starts_with(client::TAG_SYNTAX),
+        example: ("/client/index.tsx", "client source the browser build cannot compile: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_NATIVE",
+        feature: "client app converted by the browser compiler",
+        v2: "zero migrate app from the native CLI",
+        fix: "Run zero migrate app --from zero-0.8 with the native CLI; it compiles the client into public/.",
+        test: |_, r| r.starts_with(client::TAG_NATIVE),
+        example: ("/client/index.tsx", "client app conversion outside the native CLI: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_PUBLIC",
+        feature: "client app with its own public/ directory",
+        v2: "public/, which holds the converted client",
+        fix: "Move the files in public/ into the client, or out of the capsule, and convert again.",
+        test: |_, r| r.starts_with(client::TAG_PUBLIC),
+        example: ("/public", "client app over an existing public/: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_UNREADABLE",
+        feature: "client module that cannot be read",
+        v2: "a UTF-8 TypeScript, JavaScript or CSS file in the capsule",
+        fix: "Make the module a readable UTF-8 file in the capsule, or remove the import.",
+        test: |_, r| r.starts_with(client::TAG_UNREADABLE),
+        example: ("/client/Logo.tsx", "client module that cannot be read: x"),
+    },
+    Rule {
+        code: "Z08_SPACE_REQUIRED",
+        feature: "schema tables without a table mode",
+        v2: "new v2 tables (--fresh) or the Space's adopted 0.8 tables (--space)",
+        fix: "Pass --fresh for a Space with no 0.8 tables, or --space <id> to adopt existing ones.",
+        test: |_, r| r.starts_with("the schema needs a table mode"),
+        example: (
+            "/schema/tasks",
+            "the schema needs a table mode: pass --fresh for a Space with no 0.8 tables",
+        ),
     },
     Rule {
         code: "Z08_SOURCE_NOT_RECOVERABLE",
@@ -632,9 +784,13 @@ fn feature(rule: &Rule, pointer: &str, reason: &str) -> String {
 }
 
 /// Fills in the contract on every refusal; `file` is where an unlocated refusal points.
-pub fn finish(errors: &mut [Failure], file: &str) {
+pub fn finish(errors: &mut [Failure], file: &str, fresh: bool) {
     for error in errors {
-        let rule = rule(&error.pointer, &error.reason);
+        let mut rule = rule(&error.pointer, &error.reason);
+        // Fresh tables are created, not adopted, so a schema refusal there has its own code and fix.
+        if fresh && rule.code == "Z08_SCHEMA" {
+            rule = &SCHEMA_FRESH;
+        }
         // A page, layout or island pointer names its file; anything else unlocated is the server entry's.
         let named = ["/pages/", "/layouts/", "/islands/", "/_pages/", "/client/"]
             .iter()
@@ -664,12 +820,15 @@ mod tests {
     #[test]
     fn every_rule_is_complete_unique_and_claims_its_example() {
         let mut codes = std::collections::BTreeSet::new();
-        for r in RULES {
+        assert_eq!(rule(SCHEMA_FRESH.example.0, SCHEMA_FRESH.example.1).code, "Z08_SCHEMA");
+        for r in RULES.iter().chain([&SCHEMA_FRESH]) {
             assert!(r.code.starts_with("Z08_") && codes.insert(r.code), "{}", r.code);
             for (name, text) in [("feature", r.feature), ("v2", r.v2), ("fix", r.fix)] {
                 assert!(!text.is_empty() && !text.contains('\n'), "{} {name}", r.code);
             }
-            assert_eq!(rule(r.example.0, r.example.1).code, r.code, "{:?}", r.example);
+            if r.code != SCHEMA_FRESH.code {
+                assert_eq!(rule(r.example.0, r.example.1).code, r.code, "{:?}", r.example);
+            }
         }
         let registry: serde_json::Value =
             serde_json::from_str(include_str!("../../../tests/compatibility/registry.json")).unwrap();

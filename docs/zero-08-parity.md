@@ -69,7 +69,7 @@ Each feature is decided from whichever of these can decide it:
 | --- | --- | --- |
 | Endpoint method, path, mode (writing GET, reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
 | Document pages (`.md`, `.html`) | `artifact.pages[].render`, `file` | Decided (refused) |
-| Client app with no pages | `artifact.pages` empty, client entry in `sourceManifest` | Decided (refused, census rule) |
+| Client app with no pages | `artifact.pages` empty, client entry in `sourceManifest`; what it imports from the uploaded `client.js` | Converted; refused only for imports with no v2 bridge (census rule), else its body needs the source |
 | `ctx` services, request APIs, database calls, handler shapes | The bundle, run through the converter | Decided when refused |
 | Language constructs outside the v2 subset in handlers or helpers | The bundle | Decided when refused |
 | `favicon`, `auth` callbacks, collections | The bundle's `capsule({...})` options | Decided when refused |
@@ -93,7 +93,7 @@ converted from that source instead.
   status `dry-run`. The stored payload alone never counts as accepted.
 - `refused(space)`: at least one error of kind *refusal*. That is a converter
   error the original source would hit as well, or a census rule (a client app
-  with no pages, `ImageResponse`). `scripts/census-08/classify.mjs` lists every
+  whose `client.js` imports something with no v2 bridge, `ImageResponse`). `scripts/census-08/classify.mjs` lists every
   rule.
 - `not recoverable(space)`: no refusal and no verified source. Every remaining
   error is of kind *source* ("source not recoverable"): an erased input type, a
@@ -473,8 +473,9 @@ those four. No refused corpus app is blocked by endpoints any more.
 | --- | --- | --- | --- |
 | Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `pages/<path>/page.tsx`, rendered at capture, served by WordPress; relative imports are adjusted for the move | Auto, **WP** (hosted compile) | Run `zero-pages build` and commit `zero/pages.json` |
 | `client/index.tsx` static `Layout` | `pages/layout.tsx` | Auto, **WP** | — |
+| Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/zero/client.js` answering `@spacefast/zero/client` | Auto (native CLI; the WebAssembly compiler refuses it with `Z08_CLIENT_NATIVE`) | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
 | `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | `load()` reads as the visitor, plus `<Island>` with an Interactivity store calling actions | Refused, lists what each page uses | Port each page |
-| `usePaginatedQuery` | An island over the paginated action | Refused | Port |
+| `usePaginatedQuery` | In a client app without pages: the bridge calls the paginated action, passing `{ numItems, cursor }` to the handler's `PaginationOptions` parameter. In a `"use client"` page: an island over the paginated action | Auto in a client app; refused in a page | Port pages |
 | `@spacefast/zero/kit` components | **missing**: plain markup and CSS | Refused | Restyle |
 | `@spacefast/zero/charts` | **missing** | Refused | **Gap** |
 | `@spacefast/zero/context` (`ContextPage`, editor) | **missing** | Refused | **Gap** |
@@ -491,8 +492,8 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 route | v2 equivalent | Notes |
 | --- | --- | --- |
-| `/__zero/run` | `/wp-json/zero/v1/actions/<name>` | Clients change |
-| `/__zero/config` | `/__spacefast/client.js` | Clients change |
+| `/__zero/run` | `/wp-json/zero/v1/actions/<name>` | Clients change; a converted client app calls it through `public/zero/client.js` |
+| `/__zero/config` | `/__spacefast/client.js` | Clients change; the converted client app's bridge needs no config |
 | `/__zero/auth/start`, `/sign-out` | `/wp-json/zero-identity/v1/*` | Identity plugin |
 | `/__zero/realtime/*` | #128 transport | |
 | `/__spacefast/zero/connectors/<role>/*` | **missing** | With `ctx.connectors` |

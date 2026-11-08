@@ -1,4 +1,5 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
+mod client;
 pub(super) mod codes;
 mod endpoints;
 mod manifest;
@@ -17,6 +18,31 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
 
+/// What a capsule's 0.8 tables become.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tables<'a> {
+    /// `--space <id>`: bind the published Space's existing `sf_<space>_<table>_<hash>` tables.
+    Adopt(&'a str),
+    /// `--fresh`: plain v2 tables, created empty by the candidate's first migration.
+    Fresh,
+    /// Neither: a capsule with a schema is refused (`Z08_SPACE_REQUIRED`).
+    Unset,
+}
+
+impl<'a> Tables<'a> {
+    /// The mode from `--space` and `--fresh` (wasm: `space`, `fresh`). `fresh` wins over a Space
+    /// name, so a new Space can pass its id without adopting tables it doesn't have.
+    pub fn from(space: Option<&'a str>, fresh: bool) -> Tables<'a> {
+        match space.filter(|s| !s.is_empty()) {
+            _ if fresh => Tables::Fresh,
+            Some(space) => Tables::Adopt(space),
+            None => Tables::Unset,
+        }
+    }
+}
+
+pub(super) const SPACE_REQUIRED: &str = "the schema needs a table mode: pass --fresh for a Space with no 0.8 tables, or --space <id> to adopt existing ones";
+
 #[derive(Serialize)]
 pub struct Report {
     version: u32,
@@ -24,12 +50,15 @@ pub struct Report {
     status: &'static str,
     entries: Vec<Entry>,
     errors: Vec<Failure>,
+    /// `adopt` binds a published Space's 0.8 tables (`--space`); `fresh` creates new v2 tables.
+    tables: &'static str,
+    /// The candidate's first migration: adopting the 0.8 tables, or creating fresh ones.
     adoption_sql: Option<String>,
     connector_roles: serde_json::Value,
 }
 
 #[cfg(feature = "cli")]
-const USAGE: &str = "usage: zero migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id>] [--users] [--dry-run] [--json]";
+const USAGE: &str = "usage: zero migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--dry-run] [--json]";
 
 #[cfg(feature = "cli")]
 struct Args {
@@ -37,6 +66,7 @@ struct Args {
     manifest: Option<PathBuf>,
     out: PathBuf,
     space: Option<String>,
+    fresh: bool,
     dry_run: bool,
     users: bool,
 }
@@ -49,6 +79,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
     let mut out = None;
     let mut space = None;
     let mut dry_run = false;
+    let mut fresh = false;
     let mut users = false;
     let mut json = false;
     let mut it = raw.iter();
@@ -59,6 +90,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
             "--out" if out.is_none() => out = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--space" if space.is_none() => space = Some(it.next().ok_or(USAGE)?.clone()),
             "--users" if !users => users = true,
+            "--fresh" if !fresh => fresh = true,
             "--dry-run" if !dry_run => dry_run = true,
             "--json" if !json => json = true,
             s if s.starts_with('-') => return Err(format!("unknown or repeated flag {s}\n{USAGE}")),
@@ -72,11 +104,17 @@ fn args(raw: &[String]) -> Result<Args, String> {
     if input.is_none() && manifest.is_none() {
         return Err(USAGE.into());
     }
+    if fresh && space.is_some() {
+        return Err(format!(
+            "--space adopts a published Space's 0.8 tables and --fresh creates new ones; pass one\n{USAGE}"
+        ));
+    }
     Ok(Args {
         input,
         manifest,
         out: out.ok_or(USAGE)?,
         space,
+        fresh,
         dry_run,
         users,
     })
@@ -95,7 +133,7 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
         None => migrate(
             Rc::new(loader::Disk),
             args.input.as_deref().expect("input"),
-            args.space.as_deref(),
+            Tables::from(args.space.as_deref(), args.fresh),
             args.users,
         ),
         Some(path) => match std::fs::read_to_string(path) {
@@ -103,7 +141,7 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
                 Rc::new(loader::Disk),
                 &text,
                 args.input.as_deref(),
-                args.space.as_deref(),
+                Tables::from(args.space.as_deref(), args.fresh),
                 args.users,
             ),
             Err(e) => Candidate::refused(fail("", format!("cannot read finalize manifest: {e}"))),
@@ -148,7 +186,11 @@ pub struct Candidate {
 impl Candidate {
     /// Gives every refusal the diagnostic contract (`codes`); call once, before reporting.
     pub fn finish(&mut self) {
-        codes::finish(&mut self.report.errors, "server/index.ts");
+        codes::finish(
+            &mut self.report.errors,
+            "server/index.ts",
+            self.report.tables == "fresh",
+        );
     }
 
     fn refused(error: Failure) -> Candidate {
@@ -169,6 +211,7 @@ impl Report {
             status: "refused",
             entries: vec![],
             errors: vec![],
+            tables: "adopt",
             adoption_sql: None,
             connector_roles: serde_json::json!({}),
         }
@@ -179,13 +222,7 @@ impl Report {
 /// the original files must match the manifest's hashes and then convert as a source run does.
 /// Without it, the manifest's own refusals are reported, and the app is refused at `/source`:
 /// bundled endpoint JavaScript has no types, so it cannot become authored TypeScript.
-pub fn migrate_manifest(
-    fs: Rc<dyn Fs>,
-    text: &str,
-    source: Option<&Path>,
-    space: Option<&str>,
-    users: bool,
-) -> Candidate {
+pub fn migrate_manifest(fs: Rc<dyn Fs>, text: &str, source: Option<&Path>, tables: Tables, users: bool) -> Candidate {
     let manifest = match manifest::parse(text) {
         Ok(m) => m,
         Err(e) => return Candidate::refused(e),
@@ -238,21 +275,26 @@ pub fn migrate_manifest(
             ),
         ));
     }
-    migrate(memory, &published, space, users)
+    migrate(memory, &published, tables, users)
 }
 
-pub fn migrate(fs: Rc<dyn Fs>, input: &Path, space: Option<&str>, users: bool) -> Candidate {
+pub fn migrate(fs: Rc<dyn Fs>, input: &Path, tables: Tables, users: bool) -> Candidate {
     let mut report = Report {
         version: 1,
         source: "zero-0.8",
         status: "refused",
         entries: vec![],
         errors: vec![],
+        tables: match tables {
+            Tables::Adopt(_) => "adopt",
+            Tables::Fresh => "fresh",
+            Tables::Unset => "unset",
+        },
         adoption_sql: None,
         connector_roles: serde_json::json!({}),
     };
     let mut files = BTreeMap::new();
-    if let Err(e) = convert(fs, input, space, users, &mut report, &mut files) {
+    if let Err(e) = convert(fs, input, tables, users, &mut report, &mut files) {
         report.errors.push(e);
     }
     if !report.errors.is_empty() {
@@ -270,7 +312,7 @@ fn io(e: std::io::Error) -> Failure {
 fn convert(
     fs: Rc<dyn Fs>,
     input: &Path,
-    space: Option<&str>,
+    tables: Tables,
     users: bool,
     report: &mut Report,
     files: &mut BTreeMap<String, String>,
@@ -285,18 +327,48 @@ fn convert(
         }
     }
     let (converted, page_sources) = convert_pages(&*fs, &root, report, &mut sources)?;
+    // 0.8 served `client/` as a single-page app when the capsule had no pages.
+    let client_app = if converted.is_empty() && !has_pages(&*fs, &root) {
+        client_entry(&*fs, &root)?
+    } else {
+        None
+    };
     let transformed = transform::app(
         &entry,
         sources
             .get(&entry)
             .ok_or_else(|| fail("", "entry source must resolve to server/index.ts inside the capsule"))?,
-        space,
+        tables,
         users,
         fs.is_dir(&root.join("content/posts")),
         &mut report.entries,
         &mut report.errors,
     )?;
     report.connector_roles = transformed.connector_roles;
+    let client_files = match &client_app {
+        Some(file) => {
+            if fs.exists(&root.join("public")) {
+                report.errors.push(
+                    fail(
+                        "/public",
+                        format!("{}: the converted client app goes to public/", client::TAG_PUBLIC),
+                    )
+                    .located("public".into(), 1, 1),
+                );
+            }
+            client::convert(
+                &*fs,
+                &root,
+                file,
+                &transformed.title,
+                &transformed.handlers,
+                &mut report.entries,
+                &mut report.errors,
+            )
+            .files
+        }
+        None => BTreeMap::new(),
+    };
     if sources.contains_key(Path::new("zero.config.ts")) || sources.contains_key(Path::new("server/__z08-content.ts")) {
         return Err(fail("", "input imports a reserved generated config path"));
     }
@@ -339,7 +411,9 @@ fn convert(
         &root,
         config.as_ref().map(|(name, value, text)| (*name, value, text.as_str())),
         &handled,
-        page_files.contains_key("pages/layout.tsx"),
+        // The client is reproduced as the pages layout, or converted to public/ by `client`.
+        page_files.contains_key("pages/layout.tsx") || client_app.is_some(),
+        client_app.is_some(),
         &mut report.errors,
     );
     for name in &static_files.carried {
@@ -385,10 +459,19 @@ fn convert(
     for (path, text) in page_files {
         files.insert(path, text);
     }
+    for (path, text) in client_files {
+        files.insert(path, text);
+    }
     for (path, text) in static_files.files {
         files.insert(path, text);
     }
-    files.insert("zero/migrations/0001_adopt.sql".into(), sql);
+    // A Space binding adopts its tables; without one the candidate creates them.
+    let first = if matches!(tables, Tables::Adopt(_)) {
+        "0001_adopt.sql"
+    } else {
+        "0001_init.sql"
+    };
+    files.insert(format!("zero/migrations/{first}"), sql);
     files.insert(
         "zero/migrations/snapshot.json".into(),
         serde_json::to_string_pretty(&built.snapshot).unwrap(),
@@ -519,6 +602,37 @@ fn server_entry(fs: &dyn Fs, root: &Path, report: &mut Report) -> Result<PathBuf
         ));
     }
     Ok(PathBuf::from(server))
+}
+
+/// The 0.8 config's `runtime.client`, else `client/index.tsx`, when that file exists.
+fn client_entry(fs: &dyn Fs, root: &Path) -> Result<Option<PathBuf>, Failure> {
+    let mut client = "client/index.tsx".to_string();
+    if let Some(name) = CONFIG_FILES.iter().find(|f| fs.is_file(&root.join(f))) {
+        let text = fs.read_to_string(&root.join(name)).map_err(io)?;
+        let config: serde_json::Value = serde_json::from_str(&strip_jsonc(&text))
+            .map_err(|e| fail(&format!("/{name}"), format!("cannot read {name}: {e}")))?;
+        if let Some(c) = config.pointer("/runtime/client").and_then(serde_json::Value::as_str) {
+            client = c.trim_start_matches("./").to_string();
+        }
+    }
+    let path = PathBuf::from(&client);
+    let inside = path.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    Ok((inside && fs.is_file(&root.join(&path)) && !fs.is_symlink(&root.join(&path))).then_some(path))
+}
+
+/// Whether `pages/` holds anything 0.8 routed as a page.
+fn has_pages(fs: &dyn Fs, root: &Path) -> bool {
+    let mut stack = vec![root.join("pages")];
+    while let Some(dir) = stack.pop() {
+        for path in fs.read_dir(&dir).unwrap_or_default() {
+            if fs.is_dir(&path) {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "tsx" || e == "md" || e == "html") {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// JSONC → JSON: comments and trailing commas outside strings.

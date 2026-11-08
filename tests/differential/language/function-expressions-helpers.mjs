@@ -15,3 +15,8 @@ export function recursiveLocal() {
   function walk(node) { return node.children.reduce((sum, child) => sum + walk(child), 1); }
   return walk({ children: [{ children: [] }, { children: [{ children: [] }] }] });
 }
+
+export function hoistedVar() {
+  const fn = function f(flag) { if (flag) { var f; } f = 2; return f; };
+  return [fn(true), fn(false)];
+}

@@ -1879,3 +1879,68 @@ console.log(JSON.stringify({ first, second, refused, guests, session: kept, fall
     assert_eq!(ran["guests"], 2, "{ran:#}");
     assert_eq!(ran["fallback"], "Bearer g2", "the new guest's token: {ran:#}");
 }
+
+/// A refresh that can't reach the issuer keeps the session and fails the call, as runtime/client
+/// does: no new guest. Once the issuer is back, the same session renews, and `/me` (useAuth) goes
+/// through the same renewal instead of reporting a signed-out visitor.
+#[test]
+fn the_client_bridge_keeps_the_session_when_a_refresh_fails_on_the_network() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    let ran = bridge(
+        &out,
+        r#"
+const store = new Map([["zero08.session", JSON.stringify({ accessToken: "a1", refreshToken: "r1", clientId: "guests" })]]);
+globalThis.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+let offline = true;
+let guests = 0;
+const me = [];
+const json = (status, body) => new Response(JSON.stringify(body), { status });
+globalThis.fetch = async (url, init) => {
+  const auth = init.headers?.authorization ?? null;
+  if (url.endsWith("/me")) me.push(auth);
+  if (url.endsWith("/auth/guest")) return json(201, { data: { accessToken: `g${++guests}`, refreshToken: "rg", clientId: "guests" } });
+  if (url.endsWith("/auth/config")) return json(200, { data: { issuer: "https://site.test/identity" } });
+  if (url === "https://site.test/identity/token") {
+    if (offline) throw new TypeError("fetch failed");
+    return json(200, { access_token: "a2", refresh_token: "r2", expires_in: 300 });
+  }
+  if (auth === "Bearer a1") return json(401, { code: "unauthenticated", detail: "expired" });
+  if (url.endsWith("/me")) return json(200, { data: { id: 7, name: "Guest 7", role: "guest" } });
+  return json(200, { data: auth });
+};
+const bridge = await import(process.argv[1]);
+const failed = await bridge.run("add", ["inbox", "x"]).then(() => "ok", (e) => e.message);
+const kept = JSON.parse(store.get("zero08.session"));
+offline = false;
+const retried = await bridge.run("add", ["inbox", "y"]);
+// The renewal refreshes useAuth: /me goes out with the renewed token, not the expired one.
+for (let i = 0; i < 20 && me.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+const renewedMe = me.slice(0, 1);
+// /me itself renews: with an expired token held and the issuer up, auth still reports the user.
+store.set("zero08.session", JSON.stringify({ accessToken: "a1", refreshToken: "r2", clientId: "guests" }));
+const auth = await bridge.currentAuth();
+console.log(JSON.stringify({ failed, kept, retried, guests, me: renewedMe, auth: auth.userId, session: JSON.parse(store.get("zero08.session")) }));
+"#,
+    );
+    assert_eq!(
+        ran["failed"], "fetch failed",
+        "the network error reaches the caller: {ran:#}"
+    );
+    assert_eq!(
+        ran["kept"],
+        serde_json::json!({ "accessToken": "a1", "refreshToken": "r1", "clientId": "guests" }),
+        "the session survives a failed refresh: {ran:#}"
+    );
+    assert_eq!(ran["retried"], "Bearer a2", "{ran:#}");
+    assert_eq!(ran["guests"], 0, "no guest was minted: {ran:#}");
+    assert_eq!(ran["me"], serde_json::json!(["Bearer a2"]), "{ran:#}");
+    assert_eq!(ran["auth"], "7", "/me renewed instead of reporting a guest: {ran:#}");
+    assert_eq!(ran["session"]["refreshToken"], "r2");
+}

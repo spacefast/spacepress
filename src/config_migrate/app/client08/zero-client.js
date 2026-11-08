@@ -63,8 +63,11 @@ function startGuest() {
 
 let renewing = null;
 /**
- * Renews the held session with its refresh token: same user, new access token. Resolves true when
- * the session was renewed (or another call already renewed it), false when the issuer refused it.
+ * Renews the held session with its refresh token: same user, new access token, as runtime/client
+ * does. Resolves true when the session was renewed (or another call already renewed it), and false
+ * when it can't be: no refresh token, or the issuer answered without a token (a refused grant).
+ * Throws, keeping the tokens for a later try, when the issuer can't be reached: a network failure,
+ * or no usable /auth/config.
  */
 function renew(sent) {
   renewing ??= (async () => {
@@ -73,7 +76,7 @@ function renew(sent) {
     if (typeof current.refreshToken !== "string") return false;
     const config = await send("GET", "/auth/config");
     const issuer = config.parsed?.data?.issuer;
-    if (!config.res.ok || typeof issuer !== "string") return false;
+    if (!config.res.ok || typeof issuer !== "string") throw failure(config.res, config.parsed, "The sign-in issuer is unavailable.");
     const res = await fetch(`${issuer.replace(/\/+$/, "")}/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
@@ -81,12 +84,41 @@ function renew(sent) {
     });
     const out = await res.json().catch(() => null);
     if (!res.ok || typeof out?.access_token !== "string") return false;
+    // A sign-out or a new guest while this ran owns the session now; drop the rotated pair.
+    if (held()?.accessToken !== current.accessToken) return held() !== null;
     hold({ ...current, accessToken: out.access_token, refreshToken: out.refresh_token ?? current.refreshToken });
     return true;
   })().finally(() => {
     renewing = null;
   });
   return renewing;
+}
+
+/**
+ * One request with the session's 401 handling. A rejected token (`unauthenticated`) is renewed and
+ * the request retried as the same user. A session that can't be renewed is dropped; with `guest`,
+ * a new guest then takes its place, as one does for a visitor with no session. A network failure
+ * while renewing rejects and keeps the session. Any other 401 is the handler refusing this user,
+ * and the session stays.
+ */
+async function authed(method, path, body, { guest }) {
+  let { res, parsed, session } = await send(method, path, body);
+  if (res.status !== 401) return { res, parsed };
+  if (!session) {
+    // 0.8 gave every visitor a guest identity; v2 starts one when a request needs it.
+    if (!guest) return { res, parsed };
+    await startGuest();
+    return send(method, path, body);
+  }
+  if (parsed?.code !== "unauthenticated") return { res, parsed };
+  if (await renew(session)) {
+    if (path !== "/me") void emitAuth();
+    return send(method, path, body);
+  }
+  hold(null);
+  if (!guest) return send(method, path, body);
+  await startGuest();
+  return send(method, path, body);
 }
 
 /** The v2 input for a 0.8 call: positional arguments become the handler's named inputs. */
@@ -114,27 +146,7 @@ export function paginatedArgs(name, args, pagination) {
 
 /** Runs one 0.8 query, mutation or action as its v2 action and returns the result. */
 export async function run(name, args = []) {
-  const body = input(name, args);
-  const path = `/actions/${encodeURIComponent(name)}`;
-  let { res, parsed, session } = await send("POST", path, body);
-  if (res.status === 401) {
-    if (!session) {
-      // 0.8 gave every visitor a guest identity; v2 starts one when a request needs it.
-      await startGuest();
-      ({ res, parsed } = await send("POST", path, body));
-    } else if (parsed?.code === "unauthenticated") {
-      // The held token was rejected (access tokens live five minutes): renew it with the refresh
-      // token, as runtime/client does, and keep the same user. Only a session that cannot be
-      // renewed (no refresh token, or the issuer refused it) falls back to a new guest.
-      if (!(await renew(session).catch(() => false))) {
-        hold(null);
-        await startGuest();
-      }
-      ({ res, parsed } = await send("POST", path, body));
-    }
-    // Any other 401 is the handler refusing this user (a guest where sign-in is required): the
-    // session stays as it is.
-  }
+  const { res, parsed } = await authed("POST", `/actions/${encodeURIComponent(name)}`, input(name, args), { guest: true });
   if (!res.ok) throw failure(res, parsed, `Zero ${name} request failed.`);
   return parsed?.data ?? null;
 }
@@ -277,10 +289,14 @@ const authListeners = new Set();
 async function emitAuth() {
   let user = null;
   try {
-    const { res, parsed } = await send("GET", "/me");
+    // Reading who this is never mints a guest, but an expired token is renewed like any request.
+    const { res, parsed } = await authed("GET", "/me", undefined, { guest: false });
     if (res.ok) user = parsed?.data ?? null;
   } catch {
-    user = null;
+    // Unreachable: keep who this was, and stop loading.
+    auth = { ...auth, isLoading: false };
+    for (const listener of authListeners) listener(auth);
+    return;
   }
   auth = user
     ? {
@@ -293,6 +309,12 @@ async function emitAuth() {
       }
     : { ...GUEST };
   for (const listener of authListeners) listener(auth);
+}
+
+/** Reads who this browser is (through `/me`, renewing an expired token) and returns 0.8's auth value. */
+export async function currentAuth() {
+  await emitAuth();
+  return auth;
 }
 
 export function useAuth() {

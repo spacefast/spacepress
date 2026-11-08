@@ -146,10 +146,10 @@ in issue order (a legal JavaScript schedule, per "The job queue" above). That is
 documented, not refused. Refusing would block every library that uses
 `Promise.all` for fan-out, when the result is still exact.
 
-As measured on this branch, p-map's `index.js` still stops before the async
-layer, on two diagnostics from the language-gaps lane: `index in errors` (the `in`
-operator) and a destructured parameter default that reads an earlier binding
-(`backpressure = concurrency`). Neither is async. Once both land, p-map has no
+As measured on this branch merged with main `de46201a`, p-map's `index.js` has
+one diagnostic left, and it isn't async: a destructured parameter default that
+reads an earlier binding in the same pattern (`backpressure = concurrency`,
+Z1002). That case belongs to the language-gaps lane. Once it lands, p-map has no
 async construct left that this model refuses.
 
 ## TypeScript stays explicit

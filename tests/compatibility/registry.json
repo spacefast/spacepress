@@ -345,6 +345,20 @@
       "guidance": "Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\\JsMap`/`Zero\\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused."
     },
     {
+      "id": "whatwg-url",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "url_vectors_agree_in_node_and_generated_php",
+      "guidance": "`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named Zero classes."
+    },
+    {
+      "id": "abort-signals-and-timers",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler",
+      "guidance": "`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for \"abort\" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `Zero\\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`ZERO_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with ZERO_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node."
+    },
+    {
       "id": "builtin-overloads",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
@@ -521,14 +535,6 @@
       "guidance": "Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormData, ArrayBuffer and stream bodies are not available."
     },
     {
-      "id": "url-objects",
-      "status": "refused",
-      "code": "Z4001",
-      "fixture": "tests/fixtures/reject-fetch-url-object",
-      "message": "`new URL` isn't available in Zero code",
-      "guidance": "fetch() takes a URL string. Build it with encodeURIComponent and URLSearchParams.toString(). URL and Request objects are not compiled."
-    },
-    {
       "id": "response-streams",
       "status": "refused",
       "code": "Z4001",
@@ -646,6 +652,13 @@
       "fixture": "tests/fixtures/reject-function-properties-value",
       "message": "is a function with properties, which can't be used as a value in PHP",
       "guidance": "A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value."
+    },
+    {
+      "id": "named-function-expressions",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "`function name() {}` as an expression binds `name` only inside itself, to itself, as in JavaScript: recursion works, parameters and `var`s of the same name shadow it, and the name is not visible outside. Assigning to the name inside the function throws in strict JavaScript, so it is refused with a pointer; assign to a local variable instead. Local function declarations with a declared signature, and every function in imported JavaScript, may also call themselves."
     }
   ],
   "zero08": [

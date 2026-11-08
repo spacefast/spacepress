@@ -327,6 +327,195 @@ fn every_refusal_carries_the_diagnostic_contract() {
     );
 }
 
+/// A handler that passes `ctx` to a helper, aliases it or destructures it keeps working: the helper
+/// takes the v2 context and its services are rewritten as the handler's are, following calls
+/// between helpers. Run on WordPress as a signed-in member and a guest.
+#[test]
+fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("helpers");
+    let (ok, report) = migrate(&fixture("helpers"), &out, &["--space", "spc_migrate_test", "--users"]);
+    assert!(ok, "{report:#}");
+    let mapped: Vec<&str> = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["pointer"].as_str().unwrap().starts_with("/helpers/"))
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        mapped,
+        [
+            "/helpers/listAll",
+            "/helpers/owner",
+            "/helpers/prefix",
+            "/helpers/save",
+            "/helpers/subject"
+        ]
+    );
+    build(&out);
+    // The candidate adopts existing 0.8 tables; run it on a fresh site with its own.
+    let source = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    let fresh = regex::Regex::new(r#"existingTable: "[^"]*", "#)
+        .unwrap()
+        .replace_all(&source, "");
+    std::fs::write(out.join("server/index.ts"), fresh.as_ref()).unwrap();
+    std::fs::remove_dir_all(out.join("zero/migrations")).unwrap();
+    let built = Command::new(env!("CARGO_BIN_EXE_zero"))
+        .arg("build")
+        .arg(&out)
+        .arg("--quiet")
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join(".zero/wp-content"))
+        .arg(
+            r#"putenv("NOTE_PREFIX=hi ");
+               $r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as)[1];
+               echo json_encode([
+                 "add" => $r("add", ["body" => "one"], "ada"),
+                 "addGuest" => $r("add", ["body" => "two"], null),
+                 "list" => array_map(fn ($n) => [$n["body"], $n["owner"]], $r("list", [], null)),
+                 "greeting" => $r("greeting", [], "ada"),
+                 "greetingGuest" => $r("greeting", [], null),
+                 "me" => $r("me", [], "ada"),
+                 "id" => $wp->userId("ada"),
+               ]), "\n";"#,
+        )
+        .arg("null")
+        .arg("ada=subscriber")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value = serde_json::from_str(stdout.lines().next_back().unwrap_or(""))
+        .unwrap_or_else(|_| panic!("{stdout}{}", String::from_utf8_lossy(&run.stderr)));
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "add": true, "addGuest": false,
+            "list": [["two", "anonymous"], ["one", "ada"]],
+            "greeting": "hi ada", "greetingGuest": "hi anonymous",
+            // A member without a copied 0.8 subject answers wp:<id>, as in a handler.
+            "me": format!("wp:{}", got["id"]),
+            "id": got["id"],
+        })
+    );
+
+    // A helper shared by a query and a mutation converts read-only, and reads the subject two
+    // calls down: the mutation still answers 401 to a caller without an identity, so no row is
+    // written with a null owner, while the query answers null.
+    let shared = temp.path().join("helper-subject");
+    let (ok, report) = migrate(
+        &fixture("helper-subject"),
+        &shared,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    let source = std::fs::read_to_string(shared.join("server/index.ts")).unwrap();
+    std::fs::write(
+        shared.join("server/index.ts"),
+        regex::Regex::new(r#"existingTable: "[^"]*", "#)
+            .unwrap()
+            .replace_all(&source, "")
+            .as_ref(),
+    )
+    .unwrap();
+    std::fs::remove_dir_all(shared.join("zero/migrations")).unwrap();
+    build(&shared);
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(shared.join(".zero/wp-content"))
+        .arg(
+            r#"$r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as);
+               echo json_encode([
+                 "guestAdd" => $r("add", ["body" => "x"], null)[0],
+                 "guestWhoami" => $r("whoami", [], null)[1],
+                 "memberAdd" => $r("add", ["body" => "y"], "ada")[1],
+                 "rows" => $wp->scalar("SELECT COUNT(*) FROM {prefix}zero_notes"),
+                 "id" => $wp->userId("ada"),
+               ]), "\n";"#,
+        )
+        .arg("null")
+        .arg("ada=subscriber")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value = serde_json::from_str(stdout.lines().next_back().unwrap_or(""))
+        .unwrap_or_else(|_| panic!("{stdout}{}", String::from_utf8_lossy(&run.stderr)));
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "guestAdd": 401, "guestWhoami": null,
+            "memberAdd": format!("wp:{}", got["id"]), "rows": 1, "id": got["id"],
+        })
+    );
+
+    // Only what the converter can't follow is refused, with the contract and a location.
+    for (case, helper, handler, code, reason) in [
+        (
+            "key",
+            "",
+            "queries: { k: query(async (ctx, key: string) => String(ctx[key])) }",
+            "Z08_CTX_DYNAMIC",
+            "a key the converter can't follow",
+        ),
+        (
+            "stored",
+            "",
+            "queries: { k: query(async (ctx) => { const holder = { ctx }; return String(holder.ctx.env.X); }) }",
+            "Z08_CTX_DYNAMIC",
+            "escapes into a value",
+        ),
+        (
+            "nested",
+            "",
+            "queries: { k: query(async (ctx) => { const { auth: { userId } } = ctx; return userId; }) }",
+            "Z08_CTX_DYNAMIC",
+            "plain service names",
+        ),
+        (
+            "sync",
+            "function who(ctx: any) { return ctx.auth.userId; }",
+            "queries: { k: query(async (ctx) => String(who(ctx))) }",
+            "Z08_CTX_DYNAMIC",
+            "make the helper async",
+        ),
+        // A query can't reach a write through a helper, as it couldn't directly.
+        (
+            "read",
+            "async function put(ctx: any) { await ctx.db.notes.insert({ body: \"x\" }); }",
+            "queries: { k: query(async (ctx) => { await put(ctx); return 1; }) }",
+            "Z08_DB_WRITE_IN_READ",
+            "writes are only allowed",
+        ),
+    ] {
+        let root = temp.path().join(case);
+        project(&root, "{}");
+        std::fs::write(
+            root.join("server/index.ts"),
+            format!("import {{ capsule, query, string, table }} from \"@spacefast/zero/server\";\n{helper}\nexport default capsule({{ name: \"r\", schema: {{ notes: table({{ body: string() }}) }}, {handler} }});\n"),
+        )
+        .unwrap();
+        let (ok, refused) = migrate(
+            &root,
+            &temp.path().join(format!("{case}-out")),
+            &["--space", "spc_migrate_test", "--users", "--dry-run"],
+        );
+        assert!(!ok, "{case}");
+        let e = &refused["errors"][0];
+        assert_eq!(e["code"], code, "{case}: {refused:#}");
+        assert!(e["reason"].as_str().unwrap().contains(reason), "{case}: {e}");
+        assert_eq!(e["file"], "server/index.ts", "{case}: {e}");
+        assert!(e["line"].as_u64().unwrap() >= 2, "{case}: {e}");
+    }
+}
+
 fn project(root: &Path, capsule: &str) {
     std::fs::create_dir_all(root.join("server")).unwrap();
     std::fs::write(root.join("sf.jsonc"), r#"{"runtime":{"kind":"zero"}}"#).unwrap();

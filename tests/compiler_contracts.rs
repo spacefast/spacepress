@@ -984,8 +984,18 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         ),
         (
             "class C { get value() { return 1; } }",
+            "(() => { const c = new C(); c.value = 2; return 1; })()",
+            "getter without a setter",
+        ),
+        (
+            "class C { set value(v: number) {} }",
+            "new C().value",
+            "has only a setter",
+        ),
+        (
+            "class C { toJSON(): string { return 'c'; } }",
             "new C()",
-            "accessor class methods",
+            "class instances with a toJSON method",
         ),
         (
             "class C {} const factory = () => C; class D extends factory() {}",

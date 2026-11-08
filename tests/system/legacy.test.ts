@@ -3,7 +3,7 @@
 // publication journey (one Zero app per site) and replays the content the original kernel wrote
 // (tests/wp/legacy/site.json). Here the owner converts the capsule with `zero migrate config`, opens
 // access (step 2), builds and installs the plugins (step 3), copies the uploads (step 3½), dry-runs
-// and runs `zero migrate site` (steps 4 and 5), then reads everything through the generated client.
+// and runs `wp zero migrate-legacy` (steps 4 and 5), then reads everything through the generated client.
 // tests/wp/legacy holds the migration's edge cases; this file proves the documented path end to end.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -23,7 +23,7 @@ const project = join(work, "legacy-app");
 const api = `${receipt.url}/wp-json/zero/v1`;
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const migrate = (...flags: string[]) => {
-  const r = spawnSync(join(process.env.CARGO_TARGET_DIR ?? join(repo, "target"), "debug/zero"), ["migrate", "site", join(legacy, "content-model.php"), "--wp", `${harness} wp`, ...flags], { encoding: "utf8" });
+  const r = spawnSync(harness, ["wp", "zero", "migrate-legacy", "-", ...flags], { input: readFileSync(join(legacy, "content-model.php")), encoding: "utf8" });
   return { code: r.status, out: JSON.parse(r.stdout) };
 };
 

@@ -75,6 +75,7 @@ impl Compiler<'_, '_> {
     fn resolve_ann_inner(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, BoundType>) -> Result<Ty> {
         Ok(match a {
             TyAnn::Num => Ty::Num,
+            TyAnn::BigInt => Ty::BigInt,
             TyAnn::NumLit(n) => Ty::NumLit(*n),
             TyAnn::Str => Ty::Str,
             TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
@@ -145,8 +146,50 @@ impl Compiler<'_, '_> {
                     }
                     return Ok(self.classes[&id].instance.clone());
                 }
+                // The context and request types `"zero"` exports, so a helper can take what a
+                // handler received: `HookCtx<T>`, `AccessCtx<T>` and `ValidateCtx` take the data.
+                if let Some(imported) = self.zero_type_import(module, name).as_deref().filter(|imported| {
+                    matches!(
+                        *imported,
+                        "User" | "Role" | "HookCtx" | "AccessCtx" | "ValidateCtx" | "RouteRequest" | "RouteResponse"
+                    )
+                }) {
+                    let data = match args.as_slice() {
+                        [] => None,
+                        [t] if matches!(imported, "HookCtx" | "AccessCtx") => {
+                            Some(self.resolve_ann(t, module, generics)?)
+                        }
+                        _ => return err(*span, format!("`{name}` takes at most one type argument")),
+                    };
+                    let any_data = || Ty::Map(Box::new(Ty::Unknown));
+                    let ty = match imported {
+                        "User" if data.is_none() => Some(types::user()),
+                        "Role" if data.is_none() => Some(types::role()),
+                        "HookCtx" => Some(types::hook_ctx_with(data.unwrap_or_else(any_data))),
+                        "AccessCtx" => Some(types::access_ctx(data.unwrap_or_else(any_data))),
+                        "ValidateCtx" if data.is_none() => Some(types::data_ctx(any_data())),
+                        "RouteRequest" if data.is_none() => Some(types::route_request()),
+                        "RouteResponse" if data.is_none() => Some(types::route_response()),
+                        _ => None,
+                    };
+                    if let Some(ty) = ty {
+                        return Ok(ty);
+                    }
+                }
                 if args.is_empty() {
                     for stmt in &self.ev_program().modules[module].body {
+                        if let Stmt::Import { source, specs, .. } = stmt
+                            && source == crate::loader::WORDPRESS_MODULE
+                        {
+                            for spec in specs {
+                                if spec.local == *name
+                                    && let ImportName::Named(imported) = &spec.imported
+                                    && matches!(imported.as_str(), "WP_Post" | "WP_User" | "WP_Query")
+                                {
+                                    return Ok(crate::wordpress::class(imported));
+                                }
+                            }
+                        }
                         if let Stmt::Import { source, specs, .. } = stmt
                             && source == crate::loader::ZERO_MODULE
                         {
@@ -170,6 +213,17 @@ impl Compiler<'_, '_> {
                     self.imported_type(module, name)
                 };
                 if let Some((owner, local)) = alias {
+                    if self.ev_program().modules[owner].dynamic
+                        && !self.type_aliases.contains_key(&(owner, local.clone()))
+                    {
+                        return err_help(
+                            *span,
+                            format!(
+                                "`{name}` comes from an installed package or JavaScript module, whose types Zero erases"
+                            ),
+                            "describe the value with a local type, or narrow it with `typeof`/`instanceof`",
+                        );
+                    }
                     return self.instantiate_alias(name, (owner, &local), args, *span, module, generics);
                 }
                 match (name.as_str(), args.as_slice()) {
@@ -533,6 +587,22 @@ impl Compiler<'_, '_> {
             return self.resolve_ann(&body, owner, &g);
         }
         err(span, format!("unknown type `{name}`"))
+    }
+
+    /// The `"zero"` export a local type name was imported as, if it was.
+    fn zero_type_import(&self, module: usize, name: &str) -> Option<String> {
+        self.ev_program().modules[module]
+            .body
+            .iter()
+            .find_map(|stmt| match stmt {
+                Stmt::Import { source, specs, .. } if source == crate::loader::ZERO_MODULE => {
+                    specs.iter().find_map(|spec| match &spec.imported {
+                        ImportName::Named(imported) if spec.local == name => Some(imported.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
     }
 
     fn imported_type(&self, module: usize, name: &str) -> Option<(usize, String)> {

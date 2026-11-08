@@ -15,7 +15,7 @@ const wpContent = join(repo, "tests/system/.wp-content-blog");
 const project = join(work, "blog");
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const sync = (...flags: string[]) =>
-  spawnSync(join(process.env.CARGO_TARGET_DIR ?? join(repo, "target"), "debug/zero"), ["sync", project, "--site", receipt.url, "--app-password", `editor:${receipt.users.editor.appPassword}`, "--no-commit", "--json", ...flags], { encoding: "utf8" });
+  spawnSync(join(process.env.CARGO_TARGET_DIR ?? join(repo, "target"), "debug/zero"), ["sync", project, "--site", receipt.url, "--no-commit", "--json", ...flags], { encoding: "utf8", env: { ...process.env, ZERO_APP_PASSWORD: `editor:${receipt.users.editor.appPassword}` } });
 
 test("the blog's committed posts sync into a fresh WordPress, once", async () => {
   rmSync(project, { recursive: true, force: true });

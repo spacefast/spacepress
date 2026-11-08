@@ -27,7 +27,7 @@
 
     // Sessions survive reloads (sessionStorage). Readers sign in on the site's /identity screens:
     // register this page once with
-    // `wp zero-identity app add --name=Blog --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
+    // `zero identity app add --name=Blog --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
     const zero = createClient({
       url: "/wp-json/zero/v1",
       auth: { storage: "session", clientId: "app_blog", redirectUri: location.origin + location.pathname },

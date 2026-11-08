@@ -4,23 +4,42 @@ End-user builds need neither Composer nor Strauss. The binary embeds the committ
 `runtime/Zero/vendor-prefixed` tree and copies it into the `zero-runtime` plugin, and
 `runtime/identity/vendor-prefixed` into the `zero-identity` plugin.
 
-| Root | Package | Locked version | Purpose | Transitive packages |
-|---|---|---|---|---|
-| runtime | `wp-php-toolkit/markdown` | 0.10.1 | WordPress-maintained Markdown to Gutenberg conversion and front matter parsing for sync | 7 shared toolkit packages |
-| runtime | `wp-php-toolkit/merge` | 0.10.1 | Server-side line differ and three-way merge for sync | 0 additional |
-| runtime | `wp-php-toolkit/blockparser` | 0.10.1 | WordPress's own block parser, so sync reads and writes block delimiters exactly as core does | 0 additional |
-| runtime | `async-aws/s3` | 3.5.0 | S3 request signing, XML protocol and streaming object transport (MIT) | AsyncAWS Core, Symfony HTTP client and PSR contracts |
-| identity | `web-auth/webauthn-lib` | 5.3.9 | Passkeys: CBOR/COSE/attestation parsing is not hand-rollable | 29 (Symfony serializer and friends, cose-lib, cbor-php, pki-framework) |
-| identity | `firebase/php-jwt` | 7.1.0 | RS256 signing for the issuer and inbound ID-token verification; one JWT library | 0 |
-| identity | `spomky-labs/otphp` | 11.5.0 | TOTP for MFA; small, maintained, proven by the MFA suites | 1 shared (`paragonie/constant_time_encoding`) |
+| Root | Package | Locked version | Purpose | Why not WordPress core | Transitive packages |
+|---|---|---|---|---|---|
+| runtime | `wp-php-toolkit/markdown` | 0.10.1 | WordPress-maintained Markdown to Gutenberg conversion and front matter parsing for sync | Core has no Markdown parser or producer and no YAML front matter reader | `data-liberation` (trimmed) |
+| runtime | `wp-php-toolkit/merge` | 0.10.1 | Server-side line differ and three-way merge for sync | Core's `Text_Diff`/`wp_text_diff()` renders two-way diffs; it has no three-way merge or conflict regions | `data-liberation` (trimmed) |
+| runtime | `async-aws/s3` | 3.5.0 | S3 request signing, XML protocol and streaming object transport (MIT) | Core has no SigV4 signing, S3 XML protocol or multipart upload; `wp_remote_*` buffers whole bodies | AsyncAWS Core, Symfony HTTP client and PSR contracts |
+| identity | `web-auth/webauthn-lib` | 5.3.9 | Passkeys: CBOR/COSE/attestation parsing is not hand-rollable | Core has no WebAuthn, CBOR or COSE support | 29 (Symfony serializer and friends, cose-lib, cbor-php, pki-framework) |
+| identity | `firebase/php-jwt` | 7.1.0 | RS256 signing for the issuer and inbound ID-token verification; one JWT library | Core has no JWT or JWK implementation | 0 |
+| identity | `spomky-labs/otphp` | 11.5.0 | TOTP for MFA; small, maintained, proven by the MFA suites | Core has no TOTP; its two-factor support lives in a separate plugin | 1 shared (`paragonie/constant_time_encoding`) |
 
-The seven shared packages are `bytestream`, `data-liberation`, `encoding`,
-`filesystem`, `html`, `http-client` and `xml`, all locked at 0.10.1. Markdown
-also contains its upstream-patched CommonMark, Symfony YAML and Webuni front
-matter implementations. Strauss prefixes those nested definitions too.
-The generated tree currently occupies about 8.7 MiB before packaging; embedding
-omits dependency tests, docs and Markdown files. Its aggregated license file and
-original license files ship with the runtime.
+Markdown and merge share `wp-php-toolkit/data-liberation` 0.10.1, of which only
+the block-markup consumer/producer, its HTML processor subclasses and
+`ImportUtils` ship. Markdown also contains its upstream-patched CommonMark,
+Symfony YAML and Webuni front matter implementations. Strauss prefixes those
+nested definitions too. The generated tree occupies about 4.3 MiB before
+packaging; embedding omits dependency tests, docs and Markdown files. Its
+aggregated license file and original license files ship with the runtime.
+
+### What WordPress core provides instead
+
+Zero runs only inside WordPress 7.1 or later, so the runtime uses core's own
+copies wherever core ships the code
+([decision](decisions/2026-11-07-wp-core-apis.md)):
+
+| Toolkit package | Replaced by | How |
+|---|---|---|
+| `wp-php-toolkit/html` | `WP_HTML_Tag_Processor`, `WP_HTML_Processor` | `replace`d in `composer.json`; the toolkit's references stay unprefixed and resolve to core |
+| `wp-php-toolkit/blockparser` | `parse_blocks()`, `serialize_blocks()` | `replace`d; `Sync\Blocks` calls core |
+| `wp-php-toolkit/encoding` | nothing; Zero never reaches it (core 7.1 has its own UTF-8 helpers) | `replace`d; only data-liberation's CSS processor used it |
+| `wp-php-toolkit/bytestream`, `filesystem`, `http-client`, `xml` | nothing; Zero never reaches them | `replace`d; only data-liberation's importers, entity readers/writers and URL rewriting used them |
+
+Those data-liberation directories (`CSS`, `EntityReader`, `EntityWriter`,
+`URL`, `vendor-patched`, the importers other than `ImportUtils`) and the
+Markdown importer are skipped with Strauss `exclude_from_copy`. A new use of
+toolkit code outside the shipped set needs that list revisited, and the
+`vendor` suite fails if the bundle starts defining the WordPress HTML API or
+block parser again.
 
 All bundled runtime classes, functions and constants use `Zero\\Vendor`, `Zero_Vendor_`
 and `ZERO_VENDOR_` prefixes; identity's use `Zero\\Identity\\Vendor`, `Zero_Identity_Vendor_`
@@ -41,8 +60,8 @@ manifest exists. `STRAUSS_PHAR` may point at an existing PHAR; its SHA-256 must
 match the pinned Strauss 0.31.1 release. The default downloads it into ignored
 `scripts/.tools`. Commit the lock, prefixed tree and `.manifest.json` together.
 The manifest records the lock hash and generation toolchain. The drift suite
-checks that relationship and executes the real bundled parser and merger while
-foreign YAML and WordPress HTML class names are already occupied. The vendor CI
+checks that relationship and executes the real bundled Markdown, YAML and merger
+on core's HTML API while their original class names are already occupied. The vendor CI
 job regenerates the tree on PHP 8.2 with pinned Composer 2.10.3 and checks for
 tracked changes and new untracked bundle files.
 Generation normalizes the build helper's inferred Composer branch and commit so
@@ -71,10 +90,9 @@ pnpm and esbuild and committed; `build/.manifest.json` records a hash of the sou
 cd runtime/identity/apps && pnpm install --frozen-lockfile && node build.mjs
 ```
 
-The Markdown consumer and line merger work without WordPress. The toolkit's
-Markdown producer and HTML processor call a few WordPress functions
-(`parse_blocks`, `serialize_block`, `esc_*`, `__`), which the loaded WordPress
-defines.
+The bundled Markdown code runs on WordPress's HTML API and calls core
+functions (`parse_blocks`, `serialize_block`, `esc_*`, `__`); Zero has no
+target without WordPress loaded.
 
 ## URI helper provenance
 

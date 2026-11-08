@@ -122,13 +122,16 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// the same effect on a v2 version as on the 0.8 one; written unchanged into the candidate's own
 /// sf.jsonc, which the migrated publish uploads.
 /// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
-///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php).
+///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php). Only
+///   when no rule can reach `/wp-json`, though: 0.8's data URLs were reserved from redirects, but
+///   v2's `/wp-json/zero/v1/*` isn't, and the REST door hands a path a redirect claims to the rules
+///   stage (see `redirect_reaches_wp_json`).
 /// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
 /// - `analytics`, `system`: frozen from the file config whatever the runtime.
 /// - `build`, `placement`: read from the repository or the Space at build or creation time, never
 ///   from the version, so carrying them changes nothing; kept so the file still says what it said.
-/// - `access` in its string form (`"public"`/`"private"`): no path patterns, and v2's `/wp-json`
-///   lane enforces it through the same access engine (see `carries`).
+/// - `access` as `"public"`, the only string form Spacefast accepts: no path patterns, and v2's
+///   `/wp-json` lane enforces it through the same access engine (see `carries`).
 ///
 /// Every other key is refused. Path rules don't survive the move, because the app's data URLs
 /// move from 0.8's `/__zero/*` to v2's `/wp-json/zero/v1/*`: so `access` path patterns, `cache`
@@ -145,9 +148,34 @@ pub(super) const PLATFORM_KEYS: &[&str] = &[
     "access",
 ];
 
-/// Whether the candidate carries `key` with `value`: every platform key, `access` only as a string.
+/// Whether the candidate carries `key` with `value`: every platform key, `access` only as
+/// `"public"`, and `redirects` only when no rule can reach the app's `/wp-json` data URLs.
 pub(super) fn carries(key: &str, value: &serde_json::Value) -> bool {
-    PLATFORM_KEYS.contains(&key) && (key != "access" || value.is_string())
+    PLATFORM_KEYS.contains(&key)
+        && match key {
+            "access" => value.as_str() == Some("public"),
+            "redirects" => value
+                .as_array()
+                .is_some_and(|rules| rules.iter().all(|r| !redirect_reaches_wp_json(r))),
+            _ => true,
+        }
+}
+
+/// Whether a redirect rule's `source` can match a `/wp-json/...` path: an absolute URL, an empty
+/// source, or a first segment that is `wp-json`, a `:name` capture or a `*` splat. Exactly `/`
+/// matches only the root. Anything this can't read counts as reaching it, so it is refused.
+fn redirect_reaches_wp_json(rule: &serde_json::Value) -> bool {
+    let Some(source) = rule.get("source").and_then(serde_json::Value::as_str) else {
+        return true;
+    };
+    if source == "/" {
+        return false;
+    }
+    let Some(path) = source.strip_prefix('/') else {
+        return true;
+    };
+    let first = path.split('/').next().unwrap_or("");
+    first.is_empty() || first.eq_ignore_ascii_case("wp-json") || first.starts_with(':') || first.contains('*')
 }
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
@@ -579,4 +607,31 @@ pub(super) fn sweep(
         );
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redirect_reaches_wp_json;
+
+    /// A redirect is carried only when its source can't match the app's `/wp-json` data URLs.
+    #[test]
+    fn a_redirect_reaches_wp_json_unless_its_first_segment_is_another_literal() {
+        for (source, reaches) in [
+            ("/", false),
+            ("/old", false),
+            ("/blog/:slug", false),
+            ("/wp-jsonx/a", false),
+            ("/wp-json/*", true),
+            ("/WP-JSON/zero", true),
+            ("/*", true),
+            ("/:lang/*", true),
+            ("/a*", true),
+            ("https://old.example/*", true),
+            ("", true),
+        ] {
+            let rule = serde_json::json!({ "source": source, "destination": "/" });
+            assert_eq!(redirect_reaches_wp_json(&rule), reaches, "{source}");
+        }
+        assert!(redirect_reaches_wp_json(&serde_json::json!({ "destination": "/" })));
+    }
 }

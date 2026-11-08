@@ -511,6 +511,12 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // access path patterns, crons (no CRON_SECRET on v2) and sell (its product file and paid
     // assets would be swept into public/) don't apply the same way: refused.
     overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
+    // On v2 the app's data URLs are /wp-json/zero/v1/*, which nothing reserves from redirects: a
+    // rule whose source can reach them is refused (here a catch-all host move).
+    overlay["redirects"] = serde_json::json!([
+        { "source": "/old", "destination": "/new", "status": 301 },
+        { "source": "/*", "destination": "https://new.example/:splat", "status": 301 }
+    ]);
     // Path rules don't survive the move: the app's data URLs move to /wp-json/zero/v1/*.
     overlay["firewall"] =
         serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
@@ -541,7 +547,9 @@ fn omissions_are_errors_and_static_files_carry_over() {
     assert_eq!(
         refused,
         [
-            // access keeps its place in the file; with path patterns it is refused.
+            // Keys keep their place in the file: redirects (a rule can reach /wp-json), then access
+            // (path patterns).
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/redirects"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/access"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/dataSources"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/network"),

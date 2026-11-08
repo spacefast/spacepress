@@ -57,6 +57,11 @@ eq('a plugin\'s locked hosts are checked before resolution, on every hop',
         }
     }, ['https://public.example/x', 'https://PUBLIC.example./y', 'https://other.example/', 'https://internal.example/']),
     ['allowed', 'allowed', 'zero_fetch_host_denied', 'zero_fetch_host_denied']);
+eq('a trailing root dot and case name the same host the policy checks and the pin covers',
+    [Fetch::target('https://PUBLIC.example./a'), $code('https://internal.example./'), $code('https://site.space.fast./'),
+        $code('https://a..example/'), Fetch::target('https://public.example./', ['public.example'])],
+    [['public.example', 443, '93.184.216.34'], 'zero_fetch_address_denied', 'zero_fetch_host_denied', 'zero_fetch_host_denied',
+        ['public.example', 443, '93.184.216.34']]);
 eq('the checked address is the one the connection is pinned to',
     Fetch::target('https://public.example:8443/a'), ['public.example', 8443, '93.184.216.34']);
 Fetch::$resolver = null;
@@ -110,5 +115,34 @@ foreach ([
 ] as [$base, $location, $expected]) {
     eq("Location $location against $base", Fetch::resolveUrl($base, $location), $expected);
 }
+
+// The pin fails closed before anything is sent. A local listener stands in for the target, and the
+// handle names it `localhost`, which resolves to the listener on its own: an unpinned handle would
+// reach it. When the pin can't be set, the handle must not connect there or send anything.
+$server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+$port = (int) substr(strrchr(stream_socket_get_name($server, false), ':'), 1);
+stream_set_blocking($server, false);
+$attempt = static function (?callable $setopt) use ($port): array {
+    $curl = curl_init("https://localhost:$port/secret?token=1");
+    curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 2, CURLOPT_CONNECTTIMEOUT => 2,
+        CURLOPT_SSL_VERIFYPEER => false, CURLOPT_POSTFIELDS => 'leak']);
+    $pinned = Fetch::pin($curl, 'localhost', $port, '127.0.0.1', $setopt);
+    curl_exec($curl);
+    return [$pinned, (string) curl_getinfo($curl, CURLINFO_PRIMARY_IP), (int) curl_getinfo($curl, CURLINFO_REQUEST_SIZE)];
+};
+$accepted = static function () use ($server): int {
+    $n = 0;
+    while (($peer = @stream_socket_accept($server, 0)) !== false) {
+        $n++;
+        fclose($peer);
+    }
+    return $n;
+};
+[$pinned, $ip] = $attempt(null);
+eq('a pinned handle connects to the checked address, not wherever the name resolves', [$pinned, $ip, $accepted()], [true, '127.0.0.1', 1]);
+$failing = static fn (\CurlHandle $c, int $option, mixed $value): bool => $option === CURLOPT_RESOLVE ? false : curl_setopt($c, $option, $value);
+[$pinned, $ip, $sent] = $attempt($failing);
+eq('when the pin can\'t be set, the handle never reaches the target and sends no request', [$pinned, $accepted(), $sent], [false, 0, 0]);
+fclose($server);
 
 finish('fetch');

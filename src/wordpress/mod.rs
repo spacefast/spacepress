@@ -55,6 +55,42 @@ pub fn hook(name: &str) -> Option<Hook> {
     })
 }
 
+/// One admitted WordPress function: what the author passes, what it returns, and the arguments the
+/// catalog fixes after them (`wp_insert_post`'s `wp_error: true`).
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub params: Vec<(String, Ty)>,
+    pub returns: Ty,
+    pub fixed: Vec<Value>,
+}
+
+pub fn function_names() -> impl Iterator<Item = &'static str> {
+    catalog()["functions"]
+        .as_object()
+        .expect("functions")
+        .keys()
+        .map(String::as_str)
+}
+
+pub fn function(name: &str) -> Option<Function> {
+    let f = catalog()["functions"].get(name)?;
+    Some(Function {
+        params: f["params"]
+            .as_array()
+            .expect("params")
+            .iter()
+            .map(|p| {
+                (
+                    p["name"].as_str().expect("name").to_string(),
+                    ts(p["type"].as_str().expect("type")),
+                )
+            })
+            .collect(),
+        returns: ts(f["returns"].as_str().expect("returns")),
+        fixed: f["fixed"].as_object().expect("fixed").values().cloned().collect(),
+    })
+}
+
 /// The admitted public properties of a catalog class, for the runtime's read-only views.
 pub fn class_fields(name: &str) -> Vec<&'static str> {
     catalog()["classes"][name]
@@ -109,7 +145,11 @@ fn ts(text: &str) -> Ty {
                 .filter(|f| !f.trim().is_empty())
                 .map(|f| {
                     let (k, t) = f.split_once(':').expect("field");
-                    (k.trim().to_string(), (ts(t), false))
+                    let k = k.trim();
+                    match k.strip_suffix('?') {
+                        Some(k) => (k.to_string(), (ts(t), true)),
+                        None => (k.to_string(), (ts(t), false)),
+                    }
                 })
                 .collect(),
         );
@@ -125,6 +165,7 @@ fn ts(text: &str) -> Ty {
         "string" => Ty::Str,
         "number" => Ty::Num,
         "boolean" => Ty::Bool,
+        "false" => Ty::BoolLit(false),
         "null" => Ty::Null,
         "void" => Ty::Void,
         "unknown" => Ty::Unknown,
@@ -165,6 +206,8 @@ mod tests {
         let save = hook("save_post").unwrap();
         assert!(!save.filter);
         assert!(matches!(&save.params[1].1, Ty::Obj(f) if f["post_title"].0 == Ty::Str));
+        let insert = function("wp_insert_post").unwrap();
+        assert!(matches!(&insert.params[0].1, Ty::Obj(f) if f["post_title"] == (Ty::Str, true)));
         let content = hook("the_content").unwrap();
         assert_eq!(content.returns, Ty::Str);
         assert!(matches!(&hook("pre_get_posts").unwrap().params[0].1, Ty::Obj(f) if f.contains_key("set")));

@@ -149,7 +149,7 @@ final class Fetch
         if (isset($parts['user']) || isset($parts['pass'])) {
             throw self::refuse('zero_fetch_credentials_denied', 'fetch() URLs cannot carry credentials.');
         }
-        $host = strtolower(trim($parts['host'], "[]. \t\n\r\0\x0B"));
+        $host = self::host($parts['host']);
         if ($host === '' || $host === 'localhost' || str_ends_with($host, '.localhost')) {
             throw self::refuse('zero_fetch_host_denied', 'The fetch host is not permitted.');
         }
@@ -251,14 +251,25 @@ final class Fetch
             throw new \LogicException('fetch() needs WordPress loaded (wp_remote_request)');
         }
         // Pin the connection to the address checked above. Only the cURL transport can pin: any
-        // other transport would resolve the name again, and could connect to a rebound address.
+        // other transport would resolve the name again, and could connect to a rebound address. So
+        // the request is sent with cURL or not at all, and the pin runs before cURL connects.
+        if (!class_exists(\WpOrg\Requests\Transport\Curl::class) || !\WpOrg\Requests\Transport\Curl::test(['ssl' => true])) {
+            throw self::refuse('zero_fetch_upstream_unavailable', 'Outbound fetch needs the cURL transport to pin the checked address.');
+        }
+        // The URL cURL sees names exactly the host the pin covers: `example.com.` and `EXAMPLE.com`
+        // would otherwise miss the CURLOPT_RESOLVE entry and let cURL resolve the name itself.
+        $url = self::withHost($url, $host);
         $pinned = false;
-        $pin = static function ($handle) use ($host, $port, $address, &$pinned): void {
-            $ip = str_contains($address, ':') ? '[' . $address . ']' : $address;
-            $pinned = curl_setopt($handle, CURLOPT_RESOLVE, ["$host:$port:$ip"])
-                && curl_setopt($handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        $handle = null;
+        $pin = static function ($curl) use ($host, $port, $address, &$pinned, &$handle): void {
+            $handle = $curl;
+            $pinned = self::pin($curl, $host, $port, $address);
+        };
+        $force = static function (&$url, &$headers, &$data, &$type, &$options): void {
+            $options['transport'] = \WpOrg\Requests\Transport\Curl::class;
         };
         add_action('http_api_curl', $pin, PHP_INT_MAX);
+        add_action('requests-requests.before_request', $force, PHP_INT_MAX, 5);
         try {
             $response = wp_remote_request($url, [
                 'method' => $method,
@@ -274,10 +285,11 @@ final class Fetch
             ]);
         } finally {
             remove_action('http_api_curl', $pin, PHP_INT_MAX);
+            remove_action('requests-requests.before_request', $force, PHP_INT_MAX);
         }
-        // Fail closed: a request the pin did not reach went out over another transport, unpinned,
-        // so nothing it returned is used.
-        if (!$pinned) {
+        // Fail closed: a request the pin did not reach, or that connected anywhere but the checked
+        // address (a later `http_api_curl` hook rewrote the handle), returns nothing to the handler.
+        if (!$pinned || !$handle instanceof \CurlHandle || !self::sameAddress((string) curl_getinfo($handle, CURLINFO_PRIMARY_IP), $address)) {
             throw self::refuse('zero_fetch_upstream_unavailable', 'Outbound fetch needs the cURL transport to pin the checked address.');
         }
         if (is_wp_error($response)) {
@@ -318,12 +330,67 @@ final class Fetch
         return (string) wp_remote_retrieve_response_message($response);
     }
 
+    /** The URL with its host replaced by the normalized one the address check and pin used. */
+    private static function withHost(string $url, string $host): string
+    {
+        $parts = parse_url($url);
+        $authority = (str_contains($host, ':') ? '[' . $host . ']' : $host) . (isset($parts['port']) ? ':' . $parts['port'] : '');
+
+        return 'https://' . $authority . ($parts['path'] ?? '') . (isset($parts['query']) ? '?' . $parts['query'] : '');
+    }
+
+    /**
+     * Pins `$curl` to the checked address before it connects. When an option can't be set, the
+     * handle is pointed at an address nothing listens on and limited to connecting, so no request
+     * byte leaves. Where cURL offers a pre-request hook (PHP 8.4+), the connected address is
+     * checked again there, after every other `http_api_curl` hook has run, and a mismatch aborts
+     * before the request is sent.
+     *
+     * @param null|callable(\CurlHandle, int, mixed): bool $setopt `curl_setopt` unless a test replaces it
+     */
+    public static function pin(\CurlHandle $curl, string $host, int $port, string $address, ?callable $setopt = null): bool
+    {
+        $setopt ??= curl_setopt(...);
+        $ip = str_contains($address, ':') ? '[' . $address . ']' : $address;
+        $pinned = $setopt($curl, CURLOPT_RESOLVE, ["$host:$port:$ip"])
+            && $setopt($curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        if ($pinned && defined('CURLOPT_PREREQFUNCTION')) {
+            $pinned = $setopt($curl, CURLOPT_PREREQFUNCTION, static fn ($h, string $connected): int => self::sameAddress($connected, $address) ? CURL_PREREQFUNC_OK : CURL_PREREQFUNC_ABORT);
+        }
+        if (!$pinned) {
+            curl_setopt($curl, CURLOPT_URL, 'https://0.0.0.0:0/');
+            curl_setopt($curl, CURLOPT_CONNECT_ONLY, true);
+        }
+
+        return $pinned;
+    }
+
+    private static function sameAddress(string $a, string $b): bool
+    {
+        $a = @inet_pton(trim($a, '[]'));
+        $b = @inet_pton(trim($b, '[]'));
+
+        return $a !== false && $a === $b;
+    }
+
     /** @return array{string, int} lowercase host and effective port of an https URL */
     private static function origin(string $url): array
     {
         $parts = parse_url($url);
 
-        return [strtolower((string) ($parts['host'] ?? '')), (int) ($parts['port'] ?? 443)];
+        return [self::host((string) ($parts['host'] ?? '')), (int) ($parts['port'] ?? 443)];
+    }
+
+    /**
+     * The one spelling of a URL's host that the policy, the pin and the redirect origin check all
+     * use: lowercase, brackets off, and a trailing root dot dropped (`Example.COM.` is
+     * `example.com`). A name with an empty label (`.a.com`, `a..com`) normalizes to '' and is refused.
+     */
+    private static function host(string $host): string
+    {
+        $host = strtolower(rtrim(trim($host, "[] \t\n\r\0\x0B"), '.'));
+
+        return str_starts_with($host, '.') || str_contains($host, '..') ? '' : $host;
     }
 
     /** A Location header resolved against the request URL as RFC 3986 §5.2 does; fragments drop. */

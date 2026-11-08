@@ -73,6 +73,21 @@ fn a_catch_all_route_segment_comes_last() {
 }
 
 #[test]
+fn destructured_defaults_may_read_earlier_siblings_only() {
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/sibling-parameter-defaults"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    rejects(
+        "reject-later-sibling-default",
+        "parameter defaults can't reference the current or a later parameter",
+        "zero.config.ts:3:",
+    );
+}
+
+#[test]
 fn mail_send_needs_recipients_a_subject_and_a_body() {
     rejects(
         "reject-mail-message",
@@ -991,7 +1006,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         zero()
             .arg("sync")
             .arg(&project)
-            .args(["--site", &site, "--app-password", &credential, "--no-commit", "--json"])
+            .env("ZERO_APP_PASSWORD", &credential)
+            .args(["--site", &site, "--no-commit", "--json"])
             .args(extra)
             .output()
             .unwrap()
@@ -1679,7 +1695,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     let refused = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("unknown flag --target"), "{stderr}");
+    assert!(stderr.contains("unknown option --target for zero build"), "{stderr}");
     let config = std::fs::read_to_string(tmp.join("zero.config.ts")).unwrap();
     std::fs::write(
         tmp.join("zero.config.ts"),

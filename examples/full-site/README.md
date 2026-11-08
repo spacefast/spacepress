@@ -19,7 +19,7 @@ zero dev examples/full-site --port 8872 --no-watch
 node packages/pages/bin/zero-pages.mjs build examples/full-site
 cp -R examples/full-site/.zero/wp-content/plugins/zero-pages-fullsite \
   examples/full-site/.zero/dev/wordpress/wp-content/plugins/
-zero dev wp examples/full-site -- plugin activate zero-pages-fullsite
+zero wp --site examples/full-site plugin activate zero-pages-fullsite
 ```
 
 Open the URL printed by `zero dev`, then `/wp-admin/` to create published

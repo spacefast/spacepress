@@ -1,9 +1,23 @@
 <?php
-// The WordPress HTTP API, reduced to what Zero\Fetch calls, for the host-globals contract: every
-// request goes to the local origin named by HOST_ORIGIN (tests/differential/host-origin.mjs),
-// whatever the URL's host, after Zero\Fetch has applied its own policy to the public name.
+// The WordPress HTTP API, reduced to what Zero\Fetch calls, for the host-globals contract.
+// `origin.example` resolves to the local origin (tests/differential/host-origin.mjs), opened with
+// the same `zero_fetch_allow_address` seam a site plugin uses, so Zero\Fetch's own pin decides
+// where the request connects. The stub only lets this one origin speak plain HTTP.
 
 declare(strict_types=1);
+
+namespace WpOrg\Requests\Transport {
+    /** WordPress's Requests cURL transport, as Zero\Fetch checks for it before pinning. */
+    final class Curl
+    {
+        public static function test(array $capabilities = []): bool
+        {
+            return function_exists('curl_init');
+        }
+    }
+}
+
+namespace {
 
 /** @var array<string, list<callable>> */
 $GLOBALS['host_actions'] = [];
@@ -17,15 +31,17 @@ function remove_action(string $hook, callable $fn, int $priority = 10): void
 }
 function apply_filters(string $hook, mixed $value, mixed ...$args): mixed
 {
-    // origin.example resolves to a public address, so the address check passes; the transport
-    // above then connects to the local origin.
-    return $hook === 'zero_fetch_resolve' && $args[0] === 'origin.example' ? ['93.184.216.34'] : $value;
+    return match (true) {
+        $hook === 'zero_fetch_resolve' && $args[0] === 'origin.example' => ['127.0.0.1'],
+        $hook === 'zero_fetch_allow_address' => $value || ($args[1] === 'origin.example' && $args[0] === '127.0.0.1'),
+        default => $value,
+    };
 }
 function is_wp_error(mixed $v): bool { return $v === false; }
 function wp_remote_request(string $url, array $args): array|false
 {
-    $parts = parse_url($url);
-    $target = 'http://127.0.0.1:' . getenv('HOST_ORIGIN') . ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
+    // The local origin speaks plain HTTP; host and port stay what Zero\Fetch checked and pinned.
+    $target = (string) preg_replace('#\Ahttps://origin\.example:#', 'http://origin.example:', $url);
     $headers = [];
     foreach ($args['headers'] as $name => $value) {
         $headers[] = "$name: $value";
@@ -34,12 +50,11 @@ function wp_remote_request(string $url, array $args): array|false
     $message = '';
     $out = [];
     $curl = curl_init($target);
-    // As WordPress's cURL transport does: Zero\Fetch pins the checked address here. The local
-    // origin is then reached with the pin replaced, which the stub owns, not the policy.
+    // As WordPress's cURL transport does: Zero\Fetch pins the checked address here and decides
+    // where the handle connects. Only the scheme is the stub's.
     foreach ($GLOBALS['host_actions']['http_api_curl'] ?? [] as $fn) {
         $fn($curl);
     }
-    curl_setopt($curl, CURLOPT_RESOLVE, []);
     curl_setopt($curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
     curl_setopt_array($curl, [
         CURLOPT_CUSTOMREQUEST => $args['method'],
@@ -66,3 +81,4 @@ function wp_remote_retrieve_body(array $r): string { return $r['body']; }
 function wp_remote_retrieve_headers(array $r): array { return $r['headers']; }
 function wp_remote_retrieve_response_code(array $r): int { return $r['status']; }
 function wp_remote_retrieve_response_message(array $r): string { return $r['message']; }
+}

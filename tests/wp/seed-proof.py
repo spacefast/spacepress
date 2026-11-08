@@ -2,6 +2,7 @@
 import json
 import re
 from pathlib import Path
+import os
 import subprocess
 import sys
 
@@ -11,8 +12,8 @@ golden = json.loads((Path(__file__).parent / '../fixtures/sync-file-uid.json').r
 uid = next(c['uid'] for c in golden if c['collection'] == 'posts' and c['basename'] == 'hello.md')
 
 
-def run(*args, success=True):
-    result = subprocess.run(args, text=True, capture_output=True)
+def run(*args, success=True, env=None):
+    result = subprocess.run(args, text=True, capture_output=True, env=None if env is None else {**os.environ, **env})
     assert result.returncode == (0 if success else 1), f'{args}: {result.stdout}\n{result.stderr}'
     return result.stdout
 
@@ -51,8 +52,8 @@ counts(seed(app / 'compiled-2/seed'), 'posts', unchanged=1)
 assert rows('posts') == [post], 'republishing preserves the only record'
 
 # Start with the original uid-less file, then let the actual sync command adopt the seeded record.
-run(zero, 'sync', str(app / 'project'), '--site', site['url'], '--app-password',
-    'editor:' + site['users']['editor']['appPassword'], '--only', 'posts', '--no-commit', '--json')
+run(zero, 'sync', str(app / 'project'), '--site', site['url'], '--only', 'posts', '--no-commit', '--json',
+    env={'ZERO_APP_PASSWORD': 'editor:' + site['users']['editor']['appPassword']})
 assert rows('posts') == [post], 'zero sync after publish creates no duplicate or update'
 assert f'uid: {uid}' in (app / 'project/content/posts/hello.md').read_text()
 counts(seed(first), 'posts', unchanged=1)

@@ -60,7 +60,7 @@ versions, `scf`, `actionScheduler`, `mcpAdapter`, `polylang`, `identity`,
 `imageCdn`, and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`zero doctor [--site URL --token T]` checks this data against the same
+`zero doctor [--site URL]` (bearer token in `ZERO_TOKEN`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php

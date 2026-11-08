@@ -96,14 +96,19 @@ test("redirect credentials and URLs follow the origin and RFC 3986", async () =>
   assert.equal(paged.body.data?.url, `${origin}/items/42?page=2`);
 });
 
-test("without the cURL transport, fetch refuses instead of sending an unpinned request", async () => {
+test("another transport never sends: fetch always goes out through the pinned cURL connection", async () => {
   const before = seen().length;
+  // A site plugin swaps in a transport that would answer "unpinned" without a pinned connection.
   const response = await fetch(`${api}/actions/get?zero-fetch-transport=streams`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: `${origin}/json` }),
   });
   const body = await response.json() as { code?: string; data?: { body?: string } };
-  // The stand-in transport answered "unpinned"; fetch() must not hand that body to the handler.
-  assert.notEqual(body.data?.body, "unpinned", "an unpinned answer reached the handler");
-  assert.equal(body.code, "zero_fetch_upstream_unavailable", JSON.stringify(body));
-  assert.equal(seen().length, before, "nothing reached the origin");
+  assert.notEqual(body.data?.body, "unpinned", "the swapped-in transport sent the request");
+  // fetch() chose cURL itself, so the real origin answered over the pinned connection.
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(seen().length, before + 1, "exactly one request reached the origin");
+  // A trailing-dot host is the same host: checked, pinned and sent as `fetch-origin.test`.
+  const dotted = await call("get", { url: `https://fetch-origin.test.:${port}/json` });
+  assert.equal(dotted.status, 200, JSON.stringify(dotted.body));
+  assert.equal(seen().at(-1)!.headers["host"], `fetch-origin.test:${port}`, "the request went to the pinned name");
 });

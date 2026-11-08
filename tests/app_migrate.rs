@@ -1582,40 +1582,74 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     assert_eq!(codes, ["Z08_OMITTED_CLIENT"], "{report:#}");
     assert_eq!(report["errors"][0]["file"], "client/main.tsx");
 
-    // Files the publish did not record are not part of the published version: a page added later
-    // and an sf.jsonc naming another entry are both ignored, so the candidate is the publish's.
+    // An unrecorded page was not part of the publish, so it never reaches the candidate. An
+    // unrecorded config is refused: 0.8 applied sf.jsonc and theme.json to the Space, a real
+    // manifest never records them, and the candidate can't check they are the published ones.
     std::fs::create_dir_all(source.join("pages")).unwrap();
     std::fs::write(
         source.join("pages/added.tsx"),
         "export default function Added() { return <p>later</p>; }\n",
     )
     .unwrap();
-    std::fs::write(source.join("sf.jsonc"), r#"{"runtime":{"server":"server/other.ts"}}"#).unwrap();
+    std::fs::write(
+        source.join("sf.jsonc"),
+        r#"{"runtime":{"server":"server/other.ts"},"redirects":[{"source":"/a","destination":"/b"}],"headers":[],"access":{"mode":"team"}}"#,
+    )
+    .unwrap();
+    std::fs::write(source.join("theme.json"), r#"{"version":3}"#).unwrap();
+    // The publish without its client, so the config is the only thing left to refuse.
+    let mut server_only: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    let recorded = &mut server_only["artifact"]["sourceManifest"];
+    recorded["files"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|f| f["path"] != "client/main.tsx");
+    recorded["entries"].as_object_mut().unwrap().remove("client");
+    let server_only_path = temp.path().join("server-only.json");
+    std::fs::write(&server_only_path, server_only.to_string()).unwrap();
     let out = temp.path().join("b2");
     let output = Command::new(env!("CARGO_BIN_EXE_zero"))
         .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
-        .arg(&manifest)
+        .arg(&server_only_path)
         .arg(&source)
         .arg("--out")
         .arg(&out)
         .args(["--space", "spc_migrate_test", "--users"])
         .output()
         .unwrap();
+    assert!(!output.status.success());
     let written: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let codes: Vec<&str> = written["errors"]
+    let refused: Vec<(&str, &str)> = written["errors"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|e| e["code"].as_str().unwrap())
+        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
         .collect();
-    assert_eq!(codes, ["Z08_OMITTED_CLIENT"], "only the client is omitted: {written:#}");
-    assert!(
-        !out.join("pages/added/page.tsx").exists(),
-        "an unrecorded page reached the candidate"
+    assert_eq!(
+        refused,
+        [
+            ("Z08_OMITTED_UNVERIFIED", "sf.jsonc"),
+            ("Z08_OMITTED_UNVERIFIED", "theme.json")
+        ],
+        "{written:#}"
     );
-    assert!(!out.join("pages").exists());
-    std::fs::remove_dir_all(source.join("pages")).unwrap();
+    assert!(!out.exists());
     std::fs::remove_file(source.join("sf.jsonc")).unwrap();
+    std::fs::remove_file(source.join("theme.json")).unwrap();
+    // Without them the server converts, and the later page still isn't part of it.
+    let output = Command::new(env!("CARGO_BIN_EXE_zero"))
+        .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
+        .arg(&server_only_path)
+        .arg(&source)
+        .arg("--out")
+        .arg(&out)
+        .args(["--space", "spc_migrate_test", "--users"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+    assert!(out.join("server/index.ts").is_file());
+    assert!(!out.join("pages").exists(), "an unrecorded page reached the candidate");
+    std::fs::remove_dir_all(source.join("pages")).unwrap();
 
     // A real finalize manifest records the capsule's source, never the static files served beside
     // it, so those can't be checked against the publish: each is refused at its file, neither

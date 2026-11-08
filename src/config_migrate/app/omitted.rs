@@ -215,6 +215,21 @@ pub(super) fn unverified(
             .located(link.clone(), 1, 1),
         );
     }
+    // 0.8 applied its config and theme.json to the Space, and a manifest never records them, so
+    // the candidate can't tell whether they are the published ones.
+    let config = super::CONFIG_FILES.iter().chain(&[THEME_JSON, "spacefast.config.ts"]);
+    for file in config.filter(|f| !verified.contains(**f)) {
+        let path = root.join(file);
+        if fs.is_file(&path) && !fs.is_symlink(&path) {
+            errors.push(
+                fail(
+                    &at(file),
+                    format!("{UNVERIFIED}: {file} is not in the finalize manifest, so the candidate can't check it is the published config"),
+                )
+                .located(file.to_string(), 1, 1),
+            );
+        }
+    }
     for file in tree.files.iter().map(name).filter(|n| !verified.contains(n)) {
         // Unrecorded source was not part of the publish; unrecorded content may have been.
         let first = file.split('/').next().unwrap_or("");

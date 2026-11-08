@@ -27,6 +27,32 @@ at the root or `"../src/x"` from `zero/`, fails with `Z1210` and names the
 file to move. Packages (`"zero"`, `"php/wordpress"`, npm packages) are always
 allowed, and an installed package's own relative imports are its business.
 
+### Exports register by name
+
+Zero loads every `.ts` file under `zero/`, except `app/`, `components/`,
+`wp-hooks/`, `content/`, `public/`, `_generated/` and `dist/`. Each exported
+`collection()`, `table()`, `userProjection()`, `global()`, `action()` and
+`job()` registers under its export name, so no file name is required and
+`defineConfig` needs no registry for them:
+
+```ts
+// zero/schema.ts
+export const notes = table({ id: id(), title: text().notNull() });
+
+// zero/server/likes.ts (any file name)
+import { notes } from "zero:db";
+export const like = action({ input: { id: integer().notNull() }, async handler({ id }) { /* … */ } });
+```
+
+- Other exports are ignored, so helper modules need no special place.
+- Export names are unique across the app. Two exports named `like`, or an
+  action named like a kind, fail with `Z1221`, naming both files.
+- A value both exported and listed in a `defineConfig` registry is one
+  registration.
+- `import { notes } from "zero:db"` gives a registered kind by name, from any
+  module and in any load order. An unknown name is refused at the import with
+  the closest one. Types come from `zero/_generated/db.d.ts`.
+
 ## WordPress plugins
 
 Use a top-level package map in `defineConfig`:

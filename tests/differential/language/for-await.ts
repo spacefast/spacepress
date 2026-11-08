@@ -24,8 +24,8 @@ export default defineConfig({
     }),
     forAwaitPromises: run(async () => {
       const out: number[] = [];
-      for await (const v of [double(1), double(2), 7]) out.push(v);
-      for await (const row of [rows()]) out.push(row.length);
+      for await (const v of [await double(1), await double(2), 7]) out.push(v);
+      for await (const row of [await rows()]) out.push(row.length);
       return out;
     }),
     forAwaitString: run(async () => {

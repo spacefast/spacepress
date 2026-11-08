@@ -161,7 +161,11 @@ promises: under the blocking model each element is already settled, so
 `for await (const x of xs)` is exactly `for (const v of xs) { const x = await v; }`
 and queues nothing. A `for await` over an async iterable, a generator or any value
 from imported JavaScript keeps the "only works in imported JavaScript" refusal,
-since it needs the job queue. A program pays for the job queue
+since it needs the job queue. Two element shapes are refused with their own fix: a
+promise written in the array literal (`[a(), b()]`), because the blocking calls
+would all run before the loop starts while JavaScript awaits each as the loop
+reaches it (write `[await a(), await b()]`); and class instances, because a
+`then` method makes one a thenable that `for await` adopts. A program pays for the job queue
 only when its generated code queues jobs. Otherwise its PHP does not change, and
 each root is wrapped in `Zero\JsJobs::run` only when needed.
 

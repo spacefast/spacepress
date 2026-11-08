@@ -1756,34 +1756,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if *kind != DeclKind::Var {
                     self.predeclare_lexical(pat, *kind == DeclKind::Let);
                 }
-                // `for await (const v of [a(), b()])`: under the blocking model each Zero call in the
-                // literal has already run, so the array holds its settled values.
-                let it = match &iter.kind {
-                    ExprKind::Array(items)
-                        if typed_await && items.iter().all(|item| matches!(item, ArrEl::Item(_))) =>
-                    {
-                        let mut values = Vec::new();
-                        let mut types = Vec::new();
-                        for item in items {
-                            let ArrEl::Item(e) = item else { unreachable!() };
-                            let v = self.expr(e)?;
-                            let v = match v.ty {
-                                Ty::Promise(t) => Out { ty: *t, ..v },
-                                _ => self.finish_value(v, e.span)?,
-                            };
-                            values.push(v.php);
-                            types.push(v.ty);
+                // `for await (const v of [a(), b()])` awaits each element as the loop reaches it, after
+                // the previous iterations' bodies ran. The blocking model would settle every call
+                // before the loop starts, so a promise in the literal is refused with the exact form.
+                if typed_await && let ExprKind::Array(items) = &iter.kind {
+                    for item in items {
+                        let ArrEl::Item(e) = item else { continue };
+                        let saved = self.fx().tmp;
+                        let ty = self.expr(e).map(|v| v.ty);
+                        self.fx().tmp = saved;
+                        if matches!(ty, Ok(Ty::Promise(_))) {
+                            return err_help(
+                                e.span,
+                                "`for await` over a promise written in an array literal isn't supported",
+                                "await each call where it is written: `for (const v of [await a(), await b()])`",
+                            );
                         }
-                        Out::atom(
-                            format!("(new \\Zero\\JsArray([{}]))", values.join(", ")),
-                            Ty::Array(Box::new(Ty::union(types))),
-                        )
                     }
-                    _ => {
-                        let it = self.expr(iter)?;
-                        self.finish_value(it, iter.span)?
-                    }
-                };
+                }
+                let it = self.expr(iter)?;
+                let it = self.finish_value(it, iter.span)?;
                 let (el, src) = match &it.ty.non_null() {
                     Ty::Dynamic => (Ty::Dynamic, format!("\\Zero\\Js::dynamicIterator({})", it.php)),
                     Ty::Array(t) | Ty::NonEmptyArray(t) => ((**t).clone(), it.php.clone()),
@@ -1804,6 +1796,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if typed_await {
                     let settled = awaited_element(&el);
+                    // A class instance may be a thenable through a `then` method; `for await` would
+                    // adopt it, which only the job queue can do.
+                    if el.non_null().all(|t| matches!(t, Ty::Instance(..) | Ty::Class(_))) && !el.is_nullable() {
+                        return err_help(
+                            iter.span,
+                            "`for await` over class instances isn't supported in authored TypeScript",
+                            "use `for (const v of items)`; `for await` would adopt an instance with a `then` method as a promise",
+                        );
+                    }
                     if it.ty == Ty::Dynamic || settled.is_none() {
                         return err_help(
                             *span,
@@ -9316,7 +9317,8 @@ fn awaited_element(t: &Ty) -> Option<Ty> {
         // PromiseResolve adopts an object with a callable (or possibly callable) `then`, so a
         // thenable element binds its settled value in JavaScript; only the job queue can settle it.
         Ty::Obj(_) | Ty::Map(_) if thenable(t) => None,
-        Ty::Instance(_, fields) if thenable(fields) => None,
+        // A class instance's `then` may be a method, which its field type doesn't show.
+        Ty::Instance(..) | Ty::Class(_) => None,
         other => Some(other.clone()),
     }
 }

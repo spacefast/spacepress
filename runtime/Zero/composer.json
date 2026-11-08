@@ -53,8 +53,7 @@
           "WP_PLUGIN_DIR",
           "WP_CLI",
           "WP_UNINSTALL_PLUGIN",
-          "ARRAY_A",
-          "DS"
+          "ARRAY_A"
         ]
       },
       "override_autoload": {

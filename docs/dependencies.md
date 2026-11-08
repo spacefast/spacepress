@@ -67,13 +67,7 @@ tracked changes and new untracked bundle files.
 Generation normalizes the build helper's inferred Composer branch and commit so
 the bundle stays identical across checkouts.
 The unused merge terminal diagnostic (`merge/functions.php`) is removed during
-generation. Generation also patches one line in the bundled rowbot/url
-(`String/PercentEncoder.php`): it percent-encoded with `rawurlencode()`, which
-leaves `~` alone although the `application/x-www-form-urlencoded` set contains it.
-The patch encodes the byte directly, which matches the URL Standard and Node, and
-generation fails if the line changes upstream. `DS` is excluded from constant
-prefixing because rowbot/idna aliases `DIRECTORY_SEPARATOR` as `DS`; prefixing it
-left an undefined `ZERO_VENDOR_DS` that broke every host parse. It shells out to `tput`; the merger classes have no dependency on it.
+generation. It shells out to `tput`; the merger classes have no dependency on it.
 `tests/php/run.sh boundary` checks the shipped PHP for process calls, with the
 offline CLI deployment adapter as the only exception.
 

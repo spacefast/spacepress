@@ -398,15 +398,19 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
     Ok(())
 }
 
-/// Every function exported from a `zero/components/` file becomes a compiled component, called
-/// with one props object (docs/decisions/2026-11-08-tsx-to-php.md). Other exports are ignored, as
-/// for any helper module.
+/// Every function exported from a `zero/components/` file under a capitalized name becomes a
+/// compiled component, called with one props object (docs/decisions/2026-11-08-tsx-to-php.md).
+/// The capital is React's own rule for what a JSX tag can name; other exports are helpers and are
+/// ignored, as in any module.
 fn components(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
     use crate::value::Value;
     for (path, module) in &program.components {
         let exports = ev.run_module(*module)?;
         for (export, value) in &exports {
             let Value::Closure(closure) = value else { continue };
+            if !export.starts_with(|c: char| c.is_ascii_uppercase()) {
+                continue;
+            }
             let stem = path.trim_end_matches(".tsx");
             ext.roots.push(extract::Root {
                 closure: closure.clone(),

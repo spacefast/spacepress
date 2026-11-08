@@ -15,7 +15,8 @@ $out = [];
 foreach (json_decode((string) file_get_contents($casesFile), true, 512, JSON_THROW_ON_ERROR) as $index => $case) {
     try {
         $fn = '\\ZeroApp\\' . $schema['components'][$case['component']];
-        $props = \Zero\Js::jsonParse(json_encode($case['props'], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        // JSON_FORCE_OBJECT would also turn arrays inside the props into objects; `(object)` keeps them.
+        $props = \Zero\Js::jsonParse(json_encode((object) $case['props'], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
         $out[(string) $index] = ['html' => \Zero\Html::child(\Zero\Html::component($fn(...), $props))];
     } catch (\Throwable $e) {
         $out[(string) $index] = ['error' => $e->getMessage()];

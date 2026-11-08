@@ -5999,6 +5999,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // React builds the element now and calls the component when it renders it.
                 let props = self.expr(props_expr)?;
                 let props = self.finish_value(props, props_expr.span)?;
+                // `key` evaluates for its effects and is then dropped, as React drops it from props.
+                let key = match jsx.attrs.as_slice() {
+                    [JsxAttr::Named { value, .. }] => {
+                        let v = self.expr(value)?;
+                        Some(self.finish_value(v, value.span)?.php)
+                    }
+                    _ => None,
+                };
                 match callable_argument(&params, 0) {
                     Some(want) if !assignable(&props.ty, &want) => {
                         return err(
@@ -6031,8 +6039,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     )
                     .help("return JSX, a string, a number or null")
                 })?;
+                let props = match key {
+                    // `[props, key][0]` evaluates both in source order and keeps the props.
+                    Some(key) => format!("[{}, {key}][0]", props.php),
+                    None => props.php,
+                };
                 Ok(Out::atom(
-                    format!("\\Zero\\Html::component({}, {})", f.php, props.php),
+                    format!("\\Zero\\Html::component({}, {props})", f.php),
                     Ty::Html,
                 ))
             }
@@ -6082,6 +6095,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Ty::Void
             | Ty::Never
             | Ty::Dynamic => true,
+            // `ReactNode`'s nested arrays: `\Zero\Html::child` checks each element when it renders.
+            Ty::Array(inner) | Ty::NonEmptyArray(inner) if **inner == Ty::Unknown => true,
             Ty::Array(inner) | Ty::NonEmptyArray(inner) => self.jsx_child_type(inner, span).is_ok(),
             Ty::Tuple(items) | Ty::ArrayLiteral(items) => items.iter().all(|t| self.jsx_child_type(t, span).is_ok()),
             _ => false,
@@ -6107,6 +6122,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "set titles and meta tags with `export const metadata`, and import styles and scripts as modules",
             );
         }
+        if tag == "textarea" && !jsx.children.is_empty() {
+            return err_help(
+                span,
+                "`<textarea>` can't have children",
+                "set its text with `defaultValue`",
+            );
+        }
         if tag == "select"
             && let Some(JsxAttr::Named { span, .. }) = jsx
                 .attrs
@@ -6127,14 +6149,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             "render the value as a child, which is escaped; raw HTML output isn't supported yet",
                         );
                     }
-                    if name.starts_with("on") && name.len() > 2 && name.as_bytes()[2].is_ascii_uppercase() {
+                    let folded = name.to_ascii_lowercase();
+                    if folded.starts_with("on") && folded.len() > 2 {
                         return err_help(
                             *span,
                             format!("server components can't handle events (`{name}`)"),
                             "move the handler into a \"use client\" component",
                         );
                     }
-                    if is_url_attribute(name)
+                    if folded == "srcdoc" && !matches!(value.kind, ExprKind::Str(_)) {
+                        return err_help(
+                            *span,
+                            "`srcDoc` from a value isn't supported",
+                            "write the document as a string literal, or link to it with `src`",
+                        );
+                    }
+                    if is_url_attribute(&folded)
                         && let ExprKind::Str(url) = &value.kind
                         && !safe_url(url)
                     {
@@ -6175,7 +6205,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             format!("[{}]", entries.join(", "))
         };
         let mut args = vec![php_str(tag), attrs];
-        args.extend(self.jsx_children(&jsx.children)?);
+        // A literal string child stays a string, so `Html::element` can apply React's rules that
+        // depend on it (the doubled leading newline in `<pre>`).
+        match jsx.children.as_slice() {
+            [
+                Expr {
+                    kind: ExprKind::Str(text),
+                    ..
+                },
+            ] => args.push(php_str(text)),
+            children => args.extend(self.jsx_children(children)?),
+        }
         Ok(Out::atom(
             format!("\\Zero\\Html::element({})", args.join(", ")),
             Ty::Html,
@@ -10374,8 +10414,36 @@ fn jsx_escape(text: &str) -> String {
     out
 }
 
-fn is_url_attribute(name: &str) -> bool {
-    matches!(name, "href" | "src" | "action" | "formAction" | "xlinkHref")
+/// `\Zero\Html::URL`, for a lowercased attribute name.
+fn is_url_attribute(folded: &str) -> bool {
+    let name = folded
+        .strip_prefix("xlink:")
+        .or_else(|| folded.strip_prefix("xlink"))
+        .unwrap_or(folded);
+    matches!(
+        name,
+        "href"
+            | "src"
+            | "action"
+            | "formaction"
+            | "data"
+            | "ping"
+            | "poster"
+            | "background"
+            | "cite"
+            | "codebase"
+            | "longdesc"
+            | "manifest"
+            | "srcset"
+            | "imagesrcset"
+            | "icon"
+            | "profile"
+            | "usemap"
+            | "lowsrc"
+            | "dynsrc"
+            | "archive"
+            | "classid"
+    )
 }
 
 /// `\Zero\Html::safeUrl` at build time, for literal URLs.

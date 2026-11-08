@@ -740,7 +740,7 @@ An ordinary function or object-literal method that reads `this` gets its call re
 
 Status: **supported**.
 
-Functions exported from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\Zero\Html`), listed in schema.php `components`. Output matches react-dom/server 19 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean and style rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is rendered JSX placed where the component puts it (undefined when there are none), and a component runs only when its element is placed, so children it never places never run. Async components block until their data is in. URL attributes allow http(s), mailto, and URLs without a scheme (`/a`, `?page=2`, `#top`); any other scheme or a protocol-relative `//host` is a build error when literal and dropped when computed. See docs/decisions/2026-11-08-tsx-to-php.md.
+Functions exported under a capitalized name from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\Zero\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md.
 
 [Evidence](../tests/compiler.rs) (`compiled_tsx_renders_the_html_react_renders`)
 
@@ -799,3 +799,27 @@ Status: **refused**. Diagnostic: `Z1003`.
 JSX compiles in `zero/components/`, pages and "use client" files; modules the config imports stay plain TypeScript.
 
 [Evidence](../tests/fixtures/reject-jsx-config)
+
+## jsx-in-action-result
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Rendered JSX exists only while a page renders; return data from actions and JSON.stringify, and render it in a component.
+
+[Evidence](../tests/fixtures/reject-jsx-action)
+
+## jsx-textarea-children
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Set a textarea's text with `defaultValue` (or `value`), as React asks.
+
+[Evidence](../tests/fixtures/reject-jsx-textarea)
+
+## jsx-srcdoc-value
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`srcDoc` is HTML; write it as a string literal, or link to the document with `src`.
+
+[Evidence](../tests/fixtures/reject-jsx-srcdoc)

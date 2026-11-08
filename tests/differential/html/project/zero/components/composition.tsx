@@ -1,5 +1,6 @@
 // Components, fragments, children, and async server components.
-function Frame({ title, children }: { title: string; children: JSX.Element }) {
+import type { ReactNode } from "react";
+function Frame({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
       <h2>{title}</h2>
@@ -8,12 +9,12 @@ function Frame({ title, children }: { title: string; children: JSX.Element }) {
   );
 }
 
-function Twice({ children }: { children: JSX.Element }) {
+function Twice({ children }: { children: ReactNode }) {
   return <>{children}{children}</>;
 }
 
 // React renders children only where a component places them; this one never does.
-function Ignore({ children }: { children: JSX.Element }) {
+function Ignore({ children }: { children: ReactNode }) {
   return <i>ignored</i>;
 }
 
@@ -22,7 +23,7 @@ function Fails(): JSX.Element {
 }
 
 // With no children, `children` is undefined, as in React.
-function Maybe({ children }: { children?: JSX.Element }) {
+function Maybe({ children }: { children?: ReactNode }) {
   return children ? <div className="has">{children}</div> : <div className="empty" />;
 }
 

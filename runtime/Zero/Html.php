@@ -78,8 +78,20 @@ final class Html
         'autoReverse' => true, 'externalResourcesRequired' => true, 'focusable' => true, 'preserveAlpha' => true,
     ];
 
-    /** URL attributes: React prints them as strings, and Zero's URL policy decides whether they survive. */
-    private const URL = ['href' => true, 'src' => true, 'action' => true, 'formAction' => true, 'xlinkHref' => true];
+    /**
+     * Attributes a browser loads or navigates to, by lowercased name with any `xlink:` prefix
+     * removed: Zero's URL policy decides whether a value survives.
+     */
+    private const URL = [
+        'href' => true, 'src' => true, 'action' => true, 'formaction' => true, 'xlinkhref' => true,
+        'data' => true, 'ping' => true, 'poster' => true, 'background' => true, 'cite' => true,
+        'codebase' => true, 'longdesc' => true, 'manifest' => true, 'srcset' => true,
+        'imagesrcset' => true, 'icon' => true, 'profile' => true, 'usemap' => true, 'lowsrc' => true,
+        'dynsrc' => true, 'archive' => true, 'classid' => true,
+    ];
+
+    /** Attributes whose value is HTML or script: never written from request data. */
+    private const DANGEROUS = ['srcdoc' => true];
 
     /** CSS properties whose numbers take no `px` (react-dom-server `unitlessNumbers`). */
     private const UNITLESS = [
@@ -193,54 +205,55 @@ final class Html
             $attributes += $after;
         }
         if ($tag === 'input') {
-            $checked = $attributes['checked'] ?? $attributes['defaultChecked'] ?? null;
-            $value = $attributes['value'] ?? $attributes['defaultValue'] ?? null;
+            $checked = self::first($attributes, 'checked', 'defaultChecked');
+            $value = self::first($attributes, 'value', 'defaultValue');
             unset($attributes['checked'], $attributes['defaultChecked'], $attributes['value'], $attributes['defaultValue']);
-            $open .= self::attributes($attributes, false);
+            $open .= self::attributes($attributes, false, $tag);
             if (Js::truthy($checked)) {
                 $open .= ' checked=""';
             }
             if (!self::nullish($value)) {
-                $open .= self::attribute('value', $value);
+                $open .= self::attribute('value', $value, $tag);
             }
             return new self($open . '/>');
         }
         if ($tag === 'textarea') {
-            $value = $attributes['value'] ?? $attributes['defaultValue'] ?? null;
+            if ($children !== []) {
+                throw new JsError('Use the `defaultValue` or `value` props instead of setting children on <textarea>.', 'Error');
+            }
+            $value = self::first($attributes, 'value', 'defaultValue');
             unset($attributes['value'], $attributes['defaultValue']);
-            $open .= self::attributes($attributes, false) . '>';
+            $open .= self::attributes($attributes, false, $tag) . '>';
             $text = self::nullish($value) ? '' : self::escape(Js::str($value));
             // The HTML parser drops a leading newline, so React doubles it.
             return new self($open . (str_starts_with($text, "\n") ? "\n" : '') . $text . '</textarea>');
         }
-        if ($tag === 'select') {
-            unset($attributes['value'], $attributes['defaultValue']);
+        if ($tag === 'select' && (!self::nullish($attributes['value'] ?? null) || !self::nullish($attributes['defaultValue'] ?? null))) {
+            throw new JsError('`value` on <select> is not supported; mark the chosen <option> with `selected`.', 'Error');
         }
         if ($tag === 'option' && array_key_exists('selected', $attributes)) {
             $selected = $attributes['selected'];
             unset($attributes['selected']);
             $tail = Js::truthy($selected) ? ' selected=""' : '';
         }
-        $open .= self::attributes($attributes, $custom) . $tail;
+        $open .= self::attributes($attributes, $custom, $tag) . $tail;
         if (isset(self::VOID[$tag])) {
             return new self($open . '/>');
         }
-        $leading = $tag === 'pre' || $tag === 'listing';
+        // The HTML parser drops a leading newline in <pre> and <listing>, so React doubles it, but
+        // only when the element's one child is a string.
+        $leading = ($tag === 'pre' || $tag === 'listing') && count($children) === 1 && is_string($children[0]) && str_starts_with($children[0], "\n");
         return new self(static function () use ($open, $tag, $children, $leading): string {
-            $body = '';
+            $body = $leading ? "\n" : '';
             foreach ($children as $child) {
                 $body .= self::child($child);
-            }
-            // The HTML parser drops a leading newline in <pre> and <listing>, so React doubles it.
-            if ($leading && str_starts_with($body, "\n")) {
-                $body = "\n" . $body;
             }
             return $open . '>' . $body . '</' . $tag . '>';
         });
     }
 
     /** @param array<string, mixed> $attributes */
-    private static function attributes(array $attributes, bool $custom): string
+    private static function attributes(array $attributes, bool $custom, string $tag): string
     {
         $out = '';
         foreach ($attributes as $name => $value) {
@@ -248,11 +261,25 @@ final class Html
             if ($name === 'children' || $name === 'key' || $name === 'ref' || $name === 'suppressContentEditableWarning' || $name === 'suppressHydrationWarning') {
                 continue;
             }
-            if ($custom) {
-                $out .= self::customAttribute($name, $value);
+            // Zero's own checks run first, on the name the browser will see, whatever React does.
+            $written = $custom ? ($name === 'className' ? 'class' : $name) : (self::ALIASES[$name] ?? ($name === 'xlinkHref' ? 'xlink:href' : $name));
+            if (!self::safeName($written)) {
                 continue;
             }
-            $out .= self::attribute($name, $value);
+            $folded = strtolower($written);
+            $folded = str_starts_with($folded, 'xlink:') ? 'xlink' . substr($folded, 6) : $folded;
+            // Event handlers never reach server HTML.
+            if (strlen($folded) > 2 && str_starts_with($folded, 'on')) {
+                continue;
+            }
+            if (isset(self::DANGEROUS[$folded])) {
+                continue;
+            }
+            $url = isset(self::URL[$folded]) || isset(self::URL[preg_replace('/^xlink/', '', $folded)]);
+            if ($url && !self::nullish($value) && !is_bool($value) && !$value instanceof \Closure && !self::safeUrl(Js::str($value))) {
+                continue;
+            }
+            $out .= $custom ? self::customAttribute($name, $value) : self::attribute($name, $value, $tag);
         }
         return $out;
     }
@@ -262,8 +289,15 @@ final class Html
         return $value === null || $value === JsUndefined::Value;
     }
 
+    /** The first of two attributes that isn't null or undefined, as React picks `value` over `defaultValue`. */
+    private static function first(array $attributes, string $name, string $fallback): mixed
+    {
+        $value = $attributes[$name] ?? null;
+        return self::nullish($value) ? ($attributes[$fallback] ?? null) : $value;
+    }
+
     /** One attribute of an HTML or SVG element, by react-dom-server's `pushAttribute`. */
-    private static function attribute(string $name, mixed $value): string
+    private static function attribute(string $name, mixed $value, string $tag): string
     {
         if (self::nullish($value) || $value instanceof \Closure) {
             return '';
@@ -271,18 +305,16 @@ final class Html
         if ($name === 'style') {
             return self::style($value);
         }
-        if (isset(self::URL[$name])) {
+        if ($name === 'href' || $name === 'src' || $name === 'action' || $name === 'formAction' || $name === 'xlinkHref') {
             if (is_bool($value)) {
                 return '';
             }
             $url = Js::str($value);
-            if (($name === 'src' || $name === 'xlinkHref') && $url === '') {
+            // React keeps an empty `href` only on <a>, and drops an empty `src` and `href` elsewhere.
+            if ($url === '' && ($name === 'src' || ($name === 'href' && $tag !== 'a'))) {
                 return '';
             }
-            if (!self::safeUrl($url)) {
-                return '';
-            }
-            return ' ' . (self::ALIASES[$name] ?? ($name === 'xlinkHref' ? 'xlink:href' : $name)) . '="' . self::escape($url) . '"';
+            return ' ' . ($name === 'xlinkHref' ? 'xlink:href' : $name) . '="' . self::escape($url) . '"';
         }
         if ($name === 'defaultValue' || $name === 'defaultChecked' || $name === 'innerHTML') {
             return '';
@@ -310,14 +342,11 @@ final class Html
         if ($name === 'rowSpan' || $name === 'start') {
             return is_nan((float) Js::toNumber($value)) ? '' : ' ' . $name . '="' . self::escape(Js::str($value)) . '"';
         }
-        // Event handlers never reach server HTML.
+        // React drops other props starting with `on`.
         if (strlen($name) > 2 && strtolower(substr($name, 0, 2)) === 'on') {
             return '';
         }
         $name = self::ALIASES[$name] ?? $name;
-        if (!self::safeName($name)) {
-            return '';
-        }
         if (is_bool($value)) {
             $prefix = strtolower(substr($name, 0, 5));
             if ($prefix !== 'data-' && $prefix !== 'aria-') {
@@ -330,11 +359,11 @@ final class Html
     /** An attribute of a custom element (a tag with a dash): props pass through by name. */
     private static function customAttribute(string $name, mixed $value): string
     {
+        if (self::nullish($value) || $value === false || $value instanceof \Closure) {
+            return '';
+        }
         if ($name === 'style') {
             return self::style($value);
-        }
-        if (!self::safeName($name) || self::nullish($value) || $value === false || $value instanceof \Closure) {
-            return '';
         }
         if ($value instanceof JsObject || $value instanceof JsArray) {
             return '';
@@ -373,7 +402,7 @@ final class Html
     /** React's VALID_ATTRIBUTE_NAME_REGEX. */
     private static function safeName(string $name): bool
     {
-        return preg_match('/^[:A-Z_a-z\x{00C0}-\x{00D6}\x{00D8}-\x{00F6}\x{00F8}-\x{02FF}\x{0370}-\x{037D}\x{037F}-\x{1FFF}\x{200C}-\x{200D}\x{2070}-\x{218F}\x{2C00}-\x{2FEF}\x{3001}-\x{D7FF}\x{F900}-\x{FDCF}\x{FDF0}-\x{FFFD}][:A-Z_a-z\x{00C0}-\x{00D6}\x{00D8}-\x{00F6}\x{00F8}-\x{02FF}\x{0370}-\x{037D}\x{037F}-\x{1FFF}\x{200C}-\x{200D}\x{2070}-\x{218F}\x{2C00}-\x{2FEF}\x{3001}-\x{D7FF}\x{F900}-\x{FDCF}\x{FDF0}-\x{FFFD}\-.0-9\x{00B7}\x{0300}-\x{036F}\x{203F}-\x{2040}]*$/u', $name) === 1;
+        return preg_match('/^[:A-Z_a-z\x{00C0}-\x{00D6}\x{00D8}-\x{00F6}\x{00F8}-\x{02FF}\x{0370}-\x{037D}\x{037F}-\x{1FFF}\x{200C}-\x{200D}\x{2070}-\x{218F}\x{2C00}-\x{2FEF}\x{3001}-\x{D7FF}\x{F900}-\x{FDCF}\x{FDF0}-\x{FFFD}][:A-Z_a-z\x{00C0}-\x{00D6}\x{00D8}-\x{00F6}\x{00F8}-\x{02FF}\x{0370}-\x{037D}\x{037F}-\x{1FFF}\x{200C}-\x{200D}\x{2070}-\x{218F}\x{2C00}-\x{2FEF}\x{3001}-\x{D7FF}\x{F900}-\x{FDCF}\x{FDF0}-\x{FFFD}\-.0-9\x{00B7}\x{0300}-\x{036F}\x{203F}-\x{2040}]*\z/u', $name) === 1;
     }
 
     /**

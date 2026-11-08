@@ -79,6 +79,8 @@ pub struct Program {
     pub wp_hooks: Vec<WpHookFile>,
     /// `zero/components/**/*.tsx` beside the entry: (path relative to `zero/`, module), sorted.
     pub components: Vec<(String, usize)>,
+    /// The directory holding the entry; JSX admission matches folders below it.
+    pub root: PathBuf,
 }
 
 /// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
@@ -106,12 +108,14 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         fs: fs.clone(),
         wp_hooks: Vec::new(),
         components: Vec::new(),
+        root: PathBuf::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let entry = fs
         .canonicalize(entry)
         .map_err(|e| vec![Diag::new(Span::NONE, format!("{}: {e}", entry.display())).code(diag::Code::Import)])?;
     let mut diagnostics = Vec::new();
+    program.root = entry.parent().expect("entry has a directory").to_path_buf();
     match load_module(&*fs, &entry, &mut program, &mut by_path, &mut diagnostics) {
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
@@ -257,7 +261,7 @@ fn load_module(
         body,
         commonjs,
         type_names,
-    } = parse(fs, &source, path, file, id, diagnostics)?;
+    } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
     let commonjs = commonjs.map(|CommonJs { names, requires }| {
@@ -332,13 +336,14 @@ fn parse(
     fs: &dyn Fs,
     source: &str,
     path: &Path,
+    root: &Path,
     file: u32,
     module: usize,
     diagnostics: &mut Vec<Diag>,
 ) -> Result<Parsed> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
-    if source_type.is_jsx() && !jsx_admitted(path, source) {
+    if source_type.is_jsx() && !jsx_admitted(path.strip_prefix(root).unwrap_or(path), source) {
         return Err(Diag::new(
             Span { file, start: 0, end: 0 },
             "JSX files can't be part of a Zero config",
@@ -397,7 +402,9 @@ fn parse(
 }
 
 /// JSX compiles only in `.tsx` components, pages and `"use client"` files
-/// (docs/decisions/2026-11-08-tsx-to-php.md); the config graph itself never renders.
+/// (docs/decisions/2026-11-08-tsx-to-php.md); the config graph itself never renders. `path` is
+/// relative to the project root, so a project that itself sits under an `app/` folder gets no
+/// exemption.
 fn jsx_admitted(path: &Path, source: &str) -> bool {
     if path.extension().and_then(|e| e.to_str()) != Some("tsx") {
         return false;

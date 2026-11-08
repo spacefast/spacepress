@@ -1215,10 +1215,9 @@ impl Lowerer {
                         Some(a::JSXAttributeValue::Element(e)) => self.jsx_element(e)?,
                         Some(a::JSXAttributeValue::Fragment(f)) => self.jsx_fragment(f)?,
                     };
-                    // `key` identifies list items for React's reconciler; server HTML never shows it.
-                    if name == "key" {
-                        continue;
-                    }
+                    // `key` identifies list items for React's reconciler. It stays in the IR so its
+                    // expression evaluates in source order, as in React; it never reaches the HTML
+                    // (`\Zero\Html` skips it) or a component's props (below).
                     if name == "ref" {
                         return self.unsupported(
                             attr.span,
@@ -1243,25 +1242,28 @@ impl Lowerer {
         };
         // A component is a call with one props object, in source order; `children` is the
         // rendered fragment, as React passes it.
-        let mut props: Vec<Prop> = attrs
-            .into_iter()
-            .map(|attr| match attr {
-                JsxAttr::Named { name, value, .. } => Prop::KV(PropKey::Static(name), value),
-                JsxAttr::Spread(value) => Prop::Spread(value),
-            })
-            .collect();
-        if !children.is_empty() {
-            props.push(Prop::KV(
-                PropKey::Static("children".into()),
-                Expr {
-                    kind: ExprKind::Jsx(Box::new(Jsx {
-                        kind: JsxKind::Fragment,
-                        attrs: Vec::new(),
-                        children,
-                    })),
-                    span: self.sp(j.span),
-                },
-            ));
+        let mut props: Vec<Prop> = Vec::new();
+        let mut key = None;
+        for attr in attrs {
+            match attr {
+                JsxAttr::Named { name, value, .. } if name == "key" => key = Some(value),
+                JsxAttr::Named { name, value, .. } => props.push(Prop::KV(PropKey::Static(name), value)),
+                JsxAttr::Spread(value) => props.push(Prop::Spread(value)),
+            }
+        }
+        // React passes one child as itself and several as an array, so `children ? … : …` and
+        // `typeof children` see what React's component would see.
+        let mut children = children;
+        let children = match children.len() {
+            0 => None,
+            1 => children.pop(),
+            _ => Some(Expr {
+                kind: ExprKind::Array(children.into_iter().map(ArrEl::Item).collect()),
+                span: self.sp(j.span),
+            }),
+        };
+        if let Some(children) = children {
+            props.push(Prop::KV(PropKey::Static("children".into()), children));
         }
         let call = self.mk(
             j.span,
@@ -1272,11 +1274,19 @@ impl Lowerer {
                 type_args: Vec::new(),
             },
         );
+        let attrs = key
+            .map(|value| JsxAttr::Named {
+                name: "key".into(),
+                span: value.span,
+                value,
+            })
+            .into_iter()
+            .collect();
         Ok(self.mk(
             j.span,
             ExprKind::Jsx(Box::new(Jsx {
                 kind: JsxKind::Component(Box::new(call)),
-                attrs: Vec::new(),
+                attrs,
                 children: Vec::new(),
             })),
         ))
@@ -2835,10 +2845,13 @@ fn decode_jsx_entities(s: &str) -> String {
         let tail = &rest[at + 1..];
         let decoded = tail.find(';').and_then(|end| {
             let word = &tail[..end];
+            // A code point that isn't a scalar value (a lone surrogate) decodes to U+FFFD, as
+            // Babel and esbuild decode it.
+            let scalar = |n: u32| char::from_u32(n).or((n <= 0x10FFFF).then_some('\u{FFFD}'));
             let c = if let Some(hex) = word.strip_prefix("#x") {
-                u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+                u32::from_str_radix(hex, 16).ok().and_then(scalar)
             } else if let Some(dec) = word.strip_prefix('#') {
-                dec.parse::<u32>().ok().and_then(char::from_u32)
+                dec.parse::<u32>().ok().and_then(scalar)
             } else {
                 oxc_syntax::xml_entities::XML_ENTITIES.get(word).copied()
             };

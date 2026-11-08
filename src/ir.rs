@@ -468,8 +468,8 @@ pub enum ExprKind {
 #[derive(Debug, Clone)]
 pub struct Jsx {
     pub kind: JsxKind,
-    /// Attributes in source order. `key` is already dropped: it never reaches the output.
-    /// Empty for a component, whose attributes are its call's props object.
+    /// Attributes in source order, `key` included: it evaluates like React's, and never reaches
+    /// the output. For a component, only `key`: its other attributes are the call's props.
     pub attrs: Vec<JsxAttr>,
     /// Children in source order: text (entities decoded, JSX whitespace rules applied) is a
     /// string literal, `{expr}` is the expression, and nested JSX is `ExprKind::Jsx`.

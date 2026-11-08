@@ -1907,8 +1907,8 @@ impl<'p> Evaluator<'p> {
             ExprKind::Jsx(_) => {
                 return err_help(
                     e.span,
-                    "JSX can't run while the config is evaluated",
-                    "render JSX inside a component, which compiles to PHP",
+                    "JSX at the top level of a module",
+                    "Zero renders JSX only while a component runs; return it from a function, e.g. `const Icon = () => <svg …/>`",
                 );
             }
             ExprKind::Await(_) => {

@@ -96,6 +96,32 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "JSX files can't be part of a Zero config",
         "view.tsx:1:1",
     );
+    rejects(
+        "reject-jsx-action",
+        "rendered JSX can't be serialized as JSON",
+        "zero.config.ts:5:50",
+    );
+    rejects(
+        "reject-jsx-textarea",
+        "`<textarea>` can't have children",
+        "zero/components/Area.tsx:2:10",
+    );
+    rejects(
+        "reject-jsx-srcdoc",
+        "`srcDoc` from a value isn't supported",
+        "zero/components/Frame.tsx:2:18",
+    );
+    // The folders that admit JSX are matched below the project, not anywhere in its path.
+    let nested = std::env::temp_dir().join(format!("zero-jsx-app-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&nested);
+    copy(
+        &root().join("tests/fixtures/reject-jsx-config"),
+        &nested.join("app/project"),
+    );
+    let out = zero().args(["check"]).arg(nested.join("app/project")).output().unwrap();
+    let _ = std::fs::remove_dir_all(&nested);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("JSX files can't be part of a Zero config"));
 }
 
 #[test]
@@ -1095,6 +1121,34 @@ fn compiled_tsx_renders_the_html_react_renders() {
     .map(|(href, text)| format!("<a href=\"{href}\">{text}</a>"))
     .concat();
     assert_eq!(rendered["0"]["html"], format!("<p>{dropped}{kept}</p>"));
+    // The same policy whatever the name's spelling: case, an `xlink:` prefix, a trailing newline
+    // in a spread key (PHP's `$` matches before it), custom elements, and `on*` attributes.
+    let extra = serde_json::json!({
+        "href\n": "javascript:alert(1)",
+        "style\n": "position:fixed",
+        "onclick": "alert(1)",
+        "ONMOUSEOVER": "alert(1)",
+        "Href": "javascript:alert(1)",
+        "title": "kept",
+    });
+    let cases = serde_json::json!([{
+        "component": "components/urls.tsx#Variants",
+        "props": { "u": "javascript:alert(1)", "extra": extra },
+    }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div><a title=\"kept\">spread</a><my-el title=\"kept\"></my-el><a>upper</a><button>lower</button>\
+         <object></object><my-el></my-el><svg><use></use></svg></div>"
+    );
     let _ = std::fs::remove_dir_all(&tmp);
     assert!(
         mismatches.is_empty(),

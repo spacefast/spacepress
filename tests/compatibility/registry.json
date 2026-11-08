@@ -695,7 +695,7 @@
       "status": "supported",
       "evidence": "tests/compiler.rs",
       "test": "compiled_tsx_renders_the_html_react_renders",
-      "guidance": "Functions exported from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\\Zero\\Html`), listed in schema.php `components`. Output matches react-dom/server 19 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean and style rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is rendered JSX placed where the component puts it (undefined when there are none), and a component runs only when its element is placed, so children it never places never run. Async components block until their data is in. URL attributes allow http(s), mailto, and URLs without a scheme (`/a`, `?page=2`, `#top`); any other scheme or a protocol-relative `//host` is a build error when literal and dropped when computed. See docs/decisions/2026-11-08-tsx-to-php.md."
+      "guidance": "Functions exported under a capitalized name from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\\Zero\\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md."
     },
     {
       "id": "jsx-unsafe-url",
@@ -752,6 +752,30 @@
       "fixture": "tests/fixtures/reject-jsx-config",
       "message": "JSX files can't be part of a Zero config",
       "guidance": "JSX compiles in `zero/components/`, pages and \"use client\" files; modules the config imports stay plain TypeScript."
+    },
+    {
+      "id": "jsx-in-action-result",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-action",
+      "message": "rendered JSX can't be serialized as JSON",
+      "guidance": "Rendered JSX exists only while a page renders; return data from actions and JSON.stringify, and render it in a component."
+    },
+    {
+      "id": "jsx-textarea-children",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-textarea",
+      "message": "`<textarea>` can't have children",
+      "guidance": "Set a textarea's text with `defaultValue` (or `value`), as React asks."
+    },
+    {
+      "id": "jsx-srcdoc-value",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-srcdoc",
+      "message": "`srcDoc` from a value isn't supported",
+      "guidance": "`srcDoc` is HTML; write it as a string literal, or link to the document with `src`."
     }
   ],
   "zero08": [

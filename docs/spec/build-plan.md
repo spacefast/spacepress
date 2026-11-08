@@ -31,8 +31,12 @@ many workstreams run at once.
   11. Opinionated WordPress (any time)   12. Docs, examples, 0.8 migration (last, continuous)
 ```
 
-Start in parallel now: 1, 5 and 11. Then 2, 3 and 4 after 1. Then 6, 9 and 10.
-Then 7 and 8.
+Start in parallel now: 1, 2, 4, 5, 11 and the URL-purge half of 8. 2 and 4
+work on the runtime and migrator side and rebase onto 1's authoring surface as
+it lands. Then 3 after 1. Then 6, 9 and 10. Then 7 and the rest of 8.
+
+Every workstream keeps Zero 0.8 working next to v2:
+[coexistence.md](coexistence.md) lists the rules and the suites that hold them.
 
 ## 1. Authoring surface cutover
 
@@ -311,6 +315,8 @@ Nothing here is gated by typing speed. What sets the pace:
   agent PR is reviewed before merge, because reviews have found blocking bugs in
   "verified" green agent PRs before.
 - **Parallelism.** One agent per workstream, never two on the same files or tests.
+- **0.8 next to v2.** No workstream merges while it breaks a rule in
+  [coexistence.md](coexistence.md).
 
 First useful cut: 1 + 2 + 3 + 4 + 11. That gives the new authoring surface on
 core REST with the facade and WordPress rendering: a complete backend with

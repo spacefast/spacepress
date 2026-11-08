@@ -88,3 +88,27 @@ test('wasm captures the full-site pages bundle byte for byte like native sources
     assert.equal(call(exports, 'zero_sources', { project }).check.diagnostics[0].code, 'zero_source_needs_local_capture');
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
+
+test('wasm and native resolve build-time namespace members and refuse the same whole values', () => {
+  const source = (handler) => `import { action, defineConfig } from 'zero';
+import * as ns from './ns.mjs';
+function tagged(s: string) { return s; }
+Object.assign(tagged, { prefix: 'p' });
+export default defineConfig({ name: 'ns', actions: { probe: action({ input: {}, handler: () => ${handler} }) } });
+`;
+  const helper = 'export const shout = (value) => value.toUpperCase();\nexport const constants = { SEP: "/" };\n';
+  for (const handler of ["[ns.shout('a'), ns.constants.SEP, tagged('x'), tagged.prefix]", 'Object.keys(ns)', '[tagged]']) {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'zero-wasm-namespace-'));
+    try {
+      fs.writeFileSync(path.join(temp, 'zero.config.ts'), source(handler));
+      fs.writeFileSync(path.join(temp, 'ns.mjs'), helper);
+      let native;
+      try { native = JSON.parse(execFileSync(zero, ['check', temp, '--json'], { encoding: 'utf8' })); }
+      catch (error) { native = JSON.parse(error.stdout); }
+      const wasm = call(exports, 'zero_check', { project: temp }).check;
+      const shape = (report) => report.diagnostics.map(({ code, message, help, location }) => ({ code, message, help, line: location?.line, column: location?.column }));
+      assert.deepEqual(shape(wasm), shape(native), handler);
+      assert.equal(native.diagnostics.length === 0, handler.startsWith('[ns.'), handler);
+    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  }
+});

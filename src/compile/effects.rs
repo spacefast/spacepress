@@ -443,8 +443,6 @@ struct Graph {
     javascript_functions: HashSet<Span>,
     scalar_functions: HashSet<Span>,
     classes: HashSet<usize>,
-    /// Functions with own properties whose properties are already in the graph.
-    closures: HashSet<usize>,
     methods: HashSet<Span>,
     captured: HashSet<Span>,
     roots: HashSet<Span>,
@@ -701,33 +699,48 @@ impl Graph {
             _ => unreachable!(),
         };
         for (step, value) in children {
-            if let Some(child) = self.value_place(&value) {
+            if let Some(child) = self.data_place(&value) {
                 self.copies.insert((child, place.at(step), Span::NONE));
             }
         }
         Some(place)
     }
 
-    /// Captured build-time values, including functions held by build-time namespaces and the
-    /// own properties of functions, which compiled code reaches through static member chains.
     fn value_place(&mut self, value: &Value) -> Option<Place> {
         match value {
             Value::Class(c) => Some(self.class_place(c)),
-            Value::Closure(c) => {
-                let place = self.function(&c.func, &[], &c.env);
-                if c.has_props() && self.closures.insert(Rc::as_ptr(c) as usize) {
-                    let props: Vec<_> = c.props.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                    for (key, value) in props {
-                        if let Some(child) = self.value_place(&value) {
-                            self.copies.insert((child, place.at(Step::Field(key)), Span::NONE));
-                        }
-                    }
-                }
-                Some(place)
-            }
+            Value::Closure(c) => Some(self.function(&c.func, &[], &c.env)),
             Value::Array(_) | Value::Object(_) => self.data_place(value),
             _ => None,
         }
+    }
+
+    /// The build-time value a static member chain (`ns.a.b`) reads, as the compiler resolves it:
+    /// the root is a captured binding and every step is an object holding code or a function
+    /// with own properties. Such namespaces never exist in PHP, so their members are constant.
+    fn static_member(&self, e: &Expr, names: &Names, env: &Rc<Scope>) -> Option<Value> {
+        fn walk(e: &Expr, names: &Names, env: &Rc<Scope>) -> Option<Value> {
+            match &e.kind {
+                ExprKind::Ident(name) if names.iter().all(|s| !s.contains_key(name)) => {
+                    env.lookup(name).map(|b| b.value)
+                }
+                ExprKind::Member { obj, prop, .. } => {
+                    let receiver = walk(obj, names, env)?;
+                    if !super::is_static_namespace(&receiver) {
+                        return None;
+                    }
+                    match &receiver {
+                        Value::Object(o) => o.borrow().get(prop).cloned(),
+                        Value::Closure(c) => c.props.borrow().get(prop).cloned(),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        matches!(e.kind, ExprKind::Member { .. })
+            .then(|| walk(e, names, env))
+            .flatten()
     }
 
     fn ident(&mut self, name: &str, names: &Names, env: &Rc<Scope>) -> Option<Place> {
@@ -864,6 +877,9 @@ impl Graph {
                 return Some(self.function(f, names, env));
             }
             ExprKind::Member { obj, prop, .. } => {
+                if let Some(value) = self.static_member(e, names, env) {
+                    return self.value_place(&value);
+                }
                 if matches!(&obj.kind, ExprKind::Ident(n) if n == "super")
                     && let Some(Value::Class(class)) = env.lookup(":class").map(|b| b.value)
                     && let Some(base) = &class.base

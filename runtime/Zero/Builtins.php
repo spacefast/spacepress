@@ -97,6 +97,7 @@ final class Builtins
         'Object.fromEntries' => [1, 1],
         'Object.hasOwn' => [2, 2],
         'Object.freeze' => null,
+        'Object.assign' => null,
         'Array.isArray' => [0, 1],
         'Array.from' => [1, 2],
         'Array.of' => [0, PHP_INT_MAX],

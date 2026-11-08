@@ -100,7 +100,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_OMITTED_REDIRECTS",
         feature: "redirect and header rule files (_redirects, _headers)",
-        v2: "redirects, rewrites and headers in sf.jsonc",
+        v2: "redirects in sf.jsonc, and v2 routes",
         fix: "Move each redirect into sf.jsonc `redirects`, which the candidate carries; port rewrites and headers to v2 routes.",
         test: |_, r| r.starts_with(omitted::REDIRECTS),
         example: (
@@ -118,7 +118,7 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_OMITTED_CONFIG",
-        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, access or crons, or theme.json)",
+        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, access, crons or sell, or theme.json)",
         v2: "zero.config.ts, the pages themselves or the Space's own settings",
         fix: "Recreate what the setting did in v2, or remove it if the Space doesn't need it.",
         test: |_, r| r.starts_with(omitted::CONFIG),

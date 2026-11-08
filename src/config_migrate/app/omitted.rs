@@ -118,26 +118,24 @@ const RULE_FILES: &[&str] = &["_redirects", "_headers"];
 /// Config keys the candidate reproduces or that change nothing it serves: the converted runtime,
 /// the Space's display name (and the old CLI's `space` key) and the editor's schema pointer.
 const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
-/// Keys Spacefast applies to the Space, not the Zero app, the same under v2: written unchanged
-/// into the candidate's own sf.jsonc, which the v2 publish uploads and finalize compiles.
-/// - Engine serving rules that run before an unmatched request falls through to WordPress, where
-///   v2 renders (monorepo runtime/engine/runtime/serve.php): `redirects`, and `cleanUrls` and
-///   `index` over the static files published from public/. Not `rewrites` or `listing`: the
-///   engine's path check sees 0.8's pages but not v2's, which render in WordPress, so a catch-all
-///   rewrite or a root listing would shadow the v2 app. Not `headers`: header rules apply to
-///   response-table entries only, which 0.8's page shells were and v2's WordPress pages aren't.
-/// - Platform settings the control plane applies from the committed file whatever the runtime:
-///   access, crons, analytics, sell, build, placement, the system manifest, edge cache and firewall
-///   (monorepo `spaceConfigFileSchema`). `network`, `dataSources` and `defaultDataSource` are Space
-///   overlay settings that the file can't set, so they are refused, never reported as carried.
+/// Keys Spacefast applies to the Space, not the Zero app, and that an independent review traced to
+/// the same effect on a v2 version as on the 0.8 one; written unchanged into the candidate's own
+/// sf.jsonc, which the migrated publish uploads.
+/// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
+///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php).
+/// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
+/// - `cache`, `firewall`: placed as edge rules matched before the origin, so they reach
+///   WordPress-rendered pages.
+/// - `analytics`, `system`, `placement`, `build`: frozen from the file config whatever the runtime.
+///
+/// Every other key is refused, among them: `access` (path patterns written for 0.8's transport
+/// don't cover v2's), `crons` (on v2 the request carries no `CRON_SECRET` and may not reach a v2
+/// route), and `sell` (its product file and paid assets would be swept into public/).
 pub(super) const PLATFORM_KEYS: &[&str] = &[
     "redirects",
     "cleanUrls",
     "index",
-    "access",
-    "crons",
     "analytics",
-    "sell",
     "build",
     "placement",
     "system",

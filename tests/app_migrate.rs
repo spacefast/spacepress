@@ -488,8 +488,6 @@ fn omissions_are_errors_and_static_files_carry_over() {
     let settings = serde_json::json!({
         "redirects": [{ "source": "/old", "destination": "/new", "status": 301 }],
         "cleanUrls": false,
-        "access": "public",
-        "crons": [{ "path": "/api/nightly", "schedule": "daily" }],
         "build": { "outputDirectory": "dist" },
     });
     let mut config = settings.clone();
@@ -508,6 +506,11 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // they would take over the app's URLs: refused.
     overlay["rewrites"] = serde_json::json!([{ "source": "/(.*)", "destination": "/index.html" }]);
     overlay["listing"] = true.into();
+    // access path patterns, crons (no CRON_SECRET on v2) and sell (its product file and paid
+    // assets would be swept into public/) don't apply the same way: refused.
+    overlay["access"] = "public".into();
+    overlay["crons"] = serde_json::json!([{ "path": "/api/nightly", "schedule": "daily" }]);
+    overlay["sell"] = serde_json::json!({ "mode": "test", "products": "sell/products.json" });
     // Header rules apply to response-table entries only, so on v2 they would skip the app's
     // WordPress-rendered pages: refused.
     overlay["headers"] =
@@ -536,6 +539,9 @@ fn omissions_are_errors_and_static_files_carry_over() {
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/network"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/rewrites"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/listing"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/access"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/crons"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/sell"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/headers"),
         ]
     );

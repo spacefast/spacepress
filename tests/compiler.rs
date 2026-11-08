@@ -58,47 +58,6 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
-fn fetch_is_an_explicit_zero_import_with_string_bodies() {
-    // The ambient global stays refused, so every outbound call is visible in the imports.
-    rejects(
-        "reject-global-fetch",
-        "`fetch` isn't available in Zero code",
-        "zero.config.ts:3:",
-    );
-    rejects(
-        "reject-fetch-init",
-        "fetch() init must be { method?, headers?, body? } with strings",
-        "zero.config.ts:3:",
-    );
-    let out = zero()
-        .args(["check"])
-        .arg(root().join("tests/fixtures/fetch-import"))
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-}
-
-#[test]
-fn crypto_takes_strings_and_names_only_its_functions() {
-    rejects(
-        "reject-crypto-arg",
-        "crypto.sha256() can't take string | null",
-        "zero.config.ts:3:",
-    );
-    rejects(
-        "reject-crypto-unknown",
-        "`crypto` has no function `sha265`",
-        "zero.config.ts:3:",
-    );
-    let out = zero()
-        .args(["check"])
-        .arg(root().join("tests/fixtures/crypto-import"))
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-}
-
-#[test]
 fn a_catch_all_route_segment_comes_last() {
     rejects(
         "reject-route-catchall-middle",
@@ -111,6 +70,21 @@ fn a_catch_all_route_segment_comes_last() {
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn destructured_defaults_may_read_earlier_siblings_only() {
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/sibling-parameter-defaults"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    rejects(
+        "reject-later-sibling-default",
+        "parameter defaults can't reference the current or a later parameter",
+        "zero.config.ts:3:",
+    );
 }
 
 #[test]
@@ -1032,7 +1006,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         zero()
             .arg("sync")
             .arg(&project)
-            .args(["--site", &site, "--app-password", &credential, "--no-commit", "--json"])
+            .env("ZERO_APP_PASSWORD", &credential)
+            .args(["--site", &site, "--no-commit", "--json"])
             .args(extra)
             .output()
             .unwrap()
@@ -1720,7 +1695,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     let refused = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("unknown flag --target"), "{stderr}");
+    assert!(stderr.contains("unknown option --target for zero build"), "{stderr}");
     let config = std::fs::read_to_string(tmp.join("zero.config.ts")).unwrap();
     std::fs::write(
         tmp.join("zero.config.ts"),

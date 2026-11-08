@@ -9,6 +9,7 @@
 mod annotations;
 mod classes;
 mod effects;
+mod host;
 mod javascript;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -334,6 +335,8 @@ pub enum WordPressKind {
     Ability,
     /// A `wp-hooks/<hook>` handler.
     Hook,
+    /// A WordPress function called from TypeScript.
+    Function,
 }
 
 /// One use of a WordPress feature, located at the source that makes it.
@@ -2264,8 +2267,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let _ = writeln!(out, "{p}{source} = \\Zero\\Js::requirePresent({src});");
                 let src = &source;
                 let t = ty.non_null();
-                if ty.is_nullable() {
+                if ty.is_nullable() && ty != Ty::Dynamic {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                // Imported JavaScript: any field may be read, and an absent one is undefined.
+                if ty == Ty::Dynamic {
+                    for (key, p2) in props {
+                        let access = format!("\\Zero\\Js::dynamicGet({src}, {})", php_str(key));
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        self.bind_pattern_types(p2, &access, types, mutable, out, indent)?;
+                    }
+                    if let Some((name, span)) = rest {
+                        let keys: Vec<String> = props.iter().map(|(k, _)| php_str(k)).collect();
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        let php = self.declare_binding(name, types, mutable, *span);
+                        self.fresh_binding(&php, *span, out, indent);
+                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::dynamicRest({src}, [{}]);", keys.join(", "));
+                    }
+                    return Ok(());
                 }
                 for (key, p2) in props {
                     let Some((ft, optional)) = t.field(key) else {
@@ -2313,6 +2338,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Pat::Arr { elems, rest, span } => {
                 let source = self.tmp_var();
+                // Imported JavaScript destructures any iterable, read once.
+                if ty == Ty::Dynamic {
+                    let _ = writeln!(out, "{p}{source} = \\Zero\\Js::dynamicIterable({src});");
+                    for (i, e) in elems.iter().enumerate() {
+                        if let Some(e) = e {
+                            let access = format!("\\Zero\\Js::dynamicGet({source}, {i})");
+                            let types = BindingTypes {
+                                read: Ty::Dynamic,
+                                constraint: Ty::Dynamic,
+                            };
+                            self.bind_pattern_types(e, &access, types, mutable, out, indent)?;
+                        }
+                    }
+                    if let Some((name, span)) = rest {
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        let php = self.declare_binding(name, types, mutable, *span);
+                        self.fresh_binding(&php, *span, out, indent);
+                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::arrSlice({source}, {});", elems.len());
+                    }
+                    return Ok(());
+                }
                 let _ = writeln!(out, "{p}{source} = {src};");
                 let src = &source;
                 if ty.is_nullable() {
@@ -2817,11 +2866,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let site = format!("{}:{}:{}", span.file, span.start, span.end);
                 Out::atom(
                     format!("\\Zero\\Js::templateStrings({}, [{items}], [{raw}])", php_str(&site)),
-                    Ty::NonEmptyArray(Box::new(if cooked.iter().all(Option::is_some) {
-                        Ty::Str
-                    } else {
-                        Ty::union([Ty::Str, Ty::Undefined])
-                    })),
+                    // TypeScript types every cooked string as `string`, so a TemplateStringsArray
+                    // tag still accepts an invalid escape; its element is undefined at runtime.
+                    Ty::NonEmptyArray(Box::new(Ty::Str)),
                 )
             }
             ExprKind::AssignPattern(pattern, value) => self.assign_pattern(pattern, value)?,
@@ -3485,20 +3532,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Str.nullable(),
                 ))
             }
-            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
+            Value::Builtin(Builtin::Env) => err_help(
+                span,
+                "env() is a config reference for webhooks, signatures and upload credentials",
+                "read runtime variables in handlers with `process.env.NAME`",
+            ),
+            Value::Builtin(Builtin::Once) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
             ),
-            Value::Builtin(Builtin::Crypto) => err_help(
+            Value::Builtin(Builtin::NodeCrypto(_)) => err_help(
                 span,
-                "`crypto` can't be used as a value",
-                "call its functions directly: `crypto.sha256(text)`",
+                format!("`{n}` from \"node:crypto\" can't be used as a value"),
+                "call it where it's used, e.g. `createHash(\"sha256\").update(text).digest(\"hex\")`",
             ),
             Value::Builtin(Builtin::Mail) => err_help(
                 span,
                 "`mail` can't be used as a value",
                 "call `mail.send({ to, subject, text })` directly",
+            ),
+            Value::Builtin(Builtin::WpFunction(name)) => err_help(
+                span,
+                format!("`{name}` from \"php/wordpress\" can't be used as a value"),
+                format!("call it directly: `{name}(...)`"),
             ),
             Value::Builtin(Builtin::Abilities) => err_help(
                 span,
@@ -4103,7 +4160,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let object = self.tmp_var();
                 steps.push(format!("{object} = \\Zero\\Js::requirePresent({src})"));
                 let mut keys = Vec::new();
+                let mut literal_keys: Vec<Option<String>> = Vec::new();
                 for (key, p) in props {
+                    let mut computed_literal = None;
                     let (key_php, field_ty) = match key {
                         PropKey::Static(k) => {
                             let field = if *ty == Ty::Dynamic {
@@ -4131,6 +4190,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
                                 _ => None,
                             };
+                            computed_literal = literal.clone();
                             let field = match ty.non_null() {
                                 Ty::Dynamic => Ty::Dynamic,
                                 Ty::Map(t) => Ty::union([*t, Ty::Undefined]),
@@ -4155,6 +4215,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     };
                     keys.push(key_php.clone());
+                    literal_keys.push(match key {
+                        PropKey::Static(k) => Some(k.clone()),
+                        PropKey::Computed(_) => computed_literal.clone(),
+                    });
                     let read = self.tmp_var();
                     let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };
                     let pending = format!("{read} = \\Zero\\Js::{getter}({object}, {key_php})");
@@ -4166,9 +4230,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let rest_ty = match ty.non_null() {
                         Ty::Obj(f) => Ty::Obj(
                             f.into_iter()
-                                .filter(|(k, _)| {
-                                    !props.iter().any(|(pk, _)| matches!(pk, PropKey::Static(s) if s == k))
-                                })
+                                .filter(|(k, _)| !literal_keys.iter().flatten().any(|taken| taken == k))
                                 .collect(),
                         ),
                         other => other,
@@ -4188,11 +4250,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if ty.is_nullable() && *ty != Ty::Dynamic {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
-                // The iterable is read once; for checked JavaScript it may be any iterable.
+                // An array is read live, element by element, as JavaScript's array iterator does,
+                // so an earlier target write is seen by later reads. Checked JavaScript may pass any
+                // other iterable, which is read once up front.
                 let list = self.tmp_var();
                 steps.push(match element {
-                    None => format!("{list} = \\Zero\\Js::dynamicIterable({src})"),
-                    Some(_) => format!("{list} = \\Zero\\Js::arrSlice({src}, 0)"),
+                    None => format!("{list} = \\Zero\\Js::dynamicIterableLive({src})"),
+                    Some(_) => format!("{list} = {src}"),
                 });
                 for (i, p) in elems.iter().enumerate() {
                     let Some(p) = p else { continue };
@@ -4207,7 +4271,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if let Some(r) = rest {
                     let value = self.tmp_var();
-                    let pending = format!("{value} = \\Zero\\Js::arrSlice({list}, {})", elems.len());
+                    let pending = format!("{value} = \\Zero\\Js::restFrom({list}, {})", elems.len());
                     let rest_ty = match (&element, ty.non_null()) {
                         (None, _) => Ty::Dynamic,
                         (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => {
@@ -4365,6 +4429,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
+        self.host_place(target)?;
         match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
@@ -4591,6 +4656,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "make the property optional (`key?: T`), as TypeScript requires for `delete`",
                 );
             }
+            // A closed object type without the property: TypeScript rejects the read, and a typo
+            // here would silently delete nothing.
+            let closed_without = |ty: &Ty| match ty {
+                Ty::Obj(fields) => !fields.contains_key(&prop),
+                Ty::Instance(_, fields) => matches!(&**fields, Ty::Obj(f) if !f.contains_key(&prop)),
+                _ => false,
+            };
+            if members.iter().any(closed_without) {
+                return Err(self.no_field(&receiver_ty, &prop, span));
+            }
         } else if matches!(receiver_ty.non_null(), Ty::Obj(_) | Ty::Instance(..)) {
             return err_help(
                 span,
@@ -4631,6 +4706,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if let Some(out) = self.host_member(obj, prop, prop_span)? {
+            return Ok(out);
+        }
         let native_object = self.native_object_receiver(obj);
         // Namespaces: Math.PI etc.
         if let ExprKind::Ident(n) = &obj.kind
@@ -4782,6 +4860,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("({x})->{prop}"));
                 Out::atom(php, suffix_null(Ty::Str))
             }
+            (Ty::Host(h), _) => self.host_property(h, &o, prop, prop_span)?,
             (Ty::Obj(_) | Ty::Map(_) | Ty::Union(_), _) => {
                 let Some((ft, opt_field)) = base.field(prop) else {
                     if matches!(base, Ty::Union(_)) {
@@ -4828,6 +4907,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn index(&mut self, obj: &Expr, index: &Expr, optional: bool, span: Span) -> Result<Out> {
+        if let Some(out) = self.host_index(obj, index)? {
+            return Ok(out);
+        }
         let o = self.expr(obj)?;
         let mut o = self.finish_value(o, obj.span)?;
         let i = self.expr(index)?;
@@ -5001,6 +5083,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+        if let Some(out) = self.host_new(callee, args, span)? {
+            return Ok(out);
+        }
         if let ExprKind::Ident(name) = &callee.kind
             && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             && (name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module))
@@ -5227,6 +5312,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
         }
+        if let Some(out) = self.host_call(callee, args, span)? {
+            return Ok(out);
+        }
         if let Some(out) = self.jobs_call(callee, args, span)? {
             return Ok(out);
         }
@@ -5319,10 +5407,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         b @ (Builtin::Once
                         | Builtin::Jobs
                         | Builtin::Env
-                        | Builtin::Fetch
-                        | Builtin::Crypto
                         | Builtin::Mail
-                        | Builtin::Abilities),
+                        | Builtin::Abilities
+                        | Builtin::WpFunction(_)),
                     ),
                     _,
                 ) => Some(b),
@@ -5332,34 +5419,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &callee.kind {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
-                Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
-                Some(Builtin::Env) => {
-                    let name = self.arg(args, 0, span, "an environment variable name")?;
-                    match &name.kind {
-                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => {
-                            self.uses("env", s.clone(), name.span);
-                            Ok(Some(Out::atom(
-                                format!("\\Zero\\Env::get({})", php_str(s)),
-                                Ty::Str.nullable(),
-                            )))
-                        }
-                        _ => err_help(
-                            name.span,
-                            "env() needs an environment variable name",
-                            "use env(\"HOOK_SECRET\")",
-                        ),
-                    }
-                }
+                Some(Builtin::WpFunction(name)) => self.wp_function_call(&name, args, span).map(Some),
+                Some(Builtin::Env) => err_help(
+                    callee.span,
+                    "env() is a config reference for webhooks, signatures and upload credentials",
+                    "read runtime variables in handlers with `process.env.NAME`",
+                ),
                 _ => Ok(None),
             },
-            // Only a name that resolves to the imported `crypto` is ours; `super`, unbound and
-            // shadowed names fall through to ordinary member calls.
-            ExprKind::Member { obj, prop, .. }
-                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
-                    && builtin(self, obj).ok().flatten() == Some(Builtin::Crypto) =>
-            {
-                self.crypto_call(prop, args, span).map(Some)
-            }
             ExprKind::Member { obj, prop, .. }
                 if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
                     && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
@@ -5384,162 +5451,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// `fetch(url, { method?, headers?, body? })` → `Promise<FetchResponse>`, see `types::fetch_response`.
-    fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
-        if self.fx().no_db {
-            return err_help(
-                span,
-                "access rules can't use fetch()",
-                "move it into a hook, action or route",
-            );
-        }
-        if args.is_empty() || args.len() > 2 {
-            return err_help(
-                span,
-                "fetch() takes a URL and optional init",
-                "write fetch(url, { method, headers, body })",
-            );
-        }
-        let url_expr = self.arg(args, 0, span, "a URL")?;
-        let host = static_host(url_expr);
-        self.uses("http", host.clone().unwrap_or_else(|| "*".into()), url_expr.span);
-        let url = self.expr(url_expr)?;
-        let url = self.finish_value(url, url_expr.span)?;
-        if !url.ty.is_str() || url.ty.is_nullable() {
-            return err_help(url_expr.span, "fetch() needs a URL string", "pass the URL as a string");
-        }
-        let init = match args.get(1) {
-            None => "null".to_string(),
-            Some(_) => {
-                let init_expr = self.arg(args, 1, span, "init")?;
-                let init = self.expr(init_expr)?;
-                let init = self.finish_value(init, init_expr.span)?;
-                let ok = match &init.ty {
-                    Ty::Obj(fields) => fields.iter().all(|(k, (t, _))| match k.as_str() {
-                        "method" | "body" => t.all(|t| t.is_str() || matches!(t, Ty::Null | Ty::Undefined)),
-                        "headers" => t.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Null | Ty::Undefined)),
-                        _ => false,
-                    }),
-                    _ => false,
-                };
-                if !ok {
-                    return err_help(
-                        init_expr.span,
-                        format!(
-                            "fetch() init must be {{ method?, headers?, body? }} with strings, not {}",
-                            init.ty.describe()
-                        ),
-                        "stringify JSON bodies with JSON.stringify(...)",
-                    );
-                }
-                init.php
-            }
-        };
-        // A plugin's fetches are checked against its locked hosts on every hop, so a runtime-built
-        // URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
-        let allow = match &self.plugin {
-            Some((i, _)) => format!(", \\ZeroApp\\{}()", self.host_functions[*i]),
-            None => String::new(),
-        };
-        Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({}, {init}{allow})", url.php),
-            Ty::Promise(Box::new(types::fetch_response())),
-        ))
-    }
-
-    /// `crypto.<fn>(...)`: synchronous digests and comparisons over `Zero\Crypto`. Every result is
-    /// lowercase hex (or a boolean / UUID), matching the original runtime's `ctx.crypto`.
-    fn crypto_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
-        let (arity, ret, php) = match name {
-            "sha256" | "sha1" | "sha512" | "md5" => (1, Ty::Str, name),
-            "hmacSha256" => (1, Ty::Str, "hmacSha256"),
-            "timingSafeEqual" => (2, Ty::Bool, "timingSafeEqual"),
-            "randomHex" => (1, Ty::Str, "randomHex"),
-            "randomUUID" => (0, Ty::Str, "randomUUID"),
-            _ => {
-                let mut d = Diag::new(span, format!("`crypto` has no function `{name}`"));
-                let names = [
-                    "sha256",
-                    "sha1",
-                    "sha512",
-                    "md5",
-                    "hmacSha256",
-                    "timingSafeEqual",
-                    "randomHex",
-                    "randomUUID",
-                ];
-                if let Some(s) = suggest(name, names.iter().copied()) {
-                    d = d.help(format!("did you mean `crypto.{s}`?"));
-                }
-                return Err(d);
-            }
-        };
-        if args.len() != arity {
-            return err(
-                span,
-                format!(
-                    "crypto.{name}() takes {arity} argument{}",
-                    if arity == 1 { "" } else { "s" }
-                ),
-            );
-        }
-        let mut argv = Vec::new();
-        for i in 0..arity {
-            let e = self.arg(args, i, span, "an argument")?;
-            let v = self.expr(e)?;
-            let v = self.finish_value(v, e.span)?;
-            let ok = match (name, i) {
-                ("randomHex", _) => v.ty.is_num() && !v.ty.is_nullable(),
-                ("hmacSha256", _) => match &v.ty {
-                    Ty::Obj(f) => {
-                        f.keys().all(|k| k == "key" || k == "data")
-                            && f.get("data").is_some_and(|(t, opt)| !opt && t.is_str() && !t.is_nullable())
-                            && f.get("key").is_some_and(|(t, opt)| {
-                                !opt && (t.is_str() && !t.is_nullable()
-                                    || matches!(t, Ty::Obj(k) if k.len() == 1 && k.get("value").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())))
-                            })
-                    }
-                    _ => false,
-                },
-                _ => v.ty.is_str() && !v.ty.is_nullable(),
-            };
-            if !ok {
-                return err_help(
-                    e.span,
-                    format!("crypto.{name}() can't take {}", v.ty.describe()),
-                    match name {
-                        "hmacSha256" => "pass { key: \"VAR_NAME\" | { value }, data: string }",
-                        "randomHex" => "pass a number of bytes",
-                        _ => "pass a string",
-                    },
-                );
-            }
-            argv.push(v.php);
-        }
-        if name == "hmacSha256"
-            && let Some(ArrEl::Item(Expr {
-                kind: ExprKind::Object(props),
-                ..
-            })) = args.first()
-        {
-            for p in props {
-                if let Prop::KV(PropKey::Static(k), v) = p
-                    && k == "key"
-                {
-                    match &v.kind {
-                        ExprKind::Str(var) => self.uses("env", var.clone(), v.span),
-                        ExprKind::Object(_) => {}
-                        _ => self.uses("env", "*", v.span),
-                    }
-                }
-            }
-        } else if name == "hmacSha256" {
-            self.uses("env", "*", span);
-        }
-        Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
-    }
-
-    /// `mail.send(message)`: queues inside the handler's transaction, hands off after commit.
     fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if name != "send" {
             return err_help(
@@ -5618,14 +5529,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Records one use of a WordPress feature: in `Built::wordpress_uses` for every module, and as
     /// a capability when a plugin's code makes it. This is the single place each use is noted.
     pub fn use_wordpress(&mut self, kind: WordPressKind, name: &str, span: Span) {
-        self.uses(
-            match kind {
-                WordPressKind::Ability => "abilities",
-                WordPressKind::Hook => "wpHooks",
-            },
-            name,
-            span,
-        );
+        match kind {
+            WordPressKind::Ability => self.uses("abilities", name, span),
+            WordPressKind::Hook => self.uses("wpHooks", name, span),
+            WordPressKind::Function => self.uses("php", format!("{}:{name}", crate::loader::WORDPRESS_MODULE), span),
+        }
         let module = self
             .ev_program()
             .modules
@@ -5718,6 +5626,57 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             format!("\\Zero\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
             Ty::Promise(Box::new(output_ty)),
+        ))
+    }
+
+    /// A catalog WordPress function: arguments checked against the catalog's types, called through
+    /// `Zero\Wp\Functions::call` with the catalog's fixed arguments appended.
+    fn wp_function_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let f = crate::wordpress::function(name).expect("only catalog functions are imported");
+        if self.fx().no_db {
+            return err_help(
+                span,
+                format!("access rules can't call `{name}`"),
+                "move the call into a hook, action, route or job",
+            );
+        }
+        if args.len() > f.params.len() {
+            return err_help(
+                span,
+                format!("`{name}` takes {} argument(s) from TypeScript", f.params.len()),
+                "Zero admits the arguments that map soundly; later PHP parameters keep their defaults",
+            );
+        }
+        let mut php = Vec::new();
+        for (i, (param, want)) in f.params.iter().enumerate() {
+            let Some(_) = args.get(i) else {
+                return err_help(
+                    span,
+                    format!("`{name}` needs `{param}` ({})", want.describe()),
+                    format!("pass {} argument(s)", f.params.len()),
+                );
+            };
+            let e = self.arg(args, i, span, param)?;
+            let v = self.expr(e)?;
+            let v = self.finish_value(v, e.span)?;
+            if !assignable(&v.ty, want) {
+                return err_help(
+                    e.span,
+                    format!(
+                        "`{name}` takes `{param}` as {}, not {}",
+                        want.describe(),
+                        v.ty.describe()
+                    ),
+                    "the type comes from WordPress's own documentation of the function",
+                );
+            }
+            php.push(v.php);
+        }
+        php.extend(f.fixed.iter().map(php_json));
+        self.use_wordpress(WordPressKind::Function, name, span);
+        Ok(Out::atom(
+            format!("\\Zero\\Wp\\Functions::call({}, [{}])", php_str(name), php.join(", ")),
+            f.returns,
         ))
     }
 
@@ -5986,19 +5945,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Js::isFinite(\\Zero\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
+            ("process" | "crypto" | "Buffer", _) => {
+                return err_help(
+                    span,
+                    format!("`{g}` can't be called"),
+                    "use `process.env.NAME`, `crypto.randomUUID()` or \"node:crypto\"",
+                );
+            }
+            ("Headers" | "URLSearchParams", _) => {
+                return err_help(span, format!("`{g}` needs `new`"), format!("write `new {g}(...)`"));
+            }
             (
-                "fetch" | "process" | "require" | "eval" | "Function" | "setTimeout" | "crypto" | "globalThis"
-                | "Promise",
+                "eval" | "Function" | "setTimeout" | "globalThis" | "Promise" | "URL" | "Request" | "Response"
+                | "FormData" | "Blob" | "AbortController",
                 _,
             ) => {
                 return err_help(
                     span,
                     format!("`{g}` isn't available in Zero code"),
-                    if g == "fetch" {
-                        "use a job or webhook for network effects; fetch is not a supported HTTP capability"
-                    } else {
-                        "use supported server capabilities in a hook or action"
-                    },
+                    "use supported server capabilities in a hook or action",
                 );
             }
             _ => return err(span, format!("`{g}(...)` isn't supported")),
@@ -6414,6 +6379,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             },
+            Ty::Host(h) => self.host_method(h, &recv, m, args, m_span, span)?,
             Ty::Regex => match m {
                 "test" => {
                     let argv = self.plain_args(args)?;
@@ -7620,7 +7586,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
 /// The host of a URL whose `https://host/` prefix is written in the source: a string, a template
 /// or a `+` chain starting with one. Anything else is built at runtime.
-fn static_host(e: &Expr) -> Option<String> {
+pub(super) fn static_host(e: &Expr) -> Option<String> {
     let complete = matches!(e.kind, ExprKind::Str(_));
     let prefix = match &e.kind {
         ExprKind::Str(s) => s.clone(),
@@ -7886,6 +7852,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Promise(_)
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db
@@ -8120,6 +8087,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Never
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db
@@ -8373,7 +8341,10 @@ fn stmt_completions(
             let mut flow = block_completions(body, diverging, exhaustive_switches);
             let breaks = flow.remove(&Break);
             let tested = flow.remove(&Normal) | flow.remove(&Continue);
-            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) {
+            if tested && diverging.contains(&test.span) {
+                flow.insert(Throw);
+            }
+            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) && !diverging.contains(&test.span) {
                 flow.insert(Normal);
             }
             flow

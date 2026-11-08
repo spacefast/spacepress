@@ -178,7 +178,7 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   const viaCookie = () => fetch(`${api}/me`, { headers: { cookie, "x-wp-nonce": nonce } });
   assert.equal((await viaCookie()).status, 200, "cookie + nonce works before");
   assert.equal((await fetch(`${api}/me`, { headers: basic })).status, 200);
-  wp("zero-identity", "suspend", String(bo.id));
+  wp("zero", "identity", "suspend", String(bo.id));
   const bearer = await call("GET", "/me", { token: tokens.json.access_token });
   assert.deepEqual([bearer.status, bearer.json.code], [403, "suspended"]);
   // zero-identity refuses a suspended account's application password, so WordPress doesn't
@@ -196,7 +196,7 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   // zero-identity also refuses native sign-in and destroys WordPress sessions on suspension.
   const cookieAfter = await viaCookie();
   assert.ok([401, 403].includes(cookieAfter.status), `the cookie no longer works (${cookieAfter.status})`);
-  wp("zero-identity", "restore", String(bo.id));
+  wp("zero", "identity", "restore", String(bo.id));
   assert.equal((await fetch(`${api}/me`, { headers: basic })).status, 200, "restored accounts work again");
 });
 

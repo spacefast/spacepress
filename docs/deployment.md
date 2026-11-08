@@ -52,7 +52,7 @@ ownership claim, or authorization to install the artifact.
 ## Publish capability boundary
 
 ```sh
-zero publish --artifact ./app/.zero/wp-content
+zero deploy publish --artifact ./app/.zero/wp-content
 ```
 
 This command **refuses** with `host_capability_missing` and attaches the concrete
@@ -129,12 +129,12 @@ and multisite administration are outside its scope.
 ## Native content and diagnostics
 
 ```sh
-zero deploy wp --workspace /tmp/zero-local-recovery/original -- \
+zero wp --site /tmp/zero-local-recovery/original \
   post create --post_title='Recovery example' --post_status=publish
 zero deploy status --workspace /tmp/zero-local-recovery/original
 ```
 
-The native command receipt returns a private `resultFile`. Read that file locally
+`zero wp --site <workspace>` (and any site command, such as `zero jobs list --site <workspace>`) runs through this adapter: the receipt returns a private `resultFile`. Read that file locally
 to inspect WP-CLI results. Native stdout/stderr can contain data or secrets;
 neither is copied to public receipts. PHP subprocesses have a 120-second budget.
 `status` reads SQLite without booting application PHP. It reports integrity,
@@ -152,16 +152,16 @@ for inspection, never silently adopted or deleted.
 ## Back up and restore to another isolated workspace
 
 ```sh
-zero backup \
+zero deploy backup \
   --workspace /tmp/zero-local-recovery/original \
   --output /tmp/zero-local-recovery/recovery.zip
 
-zero restore \
+zero deploy restore \
   --archive /tmp/zero-local-recovery/recovery.zip \
   --workspace /tmp/zero-local-recovery/restored \
   --wp-cli /path/to/wp-cli.phar
 
-zero deploy wp --workspace /tmp/zero-local-recovery/restored -- \
+zero wp --site /tmp/zero-local-recovery/restored \
   post list --format=json
 ```
 

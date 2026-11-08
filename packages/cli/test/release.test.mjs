@@ -15,7 +15,7 @@ const launcher = fileURLToPath(new URL('../bin/zero.mjs', import.meta.url));
 
 test('launcher help/version work offline and explicit compiler paths fail without executable fallback', async () => {
   const env = { ...process.env, ZERO_BIN: '/no-such-zero-compiler', ZERO_OFFLINE: '1' };
-  assert.match((await exec(process.execPath, [launcher, '--help'], { env })).stdout, /zero dev stop/);
+  assert.match((await exec(process.execPath, [launcher, '--help'], { env })).stdout, /Site \(wp zero <command>.*\n(.*\n)*  jobs +inspect and drive background jobs/);
   assert.equal((await exec(process.execPath, [launcher, '--version'], { env })).stdout, `zero ${metadata.version} (npm launcher)\n`);
   await assert.rejects(exec(process.execPath, [launcher, 'check'], { env }), (error) => error.code === 1 && /Cannot use ZERO_BIN/.test(error.stderr));
   await assert.rejects(compiler({ env: { ZERO_BIN: 'zero' } }), /absolute path/);

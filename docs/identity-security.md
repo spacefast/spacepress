@@ -66,17 +66,17 @@ Deploy behind HTTPS with the correct trusted proxy configuration. Exclude identi
 
 ## Maintenance and diagnostics
 
-`wp zero-identity maintenance` sends at most 30 due webhook deliveries per run. A delivery gets a two-minute processing lease, up to eight attempts and exponential retry delays. Delivery is at least once: consumers deduplicate by `Zero-Event-Id`. Requests do not follow redirects and WordPress's safe HTTP client rejects private-network destinations.
+`wp zero identity maintenance` sends at most 30 due webhook deliveries per run. A delivery gets a two-minute processing lease, up to eight attempts and exponential retry delays. Delivery is at least once: consumers deduplicate by `Zero-Event-Id`. Requests do not follow redirects and WordPress's safe HTTP client rejects private-network destinations.
 
-The signature header is `Zero-Signature: t=<unix>,v1=<hex HMAC-SHA256>`. Verify HMAC over the exact bytes `<timestamp>.<body>`, use constant-time comparison, and reject stale timestamps such as those older than five minutes. Store the signing secret securely. **Identity → Authentication** shows recent status/attempts; it displays a new secret only once. CLI equivalents are `wp zero-identity webhook-add <https-url>`, `webhooks`, and `webhook-remove <id>`.
+The signature header is `Zero-Signature: t=<unix>,v1=<hex HMAC-SHA256>`. Verify HMAC over the exact bytes `<timestamp>.<body>`, use constant-time comparison, and reject stale timestamps such as those older than five minutes. Store the signing secret securely. **Identity → Authentication** shows recent status/attempts; it displays a new secret only once. CLI equivalents are `wp zero identity webhook-add <https-url>`, `webhooks`, and `webhook-remove <id>`.
 
 Use a real cron scheduler every minute for reliable retries; the fallback WordPress event is hourly and depends on traffic. Monitor `email.accepted`/`email.failed`, `provider.rejected`, account/session events and webhook HTTP statuses. Email acceptance indicates `wp_mail` transport acceptance only. SMTP delivery, bounce handling and inbox acceptance remain transport responsibilities. Authentication rate limits are stored in the database and use both network and account buckets.
 
-Rotate signing keys with `wp zero-identity rotate-keys`. Back up the database and WordPress salts together. Changing secure-auth salts makes stored encrypted secrets unreadable and requires explicit operational recovery. Never log codes, cookies, tokens, private keys or client secrets.
+Rotate signing keys with `wp zero identity rotate-keys`. Back up the database and WordPress salts together. Changing secure-auth salts makes stored encrypted secrets unreadable and requires explicit operational recovery. Never log codes, cookies, tokens, private keys or client secrets.
 
 ## Privacy and lifecycle
 
-Users export their profile, connections, session metadata, organization memberships, passkey metadata and events. Exports omit credential secrets. Deletion requests immediately suspend the local account. An administrator completes erasure from People or `wp zero-identity erase <id>`. Sole organization owners must transfer ownership, and WordPress administrators must transfer administration first. Erasure removes identity credentials and metadata, anonymizes the WordPress account, removes roles and preserves authored content under the retained numeric author ID. It is idempotent. WordPress privacy exporter/eraser callbacks are registered.
+Users export their profile, connections, session metadata, organization memberships, passkey metadata and events. Exports omit credential secrets. Deletion requests immediately suspend the local account. An administrator completes erasure from People or `wp zero identity erase <id>`. Sole organization owners must transfer ownership, and WordPress administrators must transfer administration first. Erasure removes identity credentials and metadata, anonymizes the WordPress account, removes roles and preserves authored content under the retained numeric author ID. It is idempotent. WordPress privacy exporter/eraser callbacks are registered.
 
 Uninstall preserves all data. Backups, external webhook recipients and other plugins' metadata have separate retention policies. V1 uses English UI copy; full localization and enterprise federation/provisioning are not claimed.
 

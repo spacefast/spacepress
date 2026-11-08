@@ -40,9 +40,19 @@ final class JsTransformStream
         $transform = $method('transform');
         $flush = $method('flush');
         $this->writable = new JsWritableStream(new JsObject([
-            'write' => static function ($chunk) use ($transform, $transformer, $controller) {
+            'write' => static function ($chunk) use ($transform, $transformer, $controller, &$readableController) {
                 if ($transform === null) { return Js::dynamicCallMethod($controller, 'enqueue', new JsArray([$chunk])); }
-                return Js::invokeWithReceiver($transform, $transformer, [$chunk, $controller]);
+                // TransformStreamDefaultControllerPerformTransform: a failure errors the readable side too.
+                $fail = static function ($reason) use (&$readableController) {
+                    Js::dynamicCallMethod($readableController, 'error', new JsArray([$reason]));
+                    throw Js::throwable($reason);
+                };
+                try {
+                    $result = Js::invokeWithReceiver($transform, $transformer, [$chunk, $controller]);
+                } catch (JsError $error) {
+                    $fail(Js::thrownValue($error));
+                }
+                return JsPromise::from($result)->then(null, $fail);
             },
             'close' => static function () use ($flush, $transformer, $controller, &$readableController) {
                 $done = $flush === null ? JsUndefined::Value : Js::invokeWithReceiver($flush, $transformer, [$controller]);

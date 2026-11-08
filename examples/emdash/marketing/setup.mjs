@@ -14,7 +14,7 @@ export const command = async (args) =>
     await exec(zero, args, { timeout: 600000, maxBuffer: 8 * 1024 * 1024 })
   ).stdout.trim();
 export const wp = (project, ...args) =>
-  command(["dev", "wp", project, "--", ...args]);
+  command(['wp', '--site', project, ...args]);
 export async function installFrontend(project) {
   const site = join(project, ".zero/dev/wordpress");
   await cp(

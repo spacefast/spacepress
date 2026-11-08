@@ -58,7 +58,7 @@ try {
   assert.equal(data.name, 'project');
   assert.equal(data.runtime.wp.database.kind, 'sqlite');
   assert.deepEqual(data.runtime.pendingMigrations, []);
-  const version = await run(['dev', 'wp', project, '--', 'core', 'version']);
+  const version = await run(['wp', '--site', project, 'core', 'version']);
   assert.match(version.trim(), /^7\./);
   await run(['dev', 'stop', project]);
   stopped = true;

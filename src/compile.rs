@@ -8065,8 +8065,19 @@ fn awaited_element(t: &Ty) -> Option<Ty> {
             .collect::<Option<Vec<_>>>()
             .map(Ty::union),
         Ty::Dynamic | Ty::Unknown | Ty::Builder(_) => None,
+        // PromiseResolve adopts an object with a callable (or possibly callable) `then`, so a
+        // thenable element binds its settled value in JavaScript; only the job queue can settle it.
+        Ty::Obj(_) | Ty::Map(_) if thenable(t) => None,
+        Ty::Instance(_, fields) if thenable(fields) => None,
         other => Some(other.clone()),
     }
+}
+
+fn thenable(t: &Ty) -> bool {
+    t.field("then").is_some_and(|(then, _)| {
+        then.non_null()
+            .all(|t| matches!(t, Ty::Fn(..) | Ty::Unknown | Ty::Dynamic))
+    })
 }
 
 fn widen_fresh_literals(t: &Ty) -> Ty {

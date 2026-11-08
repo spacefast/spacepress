@@ -3,37 +3,24 @@
 Zero 0.8 and v2 both run on Spacefast while this spec is built. A Space runs
 one of them at a time, never both in the same version.
 
-## 0.8 support lives in zero-v0, not here
+## No 0.8 code in this repository
 
-This repository's `main` has no Zero 0.8 code and no compatibility with it.
-Everything that reads or converts 0.8 apps is frozen on the `v0` branch, cut
-from `main` at `43d695e9`. That covers:
-
-- the converter (`zero migrate app --from zero-0.8`);
-- the runtime that adopts 0.8 tables, users and sessions (`runtime/Zero/Wp/Legacy/`);
-- the 0.8 census;
-- their tests and docs.
-
-The `v0` branch builds the `zero-v0` binary and WebAssembly module. Spacefast's
-CLI uses `zero-v0` for one thing: converting a 0.8 app when its owner publishes
-it. The converted version is compiled by `zero-v0`, and it runs `zero-v0`'s
-runtime revision from the build store.
-
-Fixes to `v0` are for live 0.8 Spaces only. Nothing on `main` waits for `v0`,
-and `main` never needs to stay compatible with what `v0` produces.
+This repository carries no Zero 0.8 code and converts nothing. Apps already
+running on 0.8 keep running unchanged: Spacefast serves and publishes them with
+its own 0.8 compiler and runtime. New apps start on v2. An owner who wants a
+0.8 app on v2 rewrites it on v2.
 
 ## Platform rules
 
 The platform enforces these, and the spec work keeps them true:
 
 1. **One generation per Space and version.** A Space is `none`, `legacy_0_8` or
-   `v2`. A version never mixes them. A `legacy_0_8` Space moves to `v2` only by
-   making a converted version live, and it never moves back. The control plane
+   `v2`. A version never mixes them. A Space never goes back from `v2`. The control plane
    (`apps/control-plane/src/versions/zero-generation.ts`) and the engine
    (`runtime/tests/zero-v2-cordon.test.ts`) enforce this.
 2. **Published versions don't change.** Each version runs the runtime revision
    it was built with, so a new `main` never changes how an existing version
-   serves, including versions built by `zero-v0`.
+   serves.
 3. **Nothing box-wide changes for a Space that isn't serving v2.** Hardening,
    plugin activation, rewrite rules, link filters, cache headers and markdown
    negotiation live in the v2 app plugin's request path, or behind the engine's

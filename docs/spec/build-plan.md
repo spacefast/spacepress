@@ -35,9 +35,9 @@ Start in parallel now: 1, 2, 4, 5, 11 and the URL-purge half of 8. 2 and 4
 work on the runtime and migrator side and rebase onto 1's authoring surface as
 it lands. Then 3 after 1. Then 6, 9 and 10. Then 7 and the rest of 8.
 
-Zero 0.8 support is frozen on the `v0` branch (the `zero-v0` binary), so no
-workstream keeps 0.8 compatibility on `main`. [coexistence.md](coexistence.md)
-lists the platform rules that keep 0.8 Spaces running.
+No workstream keeps Zero 0.8 compatibility: 0.8 apps keep running on
+Spacefast's own 0.8 runtime, and nothing converts them.
+[coexistence.md](coexistence.md) lists the platform rules that keep them running.
 
 ## 1. Authoring surface cutover
 
@@ -300,9 +300,9 @@ On Spacefast, the box image and Spacefast Access do the parts that belong to the
 **Build:**
 - **Docs:** rewrite `docs/config-api.md`, `docs/pages.md`, the README and the site to match the spec.
 - **Examples:** port every example.
-- **0.8 migration:** none on `main`. `zero-v0` (the `v0` branch) keeps converting
-  0.8 apps to the v2 surface frozen at `43d695e9`; those versions keep running on
-  that runtime revision. Owners who want the new surface rewrite on it.
+- **0.8:** delete the converter (`zero migrate app`), the `Legacy` runtime, the
+  census and their tests. 0.8 apps keep running on Spacefast's 0.8 runtime;
+  owners who want v2 rewrite on it.
 - **Monorepo:** `sf zero`, MCP and the Spacefast publish path follow the new layout.
 
 ## How fast
@@ -316,8 +316,8 @@ Nothing here is gated by typing speed. What sets the pace:
   agent PR is reviewed before merge, because reviews have found blocking bugs in
   "verified" green agent PRs before.
 - **Parallelism.** One agent per workstream, never two on the same files or tests.
-- **0.8 lives on `v0`.** Workstreams don't carry 0.8 compatibility; they keep
-  the platform rules in [coexistence.md](coexistence.md).
+- **No 0.8 compatibility.** Workstreams keep only the platform rules in
+  [coexistence.md](coexistence.md).
 
 First useful cut: 1 + 2 + 3 + 4 + 11. That gives the new authoring surface on
 core REST with the facade and WordPress rendering: a complete backend with

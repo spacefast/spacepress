@@ -67,6 +67,36 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
         fs::read_to_string(compiled_first.join("source-migrations/snapshot.json")).unwrap(),
         r#"{"version":2,"tables":{}}"#
     );
+    // A capture taken by an older compiler keeps its ledger under `zero/migrations/`; recompiling
+    // it with this one still archives those files.
+    let older = work.path().join("older");
+    fs::create_dir(&older).unwrap();
+    fs::copy(first.join("vendor.zero.json"), older.join("vendor.zero.json")).unwrap();
+    let mut app: serde_json::Value = serde_json::from_slice(&fs::read(first.join("app.zero.json")).unwrap()).unwrap();
+    let files = app["files"].as_object_mut().unwrap();
+    for name in ["0001_adopt.sql", "snapshot.json"] {
+        let text = files.remove(&format!("zero/_generated/migrations/{name}")).unwrap();
+        files.insert(format!("zero/migrations/{name}"), text);
+    }
+    let app = serde_json::to_vec(&app).unwrap();
+    fs::write(older.join("app.zero.json"), &app).unwrap();
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(first.join("manifest.json")).unwrap()).unwrap();
+    manifest["app_sha256"] = {
+        use sha2::Digest;
+        sha2::Sha256::digest(&app)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+            .into()
+    };
+    fs::write(older.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let compiled_older = work.path().join("compiled-older");
+    zero::bundle::compile(&older, &compiled_older, &older, None).unwrap();
+    assert_eq!(
+        fs::read_to_string(compiled_older.join("source-migrations/0001_adopt.sql")).unwrap(),
+        "SELECT 'archived only';"
+    );
     let path = "plugins/zero-app-app/zero/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
     let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_zero"))

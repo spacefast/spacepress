@@ -454,9 +454,12 @@ pub(crate) fn compile_tree(
     let source_migrations = sources
         .files
         .iter()
+        // A capture is frozen: one taken by an older compiler keeps its ledger at the old path, and
+        // its archive must survive a recompile (docs/spacefast-deploy.md).
         .filter_map(|(path, text)| {
-            path.strip_prefix(crate::pipeline::LEDGER)?
-                .strip_prefix('/')
+            [crate::pipeline::LEDGER, crate::pipeline::OLD_LEDGER]
+                .iter()
+                .find_map(|ledger| path.strip_prefix(ledger)?.strip_prefix('/'))
                 .map(|name| (name, text))
         })
         .map(|(name, text)| {

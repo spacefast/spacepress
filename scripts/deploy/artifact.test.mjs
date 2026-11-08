@@ -12,7 +12,8 @@ const php = process.env.ZERO_DEPLOY_PHP || 'php';
 function run(args, env = {}) {
   const [mode, ...rest] = args;
   const binary = process.env.ZERO_DEPLOY_BIN;
-  const entry = ['publish', 'backup', 'restore'].includes(mode) ? [mode] : ['deploy', mode];
+  // `zero deploy <mode>`: the top-level publish/backup/restore aliases are gone (#149).
+  const entry = ['deploy', mode];
   const command = binary ? [...entry, ...rest] : [tool, ...args];
   const result = spawnSync(binary || php, command, { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 30000 });
   assert.equal(result.error, undefined);

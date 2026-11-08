@@ -740,7 +740,7 @@ An ordinary function or object-literal method that reads `this` gets its call re
 
 Status: **supported**.
 
-Functions exported from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\Zero\Html`), listed in schema.php `components`. Output matches react-dom/server 19 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean and style rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is rendered JSX placed where the component puts it, and a component runs only when its element is placed. Async components block until their data is in. URL attributes allow http(s), mailto, root-relative and fragment URLs; others are a build error when literal and dropped when computed. See docs/decisions/2026-11-08-tsx-to-php.md.
+Functions exported from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\Zero\Html`), listed in schema.php `components`. Output matches react-dom/server 19 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean and style rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is rendered JSX placed where the component puts it (undefined when there are none), and a component runs only when its element is placed, so children it never places never run. Async components block until their data is in. URL attributes allow http(s), mailto, and URLs without a scheme (`/a`, `?page=2`, `#top`); any other scheme or a protocol-relative `//host` is a build error when literal and dropped when computed. See docs/decisions/2026-11-08-tsx-to-php.md.
 
 [Evidence](../tests/compiler.rs) (`compiled_tsx_renders_the_html_react_renders`)
 
@@ -748,7 +748,7 @@ Functions exported from `zero/components/*.tsx` compile to PHP functions that re
 
 Status: **refused**. Diagnostic: `Z4001`.
 
-Use an http(s), mailto, root-relative or fragment URL. A computed URL that fails the same check drops the attribute at render time.
+Use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`). A computed URL that fails the same check drops the attribute at render time.
 
 [Evidence](../tests/fixtures/reject-jsx-unsafe-url)
 

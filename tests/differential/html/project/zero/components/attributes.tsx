@@ -18,6 +18,9 @@ export function Attributes({ id, on, n, text, color, size }: { id: string; on: b
       <a href="https://example.com/?a=1&b=2" target="_blank" rel="noopener">out</a>
       <a href={`/notes/${id}`} download>file</a>
       <a href="#top">top</a>
+      <a href={`?page=${n + 1}`}>next</a>
+      <a href="posts/1">relative</a>
+      <label class="converted" for={id}>written as in HTML</label>
       <svg viewBox="0 0 10 10" strokeWidth={2} className="icon">
         <path fillRule="evenodd" d="M0 0h10v10z" />
       </svg>

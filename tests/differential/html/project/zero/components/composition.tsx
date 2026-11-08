@@ -21,6 +21,11 @@ function Fails(): JSX.Element {
   throw new Error("rendered a child that was never placed");
 }
 
+// With no children, `children` is undefined, as in React.
+function Maybe({ children }: { children?: JSX.Element }) {
+  return children ? <div className="has">{children}</div> : <div className="empty" />;
+}
+
 function Label({ text }: { text: string }) {
   return text.length > 3 ? text : null;
 }
@@ -45,6 +50,10 @@ export async function Composition({ ids, title }: { ids: number[]; title: string
         <Ignore>
           <Fails />
         </Ignore>
+        <Maybe />
+        <Maybe>
+          <u>kid</u>
+        </Maybe>
         <Label text="hi" />
         <Label text="hello" />
         {ids.map((id) => <Loaded key={id} id={id} />)}

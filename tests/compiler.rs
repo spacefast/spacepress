@@ -1046,6 +1046,55 @@ fn compiled_tsx_renders_the_html_react_renders() {
             mismatches.push(format!("case {index}\n  react: {want}\n  php:   {got}"));
         }
     }
+    // React rewrites `javascript:` URLs; Zero drops any URL attribute outside its policy.
+    let urls = [
+        "javascript:alert(1)",
+        " JavaScript:x",
+        "java\tscript:x",
+        "data:text/html,x",
+        "//evil.example",
+        "/\\evil.example",
+        "https://ok.example/?a=1&b=2",
+        "mailto:a@b.c",
+        "/root",
+        "?page=2",
+        "posts/1",
+        "#top",
+        "a/b:c",
+    ];
+    let file = tmp.join("urls.json");
+    let cases = serde_json::json!([{ "component": "components/urls.tsx#Links", "props": { "urls": urls } }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dropped = [
+        "javascript:alert(1)",
+        " JavaScript:x",
+        "java\tscript:x",
+        "data:text/html,x",
+        "//evil.example",
+        "/\\evil.example",
+    ]
+    .map(|u| format!("<a>{u}</a>"))
+    .concat();
+    let kept = [
+        ("https://ok.example/?a=1&amp;b=2", "https://ok.example/?a=1&amp;b=2"),
+        ("mailto:a@b.c", "mailto:a@b.c"),
+        ("/root", "/root"),
+        ("?page=2", "?page=2"),
+        ("posts/1", "posts/1"),
+        ("#top", "#top"),
+        ("a/b:c", "a/b:c"),
+    ]
+    .map(|(href, text)| format!("<a href=\"{href}\">{text}</a>"))
+    .concat();
+    assert_eq!(rendered["0"]["html"], format!("<p>{dropped}{kept}</p>"));
     let _ = std::fs::remove_dir_all(&tmp);
     assert!(
         mismatches.is_empty(),

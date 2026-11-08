@@ -6141,7 +6141,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         return err_help(
                             value.span,
                             format!("`{name}` is an unsafe URL"),
-                            "use an http(s), mailto, root-relative or fragment URL",
+                            "use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`)",
                         );
                     }
                     let v = self.expr(value)?;
@@ -10385,12 +10385,13 @@ fn safe_url(url: &str) -> bool {
         .chars()
         .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
         .collect();
-    if url.is_empty() || url.starts_with('#') {
-        return true;
+    if url.starts_with("//") || url.starts_with("/\\") || url.starts_with('\\') {
+        return false;
     }
-    if url.starts_with('/') {
-        return !url.starts_with("//") && !url.starts_with("/\\");
+    match url.find(':') {
+        Some(colon) if !url[..colon].contains(['/', '?', '#']) => {
+            matches!(url[..colon].to_ascii_lowercase().as_str(), "http" | "https" | "mailto")
+        }
+        _ => true,
     }
-    let lower = url.to_ascii_lowercase();
-    lower.starts_with("http:") || lower.starts_with("https:") || lower.starts_with("mailto:")
 }

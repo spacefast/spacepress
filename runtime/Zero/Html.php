@@ -16,7 +16,7 @@ namespace Zero;
  * runs only when the element is placed in output that is itself rendered. Children a component
  * never places never run, and an element placed twice renders twice.
  */
-final class Html implements \Stringable
+final class Html
 {
     /** HTML void elements: no children and no closing tag. */
     private const VOID = [
@@ -111,11 +111,6 @@ final class Html implements \Stringable
     public function html(): string
     {
         return is_string($this->body) ? $this->body : ($this->body)();
-    }
-
-    public function __toString(): string
-    {
-        return $this->html();
     }
 
     /** Markup the compiler produced from literal JSX, escaped at build time. */
@@ -382,21 +377,22 @@ final class Html implements \Stringable
     }
 
     /**
-     * Zero's URL policy, the one runtime/pages/Renderer.php applies: an empty URL, a fragment, a
-     * root-relative path, or an http(s) or mailto URL. Anything else (another scheme, a
-     * protocol-relative `//host`, a bare relative path) drops the attribute. The compiler refuses
-     * a literal that fails this check.
+     * Zero's URL policy: http(s) and mailto URLs, and URLs without a scheme (`/a`, `?page=2`,
+     * `posts/1`, `#top`). Any other scheme, and a protocol-relative `//host`, drops the attribute.
+     * The compiler refuses a literal that fails this check.
      */
     public static function safeUrl(string $url): bool
     {
         // Browsers ignore leading and trailing C0 controls and spaces, and tabs and newlines anywhere.
         $url = (string) preg_replace('/[\t\n\r]/', '', trim($url, "\x00..\x20"));
-        if ($url === '' || str_starts_with($url, '#')) {
+        if (str_starts_with($url, '//') || str_starts_with($url, '/\\') || str_starts_with($url, '\\')) {
+            return false;
+        }
+        // A scheme is what comes before the first `:`, if no `/`, `?` or `#` comes first.
+        $colon = strpos($url, ':');
+        if ($colon === false || strcspn($url, '/?#') < $colon) {
             return true;
         }
-        if (str_starts_with($url, '/')) {
-            return !str_starts_with($url, '//') && !str_starts_with($url, '/\\');
-        }
-        return preg_match('/^(https?|mailto):/i', $url) === 1;
+        return in_array(strtolower(substr($url, 0, $colon)), ['http', 'https', 'mailto'], true);
     }
 }

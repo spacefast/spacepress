@@ -66,7 +66,11 @@ function live(): unknown[] {
   let picked = 0;
   let others: { b: number } = { b: 0 };
   ({ ["a"]: picked, ...others } = { a: 1, b: 2 });
-  return [a, b, rest, picked, others];
+  const key = "a";
+  let typedKey = 0;
+  let typedRest: { b: number } = { b: 0 };
+  ({ [key]: typedKey, ...typedRest } = { a: 3, b: 4 });
+  return [a, b, rest, picked, others, typedKey, typedRest];
 }
 
 /** The assignment's value is the right side, whatever the pattern takes from it. */

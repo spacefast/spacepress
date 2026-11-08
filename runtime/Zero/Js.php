@@ -1576,7 +1576,8 @@ final class Js
 
     public static function reverse(JsArray $a): JsArray
     {
-        self::writable($a);
+        // Reversing or sorting fewer than two elements sets nothing, so it succeeds on a frozen array.
+        if (count($a->a) > 1) { self::writable($a); }
         $a->a = array_reverse($a->a);
         return $a;
     }
@@ -1585,7 +1586,7 @@ final class Js
 
     public static function sort(JsArray $a, ?callable $cmp = null): JsArray
     {
-        self::writable($a);
+        if (count($a->a) > 1) { self::writable($a); }
         $len = count($a->a);
         $sorted = self::sorted($a, $cmp);
         $a->a = [...$sorted->a, ...array_slice($a->a, $len)];

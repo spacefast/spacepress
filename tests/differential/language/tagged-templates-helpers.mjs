@@ -19,5 +19,6 @@ export function taggedUntyped() {
     raw: String.raw`a\tb${1}c`,
     rawCall: String.raw({ raw: ["x", "y", "z"] }, 1, 2, 3, 4),
     frozen: (() => { const site = (s) => s; const s = site`a`; try { s[0] = "z"; return "wrote"; } catch (e) { return e.name; } })(),
+    frozenNoOps: (() => { const site = (s) => s; const attempt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name; } }; return [attempt(() => site`a`.reverse()), attempt(() => site`a`.sort()), attempt(() => site`a${1}b`.reverse()), attempt(() => site`a${1}b`.sort())]; })(),
   };
 }

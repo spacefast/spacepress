@@ -3983,6 +3983,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let mut keys = Vec::new();
                 let mut literal_keys: Vec<Option<String>> = Vec::new();
                 for (key, p) in props {
+                    let mut computed_literal = None;
                     let (key_php, field_ty) = match key {
                         PropKey::Static(k) => {
                             let field = if *ty == Ty::Dynamic {
@@ -4010,6 +4011,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
                                 _ => None,
                             };
+                            computed_literal = literal.clone();
                             let field = match ty.non_null() {
                                 Ty::Dynamic => Ty::Dynamic,
                                 Ty::Map(t) => Ty::union([*t, Ty::Undefined]),
@@ -4036,10 +4038,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     keys.push(key_php.clone());
                     literal_keys.push(match key {
                         PropKey::Static(k) => Some(k.clone()),
-                        PropKey::Computed(k) => match &k.kind {
-                            ExprKind::Str(k) => Some(k.clone()),
-                            _ => None,
-                        },
+                        PropKey::Computed(_) => computed_literal.clone(),
                     });
                     let read = self.tmp_var();
                     let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };

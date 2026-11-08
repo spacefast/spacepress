@@ -18,6 +18,7 @@ final class JsAsyncGenerator
     private const COMPLETED = 4;
 
     private int $state = self::START;
+    private bool $generatorStarted = false;
     /** @var list<array{string, mixed, JsPromise}> */
     private array $queue = [];
 
@@ -116,11 +117,13 @@ final class JsAsyncGenerator
             $this->state = self::YIELD;
             $this->complete(JsGenerator::result($this->generator->current(), false), false);
         } else {
-            $this->state = self::COMPLETED;
+            // Still executing while the return value is awaited, so no other request completes first.
             try {
                 $result = JsJobs::await($this->generator->getReturn());
+                $this->state = self::COMPLETED;
                 $this->complete(JsGenerator::result($result, true), false);
             } catch (JsError $error) {
+                $this->state = self::COMPLETED;
                 $this->complete(Js::thrownValue($error), true);
             }
         }
@@ -128,5 +131,4 @@ final class JsAsyncGenerator
         return JsUndefined::Value;
     }
 
-    private bool $generatorStarted = false;
 }

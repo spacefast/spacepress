@@ -44,7 +44,7 @@ pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
         erased_types: Default::default(),
     }
     .program(&parsed.program)
-    .map_err(|d| fail("", diag::render(&d, Path::new("."))))
+    .map_err(|d| fail("", diag::render(&d, Path::new("."))).spanned(d.span, Path::new("")))
 }
 
 pub(super) fn imports(body: &[Stmt]) -> Vec<&str> {
@@ -494,7 +494,7 @@ pub(super) fn app(
                     entries.push(entry(&pointer("/schema",&name),"mapped",format!("bind existing SQL table {}; BIGINT id, TEXT metadata/scalars and DOUBLE numbers; no rows copied",t.physical)));
                     tables.insert(name, t);
                 }
-                Err(e) => errors.push(e),
+                Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
             }
         }
     }
@@ -528,7 +528,7 @@ pub(super) fn app(
                     connector_roles.insert(name, v);
                     entries.push(entry(&at,"review","connector role normalized for the optional host overlay; credentials and grants are not migrated; ctx connector calls require a port"));
                 }
-                Err(e) => errors.push(e),
+                Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
             }
         }
     }
@@ -543,10 +543,13 @@ pub(super) fn app(
                     signed_in = b;
                     entries.push(entry("/auth/requireSignIn","mapped","carry requireSignIn to generated action gates using zero-identity; existing sessions and principal IDs require a separate identity migration"));
                 }
-                _ => errors.push(fail(
-                    &pointer("/auth", &key),
-                    "identity callbacks/providers need an explicit zero-identity migration",
-                )),
+                _ => errors.push(
+                    fail(
+                        &pointer("/auth", &key),
+                        "identity callbacks/providers need an explicit zero-identity migration",
+                    )
+                    .spanned(e.span, Path::new("")),
+                ),
             }
         }
     }
@@ -568,17 +571,23 @@ pub(super) fn app(
         {
             match obj(root[key], &pointer("", key)) {
                 Ok(items) if !items.is_empty() => {
-                    for name in items.keys() {
-                        errors.push(fail(
-                            &pointer(&pointer("", key), name),
-                            "unsupported capsule feature; port it before migrating the application",
-                        ));
+                    for (name, item) in items {
+                        errors.push(
+                            fail(
+                                &pointer(&pointer("", key), &name),
+                                "unsupported capsule feature; port it before migrating the application",
+                            )
+                            .spanned(item.span, Path::new("")),
+                        );
                     }
                 }
-                _ => errors.push(fail(
-                    &pointer("", key),
-                    "unsupported capsule feature; port it before migrating the application",
-                )),
+                _ => errors.push(
+                    fail(
+                        &pointer("", key),
+                        "unsupported capsule feature; port it before migrating the application",
+                    )
+                    .spanned(root[key].span, Path::new("")),
+                ),
             }
         }
     }
@@ -681,7 +690,7 @@ pub(super) fn app(
                         handlers.push(h);
                         entries.push(entry(&at,"mapped","v2 action with named input properties and legacy row results; REST URL/envelope and error transport follow v2"));
                     }
-                    Err(e) => errors.push(e),
+                    Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
                 }
             }
         }
@@ -777,7 +786,7 @@ pub(super) fn app(
                         entries.push(entry(&at, "review", "a signed-in caller of an unsafe-method route must send X-WP-Nonce; without it the request runs anonymously"));
                     }
                 }
-                Err(e) => errors.push(e),
+                Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
             }
         }
     }
@@ -1639,7 +1648,12 @@ impl Rewrite<'_> {
         self.edits = old;
         Ok(text)
     }
+    /// Rewrites one expression; a refusal inside it is located at the innermost expression.
     fn expr(&mut self, e: &Expr) -> Result<(), Failure> {
+        self.expr_at(e).map_err(|f| f.spanned(e.span, Path::new("")))
+    }
+
+    fn expr_at(&mut self, e: &Expr) -> Result<(), Failure> {
         if let E::Ident(name) = &e.kind
             && name.starts_with("__z08")
         {

@@ -7,6 +7,14 @@ $lock = json_decode(file_get_contents($root . '/composer.lock'), true, 512, JSON
 if ($bundle[0] === 'ZeroRuntime') {
     // Unused terminal diagnostics invoke tput; only the merger's library classes ship.
     unlink($root . '/vendor-prefixed/wp-php-toolkit/merge/functions.php');
+    // rowbot/url percent-encodes a byte in the encode set with rawurlencode(), which leaves `~`
+    // alone although the application/x-www-form-urlencoded set contains it (Node: `%7E`). Encode
+    // the byte directly, as the URL Standard's percent-encode does.
+    $encoder = $root . '/vendor-prefixed/rowbot/url/src/String/PercentEncoder.php';
+    $source = file_get_contents($encoder);
+    $patched = str_replace('$output .= rawurlencode($bytes[$i]);', "\$output .= sprintf('%%%02X', ord(\$bytes[\$i]));", $source, $count);
+    if ($count !== 1) { fwrite(STDERR, "rowbot/url percent-encoder patch no longer applies\n"); exit(1); }
+    file_put_contents($encoder, $patched);
 }
 // Strauss creates a temporary Composer project without a lock, so Composer
 // chooses a random loader suffix. Give this isolated bundle a stable identity.

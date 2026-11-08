@@ -127,6 +127,16 @@ export default defineConfig({
         return [r.status, r.statusText, r.ok, await r.text()];
       },
     }),
+    urlInput: action({
+      input: {},
+      handler: async () => {
+        // A WHATWG URL is fetch input, read as its href.
+        const url = new URL("text?via=url", (process.env.HOST_URL ?? "") + "/");
+        url.searchParams.append("q", "a b");
+        const r = await fetch(url, { method: "POST", body: url.searchParams });
+        return [r.status, url.search, await r.text()];
+      },
+    }),
     shadowed: action({
       input: {},
       handler: () => {

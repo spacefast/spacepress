@@ -1764,7 +1764,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Array(t) | Ty::NonEmptyArray(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
                     t if t.is_str() => (Ty::Str, format!("\\Zero\\Js::from({})", it.php)),
-                    t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) => (
+                    t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams) => (
                         self.iterable_element(t).expect("collection element"),
                         format!("\\Zero\\Js::iter({})", it.php),
                     ),
@@ -1800,7 +1800,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         it.php
                     );
                     let _ = writeln!(out, "{}{value} = {source}->value;", pad(indent + 1));
-                } else if it.ty == Ty::Dynamic || matches!(it.ty, Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) {
+                } else if it.ty == Ty::Dynamic
+                    || matches!(it.ty, Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams)
+                {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
                     let _ = writeln!(
@@ -3065,7 +3067,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 }
                                 Ty::Array(t) | Ty::NonEmptyArray(t) => tys.push(*t),
                                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => tys.extend(ts),
-                                t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) => {
+                                t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams) => {
                                     if v.ty.is_nullable() {
                                         return err(
                                             x.span,
@@ -4946,6 +4948,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }),
                     });
                 }
+                // URL component setters (`u.pathname = "/x"`) run the URL Standard's setter steps in
+                // `JsUrl::set` through checked property assignment.
+                if o.ty == Ty::Url {
+                    if !URL_SETTERS.contains(&prop.as_str()) {
+                        return err_help(
+                            *prop_span,
+                            format!("URL has no writable property `{prop}`"),
+                            format!("assign one of {}", URL_SETTERS.join(", ")),
+                        );
+                    }
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(format!("{}->get({})", o.wrapped(), php_str(prop)), Ty::Str),
+                        constraint: Ty::Str,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Dynamic,
+                        }),
+                    });
+                }
                 if let Ty::Class(id) = o.ty {
                     o.ty = self.class_shape(id);
                 }
@@ -5364,6 +5386,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("({x})->{prop}"));
                 Out::atom(php, suffix_null(Ty::Str))
             }
+            (Ty::Url, "searchParams") => {
+                let php = guarded(self, &|x| format!("({x})->get('searchParams')"));
+                Out::atom(php, suffix_null(Ty::UrlParams))
+            }
+            (Ty::Url, p) if URL_PROPERTIES.contains(&p) => {
+                let php = guarded(self, &|x| format!("({x})->get({})", php_str(p)));
+                Out::atom(php, suffix_null(Ty::Str))
+            }
+            (Ty::UrlParams, "size") => {
+                let php = guarded(self, &|x| format!("({x})->size()"));
+                Out::atom(php, suffix_null(Ty::Num))
+            }
+            (Ty::Url | Ty::UrlParams, _) => {
+                return err(prop_span, format!("{} has no property `{prop}`", base.describe()));
+            }
             (Ty::MapOf(..) | Ty::SetOf(_), "size") => {
                 let php = guarded(self, &|x| format!("({x})->size()"));
                 Out::atom(php, suffix_null(Ty::Num))
@@ -5612,6 +5649,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return self.typed_collection(name == "Map", args, type_args, span);
         }
         if let ExprKind::Ident(name) = &callee.kind
+            && matches!(name.as_str(), "URL" | "URLSearchParams")
+            && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
+            && !self.javascript_module(self.fx.as_ref().expect("fn").module)
+        {
+            return self.typed_url(name == "URL", args, span);
+        }
+        if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"
             && matches!(self.resolve(name, callee.span)?, Resolved::Global("RegExp"))
             && !self.javascript_module(self.fx.as_ref().expect("fn").module)
@@ -5639,7 +5683,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
             if let ExprKind::Ident(name) = &callee.kind
-                && matches!(name.as_str(), "Set" | "Map" | "WeakMap" | "WeakSet" | "Date" | "RegExp")
+                && matches!(
+                    name.as_str(),
+                    "Set" | "Map" | "WeakMap" | "WeakSet" | "Date" | "RegExp" | "URL" | "URLSearchParams"
+                )
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
                 if name == "Date" {
@@ -5773,6 +5820,108 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
+    /// `new URL(url, base?)` and `new URLSearchParams(init?)` in typed code.
+    fn typed_url(&mut self, url: bool, args: &[ArrEl], span: Span) -> Result<Out> {
+        let mut argv = Vec::new();
+        for (i, a) in args.iter().enumerate() {
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
+            let v = self.expr(x)?;
+            let v = self.finish_value(v, x.span)?;
+            let ok = if url {
+                v.ty.is_str() || v.ty == Ty::Url || (i == 1 && v.ty == Ty::Undefined)
+            } else {
+                v.ty.is_str()
+                    || v.ty == Ty::UrlParams
+                    || match v.ty.non_null() {
+                        Ty::Obj(fields) => fields.values().all(|(t, optional)| !optional && t.is_str()),
+                        Ty::Map(t) => t.is_str(),
+                        _ => false,
+                    }
+                    || self.iterable_element(&v.ty).is_some_and(|el| {
+                        let pair = |t: &Ty| {
+                            matches!(t, Ty::Tuple(ts) | Ty::ArrayLiteral(ts) if ts.len() == 2 && ts.iter().all(Ty::is_str))
+                        };
+                        match &el {
+                            Ty::Union(parts) => parts.iter().all(pair),
+                            t => pair(t),
+                        }
+                    })
+            };
+            if !ok {
+                return err_help(
+                    x.span,
+                    format!(
+                        "`new {}` doesn't take {}",
+                        if url { "URL" } else { "URLSearchParams" },
+                        v.ty.describe()
+                    ),
+                    if url {
+                        "pass a string or URL"
+                    } else {
+                        "pass a query string, [name, value] string pairs, or a Record<string, string>"
+                    },
+                );
+            }
+            argv.push(v.php);
+        }
+        if url && !(1..=2).contains(&argv.len()) || !url && argv.len() > 1 {
+            return err(span, "wrong number of arguments");
+        }
+        let class = if url { "JsUrl" } else { "JsUrlSearchParams" };
+        Ok(Out::atom(
+            format!("\\Zero\\{class}::construct({})", argv.join(", ")),
+            if url { Ty::Url } else { Ty::UrlParams },
+        ))
+    }
+
+    fn url_method(&mut self, recv: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        let r = recv.wrapped();
+        let mut strs = Vec::new();
+        for a in args {
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
+            if m == "forEach" {
+                break;
+            }
+            let v = self.expr(x)?;
+            let v = self.finish_value(v, x.span)?;
+            if !v.ty.is_str() {
+                return err_help(
+                    x.span,
+                    format!("`{m}` needs strings, not {}", v.ty.describe()),
+                    "convert with String(...)",
+                );
+            }
+            strs.push(v.php);
+        }
+        let call = |ty: Ty| Out::atom(format!("{r}->{m}({})", strs.join(", ")), ty);
+        let iter = |kind: &str, el: Ty| {
+            Out::atom(
+                format!("(new \\Zero\\JsIterator({r}->{kind}Iterator(), 'URLSearchParams Iterator'))"),
+                Ty::Iter(Box::new(el)),
+            )
+        };
+        Ok(match (&recv.ty.non_null(), m) {
+            (Ty::Url, "toString" | "toJSON") => call(Ty::Str),
+            (Ty::UrlParams, "toString") => call(Ty::Str),
+            (Ty::UrlParams, "get") => call(Ty::Str.nullable()),
+            (Ty::UrlParams, "getAll") => call(Ty::Array(Box::new(Ty::Str))),
+            (Ty::UrlParams, "has") => call(Ty::Bool),
+            (Ty::UrlParams, "append" | "set" | "delete" | "sort") => call(Ty::Undefined),
+            (Ty::UrlParams, "keys" | "values") => iter(m, Ty::Str),
+            (Ty::UrlParams, "entries") => iter("entries", Ty::Tuple(vec![Ty::Str, Ty::Str])),
+            (Ty::UrlParams, "forEach") => {
+                let f = self.arg(args, 0, span, "a function")?;
+                let cb = self.callback(f, &[Ty::Str, Ty::Str, Ty::UrlParams])?;
+                Out::atom(format!("{r}->forEach({})", cb.php), Ty::Undefined)
+            }
+            _ => return err(m_span, format!("{} has no method `{m}`", recv.ty.describe())),
+        })
+    }
+
     /// `new Map<K, V>(entries?)` / `new Set<T>(values?)` in typed code. Type arguments come from the
     /// call or are inferred from a non-empty source; an empty `new Map()` needs them.
     fn typed_collection(&mut self, map: bool, args: &[ArrEl], type_args: &[TyAnn], span: Span) -> Result<Out> {
@@ -5887,6 +6036,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t if t.is_str() => Ty::Str,
             Ty::MapOf(k, v) => Ty::Tuple(vec![(**k).clone(), (**v).clone()]),
             Ty::SetOf(t) | Ty::Iter(t) => (**t).clone(),
+            Ty::UrlParams => Ty::Tuple(vec![Ty::Str, Ty::Str]),
             _ => return None,
         })
     }
@@ -6754,6 +6904,44 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
+    /// `URL.parse` / `URL.canParse` in typed code.
+    fn typed_standard_static(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let mut argv = Vec::new();
+        for a in args {
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
+            let v = self.expr(x)?;
+            argv.push((self.finish_value(v, x.span)?, x.span));
+        }
+        let need = |ok: bool, at: Span, what: &str| -> Result<()> {
+            if ok {
+                Ok(())
+            } else {
+                err_help(at, format!("`{g}.{m}` needs {what}"), format!("pass {what}"))
+            }
+        };
+        Ok(match (g, m) {
+            ("URL", "parse" | "canParse") => {
+                for (i, (v, at)) in argv.iter().enumerate() {
+                    need(
+                        v.ty.is_str() || v.ty == Ty::Url || (i == 1 && v.ty == Ty::Undefined),
+                        *at,
+                        "a string or URL",
+                    )?;
+                }
+                let list: Vec<&str> = argv.iter().map(|(v, _)| v.php.as_str()).collect();
+                let call = format!("\\Zero\\JsUrl::{}({})", m, list.join(", "));
+                if m == "parse" {
+                    Out::atom(call, Ty::Url.nullable())
+                } else {
+                    Out::atom(call, Ty::Bool)
+                }
+            }
+            _ => return err(span, format!("`{g}.{m}` isn't supported")),
+        })
+    }
+
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if (g, m) == ("Error", "captureStackTrace") {
             // Zero records no frames; the target gets Error's header-only stack.
@@ -6778,6 +6966,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.require_javascript_symbols(span)?;
         }
         self.builtin_args(g, m, args, span)?;
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) && g == "URL" {
+            return self.typed_standard_static(g, m, args, span);
+        }
         if g == "Symbol" && matches!(m, "for" | "keyFor") {
             let argv = self.javascript_args(args)?;
             let method = if m == "for" { "for" } else { "keyFor" };
@@ -6821,7 +7012,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
-            && matches!(g, "Math" | "Array" | "Object" | "Number" | "JSON")
+            && matches!(g, "Math" | "Array" | "Object" | "Number" | "JSON" | "URL")
         {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
@@ -6851,7 +7042,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             let v = self.expr(src)?;
             let nonempty = array_proven_nonempty(&v.ty);
-            if let t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_)) = &v.ty {
+            if let t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams) = &v.ty {
                 let el = self.iterable_element(t).expect("collection element");
                 if let Some(ArrEl::Item(f)) = args.get(1) {
                     let cb = self.callback(f, &[el, Ty::Num])?;
@@ -7152,6 +7343,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::MapOf(..) => Some("map"),
             Ty::SetOf(_) => Some("set"),
             Ty::Iter(_) => Some("iterator"),
+            Ty::Url => Some("url"),
+            Ty::UrlParams => Some("urlsearchparams"),
             _ => None,
         };
         if let Some(family) = family {
@@ -7250,6 +7443,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(m_span, format!("regular expressions have no method `{m}`")),
             },
             Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) => self.collection_method(&recv, m, args, span, m_span)?,
+            Ty::Url | Ty::UrlParams => self.url_method(&recv, m, args, span, m_span)?,
             Ty::Map(_) | Ty::Obj(_) => {
                 // Calling a function stored in an object field.
                 let mut f = self.member_of_out(&recv, m, m_span)?;
@@ -8712,6 +8906,8 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::MapOf(..)
         | Ty::SetOf(_)
         | Ty::Iter(_)
+        | Ty::Url
+        | Ty::UrlParams
         | Ty::Fn(..)
         | Ty::Rest(_)
         | Ty::Promise(_)
@@ -8906,7 +9102,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         ),
         Ty::Map(t) => Ty::Map(Box::new(widen_fresh_literals(t))),
         // Map and Set type arguments are invariant handles; they never carry fresh literals.
-        Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) => t.clone(),
+        Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::Url | Ty::UrlParams => t.clone(),
         Ty::Fn(params, ret) => Ty::Fn(
             params.iter().map(widen_fresh_literals).collect(),
             Box::new(widen_fresh_literals(ret)),
@@ -9005,6 +9201,16 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         _ => false,
     }
 }
+
+/// URL's writable accessors (`origin` and `searchParams` are read-only).
+const URL_SETTERS: &[&str] = &[
+    "href", "protocol", "username", "password", "host", "hostname", "port", "pathname", "search", "hash",
+];
+
+/// URL's string-valued accessors.
+const URL_PROPERTIES: &[&str] = &[
+    "href", "origin", "protocol", "username", "password", "host", "hostname", "port", "pathname", "search", "hash",
+];
 
 fn same_type(a: &Ty, b: &Ty) -> bool {
     assignable(a, b) && assignable(b, a)

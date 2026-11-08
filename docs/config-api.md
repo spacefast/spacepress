@@ -521,7 +521,7 @@ compiles, and what it refuses with a fix:
 
 | | Supported | Refused |
 | --- | --- | --- |
-| `input` | a URL string | `URL` and `Request` objects |
+| `input` | a URL string or a `URL` | `Request` objects |
 | `method` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` | other methods (`zero_fetch_method_denied`) |
 | `headers` | an object of strings, an array of `[name, value]` pairs, or `new Headers(...)` | |
 | `body` | a string (`JSON.stringify(value)` for JSON) or `URLSearchParams` | `Blob`, `FormData`, `ArrayBuffer`, streams |
@@ -529,7 +529,7 @@ compiles, and what it refuses with a fix:
 | other options | | `signal`, `credentials`, `mode`, `cache`, `keepalive` and the rest |
 | `Response` | `status`, `statusText`, `ok`, `url`, `redirected`, `bodyUsed`, `headers.get/has/forEach`, `text()`, `json()` | `body`, `arrayBuffer()`, `blob()`, `formData()`, `clone()` |
 | `Headers` | `new Headers(init)`, `get`, `has`, `set`, `append`, `delete`, `forEach` | iterators, `getSetCookie` |
-| `URLSearchParams` | `new URLSearchParams(init)` from a string, object or pairs; `get`, `getAll`, `has`, `set`, `append`, `delete`, `toString()` | iterators, `sort` |
+| `URL`, `URLSearchParams` | the WHATWG URL Standard (see [language support](language-support.md#whatwg-url)): parsing, components, `searchParams`, and every `URLSearchParams` method, iterator and `sort` | `URL.createObjectURL` |
 
 A string body is sent as `text/plain;charset=UTF-8` and `URLSearchParams` as
 `application/x-www-form-urlencoded;charset=UTF-8` unless `headers` sets

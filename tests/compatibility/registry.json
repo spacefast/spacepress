@@ -345,6 +345,13 @@
       "guidance": "Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\\JsMap`/`Zero\\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused."
     },
     {
+      "id": "whatwg-url",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "url_vectors_agree_in_node_and_generated_php",
+      "guidance": "`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named Zero classes."
+    },
+    {
       "id": "builtin-overloads",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
@@ -519,14 +526,6 @@
       "fixture": "tests/fixtures/reject-fetch-body",
       "message": "fetch() `body` can't be",
       "guidance": "Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormData, ArrayBuffer and stream bodies are not available."
-    },
-    {
-      "id": "url-objects",
-      "status": "refused",
-      "code": "Z4001",
-      "fixture": "tests/fixtures/reject-fetch-url-object",
-      "message": "`new URL` isn't available in Zero code",
-      "guidance": "fetch() takes a URL string. Build it with encodeURIComponent and URLSearchParams.toString(). URL and Request objects are not compiled."
     },
     {
       "id": "response-streams",

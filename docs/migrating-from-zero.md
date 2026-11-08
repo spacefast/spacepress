@@ -173,6 +173,33 @@ The report contains `entries` with `mapped` or `review` outcomes, an `errors`
 list with RFC 6901 pointers, `adoption_sql`, and `connector_roles`. Pointers name
 capsule declarations; `/pages/...`, `/layouts/...`, and `/islands/...` name project
 files. All independently unsupported handlers and features are reported together.
+
+Each error has this shape:
+
+```json
+{
+  "pointer": "/queries/identity/ctx/auth/userId",
+  "reason": "ctx.auth.userId maps only for Space Users (pass --users): ...",
+  "code": "Z08_CTX_AUTH_USERS",
+  "file": "server/index.ts",
+  "line": 9,
+  "column": 36,
+  "feature": "ctx.auth.userId without Space Users",
+  "v2": "ctx.user.id",
+  "fix": "Migrate with --users when the Space uses Space Users; otherwise key rows by ctx.user.id."
+}
+```
+
+- `code` is stable. A new kind of refusal gets a new code, and a code never
+  changes meaning. Every code is listed under `zero08` in
+  `tests/compatibility/registry.json`.
+- `file`, `line` and `column` locate the refusal in the 0.8 source. The file is
+  relative to the capsule, the line is 1-based, and the column counts UTF-16
+  code units, as `zero check --json` does. A refusal with no narrower location
+  points at the start of its file.
+- `feature` names the 0.8 feature, `v2` its v2 equivalent, and `fix` is one line
+  on what to change.
+- `pointer` and `reason` are unchanged; `reason` keeps the full message.
 Compiler failures point to the generated source and refuse the whole candidate.
 A `written` candidate can still contain review entries. It is not a live deployment.
 

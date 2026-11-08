@@ -46,6 +46,46 @@ static OS_METADATA_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(OS_METADA
 const SKIPPED_DIRECTORIES: &[&str] = &[".git", ".hg", ".svn", "node_modules", ".spacefast", ".stattic"];
 /// Directories 0.8 never published beyond the deny list (publish-policy's `IGNORED_SEGMENTS`).
 const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".zero", ".sf"];
+/// publish-policy's `publishPathIgnored` beyond its segment lists: Next's build cache and the
+/// CLI's own temporary and lock files, at any depth (matched on the lowercased path).
+const IGNORED_PATH_PATTERN: &str = r"(?:^|/)\.next/cache(?:/|$)|(?:^|/)\.spacefast-(?:[0-9a-f-]{36}\.(?:tmp(?:\.mjs)?|rollback|retired)|[0-9a-f]{24}\.lock)$";
+static IGNORED_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(IGNORED_PATH_PATTERN).expect("ignored paths"));
+// The paths 0.8's publish kept out as the runtime's own (`runtimeOwnedPaths`, the
+// `static_runtime_control_path_not_supported` paths of publish-policy's `staticUploadPathViolation`)
+// and the execution-control files that policy refuses. Lowercase, compared with the folded path.
+const STATIC_EXECUTION_CONTROL_FILES: &[&str] = &[".htaccess", ".user.ini", "spacefast.config.ts"];
+const STATIC_RUNTIME_CONTROL_SEGMENT_PREFIXES: &[&str] = &["__spacefast", "__stattic"];
+const STATIC_RUNTIME_ROOT_SEGMENTS: &[&str] = &["__sf", "__span", "__zero"];
+const STATIC_RUNTIME_CONTROL_PATHS: &[&str] = &[".well-known/spacefast-runtime", ".well-known/stattic-runtime"];
+const STATIC_RUNTIME_CONTROL_PREFIXES: &[&str] = &[
+    ".zero-compiled",
+    ".spacefast/storage",
+    ".spacefast/engine",
+    ".stattic/storage",
+    ".stattic/engine",
+];
+/// The subtrees under the runtime prefix a publish may still write (`isPublishableBuildArtifactPath`).
+const PUBLISHABLE_BUILD_ARTIFACT_PREFIXES: &[&str] =
+    &["__spacefast/functions/bundles/", "__spacefast/functions/seeds/"];
+
+/// Whether 0.8's publish kept `relative` out as a runtime control path or execution-control file.
+fn runtime_owned(relative: &str) -> bool {
+    let lower = relative.to_ascii_lowercase();
+    let segments: Vec<&str> = relative.split('/').collect();
+    let name = lower.rsplit('/').next().unwrap_or(&lower);
+    STATIC_EXECUTION_CONTROL_FILES.contains(&name)
+        || STATIC_RUNTIME_ROOT_SEGMENTS.contains(&segments[0].to_ascii_lowercase().as_str())
+        || segments[0] == "identity"
+        || (segments.iter().any(|s| {
+            let s = s.to_ascii_lowercase();
+            STATIC_RUNTIME_CONTROL_SEGMENT_PREFIXES.iter().any(|p| s.starts_with(p))
+        }) && !PUBLISHABLE_BUILD_ARTIFACT_PREFIXES.iter().any(|p| lower.starts_with(p)))
+        || STATIC_RUNTIME_CONTROL_PREFIXES
+            .iter()
+            .any(|p| lower == *p || lower.starts_with(&format!("{p}/")))
+        || STATIC_RUNTIME_CONTROL_PATHS.contains(&lower.as_str())
+        || IGNORED_PATH.is_match(&lower)
+}
 
 /// Roots that hold the capsule's source, never served as content.
 const SOURCE_ROOTS: &[&str] = &["client", "server", "shared", "pages"];
@@ -145,7 +185,8 @@ fn served(relative: &str) -> bool {
         // the source roots is the author's content, and 0.8 served it.
         || (!relative.contains('/') && relative.starts_with("tsconfig") && relative.ends_with(".json"))
         || TYPESCRIPT.contains(&extension)
-        || policy(relative) != Policy::Keep)
+        || policy(relative) != Policy::Keep
+        || runtime_owned(relative))
 }
 
 /// A capsule's files, capsule-relative, sorted.

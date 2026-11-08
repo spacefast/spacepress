@@ -416,11 +416,22 @@ fn omissions_are_errors_and_static_files_carry_over() {
         ".aws/credentials",
         ".env/secret",
     ];
+    // Skipped without an error as 0.8 did: checkout state, dependencies, OS metadata, the
+    // runtime's own paths (staticUploadPathViolation) and build caches (publishPathIgnored).
     let skipped = [
         ".git/config",
         "node_modules/left-pad/index.js",
         ".DS_Store",
         "docs/._guide.txt",
+        ".htaccess",
+        "docs/.user.ini",
+        "__spacefast_generated/old.txt",
+        "__sf/a.txt",
+        "identity/a.txt",
+        ".zero-compiled/a.txt",
+        ".well-known/stattic-runtime",
+        ".next/cache/a.txt",
+        ".spacefast-0123456789abcdef01234567.lock",
     ];
     for path in denied.iter().chain(&skipped).chain(&["invalid_rsa_key.json"]) {
         let file = secrets.join(path);
@@ -450,7 +461,7 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // A fixture that only contains the letters is content.
     assert_eq!(
         carried,
-        ["/humans.txt", "/index.html", "/invalid_rsa_key.json"],
+        ["/humans.txt", "/index.html", "/invalid_rsa_key.json",],
         "{report:#}"
     );
 

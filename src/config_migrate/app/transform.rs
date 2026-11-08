@@ -1199,6 +1199,21 @@ fn handler(
     let mut input = vec![];
     let mut bindings = String::new();
     for (position, p) in f.params.iter().skip(1).enumerate() {
+        // A default runs in the handler's bindings, where the 0.8 context parameter no longer
+        // exists (it became `__z08ctx`); a default that reads it needs a manual port.
+        let default_text = p.default.as_ref().map(|d| raw(source, d.span)).unwrap_or("");
+        let pattern_text = raw(source, p.pat.span());
+        if ctx != "__z08unused"
+            && [default_text, pattern_text].iter().any(|t| {
+                t.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+                    .any(|w| w == ctx)
+            })
+        {
+            return Err(fail(
+                at,
+                "rest and default parameters need a manual input schema when a default reads the context",
+            ));
+        }
         // 0.8 called `handler(ctx, ...args)` with the client's positional arguments; each
         // parameter becomes one named v2 input. A destructured parameter becomes one JSON input
         // named after its position, destructured in the handler exactly as 0.8 did.
@@ -1296,8 +1311,9 @@ fn handler(
             // value as null, so `??` is exact when the declared type excludes null; when it admits
             // null, an explicit null and a missing argument can no longer be told apart.
             Some(default) => {
-                if matches!(ann, TyAnn::Null | TyAnn::Unknown | TyAnn::Any(_))
-                    || matches!(ann, TyAnn::Union(xs) if xs.iter().any(|x| matches!(x, TyAnn::Null)))
+                // A named type may alias a nullable one; without resolving it, refuse.
+                if matches!(ann, TyAnn::Null | TyAnn::Unknown | TyAnn::Any(_) | TyAnn::Ref(..))
+                    || matches!(ann, TyAnn::Union(xs) if xs.iter().any(|x| matches!(x, TyAnn::Null | TyAnn::Ref(..))))
                 {
                     return Err(fail(
                         at,

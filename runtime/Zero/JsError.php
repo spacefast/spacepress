@@ -7,6 +7,9 @@ namespace Zero;
 /** A JavaScript `Error` (or subclass, named by $jsName) thrown by compiled code or a Js helper. */
 class JsError extends \Exception
 {
+    /** `AggregateError.errors`: the rejection reasons, in iterable order. */
+    public ?JsArray $errors = null;
+
     public function __construct(string $message, public readonly string $jsName = 'Error', public readonly bool $hasMessage = true)
     {
         parent::__construct($message);

@@ -191,7 +191,16 @@ final class JsIter
     {
         $iter = $async ? self::openAsync($iterable) : self::open($iterable);
         if ($iter->native !== null) {
-            while ($iter->step()) { yield $iter->value; }
+            // Built-in iterators have no throw(): the delegation closes and throws a TypeError
+            // into the delegating generator (YieldExpression evaluation, step 7.b.iii).
+            while ($iter->step()) {
+                try {
+                    yield $iter->value;
+                } catch (JsError) {
+                    $iter->done = true;
+                    throw new JsError('The iterator does not provide a \'throw\' method', 'TypeError');
+                }
+            }
             return JsUndefined::Value;
         }
         $iterator = $iter->iterator;

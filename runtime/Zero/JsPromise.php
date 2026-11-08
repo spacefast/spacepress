@@ -234,6 +234,7 @@ final class JsPromise
             ksort($values);
             if ($method === 'any') {
                 $error = new JsError('All promises were rejected', 'AggregateError');
+                $error->errors = new JsArray(array_values($values));
                 $result->reject($error);
                 return;
             }

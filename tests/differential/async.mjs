@@ -217,3 +217,28 @@ export async function streams() {
   try { new ReadableStream().getReader(); source.getReader(); source.getReader(); } catch (error) { log.push(error.name); }
   return log;
 }
+
+// Failure paths: a failing transform errors the readable side, Promise.any keeps every reason,
+// and throw() into `yield*` over a built-in iterator becomes a TypeError in the outer generator.
+function* delegating(log) {
+  try { yield* [1, 2]; } catch (error) { log.push("outer:" + error.name); }
+}
+export async function failures() {
+  const log = [];
+  const failing = new TransformStream({ transform() { throw new Error("bad"); } });
+  const source = new ReadableStream({ start(controller) { controller.enqueue("a"); controller.close(); } });
+  try {
+    for await (const chunk of source.pipeThrough(failing)) log.push(chunk);
+  } catch (error) {
+    log.push("pipe:" + error.message);
+  }
+  try {
+    await Promise.any([Promise.reject(1), Promise.reject(2)]);
+  } catch (error) {
+    log.push(error.name + ":" + JSON.stringify(error.errors) + ":" + error.message);
+  }
+  const it = delegating(log);
+  it.next();
+  it.throw(new Error("x"));
+  return log;
+}

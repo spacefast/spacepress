@@ -627,6 +627,7 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
         "generators",
         "pagination",
         "streams",
+        "failures",
     ];
     let tmp = tempfile::tempdir().unwrap();
     std::fs::copy(

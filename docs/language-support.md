@@ -168,6 +168,30 @@ Array and object patterns on the left of `=` assign existing variables, object f
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## typed-for-await
+
+Status: **supported**.
+
+In authored TypeScript, `for await` runs over arrays, tuples and strings whose elements are plain values or Zero's own promises, which the blocking model settles exactly. Async iterables, generators and values from imported JavaScript need the job queue and are refused there; imported JavaScript runs every `for await` through it.
+
+[Evidence](../tests/compiler_contracts.rs) (`typed_for_await_accepts_only_settled_sync_iterables`)
+
+## for-await-promise-literal
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`for await` awaits each element as the loop reaches it, but Zero's blocking calls would all run before the loop starts. Await each call where it is written: `for (const v of [await a(), await b()])`.
+
+[Evidence](../tests/fixtures/reject-for-await-promise-literal)
+
+## for-await-class-instance
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`for await` adopts an instance with a `then` method as a promise, which needs the job queue. Use `for (const v of items)`, or call the method explicitly.
+
+[Evidence](../tests/fixtures/reject-for-await-class-instance)
+
 ## tagged-templates
 
 Status: **supported**.

@@ -330,18 +330,49 @@ export default defineConfig({ name: "url", actions: { probe: action({ input: {},
             &tmp.path().join("cases.json"),
         ],
     );
-    let parsed = &expected[0];
-    let got: Value = result;
-    for (i, (want, have)) in parsed
-        .as_array()
-        .unwrap()
+    // URL parsing is checked against WPT's own expected values: Node lags the URL Standard on a
+    // few newer cases, which the bundled parser already implements. Node remains the oracle for
+    // the URLSearchParams and setter vectors, which WPT's urltestdata doesn't cover.
+    let props = [
+        "href", "origin", "protocol", "username", "password", "host", "hostname", "port", "pathname", "search", "hash",
+    ];
+    let mut node_lags = 0;
+    let cases_wpt: Vec<&Value> = wpt.as_array().unwrap().iter().filter(|c| c.is_object()).collect();
+    for (i, (case, (have, node))) in cases_wpt
         .iter()
-        .zip(got[0].as_array().unwrap())
+        .zip(
+            result[0]
+                .as_array()
+                .unwrap()
+                .iter()
+                .zip(expected[0].as_array().unwrap()),
+        )
         .enumerate()
     {
-        assert_eq!(want, have, "WPT urltestdata case {i}");
+        let want = if case["failure"] == true {
+            Value::Null
+        } else {
+            Value::Array(
+                props
+                    .iter()
+                    .map(|p| match case.get(*p) {
+                        Some(v) => v.clone(),
+                        // origin is absent from a few cases; compare what Node computes there.
+                        None => node[props.iter().position(|q| q == p).unwrap()].clone(),
+                    })
+                    .collect(),
+            )
+        };
+        assert_eq!(have, &want, "WPT urltestdata case {i}: {}", case["input"]);
+        node_lags += usize::from(node != &want);
     }
-    assert_eq!(got, expected);
+    // Node 22 fails 7 newer cases (trailing spaces in opaque paths, `^` in paths); more means drift.
+    assert!(node_lags <= 7, "Node disagrees with WPT on {node_lags} cases");
+    assert_eq!(
+        result[1], expected[1],
+        "URLSearchParams and setter vectors differ from Node"
+    );
+    assert_eq!(result[2], expected[2], "invalid URLs differ from Node");
 }
 
 #[test]
@@ -1290,7 +1321,7 @@ fn host_globals_match_node_through_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     assert_eq!(expected["complete"], true);
     let mut expected = expected["cases"].clone();
-    assert_eq!(expected.as_object().unwrap().len(), 10, "{expected}");
+    assert_eq!(expected.as_object().unwrap().len(), 11, "{expected}");
     assert!(
         expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
         "{expected}"

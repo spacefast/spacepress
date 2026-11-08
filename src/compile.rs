@@ -1796,7 +1796,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         it.php
                     );
                     let _ = writeln!(out, "{}{value} = {source}->value;", pad(indent + 1));
-                } else if it.ty == Ty::Dynamic || matches!(it.ty, Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams) {
+                } else if it.ty == Ty::Dynamic
+                    || matches!(it.ty, Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams)
+                {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
                     let _ = writeln!(

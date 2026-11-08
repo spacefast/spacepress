@@ -91,14 +91,13 @@ pub enum Ty {
     Builder(Box<Builder>),
 }
 
-/// Host objects with a nominal type: `Response` from `fetch`, `Headers`, `URLSearchParams`, and
+/// Host objects with a nominal type: `Response` from `fetch`, `Headers`, and
 /// the `node:crypto` hash/HMAC chains and `randomBytes` buffers, which only exist inside one
 /// recognized expression.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostTy {
     Response,
     Headers,
-    SearchParams,
 }
 
 impl HostTy {
@@ -106,7 +105,6 @@ impl HostTy {
         match self {
             HostTy::Response => "Response",
             HostTy::Headers => "Headers",
-            HostTy::SearchParams => "URLSearchParams",
         }
     }
 }

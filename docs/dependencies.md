@@ -9,6 +9,7 @@ End-user builds need neither Composer nor Strauss. The binary embeds the committ
 | runtime | `wp-php-toolkit/markdown` | 0.10.1 | WordPress-maintained Markdown to Gutenberg conversion and front matter parsing for sync | Core has no Markdown parser or producer and no YAML front matter reader | `data-liberation` (trimmed) |
 | runtime | `wp-php-toolkit/merge` | 0.10.1 | Server-side line differ and three-way merge for sync | Core's `Text_Diff`/`wp_text_diff()` renders two-way diffs; it has no three-way merge or conflict regions | `data-liberation` (trimmed) |
 | runtime | `async-aws/s3` | 3.5.0 | S3 request signing, XML protocol and streaming object transport (MIT) | Core has no SigV4 signing, S3 XML protocol or multipart upload; `wp_remote_*` buffers whole bodies | AsyncAWS Core, Symfony HTTP client and PSR contracts |
+| runtime | `rowbot/url` | 4.2.1 | WHATWG URL Standard parser behind `URL`/`URLSearchParams` in compiled code (MIT); passes the web-platform-tests suite | Core has `wp_parse_url()`, a `parse_url()` wrapper that follows RFC 3986 loosely, not the URL Standard browsers and Node implement | `rowbot/idna`, `rowbot/punycode`, `brick/math`, `symfony/polyfill-intl-normalizer` (all MIT) |
 | identity | `web-auth/webauthn-lib` | 5.3.9 | Passkeys: CBOR/COSE/attestation parsing is not hand-rollable | Core has no WebAuthn, CBOR or COSE support | 29 (Symfony serializer and friends, cose-lib, cbor-php, pki-framework) |
 | identity | `firebase/php-jwt` | 7.1.0 | RS256 signing for the issuer and inbound ID-token verification; one JWT library | Core has no JWT or JWK implementation | 0 |
 | identity | `spomky-labs/otphp` | 11.5.0 | TOTP for MFA; small, maintained, proven by the MFA suites | Core has no TOTP; its two-factor support lives in a separate plugin | 1 shared (`paragonie/constant_time_encoding`) |
@@ -68,6 +69,13 @@ Generation normalizes the build helper's inferred Composer branch and commit so
 the bundle stays identical across checkouts.
 The unused merge terminal diagnostic (`merge/functions.php`) is removed during
 generation. It shells out to `tput`; the merger classes have no dependency on it.
+Generation also patches one line in rowbot/url (`String/PercentEncoder.php`). It
+percent-encoded with `rawurlencode()`, which leaves `~` alone although the
+`application/x-www-form-urlencoded` set contains it. The patch encodes the byte
+directly, which matches the URL Standard and Node, and generation fails if the
+line changes upstream. `DS` is excluded from constant prefixing because
+rowbot/idna aliases `DIRECTORY_SEPARATOR` as `DS`, and prefixing it leaves an
+undefined constant.
 `tests/php/run.sh boundary` checks the shipped PHP for process calls, with the
 offline CLI deployment adapter as the only exception.
 

@@ -13,7 +13,7 @@
 set -euo pipefail
 repo=$(git rev-parse --show-toplevel)
 scratch=${1:-${TMPDIR:-/tmp}/zero-files-sdk-merged}
-pattern=${FILES_SDK_BRANCHES:-'^feat/(files-sdk-|ts-language-gaps|lang-|class-features|binary-data|async-streams|library-types|stdlib-objects|host-globals|plugin-capabilities|static-namespace-members|ts-this-type|php-8\.3)'}
+pattern=${FILES_SDK_BRANCHES:-'^feat/(files-sdk-|ts-language-gaps|lang-|binary-data|async-streams|library-types|stdlib-|class-|host-globals|plugin-capabilities|static-namespace-members|ts-this-type|php-8\.3)'}
 
 git -C "$repo" fetch origin --quiet --prune
 branches=$(git -C "$repo" for-each-ref --sort=committerdate --format='%(refname:lstrip=3)' refs/remotes/origin/ \
@@ -43,9 +43,15 @@ builds() {
   return 1
 }
 already=()
+# Squash merges leave the branch outside main's history, so a merged PR whose
+# head is the branch's current head also counts as already in main.
+merged_heads=$(gh pr list -R spacefast/zero --state merged --base main --limit 200 --json headRefName,headRefOid \
+  --jq '.[] | "\(.headRefName) \(.headRefOid)"' 2>/dev/null || true)
 for branch in $branches; do
   sha=$(git -C "$repo" rev-parse --short "origin/$branch")
-  if git -C "$repo" merge-base --is-ancestor "origin/$branch" origin/main; then
+  full=$(git -C "$repo" rev-parse "origin/$branch")
+  if git -C "$repo" merge-base --is-ancestor "origin/$branch" origin/main \
+    || grep -qxF "$branch $full" <<<"$merged_heads"; then
     already+=("$branch@$sha")
     continue
   fi

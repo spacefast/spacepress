@@ -333,6 +333,10 @@ async function main() {
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
   const build = async (allowDestructive = false) => {
+    // Before the history check, which would read a moved ledger as changed and point at --allow-destructive.
+    if (await exists(join(project, 'zero/migrations'))) {
+      throw new Error('zero/migrations/ moved to zero/_generated/migrations/; move it with `mkdir -p zero/_generated && git mv zero/migrations zero/_generated/migrations`, then start again.');
+    }
     const args = ['build', project, '--out', content];
     if (managed.owner.snapshot && !allowDestructive) {
       // A prebuilt/edited migration can hide an intermediate destructive step even if the final

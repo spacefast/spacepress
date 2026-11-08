@@ -358,7 +358,7 @@ pub struct Compiler<'a, 'p> {
     helper_types: HashMap<usize, Ty>,
     /// Emitted helpers for captured values: (plugin owner, kind, allocation). Kinds in use:
     /// 0 array, 1 object, 2 regex, 3 Map/Set (`Value::Coll`), 5 unregistered symbol, 6
-    /// WeakMap/WeakSet. feat/binary-data claims 4 (Value::Native); a new value kind takes the
+    /// WeakMap/WeakSet, 7 the per-request receiver of a namespace object. feat/binary-data claims 4 (Value::Native); a new value kind takes the
     /// next unused number so addresses of different kinds never collide.
     data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
@@ -4176,36 +4176,71 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(format!("\\ZeroApp\\{name}()"))
     }
 
-    /// The per-request object for a static namespace object that has a method reading `this`.
+    /// The per-request object behind a read of `obj` when `obj` is, or sits inside, a static
+    /// namespace object that has a method reading `this`. Those methods may write its fields, so
+    /// reads go to that object rather than to the build-time constant.
     fn stateful_namespace(&mut self, obj: &Expr) -> Result<Option<String>> {
-        let Some((_, Value::Object(o), _)) = self.static_receiver(obj)? else {
+        if let Some((_, Value::Object(o), _)) = self.static_receiver(obj)? {
+            // A module namespace's functions can't take it as `this` (see `receiver_value`), so
+            // its fields keep their build-time values.
+            if self
+                .ev
+                .namespace_imports
+                .contains(&(Rc::as_ptr(&o) as *const () as usize))
+            {
+                return Ok(None);
+            }
+            let stateful = o
+                .borrow()
+                .values()
+                .any(|v| matches!(v, Value::Closure(c) if receives_this(&c.func)));
+            if stateful {
+                return self.receiver_object(obj).map(Some);
+            }
+        }
+        let ExprKind::Member { obj: inner, prop, .. } = &obj.kind else {
             return Ok(None);
         };
-        let stateful = o
-            .borrow()
-            .values()
-            .any(|v| matches!(v, Value::Closure(c) if receives_this(&c.func)));
-        if !stateful {
-            return Ok(None);
-        }
-        self.receiver_object(obj).map(Some)
+        Ok(self
+            .stateful_namespace(inner)?
+            .map(|outer| format!("\\Zero\\Js::dynamicGet({outer}, {})", php_str(prop))))
     }
 
-    /// A static namespace materialized as the receiver of a method that reads `this`: data
-    /// properties become their captured values and function members their callable values.
+    /// A static namespace materialized as the receiver of a method that reads `this`.
     fn receiver_object(&mut self, obj: &Expr) -> Result<String> {
         let Some((path, value, binding)) = self.static_receiver(obj)? else {
             let recv = self.expr(obj)?;
             return Ok(self.finish_value(recv, obj.span)?.php);
         };
-        let Value::Object(o) = &value else {
+        self.receiver_value(&path, &value, &binding, obj.span)
+    }
+
+    /// One per-request PHP object for a build-time namespace object: data properties become their
+    /// captured values, function members their callable values, and nested namespace objects
+    /// their own receivers, so `this.a.b` and `ns.a.b` read the same object.
+    fn receiver_value(&mut self, path: &str, value: &Value, binding: &Binding, span: Span) -> Result<String> {
+        let Value::Object(o) = value else {
             return err_help(
-                obj.span,
+                span,
                 format!("`{path}` can't be the receiver of a method that reads `this`"),
                 "call the method on a plain object",
             );
         };
-        let key = (self.owner(), 2, Rc::as_ptr(o) as usize);
+        if self
+            .ev
+            .namespace_imports
+            .contains(&(Rc::as_ptr(o) as *const () as usize))
+        {
+            return Err(Diag::new(
+                span,
+                format!("Zero code doesn't support calling a function that reads `this` through the module namespace `{path}`"),
+            )
+            .code(crate::diag::Code::Unsupported)
+            .help(
+                "JavaScript binds the frozen namespace object as `this`, which PHP can't build; export an object that holds the function (`export const api = { f }`) and call `api.f()`, or stop reading `this` in the function",
+            ));
+        }
+        let key = (self.owner(), 7, Rc::as_ptr(o) as usize);
         if let Some(name) = self.data_helpers.get(&key) {
             return Ok(format!("\\ZeroApp\\{name}()"));
         }
@@ -4216,17 +4251,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
         );
         for (key, member) in fields {
-            let php = match &member {
-                Value::Closure(_) => {
-                    self.captured_use(&format!("{path}.{key}"), member.clone(), &binding, obj.span, true, true)?
-                        .php
-                }
-                data if !is_static_namespace(data)
-                    && validate_captured_data(data, obj.span, &mut HashSet::new()).is_ok() =>
-                {
-                    self.captured_data(data)?
-                }
-                _ => continue,
+            let member_path = format!("{path}.{key}");
+            // Every member gets its run-time form or a compile error: a dropped field would read
+            // as undefined through `this`.
+            let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
+                self.receiver_value(&member_path, &member, binding, span)?
+            } else {
+                self.captured_use(&member_path, member, binding, span, true, true)
+                    .map_err(|d| {
+                        if d.help.is_some() {
+                            return d;
+                        }
+                        let help = format!(
+                            "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                        );
+                        d.help(help)
+                    })?
+                    .php
             };
             let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
         }

@@ -147,7 +147,12 @@ impl Compiler<'_, '_> {
                 }
                 // The context and request types `"zero"` exports, so a helper can take what a
                 // handler received: `HookCtx<T>`, `AccessCtx<T>` and `ValidateCtx` take the data.
-                if let Some(imported) = self.zero_type_import(module, name).as_deref() {
+                if let Some(imported) = self.zero_type_import(module, name).as_deref().filter(|imported| {
+                    matches!(
+                        *imported,
+                        "User" | "Role" | "HookCtx" | "AccessCtx" | "ValidateCtx" | "RouteRequest" | "RouteResponse"
+                    )
+                }) {
                     let data = match args.as_slice() {
                         [] => None,
                         [t] if matches!(imported, "HookCtx" | "AccessCtx") => {

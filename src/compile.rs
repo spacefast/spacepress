@@ -265,8 +265,11 @@ struct FnCtx {
     captures: Option<Vec<(String, bool)>>,
     outer: Option<Box<FnCtx>>,
     tmp: usize,
-    /// Switches between the current statement and the nearest loop (PHP counts them for `continue`).
-    switch_depth: usize,
+    /// Enclosing loops, switches and labeled blocks, innermost last. PHP's `break N` and
+    /// `continue N` count each of them as one level.
+    jumps: Vec<JumpTarget>,
+    /// Labels for the next statement compiled, when it is a loop or switch.
+    pending_labels: Vec<String>,
     conditional_depth: usize,
     /// Access rules can't query (§1.6): `db` is rejected inside them and their closures.
     no_db: bool,
@@ -277,6 +280,8 @@ struct FnCtx {
 
 pub struct Compiler<'a, 'p> {
     classes: HashMap<usize, classes::CompiledClass>,
+    /// Class ids by (owning plugin, class value).
+    class_ids: HashMap<(usize, usize), usize>,
     pub schema: &'a Schema,
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
@@ -286,11 +291,11 @@ pub struct Compiler<'a, 'p> {
     annotation_steps: usize,
     resolving_json_types: HashSet<usize>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
-    helpers: HashMap<(usize, bool), String>,
-    helper_values: HashMap<usize, String>,
+    helpers: HashMap<(usize, usize, bool), String>,
+    helper_values: HashMap<(usize, usize), String>,
     helper_closures: HashMap<usize, Rc<Closure>>,
     helper_types: HashMap<usize, Ty>,
-    data_helpers: HashMap<(u8, usize), String>,
+    data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
@@ -304,6 +309,17 @@ pub struct Compiler<'a, 'p> {
     pub abilities: crate::wordpress::abilities::Catalog,
     /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
     pub wordpress_uses: Vec<WordPressUse>,
+    /// The plugin whose root is compiling, and its name; `None` for the app's own code.
+    plugin: Option<(usize, String)>,
+    /// The PHP function compiling right now, for the read→send report.
+    current: String,
+    /// Every capability-bearing call in a plugin's compiled code.
+    pub uses: Vec<crate::plugins::Use>,
+    /// Which compiled functions each function calls, for the read→send report.
+    pub calls: HashMap<String, HashSet<String>>,
+    plugin_names: Vec<String>,
+    /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
+    pub host_functions: Vec<String>,
 }
 
 /// What kind of WordPress feature a module uses: the capability kinds a plugin gate counts.
@@ -345,6 +361,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         Compiler {
             classes: HashMap::new(),
+            class_ids: HashMap::new(),
             schema,
             ev,
             collections: &ext.collections,
@@ -365,8 +382,153 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
+            plugin: None,
+            current: String::new(),
+            uses: Vec::new(),
+            calls: HashMap::new(),
+            host_functions: Vec::new(),
+            plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
             wordpress_uses: Vec::new(),
+        }
+    }
+
+    /// What registering a plugin root itself uses: the collection a hook sees, its own action or
+    /// route, and the secret a signature reads.
+    fn root_capabilities(&mut self, root: &Root) {
+        let span = root.closure.func.span;
+        match &root.slot {
+            Slot::Hook { table, kind } => {
+                let key = self.schema.collections[table].key.clone();
+                // Every hook receives its row: that read is granted, but it isn't data the
+                // handler chose to read, so the flow report doesn't attribute it.
+                let handler = std::mem::take(&mut self.current);
+                self.uses("read", key.clone(), span);
+                self.current = handler;
+                self.uses("hooks", format!("{key}.{}", kind.name()), span);
+            }
+            Slot::ActionHandler { action } => {
+                self.uses("actions", action.clone(), span);
+                if let Some(env) = self.schema.actions[action]
+                    .signature
+                    .as_ref()
+                    .and_then(|s| s["secret"]["env"].as_str())
+                {
+                    self.uses("env", env.to_string(), span);
+                }
+            }
+            Slot::RouteHandler { route } => {
+                let r = &self.schema.routes[route];
+                self.uses("routes", format!("{} {}", r.method, r.path), span);
+                if let Some(env) = r.signature.as_ref().and_then(|s| s["secret"]["env"].as_str()) {
+                    self.uses("env", env.to_string(), span);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A before-hook writes the fields it sets on `data` (directly, through helpers it passes
+    /// `data` to, or through `ctx.data`) and the fields of a replacement it returns.
+    fn hook_writes(&mut self, root: &Root) {
+        let Slot::Hook {
+            table,
+            kind: HookKind::BeforeCreate | HookKind::BeforeUpdate,
+        } = &root.slot
+        else {
+            return;
+        };
+        if self.plugin.is_none() {
+            return;
+        }
+        let key = self.schema.collections[table].key.clone();
+        let f = &root.closure.func;
+        let mut fields = std::collections::BTreeSet::new();
+        if let Some(p) = f.params.first() {
+            let columns = &self.schema.collections[table].columns;
+            for path in self.effects.writes_below(p.pat.span()) {
+                match path.as_slice() {
+                    [] => {}
+                    [effects::Step::Field(name), ..] if columns.contains_key(name) => {
+                        fields.insert(name.clone());
+                    }
+                    _ => {
+                        fields.insert("*".to_string());
+                    }
+                }
+            }
+            if !matches!(p.pat, Pat::Id(..)) {
+                fields.insert("*".to_string());
+            }
+        }
+        if let Some(Ty::Fn(_, ret)) = self.helper_types.get(&closure_key(&root.closure)) {
+            let ret = match &**ret {
+                Ty::Promise(t) => (**t).clone(),
+                t => t.clone(),
+            };
+            let parts = match ret {
+                Ty::Union(ts) => ts,
+                t => vec![t],
+            };
+            for t in parts {
+                match t {
+                    Ty::Void | Ty::Undefined | Ty::Null | Ty::Never => {}
+                    Ty::Obj(f) => fields.extend(f.keys().cloned()),
+                    _ => {
+                        fields.insert("*".to_string());
+                    }
+                }
+            }
+        }
+        for field in fields {
+            self.uses("write", format!("{key}.{field}"), f.span);
+        }
+    }
+
+    /// One PHP function running several hooks of a collection in order: plugins in `use` order,
+    /// then the app's. A before-hook's returned replacement becomes the next hook's `data`.
+    pub fn chain(&mut self, table: &str, kind: HookKind, functions: &[String]) -> String {
+        let name = self.unique_name(&format!("{table}__{}__chain", kind.name()));
+        let calls: Vec<String> = functions.iter().map(|f| format!("'\\\\ZeroApp\\\\{f}'")).collect();
+        let list = calls.join(", ");
+        let body = match kind {
+            HookKind::BeforeCreate => format!(
+                "function {name}(\\Zero\\JsObject $data, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+            ),
+            HookKind::BeforeUpdate => format!(
+                "function {name}(\\Zero\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+            ),
+            _ => format!(
+                "function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"
+            ),
+        };
+        self.output.push_str(&body);
+        name
+    }
+
+    /// Records a capability the plugin compiling now uses; app code is unrestricted.
+    fn uses(&mut self, kind: &'static str, value: impl Into<String>, span: Span) {
+        if let Some((plugin, _)) = &self.plugin {
+            self.uses.push(crate::plugins::Use {
+                plugin: *plugin,
+                function: self.current.clone(),
+                kind,
+                value: value.into(),
+                span,
+            });
+        }
+    }
+
+    /// Plugins never share compiled state: their helpers, captured data and classes are emitted
+    /// once per plugin under its own prefix.
+    fn owner(&self) -> usize {
+        self.plugin.as_ref().map_or(0, |(i, _)| i + 1)
+    }
+
+    fn named(&self, base: &str) -> String {
+        match &self.plugin {
+            Some((_, name)) if !base.starts_with(&format!("plugin_{name}__")) => format!("plugin_{name}__{base}"),
+            _ => base.to_string(),
         }
     }
 
@@ -375,6 +537,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn unique_name(&mut self, base: &str) -> String {
+        let base = &self.named(base);
         let mut name: String = base
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
@@ -550,9 +713,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // Solve all roots together before emitting shared helper signatures.
         self.effects = effects::Effects::analyze(roots, self.schema, self.ev_program());
         let mut out = Vec::new();
+        for i in 0..self.plugin_names.len() {
+            self.plugin = Some((i, self.plugin_names[i].clone()));
+            let name = self.unique_name("fetch_hosts");
+            self.host_functions.push(name);
+        }
         for root in roots {
+            self.plugin = root.plugin.map(|i| (i, self.plugin_names[i].clone()));
             let params = self.root_params(&root.slot);
             let name = self.unique_name(&root.name);
+            self.current = name.clone();
+            self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
             let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
@@ -611,9 +782,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             }
-            self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());
+            self.helpers
+                .entry((self.owner(), key, no_db))
+                .or_insert_with(|| name.clone());
+            self.hook_writes(root);
             out.push((root.slot.clone(), name));
         }
+        self.plugin = None;
         while let Some((closure, name, params)) = self.pending.pop() {
             self.compile_function(&closure, &name, params, None, false)?;
         }
@@ -718,7 +893,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: None,
             outer: None,
             tmp: 0,
-            switch_depth: 0,
+            jumps: Vec::new(),
+            pending_labels: Vec::new(),
             conditional_depth: 0,
             no_db,
             access: match slot {
@@ -817,7 +993,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let saved = self.fx.replace(fx);
+        let caller = std::mem::replace(&mut self.current, name.to_string());
         let result = self.compile_function_body(&f, name, &param_tys, slot);
+        self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
         let (params_php, body) = result?;
         let ret_ty = predicate.unwrap_or_else(|| fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone())));
@@ -1205,7 +1383,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             out.push_str(&self.stmt(s, indent)?);
             terminated = matches!(
                 s,
-                Stmt::Return(..) | Stmt::Throw(_) | Stmt::Break(_) | Stmt::Continue(_)
+                Stmt::Return(..) | Stmt::Throw(_) | Stmt::Break(..) | Stmt::Continue(..)
             );
         }
         Ok(out)
@@ -1221,6 +1399,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn stmt(&mut self, s: &Stmt, indent: usize) -> Result<String> {
         let p = pad(indent);
         let mut out = String::new();
+        // Labels written directly on this statement (only a loop or switch receives them).
+        let labels = std::mem::take(&mut self.fx().pending_labels);
         match s {
             Stmt::Decl {
                 kind,
@@ -1445,7 +1625,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .collect::<Vec<_>>()
                     .join(", ");
                 let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
@@ -1505,7 +1685,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.bind_pattern(pat, &value, &el, mutable, &mut out, indent + 1)?;
                 }
                 self.invalidate_loop(*span);
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
@@ -1584,7 +1764,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         },
                     );
                 }
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
@@ -1597,19 +1777,65 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.invalidate_loop(test.span);
                 let t = self.cond(test)?;
                 let _ = writeln!(out, "{p}while ({t}) {{");
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
             }
-            Stmt::Break(_) => {
-                let _ = writeln!(out, "{p}break;");
+            Stmt::Break(label, span) => {
+                let level = self.jump_level(label.as_deref(), false, *span)?;
+                let _ = writeln!(
+                    out,
+                    "{p}break{};",
+                    if level == 1 { String::new() } else { format!(" {level}") }
+                );
             }
-            Stmt::Continue(_) => {
-                // In PHP a `switch` counts as a loop level for `continue`.
-                match self.fx().switch_depth {
-                    0 => writeln!(out, "{p}continue;"),
-                    n => writeln!(out, "{p}continue {};", n + 1),
+            Stmt::Continue(label, span) => {
+                let level = self.jump_level(label.as_deref(), true, *span)?;
+                let _ = writeln!(
+                    out,
+                    "{p}continue{};",
+                    if level == 1 { String::new() } else { format!(" {level}") }
+                );
+            }
+            Stmt::DoWhile(body, test) => {
+                self.invalidate_loop(test.span);
+                let _ = writeln!(out, "{p}do {{");
+                out.push_str(&self.loop_body(body, indent + 1, labels)?);
+                let t = self.cond(test)?;
+                let _ = writeln!(out, "{p}}} while ({t});");
+            }
+            Stmt::Labeled(label, body, _) => {
+                let mut labels = labels;
+                labels.push(label.clone());
+                let mut body = &**body;
+                while let Stmt::Labeled(label, inner, _) = body {
+                    labels.push(label.clone());
+                    body = inner;
                 }
-                .ok();
+                if matches!(
+                    body,
+                    Stmt::While(..)
+                        | Stmt::DoWhile(..)
+                        | Stmt::For { .. }
+                        | Stmt::ForOf { .. }
+                        | Stmt::ForIn { .. }
+                        | Stmt::Switch { .. }
+                ) {
+                    self.fx().pending_labels = labels;
+                    out.push_str(&self.stmt(body, indent)?);
+                } else {
+                    // A labeled block is left by `break label`: PHP gets a one-pass loop to break.
+                    self.fx().jumps.push(JumpTarget {
+                        kind: JumpKind::Block,
+                        labels,
+                    });
+                    let _ = writeln!(out, "{p}do {{");
+                    self.fx().conditional_depth += 1;
+                    let inner = self.stmts(std::slice::from_ref(body), indent + 1);
+                    self.fx().conditional_depth -= 1;
+                    self.fx().jumps.pop();
+                    out.push_str(&inner?);
+                    let _ = writeln!(out, "{p}}} while (false);");
+                }
             }
             Stmt::Throw(e) => {
                 let v = self.throw_value(e)?;
@@ -1672,11 +1898,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let _ = writeln!(out, "{p}    default:");
                         }
                     }
-                    self.fx().switch_depth += 1;
+                    self.fx().jumps.push(JumpTarget {
+                        kind: JumpKind::Switch,
+                        labels: labels.clone(),
+                    });
                     self.fx().conditional_depth += 1;
                     let inner = self.block(body, indent + 2);
                     self.fx().conditional_depth -= 1;
-                    self.fx().switch_depth -= 1;
+                    self.fx().jumps.pop();
                     out.push_str(&inner?);
                 }
                 if switch_is_exhaustive(&d.ty, &case_types) {
@@ -1708,8 +1937,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn loop_body(&mut self, body: &[Stmt], indent: usize) -> Result<String> {
-        let saved = std::mem::take(&mut self.fx().switch_depth);
+    /// PHP's level for `break` / `continue` (optionally to a label): the number of enclosing
+    /// loops, switches and labeled blocks up to and including the target.
+    fn jump_level(&mut self, label: Option<&str>, is_continue: bool, span: Span) -> Result<usize> {
+        let jumps = &self.fx().jumps;
+        let target = jumps.iter().rposition(|target| match label {
+            Some(label) => target.labels.iter().any(|l| l == label),
+            None if is_continue => target.kind == JumpKind::Loop,
+            None => target.kind != JumpKind::Block,
+        });
+        let Some(index) = target else {
+            return err(span, "this jump has no enclosing target");
+        };
+        if is_continue && jumps[index].kind != JumpKind::Loop {
+            return err(span, "`continue` must name a loop");
+        }
+        Ok(jumps.len() - index)
+    }
+
+    fn loop_body(&mut self, body: &[Stmt], indent: usize, labels: Vec<String>) -> Result<String> {
+        self.fx().jumps.push(JumpTarget {
+            kind: JumpKind::Loop,
+            labels,
+        });
         let saved_bindings = self.fx().loop_bindings.clone();
         let bindings: Vec<_> = self
             .fx()
@@ -1722,7 +1972,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let r = self.block(body, indent);
         self.fx().conditional_depth -= 1;
         self.fx().loop_bindings = saved_bindings;
-        self.fx().switch_depth = saved;
+        self.fx().jumps.pop();
         r
     }
 
@@ -3039,7 +3289,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Class(class) => self.class_value(class),
             Value::Closure(c) => {
                 let key = closure_key(c);
-                let helper_key = (key, self.fx().no_db);
+                let helper_key = (self.owner(), key, self.fx().no_db);
                 let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
                     None => {
@@ -3049,6 +3299,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         name
                     }
                 };
+                let caller = self.current.clone();
+                self.calls.entry(caller).or_default().insert(name.clone());
                 let Some(ty) = self.helper_types.get(&key).cloned() else {
                     return err_help(
                         span,
@@ -3056,11 +3308,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("annotate it: `function {n}(...): number`"),
                     );
                 };
-                let wrapper = match self.helper_values.get(&key) {
+                let wrapper = match self.helper_values.get(&(self.owner(), key)) {
                     Some(wrapper) => wrapper.clone(),
                     None => {
                         let wrapper = self.unique_name(&format!("{name}_value"));
-                        self.helper_values.insert(key, wrapper.clone());
+                        self.helper_values.insert((self.owner(), key), wrapper.clone());
                         let _ = writeln!(
                             self.output,
                             "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
@@ -3091,10 +3343,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\Zero\\db()", Ty::Db))
             }
-            Value::Env(name) => Ok(Out::atom(
-                format!("\\Zero\\Env::get({})", php_str(name)),
-                Ty::Str.nullable(),
-            )),
+            Value::Env(name) => {
+                self.uses("env", name.to_string(), span);
+                Ok(Out::atom(
+                    format!("\\Zero\\Env::get({})", php_str(name)),
+                    Ty::Str.nullable(),
+                ))
+            }
             Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
@@ -3131,13 +3386,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Action(_)
             | Value::Job(_)
             | Value::Route(_)
+            | Value::Plugin(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
             ),
             Value::Regex(p, f) => {
-                let key = (2, Rc::as_ptr(p) as *const () as usize);
+                let key = (self.owner(), 2, Rc::as_ptr(p) as *const () as usize);
                 let name = if let Some(name) = self.data_helpers.get(&key) {
                     name.clone()
                 } else {
@@ -3175,9 +3431,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn captured_data(&mut self, value: &Value) -> Result<String> {
+        let owner = self.owner();
         let (key, array) = match value {
-            Value::Array(a) => ((0, Rc::as_ptr(a) as usize), true),
-            Value::Object(o) => ((1, Rc::as_ptr(o) as usize), false),
+            Value::Array(a) => ((owner, 0, Rc::as_ptr(a) as usize), true),
+            Value::Object(o) => ((owner, 1, Rc::as_ptr(o) as usize), false),
             _ => {
                 return Ok(match value {
                     Value::Undef => "\\Zero\\Js::undefined()".into(),
@@ -3431,7 +3688,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: Some(Vec::new()),
             outer: None,
             tmp: 0,
-            switch_depth: 0,
+            jumps: Vec::new(),
+            pending_labels: Vec::new(),
             conditional_depth: 0,
             no_db: self.fx().no_db,
             access: None,
@@ -4664,10 +4922,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(Builtin::Env) => {
                     let name = self.arg(args, 0, span, "an environment variable name")?;
                     match &name.kind {
-                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => Ok(Some(Out::atom(
-                            format!("\\Zero\\Env::get({})", php_str(s)),
-                            Ty::Str.nullable(),
-                        ))),
+                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => {
+                            self.uses("env", s.clone(), name.span);
+                            Ok(Some(Out::atom(
+                                format!("\\Zero\\Env::get({})", php_str(s)),
+                                Ty::Str.nullable(),
+                            )))
+                        }
                         _ => err_help(
                             name.span,
                             "env() needs an environment variable name",
@@ -4726,6 +4987,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let url_expr = self.arg(args, 0, span, "a URL")?;
+        let host = static_host(url_expr);
+        self.uses("http", host.clone().unwrap_or_else(|| "*".into()), url_expr.span);
         let url = self.expr(url_expr)?;
         let url = self.finish_value(url, url_expr.span)?;
         if !url.ty.is_str() || url.ty.is_nullable() {
@@ -4758,8 +5021,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 init.php
             }
         };
+        // A plugin's fetches are checked against its locked hosts on every hop, so a runtime-built
+        // URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
+        let allow = match &self.plugin {
+            Some((i, _)) => format!(", \\ZeroApp\\{}()", self.host_functions[*i]),
+            None => String::new(),
+        };
         Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({}, {init})", url.php),
+            format!("\\Zero\\Fetch::call({}, {init}{allow})", url.php),
             Ty::Promise(Box::new(types::fetch_response())),
         ))
     }
@@ -4833,6 +5102,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             argv.push(v.php);
         }
+        if name == "hmacSha256"
+            && let Some(ArrEl::Item(Expr {
+                kind: ExprKind::Object(props),
+                ..
+            })) = args.first()
+        {
+            for p in props {
+                if let Prop::KV(PropKey::Static(k), v) = p
+                    && k == "key"
+                {
+                    match &v.kind {
+                        ExprKind::Str(var) => self.uses("env", var.clone(), v.span),
+                        ExprKind::Object(_) => {}
+                        _ => self.uses("env", "*", v.span),
+                    }
+                }
+            }
+        } else if name == "hmacSha256" {
+            self.uses("env", "*", span);
+        }
         Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
     }
 
@@ -4905,15 +5194,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "addresses are strings or { email, name? }; to/cc/bcc may be lists",
             );
         }
+        self.uses("mail", "send", span);
         Ok(Out::atom(
             format!("\\Zero\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
         ))
     }
 
-    /// Records one use of a WordPress feature. Plugin capability inference reads
-    /// `Built::wordpress_uses`; this is the single place each use is noted.
+    /// Records one use of a WordPress feature: in `Built::wordpress_uses` for every module, and as
+    /// a capability when a plugin's code makes it. This is the single place each use is noted.
     pub fn use_wordpress(&mut self, kind: WordPressKind, name: &str, span: Span) {
+        self.uses(
+            match kind {
+                WordPressKind::Ability => "abilities",
+                WordPressKind::Hook => "wpHooks",
+            },
+            name,
+            span,
+        );
         let module = self
             .ev_program()
             .modules
@@ -5040,12 +5338,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t => t,
         };
         Ok(Out::atom(
-            format!("\\Zero\\Jobs\\Receipts::once('fn', {}, {})", key.php, cb.php),
+            // Receipts are shared storage: each plugin keeps its own `once` keys.
+            format!(
+                "\\Zero\\Jobs\\Receipts::once({}, {}, {})",
+                php_str(
+                    &self
+                        .plugin
+                        .as_ref()
+                        .map_or("fn".to_string(), |(_, p)| format!("plugin:{p}"))
+                ),
+                key.php,
+                cb.php
+            ),
             Ty::Promise(Box::new(classes::wire_type(&ret))),
         ))
     }
 
     fn enqueue_call(&mut self, job: &str, job_span: Span, args: &[ArrEl], span: Span) -> Result<Out> {
+        // Inside a plugin, `jobs.<name>` names the plugin's own job.
+        let registered = match &self.plugin {
+            Some((_, plugin)) => format!("{plugin}_{job}"),
+            None => job.to_string(),
+        };
+        let job = registered.as_str();
+        self.uses("jobs", job, job_span);
         let Some(spec) = self.schema.jobs.get(job) else {
             let mut d = Diag::new(job_span, format!("unknown job `{job}`"));
             if let Some(s) = suggest(job, self.schema.jobs.keys().map(String::as_str)) {
@@ -6164,6 +6480,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- database ---------------------------------------------------------------
 
     fn query_call(&mut self, table: &str, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        let key = self.schema.collections[table].key.clone();
+        self.uses("read", key, m_span);
         if !matches!(m, "findMany" | "findFirst") {
             return err_help(
                 m_span,
@@ -6328,6 +6646,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 continue;
             }
             let r = self.check_relation(table, rel, v.span)?.clone();
+            let target = self.schema.collections[&r.collection].key.clone();
+            self.uses("read", target, v.span);
             match &v.kind {
                 ExprKind::Bool(true) => {
                     parts.push(format!("{} => true", php_str(rel)));
@@ -6441,6 +6761,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             return err(v.span, "relation filters only work in findMany/findFirst");
                         }
                         let target = c.relations[name].collection.clone();
+                        let key = self.schema.collections[&target].key.clone();
+                        self.uses("read", key, v.span);
                         match &v.kind {
                             ExprKind::Bool(true) => "true".to_string(),
                             _ => self.filter(&target, v, true)?,
@@ -6653,6 +6975,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
     fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
+        self.uses(
+            if m == "update" { "write" } else { "read" },
+            format!("globals.{name}"),
+            m_span,
+        );
         // Typed like collection rows: `json().$type<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
@@ -6725,6 +7052,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Collection(table) = v.ty else {
             return err(t.span, format!("db.{m}() needs a collection, not {}", v.ty.describe()));
         };
+        if kind == BuilderKind::Delete {
+            let key = self.schema.collections[&table].key.clone();
+            self.uses("delete", key, t.span);
+        }
         if v.php != php_str(&table) {
             return err_help(
                 t.span,
@@ -6757,6 +7088,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 b.set = Some(self.write_values(&b.table, x, false)?);
             }
             (BuilderKind::Update | BuilderKind::Delete, "where") if b.filter.is_none() => {
+                let key = self.schema.collections[&b.table].key.clone();
+                self.uses("read", key, m_span);
                 if b.kind == BuilderKind::Update && b.set.is_none() {
                     return err_help(
                         span,
@@ -6803,6 +7136,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(e)?;
         let v = self.finish_value(v, e.span)?;
+        let key = self.schema.collections[table].key.clone();
+        let fields: Vec<String> = match v.ty.non_null() {
+            Ty::Obj(f) => f.keys().cloned().collect(),
+            Ty::Array(el) | Ty::NonEmptyArray(el) => match *el {
+                Ty::Obj(f) => f.keys().cloned().collect(),
+                _ => vec!["*".into()],
+            },
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => ts
+                .iter()
+                .flat_map(|t| match t {
+                    Ty::Obj(f) => f.keys().cloned().collect(),
+                    _ => vec!["*".to_string()],
+                })
+                .collect(),
+            _ => vec!["*".into()],
+        };
+        for field in fields {
+            self.uses("write", format!("{key}.{field}"), e.span);
+        }
         let want = if insert {
             types::insert(self.schema, table)
         } else {
@@ -6837,6 +7189,79 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         Ok(v.php)
+    }
+}
+
+/// The host of a URL whose `https://host/` prefix is written in the source: a string, a template
+/// or a `+` chain starting with one. Anything else is built at runtime.
+fn static_host(e: &Expr) -> Option<String> {
+    let complete = matches!(e.kind, ExprKind::Str(_));
+    let prefix = match &e.kind {
+        ExprKind::Str(s) => s.clone(),
+        ExprKind::Template(quasis, _) => quasis.first()?.clone(),
+        ExprKind::Binary(BinOp::Add, left, _) => {
+            let mut left = left;
+            while let ExprKind::Binary(BinOp::Add, l, _) = &left.kind {
+                left = l;
+            }
+            match &left.kind {
+                ExprKind::Str(s) => s.clone(),
+                ExprKind::Template(quasis, _) => quasis.first()?.clone(),
+                _ => return None,
+            }
+        }
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => return static_host(inner),
+        _ => return None,
+    };
+    let rest = prefix
+        .get(..8)
+        .filter(|p| p.eq_ignore_ascii_case("https://"))
+        .map(|_| &prefix[8..])?;
+    let end = rest.find(['/', '?', '#']).or(complete.then_some(rest.len()))?;
+    let authority = &rest[..end];
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    // A bracketed IPv6 literal holds colons of its own; only a port follows the bracket.
+    let host = match authority.strip_prefix('[') {
+        Some(rest) => rest.split_once(']')?.0,
+        None => authority
+            .rsplit_once(':')
+            .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
+            .map_or(authority, |(h, _)| h),
+    };
+    // The same normalization `Zero\Fetch::target` applies before comparing hosts.
+    Some(host.trim_end_matches('.').to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::static_host;
+    use crate::diag::Span;
+    use crate::ir::{Expr, ExprKind};
+
+    #[test]
+    fn locked_hosts_normalize_like_the_runtime_fetch_check() {
+        let host = |url: &str| {
+            static_host(&Expr {
+                kind: ExprKind::Str(url.to_string()),
+                span: Span::NONE,
+            })
+        };
+        assert_eq!(
+            host("https://[2606:4700:4700::1111]/").as_deref(),
+            Some("2606:4700:4700::1111")
+        );
+        assert_eq!(
+            host("https://[2606:4700::1111]:8443/x").as_deref(),
+            Some("2606:4700::1111")
+        );
+        assert_eq!(
+            host("https://API.Example.com.:8443/v1").as_deref(),
+            Some("api.example.com")
+        );
+        assert_eq!(host("https://api.example.com").as_deref(), Some("api.example.com"));
+        assert_eq!(host("https://user@api.example.com/"), None);
     }
 }
 
@@ -7316,8 +7741,9 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
 
 fn stmt_span(s: &Stmt) -> Span {
     match s {
-        Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(span) | Stmt::Continue(span) => *span,
-        Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) => e.span,
+        Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(_, span) | Stmt::Continue(_, span) => *span,
+        Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) | Stmt::DoWhile(_, e) => e.span,
+        Stmt::Labeled(_, _, span) => *span,
         Stmt::For { span, .. } | Stmt::ForOf { span, .. } | Stmt::Switch { span, .. } => *span,
         Stmt::Func(f) => f.span,
         _ => Span::NONE,
@@ -7327,8 +7753,21 @@ fn stmt_span(s: &Stmt) -> Span {
 fn ends_with_exit(stmts: &[Stmt]) -> bool {
     matches!(
         stmts.last(),
-        Some(Stmt::Return(..) | Stmt::Throw(_) | Stmt::Continue(_) | Stmt::Break(_))
+        Some(Stmt::Return(..) | Stmt::Throw(_) | Stmt::Continue(..) | Stmt::Break(..))
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JumpKind {
+    Loop,
+    Switch,
+    Block,
+}
+
+#[derive(Debug, Clone)]
+struct JumpTarget {
+    kind: JumpKind,
+    labels: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -7337,6 +7776,8 @@ enum Completion {
     Return,
     Throw,
     Break,
+    /// `break label`: only the labeled statement it names completes normally on it.
+    BreakLabel,
     Continue,
 }
 
@@ -7395,8 +7836,9 @@ fn stmt_completions(
         }
         Stmt::Return(..) => HashSet::from([Return]),
         Stmt::Throw(_) => HashSet::from([Throw]),
-        Stmt::Break(_) => HashSet::from([Break]),
-        Stmt::Continue(_) => HashSet::from([Continue]),
+        Stmt::Break(None, _) => HashSet::from([Break]),
+        Stmt::Break(Some(_), _) => HashSet::from([BreakLabel]),
+        Stmt::Continue(..) => HashSet::from([Continue]),
         Stmt::Block(body) => block_completions(body, diverging, exhaustive_switches),
         Stmt::If(test, yes, no) => {
             let yes = block_completions(yes, diverging, exhaustive_switches);
@@ -7471,6 +7913,25 @@ fn stmt_completions(
             flow.remove(&Break);
             flow.remove(&Continue);
             flow.insert(Normal);
+            flow
+        }
+        // The test runs only after the body completes normally or continues.
+        Stmt::DoWhile(body, test) => {
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
+            let breaks = flow.remove(&Break);
+            let tested = flow.remove(&Normal) | flow.remove(&Continue);
+            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) {
+                flow.insert(Normal);
+            }
+            flow
+        }
+        // `break label` completes the labeled statement normally. Labels are not tracked here,
+        // so any break in the body is read as one (which only adds reachable paths).
+        Stmt::Labeled(_, body, _) => {
+            let mut flow = stmt_completions(body, diverging, exhaustive_switches);
+            if flow.remove(&BreakLabel) {
+                flow.insert(Normal);
+            }
             flow
         }
         _ => HashSet::from([Normal]),

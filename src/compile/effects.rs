@@ -79,9 +79,24 @@ pub(super) struct Effects {
     write_events: HashMap<Span, HashSet<Place>>,
     expression_writes: HashMap<Span, HashSet<Place>>,
     loop_writes: HashMap<Span, HashSet<Place>>,
+    /// Every reachable write, by the binding it starts from.
+    binding_writes: HashMap<Span, HashSet<Vec<Step>>>,
 }
 
 impl Effects {
+    /// Paths written below `binding` anywhere reachable. Calls carry a helper's writes back to
+    /// the argument it was given, and copies carry them across aliases, so this covers writes
+    /// through helpers, closures and other names for the same value. Every callee in compiled
+    /// code is itself compiled, so an argument passed to a call has no unseen writer.
+    pub fn writes_below(&self, binding: Span) -> Vec<Vec<Step>> {
+        self.binding_writes
+            .get(&binding)
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect()
+    }
+
     pub fn binding_reassigned(&self, binding: Span) -> bool {
         self.reassigned.contains(&binding)
     }
@@ -1396,6 +1411,14 @@ impl Graph {
                 self.block(b, names, env, owner);
                 self.loop_history(owner, first_call, &before, e.span);
             }
+            Stmt::DoWhile(b, e) => {
+                let first_call = self.calls.len();
+                let before = self.history.get(&owner).cloned().unwrap_or_default();
+                self.block(b, names, env, owner);
+                self.expr(e, names, env, owner);
+                self.loop_history(owner, first_call, &before, e.span);
+            }
+            Stmt::Labeled(_, s, _) => self.stmt(s, names, env, owner),
             Stmt::For {
                 init,
                 test,
@@ -1507,8 +1530,8 @@ impl Graph {
             }
             Stmt::Exported(s) => self.stmt(s, names, env, owner),
             Stmt::Return(None, _)
-            | Stmt::Break(_)
-            | Stmt::Continue(_)
+            | Stmt::Break(..)
+            | Stmt::Continue(..)
             | Stmt::TypeAlias { .. }
             | Stmt::Import { .. }
             | Stmt::ExportNames { .. }
@@ -1983,7 +2006,16 @@ impl Graph {
         };
         let expression_writes = summaries(&self.expression_events);
         let loop_writes = summaries(&self.loop_events);
+        let mut binding_writes: HashMap<Span, HashSet<Vec<Step>>> = HashMap::new();
+        for (owner, paths) in &self.function_writes {
+            if self.reachable.contains(owner) {
+                for p in paths {
+                    binding_writes.entry(p.binding).or_default().insert(p.path.clone());
+                }
+            }
+        }
         let mut effects = Effects {
+            binding_writes,
             reassigned: self
                 .write_events
                 .values()

@@ -31,25 +31,47 @@ fi
 # Generated docs and the compatibility registry don't change what the compiler does, so a
 # conflict only there is resolved by keeping the scratch side; the run lists it.
 docs_only='^(docs/language-support\.md|tests/compatibility/registry\.json)$'
-merged=() conflicts=() docs_resolved=()
+merged=() conflicts=() docs_resolved=() broken=()
+# A clean text merge can still break the build (two branches changing one type).
+# Check after each merge and drop a branch that breaks it, naming the first error.
+builds() {
+  local log
+  if log=$(cargo check --lib --quiet --message-format short --manifest-path "$scratch/Cargo.toml" --target-dir "$scratch/target" 2>&1); then
+    return 0
+  fi
+  grep -m1 -E '^src/.*error' <<<"$log" || grep -m1 error <<<"$log" || echo "cargo check failed"
+  return 1
+}
+already=()
 for branch in $branches; do
   sha=$(git -C "$repo" rev-parse --short "origin/$branch")
-  pr=$(gh pr list -R spacefast/zero --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
-  label="$branch@$sha${pr:+ (#$pr)}"
-  if git -C "$scratch" merge --quiet --no-edit "origin/$branch" >/dev/null 2>&1; then
-    merged+=("$label")
+  if git -C "$repo" merge-base --is-ancestor "origin/$branch" origin/main; then
+    already+=("$branch@$sha")
     continue
   fi
-  unmerged=$(git -C "$scratch" diff --name-only --diff-filter=U)
-  if [ -n "$unmerged" ] && ! grep -vqE "$docs_only" <<<"$unmerged"; then
-    git -C "$scratch" checkout --quiet --ours -- $unmerged
-    git -C "$scratch" add -- $unmerged
-    git -C "$scratch" commit --quiet --no-edit
+  pr=$(gh pr list -R spacefast/zero --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
+  label="$branch@$sha${pr:+ (#$pr)}"
+  before=$(git -C "$scratch" rev-parse HEAD)
+  docs_note=""
+  if ! git -C "$scratch" merge --quiet --no-edit "origin/$branch" >/dev/null 2>&1; then
+    unmerged=$(git -C "$scratch" diff --name-only --diff-filter=U)
+    if [ -n "$unmerged" ] && ! grep -vqE "$docs_only" <<<"$unmerged"; then
+      git -C "$scratch" checkout --quiet --ours -- $unmerged
+      git -C "$scratch" add -- $unmerged
+      git -C "$scratch" commit --quiet --no-edit
+      docs_note="$label: $(paste -sd, - <<<"$unmerged" | sed 's/,/, /g')"
+    else
+      git -C "$scratch" merge --abort
+      conflicts+=("$label: $(paste -sd, - <<<"${unmerged:-merge failed}" | sed 's/,/, /g')")
+      continue
+    fi
+  fi
+  if error=$(builds); then
     merged+=("$label")
-    docs_resolved+=("$label: $(paste -sd, - <<<"$unmerged" | sed 's/,/, /g')")
+    [ -n "$docs_note" ] && docs_resolved+=("$docs_note")
   else
-    git -C "$scratch" merge --abort
-    conflicts+=("$label: $(paste -sd, - <<<"${unmerged:-merge failed}" | sed 's/,/, /g')")
+    git -C "$scratch" reset --quiet --hard "$before"
+    broken+=("$label: $error")
   fi
 done
 
@@ -61,7 +83,7 @@ rsync -a --delete --exclude node_modules --exclude .work "$repo/examples/files-s
 [ -d "$harness/node_modules" ] || (cd "$harness" && npm ci --ignore-scripts --no-audit --no-fund --silent)
 mkdir -p "$harness/.work"
 for archive in "$repo"/examples/files-sdk/.work/files-sdk-*.tar.gz; do
-  [ -f "$archive" ] && cp -n "$archive" "$harness/.work/"
+  if [ -f "$archive" ] && [ ! -f "$harness/.work/${archive##*/}" ]; then cp "$archive" "$harness/.work/"; fi
 done
 
 label="merged state: origin/main $(git -C "$repo" rev-parse --short origin/main) + ${#merged[@]} branches, $(date -u +%Y-%m-%dT%H:%MZ)"
@@ -74,5 +96,7 @@ list() {
   echo
 }
 list "Merged (oldest first):" "${merged[@]}"
+list "Already in origin/main:" "${already[@]}"
 list "Merged with generated docs/registry conflicts kept from the scratch side (no compiler effect):" "${docs_resolved[@]}"
-list "Conflicts with the merge so far (left out of this run, owners please merge origin/main or the conflicting branch):" "${conflicts[@]}"
+list "Text conflicts with the merge so far (left out of this run; owners, please merge origin/main or the conflicting branch):" "${conflicts[@]}"
+list "Merged cleanly but broke the build (left out of this run):" "${broken[@]}"

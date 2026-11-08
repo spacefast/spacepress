@@ -203,7 +203,8 @@ pub(super) fn collect_var_declarations<'a>(stmts: &'a [Stmt], out: &mut Vec<VarB
                 ann,
                 ..
             } => var_pattern(pat, if matches!(pat, Pat::Id(..)) { ann.as_ref() } else { None }, out),
-            Stmt::Block(body) | Stmt::While(_, body) => collect_var_declarations(body, out),
+            Stmt::Block(body) | Stmt::While(_, body) | Stmt::DoWhile(body, _) => collect_var_declarations(body, out),
+            Stmt::Labeled(_, body, _) => collect_var_declarations(std::slice::from_ref(body), out),
             Stmt::If(_, yes, no) => {
                 collect_var_declarations(yes, out);
                 if let Some(no) = no {

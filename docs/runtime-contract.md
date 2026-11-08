@@ -45,7 +45,9 @@ serialization own their numeric spelling independently of PHP's ini precision.
 The bundled Composer loader and its autoloaded function files load on the first
 `Zero\Vendor\*` or `Zero_Vendor_*` class use. Ordinary requests do not load the
 optional Markdown, merge or S3 dependencies. Both scoped namespace and global
-class names use the same authoritative Composer map.
+class names use the same authoritative Composer map. HTML parsing and block
+parsing/serialization are WordPress core's (`WP_HTML_*`, `parse_blocks`,
+`serialize_blocks`); the bundle carries no copy.
 
 The signing key for private-file URLs is the `zero_runtime_secret` option,
 minted on activation.
@@ -720,7 +722,7 @@ Extracted supported builtin methods retain the receiver passed through
 `call`/`apply`.
 Ordinary functions receive `JsArguments` (numeric properties, independent
 non-enumerable length); arrows inherit the surrounding arguments. Parameters
-are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,
+are not sloppy-mode mapped aliases. `do…while` compiles to PHP `do … while`. Labeled loops and switches use PHP's numbered `break N`/`continue N`, counting every enclosing loop, switch and labeled block; a labeled block that is not a loop becomes a one-pass `do { … } while (false)` so `break label` can leave it. Function-scoped `var`, comma expressions,
 loose equality and own-key `for…in` share the evaluator's lowering. Runtime
 `for…in` snapshots the original keys and skips keys deleted before their turn.
 

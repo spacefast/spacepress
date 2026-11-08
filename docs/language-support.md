@@ -96,6 +96,14 @@ Zero arrays are dense, and deleting an element leaves a hole that keeps the leng
 
 [Evidence](../tests/fixtures/reject-delete-array-element)
 
+## do-while-and-labels
+
+Status: **supported**.
+
+`do…while` runs its body before the first test; `continue` goes to the test. Labeled loops, switches and blocks compile with `break label` and `continue label` in typed code, imported JavaScript and configuration evaluation, through nested loops, switches and labeled blocks. Labeled function declarations are refused, as in strict mode.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.
@@ -391,3 +399,27 @@ Status: **supported**.
 wp-hooks/<hook>.ts and wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
 
 [Evidence](../tests/compiler_contracts.rs) (`wp_hooks_register_in_file_order_with_their_priorities`)
+
+## plugin-narrowed-write
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+
+[Evidence](../tests/fixtures/reject-plugin-write)
+
+## plugin-static-host
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop.
+
+[Evidence](../tests/fixtures/reject-plugin-http)
+
+## plugin-cross-import
+
+Status: **refused**. Diagnostic: `Z1201`.
+
+A plugin package imports its own modules, "zero" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+
+[Evidence](../tests/fixtures/reject-plugin-isolation)

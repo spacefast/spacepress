@@ -88,8 +88,27 @@ enum ValuePlace {
 enum Flow {
     Normal,
     Return(Value),
-    Break,
-    Continue,
+    /// `break` or `break label`.
+    Break(Option<String>),
+    /// `continue` or `continue label`.
+    Continue(Option<String>),
+}
+
+/// What a loop does with the flow its body ended with. `labels` are the labels directly on the
+/// loop statement: a labeled `continue` naming one of them continues this loop.
+enum LoopStep {
+    Next,
+    Exit,
+    Leave(Flow),
+}
+
+fn loop_step(flow: Flow, labels: &[String]) -> LoopStep {
+    match flow {
+        Flow::Normal | Flow::Continue(None) => LoopStep::Next,
+        Flow::Continue(Some(l)) if labels.contains(&l) => LoopStep::Next,
+        Flow::Break(None) => LoopStep::Exit,
+        other => LoopStep::Leave(other),
+    }
 }
 
 fn err<T>(span: Span, msg: impl Into<String>) -> R<T> {
@@ -227,6 +246,7 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "fetch",
     "crypto",
     "mail",
+    "definePlugin",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
 const ZERO_TYPES: &[&str] = &[
@@ -275,6 +295,7 @@ const ZERO_TYPES: &[&str] = &[
     "ServiceFormField",
     "ServiceProduct",
     "InferActionInput",
+    "Plugin",
 ];
 
 pub const GLOBALS: &[&str] = &[
@@ -324,6 +345,8 @@ pub struct Evaluator<'p> {
     pub key_spans: HashMap<(usize, String), Span>,
     // Retain collided objects so allocation identities cannot be reused.
     duplicate_keys: HashMap<usize, (Value, Vec<(String, Span)>)>,
+    /// Labels directly on the statement being executed, taken by the loop they label.
+    pending_labels: Vec<String>,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -346,6 +369,7 @@ impl<'p> Evaluator<'p> {
             depth: 0,
             key_spans: HashMap::new(),
             duplicate_keys: HashMap::new(),
+            pending_labels: Vec::new(),
         }
     }
 
@@ -747,6 +771,8 @@ impl<'p> Evaluator<'p> {
     }
 
     fn exec(&mut self, stmt: &Stmt, scope: &Rc<Scope>) -> R<Flow> {
+        // Labels apply to this statement only; a loop keeps them for `continue label`.
+        let labels = std::mem::take(&mut self.pending_labels);
         match stmt {
             Stmt::Decl {
                 kind,
@@ -823,10 +849,10 @@ impl<'p> Evaluator<'p> {
                     {
                         break;
                     }
-                    match self.exec_block(body, &loop_scope)? {
-                        Flow::Break => break,
-                        Flow::Return(v) => return Ok(Flow::Return(v)),
-                        _ => {}
+                    match loop_step(self.exec_block(body, &loop_scope)?, &labels) {
+                        LoopStep::Next => {}
+                        LoopStep::Exit => break,
+                        LoopStep::Leave(flow) => return Ok(flow),
                     }
                     if per_iteration {
                         loop_scope = loop_scope.fork_bindings();
@@ -867,10 +893,10 @@ impl<'p> Evaluator<'p> {
                         &iter_scope,
                         (*kind != DeclKind::Var).then_some(*kind == DeclKind::Let),
                     )?;
-                    match self.exec_block(body, &iter_scope)? {
-                        Flow::Break => break,
-                        Flow::Return(v) => return Ok(Flow::Return(v)),
-                        _ => {}
+                    match loop_step(self.exec_block(body, &iter_scope)?, &labels) {
+                        LoopStep::Next => {}
+                        LoopStep::Exit => break,
+                        LoopStep::Leave(flow) => return Ok(flow),
                     }
                 }
             }
@@ -901,10 +927,10 @@ impl<'p> Evaluator<'p> {
                     } else {
                         self.assign(target, Value::str(&key), &iter_scope)?;
                     }
-                    match self.exec_block(body, &iter_scope)? {
-                        Flow::Break => break,
-                        Flow::Return(v) => return Ok(Flow::Return(v)),
-                        _ => {}
+                    match loop_step(self.exec_block(body, &iter_scope)?, &labels) {
+                        LoopStep::Next => {}
+                        LoopStep::Exit => break,
+                        LoopStep::Leave(flow) => return Ok(flow),
                     }
                 }
             }
@@ -913,14 +939,34 @@ impl<'p> Evaluator<'p> {
                 if !self.eval_static_data(test, scope)?.truthy() {
                     break;
                 }
-                match self.exec_block(body, scope)? {
-                    Flow::Break => break,
-                    Flow::Return(v) => return Ok(Flow::Return(v)),
-                    _ => {}
+                match loop_step(self.exec_block(body, scope)?, &labels) {
+                    LoopStep::Next => {}
+                    LoopStep::Exit => break,
+                    LoopStep::Leave(flow) => return Ok(flow),
                 }
             },
-            Stmt::Break(_) => return Ok(Flow::Break),
-            Stmt::Continue(_) => return Ok(Flow::Continue),
+            Stmt::DoWhile(body, test) => loop {
+                self.tick(test.span)?;
+                match loop_step(self.exec_block(body, scope)?, &labels) {
+                    LoopStep::Next => {}
+                    LoopStep::Exit => break,
+                    LoopStep::Leave(flow) => return Ok(flow),
+                }
+                if !self.eval_static_data(test, scope)?.truthy() {
+                    break;
+                }
+            },
+            Stmt::Labeled(label, body, _) => {
+                let mut inner = labels;
+                inner.push(label.clone());
+                self.pending_labels = inner;
+                return match self.exec(body, scope)? {
+                    Flow::Break(Some(l)) if l == *label => Ok(Flow::Normal),
+                    other => Ok(other),
+                };
+            }
+            Stmt::Break(label, _) => return Ok(Flow::Break(label.clone())),
+            Stmt::Continue(label, _) => return Ok(Flow::Continue(label.clone())),
             Stmt::Throw(e) => {
                 let v = self.eval(e, scope)?;
                 return Err(Ctl::Throw(v, e.span));
@@ -965,7 +1011,7 @@ impl<'p> Evaluator<'p> {
                     for (_, body) in &cases[start..] {
                         match self.exec_block(body, &switch_scope)? {
                             Flow::Normal => {}
-                            Flow::Break => break,
+                            Flow::Break(None) => break,
                             other => return Ok(other),
                         }
                     }
@@ -1914,6 +1960,14 @@ impl<'p> Evaluator<'p> {
                 Ok(Value::object(out))
             }
             Builtin::DefineConfig => Ok(arg(0)),
+            Builtin::DefinePlugin => match arg(0) {
+                config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
+                _ => err_help(
+                    span,
+                    "definePlugin() needs `{ name, hooks?, actions?, jobs?, routes? }`",
+                    "pass the plugin definition as an object literal",
+                ),
+            },
             Builtin::Env => match arg(0) {
                 Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
                     Ok(Value::Env(n))
@@ -2560,6 +2614,7 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "global" => Builtin::DefineGlobal,
         "defineRelations" => Builtin::DefineRelations,
         "defineConfig" => Builtin::DefineConfig,
+        "definePlugin" => Builtin::DefinePlugin,
         "action" => Builtin::Action,
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
@@ -2666,7 +2721,8 @@ fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
                 ann,
                 ..
             } => binding(pat, ann, scope),
-            Stmt::Block(body) | Stmt::While(_, body) => hoist_vars(body, scope),
+            Stmt::Block(body) | Stmt::While(_, body) | Stmt::DoWhile(body, _) => hoist_vars(body, scope),
+            Stmt::Labeled(_, body, _) => hoist_vars(std::slice::from_ref(body), scope),
             Stmt::If(_, yes, no) => {
                 hoist_vars(yes, scope);
                 if let Some(no) = no {

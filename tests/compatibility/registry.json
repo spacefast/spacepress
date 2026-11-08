@@ -646,6 +646,13 @@
       "fixture": "tests/fixtures/reject-function-properties-value",
       "message": "is a function with properties, which can't be used as a value in PHP",
       "guidance": "A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value."
+    },
+    {
+      "id": "named-function-expressions",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "`function name() {}` as an expression binds `name` only inside itself, to itself, as in JavaScript: recursion works, parameters and `var`s of the same name shadow it, and the name is not visible outside. Assigning to the name inside the function throws in strict JavaScript, so it is refused with a pointer; assign to a local variable instead. Local function declarations with a declared signature, and every function in imported JavaScript, may also call themselves."
     }
   ]
 }

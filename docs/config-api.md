@@ -1063,7 +1063,8 @@ TypeScript. `delete obj.key` and `delete obj?.key` remove optional properties
 and map entries with strict-mode results: true for absent keys, a `TypeError`
 for non-configurable ones such as `length`. `do…while` and labeled loops,
 switches and blocks (`break label`, `continue label`) follow JavaScript.
-Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
+Named function expressions (`const f = function fact(n) {...}`) can call
+themselves. Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
 assigns existing variables and fields in JavaScript order. Tagged templates
 call the tag with the call site's strings array (with `raw`) and the
 substitutions; `String.raw` is supported. BigInt (`10n`, `bigint`, `BigInt(x)`)

@@ -488,7 +488,17 @@ impl<'p> Evaluator<'p> {
         let scope = Scope::new(None, id);
         self.module_scopes[id] = Some(scope.clone());
         self.evaluating[id] = true;
-        // Dependencies first, like ESM.
+        // The CommonJS wrapper: `exports` starts as `module.exports`, and `require` runs its
+        // target when called, as Node does.
+        let commonjs = module.commonjs.as_ref().map(|names| {
+            let exports = Value::object(IndexMap::new());
+            let wrapper = Value::object(IndexMap::from([("exports".to_string(), exports.clone())]));
+            declare(&scope, "module", wrapper.clone(), false);
+            declare(&scope, "exports", exports, false);
+            declare(&scope, "require", Value::Builtin(Builtin::Require(id)), false);
+            (wrapper, names)
+        });
+        // Dependencies first, like ESM. A CommonJS module loads its `require` targets lazily.
         for stmt in &module.body {
             if let Stmt::Import { source, .. }
             | Stmt::ExportNames { from: Some(source), .. }
@@ -570,8 +580,43 @@ impl<'p> Evaluator<'p> {
                 }
             }
         }
+        if let Some((wrapper, names)) = commonjs {
+            let exports = self.get_prop(&wrapper, "exports", Span::NONE)?;
+            for name in names {
+                let value = match &exports {
+                    Value::Object(object) => object.borrow().get(name).cloned().unwrap_or(Value::Undef),
+                    _ => Value::Undef,
+                };
+                self.exports[id].insert(name.clone(), value);
+            }
+            self.exports[id].insert("default".into(), exports);
+        }
         self.evaluating[id] = false;
         Ok(())
+    }
+
+    /// `require("<spec>")` from CommonJS module `from`: run the target if it hasn't run, and
+    /// return its `module.exports`. Node would hand a cycle a partial export object.
+    fn require(&mut self, from: usize, args: &[Value], span: Span) -> R<Value> {
+        let [Value::Str(spec)] = args else {
+            return err(span, "require() needs one string literal");
+        };
+        let Some(&target) = self.program.resolved.get(&(from, spec.to_string())) else {
+            return err(
+                span,
+                format!("require(\"{spec}\") wasn't loaded; it must be a top-level static require"),
+            );
+        };
+        if self.evaluating[target] {
+            let path = self.program.modules[target].path.display().to_string();
+            return err_help(
+                span,
+                format!("require cycle through {path}"),
+                "Node returns a partially initialized module.exports here; break the cycle",
+            );
+        }
+        self.eval_module(target)?;
+        Ok(self.exports[target].get("default").cloned().unwrap_or(Value::Undef))
     }
 
     /// Whether `name` is a type that a dynamic module erased, directly or through re-exports.
@@ -2156,6 +2201,7 @@ impl<'p> Evaluator<'p> {
             Builtin::HttpError => err(span, "use `new HttpError(status, code, message)`"),
             Builtin::Global(g) => call_global(g, &args, span),
             Builtin::Static(g, m) => self.call_static(g, m, args, span),
+            Builtin::Require(from) => self.require(*from, &args, span),
         }
     }
 

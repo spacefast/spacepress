@@ -34,16 +34,22 @@ The platform enforces these, and the spec work keeps them true:
    plugin activation, rewrite rules, link filters, cache headers and markdown
    negotiation live in the v2 app plugin's request path, or behind the engine's
    `zero_generation === 'v2'` check. Static, Functions, content-model and 0.8
-   Spaces see no difference. One accepted exception: the platform plugins Zero v2
-   needs (Action Scheduler, the MCP Adapter) are installed on every box, so
-   Action Scheduler's two post statuses (`in-progress`, `failed`) show up in
-   every Space's REST index. They are labels only, with no routes or permissions.
+   Spaces see no difference, with two accepted exceptions:
+   - The platform plugins Zero v2 needs (Action Scheduler, the MCP Adapter) are
+     installed on every box, so Action Scheduler's two post statuses
+     (`in-progress`, `failed`) show up in every Space's REST index. They are
+     labels only, with no routes or permissions.
+   - `GET /__zero/realtime.js` is a reserved engine path on every Space. On a
+     Space without live updates, which includes every non-v2 Space, it returns a
+     one-line script comment and pages poll instead. No 0.8, Static, Functions
+     or content-model page ever loads that path, so their visible behavior
+     doesn't change.
 4. **0.8's paths stay 0.8's.** `/__zero/config`, `/__zero/run`, `/__zero/auth/*`
    and `/__zero/realtime/events` keep their 0.8 meaning on 0.8 versions. v2 adds
    `/__zero/api/v1/*`, `/__zero/client.js`, `/__zero/client.d.ts` and
    `/__zero/realtime.js`, and never reuses a 0.8 path with a different meaning.
-   `/__zero/realtime.js` answers on every version: 0.8 never used that path,
-   and only v2 pages load it.
+   0.8 never used `/__zero/realtime.js`; rule 3 covers why it answers on
+   every version.
 5. **Adopted 0.8 tables are data, not schema to tidy.** The deploy-time schema
    check never alters or drops them without an explicit `--drop`.
 6. **A root `zero.config.ts` means v2.** The spec's `zero/` and `app/` folders

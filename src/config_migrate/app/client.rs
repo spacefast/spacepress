@@ -185,6 +185,17 @@ impl Walk<'_> {
         let ext = relative.extension().and_then(|e| e.to_str()).unwrap_or("");
         if ext == "css" {
             // A CSS import is a stylesheet the 0.8 bundler injected; the shell links it instead.
+            // The candidate carries text files only, so a relative `url(...)` (an image or font the
+            // bundler copied next to it) can't come along: refuse it at the reference.
+            for (offset, url) in css_files(&text) {
+                self.refuse(
+                    relative,
+                    &text,
+                    offset,
+                    TAG_ASSET,
+                    format!("url({url}) in a stylesheet"),
+                );
+            }
             self.out.insert(format!("public/{}", relative.to_string_lossy()), text);
             return target;
         }
@@ -360,6 +371,40 @@ fn emit<'a>(
     _up: &str,
 ) -> Result<String, (u32, String)> {
     Ok(String::new())
+}
+
+/// Each `url(...)` in a stylesheet that names a file next to it: `(byte offset, url)`. Data URIs,
+/// absolute URLs, root paths and fragment references need no file, so they are left out; so are
+/// comments.
+fn css_files(css: &str) -> Vec<(u32, String)> {
+    let mut out = vec![];
+    let lower = css.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(found) = lower[from..].find("url(") {
+        let start = from + found;
+        from = start + 4;
+        // Inside a comment: skip.
+        let before = &css[..start];
+        if before
+            .rfind("/*")
+            .is_some_and(|open| before[open..].find("*/").is_none())
+        {
+            continue;
+        }
+        let Some(close) = css[from..].find(')') else { break };
+        let url = css[from..from + close].trim().trim_matches(['"', '\'']).trim();
+        let lowered = url.to_ascii_lowercase();
+        let needs_file = !(url.is_empty()
+            || url.starts_with('#')
+            || url.starts_with('/')
+            || lowered.starts_with("data:")
+            || lowered.contains("://")
+            || lowered.starts_with("//"));
+        if needs_file {
+            out.push((start as u32, url.to_string()));
+        }
+    }
+    out
 }
 
 fn export_name(name: &ModuleExportName) -> String {

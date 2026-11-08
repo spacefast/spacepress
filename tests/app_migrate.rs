@@ -9,12 +9,20 @@ fn fixture(name: &str) -> PathBuf {
         .join("tests/fixtures/app-migrate")
         .join(name)
 }
+/// `zero migrate app` with `flags`; without `--space` or `--unset`, the tables are `--fresh`.
 fn migrate(input: &Path, out: &Path, flags: &[&str]) -> (bool, Value) {
+    let mode: &[&str] = if ["--space", "--unset", "--fresh"].iter().any(|f| flags.contains(f)) {
+        &[]
+    } else {
+        &["--fresh"]
+    };
+    let flags: Vec<&str> = flags.iter().copied().filter(|f| *f != "--unset").collect();
     let output = Command::new(env!("CARGO_BIN_EXE_zero"))
         .args(["migrate", "app", "--from", "zero-0.8"])
         .arg(input)
         .arg("--out")
         .arg(out)
+        .args(mode)
         .args(flags)
         .output()
         .unwrap();
@@ -103,6 +111,98 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
         .unwrap();
     assert!(!check.status.success());
     assert!(String::from_utf8_lossy(&check.stderr).contains("cannot change after the first snapshot"));
+}
+
+/// A new Space has no 0.8 tables to adopt: with `--fresh` the candidate declares plain v2 tables
+/// and its first migration creates them, so it runs on an empty site.
+#[test]
+fn fresh_tables_for_a_new_space() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("fresh");
+    // Neither --fresh nor --space: one located refusal for the schema, with the choice in its fix.
+    let (ok, unset) = migrate(&fixture("board"), &temp.path().join("unset"), &["--unset", "--dry-run"]);
+    assert!(!ok);
+    assert_eq!(unset["tables"], "unset");
+    let errors = unset["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 1, "{unset:#}");
+    assert_eq!(errors[0]["code"], "Z08_SPACE_REQUIRED");
+    assert_eq!(errors[0]["pointer"], "/schema");
+    assert_eq!(
+        errors[0]["fix"],
+        "Pass --fresh for a Space with no 0.8 tables, or --space <id> to adopt existing ones."
+    );
+    assert_eq!(
+        (errors[0]["file"].as_str(), errors[0]["line"].as_u64()),
+        (Some("server/index.ts"), Some(12))
+    );
+    let (ok, report) = migrate(&fixture("board"), &out, &["--fresh"]);
+    assert!(ok, "{report:#}");
+    assert_eq!(report["tables"], "fresh");
+    assert!(
+        report["adoption_sql"]
+            .as_str()
+            .unwrap()
+            .contains("CREATE TABLE `{prefix}zero_tasks`")
+    );
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(!config.contains("existingTable"), "{config}");
+    assert!(out.join("zero/migrations/0001_init.sql").is_file());
+    assert!(!out.join("zero/migrations/0001_adopt.sql").exists());
+    build(&out);
+    // The committed init migration is what build expects: no second migration.
+    assert_eq!(std::fs::read_dir(out.join("zero/migrations")).unwrap().count(), 2);
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join(".zero/wp-content"))
+        .arg(
+            r#"$r = fn ($n, $in) => $wp->call("POST", "/actions/$n", (object) $in, "admin")[1];
+               $added = $r("add", ["input" => ["title" => "  Hello  "]]);
+               echo json_encode(["added" => [$added["title"], $added["done"], $added["score"], $added["category"]], "count" => $r("count", [])]), "\n";"#,
+        )
+        .arg("null")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value = serde_json::from_str(stdout.lines().next_back().unwrap_or(""))
+        .unwrap_or_else(|_| panic!("{stdout}{}", String::from_utf8_lossy(&run.stderr)));
+    assert_eq!(
+        got,
+        serde_json::json!({ "added": ["Hello", false, 2, "inbox"], "count": 1 })
+    );
+    // A Space binding still adopts, and the two modes exclude each other.
+    let (ok, adopted) = migrate(
+        &fixture("board"),
+        &temp.path().join("adopt"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(ok);
+    assert_eq!(adopted["tables"], "adopt");
+    let both = Command::new(env!("CARGO_BIN_EXE_zero"))
+        .args(["migrate", "app", "--from", "zero-0.8"])
+        .arg(fixture("board"))
+        .args(["--out", "/nonexistent-zero-out", "--fresh", "--space", "s"])
+        .output()
+        .unwrap();
+    assert_eq!(both.status.code(), Some(2));
+    // A schema refusal in fresh mode has its own code, whose fix is about the new table.
+    let root = temp.path().join("bad-default");
+    project(
+        &root,
+        r#"{ name: "b", schema: { notes: table({ body: string().default(Date.now() as unknown as string) }) } }"#,
+    );
+    let index = root.join("server/index.ts");
+    let text = std::fs::read_to_string(&index)
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, string, table }");
+    std::fs::write(&index, text).unwrap();
+    let (ok, fresh) = migrate(&root, &temp.path().join("bad-fresh"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(fresh["errors"][0]["code"], "Z08_SCHEMA_FRESH", "{fresh:#}");
+    let (ok, adopt) = migrate(&root, &temp.path().join("bad-adopt"), &["--space", "s", "--dry-run"]);
+    assert!(!ok);
+    assert_eq!(adopt["errors"][0]["code"], "Z08_SCHEMA", "{adopt:#}");
 }
 
 #[test]
@@ -1621,6 +1721,37 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
         ],
         "{report:#}"
     );
+    // A stylesheet's relative url(...) names a file the text-only candidate can't carry: refused at
+    // the reference. Data URIs, absolute URLs and commented-out references need no file.
+    std::fs::remove_dir_all(root.join("public")).unwrap();
+    std::fs::copy(fixture("client-app/client/Feed.tsx"), root.join("client/Feed.tsx")).unwrap();
+    let css = "/* url(./old.png) */\nmain { background: url(data:image/png;base64,AAAA); }\nh1 { background: url( 'https://cdn.test/a.png' ); }\nheader { background: url(\"./logo.png\"); }\n";
+    std::fs::write(root.join("client/styles.css"), css).unwrap();
+    let (ok, report) = migrate(
+        &root,
+        &temp.path().join("out3"),
+        &["--space", "s", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = report["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 1, "{report:#}");
+    let e = &errors[0];
+    assert_eq!(
+        (
+            e["code"].as_str(),
+            e["file"].as_str(),
+            e["line"].as_u64(),
+            e["column"].as_u64()
+        ),
+        (
+            Some("Z08_CLIENT_ASSET"),
+            Some("client/styles.css"),
+            Some(4),
+            Some(css.lines().nth(3).unwrap().find("url(").unwrap() as u64 + 1)
+        ),
+        "{e}"
+    );
+    assert!(e["reason"].as_str().unwrap().contains("url(./logo.png)"), "{e}");
 }
 
 fn copy_dir(from: &Path, to: &Path) {

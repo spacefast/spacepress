@@ -193,4 +193,41 @@ fn captured_ability_lock_types_hosted_calls() {
     if let Err(e) = zero::bundle::compile(&bundle, &compiled, &bundle, None) {
         panic!("{}", e.message);
     }
+    // A bundle captured before `zero/_generated/` names the lock `zero/abilities.json`. Hosts keep
+    // stored bundles and recompile them, so it compiles the same.
+    let app = bundle.join(zero::bundle::APP_FILE);
+    let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
+    for map in ["files", "canonical"] {
+        let entries = captured[map].as_object_mut().unwrap();
+        let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
+            .into_iter()
+            .map(|(k, v)| {
+                let k = k.replace("zero/_generated/abilities.json", "zero/abilities.json");
+                let v = match v {
+                    serde_json::Value::String(s) => s
+                        .replace("zero/_generated/abilities.json", "zero/abilities.json")
+                        .into(),
+                    v => v,
+                };
+                (k, v)
+            })
+            .collect();
+        entries.extend(moved);
+    }
+    assert!(captured["files"].get("zero/abilities.json").is_some(), "{captured}");
+    let bytes = serde_json::to_vec(&captured).unwrap();
+    fs::write(&app, &bytes).unwrap();
+    let manifest_path = bundle.join(zero::bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    use sha2::Digest as _;
+    manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        .into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let older = work.path().join("compiled-older");
+    if let Err(e) = zero::bundle::compile(&bundle, &older, &bundle, None) {
+        panic!("{}", e.message);
+    }
 }

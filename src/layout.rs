@@ -29,11 +29,57 @@ pub const WP_CONTENT: &str = "zero/dist/wp-content";
 /// Where the migration ledger lived before `zero/_generated/` (zero ≤ 0.x builds).
 const OLD_MIGRATIONS: &str = "zero/migrations";
 
+/// Committed inputs that moved into `zero/_generated/`: (old project path, new). A source bundle
+/// captured before the move names the old paths, and a host recompiles stored bundles, so the
+/// hosted compile reads them through [`current`].
+const MOVED: &[(&str, &str)] = &[
+    ("zero/migrations/", "zero/_generated/migrations/"),
+    ("zero/abilities.json", "zero/_generated/abilities.json"),
+    ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
+];
+
+/// A captured project path on this layout: an input that moved into `zero/_generated/` is renamed,
+/// everything else is unchanged.
+pub fn current(path: &str) -> String {
+    for (old, new) in MOVED {
+        if let Some(rest) = path.strip_prefix(old) {
+            return format!("{new}{rest}");
+        }
+    }
+    path.to_string()
+}
+
 /// The ledger's old directory, if a checkout still has it. Building beside it would number a new
 /// `0001_init.sql` that a site's migration ledger already recorded under the same id, so callers
 /// refuse instead.
 pub fn old_migrations(exists: impl Fn(&Path) -> bool, project: &Path) -> Option<String> {
     exists(&project.join(OLD_MIGRATIONS)).then(|| {
-        format!("{OLD_MIGRATIONS}/ is from an earlier layout; move it to {MIGRATIONS}/ (git mv {OLD_MIGRATIONS} {MIGRATIONS})")
+        format!("{OLD_MIGRATIONS}/ is from an earlier layout; move it to {MIGRATIONS}/ (mkdir -p {GENERATED} && git mv {OLD_MIGRATIONS} {MIGRATIONS})")
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn captured_paths_from_before_generated_read_on_this_layout() {
+        for (old, new) in [
+            (
+                "zero/migrations/0001_init.sql",
+                "zero/_generated/migrations/0001_init.sql",
+            ),
+            (
+                "zero/migrations/snapshot.json",
+                "zero/_generated/migrations/snapshot.json",
+            ),
+            ("zero/abilities.json", "zero/_generated/abilities.json"),
+            ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
+            // Already current, and unrelated paths, are unchanged.
+            ("zero/_generated/abilities.json", "zero/_generated/abilities.json"),
+            ("zero/lib/fields.ts", "zero/lib/fields.ts"),
+            ("zero/migrations-notes.md", "zero/migrations-notes.md"),
+            ("zero.config.ts", "zero.config.ts"),
+        ] {
+            assert_eq!(super::current(old), new, "{old}");
+        }
+    }
 }

@@ -489,7 +489,7 @@ mod tests {
         let error = read_previous(project.path()).unwrap_err();
         assert_eq!(
             error.message,
-            "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ (git mv zero/migrations zero/_generated/migrations)"
+            "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ (mkdir -p zero/_generated && git mv zero/migrations zero/_generated/migrations)"
         );
     }
 

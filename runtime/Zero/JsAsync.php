@@ -19,10 +19,15 @@ trait JsAsync
         return $value instanceof JsError ? $value : new JsThrow($value);
     }
 
-    /** A typed TypeScript `catch (e)` binding is an Error; a thrown non-Error is refused, not coerced. */
-    public static function caughtError(JsError $error): JsError
+    /**
+     * A typed TypeScript `catch (e)` binding is an Error: a built-in error, or an instance of a
+     * class that extends Error (bound as itself, so its fields stay readable). Other thrown
+     * values are refused, not coerced.
+     */
+    public static function caughtError(JsError $error): JsError|JsObject
     {
         if ($error instanceof JsThrow) {
+            if (self::isError($error->value)) { return $error->value; }
             throw new JsError('A non-Error value was thrown into typed code: ' . self::thrownDescription($error->value), 'TypeError');
         }
         return $error;

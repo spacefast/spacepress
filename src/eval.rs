@@ -1384,13 +1384,19 @@ impl<'p> Evaluator<'p> {
                 if !scope.is_module_scope() {
                     return err(e.span, "class declarations must be at module scope");
                 }
+                let mut builtin_base = None;
                 let base = match &class.base {
                     Some(name) => match self.lookup(name, scope, e.span)? {
                         Value::Class(c) => Some(c),
+                        Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
+                            builtin_base = Some(g);
+                            None
+                        }
                         _ => {
-                            return err(
+                            return err_help(
                                 e.span,
-                                "extend a named Zero class; built-in and dynamic inheritance are unsupported",
+                                "extend a named Zero class or Error; other built-in and dynamic inheritance are unsupported",
+                                "extend Error, TypeError, RangeError or a class declared in this program",
                             );
                         }
                     },
@@ -1409,6 +1415,7 @@ impl<'p> Evaluator<'p> {
                 Value::Class(Rc::new(ClassValue {
                     class: class.clone(),
                     base,
+                    builtin_base,
                     env: scope.clone(),
                     statics,
                 }))

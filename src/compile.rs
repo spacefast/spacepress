@@ -1996,21 +1996,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 out.push_str(&inner?);
                 if let Some(h) = handler {
                     self.fx().scopes.push(HashMap::new());
+                    // JavaScript binds the thrown value itself; JsThrow carries non-JsError values.
                     let module = self.fx().module;
                     let javascript = self.javascript_module(module);
-                    let var = match param {
-                        Some((n, span)) => {
-                            self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span)
-                        }
-                        None => self.tmp_var(),
-                    };
+                    let caught = self.tmp_var();
                     // Database and validation errors propagate: they must roll back the request.
-                    let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {var}) {{");
-                    if javascript && param.is_some() {
-                        // Checked JavaScript catches any thrown value, not only Errors.
-                        let _ = writeln!(out, "{}{var} = \\Zero\\Js::thrownValue({var});", pad(indent + 1));
-                    } else if param.is_some() {
-                        let _ = writeln!(out, "{}{var} = \\Zero\\Js::caughtError({var});", pad(indent + 1));
+                    let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {caught}) {{");
+                    if let Some((n, span)) = param {
+                        let var =
+                            self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
+                        // Typed catch bindings are Errors: Error subclass instances pass, other values are refused.
+                        let unwrap = if javascript { "thrownValue" } else { "caughtError" };
+                        let _ = writeln!(out, "{p}    {var} = \\Zero\\Js::{unwrap}({caught});");
                     }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
@@ -2243,7 +2240,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(v.php);
         }
         let module = self.fx().module;
-        if self.javascript_module(module) {
+        if self.javascript_module(module) || self.error_instance(&v.ty) {
             let v = self.finish_value(v, e.span)?;
             return Ok(format!("\\Zero\\Js::throwable({})", v.php));
         }
@@ -2532,6 +2529,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
+            // `x instanceof C` narrows an unknown or caught value to C's instance type. Only the
+            // true branch narrows: a failed check says nothing about other classes.
+            ExprKind::Instanceof(value, class) => {
+                if let ExprKind::Ident(name) = &class.kind
+                    && let Ok(Resolved::Value(Value::Class(class), _)) = self.resolve(name, class.span)
+                    && let Some((path, original)) = self.path_ty(value)
+                    && matches!(original, Ty::Unknown | Ty::Error)
+                    && let Ok(id) = self.ensure_class(&class)
+                    && !self.classes[&id].javascript
+                {
+                    let instance = self.classes[&id].instance.clone();
+                    out.push(if negate {
+                        (path, original.clone(), instance)
+                    } else {
+                        (path, instance, original)
+                    });
+                }
+            }
             // `"key" in x` keeps the object-union members that declare `key` (TypeScript's `in`
             // narrowing). A member with an open map or an optional `key` stays on both sides.
             ExprKind::In(key, object) => {
@@ -2907,6 +2922,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     return Ok(Out::atom(
                         format!("({} instanceof \\Zero\\{class})", left.php),
+                        Ty::Bool,
+                    ));
+                }
+                if let ExprKind::Ident(name) = &right.kind
+                    && let Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) =
+                        self.resolve(name, right.span)?
+                {
+                    let left = self.expr(left)?;
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Js::isError({}, {})", left.php, php_str(g)),
                         Ty::Bool,
                     ));
                 }
@@ -5290,13 +5315,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("\\Zero\\Js::templateRaw({x})"));
                 Out::atom(php, suffix_null(Ty::Array(Box::new(Ty::Str))))
             }
-            (Ty::Error, "message" | "name") => {
+            (Ty::Error, "cause") => {
+                let php = guarded(self, &|x| format!("\\Zero\\Js::dynamicGet({x}, 'cause')"));
+                Out::atom(php, Ty::Unknown)
+            }
+            (Ty::Error, "message" | "name" | "stack") => {
+                // A caught value may be an Error subclass instance, so read through JavaScript lookup.
                 let php = guarded(self, &|x| {
-                    if prop == "message" {
-                        format!("({x})->getMessage()")
-                    } else {
-                        format!("({x})->jsName")
-                    }
+                    format!("\\Zero\\Js::str(\\Zero\\Js::dynamicGet({x}, {}))", php_str(prop))
                 });
                 Out::atom(php, suffix_null(Ty::Str))
             }
@@ -6695,6 +6721,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if (g, m) == ("Error", "captureStackTrace") {
+            // Zero records no frames; the target gets Error's header-only stack.
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\Zero\\JsClass::captureStackTrace((({argv})->a)[0] ?? \\Zero\\Js::undefined())"),
+                Ty::Undefined,
+            ));
+        }
         if g == "globalThis" {
             return match crate::eval::global_member(m) {
                 crate::eval::GlobalMember::Provided(g) => self.global_call(g, args, span),

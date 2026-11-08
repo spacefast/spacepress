@@ -2845,3 +2845,47 @@ fn language_constructs_match_node_through_generated_php() {
         assert_eq!(php, node, "{name}: the PHP envelope is not byte-identical to Node's");
     }
 }
+
+/// Authored TypeScript runs `for await` only over sync iterables of settled values (Zero's own
+/// promises or plain values). Values from imported JavaScript and async generators need the job
+/// queue, which only imported JavaScript has, so they keep a located refusal.
+#[test]
+fn typed_for_await_accepts_only_settled_sync_iterables() {
+    for (source, ok) in [
+        (
+            "const out: number[] = []; for await (const v of [1, 2]) out.push(v); return out;",
+            true,
+        ),
+        (
+            "const out: number[] = []; for await (const v of untyped()) out.push(v as number); return out;",
+            false,
+        ),
+        (
+            "async function* gen() { yield 1; } const out: number[] = []; for await (const v of gen()) out.push(v); return out;",
+            false,
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("h.mjs"),
+            "export function untyped() { return [1, 2]; }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\nimport {{ untyped }} from './h.mjs';\nexport default defineConfig({{ name: 'awaits', actions: {{ probe: action({{ input: {{}}, handler: async () => {{ {source} }} }}) }} }});"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(if ok { 0 } else { 1 }), "{source}: {report}");
+        if !ok {
+            assert!(
+                report["diagnostics"][0]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("only work"),
+                "{source}: {report}"
+            );
+        }
+    }
+}

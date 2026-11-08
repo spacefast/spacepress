@@ -1663,13 +1663,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
             } => {
                 let module = self.fx().module;
-                if *is_await && !self.javascript_module(module) {
-                    return err_help(
-                        *span,
-                        "`for await` only works in imported JavaScript",
-                        "await each value inside a `for ... of` loop",
-                    );
-                }
+                // Authored TypeScript has no job queue, so `for await` is accepted only where the
+                // blocking model is exact: a sync iterable (array, tuple, string) whose elements are
+                // Zero's own promises or plain values. Each element is then already settled, and
+                // awaiting it yields its value. Async iterables, generators and values from imported
+                // JavaScript go through the job queue, which only imported JavaScript has.
+                let typed_await = *is_await && !self.javascript_module(module);
                 if *is_await && !self.fx().is_async {
                     return err_help(
                         *span,
@@ -1697,8 +1696,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "check it first, or use `?? []`",
                     );
                 }
+                if typed_await {
+                    let settled = awaited_element(&el);
+                    if it.ty == Ty::Dynamic || settled.is_none() {
+                        return err_help(
+                            *span,
+                            "`for await` only works in imported JavaScript",
+                            "await each value inside a `for ... of` loop",
+                        );
+                    }
+                }
                 // Each `for await` value is awaited, so its type is the awaited one.
-                let el = if *is_await {
+                let el = if typed_await {
+                    widen_fresh_literals(&awaited_element(&el).expect("checked above"))
+                } else if *is_await {
                     Ty::Dynamic
                 } else {
                     widen_fresh_literals(&el)
@@ -8039,6 +8050,22 @@ fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
         Ty::union([ty, Ty::Undefined])
     } else {
         ty
+    }
+}
+
+/// The type a typed `for await` element settles to under the blocking model: a Zero promise is
+/// its value, a plain value is itself. `None` for values only the job queue can settle (anything
+/// from imported JavaScript, unknown values, builders that were never awaited).
+fn awaited_element(t: &Ty) -> Option<Ty> {
+    match t {
+        Ty::Promise(inner) => awaited_element(inner),
+        Ty::Union(items) => items
+            .iter()
+            .map(awaited_element)
+            .collect::<Option<Vec<_>>>()
+            .map(Ty::union),
+        Ty::Dynamic | Ty::Unknown | Ty::Builder(_) => None,
+        other => Some(other.clone()),
     }
 }
 

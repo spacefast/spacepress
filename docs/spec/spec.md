@@ -253,8 +253,18 @@ links, so the two never disagree. Placeholders: `:slug`, `:id`,
 `:year`/`:month`/`:day`, any scalar field, a ref's slug (`:byline.slug`), the
 first term (`:topics.slug`), and `:path` for hierarchical kinds.
 
-- It compiles to rewrite rules, `post_type_link`/`term_link`, the `url` field,
+- It compiles to rewrite rules, the core link filters for that kind, the `url` field,
   and an automatic 301 when the pattern or a slug changes.
+- The link filters per kind, because core applies a different one to each
+  (`wp-includes/link-template.php`):
+  - `wp.posts`: `post_link`;
+  - `wp.pages`: `page_link` and `_get_page_link`;
+  - attachments: `attachment_link`;
+  - your collections: `post_type_link`;
+  - taxonomies, `categories` and `tags`: `term_link`.
+
+  `item.url`, canonical URLs, feeds, sitemaps and every WordPress-generated
+  link all come from these filters, so they follow the pattern.
 - **Who renders it:** an `app/` route whose path matches the pattern renders
   with Zero. Without one, WordPress renders through the template hierarchy. So
   a URL alone gives WordPress rendering, and adding a page takes it over.

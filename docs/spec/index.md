@@ -84,7 +84,7 @@ front, with a typed client and cache purges that just work.
 | `global()` | `register_setting` with `show_in_rest` |
 | `users()` | `wp_users` + usermeta projection |
 | `menu()` | `register_nav_menu` + `wp_navigation` |
-| `url` patterns | rewrite rules + `post_type_link` / `term_link` + automatic 301s |
+| `url` patterns | rewrite rules + the kind's link filter (`post_link`, `page_link`, `post_type_link`, `term_link`) + automatic 301s |
 | `job()`, `every`, `cron` | Action Scheduler async / recurring / cron actions |
 | `action()` | `wp_register_ability`, served by core's Abilities route, the MCP Adapter and the facade |
 | HTTP API | core `/wp/v2` routes enforce Zero's rules; `/__zero/api/v1` maps them to clean shapes for clients and agents |

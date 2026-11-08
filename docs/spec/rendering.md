@@ -219,8 +219,31 @@ TSX subset, so they are examples as well as product.
 
 ## 5. Markdown and llms.txt
 
-- `GET /blog/2026/hello.md`, or the same URL with `Accept: text/markdown`,
-  returns markdown with `Vary: Accept`. Each HTML page links to its markdown version.
+- `GET /blog/2026/hello.md` returns markdown. Each HTML page links to it with
+  `<link rel="alternate" type="text/markdown">`. The `.md` URL is the cacheable
+  markdown representation, with its own Batcache and edge entry, purged
+  alongside the HTML URL.
+- `Accept: text/markdown` on the HTML URL also returns markdown, but it must
+  never share a cache entry with the HTML. Batcache keys on the URL; it varies on
+  `Accept` only for JSON-only clients (wpcom `wp-content/advanced-cache.php`),
+  and it answers before page code runs. So `Vary: Accept` on the response is not
+  enough. Zero's early hook (the engine's pre-WordPress lane, before
+  `advanced-cache.php` loads) sees `Accept: text/markdown` and answers it
+  before any cache lookup:
+  - it serves the prebuilt `.md` file when there is one;
+  - otherwise it renders with `batcache_cancel()` and
+    `Cache-Control: private, no-store`, plus `Vary: Accept` and
+    `Content-Location: <url>.md`.
+
+  The origin then never stores a markdown body under the HTML key, and
+  Batcache never hands its HTML copy to an agent. One limit remains: the WP
+  Cloud edge answers before the origin, and nothing in our code shows it
+  honoring `Vary: Accept`. An agent can therefore still get the edge's cached
+  HTML for `/x`, although it can never poison it. So the `.md` URL is the
+  contract for agents. HTML responses advertise it in both a `Link: <…>.md;
+  rel="alternate"; type="text/markdown"` header and the `<link>` tag, and
+  `Accept` negotiation is a convenience on top. Before relying on negotiation
+  at the edge, verify whether it keys on `Accept`.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
   Code pages render from their compiled output, and static pages are prebuilt.
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
@@ -285,6 +308,11 @@ Already on main in the runtime:
 **Budget:** p50 server time on a cache miss under 30 ms on a box; on a hit, Batcache or edge time only.
 
 ### 6.4 What the platform supports (checked 2026-11-08)
+
+- **Representations:** every cacheable URL has exactly one representation per
+  cache key. HTML and markdown are separate URLs (`/x` and `/x.md`). Content
+  negotiation on `/x` (§5) bypasses every cache, because neither Batcache nor
+  the engine's prebuilt-file lane keys on `Accept`.
 
 - **URL purge:** the edge-cache purge action accepts `purge_uris` (query strings
   kept, each host checked against the site) and purges the whole domain only

@@ -201,7 +201,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
   `[x]`, `[...x]`, `[[...x]]`, `(group)` and `_private`.
 - **Pages:** page+handler in one file, `guard`, typed `search`, `_generated/routes.d.ts` for links.
 - **Kind URLs:**
-  - `url` patterns compile to rewrite rules and `post_type_link`/`term_link`;
+  - `url` patterns compile to rewrite rules and the kind's link filter (`post_link` for posts, `page_link`/`_get_page_link` for pages, `post_type_link` for collections, `term_link` for terms);
   - automatic 301s;
   - an `app/` page that matches a pattern takes over its URL;
   - otherwise the theme renders it.
@@ -254,6 +254,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
 **Done when:**
 - a cache hit follows the first request;
 - an edit purges exactly the affected URLs plus their `.md` versions;
+- `Accept: text/markdown` on a cached HTML URL returns markdown and leaves the cached HTML untouched, and the next browser request still gets HTML;
 - a lost delivery is retried by housekeeping.
 
 ## 9. Markdown and llms.txt

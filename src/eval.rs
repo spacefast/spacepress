@@ -488,7 +488,17 @@ impl<'p> Evaluator<'p> {
         let scope = Scope::new(None, id);
         self.module_scopes[id] = Some(scope.clone());
         self.evaluating[id] = true;
-        // Dependencies first, like ESM.
+        // The CommonJS wrapper: `exports` starts as `module.exports`, and `require` runs its
+        // target when called, as Node does.
+        let commonjs = module.commonjs.as_ref().map(|names| {
+            let exports = Value::object(IndexMap::new());
+            let wrapper = Value::object(IndexMap::from([("exports".to_string(), exports.clone())]));
+            declare(&scope, "module", wrapper.clone(), false);
+            declare(&scope, "exports", exports, false);
+            declare(&scope, "require", Value::Builtin(Builtin::Require(id)), false);
+            (wrapper, names)
+        });
+        // Dependencies first, like ESM. A CommonJS module loads its `require` targets lazily.
         for stmt in &module.body {
             if let Stmt::Import { source, .. }
             | Stmt::ExportNames { from: Some(source), .. }
@@ -570,8 +580,43 @@ impl<'p> Evaluator<'p> {
                 }
             }
         }
+        if let Some((wrapper, names)) = commonjs {
+            let exports = self.get_prop(&wrapper, "exports", Span::NONE)?;
+            for name in names {
+                let value = match &exports {
+                    Value::Object(object) => object.borrow().get(name).cloned().unwrap_or(Value::Undef),
+                    _ => Value::Undef,
+                };
+                self.exports[id].insert(name.clone(), value);
+            }
+            self.exports[id].insert("default".into(), exports);
+        }
         self.evaluating[id] = false;
         Ok(())
+    }
+
+    /// `require("<spec>")` from CommonJS module `from`: run the target if it hasn't run, and
+    /// return its `module.exports`. Node would hand a cycle a partial export object.
+    fn require(&mut self, from: usize, args: &[Value], span: Span) -> R<Value> {
+        let [Value::Str(spec)] = args else {
+            return err(span, "require() needs one string literal");
+        };
+        let Some(&target) = self.program.resolved.get(&(from, spec.to_string())) else {
+            return err(
+                span,
+                format!("require(\"{spec}\") wasn't loaded; it must be a top-level static require"),
+            );
+        };
+        if self.evaluating[target] {
+            let path = self.program.modules[target].path.display().to_string();
+            return err_help(
+                span,
+                format!("require cycle through {path}"),
+                "Node returns a partially initialized module.exports here; break the cycle",
+            );
+        }
+        self.eval_module(target)?;
+        Ok(self.exports[target].get("default").cloned().unwrap_or(Value::Undef))
     }
 
     /// Whether `name` is a type that a dynamic module erased, directly or through re-exports.
@@ -1918,6 +1963,20 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    /// An array method's callback: a global builtin (`.filter(Boolean)`, `Array.from(xs, Number)`)
+    /// receives only the arguments its contract takes, as JavaScript ignores the extra index and
+    /// array; `parseInt` keeps the index as its radix, as in JavaScript.
+    fn callback(&mut self, f: &Value, mut args: Vec<Value>, span: Span) -> R<Value> {
+        if let Value::Builtin(Builtin::Global(g)) = f
+            && let Some(max) = crate::builtins::contract("global", g)
+                .and_then(|c| c.evaluator)
+                .map(|a| a.max)
+        {
+            args.truncate(max);
+        }
+        self.call(f, args, span)
+    }
+
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {
         match f {
             Value::Closure(c) => self.call_closure(c, args, span),
@@ -2106,13 +2165,17 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail | Builtin::Abilities => {
-                err_help(
-                    span,
-                    "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
-                    "move the call into a handler",
-                )
-            }
+            Builtin::Once
+            | Builtin::Jobs
+            | Builtin::Fetch
+            | Builtin::Crypto
+            | Builtin::Mail
+            | Builtin::Abilities
+            | Builtin::WpFunction(_) => err_help(
+                span,
+                "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "move the call into a handler",
+            ),
             Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
@@ -2156,6 +2219,7 @@ impl<'p> Evaluator<'p> {
             Builtin::HttpError => err(span, "use `new HttpError(status, code, message)`"),
             Builtin::Global(g) => call_global(g, &args, span),
             Builtin::Static(g, m) => self.call_static(g, m, args, span),
+            Builtin::Require(from) => self.require(*from, &args, span),
         }
     }
 
@@ -2500,7 +2564,7 @@ impl<'p> Evaluator<'p> {
                     out.push(if matches!(f, Value::Undef) {
                         value
                     } else {
-                        self.call(&f, vec![value, Value::Num(i as f64)], span)?
+                        self.callback(&f, vec![value, Value::Num(i as f64)], span)?
                     });
                     i += 1;
                 }
@@ -2586,7 +2650,7 @@ impl<'p> Evaluator<'p> {
                         }
                         continue;
                     };
-                    let r = self.call(&f, vec![x.clone(), Value::Num(i as f64), Value::Array(a.clone())], span)?;
+                    let r = self.callback(&f, vec![x.clone(), Value::Num(i as f64), Value::Array(a.clone())], span)?;
                     if matches!(m, "filter" | "find" | "findIndex" | "some" | "every") {
                         require_static_data(&r, span)?;
                     }
@@ -2625,7 +2689,7 @@ impl<'p> Evaluator<'p> {
                 for (i, _) in iter {
                     let x = a.borrow().get(i).cloned();
                     if let Some(x) = x {
-                        acc = self.call(&f, vec![acc, x, Value::Num(i as f64), Value::Array(a.clone())], span)?;
+                        acc = self.callback(&f, vec![acc, x, Value::Num(i as f64), Value::Array(a.clone())], span)?;
                     }
                 }
                 acc
@@ -2762,12 +2826,23 @@ const WORDPRESS_TYPES: &[&str] = &[
 fn wordpress_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
         "abilities" => Builtin::Abilities,
+        n if crate::wordpress::function(n).is_some() => Builtin::WpFunction(n.into()),
         n if WORDPRESS_TYPES.contains(&n) => return Ok(Value::Undef),
         _ => {
             let mut d = Diag::new(span, format!("\"php/wordpress\" has no export named `{name}`"));
-            if let Some(s) = suggest(name, WORDPRESS_EXPORTS.iter().copied()) {
-                d = d.help(format!("did you mean `{s}`?"));
-            }
+            d = match suggest(
+                name,
+                WORDPRESS_EXPORTS
+                    .iter()
+                    .copied()
+                    .chain(crate::wordpress::function_names()),
+            ) {
+                Some(s) => d.help(format!("did you mean `{s}`?")),
+                None => d.help(format!(
+                    "WordPress functions are admitted one by one when they map soundly to TypeScript; available: {}",
+                    crate::wordpress::function_names().collect::<Vec<_>>().join(", ")
+                )),
+            };
             return Err(Ctl::Err(d));
         }
     }))
@@ -3859,6 +3934,24 @@ mod tests {
         let program = crate::loader::load(&entry).unwrap();
         let error = super::Evaluator::new(&program).run().unwrap_err();
         assert!(error.message.contains("lone UTF-16 surrogate"), "{error:?}");
+    }
+
+    #[test]
+    fn global_builtins_work_as_array_callbacks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("zero.config.ts");
+        std::fs::write(
+            &entry,
+            r#"export default [[1, 0, 2, "", null].filter(Boolean), Array.from(["1", "2.5"], Number), ["10", "10", "10"].map(parseInt), ["a", ""].map(String), [0, 1].every(Boolean), ["1", "x"].map(Number)];"#,
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let result = super::Evaluator::new(&program).run().unwrap();
+        // Node prints the same for these expressions; parseInt keeps the index as its radix.
+        assert_eq!(
+            super::to_json(&result).unwrap(),
+            serde_json::json!([[1, 2], [1, 2.5], [10, null, 2], ["a", ""], false, [1, null]])
+        );
     }
 
     #[test]

@@ -60,9 +60,9 @@ register the page with zero-identity:
 node examples/blog/build-client.mjs
 ./target/release/zero build examples/blog        # ships public/client/ with the plugin
 ./target/release/zero dev examples/blog --no-watch
-./target/release/zero dev wp examples/blog -- zero-identity app add --name=Blog --id=app_blog \
+./target/release/zero wp --site examples/blog zero identity app add --name=Blog --id=app_blog \
   --redirect=http://localhost:8787/wp-content/plugins/zero-app-blog/public/ --origin=http://localhost:8787
-./target/release/zero dev wp examples/blog -- user application-password create admin zero-sync --porcelain
+./target/release/zero wp --site examples/blog user application-password create admin zero-sync --porcelain
 ```
 
 These commands assume Studio printed `http://localhost:8787`; substitute its
@@ -70,7 +70,7 @@ actual URL in the registration and sync commands if different. The page is at
 `http://localhost:8787/wp-content/plugins/zero-app-blog/public/`.
 Its Sign in button goes through the zero-identity screens; it switches between
 English and German and takes comments. Send its committed posts to the site with
-`zero sync examples/blog --site http://localhost:8787 --app-password admin:<application password>`,
+`ZERO_APP_PASSWORD=admin:<application password> zero sync examples/blog`,
 using the password created above. Stop it with `zero dev stop examples/blog`;
 the next start retains its content and uploads. Omit `--no-watch` to keep
 Zero watching and rebuilding sources in the foreground.

@@ -656,6 +656,52 @@ export default defineConfig({
 - `zero doctor --site <url>` (with `ZERO_APP_PASSWORD`) reports every locked
   ability the site no longer has or whose schema changed since the pull.
 
+## WordPress functions
+
+A short, curated set of WordPress core functions is importable from
+`"php/wordpress"` and callable from hooks, actions, routes and jobs:
+
+```ts
+import { current_user_can, esc_html, get_post, update_option, wp_insert_post } from "php/wordpress";
+
+if (!current_user_can("edit_posts")) throw new HttpError(403, "forbidden", "Editors only");
+const id = wp_insert_post({ post_title: input.title, post_status: "draft" });
+const post = get_post(id);                       // WP_Post | null
+return post === null ? "" : esc_html(post.post_title);
+```
+
+| Function | TypeScript |
+|---|---|
+| `get_option(option)` | `unknown` (a missing option is `false`) |
+| `update_option(option, value)`, `delete_option(option)` | `boolean` |
+| `get_post(post_id)` | `WP_Post \| null` |
+| `wp_insert_post({ post_title?, post_content?, post_excerpt?, post_status?, post_type?, post_name?, post_author?, post_parent?, menu_order? })` | `number`; throws on failure |
+| `current_user_can(capability)`, `is_user_logged_in()` | `boolean` |
+| `get_current_user_id()` | `number` |
+| `get_userdata(user_id)` | `WP_User \| false` |
+| `get_permalink(post_id)` | `string \| false` |
+| `home_url(path)` | `string` |
+| `sanitize_text_field`, `sanitize_title`, `esc_html`, `esc_attr`, `esc_url`, `wp_strip_all_tags` | `string` → `string` |
+
+- Types come from `php-stubs/wordpress-stubs` 7.1.2 (WordPress's own
+  signatures and phpdoc) through the same pinned generator as the hook
+  catalog, narrowed where a PHP parameter accepts several shapes. Each call
+  passes exactly the listed arguments; later PHP parameters keep their
+  defaults (`wp_insert_post` always asks for a `WP_Error` instead of `0`).
+- A function is admitted only when it maps soundly: no by-reference
+  parameters, no echoing template tags (`the_title`), no reliance on request
+  globals (`the_post`). Anything else is a build error at the import that
+  lists what is available.
+- `WP_Post` and `WP_User` results are the same read-only views hook arguments
+  are.
+- A `WP_Error` result throws an `HttpError` with the error's code and its
+  `status` when it carries one, otherwise 422.
+- The call runs as the current WordPress user, inside the handler's
+  transaction. A rolled-back handler undoes the function's database writes,
+  and Zero clears WordPress's cache of every option and post the call wrote.
+- A call is a direct PHP function call through Zero's value conversions,
+  never a PHP string or `eval`.
+
 ## WordPress hooks
 
 `wp-hooks/` beside `zero.config.ts` adds WordPress actions and filters. Name a
@@ -820,7 +866,7 @@ authentication; it creates no second user table or post type. It needs
 admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
 through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
 through the zero-identity screens (register the frontend once with
-`wp zero-identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
+`zero identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
 `GET /me` returns the user with their `member` row.
 
 Anonymous visitors can write as guests (`createClient({ auth: { guests: true } })`):
@@ -837,7 +883,7 @@ For `editor: false` collections the file wins; files without a `uid` use a stabl
 { sync: "content/posts/*.md" }
 ```
 
-`zero sync --site <url> --app-password user:pass` (or `--bearer <jwt>`) keeps
+`zero sync [--site <url>]`, with `ZERO_APP_PASSWORD=user:pass` (or `ZERO_TOKEN=<jwt>`) in the environment, keeps
 `content/posts/<slug>.md` and the site in step: front matter for fields, the
 body as Markdown for the `content` column. Both sides may change; it merges
 per field, and writes `.zero/conflicts/<uid>.md` when the same field changed on
@@ -968,10 +1014,16 @@ Imports: `"zero"`, relative TypeScript/ESM JavaScript sources, and locally insta
 source packages. Package imports search the nearest `node_modules`, support scoped
 names and exact subpath exports, and select `import`/`default` export conditions,
 an explicit `module` entry, or a supported `main`/index entry. `.mjs`, `.ts` and `.mts` identify
-source directly. A narrow CommonJS subset supports one top-level
-`module.exports = function` or assignment of a local function. `require`, named
-CommonJS exports, mixed ESM/CommonJS and implicit sloppy-mode `arguments` are
-refused. Export patterns, Node built-ins,
+source directly. A `.cjs` source, or a `.js` source with no ESM syntax outside a
+`"type": "module"` package, is static CommonJS. It runs once at build time, like
+Node's module cache: top-level `require("<literal>")` of relative files and
+CommonJS packages (resolved with the `require`/`default` conditions), and
+`module.exports = …` or `exports.name = …` outside functions. ESM importers get
+`module.exports` as the default export, plus the statically assigned names as
+named exports. Dynamic `require`, `require` inside a function, `require` of an ES
+module, `require` cycles, writes to `module` or `exports` inside a function,
+other `module` properties, mixed ESM/CommonJS and implicit sloppy-mode
+`arguments` are refused. Export patterns, Node built-ins,
 package aliases and declaration-only targets are refused. Package entry targets
 must name existing files inside the package; the compiler does not install them.
 Relative `.js` imports can resolve to their TypeScript source counterparts.

@@ -671,6 +671,86 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
 }
 
 #[test]
+fn static_commonjs_packages_match_node_through_generated_php() {
+    // picomatch's shapes: relative and package `require`, destructured `require`,
+    // `exports.x =` read back through `exports`, `module.exports = { … }`, a
+    // function export with named exports for ESM importers, and evaluation order.
+    let tmp = tempfile::tempdir().unwrap();
+    let files: &[(&str, &str)] = &[
+        (
+            "node_modules/glob-lite/package.json",
+            r#"{"name":"glob-lite","main":"index.js"}"#,
+        ),
+        (
+            "node_modules/glob-lite/index.js",
+            "'use strict';\nconst { log } = require('./lib/log');\nlog.push('index');\nconst escape = require('./lib/escape');\nconst { STAR } = require('./lib/constants');\nlog.push('after');\nfunction toSource(glob) { return glob.split(STAR).map(escape).join('[^/]*'); }\nmodule.exports = toSource;\n",
+        ),
+        ("node_modules/glob-lite/lib/log.js", "exports.log = [];\n"),
+        (
+            "node_modules/glob-lite/lib/constants.js",
+            "require('./log').log.push('constants');\nmodule.exports = { STAR: '*', SPECIAL: /[.+?^${}()|[\\]\\\\]/g };\n",
+        ),
+        (
+            "node_modules/glob-lite/lib/escape.js",
+            "const { SPECIAL } = require('./constants');\nrequire('./log').log.push('escape');\nexports.escape = (part) => part.replace(SPECIAL, '\\\\$&');\nmodule.exports = exports.escape;\n",
+        ),
+        (
+            "node_modules/counts/package.json",
+            r#"{"name":"counts","exports":{".":{"require":"./counts.cjs","import":"./missing.mjs"}}}"#,
+        ),
+        (
+            "node_modules/counts/counts.cjs",
+            "exports.limit = 3;\nexports.label = 'items';\n",
+        ),
+        (
+            "probe.cjs",
+            "const toSource = require('glob-lite');\nconst { log } = require('glob-lite/lib/log');\nconst { limit, label } = require('counts');\nfunction run(glob) { return { source: toSource(glob), order: log.join(','), limit, label }; }\nmodule.exports = run;\n",
+        ),
+    ];
+    for (path, source) in files {
+        let path = tmp.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    std::fs::write(
+        tmp.path().join("node.cjs"),
+        "process.stdout.write(JSON.stringify(require('./probe.cjs')('src/*.test.js')));",
+    )
+    .unwrap();
+    let node = Command::new("node").arg(tmp.path().join("node.cjs")).output().unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(
+        expected,
+        json!({"source": "src/[^/]*\\.test\\.js", "order": "index,constants,escape,after", "limit": 3, "label": "items"})
+    );
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"
+import { action, defineConfig, text } from "zero";
+import run from "./probe.cjs";
+export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text().notNull() }, handler: (input) => run(input.glob) }) } });
+"#,
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+        echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(['glob' => 'src/*.test.js']), \Zero\Seam::ctx(['user' => null])));
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-commonjs/zero/app"),
+        ],
+    );
+    assert_eq!(result, expected);
+}
+
+#[test]
 fn classes_match_node_through_generated_php_and_wire_client_types() {
     let tmp = tempfile::tempdir().unwrap();
     let config = root().join("tests/differential/classes.ts");
@@ -919,7 +999,7 @@ export default defineConfig({ name: "flows", collections: { posts }, use: [sync(
     std::fs::write(
         tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
         r#"import { action, db, definePlugin, env, fetch } from "zero";
-import { abilities } from "php/wordpress";
+import { abilities, esc_html } from "php/wordpress";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
 // as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
 async function push(body: string) {
@@ -933,6 +1013,8 @@ export default () => definePlugin({
     count: action({ input: {}, async handler() { return (await db.query.posts.findMany()).length; } }),
     // A WordPress ability is a capability like any other: here the app's own `posts` list.
     list: action({ input: {}, async handler() { const rows = await abilities.call("flows/posts-list", {}); return rows; } }),
+    // So is a WordPress function, recorded with the module it comes from.
+    title: action({ input: {}, handler() { return esc_html("<b>"); } }),
   },
 });"#,
     )
@@ -957,12 +1039,11 @@ export default () => definePlugin({
     assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
     assert_eq!(
         plugin["inferred"]["actions"],
-        json!(["sync_count", "sync_export", "sync_list"])
+        json!(["sync_count", "sync_export", "sync_list", "sync_title"])
     );
     assert_eq!(plugin["inferred"]["abilities"], json!(["flows/posts-list"]));
-    for empty in ["wpHooks", "php"] {
-        assert_eq!(plugin["inferred"][empty], json!([]));
-    }
+    assert_eq!(plugin["inferred"]["php"], json!(["php/wordpress:esc_html"]));
+    assert_eq!(plugin["inferred"]["wpHooks"], json!([]));
     // Only the handler that reads and then sends, through its helper, is flagged.
     assert_eq!(
         plugin["flows"],
@@ -2583,6 +2664,108 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
         })
     );
 }
+
+/// WordPress functions from "php/wordpress" on an in-process WordPress, through the built plugin:
+/// the action runs as the signed-in user, writes an option and a post, reads the post back as a
+/// typed view, and a WP_Error from wp_insert_post is a thrown HttpError.
+#[test]
+fn wordpress_functions_run_as_the_signed_in_user() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("fns");
+    copy_dir(&root().join("tests/fixtures/wp-functions"), &project);
+    let content = build_wp(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $run = function (string $title, ?string $as) use ($wp) {
+                [$status, $data] = $wp->call('POST', '/actions/note', ['title' => $title], $as);
+                return [$status, $data];
+            };
+            echo json_encode([
+                'editor' => $run('Fish & <chips>', 'editor'),
+                'subscriber' => $run('Nope', 'subscriber'),
+                'empty' => $run('', 'editor'),
+                'option' => get_option('zero_last_note'),
+            ]), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let got: Value = serde_json::from_str(text.lines().next_back().unwrap()).unwrap();
+    let editor = &got["editor"][1];
+    assert_eq!(got["editor"][0], 200, "{got}");
+    assert_eq!(editor["allowed"], true);
+    assert!(editor["id"].as_i64().unwrap() > 0);
+    assert_eq!(editor["title"], "Fish &amp; &lt;chips&gt;");
+    assert_eq!(editor["last"], "Fish & <chips>");
+    assert_eq!(got["subscriber"], json!([200, {"allowed": false}]));
+    // An empty post is WordPress's `empty_content` WP_Error: 422 with its code; the option written
+    // before it rolled back with the action's transaction.
+    assert_eq!(got["empty"][0], 422);
+    assert_eq!(got["empty"][1]["code"], "empty_content");
+    assert_eq!(got["option"], "Fish & <chips>");
+}
+
+/// The compiler's own-app ability types and the runtime's registered abilities come from the same
+/// schema; this runs both and compares names, input properties and required inputs, so a new
+/// operation in runtime/Zero/Wp/Abilities/Register.php can't go untyped.
+#[test]
+fn wordpress_own_abilities_match_the_registered_ones() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("own");
+    copy_dir(&root().join("tests/fixtures/abilities-own"), &project);
+    let content = build_wp(&project);
+    let program = zero::loader::load(&project.join("zero.config.ts")).unwrap();
+    let built = zero::pipeline::build(&project, &program, || Ok(zero::pipeline::Previous::none()), |_| None).unwrap();
+    let compiled: Value = serde_json::to_value(zero::wordpress::abilities::own_inputs(&built.schema)).unwrap();
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $out = [];
+            foreach (\Zero\Wp\Abilities\Register::operations() as $op) {
+                $keys = array_map('strval', array_keys($op['input']['properties'] ?? []));
+                $required = array_map('strval', $op['input']['required'] ?? []);
+                sort($keys);
+                sort($required);
+                $out[$op['name']] = [$keys, $required];
+            }
+            ksort($out);
+            echo json_encode($out), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let registered: Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next_back().unwrap()).unwrap();
+    // Both include `-revisions`, the sync trio, the auth create's `password` and the agent job.
+    assert!(
+        registered["own/notes-revisions"].is_array()
+            && registered["own/members-create"][0].to_string().contains("password")
+    );
+    assert_eq!(compiled, registered);
+}
+
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.

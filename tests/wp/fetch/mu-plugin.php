@@ -5,10 +5,9 @@ $origin = 'fetch-origin.test';
 $gateway = gethostbyname('host.docker.internal');
 add_filter('zero_fetch_allow_address', static fn ($open, $address, $host) => $open || ($host === $origin && $address === $gateway), 10, 3);
 add_filter('zero_fetch_resolve', static fn ($answer, $host) => $host === $origin ? [$gateway] : $answer, 10, 2);
-// Lane probe: `?zero-fetch-transport=streams` offers WordPress only the streams transport, as a
-// host without ext-curl would; fetch() must then refuse rather than send unpinned.
-// The swapped transport answers like a real one (it records the call and returns 200), so the
-// only thing that can stop fetch() returning its body is fetch() noticing the pin never ran.
+// Lane probe: `?zero-fetch-transport=streams` swaps in a transport that answers like a real one
+// without any pinned connection, as a site plugin choosing another transport would. fetch() must
+// send through its own pinned cURL connection instead, so this transport is never used.
 if (($_GET['zero-fetch-transport'] ?? '') === 'streams') {
     add_action('requests-requests.before_request', static function (&$url, &$headers, &$data, &$type, &$options): void {
         $options['transport'] = new class implements \WpOrg\Requests\Transport {

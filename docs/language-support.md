@@ -36,7 +36,7 @@ Install the package with your package manager. Zero reads supported local TypeSc
 
 Status: **supported**.
 
-Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. The CommonJS subset accepts one static top-level function export; require, named CommonJS exports, implicit sloppy arguments, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
+Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require("<literal>")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
 
 [Evidence](../src/loader.rs) (`installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports`)
 
@@ -415,6 +415,30 @@ Status: **supported**.
 wp-hooks/<hook>.ts and wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
 
 [Evidence](../tests/compiler_contracts.rs) (`wp_hooks_register_in_file_order_with_their_priorities`)
+
+## wordpress-function-unknown
+
+Status: **refused**. Diagnostic: `Z2001`.
+
+"php/wordpress" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter.
+
+[Evidence](../tests/fixtures/reject-wp-function-unknown)
+
+## wordpress-function-argument
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+WordPress function arguments are checked against the catalog's types, from the pinned php-stubs/wordpress-stubs signatures and phpdoc, narrowed where a PHP parameter accepts several shapes (get_post takes a post id).
+
+[Evidence](../tests/fixtures/reject-wp-function-argument)
+
+## wordpress-functions
+
+Status: **supported**.
+
+Allowlisted WordPress functions compile to Zero\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none).
+
+[Evidence](../tests/compiler_contracts.rs) (`wordpress_functions_run_as_the_signed_in_user`)
 
 ## plugin-narrowed-write
 

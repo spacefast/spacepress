@@ -88,6 +88,8 @@ pub enum Builtin {
     Mail,
     /// `abilities.call(name, input)` from "php/wordpress", compiled to `Zero\Wp\Abilities\Call::run`.
     Abilities,
+    /// A catalog WordPress function from "php/wordpress", compiled to `Zero\Wp\Functions::call`.
+    WpFunction(Rc<str>),
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,
@@ -97,6 +99,8 @@ pub enum Builtin {
     Global(&'static str),
     /// A static function on a global, e.g. `Math.max`.
     Static(&'static str, Rc<str>),
+    /// `require` in the CommonJS module with this id; it only runs while the config is built.
+    Require(usize),
 }
 
 #[derive(Debug, Clone)]

@@ -326,7 +326,7 @@ test("zero sync against WordPress", async (t) => {
   const slug = `cli-${run}`;
   const created = zero("insert", "guides", JSON.stringify({ title: `CLI ${run}`, slug, summary: "From WordPress", level: "intro", writerId: writer.id,
     body: "<!-- wp:paragraph -->\n<p>First paragraph.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Second paragraph.</p>\n<!-- /wp:paragraph -->" }))[0];
-  const sync = (...args: string[]) => spawnSync(zeroBinary(), ["sync", ...args, project, "--only", "guides", "--site", harness.url, "--app-password", `editor:${harness.users.editor.appPassword}`, "--no-commit", "--json"], { encoding: "utf8" });
+  const sync = (...args: string[]) => spawnSync(zeroBinary(), ["sync", ...args, project, "--only", "guides", "--site", harness.url, "--no-commit", "--json"], { encoding: "utf8", env: { ...process.env, ZERO_APP_PASSWORD: `editor:${harness.users.editor.appPassword}` } });
   const file = join(project, `content/guides/${slug}.md`);
   const row = () => zero("find", "guides", JSON.stringify({ where: { id: created.id } }))[0];
 

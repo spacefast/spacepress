@@ -199,7 +199,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
 
   // The site's frontend signs readers in through zero-identity's screens: register it once.
   frontend.redirectUri = `${receipt.url}/signed-in`;
-  wp("zero-identity", "app", "add", "--name=The Zero Review", `--redirect=${frontend.redirectUri}`, `--origin=${receipt.url}`, `--id=${frontend.clientId}`);
+  wp("zero", "identity", "app", "add", "--name=The Zero Review", `--redirect=${frontend.redirectUri}`, `--origin=${receipt.url}`, `--id=${frontend.clientId}`);
 
   // The journey's author writes as an authors row the admin creates over the API.
   const userId = receipt.users.author.id;
@@ -231,7 +231,7 @@ test("the site journey on WordPress", async (t) => {
       async runJobs() {
         wp("action-scheduler", "run", "--hooks=zero_job");
       },
-      sync: (dir) => sync(dir, ["--site", receipt.url, "--app-password", `editor:${receipt.users.editor.appPassword}`]),
+      sync: (dir) => sync(dir, receipt.url, `editor:${receipt.users.editor.appPassword}`),
       async runRetries() {
         // A retry is a pending Action Scheduler action dated at the job's backoff: run each one now.
         for (const id of sql("SELECT action_id FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND status = 'pending'")) {

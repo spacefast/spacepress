@@ -2060,13 +2060,49 @@ final class Js
     }
 
     /**
+     * `-0` → `-0.0` outside strings, so json_decode keeps the sign. A linear scan: a regex over a long
+     * string literal can exceed PCRE's backtrack limit, and preg_replace then returns null.
+     */
+    private static function markNegativeZero(string $s): string
+    {
+        if (!str_contains($s, '-0')) {
+            return $s;
+        }
+        $out = '';
+        $length = strlen($s);
+        $from = 0;
+        for ($i = 0; $i < $length; $i++) {
+            $c = $s[$i];
+            if ($c === '"') {
+                // Skip the string literal, honoring escapes.
+                for ($i++; $i < $length && $s[$i] !== '"'; $i++) {
+                    if ($s[$i] === '\\') {
+                        $i++;
+                    }
+                }
+                continue;
+            }
+            if ($c === '-' && ($s[$i + 1] ?? '') === '0' && ($i === 0 || ($s[$i - 1] !== 'e' && $s[$i - 1] !== 'E'))) {
+                $next = $s[$i + 2] ?? '';
+                if ($next === '' || str_contains(" \t\r\n,]}", $next)) {
+                    $out .= substr($s, $from, $i - $from) . '-0.0';
+                    $from = $i + 2;
+                    $i++;
+                }
+            }
+        }
+
+        return $from === 0 ? $s : $out . substr($s, $from);
+    }
+
+    /**
      * JSON text → handles, preserving object/list shape at every depth.
      * Integers stay exact: request bodies and stored json() values
      * may carry ids. Throws \JsonException.
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
     {
-        $s = preg_replace('~"(?:[^"\\\\]|\\\\.)*"(*SKIP)(*F)|(?<![eE])-0(?=[\s,\]}]|$)~', '-0.0', $s);
+        $s = self::markNegativeZero($s);
         try {
             return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
         } catch (\JsonException $e) {

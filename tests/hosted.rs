@@ -170,3 +170,23 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
         assert!(zero::bundle::sources(&project, &work.path().join("escape")).is_err());
     }
 }
+
+/// A hosted compile types `abilities.call` from the captured `zero/abilities.json`: the bundle's
+/// file system is rooted at its own module directory, not at the app's name.
+#[test]
+fn captured_ability_lock_types_hosted_calls() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("calls");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/abilities-call");
+    for file in ["zero.config.ts", "zero/abilities.json"] {
+        write(&project, file, &fs::read_to_string(fixture.join(file)).unwrap());
+    }
+    let bundle = work.path().join("bundle");
+    zero::bundle::sources(&project, &bundle).unwrap();
+    fs::remove_dir_all(&project).unwrap();
+    // Without the lock the call is `unknown ability \`acme/site-info\``, so compiling is the proof.
+    let compiled = work.path().join("compiled");
+    if let Err(e) = zero::bundle::compile(&bundle, &compiled, &bundle, None) {
+        panic!("{}", e.message);
+    }
+}

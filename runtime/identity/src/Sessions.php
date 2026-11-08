@@ -17,8 +17,8 @@ final class Sessions
         return is_ssl() ? "__Host-" . $name : $name;
     }
     public function __construct(private DB $db, private Security $security) {
-        // Session cookies on the scoped REST surface are opt-in: a host serving its own frontend
-        // (`zero_identity_rest_cookie_auth`) or a migrated host with legacy cookie aliases.
+        // Session cookies on the scoped REST surface are opt-in, for a host serving its own
+        // frontend (`zero_identity_rest_cookie_auth`).
         add_filter('rest_authentication_errors', function ($result) {
             if (is_wp_error($result) || is_user_logged_in() || ($result !== null && $result !== true)
                 || !self::restCookieAuth()) { return $result; }
@@ -57,8 +57,7 @@ final class Sessions
     }
     private static function restCookieAuth(): bool
     {
-        return (bool) apply_filters('zero_identity_rest_cookie_auth', false)
-            || apply_filters('zero_identity_session_cookie_aliases', []) !== [];
+        return (bool) apply_filters('zero_identity_rest_cookie_auth', false);
     }
     private static function siteOrigin(): string
     {
@@ -97,16 +96,6 @@ final class Sessions
     }
     public function find(string $secret): ?array
     {
-        $alias = false;
-        if ($secret === '') {
-            foreach (apply_filters('zero_identity_session_cookie_aliases', []) as $name) {
-                if (is_string($name) && is_string($_COOKIE[$name] ?? null) && $_COOKIE[$name] !== '') {
-                    $secret = $_COOKIE[$name];
-                    $alias = true;
-                    break;
-                }
-            }
-        }
         if ($secret === "" || strlen($secret) > 512) {
             return null;
         }
@@ -120,11 +109,6 @@ final class Sessions
         );
         if ($session && !hash_equals((string) $session['secret_hash'], self::digest($secret))) {
             $session = null;
-        }
-        $session ??= Legacy\SessionUpgrade::find($this->db, $secret);
-        if ($alias && $session) {
-            self::cookie($secret, (int) $session['expires_at']);
-            $_COOKIE[self::cookieName()] = $secret;
         }
         return $session;
     }

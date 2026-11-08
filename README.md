@@ -266,8 +266,7 @@ boot on a site that misses any of them and names each one;
 - **Localization** with Polylang: one row per locale, shared fields kept equal,
   a generated `wpml-config.xml`.
 - **Migrations in**: `zero migrate config` imports EmDash, Payload or Sanity
-  schemas, and `zero migrate-legacy` moves a site built with the
-  [original Zero](docs/migrating-from-zero.md).
+  schemas.
 
 ## Alongside WordPress
 
@@ -301,8 +300,7 @@ containing `zero.config.ts`, or use the hosted MCP publish tool. Spacefast captu
 and compiles source on the host. REST endpoints, actions, [HTTP routes](docs/config-api.md#http-routes)
 and [TSX pages](docs/pages.md) work on the Space hostname; render pages locally
 with `zero-pages build` before publishing. Realtime is not supported.
-See the [Spacefast deploy guide](docs/spacefast-deploy.md) and, for an existing
-Space, the [migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
+See the [Spacefast deploy guide](docs/spacefast-deploy.md).
 
 Anywhere else: the build is `.zero/wp-content/plugins/*.zip`, which you upload
 or copy like any plugin, and `.zero/wp-content/zero-manifest.json` records the
@@ -332,7 +330,6 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/pages.md`](docs/pages.md): optional TSX routes, layouts and viewer-bound pages, with a complete site example
 - [`docs/identity-api.md`](docs/identity-api.md) and [`docs/identity-security.md`](docs/identity-security.md): the `zero-identity` plugin
 - [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas
-- [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): moving a site from the original Zero
 - [`docs/runtime-contract.md`](docs/runtime-contract.md): the seam between compiler output and the PHP runtime
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how the compiler works, the test suites, the layout
 

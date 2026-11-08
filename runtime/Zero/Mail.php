@@ -47,8 +47,7 @@ final class Mail
     }
 
     /**
-     * The original runtime's `emailPayload`: the same required fields, address coercion and header
-     * rules, so a message that sent from a 0.8 handler sends from here.
+     * The message shape `mail.send` accepts: required fields, address coercion and header rules.
      *
      * @return array<string, mixed>
      */

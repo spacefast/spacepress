@@ -101,14 +101,14 @@ fn help_lists_build_and_site_commands_from_one_table() {
 fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
     let wp = fake_wp();
     let mut command = zero();
-    command.args(["migrate-legacy", "-", "--dry-run", "--site", "@prod", "--space=s1"]);
+    command.args(["seed", "--records=-", "--dry-run", "--site", "@prod"]);
     with_path(&mut command, wp.path());
     let out = run_with_stdin(command, "<?php return [];");
     assert_eq!(out.status.code(), Some(7), "{}", text(&out.stderr));
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         seen["args"],
-        serde_json::json!(["@prod", "zero", "migrate-legacy", "-", "--dry-run", "--space=s1"])
+        serde_json::json!(["@prod", "zero", "seed", "--records=-", "--dry-run"])
     );
     assert_eq!(seen["stdin"], "<?php return [];");
 

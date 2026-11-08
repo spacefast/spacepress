@@ -1,8 +1,0 @@
-{
-  // A 0.8 Space with a client, pages and static content beside its capsule.
-  "runtime": { "kind": "zero", "server": "server/index.ts", "client": "client/index.tsx" },
-  "redirects": [{ "source": "/old", "destination": "/new", "status": 301 }],
-  "fallback": "/index.html",
-  "meta": { "title": "theme" },
-  "theme": { "accent": "#0a7" },
-}

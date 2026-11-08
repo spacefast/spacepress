@@ -306,7 +306,7 @@ describe("while an app update has failed half way", () => {
   });
 
   test("the trusted CLI refuses every command but migrate, with the reason", () => {
-    for (const args of [["find", "posts"], ["migrate-legacy", "--dry-run"]]) {
+    for (const args of [["find", "posts"], ["seed", "--dry-run"]]) {
       const out = JSON.parse(wpTry("zero", ...args));
       assert.deepEqual([out.error.status, out.error.code], [503, "unavailable"], args.join(" "));
       assert.match(out.error.detail, /Migration 9999_upgrade_probe failed at statement 2/);

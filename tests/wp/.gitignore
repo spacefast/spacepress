@@ -3,12 +3,6 @@ cache/*/
 .harness.json
 .harness-state
 .wp-content/
-.wp-content-legacy/
-.harness-legacy.json
-.legacy-site.json
-.wp-content-members/
-.harness-members.json
-.legacy-users.json
 .wp-content-admin/
 .harness-admin.json
 .app-build.*/

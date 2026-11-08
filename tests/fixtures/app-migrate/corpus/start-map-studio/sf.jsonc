@@ -1,9 +1,0 @@
-{
-  "$schema": "https://spacefast.com/schemas/sf.schema.json",
-  "name": "Start Map Studio",
-  "runtime": {
-    "kind": "zero",
-    "server": "server/index.ts",
-    "client": "client/index.tsx",
-  },
-}

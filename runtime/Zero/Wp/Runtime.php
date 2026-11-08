@@ -55,19 +55,14 @@ final class Runtime
                 if (self::$plugin === null) {
                     \WP_CLI::error('No compatible Zero app is active.');
                 }
-                // While storage is behind, only `migrate` runs; every other command (legacy migration
-                // included) would write against tables that don't match the build.
+                // While storage is behind, only `migrate` runs; every other command would write against
+                // tables that don't match the build.
                 if (($args[0] ?? '') !== 'migrate' && self::$plugin->unavailable() !== null) {
                     \WP_CLI::line((string) \Zero\Js::jsonStringify(['error' => \Zero\App::problem(new \Zero\HttpError(503, 'unavailable', (string) self::$plugin->unavailable()))]));
                     \WP_CLI::halt(1);
                 }
                 if (($args[0] ?? '') === 'seed') {
                     $code = \Zero\Sync\Seed::wpCli(self::$plugin, $args, $flags);
-                    $code === 0 || \WP_CLI::halt($code);
-                    return;
-                }
-                if (\Zero\Wp\Legacy\Module::handles($args)) {
-                    $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
                     $code === 0 || \WP_CLI::halt($code);
                     return;
                 }

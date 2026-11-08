@@ -1,5 +1,5 @@
 use serde_json::{Map, Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use super::{Entry, Failure, Source, entry, fail, pointer};
 
@@ -62,19 +62,9 @@ fn ident(s: &str, at: &str) -> Result<(), Failure> {
 
 pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> Result<String, Failure> {
     let root = object(&input, "")?;
-    let mut collections = Vec::new();
-    let mut name = "imported";
+    let mut collections: Vec<(String, Value, String)> = Vec::new();
+    let name = "imported";
     match source {
-        Source::Zero => {
-            keys(root, &["name", "collections"], "")?;
-            if let Some(n) = root.get("name") {
-                name = n.as_str().ok_or_else(|| fail("/name", "expected a string"))?;
-            }
-            let defs = root.get("collections").ok_or_else(|| fail("/collections", "expected original Zero capsule collections; schema tables and executable capsule features require a runtime port"))?;
-            for (slug, def) in object(defs, "/collections")? {
-                collections.push((slug.to_string(), def.clone(), pointer("/collections", slug)));
-            }
-        }
         Source::Emdash => {
             keys(root, &["$schema", "version", "meta", "collections"], "")?;
             if root.get("version").and_then(Value::as_str) != Some("1") {
@@ -133,32 +123,16 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
     }
     let mut names = HashSet::new();
     let mut code = String::from(
-        "import { collection, table, defineConfig, defineRelations, text, integer, real, boolean, timestamp, url, email, json, select, media, type Column, type ColumnKind } from \"zero\";\n\n",
+        "import { collection, table, defineConfig, text, integer, real, boolean, timestamp, url, email, json, select } from \"zero\";\n\n",
     );
     let mut content = Vec::new();
     let mut tables = Vec::new();
-    let mut relations = Vec::new();
-    // Reference targets may be declared after the field that names them.
-    let targets: HashMap<&str, usize> = collections
-        .iter()
-        .enumerate()
-        .map(|(i, (slug, _, _))| (slug.as_str(), i))
-        .collect();
     for (i, (slug, def, at)) in collections.iter().enumerate() {
         ident(slug, at)?;
         if !names.insert(slug) {
             return Err(fail(at, "duplicate collection identity"));
         }
-        if matches!(source, Source::Zero) && ["posts", "pages", "media"].contains(&slug.as_str()) {
-            return Err(fail(
-                at,
-                "native WordPress posts/pages/media adoption needs an explicit storage migration; a new custom post type would change ownership",
-            ));
-        }
-        let (fields, mut options, links) = collection(def, source, at, report, slug, &targets)?;
-        if !links.is_empty() {
-            relations.push(format!("    {}: {{ {} }},\n", q(slug), links.join(", ")));
-        }
+        let (fields, mut options) = collection(def, source, at, report)?;
         let editor = options
             .as_object_mut()
             .unwrap()
@@ -183,16 +157,9 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
         content.join(", "),
         tables.join(", ")
     ));
-    if !relations.is_empty() {
-        code.push_str(&format!(
-            "export const relations = defineRelations({{ ...collections, ...tables }}, (r) => ({{\n{}}}));\n\n",
-            relations.concat()
-        ));
-    }
     code.push_str(&format!(
-        "export default defineConfig({{\n  name: {},\n  collections,\n  tables,\n{}}});\n",
-        q(name),
-        if relations.is_empty() { "" } else { "  relations,\n" }
+        "export default defineConfig({{\n  name: {},\n  collections,\n  tables,\n}});\n",
+        q(name)
     ));
     report.push(entry("", "review", "Config import only: documents, IDs, routes, clients, deployments and source runtime behavior are not migrated. Review access and WordPress storage before deployment."));
     Ok(code)
@@ -210,28 +177,17 @@ fn metadata(o: &Object, keys: &[&str], at: &str, report: &mut Vec<Entry>) {
     }
 }
 
-fn collection(
-    v: &Value,
-    source: Source,
-    at: &str,
-    report: &mut Vec<Entry>,
-    slug: &str,
-    targets: &HashMap<&str, usize>,
-) -> Result<(String, Value, Vec<String>), Failure> {
+fn collection(v: &Value, source: Source, at: &str, report: &mut Vec<Entry>) -> Result<(String, Value), Failure> {
     let o = object(v, at)?;
-    let (name_key, field_key) = match source {
-        Source::Zero => {
-            keys(o, &["fields", "label", "publicRead"], at)?;
-            (None, "kind")
-        }
+    let key = match source {
         Source::Emdash => {
             keys(o, &["slug", "label", "labelSingular", "description", "fields"], at)?;
             metadata(o, &["labelSingular", "description"], at, report);
-            (Some("slug"), "type")
+            "slug"
         }
         Source::Payload => {
             keys(o, &["slug", "fields", "labels", "access", "timestamps"], at)?;
-            (Some("slug"), "type")
+            "slug"
         }
         Source::Sanity => {
             keys(o, &["name", "type", "title", "description", "fields"], at)?;
@@ -242,33 +198,24 @@ fn collection(
                 ));
             }
             metadata(o, &["description"], at, report);
-            (Some("name"), "type")
+            "name"
         }
     };
-    if let Some(key) = name_key {
-        string(o, key, at)?;
-    }
+    string(o, key, at)?;
     let fields_at = pointer(at, "fields");
     let input = o.get("fields").ok_or_else(|| fail(&fields_at, "expected fields"))?;
-    let mut defs = Vec::new();
-    if matches!(source, Source::Zero) {
-        for (name, def) in object(input, &fields_at)? {
-            defs.push((name.clone(), def, pointer(&fields_at, name)));
-        }
-    } else {
-        for (i, def) in array(input, &fields_at)?.iter().enumerate() {
-            let p = pointer(&fields_at, &i.to_string());
-            let key = if matches!(source, Source::Emdash) {
-                "slug"
-            } else {
-                "name"
-            };
-            defs.push((string(object(def, &p)?, key, &p)?.into(), def, p));
-        }
+    let mut defs: Vec<(String, &Value, String)> = Vec::new();
+    for (i, def) in array(input, &fields_at)?.iter().enumerate() {
+        let p = pointer(&fields_at, &i.to_string());
+        let key = if matches!(source, Source::Emdash) {
+            "slug"
+        } else {
+            "name"
+        };
+        defs.push((string(object(def, &p)?, key, &p)?.into(), def, p));
     }
     let mut fields = String::new();
     let mut names = HashSet::new();
-    let mut links = Vec::new();
     let mut editor = false;
     for (name, def, path) in &defs {
         ident(name, path)?;
@@ -278,26 +225,9 @@ fn collection(
                 "duplicate or reserved generated field identity (id/status/publishedAt)",
             ));
         }
-        if matches!(source, Source::Zero) && def.get("kind").and_then(Value::as_str) == Some("reference") {
-            let (column, builder, link) = reference(def, path, name, slug, targets, report)?;
-            fields.push_str(&format!("  {}: {builder},\n", q(&column)));
-            links.push(link);
-            continue;
-        }
-        let (builder, title) = field(def, source, field_key, path, report)?;
+        let (builder, title) = field(def, source, path, report)?;
         editor |= name == "title" && title;
         fields.push_str(&format!("  {}: {builder},\n", q(name)));
-    }
-    // A reference column is named `<field>Id`; it must not shadow a declared field.
-    for (name, def, path) in &defs {
-        if def.get("kind").and_then(Value::as_str) == Some("reference") && !names.insert(format!("{name}Id")) {
-            return Err(fail(
-                path,
-                format!(
-                    "the generated reference column {name}Id collides with a declared field; rename one explicitly"
-                ),
-            ));
-        }
     }
     let mut options = json!({"editor":editor,"access":{"read":false,"create":false,"update":false,"delete":false}});
     let label_key = if matches!(source, Source::Sanity) {
@@ -330,9 +260,6 @@ fn collection(
             "Zero uses one collection label; plural is carried, singular uses the target's default",
         ));
     }
-    if let Some(public) = boolean(o, "publicRead", at)? {
-        options["access"]["read"] = Value::Bool(public);
-    }
     if let Some(access) = o.get("access") {
         let p = pointer(at, "access");
         let access = object(access, &p)?;
@@ -357,101 +284,28 @@ fn collection(
     } else {
         "Custom table (no required text field named title); WordPress post editing is unavailable until title/storage are configured. Unspecified REST permissions deny access."
     }));
-    Ok((fields, options, links))
+    Ok((fields, options))
 }
 
-/**
- * Original Zero stored a single reference as the target post id and validated only membership on
- * write; deleting the target left the id dangling. Zero has no dangling references: an optional
- * one becomes `set null`, a required one `restrict`. Each returns (column, builder, relation).
- */
-fn reference(
-    v: &Value,
-    at: &str,
-    name: &str,
-    slug: &str,
-    targets: &HashMap<&str, usize>,
-    report: &mut Vec<Entry>,
-) -> Result<(String, String, String), Failure> {
-    let o = object(v, at)?;
-    keys(o, &["kind", "label", "required", "to", "multiple"], at)?;
-    if boolean(o, "multiple", at)?.unwrap_or(false) {
-        return Err(fail(
-            &pointer(at, "multiple"),
-            "multiple references have no Zero column; model them as a join collection and port the data explicitly",
-        ));
-    }
-    let to = string(o, "to", at)?;
-    let target = targets.get(to).ok_or_else(|| {
-        fail(
-            &pointer(at, "to"),
-            format!("reference target {to:?} is not an imported collection"),
-        )
-    })?;
-    let required = boolean(o, "required", at)?.unwrap_or(false);
-    let column = format!("{name}Id");
-    ident(&column, at)?;
-    let mut builder = if required {
-        format!(
-            "integer().notNull().references((): Column<ColumnKind, number> => imported{target}.id, {{ onDelete: \"restrict\" }})"
-        )
-    } else {
-        format!(
-            "integer().references((): Column<ColumnKind, number> => imported{target}.id, {{ onDelete: \"set null\" }})"
-        )
-    };
-    if let Some(label) = o.get("label") {
-        if !label.is_string() {
-            return Err(fail(&pointer(at, "label"), "expected editor text"));
-        }
-        builder.push_str(&format!(".ui({{ label: {label} }})"));
-        report.push(entry(
-            &pointer(at, "label"),
-            "mapped",
-            "Reference presentation label -> .ui()",
-        ));
-    }
-    report.push(entry(
-        at,
-        "mapped",
-        format!("reference -> {column} {builder} with relation {name}"),
-    ));
-    report.push(entry(
-        at,
-        "review",
-        if required {
-            "Original Zero left a deleted target's id dangling; this required reference now refuses deleting a referenced row."
-        } else {
-            "Original Zero left a deleted target's id dangling; this reference is now cleared when its target is deleted."
-        },
-    ));
-    let link = format!("{}: r.one.{to}({{ from: r.{slug}.{column}, to: r.{to}.id }})", q(name));
-    Ok((column, builder, link))
-}
+/// The source property that names a field's type, in every supported CMS.
+const KIND: &str = "type";
 
-fn field(
-    v: &Value,
-    source: Source,
-    kind_key: &str,
-    at: &str,
-    report: &mut Vec<Entry>,
-) -> Result<(String, bool), Failure> {
+fn field(v: &Value, source: Source, at: &str, report: &mut Vec<Entry>) -> Result<(String, bool), Failure> {
     let o = object(v, at)?;
-    let kind = string(o, kind_key, at)?;
+    let kind = string(o, KIND, at)?;
     if matches!(source, Source::Sanity) && kind == "url" {
         return Err(fail(
-            &pointer(at, kind_key),
+            &pointer(at, KIND),
             "Sanity URI scheme, credential and empty-value validation cannot be preserved by Zero url(); port the URI rule explicitly",
         ));
     }
     if matches!(source, Source::Emdash) && kind == "url" {
         return Err(fail(
-            &pointer(at, kind_key),
+            &pointer(at, KIND),
             "EmDash permits relative, mailto and tel URLs that Zero url() rejects; port the URL rule explicitly",
         ));
     }
     let supported = match source {
-        Source::Zero => matches!(kind, "text" | "number" | "boolean" | "datetime" | "enum" | "media"),
         Source::Emdash => matches!(
             kind,
             "string" | "text" | "number" | "integer" | "boolean" | "datetime" | "json"
@@ -464,14 +318,13 @@ fn field(
     };
     if !supported {
         return Err(fail(
-            &pointer(at, kind_key),
+            &pointer(at, KIND),
             format!(
                 "unsupported field type {kind:?}; rich text, media, references, nested/custom schemas require a format/data/runtime port"
             ),
         ));
     }
     let base = match source {
-        Source::Zero => vec!["kind", "label", "required"],
         Source::Emdash => vec!["slug", "type", "label", "required", "defaultValue", "unique"],
         Source::Payload => vec!["name", "type", "label", "admin", "required", "defaultValue", "unique"],
         Source::Sanity => vec!["name", "type", "title", "description", "initialValue", "validation"],
@@ -497,24 +350,6 @@ fn field(
         "email" if matches!(source, Source::Payload) => format!("email().pattern({PAYLOAD_EMAIL})"),
         "email" => "email()".into(),
         "json" => "json()".into(),
-        // Original Zero media fields hold attachment ids with no type restriction.
-        "media" if matches!(source, Source::Zero) => {
-            allowed.push("multiple");
-            if boolean(o, "multiple", at)?.unwrap_or(false) {
-                "media({ multiple: true })"
-            } else {
-                "media()"
-            }
-            .into()
-        }
-        "enum" if matches!(source, Source::Zero) => {
-            allowed.extend(["values", "multiple"]);
-            let values = array(
-                o.get("values").ok_or_else(|| fail(at, "expected enum values"))?,
-                &pointer(at, "values"),
-            )?;
-            select(values, boolean(o, "multiple", at)?.unwrap_or(false), at)?
-        }
         "select" if matches!(source, Source::Payload) => {
             allowed.extend(["options", "hasMany"]);
             let values = array(
@@ -525,7 +360,7 @@ fn field(
         }
         _ => {
             return Err(fail(
-                &pointer(at, kind_key),
+                &pointer(at, KIND),
                 format!(
                     "unsupported field type {kind:?}; rich text, media, references, nested/custom schemas require a format/data/runtime port"
                 ),
@@ -552,8 +387,6 @@ fn field(
             && (matches!(kind, "text" | "textarea")
                 || (kind == "select" && boolean(o, "hasMany", at)?.unwrap_or(false))))
             || (matches!(source, Source::Sanity | Source::Emdash) && matches!(kind, "string" | "text"))
-            // A required SCF gallery rejects an empty selection.
-            || (matches!(source, Source::Zero) && kind == "media" && boolean(o, "multiple", at)?.unwrap_or(false))
         {
             builder.push_str(".min(1)");
         }

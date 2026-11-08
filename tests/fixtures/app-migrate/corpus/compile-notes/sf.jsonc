@@ -1,4 +1,0 @@
-{
-  "name": "Notes",
-  "runtime": { "kind": "zero", "server": "server/index.tsx", "client": "client/index.tsx" }
-}

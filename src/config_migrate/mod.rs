@@ -1,5 +1,4 @@
 //! One-time config import. This module never runs source CMS code or imports data.
-pub mod app;
 mod input;
 mod translate;
 
@@ -17,7 +16,6 @@ pub enum Source {
     Emdash,
     Payload,
     Sanity,
-    Zero,
 }
 
 impl Source {
@@ -26,7 +24,6 @@ impl Source {
             "emdash" => Self::Emdash,
             "payload" => Self::Payload,
             "sanity" => Self::Sanity,
-            "zero" => Self::Zero,
             _ => return None,
         })
     }
@@ -36,44 +33,12 @@ impl Source {
 pub struct Failure {
     pointer: String,
     reason: String,
-    /// `zero migrate app` adds the diagnostic contract (`app::codes`) before it reports.
-    #[serde(flatten)]
-    contract: Option<Box<app::codes::Contract>>,
-    /// Where in the 0.8 source the refusal is: capsule-relative file, 1-based line and UTF-16 column.
-    #[serde(skip)]
-    location: Option<Box<(String, usize, usize)>>,
 }
 
 pub(super) fn fail(at: &str, reason: impl Into<String>) -> Failure {
     Failure {
         pointer: at.into(),
         reason: reason.into(),
-        contract: None,
-        location: None,
-    }
-}
-
-impl Failure {
-    /// The capsule file a page, layout or client pointer names (`/pages/a.tsx` → `pages/a.tsx`).
-    pub(super) fn pointer_file(&self) -> String {
-        self.pointer
-            .trim_start_matches('/')
-            .replace("~1", "/")
-            .replace("~0", "~")
-    }
-
-    /// Locates the refusal at a capsule-relative file, 1-based line and UTF-16 column.
-    pub(super) fn located(mut self, file: String, line: usize, column: usize) -> Failure {
-        self.location = Some(Box::new((file, line, column)));
-        self
-    }
-
-    /// Locates the refusal at `span` unless something more precise already did.
-    pub(super) fn spanned(mut self, span: crate::diag::Span, root: &Path) -> Failure {
-        if self.location.is_none() {
-            self.location = crate::diag::position(span, root).map(Box::new);
-        }
-        self
     }
 }
 
@@ -108,7 +73,7 @@ struct Report<'a> {
 
 #[cfg(feature = "cli")]
 const USAGE: &str =
-    "usage: zero migrate config --from emdash|payload|sanity|zero <input.ts|input.json> --out <new/zero.config.ts>";
+    "usage: zero migrate config --from emdash|payload|sanity <input.ts|input.json> --out <new/zero.config.ts>";
 
 #[cfg(feature = "cli")]
 struct Args {

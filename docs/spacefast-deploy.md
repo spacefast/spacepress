@@ -107,11 +107,6 @@ Space's realtime room. The `/__spacefast/client.js` bundle registers the
 matching Cast transport, so every client on the page uses it. Without a live
 connection, watched reads poll. See [Live updates](realtime.md) for the API.
 
-## Migrate an existing 0.8 Space
-
-To move an existing Space from an earlier Zero, follow
-[Migrate a Spacefast app](migrating-from-zero.md#migrate-a-spacefast-app).
-
 ## Prepare the WordPress host
 
 This section is for host operators. Ordinary publication uses the CLI or MCP.
@@ -145,8 +140,7 @@ compiled schema. Uploaded SQL must never select the baseline or execute during
 initialization.
 
 Versions in one environment share its latest forward schema. Bind media and
-request origins to that Space. The [migration guide](migrating-from-zero.md#retire-imported-spacefast-sessions)
-lists the extra rules for Spaces moved from an earlier Zero.
+request origins to that Space.
 
 A compiled version with `"pages": "zero-pages-<app>"` in its manifest ships a
 third plugin beside `zero-runtime` and `zero-app-<app>`. Mount it after the app,
@@ -172,14 +166,11 @@ cargo build --no-default-features --features host --target x86_64-unknown-linux-
 cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
 node --test tests/wasm/host.test.mjs
 ZERO_WP_PROJECT=zero-wp-pages ZERO_WP_PORT=8873 tests/wp/hosted-pages-run.sh
-ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
 ```
 
 The host-feature and wasm tests compare pantry and `examples/full-site` capture
 against native `zero sources` byte for byte. The hosted-pages lane installs only
 `compile-sources` output on real WordPress/MariaDB. It serves the pages, hydrates
-the island in Chromium, calls the action, and calls both routes. The
-cross-prefix lane is described in the [migration guide](migrating-from-zero.md#copy-data-under-the-hosts-migration-lock).
-Both lanes use disposable local
-credentials intentionally tracked only for isolated test infrastructure. It does
+the island in Chromium, calls the action, and calls both routes. It uses
+disposable local credentials tracked only for isolated test infrastructure. It does
 not qualify a production provider or exchange a real Google authorization code.

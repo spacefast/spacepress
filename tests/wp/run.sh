@@ -49,6 +49,3 @@ node --test --test-concurrency=1 "$here"/*.test.ts
 "$here/admin/browser-run.sh"
 # Lane A: the admin plugin on a WordPress installed below the origin root.
 "$here/admin/subdir-run.sh"
-# The migration lanes boot their own apps on fresh stacks; CI runs them as a separate job
-# (tests/wp/migrate-run.sh). ZERO_WP_SKIP_MIGRATE=1 leaves them to that job.
-[[ ${ZERO_WP_SKIP_MIGRATE:-0} == 1 ]] || "$here/migrate-run.sh"

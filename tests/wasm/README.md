@@ -2,7 +2,7 @@
 
 Build with `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown`.
 `zero_alloc`, `zero_free` and `zero_compile` retain their existing ABI. New exports
-`zero_sources`, `zero_check`, `zero_migrate_app` and `zero_migrate_config` use the
+`zero_sources`, `zero_check` and `zero_migrate_config` use the
 same owned UTF-8 JSON request and length-prefixed JSON response buffers.
 
 The module imports `host.read_file`, `host.stat`, `host.canonicalize` and
@@ -21,9 +21,9 @@ It returns `{app, vendor, manifest, publicFiles}`; the first three values are
 exact bundle JSON strings to write unchanged. `publicFiles` names paths relative
 to the project, including `public/`. Failures return `{check, output: null}`.
 
-Check returns `{check}`. App migration takes optional `space` and returns
-`{report, files}`. Config migration takes `source` and `input` (relative to the
-project, defaults to `capsule.ts`) and returns `{status, entries, errors, files}`.
+Check returns `{check}`. Config migration takes `source` (`emdash`, `payload` or
+`sanity`) and `input` (relative to the project) and returns
+`{status, entries, errors, files}`.
 Migration never writes files; the caller reviews errors before writing the
 candidate map. Invalid requests return `{error: message}`.
 

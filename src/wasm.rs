@@ -282,26 +282,10 @@ pub fn operation(operation: &str, request: &str) -> String {
                         Err(d) => Ok(serde_json::json!({"check":diag::envelope(&[d], &project), "output":null})),
                     }
                 }
-                "migrateApp" => {
-                    // `fresh: true` creates new v2 tables, even with a `space` named: a new Space has
-                    // no 0.8 tables to adopt. `space` alone adopts; neither refuses a schema.
-                    let tables = crate::config_migrate::app::Tables::from(
-                        request["space"].as_str(),
-                        request["fresh"].as_bool().unwrap_or(false),
-                    );
-                    let mut candidate = crate::config_migrate::app::migrate(
-                        fs,
-                        &project,
-                        tables,
-                        request["users"].as_bool().unwrap_or(false),
-                    );
-                    candidate.finish();
-                    Ok(serde_json::to_value(candidate).unwrap())
-                }
                 "migrateConfig" => {
-                    let source = crate::config_migrate::Source::parse(request["source"].as_str().unwrap_or("zero"))
-                        .ok_or("unknown source CMS")?;
-                    let path = project.join(request["input"].as_str().unwrap_or("capsule.ts"));
+                    let source = crate::config_migrate::Source::parse(request["source"].as_str().unwrap_or(""))
+                        .ok_or("source must be emdash, payload or sanity")?;
+                    let path = project.join(request["input"].as_str().ok_or("input is required")?);
                     let text = fs.read_to_string(&path).map_err(|e| e.to_string())?;
                     let mut entries = vec![];
                     Ok(
@@ -424,7 +408,6 @@ mod abi {
     }
     operation!(zero_sources, "sources");
     operation!(zero_check, "check");
-    operation!(zero_migrate_app, "migrateApp");
     operation!(zero_migrate_config, "migrateConfig");
 }
 

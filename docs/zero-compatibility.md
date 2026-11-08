@@ -22,9 +22,6 @@ See [config migration](config-migration.md) for each importer's accepted subset.
 An old content-model artifact is not a new `zero.config.ts`. The compiler refuses
 unknown behavior instead of stripping it from a candidate.
 
-Moving an app from an earlier Zero has its own procedure and coverage table in
-[migrating from Zero](migrating-from-zero.md#coverage).
-
 ## Executable acceptance
 
 - `cargo test --test config_migrate` runs each importer, builds its output and

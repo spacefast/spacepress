@@ -24,38 +24,6 @@ test('host imports capture pantry byte for byte like native sources', () => {
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
-test('wasm migrates real source and returns a compilable file map without writes', () => {
-  const project = path.resolve('tests/fixtures/app-migrate/board');
-  const candidate = call(exports, 'zero_migrate_app', { project, space: 'spc_migrate_test' });
-  assert.deepEqual(candidate.report.errors, []);
-  assert.equal(candidate.report.status, 'candidate');
-  assert.ok(candidate.files['zero/migrations/snapshot.json']);
-  assert.deepEqual(call(exports, 'zero_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);
-  // A new Space has no 0.8 tables: `fresh: true` creates them instead of adopting; a schema with
-  // neither `fresh` nor `space` is refused with the choice.
-  const unset = call(exports, 'zero_migrate_app', { project });
-  assert.deepEqual(unset.report.errors.map((e) => e.code), ['Z08_SPACE_REQUIRED']);
-  for (const request of [{ project, space: 'spc_new', fresh: true }, { project, fresh: true }]) {
-    const fresh = call(exports, 'zero_migrate_app', request);
-    assert.deepEqual(fresh.report.errors, [], JSON.stringify(request));
-    assert.equal(fresh.report.tables, 'fresh');
-    assert.ok(fresh.files['zero/migrations/0001_init.sql'].includes('CREATE TABLE'));
-    assert.ok(!fresh.files['server/index.ts'].includes('existingTable'));
-    assert.equal(JSON.parse(fresh.files['zero/migrations/snapshot.json']).tables.tasks.existingTable, undefined);
-    assert.deepEqual(call(exports, 'zero_check', { project: '/candidate', files: fresh.files }).check.diagnostics, []);
-  }
-  const config = call(exports, 'zero_migrate_config', { project: path.resolve('tests/wp/legacy'), input: 'capsule.ts' });
-  assert.equal(config.status, 'candidate');
-  assert.deepEqual(config.errors, []);
-});
-
-test('wasm refuses a 0.8 client app with a coded diagnostic instead of a partial public/', () => {
-  const candidate = call(exports, 'zero_migrate_app', { project: path.resolve('tests/fixtures/app-migrate/client-app'), space: 'spc_migrate_test', users: true });
-  assert.equal(candidate.report.status, 'refused');
-  assert.deepEqual(candidate.files, {});
-  assert.deepEqual(candidate.report.errors.map((e) => [e.code, e.file, e.line, e.column]), [['Z08_CLIENT_NATIVE', 'client/index.tsx', 1, 1]]);
-});
-
 test('host capture gives npm imports an actionable stable diagnostic', () => {
   const response = call(exports, 'zero_sources', { project: '/project', packages: false, files: {
     'zero.config.ts': 'import thing from "some-npm-package"; export default thing;',

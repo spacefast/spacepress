@@ -71,7 +71,6 @@ jobs:
         with:
           path: tests/wp/cache/*.zip
           key: wp-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json', 'tests/php/wp.php') }}
-      # Migrated apps are type-checked with the standard Node declarations (tests/app_migrate.rs).
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
@@ -81,10 +80,6 @@ jobs:
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
           ZERO_BIN="$GITHUB_WORKSPACE/target/debug/zero" node examples/npm-compat/verify.mjs --isolated
       - run: target/debug/zero check examples/showcase
-      - name: Zero 0.8 census tool
-        env:
-          ZERO_BIN: ${{ github.workspace }}/target/debug/zero
-        run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
       - name: Docker-free local development acceptance
         run: node --test scripts/dev/acceptance.test.mjs
       - name: Offline deployment and recovery acceptance
@@ -293,11 +288,9 @@ jobs:
         working-directory: runtime/admin/apps
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: runtime/admin/apps
-      # Main suites and the native admin journey, on one stack. The migration and S3 lanes run as
-      # their own jobs below: on one runner the three together reached the 40-minute limit.
+      # Main suites and the native admin journey, on one stack. The seed, fetch, WordPress and S3
+      # lanes run as their own jobs below, so no job nears its time limit.
       - run: tests/wp/run.sh
-        env:
-          ZERO_WP_SKIP_MIGRATE: '1'
       - name: Preserve failed native admin browser evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -307,7 +300,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  wp-migrate:
+  wp-lanes:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -336,13 +329,7 @@ jobs:
             .zero/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      # The app migration lane renders converted static pages with packages/pages, built with pnpm.
-      - run: corepack enable
       - run: cargo build --locked --bin zero
-      - name: Zero 0.8 site, app-user and application migrations
-        run: ZERO_WP_PROJECT=zero-wp-migrate ZERO_WP_PORT=8794 tests/wp/migrate-run.sh
-      - name: Spacefast cross-prefix migration and session continuity
-        run: ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
       - name: First-publish seed and sync adoption
         run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals

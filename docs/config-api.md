@@ -179,8 +179,7 @@ compiler's names, columns, uniqueness and reference actions. Prefix-only unique
 indexes are refused. Other existing indexes are retained and remain unmanaged.
 This keeps later constraint removals consistent with the committed snapshot. Database
 engine checks include these tables. Uninstall retains their rows like normal tables.
-An [adopted application table](migrating-from-zero.md#application-source-migration)
-keeps its TEXT/DOUBLE storage and string response IDs.
+An adopted table keeps its TEXT/DOUBLE storage and string response IDs.
 
 ### Upgrading authoring
 

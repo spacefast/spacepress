@@ -184,7 +184,6 @@ pub fn main() -> ExitCode {
             );
             ExitCode::from(2)
         }
-        "migrate" if rest.first().is_some_and(|sub| sub == "app") => crate::config_migrate::app::cli(&rest[1..]),
         "migrate" if rest.first().is_some_and(|sub| sub == "config") => crate::config_migrate::cli(),
         "migrate" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {
             eprintln!("{}", usage_error("migrate", format!("no command migrate {}", rest[0])));

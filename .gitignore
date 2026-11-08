@@ -8,9 +8,7 @@ runtime/identity/apps/node_modules/
 # The system suite's generated state (tests/system/run.sh)
 /tests/system/.work/
 /tests/system/.wp-content/
-/tests/system/.wp-content-legacy/
 /tests/system/.harness.json
-/tests/system/.harness-legacy.json
 /tests/system/.wp-content-blog/
 /tests/system/.harness-blog.json
 /runtime/admin/apps/node_modules/
@@ -32,7 +30,6 @@ runtime/identity/apps/node_modules/
 /site/playwright-report/
 
 # Disposable SQL adoption proof artifacts.
-/tests/wp/app-migrate/.run.*/
 
 /tests/wp/.wp-content-spacefast/
 /tests/host-types/node_modules/

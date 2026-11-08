@@ -82,7 +82,6 @@ pub(super) fn parse(path: &Path, text: &str, source: Source) -> Result<Value, Fa
                                     "defineConfig" | "defineType" | "defineField" | "defineArrayMember"
                                 )
                         }
-                        Source::Zero => package == "@spacefast/zero/server" && name == "capsule",
                         Source::Emdash => false,
                     };
                     if !allowed {

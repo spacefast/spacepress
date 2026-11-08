@@ -58,7 +58,7 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 `zero help` prints every command, grouped. **Build** commands (`dev`, `build`,
-`check`, `doctor`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `zero`
+`check`, `doctor`, `sync`, `abilities pull`, `migrate config`, `deploy`) run in the `zero`
 binary against the project's files (`abilities pull` reads a site's abilities
 into the committed `zero/abilities.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp zero <command>` in

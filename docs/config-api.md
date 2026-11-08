@@ -259,10 +259,87 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
-jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
+jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, use?, admin? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `zero-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `zero-admin`; by default the build emits none.
+
+## Plugin packages
+
+A plugin is an npm package that adds hooks, actions, jobs and routes. It runs
+in the app's PHP process. The compiler records everything its code can do,
+and the app grants that in a committed lock file.
+
+```ts
+// node_modules/zero-plugin-seo/src/index.ts
+import { definePlugin } from "zero";
+import { summarize } from "./summarize";
+
+export default (options: { suffix: string }) =>
+  definePlugin({
+    name: "seo",
+    hooks: { posts: { beforeCreate(data) { data.summary = summarize(data.title) + options.suffix; } } },
+  });
+```
+
+```ts
+// zero.config.ts, after `npm install zero-plugin-seo`
+import seo from "zero-plugin-seo";
+export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Site" })] });
+```
+
+- `use` lists plugins in order. `plugins` stays the WordPress.org pin map.
+- Plugin hooks run before the app's hook for the same collection and kind,
+  in `use` order. A before-hook's returned replacement becomes the next
+  hook's `data`. A throw aborts the request, as in app hooks.
+- A plugin's actions, jobs and routes are registered as `<name>_<key>`.
+  Inside the plugin, `jobs.<key>` names its own jobs.
+- A plugin package can import its own modules, `"zero"` and ordinary npm
+  packages. Importing the app's modules or another plugin's package fails
+  with `Z1201`. Each plugin's compiled helpers, captured data, class state
+  and `once()` keys are its own.
+
+There is no capability list to write. `zero build` infers each plugin's
+grant and writes `zero/plugins.lock.json`:
+
+```json
+{ "version": 1, "plugins": { "seo": {
+  "package": "zero-plugin-seo", "version": "1.2.0", "integrity": "sha256-…",
+  "grant": { "read": ["posts"], "write": ["posts.summary"], "hooks": ["posts.beforeCreate"],
+             "http": [], "env": [], "mail": [], "jobs": [], "...": [] } } } }
+```
+
+| Kind | Values |
+|---|---|
+| `read` | collection keys and `globals.<name>`: queries, relation loads, hooked collections |
+| `write` | `<collection>.<field>` (or `.*`), `globals.<name>`: inserts, updates, before-hook changes, including through helpers |
+| `delete` | collection keys |
+| `hooks`, `actions`, `routes` | what the plugin registers |
+| `http` | hosts with a written `https://host/` prefix; `*` for a URL built at runtime |
+| `env` | variable names, including `crypto.hmacSha256` keys and signature secrets |
+| `mail` | `send` |
+| `jobs` | the plugin's own jobs it enqueues |
+| `abilities` | `vendor/name` of each `abilities.call` from `"php/wordpress"` |
+| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `wp-hooks/` directory |
+| `php` | reserved for PHP functions imported from `"php/wordpress"`, `"php/<slug>"` or `"php"` (`wordpress:get_option`); always empty today |
+
+Commit the lock: it is the grant.
+
+- **New plugin or new package source:** `zero build` updates the entry and
+  prints the diff. Review it, then commit.
+- **CI:** when `CI` is set, or with `zero build --frozen`, any capability
+  beyond the committed entry, or a plugin without one, fails the build with
+  `Z4201` at the call that needs it.
+- **Narrowing:** edit the entry. With the package source unchanged, code that
+  needs more than the entry fails with `Z4201`. Replace `*` in `http` with
+  hosts to limit runtime-built URLs. The generated PHP then checks every
+  request and redirect hop and refuses others with `502 zero_fetch_host_denied`.
+
+`zero check --json` adds a `plugins` list: package, version, integrity, the
+locked and inferred grants, and `flows`, the handlers that both read data
+(rows or environment values) and send it out (`fetch`, `mail.send`). It's a
+report, not a refusal. A granted read plus a granted host can send data out.
+There are no CPU or memory limits.
 
 ## Relations
 
@@ -895,7 +972,7 @@ Fixed-length callback walks (`map`, `filter`, `forEach`, `some`, `every`,
 `reduce`, `flatMap`, `find*`) throw `RangeError` if they reach an index their
 callback removed. Shrinkage after the final visit or an early return is fine;
 growth is ignored by these walks. `for…of` and `Array.from(array, mapper)`
-read live length. Elisions, `new Array(n)`, `delete a[i]`, `a.length = n` and
+read live length. Elisions, `new Array(n)`, `delete a[i]` (use `splice`), `a.length = n` and
 non-numeric index types are compile errors.
 
 Explicit `undefined` has its own runtime value: `typeof undefined` gives
@@ -906,9 +983,23 @@ existing contracts. Optional typed parameters include null in body reads.
 Imported JavaScript distinguishes missing values from explicit null throughout
 its checked operations.
 
+Bitwise operators (`& | ^ ~ << >> >>>` and their compound assignments) follow
+JavaScript's 32-bit semantics: ToInt32 operands, shift counts masked to five
+bits, and an unsigned result for `>>>`. `key in object` checks own properties,
+then the value's built-in prototype chain (class methods, array, function and
+error prototypes, `Object.prototype`), and narrows object unions like
+TypeScript. `delete obj.key` and `delete obj?.key` remove optional properties
+and map entries with strict-mode results: true for absent keys, a `TypeError`
+for non-configurable ones such as `length`. `do…while` and labeled loops,
+switches and blocks (`break label`, `continue label`) follow JavaScript.
+Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
+assigns existing variables and fields in JavaScript order. Tagged templates
+call the tag with the call site's strings array (with `raw`) and the
+substitutions; `String.raw` is supported.
+
 Rejected with a located error and a fix: `this` outside class methods or their
-arrows, `enum`, `in`, `delete`, generators,
-labels, getters/setters, BigInt, dynamic `import()`, `any`,
+arrows, `enum`, generators,
+getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal

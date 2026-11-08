@@ -40,6 +40,8 @@ pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
         module: 0,
         class_context: std::cell::Cell::new(false),
         super_call: std::cell::Cell::new(false),
+        erase_types: false,
+        erased_types: Default::default(),
     }
     .program(&parsed.program)
     .map_err(|d| fail("", diag::render(&d, Path::new("."))))
@@ -553,6 +555,7 @@ pub(super) fn app(
             "auth",
             "realtime",
             "endpoints",
+            "favicon",
         ]
         .contains(&key.as_str())
         {
@@ -571,6 +574,15 @@ pub(super) fn app(
                 )),
             }
         }
+    }
+    // 0.8 type-checked `favicon` and nothing else: no 0.8 compiler, engine or runner revision read
+    // it, so a 0.8 Space's browser icon was always its published `/favicon.ico` (or the shell's).
+    if root.contains_key("favicon") {
+        entries.push(entry(
+            "/favicon",
+            "review",
+            "0.8 never served the favicon option, so dropping it changes nothing; the icon a visitor sees is still the published /favicon.ico. To keep shipping one, put it in the candidate's public/ directory",
+        ));
     }
     if root.contains_key("realtime") {
         entries.push(entry("/realtime", "mapped", "v2 announces every committed write as a change notice, so the declaration is no longer needed; Spacefast delivers notices over Cast. Replace client useQuery subscriptions with watch(client, [\"<table>\"], read, onResult) from the generated client."));
@@ -1682,6 +1694,7 @@ impl Rewrite<'_> {
             E::Binary(_, a, b)
             | E::Logical(_, a, b)
             | E::Instanceof(a, b)
+            | E::In(a, b)
             | E::Assign {
                 target: a, value: b, ..
             } => {
@@ -1801,12 +1814,13 @@ impl Rewrite<'_> {
                     self.stmt(s)?;
                 }
             }
-            Stmt::While(iter, body) => {
+            Stmt::While(iter, body) | Stmt::DoWhile(body, iter) => {
                 self.expr(iter)?;
                 for s in body {
                     self.stmt(s)?;
                 }
             }
+            Stmt::Labeled(_, body, _) => self.stmt(body)?,
             Stmt::Try {
                 block,
                 handler,

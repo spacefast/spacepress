@@ -83,8 +83,8 @@ imports, export adaptation, authored parameter types and Node/PHP parity.
 | `atproto` | Actual publication/document/Bluesky records, blobs, update/delete and status | `plugins`; real PDS gap |
 | `api-test` | Plugin identity, KV, storage, content, media and network diagnostics | Private fixture; `plugins` |
 | `mcp-smoke` | Validated 1–200 character echo returns message and length over real MCP | Private fixture; `agents` |
-| `marketplace-test` | Registry consent/lifecycle, capability checks, conditional storage and declarative admin surfaces | Private fixture; `plugins`; isolate/registry gap |
-| `sandboxed-test` | Hook transforms plus denied hosts/capabilities and plugin-storage isolation | Private fixture; `plugins`; isolate gap |
+| `marketplace-test` | Registry consent/lifecycle, capability checks, conditional storage and declarative admin surfaces | Private fixture; `plugins`; capability checks and consent are [plugin packages](config-api.md#plugin-packages) (inferred grant, committed lock); registry, plugin storage and admin surfaces remain gaps |
+| `sandboxed-test` | Hook transforms plus denied hosts/capabilities and plugin-storage isolation | Private fixture; `plugins`; hook transforms, denied capabilities and denied hosts are compile-time [plugin packages](config-api.md#plugin-packages) (`tests/compiler.rs` `a_plugin_package_runs_under_its_locked_grant`); plugin KV/storage remains a gap |
 
 Private fixture status comes from the pinned packages' `package.json` and runtime
 implementations, not their names. Keep their useful contracts in the inventory;

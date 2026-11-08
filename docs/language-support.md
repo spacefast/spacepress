@@ -48,6 +48,78 @@ Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations 
 
 [Evidence](../tests/compiler_contracts.rs) (`unannotated_javascript_uses_checked_value_operations_without_weakening_typescript_unknown`)
 
+## erased-package-typescript
+
+Status: **supported**.
+
+TypeScript sources installed under node_modules compile like JavaScript: annotations, type declarations, type-only imports and re-exports, generics, overload and abstract signatures, `this` parameters, assertion signatures and type assertions are erased, not modelled. Runtime constructs keep the checked-JavaScript subset and its refusals; enums, namespaces, parameter properties and decorators are not erased. Values crossing into authored code are JavaScript values that need refinement, and authored code can't name a package type until declaration hydration lands.
+
+[Evidence](../tests/compiler_contracts.rs) (`installed_package_typescript_is_type_erased_like_javascript_and_matches_node`)
+
+## bitwise-operators
+
+Status: **supported**.
+
+`&`, `|`, `^`, `~`, `<<`, `>>`, `>>>` and their compound assignments compile in typed code, imported JavaScript and configuration evaluation. Operands go through ToNumber, then ToInt32 (ToUint32 for the left side of `>>>`); shift counts use ToUint32 masked to five bits, so negative counts and counts of 32 or more wrap as in JavaScript. Results are signed 32-bit integers, except `>>>`, which is unsigned. NaN, the infinities and -0 become 0. Typed code requires number operands; imported JavaScript coerces strings, booleans, null, undefined and objects through their primitive value.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## in-operator
+
+Status: **supported**.
+
+`key in object` compiles in typed code, imported JavaScript and configuration evaluation. The key goes through ToPropertyKey after the key expression runs; own properties are checked first, then the value's fixed prototype chain: class methods and statics, the built-in prototype of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then Object.prototype. Arrays are dense, so an index is present exactly when it is below the length. A primitive right side throws JavaScript's TypeError. `"key" in x` narrows object unions like TypeScript; members with an optional key stay on both branches, and `unknown` narrows to an object whose key reads stay checked. Configuration evaluation inspects plain objects, arrays and arguments, and refuses a primitive right side at build time.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## delete-operator
+
+Status: **supported**.
+
+`delete obj.key`, `delete obj[key]` and `delete obj?.key` compile in typed code, imported JavaScript and configuration evaluation with strict-mode semantics. They return true, also for absent and inherited properties, and remove own object keys without reordering the rest. Non-configurable properties (array and string length, string indexes, regex lastIndex, class and function prototype, arguments callee, Math constants) throw JavaScript's TypeError; null and undefined receivers throw TypeError. Typed code may delete only optional properties and map entries, as TypeScript requires, so later reads stay sound.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## delete-required-property
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+TypeScript allows `delete` only on optional properties. Declare the property optional (`key?: T`) or build a new object without it.
+
+[Evidence](../tests/fixtures/reject-delete-required)
+
+## delete-array-element
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Zero arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead.
+
+[Evidence](../tests/fixtures/reject-delete-array-element)
+
+## do-while-and-labels
+
+Status: **supported**.
+
+`do…while` runs its body before the first test; `continue` goes to the test. Labeled loops, switches and blocks compile with `break label` and `continue label` in typed code, imported JavaScript and configuration evaluation, through nested loops, switches and labeled blocks. Labeled function declarations are refused, as in strict mode.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## destructuring-assignment
+
+Status: **supported**.
+
+Array and object patterns on the left of `=` assign existing variables, object fields and array elements, including elisions, defaults, rest elements, nested patterns and computed keys. The right side is evaluated once and is the expression's value. Each leaf runs in JavaScript order: computed key, target reference, read, default (only for undefined), write. Typed targets must accept the value, so a missing optional field needs a default or an optional target; computed keys need an open map or a literal key. Compound destructuring assignment does not exist in JavaScript.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## tagged-templates
+
+Status: **supported**.
+
+tag`…${x}…` calls the tag with the call site's strings array, then the substitutions, in typed code and imported JavaScript. The strings array has a `raw` property with the source text, cooked strings are undefined where an escape is invalid, and each call site keeps one array across calls. String.raw is supported, including its object form in imported JavaScript. Configuration evaluation refuses tagged templates; call the tag inside a handler.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.
@@ -367,3 +439,27 @@ Status: **supported**.
 Allowlisted WordPress functions compile to Zero\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none).
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_functions_run_as_the_signed_in_user`)
+
+## plugin-narrowed-write
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+
+[Evidence](../tests/fixtures/reject-plugin-write)
+
+## plugin-static-host
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop.
+
+[Evidence](../tests/fixtures/reject-plugin-http)
+
+## plugin-cross-import
+
+Status: **refused**. Diagnostic: `Z1201`.
+
+A plugin package imports its own modules, "zero" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+
+[Evidence](../tests/fixtures/reject-plugin-isolation)

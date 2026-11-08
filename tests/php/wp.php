@@ -651,6 +651,27 @@ function wpCore(): string
     return wpArchive('wordpress-' . WP_CORE_VERSION . '.zip', 'https://wordpress.org/wordpress-' . WP_CORE_VERSION . '.zip', WP_CORE_SHA256, 'wordpress');
 }
 
+/**
+ * Only the pinned core's HTML API and the formatting functions it calls, without a site or database:
+ * for suites that exercise the bundled toolkit on core's classes and need nothing else of WordPress.
+ */
+function wpCoreHtmlApi(): void
+{
+    $core = wpCore();
+    defined('ABSPATH') || define('ABSPATH', "$core/");
+    defined('WPINC') || define('WPINC', 'wp-includes');
+    foreach (['load', 'plugin', 'compat', 'compat-utf8', 'utf8', 'functions', 'l10n', 'formatting', 'kses', 'class-wp-token-map'] as $file) {
+        require_once "$core/wp-includes/$file.php";
+    }
+    foreach (['html5-named-character-references', 'class-wp-html-attribute-token', 'class-wp-html-span', 'class-wp-html-doctype-info',
+        'class-wp-html-text-replacement', 'class-wp-html-decoder', 'class-wp-html-tag-processor', 'class-wp-html-unsupported-exception',
+        'class-wp-html-active-formatting-elements', 'class-wp-html-open-elements', 'class-wp-html-token', 'class-wp-html-stack-event',
+        'class-wp-html-processor-state', 'class-wp-html-processor'] as $file) {
+        require_once "$core/wp-includes/html-api/$file.php";
+    }
+    add_filter('pre_option_blog_charset', static fn (): string => 'UTF-8');
+}
+
 function wpPlugin(string $slug, string $version, string $sha256): string
 {
     return wpArchive("$slug.$version.zip", "https://downloads.wordpress.org/plugin/$slug.$version.zip", $sha256, $slug);

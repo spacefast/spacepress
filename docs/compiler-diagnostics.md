@@ -55,6 +55,8 @@ format.
 - `Z2001`: pure evaluation failure.
 - `Z3001`: schema extraction failure.
 - `Z4001`: handler type checking or PHP compilation failure.
+- `Z1201`: a plugin package imports the app's modules or another plugin's package.
+- `Z4201`: a plugin's compiled code needs a capability its `zero/plugins.lock.json` entry doesn't grant.
 
 Specific, fixture-backed codes take precedence over phase codes. The growing
 [tested compatibility inventory](language-support.md) lists those codes and

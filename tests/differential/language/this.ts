@@ -6,6 +6,14 @@ import { detached, factory, receivers } from "./this-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
+function who(this: unknown): string {
+  return typeof this;
+}
+
+function tag(this: unknown, x: number): unknown[] {
+  return [typeof this, x];
+}
+
 function describe(this: { name: string; role: string }, prefix: string): string {
   return `${prefix}${this.name} (${this.role})`;
 }
@@ -25,6 +33,12 @@ export default defineConfig({
       };
       counter.inc(2);
       return [counter.inc(3), counter.describe()];
+    }),
+    thisDirectHelper: run(() => [who(), tag(1), tag.call("r", 2), who.apply(5, [])]),
+    thisSpreadLiteral: run(() => {
+      const base = { count: 1 };
+      const counter = { ...base, step: 2, inc(): number { this.count += this.step; return this.count; } };
+      return [counter.inc(), counter.inc()];
     }),
     thisTypedParameter: run(() => [describe.call({ name: "Ada", role: "admin" }, "Dr "), describe.apply({ name: "Bo", role: "editor" }, [""])]),
   },

@@ -3108,19 +3108,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let mut map_values = Vec::new();
                 let mut is_map = false;
                 // TypeScript types `this` in an object literal's methods as the literal itself.
-                // The data fields (not the methods, which may read `this`) give that type here.
-                let mut literal_this = IndexMap::new();
-                for p in props {
-                    if let Prop::KV(PropKey::Static(k), value) = p
-                        && !matches!(&value.kind, ExprKind::Func(f) if receives_this(f))
-                    {
-                        let saved = self.fx().tmp;
-                        if let Ok(v) = self.expr(value) {
-                            literal_this.insert(k.clone(), (widen_fresh_literals(&v.ty), false));
-                        }
-                        self.fx().tmp = saved;
-                    }
-                }
+                // Methods that read `this` compile after every other property (creating a
+                // function evaluates nothing, so this keeps JavaScript's order), typed by the
+                // finished fields; their PHP fills the slot reserved at their position.
+                let mut deferred: Vec<(usize, &Rc<Func>, String, String)> = Vec::new();
                 for p in props {
                     match p {
                         Prop::KV(key, value) => {
@@ -3138,12 +3129,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                     (format!("\\Zero\\Js::key({})", k.php), None)
                                 }
                             };
-                            let v = match &value.kind {
-                                ExprKind::Func(f) if receives_this(f) && !self.javascript_module(f.module) => {
-                                    self.method_with_this(f, Ty::Obj(literal_this.clone()))?
-                                }
-                                _ => self.expr(value)?,
-                            };
+                            if let (ExprKind::Func(f), Some(k)) = (&value.kind, name)
+                                && receives_this(f)
+                                && !self.javascript_module(f.module)
+                            {
+                                fields.shift_remove(k);
+                                fields.insert(k.clone(), (Ty::Unknown, false));
+                                deferred.push((parts.len(), f, key_php, k.clone()));
+                                parts.push(String::new());
+                                continue;
+                            }
+                            let v = self.expr(value)?;
                             let v = self.finish_value(v, value.span)?;
                             if let Some(k) = name {
                                 fields.shift_remove(k);
@@ -3176,6 +3172,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             }
                             parts.push(format!("({})->p ?? []", v.wrapped()));
                         }
+                    }
+                }
+                if !deferred.is_empty() {
+                    let this: IndexMap<String, (Ty, bool)> = fields
+                        .iter()
+                        .filter(|(_, (t, _))| *t != Ty::Unknown)
+                        .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
+                        .collect();
+                    for (slot, f, key_php, name) in deferred {
+                        let v = self.method_with_this(f, Ty::Obj(this.clone()))?;
+                        if let Some(entry) = fields.get_mut(&name) {
+                            entry.0 = v.ty.clone();
+                        }
+                        parts[slot] = format!("[{key_php} => {}]", v.php);
                     }
                 }
                 let ty = if is_map {
@@ -3781,7 +3791,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ty
                     },
                 );
-                out.helper = Some(format!("\\ZeroApp\\{name}"));
+                // A direct call skips the wrapper, so a helper that reads `this` receives undefined
+                // explicitly, as a plain call does in strict mode.
+                out.helper = Some(if receives_this(&c.func) {
+                    format!("\\ZeroApp\\{name}(\\Zero\\JsUndefined::Value, ")
+                } else {
+                    format!("\\ZeroApp\\{name}(")
+                });
                 Ok(out)
             }
             Value::Collection(c) => {
@@ -6858,7 +6874,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let argv = argv.join(", ");
         let php = match &f.helper {
-            Some(name) => format!("{name}({argv})"),
+            // `helper` is the call's opening: the function name, plus a leading receiver.
+            Some(open) => format!(
+                "{}{argv})",
+                if argv.is_empty() {
+                    open.trim_end_matches(", ")
+                } else {
+                    open
+                }
+            ),
             None => format!("({})({argv})", f.php),
         };
         Ok(Out::new(

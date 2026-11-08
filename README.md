@@ -182,6 +182,9 @@ includes structured fields, collection/table relations, image delivery, a
 compiled class/action and a repeatable HTTP smoke check. Its separate
 `node examples/showcase/run.mjs` launcher still uses Docker; `zero dev` does not.
 
+Use your collections and actions from Claude Code, Claude Desktop, or Codex with
+the [agent connection guide](docs/agents.md).
+
 ## Use it from a frontend
 
 The generated client is dependency-free, erasable TypeScript over `fetch`.

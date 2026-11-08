@@ -1,8 +1,9 @@
-import { capsule, mutation, query, string, table } from "@spacefast/zero/server";
+import { capsule, endpoint, mutation, query, string, table, text } from "@spacefast/zero/server";
 
-// Helpers that take the context, as 0.8 apps wrote them: typed loosely, called from handlers
-// and from each other, with the context aliased and destructured on the way.
+// Helpers that take the context or the endpoint request, as 0.8 apps wrote them: typed loosely,
+// called from handlers and from each other, with the context aliased and destructured on the way.
 type Ctx = { db: any; auth: any; env: Record<string, string | undefined> };
+type Req = { headers: { get(name: string): string | null }; json(): Promise<unknown> };
 
 async function owner(ctx: Ctx): Promise<string> {
   return ctx.auth.isSignedIn ? ctx.auth.displayName : "anonymous";
@@ -18,6 +19,15 @@ async function listAll(ctx: Ctx) {
 }
 async function subject(ctx: Ctx): Promise<string> {
   return String(ctx.auth.userId);
+}
+function getHeader(req: Req, name: string): string | null {
+  return req.headers.get(name);
+}
+async function authed(ctx: Ctx, req: Req): Promise<boolean> {
+  return getHeader(req, "Authorization") === "Bearer " + (ctx.env.NOTE_KEY ?? "");
+}
+async function readBody(req: Req) {
+  return (await req.json()) as { body?: string };
 }
 
 export default capsule({
@@ -36,6 +46,14 @@ export default capsule({
       const auth = ctx.auth;
       await save(ctx, body);
       return auth.isSignedIn;
+    }),
+  },
+  endpoints: {
+    post: endpoint({ method: "POST", path: "/api/notes" }, async (ctx, req) => {
+      if (!(await authed(ctx, req))) return text("no", { status: 403 });
+      const { body } = await readBody(req);
+      await save(ctx, body ?? "");
+      return text("saved", { status: 201 });
     }),
   },
 });

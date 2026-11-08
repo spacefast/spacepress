@@ -884,8 +884,8 @@ pub(super) fn app(
     // Helpers that receive the context are rewritten like handlers, following calls between them.
     // A helper takes the strictest mode of its callers: writes and sends only when every caller
     // could, so a query never reaches a write through a helper.
-    let mut helper_modes: BTreeMap<(String, usize), (bool, bool, Span)> = BTreeMap::new();
-    let mut converted_helpers: BTreeMap<(String, usize), (bool, bool)> = BTreeMap::new();
+    let mut helper_modes: BTreeMap<(String, HelperArgs), (bool, bool, Span)> = BTreeMap::new();
+    let mut converted_helpers: BTreeMap<(String, HelperArgs), (bool, bool)> = BTreeMap::new();
     let mut ctx_helper_errors = Vec::new();
     // For the 401 gates: which helpers each writing handler reaches, which helpers call which,
     // and which read the subject themselves.
@@ -930,6 +930,21 @@ pub(super) fn app(
             }
         }
     }
+    // One function has one signature: a helper reached with the context or request at different
+    // argument positions would be rewritten twice, and only one rewrite can replace its source.
+    let mut signatures: BTreeMap<&str, &HelperArgs> = BTreeMap::new();
+    for ((function, args), _) in &converted_helpers {
+        if signatures.insert(function, args).is_some_and(|first| first != args) {
+            let span = helper_modes[&(function.clone(), *args)].2;
+            ctx_helper_errors.push(
+                fail(
+                    &pointer(&pointer("/helpers", function), "ctx"),
+                    "unsupported context service, alias or dynamic use: the helper takes the context or request at different argument positions across its calls; give it one signature",
+                )
+                .spanned(span, Path::new("")),
+            );
+        }
+    }
     errors.extend(ctx_helper_errors);
     // A helper reads the subject if it does or any helper it calls does.
     loop {
@@ -966,11 +981,15 @@ pub(super) fn app(
     for (_, _, _, code) in &mut prefixes {
         *code = settle(code);
     }
-    for (function, _) in converted_helpers.keys() {
+    for (function, (ctx, request)) in converted_helpers.keys() {
         entries.push(entry(
             &pointer("/helpers", function),
             "mapped",
-            "takes the v2 context (HookCtx); its ctx services are rewritten as in the handlers that call it",
+            match (ctx, request) {
+                (Some(_), None) => "takes the v2 context (HookCtx); its ctx services are rewritten as in the handlers that call it",
+                (None, _) => "takes the v2 route request (RouteRequest); its request reads are rewritten as in the endpoints that call it",
+                (Some(_), Some(_)) => "takes the v2 context (HookCtx) and route request (RouteRequest); both are rewritten as in the endpoints that call it",
+            },
         ));
     }
     // An exact endpoint at the prefix wins over the splat in 0.8 (exact paths are served first).
@@ -1019,7 +1038,7 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"zero\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
@@ -1654,15 +1673,16 @@ fn handler(
     Ok((code, r.helpers, r.calls))
 }
 
-/// A module function that a handler passes the context to, rewritten to take the v2 context at
-/// `position`: its parameter becomes `__z08ctx: HookCtx` and its body goes through the same service
+/// A module function that a handler passes the context or its route request to, rewritten to take
+/// them at `position`: the context parameter becomes `__z08ctx: HookCtx`, the request parameter a
+/// `RouteRequest` under its own name, and the body goes through the same service and request
 /// rewrites as a handler's. Returns the function's new source, its generated helpers and the calls
-/// it makes with the context in turn.
+/// it makes with either in turn.
 #[allow(clippy::too_many_arguments)]
 fn ctx_helper(
     source: &str,
     f: &Func,
-    position: usize,
+    position: HelperArgs,
     tables: &BTreeMap<String, Table>,
     at: &str,
     writes: bool,
@@ -1670,19 +1690,45 @@ fn ctx_helper(
     subjects: bool,
     functions: &BTreeSet<String>,
 ) -> Result<(Converted, bool), Failure> {
-    let param = f
-        .params
-        .get(position)
-        .ok_or_else(|| fail(&pointer(at, "ctx"), "unsupported context service, alias or dynamic use: the helper has no parameter where the context is passed"))?;
-    let Pat::Id(ctx, _) = &param.pat else {
-        return Err(fail(&pointer(at, "ctx"), DESTRUCTURE));
+    let mut edits = vec![];
+    let ctx = match position.0 {
+        None => "__z08unused",
+        Some(position) => {
+            let param = f
+                .params
+                .get(position)
+                .ok_or_else(|| fail(&pointer(at, "ctx"), "unsupported context service, alias or dynamic use: the helper has no parameter where the context is passed"))?;
+            let Pat::Id(ctx, _) = &param.pat else {
+                return Err(fail(&pointer(at, "ctx"), DESTRUCTURE));
+            };
+            if param.rest || param.default.is_some() {
+                return Err(fail(
+                    &pointer(at, "ctx"),
+                    "unsupported context service, alias or dynamic use: a rest or defaulted context parameter needs a manual port",
+                ));
+            }
+            // The parameter, with its 0.8 type annotation, becomes the typed v2 context.
+            edits.push((param.span, "__z08ctx: __z08HookCtx".to_string()));
+            ctx.as_str()
+        }
     };
-    if param.rest || param.default.is_some() {
-        return Err(fail(
-            &pointer(at, "ctx"),
-            "unsupported context service, alias or dynamic use: a rest or defaulted context parameter needs a manual port",
-        ));
-    }
+    // The request parameter keeps its name, so its uses rewrite as in an endpoint handler; a
+    // parameter the converter can't name (destructured, defaulted, rest, optional) is refused.
+    let request = match position.1 {
+        None => None,
+        Some(position) => {
+            let refuse = || fail(&pointer(&pointer(at, "request"), "parameter"), REQUEST_API);
+            let param = f.params.get(position).ok_or_else(refuse)?;
+            let Pat::Id(name, _) = &param.pat else {
+                return Err(refuse());
+            };
+            if param.rest || param.default.is_some() || param.optional || name.as_str() == ctx {
+                return Err(refuse());
+            }
+            edits.push((param.span, format!("{name}: __z08RouteRequest")));
+            Some(name.as_str())
+        }
+    };
     let mut r = Rewrite {
         source,
         ctx,
@@ -1692,14 +1738,14 @@ fn ctx_helper(
         subjects,
         uses_subject: false,
         action: f.name.as_deref().unwrap_or("helper"),
-        request: None,
+        request,
         returns: vec![],
         params: vec![],
         logs: false,
         helpers: vec![],
         sends,
         returned: super::endpoints::returns(f),
-        edits: vec![],
+        edits,
         functions,
         aliases: vec![],
         services: BTreeMap::new(),
@@ -1707,8 +1753,6 @@ fn ctx_helper(
         inline_subject: Some(f.is_async),
         reads_subject: false,
     };
-    // The parameter, with its 0.8 type annotation, becomes the typed v2 context.
-    r.edits.push((param.span, "__z08ctx: __z08HookCtx".into()));
     match &f.body {
         FnBody::Expr(e) => r.expr(e)?,
         FnBody::Block(stmts) => {
@@ -1720,7 +1764,7 @@ fn ctx_helper(
     if r.logs {
         r.helpers.push(LOG.into());
     }
-    // `ctx` itself is now `__z08ctx`; the remaining reads were rewritten as services.
+    // `ctx` itself is now `__z08ctx`; the remaining reads were rewritten as services and request reads.
     let text = r.apply(f.span);
     Ok(((text, r.helpers, r.calls), r.reads_subject))
 }
@@ -1848,6 +1892,9 @@ fn endpoint(
     Ok((code, r.helpers, r.calls))
 }
 
+/// The refusal for a request use with no faithful v2 route form (`Z08_ENDPOINT_REQUEST_API`).
+const REQUEST_API: &str = "this request API has no v2 route equivalent; port it explicitly";
+
 /// Marks the bare-prefix route `endpoint()` returns among its helpers.
 const PREFIX_MARK: &str = "\0prefix-route\0";
 
@@ -1901,16 +1948,20 @@ struct Rewrite<'a> {
     reads_subject: bool,
 }
 
-/// A call that passes the context to a module function at one argument position.
+/// A call that passes the context, the route request or both to a module function, at these
+/// argument positions.
 pub(super) struct CtxCall {
     function: String,
-    position: usize,
+    position: HelperArgs,
     writes: bool,
     sends: bool,
     span: Span,
     /// The writing handler whose 401 gate depends on what this helper reads (its gate marker).
     gate: Option<u32>,
 }
+
+/// Where a helper receives the context and the route request: `(ctx, request)` argument positions.
+type HelperArgs = (Option<usize>, Option<usize>);
 
 const DESTRUCTURE: &str = "context destructuring needs plain service names (`const { db, auth } = ctx`); nested patterns, defaults and rest need a manual port";
 
@@ -1973,6 +2024,11 @@ impl Rewrite<'_> {
 
     fn is_ctx_expr(&self, e: &Expr) -> bool {
         matches!(&e.kind, E::Ident(n) if self.is_ctx(n))
+    }
+
+    /// The route request parameter itself.
+    fn is_request_expr(&self, e: &Expr) -> bool {
+        matches!(&e.kind, E::Ident(n) if Some(n.as_str()) == self.request)
     }
 
     /// The context service `e` names: `ctx.db`, `ctx["db"]`, or a name bound to it.
@@ -2239,12 +2295,15 @@ impl Rewrite<'_> {
                 "unsupported context service; port its authority and behavior explicitly",
             ));
         }
-        // `helper(ctx, ...)` for a function of this module: the helper takes the v2 context and
-        // its body is rewritten like a handler's (`transform::app` follows the calls).
+        // `helper(ctx, ...)` or `helper(req, ...)` for a function of this module: the helper takes
+        // the v2 context or route request there and its body is rewritten like a handler's
+        // (`transform::app` follows the calls).
         if let E::Call { callee, args, .. } = &e.kind
             && let E::Ident(function) = &callee.kind
             && self.functions.contains(function)
-            && args.iter().any(|a| matches!(a, ArrEl::Item(x) if self.is_ctx_expr(x)))
+            && args
+                .iter()
+                .any(|a| matches!(a, ArrEl::Item(x) if self.is_ctx_expr(x) || self.is_request_expr(x)))
         {
             // 0.8 awaited a promise the handler returned; v2 needs the await written out.
             if self.returned.contains(&e.span) || self.returns.contains(&e.span) {
@@ -2256,19 +2315,44 @@ impl Rewrite<'_> {
                     "await ".into(),
                 ));
             }
-            for (position, a) in args.iter().enumerate() {
+            let requests: Vec<(usize, Span)> = args
+                .iter()
+                .enumerate()
+                .filter_map(|(i, a)| match a {
+                    ArrEl::Item(x) if self.is_request_expr(x) => Some((i, x.span)),
+                    _ => None,
+                })
+                .collect();
+            if requests.len() > 1 {
+                return Err(fail(&pointer(&pointer(self.at, "request"), "value"), REQUEST_API));
+            }
+            let request = requests.first().map(|(i, _)| *i);
+            let mut contexts: Vec<(Option<usize>, Span)> = args
+                .iter()
+                .enumerate()
+                .filter_map(|(i, a)| match a {
+                    ArrEl::Item(x) if self.is_ctx_expr(x) => Some((Some(i), x.span)),
+                    _ => None,
+                })
+                .collect();
+            if contexts.is_empty() {
+                contexts.extend(requests.first().map(|(_, span)| (None, *span)));
+            }
+            for (ctx, span) in contexts {
+                self.calls.push(CtxCall {
+                    function: function.clone(),
+                    position: (ctx, request),
+                    writes: self.writes,
+                    sends: self.sends,
+                    span,
+                    gate: None,
+                });
+            }
+            for a in args {
                 match a {
-                    ArrEl::Item(x) if self.is_ctx_expr(x) => {
-                        self.calls.push(CtxCall {
-                            function: function.clone(),
-                            position,
-                            writes: self.writes,
-                            sends: self.sends,
-                            span: x.span,
-                            gate: None,
-                        });
-                        self.edits.push((x.span, "__z08ctx".into()));
-                    }
+                    ArrEl::Item(x) if self.is_ctx_expr(x) => self.edits.push((x.span, "__z08ctx".into())),
+                    // The route request keeps its name; the helper's parameter becomes a RouteRequest.
+                    ArrEl::Item(x) if self.is_request_expr(x) => {}
                     a => self.arr(a)?,
                 }
             }
@@ -2684,12 +2768,7 @@ impl Rewrite<'_> {
         let req = self.request.expect("request");
         let is_req = |e: &Expr| matches!(&e.kind, E::Ident(n) if n == req);
         let at = pointer(self.at, "request");
-        let refuse = |what: &str| -> Result<bool, Failure> {
-            Err(fail(
-                &pointer(&at, what),
-                "this request API has no v2 route equivalent; port it explicitly",
-            ))
-        };
+        let refuse = |what: &str| -> Result<bool, Failure> { Err(fail(&pointer(&at, what), REQUEST_API)) };
         let (inner, awaited) = match &e.kind {
             E::Await(inner) => (inner.as_ref(), true),
             _ => (e, false),

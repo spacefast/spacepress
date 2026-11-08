@@ -370,6 +370,9 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// A named function expression passed as a callback: its inner declaration's span and the
+    /// callback's parameter types.
+    named_callback: Option<(Span, Vec<Ty>)>,
     /// Generated code queues promise jobs, so each root drains them and checks rejections at its end.
     uses_jobs: bool,
     /// Every ability `abilities.call` may name, typed (src/abilities.rs).
@@ -440,6 +443,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             annotation_steps: 0,
             resolving_json_types: HashSet::new(),
             async_callback: false,
+            named_callback: None,
             uses_jobs: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
@@ -1462,10 +1466,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         for s in stmts {
             if let Stmt::Func(f) = s {
                 let name = f.name.clone().expect("named");
+                let context = self
+                    .named_callback
+                    .take_if(|(span, _)| *span == f.span)
+                    .map(|(_, params)| params);
                 let signature = self.declared_signature(f)?;
                 let recursive = signature.is_some();
                 let php = self.declare_local(&name, signature.unwrap_or(Ty::Unknown), recursive, f.span);
-                let c = self.closure_expr(f)?;
+                let c = match &context {
+                    Some(params) => self.closure_with_types(f, Some(params))?,
+                    None => self.closure_expr(f)?,
+                };
                 self.set_local_ty(&name, c.ty.clone());
                 let _ = writeln!(out, "{}{php} = {};", pad(indent), c.php);
             }
@@ -1739,13 +1750,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
             } => {
                 let module = self.fx().module;
-                if *is_await && !self.javascript_module(module) {
-                    return err_help(
-                        *span,
-                        "`for await` only works in imported JavaScript",
-                        "await each value inside a `for ... of` loop",
-                    );
-                }
+                // Authored TypeScript has no job queue, so `for await` is accepted only where the
+                // blocking model is exact: a sync iterable (array, tuple, string) whose elements are
+                // Zero's own promises or plain values. Each element is then already settled, and
+                // awaiting it yields its value. Async iterables, generators and values from imported
+                // JavaScript go through the job queue, which only imported JavaScript has.
+                let typed_await = *is_await && !self.javascript_module(module);
                 if *is_await && !self.fx().is_async {
                     return err_help(
                         *span,
@@ -1756,6 +1766,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.push(HashMap::new());
                 if *kind != DeclKind::Var {
                     self.predeclare_lexical(pat, *kind == DeclKind::Let);
+                }
+                // `for await (const v of [a(), b()])` awaits each element as the loop reaches it, after
+                // the previous iterations' bodies ran. The blocking model would settle every call
+                // before the loop starts, so a promise in the literal is refused with the exact form.
+                if typed_await && let ExprKind::Array(items) = &iter.kind {
+                    for item in items {
+                        let ArrEl::Item(e) = item else { continue };
+                        let saved = self.fx().tmp;
+                        let ty = self.expr(e).map(|v| v.ty);
+                        self.fx().tmp = saved;
+                        if matches!(ty, Ok(Ty::Promise(_))) {
+                            return err_help(
+                                e.span,
+                                "`for await` over a promise written in an array literal isn't supported",
+                                "await each call where it is written: `for (const v of [await a(), await b()])`",
+                            );
+                        }
+                    }
                 }
                 let it = self.expr(iter)?;
                 let it = self.finish_value(it, iter.span)?;
@@ -1777,8 +1805,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "check it first, or use `?? []`",
                     );
                 }
+                if typed_await {
+                    let settled = awaited_element(&el);
+                    // A class instance may be a thenable through a `then` method; `for await` would
+                    // adopt it, which only the job queue can do.
+                    if el.non_null().all(|t| matches!(t, Ty::Instance(..) | Ty::Class(_))) && !el.is_nullable() {
+                        return err_help(
+                            iter.span,
+                            "`for await` over class instances isn't supported in authored TypeScript",
+                            "use `for (const v of items)`; `for await` would adopt an instance with a `then` method as a promise",
+                        );
+                    }
+                    if it.ty == Ty::Dynamic || settled.is_none() {
+                        return err_help(
+                            *span,
+                            "`for await` only works in imported JavaScript",
+                            "await each value inside a `for ... of` loop",
+                        );
+                    }
+                }
                 // Each `for await` value is awaited, so its type is the awaited one.
-                let el = if *is_await {
+                let el = if typed_await {
+                    widen_fresh_literals(&awaited_element(&el).expect("checked above"))
+                } else if *is_await {
                     Ty::Dynamic
                 } else {
                     widen_fresh_literals(&el)
@@ -4226,6 +4275,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if let ExprKind::Func(f) = &e.kind {
             return self.closure_with_types(f, Some(params));
+        }
+        // A named function expression lowers to `(() => { function name() {} return name; })()`;
+        // its inner declaration takes the callback's parameter types, as the bare function would.
+        if let Some(inner) = named_function_expression(e) {
+            let saved = self.named_callback.replace((inner.span, params.to_vec()));
+            let v = self.expr(e);
+            self.named_callback = saved;
+            return v;
         }
         let v = self.expr(e)?;
         let Ty::Fn(declared, _) = &v.ty else {
@@ -9256,12 +9313,73 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
     }
 }
 
+/// The inner function of a lowered named function expression: an immediately called
+/// parameterless arrow whose body declares one named function and returns it.
+fn named_function_expression(e: &Expr) -> Option<&Rc<Func>> {
+    let ExprKind::Call { callee, args, .. } = &e.kind else {
+        return None;
+    };
+    let ExprKind::Func(wrapper) = &callee.kind else {
+        return None;
+    };
+    let FnBody::Block(body) = &wrapper.body else {
+        return None;
+    };
+    match (
+        args.is_empty() && wrapper.is_arrow && wrapper.params.is_empty(),
+        body.as_slice(),
+    ) {
+        (
+            true,
+            [
+                Stmt::Func(inner),
+                Stmt::Return(
+                    Some(Expr {
+                        kind: ExprKind::Ident(name),
+                        ..
+                    }),
+                    _,
+                ),
+            ],
+        ) if inner.name.as_deref() == Some(name.as_str()) => Some(inner),
+        _ => None,
+    }
+}
+
 fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
     if parameter.optional || parameter.default.is_some() {
         Ty::union([ty, Ty::Undefined])
     } else {
         ty
     }
+}
+
+/// The type a typed `for await` element settles to under the blocking model: a Zero promise is
+/// its value, a plain value is itself. `None` for values only the job queue can settle (anything
+/// from imported JavaScript, unknown values, builders that were never awaited).
+fn awaited_element(t: &Ty) -> Option<Ty> {
+    match t {
+        Ty::Promise(inner) => awaited_element(inner),
+        Ty::Union(items) => items
+            .iter()
+            .map(awaited_element)
+            .collect::<Option<Vec<_>>>()
+            .map(Ty::union),
+        Ty::Dynamic | Ty::Unknown | Ty::Builder(_) => None,
+        // PromiseResolve adopts an object with a callable (or possibly callable) `then`, so a
+        // thenable element binds its settled value in JavaScript; only the job queue can settle it.
+        Ty::Obj(_) | Ty::Map(_) if thenable(t) => None,
+        // A class instance's `then` may be a method, which its field type doesn't show.
+        Ty::Instance(..) | Ty::Class(_) => None,
+        other => Some(other.clone()),
+    }
+}
+
+fn thenable(t: &Ty) -> bool {
+    t.field("then").is_some_and(|(then, _)| {
+        then.non_null()
+            .all(|t| matches!(t, Ty::Fn(..) | Ty::Unknown | Ty::Dynamic))
+    })
 }
 
 fn widen_fresh_literals(t: &Ty) -> Ty {

@@ -2202,10 +2202,91 @@ fn func_assigns_own_name(func: &Func, name: &str) -> bool {
     if params.iter().any(|(n, _)| *n == name) {
         return false;
     }
+    // Parameter defaults run in the function's scope, where the name is still the function.
+    let mut defaults = Vec::new();
+    for p in &func.params {
+        if let Some(d) = &p.default {
+            defaults.push(d);
+        }
+        pattern_defaults(&p.pat, &mut defaults);
+    }
+    if defaults.iter().any(|d| expr_assigns(d, name)) {
+        return true;
+    }
     match &func.body {
         FnBody::Expr(e) => expr_assigns(e, name),
-        FnBody::Block(body) => !declares(body, name) && stmts_assign(body, name),
+        // A `var` anywhere in the body (not inside a nested function) is hoisted to the
+        // function and shadows the name everywhere in it.
+        FnBody::Block(body) => !declares(body, name) && !hoists_var(body, name) && stmts_assign(body, name),
     }
+}
+
+/// The default expressions inside a binding pattern.
+fn pattern_defaults<'a>(pattern: &'a Pat, out: &mut Vec<&'a Expr>) {
+    match pattern {
+        Pat::Id(..) => {}
+        Pat::Default(inner, value) => {
+            out.push(value);
+            pattern_defaults(inner, out);
+        }
+        Pat::Obj { props, .. } => props.iter().for_each(|(_, p)| pattern_defaults(p, out)),
+        Pat::Arr { elems, .. } => elems.iter().flatten().for_each(|p| pattern_defaults(p, out)),
+    }
+}
+
+/// Whether `name` is a `var` declared anywhere in a function body, outside nested functions.
+fn hoists_var(body: &[Stmt], name: &str) -> bool {
+    body.iter().any(|s| match s {
+        Stmt::Decl {
+            kind: DeclKind::Var,
+            pat,
+            ..
+        } => {
+            let mut names = Vec::new();
+            pat.bindings(&mut names);
+            names.iter().any(|(n, _)| *n == name)
+        }
+        Stmt::For { init, body, .. } => {
+            init.as_deref()
+                .is_some_and(|i| hoists_var(std::slice::from_ref(i), name))
+                || hoists_var(body, name)
+        }
+        Stmt::ForOf {
+            kind: DeclKind::Var,
+            pat,
+            body,
+            ..
+        } => {
+            let mut names = Vec::new();
+            pat.bindings(&mut names);
+            names.iter().any(|(n, _)| *n == name) || hoists_var(body, name)
+        }
+        Stmt::ForIn {
+            kind: Some(DeclKind::Var),
+            target,
+            body,
+            ..
+        } => matches!(&target.kind, ExprKind::Ident(n) if n == name) || hoists_var(body, name),
+        Stmt::ForOf { body, .. }
+        | Stmt::ForIn { body, .. }
+        | Stmt::While(_, body)
+        | Stmt::DoWhile(body, _)
+        | Stmt::Block(body) => hoists_var(body, name),
+        Stmt::If(_, yes, no) => hoists_var(yes, name) || no.as_deref().is_some_and(|b| hoists_var(b, name)),
+        Stmt::Labeled(_, inner, _) | Stmt::Exported(inner) => hoists_var(std::slice::from_ref(inner), name),
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
+            hoists_var(block, name)
+                || handler.as_deref().is_some_and(|b| hoists_var(b, name))
+                || finalizer.as_deref().is_some_and(|b| hoists_var(b, name))
+        }
+        Stmt::Switch { cases, .. } => cases.iter().any(|(_, b)| hoists_var(b, name)),
+        _ => false,
+    })
 }
 
 /// Whether a block declares `name` itself (a `var`, `let`, `const` or function), which shadows it.

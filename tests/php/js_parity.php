@@ -229,6 +229,9 @@ $cases = [
         fn () => [Js::sameJson(Js::decodeJson('{"a":{}}'), Js::decodeJson('{"a":{}}')), Js::sameJson(Js::decodeJson('{"a":{}}'), Js::decodeJson('{"a":[]}')), Js::sameJson(Js::decodeJson('[1,{}]'), Js::decodeJson('[1,{}]'))]],
     ['JSON.stringify(JSON.parse(JSON.stringify({ a: {}, b: [], [String.fromCharCode(0) + "k"]: { e: {} } })))', fn () => Js::jsonStringify(Js::jsonParse('{"a":{},"b":[],"\\u0000k":{"e":{}}}'))],
     ['JSON.parse("{bad")', fn () => Js::jsonParse('{bad')],
+    // A long string literal next to -0: the sign survives, and the text is not limited by a regex.
+    ['(() => { const v = JSON.parse(JSON.stringify(["a\\"b".repeat(400000)]).slice(0, -1) + ", -0, \"-0\"]"); return [v[0].length, Object.is(v[1], -0), v[2]]; })()',
+        function () { $v = Js::jsonParse(substr(json_encode([str_repeat('a"b', 400000)]), 0, -1) . ', -0, "-0"]'); return [mb_strlen(Js::dynamicGet($v, '0')), (static fn ($z) => is_float($z) && $z === 0.0 && fdiv(1.0, $z) < 0)(Js::dynamicGet($v, '1')), Js::dynamicGet($v, '2')]; }],
 
     // ---- dates
     ['["2020-01-01", "2020-01-01T10:00", "2020-02", "2021-02-30", "2020-13-01", "2020-01-01T24:00:00Z", "2020-01-01T24:00:01Z", "2020-01-01T24:00:00.0000Z", "2020-01-01T24:00:00.0001Z", "+002020-01-01", "-000001-01-01T00:00:00Z", "2020-01-01T10:00:00.123456Z", "2020-01-01T10:00:00+05:30"].map(s => new Date(s).getTime())',

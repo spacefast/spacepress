@@ -20,12 +20,13 @@ test("handlers fetch public HTTPS and read the response like a WHATWG Response",
   const json = await call("get", { url: `${origin}/json` });
   assert.equal(json.status, 200, JSON.stringify(json.body));
   assert.deepEqual(json.body.data, {
-    status: 200, ok: true, url: `${origin}/json`, redirected: false, type: "application/json", origin: "ok",
+    status: 200, statusText: "OK", ok: true, url: `${origin}/json`, redirected: false, type: "application/json", origin: "ok",
     cookie: false, body: JSON.stringify({ hello: "world", method: "GET", received: "" }),
   });
   // A non-2xx answer is a response, not an error.
   const teapot = await call("get", { url: `${origin}/text` });
   assert.equal(teapot.body.data?.status, 418);
+  assert.equal(teapot.body.data?.statusText, "I'm a Teapot");
   assert.equal(teapot.body.data?.ok, false);
   assert.equal(teapot.body.data?.body, "short and stout");
 
@@ -41,6 +42,19 @@ test("handlers fetch public HTTPS and read the response like a WHATWG Response",
   assert.deepEqual([moved.body.data?.status, moved.body.data?.redirected, moved.body.data?.url], [200, true, `${origin}/json`]);
   const other = await call("post", { url: `${origin}/see-other`, payload: "{}" });
   assert.equal((other.body.data?.data as { method: string }).method, "GET");
+
+  // redirect: "manual" returns the 3xx itself; "error" refuses it.
+  const manual = await call("manual", { url: `${origin}/redirect`, mode: "manual" });
+  assert.deepEqual(manual.body.data, { status: 302, location: "/json" });
+  const error = await call("manual", { url: `${origin}/redirect`, mode: "error" });
+  assert.deepEqual([error.status, error.body.code], [502, "zero_fetch_redirect_denied"]);
+
+  // A URLSearchParams body is sent form-encoded with its content type.
+  const form = await call("form", { url: `${origin}/json` });
+  assert.equal((form.body.data as { received: string }).received, "q=a+b");
+  const sent = seen().at(-1)!;
+  assert.equal(sent.headers["content-type"], "application/x-www-form-urlencoded;charset=UTF-8");
+  assert.equal(sent.headers["x-pair"], "1");
 });
 
 test("fetch refuses private targets, including through redirects, and bounds time and size", async () => {
@@ -82,14 +96,19 @@ test("redirect credentials and URLs follow the origin and RFC 3986", async () =>
   assert.equal(paged.body.data?.url, `${origin}/items/42?page=2`);
 });
 
-test("without the cURL transport, fetch refuses instead of sending an unpinned request", async () => {
+test("another transport never sends: fetch always goes out through the pinned cURL connection", async () => {
   const before = seen().length;
+  // A site plugin swaps in a transport that would answer "unpinned" without a pinned connection.
   const response = await fetch(`${api}/actions/get?zero-fetch-transport=streams`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: `${origin}/json` }),
   });
   const body = await response.json() as { code?: string; data?: { body?: string } };
-  // The stand-in transport answered "unpinned"; fetch() must not hand that body to the handler.
-  assert.notEqual(body.data?.body, "unpinned", "an unpinned answer reached the handler");
-  assert.equal(body.code, "zero_fetch_upstream_unavailable", JSON.stringify(body));
-  assert.equal(seen().length, before, "nothing reached the origin");
+  assert.notEqual(body.data?.body, "unpinned", "the swapped-in transport sent the request");
+  // fetch() chose cURL itself, so the real origin answered over the pinned connection.
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(seen().length, before + 1, "exactly one request reached the origin");
+  // A trailing-dot host is the same host: checked, pinned and sent as `fetch-origin.test`.
+  const dotted = await call("get", { url: `https://fetch-origin.test.:${port}/json` });
+  assert.equal(dotted.status, 200, JSON.stringify(dotted.body));
+  assert.equal(seen().at(-1)!.headers["host"], `fetch-origin.test:${port}`, "the request went to the pinned name");
 });

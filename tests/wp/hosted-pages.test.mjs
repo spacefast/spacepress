@@ -160,6 +160,10 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
     dotted: '1', underscored: null, brackets: ['1', '2'], first: '1', every: ['1', '2'], has: true, missing: null,
     entries: [['a.b', '1'], ['x[]', '1'], ['x[]', '2'], ['k', '1'], ['k', '2']],
   });
+  // A server that sends no QUERY_STRING: the query still comes from the request URI.
+  const fallback = await http('/api/probe-query?k=from-uri', { headers: { 'x-zero-no-query-string': '1' } });
+  assert.equal(fallback.status, 200, fallback.text);
+  assert.equal(JSON.parse(fallback.text).first, 'from-uri');
   const encoded = JSON.parse(await body('/api/probe-query?a%2Eb=%31&k=one+two&k=3'));
   assert.deepEqual([encoded.dotted, encoded.first, encoded.every], ['1', 'one two', ['one two', '3']]);
 

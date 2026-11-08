@@ -40,7 +40,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   }
   const env = { ...process.env, PATH: tools };
   const zero = async (...args) => (await exec(binary, args, { env, timeout: 240000, maxBuffer: 8 * 1024 * 1024 })).stdout.trim();
-  const wp = (...args) => zero('dev', 'wp', project, '--', ...args);
+  const wp = (...args) => zero('wp', '--site', project, ...args);
   const record = async (step, result) => {
     evidence.steps.push({ step, result });
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2) + '\n');

@@ -49,8 +49,8 @@ Create a separate editor for your agent and give that account an application
 password through **Users → Profile → Application Passwords**, or the native CLI:
 
 ```sh
-target/debug/zero dev wp /absolute/path/to/notebook -- user create agent agent@example.test --role=editor
-target/debug/zero dev wp /absolute/path/to/notebook -- user application-password create agent notebook-agent --porcelain
+target/debug/zero wp --site /absolute/path/to/notebook user create agent agent@example.test --role=editor
+target/debug/zero wp --site /absolute/path/to/notebook user application-password create agent notebook-agent --porcelain
 ```
 
 Keep the password in your MCP client's secret storage. The endpoint is

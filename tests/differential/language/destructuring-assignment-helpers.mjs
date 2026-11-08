@@ -16,5 +16,10 @@ export function destructuringUntyped() {
   let p;
   let q;
   ({ p: [p, q] } = { p: [7, 8] });
-  return { a, b, x, y, rest, target, chars, p, q };
+  const live = [1, 2];
+  [live[1], live[0]] = live;
+  const tail = [1, 2, 3];
+  let after;
+  [tail[2], ...after] = tail;
+  return { a, b, x, y, rest, target, chars, p, q, live, tail, after };
 }

@@ -98,7 +98,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   const status = JSON.parse(await command(['dev', 'status', project], env));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
-  const wp = (...args) => command(['dev', 'wp', project, '--', ...args], env);
+  const wp = (...args) => command(['wp', '--site', project, ...args], env);
   const password = await wp('user', 'application-password', 'create', 'admin', 'zero-acceptance', '--porcelain');
   const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
   async function request(path, { method = 'GET', body, headers = {} } = {}) {

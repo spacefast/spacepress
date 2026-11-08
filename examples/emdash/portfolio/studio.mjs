@@ -34,7 +34,7 @@ export async function startStudio() {
     const result = await execute(zero, args, { cwd: repo, timeout: 600000, maxBuffer: 8 * 1024 * 1024 });
     return result.stdout.trim();
   };
-  const wp = (...args) => command(['dev', 'wp', project, '--', ...args]);
+  const wp = (...args) => command(['wp', '--site', project, ...args]);
   await mkdir(project);
   await cp(join(source, 'zero.config.ts'), join(project, 'zero.config.ts'));
   const receipt = { root, project, site, evidence, binary: zero, state: 'starting' };

@@ -6,6 +6,7 @@
   "require": {
     "php": ">=8.2",
     "async-aws/s3": "3.5.0",
+    "rowbot/url": "4.2.1",
     "wp-php-toolkit/markdown": "^0.10",
     "wp-php-toolkit/merge": "^0.10"
   },
@@ -53,7 +54,8 @@
           "WP_PLUGIN_DIR",
           "WP_CLI",
           "WP_UNINSTALL_PLUGIN",
-          "ARRAY_A"
+          "ARRAY_A",
+          "DS"
         ]
       },
       "override_autoload": {

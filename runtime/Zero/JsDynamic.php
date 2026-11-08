@@ -18,7 +18,10 @@ trait JsDynamic
     private static function dynamicMethodValue(mixed $receiver, string $name): mixed
     {
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
-            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+            return $receiver->class->methodValue($name, false);
+        }
+        if ($receiver instanceof JsClass && $receiver->hasStaticMethod($name)) {
+            return $receiver->methodValue($name, true);
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) { return JsUndefined::Value; }
         $owner = match (true) {
@@ -116,7 +119,7 @@ trait JsDynamic
             if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
             return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
         }
-        if ($value instanceof JsClass) { return $value->get($key); }
+        if ($value instanceof JsClass) { return $value->has($key) || !$value->hasStaticMethod($key) ? $value->get($key) ?? JsUndefined::Value : self::dynamicMethodValue($value, $key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -277,6 +280,22 @@ trait JsDynamic
         return '[object ' . $tag . ']';
     }
 
+    /** Registers a function value whose receiver comes from call/apply or a method call. */
+    public static function dynamicMethodFunction(\Closure $function, \Closure $invoke): \Closure
+    {
+        self::$dynamicMethodReceivers ??= new \WeakMap();
+        self::$dynamicMethodReceivers[$function] = $invoke;
+        return $function;
+    }
+
+    /** `value instanceof constructor` where the constructor is only known at run time. */
+    public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
+    {
+        if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
+        if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
+        throw new JsError("Right-hand side of 'instanceof' is not callable", 'TypeError');
+    }
+
     public static function dynamicCall(mixed $function, JsArray $args): mixed
     {
         if (!$function instanceof \Closure) { throw new JsError('Value is not a function', 'TypeError'); }
@@ -311,7 +330,17 @@ trait JsDynamic
             return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
         }
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
-            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+            $class = $receiver->class;
+            return static fn (...$args) => $class->invokeOn($receiver, $name, $args, false);
+        }
+        if ($receiver instanceof JsClass) {
+            if ($receiver->has($name)) {
+                $method = $receiver->get($name);
+                return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+            }
+            if ($receiver->hasStaticMethod($name)) {
+                return static fn (...$args) => $receiver->invokeOn($receiver, $name, $args, true);
+            }
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) {
             return static fn (...$args) => self::dynamicCall(JsUndefined::Value, new JsArray($args));

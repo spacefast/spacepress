@@ -170,14 +170,33 @@ enum WriteKind {
     NativeObject,
     Array,
     Dynamic,
+    /// A `#name` slot owned by the PHP class descriptor expression.
+    Private(String),
 }
 
 enum CapturedPlace {
     Binding(String),
-    Object { receiver: String, key: String },
-    NativeObject { receiver: String, key: String },
-    Array { receiver: String, key: String },
-    Dynamic { receiver: String, key: String },
+    Object {
+        receiver: String,
+        key: String,
+    },
+    NativeObject {
+        receiver: String,
+        key: String,
+    },
+    Array {
+        receiver: String,
+        key: String,
+    },
+    Dynamic {
+        receiver: String,
+        key: String,
+    },
+    Private {
+        class: String,
+        receiver: String,
+        key: String,
+    },
 }
 
 impl Out {
@@ -2731,6 +2750,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Instanceof(left, right) => {
                 let left = self.expr(left)?;
                 let right = self.expr(right)?;
+                if right.ty == Ty::Dynamic {
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Js::dynamicInstanceof({}, {})", left.php, right.php),
+                        Ty::Bool,
+                    ));
+                }
                 if !matches!(right.ty, Ty::Class(_)) {
                     return err(span, "instanceof requires a named Zero class");
                 }
@@ -3869,7 +3894,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if op.is_none()
             && !statement
             && let Some(target) = place.target.as_ref()
-            && !matches!(target.kind, WriteKind::NativeObject)
+            && !matches!(target.kind, WriteKind::NativeObject | WriteKind::Private(_))
         {
             let v = self.expr(value)?;
             let v = self.finish_value(v, value.span)?;
@@ -3890,7 +3915,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         WriteKind::Dynamic => "dynamicSet",
                         WriteKind::Array => "setAt",
                         WriteKind::Object => "set",
-                        WriteKind::NativeObject => unreachable!(),
+                        WriteKind::NativeObject | WriteKind::Private(_) => unreachable!(),
                     },
                     target.receiver,
                     target.key,
@@ -3905,7 +3930,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             steps.push(format!("{old} = {read}"));
             let present = if matches!(op, AssignOp::Bin(_)) {
                 match &write {
-                    CapturedPlace::Binding(_) | CapturedPlace::Dynamic { .. } => None,
+                    CapturedPlace::Binding(_) | CapturedPlace::Dynamic { .. } | CapturedPlace::Private { .. } => None,
                     CapturedPlace::Array { receiver, key }
                     | CapturedPlace::Object { receiver, key }
                     | CapturedPlace::NativeObject { receiver, key } => {
@@ -4245,8 +4270,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("({receiver}->p[{key}] ?? \\Zero\\Js::dataGet({receiver}, {key}))")
                     }
                     WriteKind::Object => format!("\\Zero\\Js::dataGet({receiver}, {key})"),
+                    WriteKind::Private(ref class) => format!("{class}->privateGet({receiver}, {key})"),
                 };
                 let write = match target.kind {
+                    WriteKind::Private(class) => CapturedPlace::Private { class, receiver, key },
                     WriteKind::Dynamic => CapturedPlace::Dynamic { receiver, key },
                     WriteKind::Array => CapturedPlace::Array { receiver, key },
                     WriteKind::NativeObject => CapturedPlace::NativeObject { receiver, key },
@@ -4264,12 +4291,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             CapturedPlace::NativeObject { receiver, key } => format!("({receiver}->p[{key}] = {value})"),
             CapturedPlace::Array { receiver, key } => format!("\\Zero\\Js::setAt({receiver}, {key}, {value})"),
             CapturedPlace::Dynamic { receiver, key } => format!("\\Zero\\Js::dynamicSet({receiver}, {key}, {value})"),
+            CapturedPlace::Private { class, receiver, key } => {
+                format!("{class}->privateSet({receiver}, {key}, {value})")
+            }
         }
     }
 
     fn update(&mut self, target: &Expr, inc: bool, prefix: bool) -> Result<Out> {
         let place = self.place(target)?;
-        let property_number = place.target.is_some() && place.constraint.non_null().is_num();
+        // Private slots always exist once read; the presence check only applies to properties.
+        let property_number = place
+            .target
+            .as_ref()
+            .is_some_and(|t| !matches!(t.kind, WriteKind::Private(_)))
+            && place.constraint.non_null().is_num();
         if !property_number && place.read.ty != Ty::Dynamic {
             self.need_num(&place.read, target.span, if inc { "`++`" } else { "`--`" })?;
         }
@@ -4325,6 +4360,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
+                if prop.starts_with('#') {
+                    let (class, ty) = self.private_member(prop, *prop_span)?;
+                    let o = self.private_receiver(obj)?;
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(format!("{class}->privateGet({}, {})", o.php, php_str(prop)), ty.clone()),
+                        constraint: ty,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Private(class),
+                        }),
+                    });
+                }
                 let mut o = self.expr(obj)?;
                 if o.ty == Ty::Dynamic {
                     return Ok(self.javascript_place(o, Out::atom(php_str(prop), Ty::Str)));
@@ -4579,6 +4627,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if prop.starts_with('#') {
+            return self.private_read(obj, prop, optional, prop_span);
+        }
         if let Some(out) = self.host_member(obj, prop, prop_span)? {
             return Ok(out);
         }
@@ -5158,6 +5209,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } => {
                 if matches!(&obj.kind, ExprKind::Ident(n) if n == "super") {
                     return self.super_method(prop, args, span);
+                }
+                if prop.starts_with('#') {
+                    return self.private_call(obj, prop, *opt, *prop_span, args, span);
                 }
                 // Static functions on globals: Math.max, Object.keys, ...
                 if let ExprKind::Ident(n) = &obj.kind

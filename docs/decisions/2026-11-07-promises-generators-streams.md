@@ -147,10 +147,10 @@ documented, not refused. Refusing would block every library that uses
 `Promise.all` for fan-out, when the result is still exact.
 
 As measured on this branch merged with main `de46201a`, p-map's `index.js` has
-one diagnostic left, and it isn't async: a destructured parameter default that
-reads an earlier binding in the same pattern (`backpressure = concurrency`,
-Z1002). That case belongs to the language-gaps lane. Once it lands, p-map has no
-async construct left that this model refuses.
+one diagnostic left, and it isn't async. It is Z1002 at `pMapIterable`'s
+destructured option bag, where binding an object pattern from a checked
+JavaScript value refused every field. The language-gaps lane fixes this in #170.
+Once it lands, p-map has no async construct left that this model refuses.
 
 ## TypeScript stays explicit
 

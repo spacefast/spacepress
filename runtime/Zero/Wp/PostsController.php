@@ -68,10 +68,13 @@ final class PostsController extends \WP_REST_Posts_Controller
         }
         // Core maps the default empty `include` to post__in = [], which means no restriction.
         $ordered = $query !== null && $request['orderBy'] !== null;
-        $limit = static function (array $args) use ($keys, $ordered): array {
+        // Rows Zero's query selected already passed its read rule and draft visibility: core's own
+        // status filter (published only, for most viewers) must not drop them again.
+        $statuses = $query !== null && !$request->has_param('status') ? ['post_status' => ['publish', 'future', 'draft', 'pending', 'private']] : [];
+        $limit = static function (array $args) use ($keys, $ordered, $statuses): array {
             $in = !empty($args['post__in']) ? array_values(array_intersect($keys, array_map('intval', (array) $args['post__in']))) : $keys;
 
-            return ['post__in' => $in === [] ? [0] : $in] + ($ordered ? ['orderby' => 'post__in'] : []) + $args;
+            return ['post__in' => $in === [] ? [0] : $in] + ($ordered ? ['orderby' => 'post__in'] : []) + $statuses + $args;
         };
         add_filter("rest_{$this->post_type}_query", $limit, PHP_INT_MAX);
         try {
@@ -146,6 +149,18 @@ final class PostsController extends \WP_REST_Posts_Controller
         $stored = Plugin::instance()?->db()->editorRow($this->collection, (int) $item->ID);
         $response = $this->meta instanceof PostMeta ? $this->meta->with((int) $item->ID, $stored, fn () => parent::prepare_item_for_response($item, $request))
             : parent::prepare_item_for_response($item, $request);
+        // For the facade's own dispatches, the stored title and content in the view context: under
+        // Zero, reading a field is the read rule's and the field rule's question (strip() then drops
+        // what's hidden), not edit capability. Core's own clients keep core's shape.
+        if (Facade::dispatching() && $response instanceof \WP_REST_Response && is_array($data = $response->get_data()) && $stored !== null) {
+            $spec = Plugin::instance()?->schema->collection($this->collection) ?? [];
+            foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null] as $field => $col) {
+                if ($col !== null && is_array($data[$field] ?? null)) {
+                    $data[$field]['raw'] = (string) ($stored[$col] ?? '');
+                }
+            }
+            $response->set_data($data);
+        }
 
         return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }

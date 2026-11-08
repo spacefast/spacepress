@@ -273,6 +273,28 @@ Core `/wp/v2/<post type>` speaks Zero's fields and queries too:
   `OPTIONS`, and `where`/`orderBy`/`with`. Every call is Zero's pipeline as
   the viewer, so it answers what Zero's API answers.
 
+## The `/__zero/api/v1` API
+
+One clean HTTP shape for clients and agents, over the core routes above. Each
+request is dispatched to the core route as the caller and only mapped, so it
+answers exactly what core answers under Zero's rules.
+
+| Request | Core route | Answer |
+|---|---|---|
+| `GET /__zero/api/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
+| `GET /__zero/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
+| `POST /__zero/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
+| `GET /__zero/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
+| `POST /__zero/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__zero/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+
+Rows are Zero rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
+`published` or `private`. Errors are RFC 9457 problem documents (`code`,
+`detail`, `pointer`). Callers authenticate the way core accepts: the cookie
+with `X-WP-Nonce`, an application password, or a Zero Identity bearer token.
+The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
+`/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
+
 ## Globals
 
 `global(name, fields, { label?, access?: { read?, update? } })`, registered in

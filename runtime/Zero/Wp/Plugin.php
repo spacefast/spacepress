@@ -100,6 +100,7 @@ final class Plugin
             }
         });
         Rest::boot();
+        Facade::register($this);
         HttpRoutes::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);

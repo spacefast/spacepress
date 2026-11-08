@@ -105,7 +105,7 @@ pub static RULES: &[Rule] = &[
         test: |_, r| r.starts_with(omitted::REDIRECTS),
         example: (
             "/_redirects",
-            "the redirect, rewrite and header rules are not carried over: x",
+            "the redirect and header rule files are not carried over: x",
         ),
     },
     Rule {

@@ -17,7 +17,7 @@ use std::sync::LazyLock;
 pub(super) const CLIENT: &str = "the 0.8 client app is not carried over";
 pub(super) const PAGES: &str = "the 0.8 page is not carried over";
 pub(super) const STATIC: &str = "the static file is not carried over";
-pub(super) const REDIRECTS: &str = "the redirect, rewrite and header rules are not carried over";
+pub(super) const REDIRECTS: &str = "the redirect and header rule files are not carried over";
 pub(super) const SERVE: &str = "the serving settings are not carried over";
 pub(super) const CONNECTORS: &str = "the connector role is not carried over";
 pub(super) const SYNC: &str = "content sync is not carried over";
@@ -161,10 +161,17 @@ pub(super) fn carries(key: &str, value: &serde_json::Value) -> bool {
         }
 }
 
-/// Whether a redirect rule's `source` can match a `/wp-json/...` path: an absolute URL, an empty
-/// source, or a first segment that is `wp-json` or holds a pattern character. The engine compiles
-/// `:name` anywhere in a segment to `[^/]+` (so `/w:x` matches `/wp-json`) and `*` to a splat.
-/// Exactly `/` matches only the root. Anything this can't read counts as reaching it.
+/// First segments under which the candidate puts what 0.8 kept elsewhere, so a 0.8 redirect there
+/// never touched the app but would on v2: a converted client app's modules (`public/app/`) and its
+/// bridge and runtime (`public/zero/`).
+const CANDIDATE_SEGMENTS: &[&str] = &["app", "zero"];
+
+/// Whether a redirect rule's `source` can reach a path the v2 app answers that 0.8 kept out of the
+/// rules stage: an absolute URL, an empty source, a first segment that holds a pattern character
+/// (the engine compiles `:name` anywhere in a segment to `[^/]+`, so `/w:x` matches `/wp-json`, and
+/// `*` to a splat), or a first segment WordPress or Zero owns (`endpoints::RESERVED`, `wp-json`
+/// among them) or the candidate writes to (`CANDIDATE_SEGMENTS`). Exactly `/` matches only the
+/// root. Anything this can't read counts as reaching one.
 fn redirect_reaches_wp_json(rule: &serde_json::Value) -> bool {
     let Some(source) = rule.get("source").and_then(serde_json::Value::as_str) else {
         return true;
@@ -176,7 +183,11 @@ fn redirect_reaches_wp_json(rule: &serde_json::Value) -> bool {
         return true;
     };
     let first = path.split('/').next().unwrap_or("");
-    first.is_empty() || first.eq_ignore_ascii_case("wp-json") || first.contains([':', '*'])
+    let lower = first.to_ascii_lowercase();
+    first.is_empty()
+        || first.contains([':', '*'])
+        || super::endpoints::RESERVED.contains(&lower.as_str())
+        || CANDIDATE_SEGMENTS.contains(&lower.as_str())
 }
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
@@ -616,7 +627,7 @@ mod tests {
 
     /// A redirect is carried only when its source can't match the app's `/wp-json` data URLs.
     #[test]
-    fn a_redirect_reaches_wp_json_unless_its_first_segment_is_another_literal() {
+    fn a_redirect_reaches_the_app_unless_its_first_segment_is_a_free_literal() {
         for (source, reaches) in [
             ("/", false),
             ("/old", false),
@@ -631,6 +642,14 @@ mod tests {
             ("/w:x/*", true),
             ("/wp-:rest/*", true),
             ("/w:x", true),
+            // The converted client app's modules and runtime live under these on v2.
+            ("/app/*", true),
+            ("/zero/client.js", true),
+            // WordPress and Zero own these first segments on v2.
+            ("/wp-admin/*", true),
+            ("/wp-content/uploads/*", true),
+            ("/zero-admin", true),
+            ("/apps/old", false),
             ("https://old.example/*", true),
             ("", true),
         ] {

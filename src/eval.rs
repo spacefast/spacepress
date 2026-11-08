@@ -314,6 +314,7 @@ pub const GLOBALS: &[&str] = &[
     "String",
     "structuredClone",
     "Number",
+    "BigInt",
     "Boolean",
     "parseInt",
     "parseFloat",
@@ -1314,6 +1315,13 @@ impl<'p> Evaluator<'p> {
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
             // Evaluator arrays carry no named properties, so the strings array's `raw` can't be
             // modeled during configuration evaluation; handlers compile tagged templates.
+            ExprKind::BigInt(_) => {
+                return err_help(
+                    e.span,
+                    "BigInt is only available inside compiled callbacks",
+                    "compute it inside a handler, or use a number in configuration",
+                );
+            }
             ExprKind::TemplateStrings { .. } => {
                 return err_help(
                     e.span,

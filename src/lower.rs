@@ -1064,7 +1064,7 @@ impl Lowerer {
             }
             E::BooleanLiteral(b) => self.mk(span, ExprKind::Bool(b.value)),
             E::NullLiteral(_) => self.mk(span, ExprKind::Null),
-            E::BigIntLiteral(b) => return self.unsupported(b.span, "BigInt", "use numbers"),
+            E::BigIntLiteral(b) => self.mk(span, ExprKind::BigInt(b.value.to_string())),
             E::RegExpLiteral(r) => self.mk(
                 span,
                 ExprKind::Regex {
@@ -1609,6 +1609,7 @@ impl Lowerer {
         use a::TSType as T;
         Ok(match t {
             T::TSNumberKeyword(_) => TyAnn::Num,
+            T::TSBigIntKeyword(_) => TyAnn::BigInt,
             T::TSStringKeyword(_) => TyAnn::Str,
             T::TSBooleanKeyword(_) => TyAnn::Bool,
             T::TSNullKeyword(_) => TyAnn::Null,
@@ -1992,6 +1993,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
         | ExprKind::Null
         | ExprKind::Undefined
         | ExprKind::Regex { .. }
+        | ExprKind::BigInt(_)
         | ExprKind::TemplateStrings { .. } => Vec::new(),
     };
     for child in children {

@@ -358,7 +358,7 @@ pub struct Compiler<'a, 'p> {
     helper_types: HashMap<usize, Ty>,
     /// Emitted helpers for captured values: (plugin owner, kind, allocation). Kinds in use:
     /// 0 array, 1 object, 2 regex, 3 Map/Set (`Value::Coll`), 5 unregistered symbol, 6
-    /// WeakMap/WeakSet. feat/binary-data claims 4 (Value::Native); a new value kind takes the
+    /// WeakMap/WeakSet, 7 the per-request receiver of a namespace object. feat/binary-data claims 4 (Value::Native); a new value kind takes the
     /// next unused number so addresses of different kinds never collide.
     data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
@@ -370,6 +370,8 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// The `this` type for the next object-literal method compiled (the literal's own type).
+    implicit_this: Option<Ty>,
     /// A named function expression passed as a callback: its inner declaration's span and the
     /// callback's parameter types.
     named_callback: Option<(Span, Vec<Ty>)>,
@@ -443,6 +445,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             annotation_steps: 0,
             resolving_json_types: HashSet::new(),
             async_callback: false,
+            implicit_this: None,
             named_callback: None,
             uses_jobs: false,
             helpers: HashMap::new(),
@@ -3153,6 +3156,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let mut fields: IndexMap<String, (Ty, bool)> = IndexMap::new();
                 let mut map_values = Vec::new();
                 let mut is_map = false;
+                // TypeScript types `this` in an object literal's methods as the literal itself.
+                // Methods that read `this` compile after every other property (creating a
+                // function evaluates nothing, so this keeps JavaScript's order), typed by the
+                // finished fields; their PHP fills the slot reserved at their position.
+                let mut deferred: Vec<(usize, &Rc<Func>, String, String)> = Vec::new();
                 for p in props {
                     match p {
                         Prop::KV(key, value) => {
@@ -3170,6 +3178,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                     (format!("\\Zero\\Js::key({})", k.php), None)
                                 }
                             };
+                            if let (ExprKind::Func(f), Some(k)) = (&value.kind, name)
+                                && receives_this(f)
+                                && !self.javascript_module(f.module)
+                            {
+                                fields.shift_remove(k);
+                                fields.insert(k.clone(), (Ty::Unknown, false));
+                                deferred.push((parts.len(), f, key_php, k.clone()));
+                                parts.push(String::new());
+                                continue;
+                            }
                             let v = self.expr(value)?;
                             let v = self.finish_value(v, value.span)?;
                             if let Some(k) = name {
@@ -3203,6 +3221,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             }
                             parts.push(format!("({})->p ?? []", v.wrapped()));
                         }
+                    }
+                }
+                if !deferred.is_empty() {
+                    let this: IndexMap<String, (Ty, bool)> = fields
+                        .iter()
+                        .filter(|(_, (t, _))| *t != Ty::Unknown)
+                        .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
+                        .collect();
+                    for (slot, f, key_php, name) in deferred {
+                        let v = self.method_with_this(f, Ty::Obj(this.clone()))?;
+                        if let Some(entry) = fields.get_mut(&name) {
+                            entry.0 = v.ty.clone();
+                        }
+                        parts[slot] = format!("[{key_php} => {}]", v.php);
                     }
                 }
                 let ty = if is_map {
@@ -3785,9 +3817,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => {
                         let wrapper = self.unique_name(&format!("{name}_value"));
                         self.helper_values.insert((self.owner(), key), wrapper.clone());
+                        // A helper that reads `this` takes its receiver first: its value binds it.
+                        let receives_this = receives_this(&c.func);
+                        let callable = format!("\\Closure::fromCallable('\\\\ZeroApp\\\\{name}')");
+                        let callable = if receives_this {
+                            format!("\\Zero\\Js::receiverFunction({callable})")
+                        } else {
+                            callable
+                        };
                         let _ = writeln!(
                             self.output,
-                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
+                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= {callable}; }}\n"
                         );
                         wrapper
                     }
@@ -3800,7 +3840,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ty
                     },
                 );
-                out.helper = Some(format!("\\ZeroApp\\{name}"));
+                // A direct call skips the wrapper, so a helper that reads `this` receives undefined
+                // explicitly, as a plain call does in strict mode.
+                out.helper = Some(if receives_this(&c.func) {
+                    format!("\\ZeroApp\\{name}(\\Zero\\JsUndefined::Value, ")
+                } else {
+                    format!("\\ZeroApp\\{name}(")
+                });
                 Ok(out)
             }
             Value::Collection(c) => {
@@ -4130,6 +4176,116 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(format!("\\ZeroApp\\{name}()"))
     }
 
+    /// The per-request object behind a read of `obj` when `obj` is, or sits inside, a static
+    /// namespace object that has a method reading `this`. Those methods may write its fields, so
+    /// reads go to that object rather than to the build-time constant.
+    fn stateful_namespace(&mut self, obj: &Expr) -> Result<Option<String>> {
+        if let Some((_, Value::Object(o), _)) = self.static_receiver(obj)? {
+            // A module namespace's functions can't take it as `this` (see `receiver_value`), so
+            // its fields keep their build-time values.
+            if self
+                .ev
+                .namespace_imports
+                .contains(&(Rc::as_ptr(&o) as *const () as usize))
+            {
+                return Ok(None);
+            }
+            let stateful = o
+                .borrow()
+                .values()
+                .any(|v| matches!(v, Value::Closure(c) if receives_this(&c.func)));
+            if stateful {
+                return self.receiver_object(obj).map(Some);
+            }
+        }
+        let ExprKind::Member { obj: inner, prop, .. } = &obj.kind else {
+            return Ok(None);
+        };
+        Ok(self
+            .stateful_namespace(inner)?
+            .map(|outer| format!("\\Zero\\Js::dynamicGet({outer}, {})", php_str(prop))))
+    }
+
+    /// A static namespace materialized as the receiver of a method that reads `this`.
+    fn receiver_object(&mut self, obj: &Expr) -> Result<String> {
+        let Some((path, value, binding)) = self.static_receiver(obj)? else {
+            let recv = self.expr(obj)?;
+            return Ok(self.finish_value(recv, obj.span)?.php);
+        };
+        self.receiver_value(&path, &value, &binding, obj.span)
+    }
+
+    /// One per-request PHP object for a build-time namespace object: data properties become their
+    /// captured values, function members their callable values, and nested namespace objects
+    /// their own receivers, so `this.a.b` and `ns.a.b` read the same object.
+    fn receiver_value(&mut self, path: &str, value: &Value, binding: &Binding, span: Span) -> Result<String> {
+        let Value::Object(o) = value else {
+            return err_help(
+                span,
+                format!("`{path}` can't be the receiver of a method that reads `this`"),
+                "call the method on a plain object",
+            );
+        };
+        if self
+            .ev
+            .namespace_imports
+            .contains(&(Rc::as_ptr(o) as *const () as usize))
+        {
+            return Err(Diag::new(
+                span,
+                format!("Zero code doesn't support calling a function that reads `this` through the module namespace `{path}`"),
+            )
+            .code(crate::diag::Code::Unsupported)
+            .help(
+                "JavaScript binds the frozen namespace object as `this`, which PHP can't build; export an object that holds the function (`export const api = { f }`) and call `api.f()`, or stop reading `this` in the function",
+            ));
+        }
+        let key = (self.owner(), 7, Rc::as_ptr(o) as usize);
+        if let Some(name) = self.data_helpers.get(&key) {
+            return Ok(format!("\\ZeroApp\\{name}()"));
+        }
+        let name = self.unique_name("receiver");
+        self.data_helpers.insert(key, name.clone());
+        let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let mut body = format!(
+            "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
+        );
+        for (key, member) in fields {
+            let member_path = format!("{path}.{key}");
+            // Every member gets its run-time form or a compile error: a dropped field would read
+            // as undefined through `this`.
+            let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
+                self.receiver_value(&member_path, &member, binding, span)?
+            } else if matches!(&member, Value::Closure(c) if c.has_props()) {
+                // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
+                return Err(Diag::new(
+                    span,
+                    format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
+                )
+                .code(crate::diag::Code::Unsupported)
+                .help(format!(
+                    "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
+                )));
+            } else {
+                self.captured_use(&member_path, member, binding, span, true, true)
+                    .map_err(|d| {
+                        if d.help.is_some() {
+                            return d;
+                        }
+                        let help = format!(
+                            "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                        );
+                        d.help(help)
+                    })?
+                    .php
+            };
+            let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+        }
+        body.push_str("    }\n    return $value;\n}\n\n");
+        self.output.push_str(&body);
+        Ok(format!("\\ZeroApp\\{name}()"))
+    }
+
     fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {
         // Compile the helper before its caller so its return type is known.
         let no_db = self.fx().no_db;
@@ -4292,6 +4448,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(v)
     }
 
+    /// An object-literal method that reads `this`, compiled with `this` typed as the literal.
+    fn method_with_this(&mut self, f: &Rc<Func>, this: Ty) -> Result<Out> {
+        let saved = self.implicit_this.replace(this);
+        let out = self.closure_with_types(f, None);
+        self.implicit_this = saved;
+        out
+    }
+
     /// A function's type from its annotations alone: every parameter and the result annotated,
     /// or a function in imported JavaScript. `None` when the body must be compiled to know it.
     fn declared_signature(&mut self, f: &Func) -> Result<Option<Ty>> {
@@ -4342,8 +4506,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ps.get(i).cloned()
                 }
             });
-            let t = match &p.ann {
-                Some(a) => {
+            let implicit_this = (i == 0 && receives_this(f) && p.ann.is_none())
+                .then(|| self.implicit_this.take())
+                .flatten();
+            let t = match (&p.ann, implicit_this) {
+                (None, Some(this)) => this,
+                (Some(a), _) => {
                     let declared = self.resolve_runtime_ann(a, module)?;
                     if let Some(given) = &given {
                         check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
@@ -4352,7 +4520,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     declared
                 }
-                None => match given {
+                (None, None) => match given {
                     Some(t) => widen_fresh_literals(&t),
                     None if self.javascript_module(f.module) => {
                         if p.rest {
@@ -4448,6 +4616,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let php = if self.suspends(f) {
             self.suspending_closure(f, php)
+        } else {
+            php
+        };
+        // A function reading `this` takes its receiver as a hidden first parameter. Registered as
+        // a receiver function, a plain call passes undefined and a method call, `call` or `apply`
+        // passes the receiver (Js::receiverFunction).
+        let php = if receives_this(f) {
+            format!("\\Zero\\Js::receiverFunction({php})")
         } else {
             php
         };
@@ -5328,6 +5504,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
+        }
+        // A namespace with methods that read `this` is one per-request object: its methods may
+        // write its fields, so reads go to that object rather than the build-time constant.
+        if let Some(receiver) = self.stateful_namespace(obj)? {
+            let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicGet({receiver}, {})", php_str(prop)),
+                if javascript { Ty::Dynamic } else { Ty::Unknown },
+            ));
         }
         if let Some((path, value, binding)) = self.static_member(obj, prop, prop_span)? {
             return self.captured_use(&path, value, &binding, span, false, true);
@@ -6335,9 +6520,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     return self.static_call(g, prop, args, span);
                 }
-                // `ns.f(x)` on a build-time namespace calls the resolved function directly.
-                // Zero refuses `this` outside classes, so the receiver is unobservable.
+                // `ns.f(x)` on a build-time namespace calls the resolved function directly, unless
+                // the function reads `this`: then the namespace is its receiver, as in JavaScript.
                 if let Some((path, value, binding)) = self.static_member(obj, prop, *prop_span)? {
+                    if matches!(&value, Value::Closure(c) if receives_this(&c.func)) {
+                        let f = self.captured_use(&path, value, &binding, callee.span, true, true)?;
+                        // The namespace exists only at build time; the receiver is a run-time copy of
+                        // it, built once per request, holding its data and its functions' values.
+                        let recv = self.receiver_object(obj)?;
+                        let argv = self.javascript_args(args)?;
+                        let ret = match &f.ty {
+                            Ty::Fn(_, ret) => match &**ret {
+                                Ty::Predicate(..) => Ty::Bool,
+                                ret => ret.clone(),
+                            },
+                            _ => Ty::Dynamic,
+                        };
+                        return Ok(Out::atom(
+                            format!("\\Zero\\Js::callWithReceiver({}, {}, {argv})", f.php, recv),
+                            ret,
+                        ));
+                    }
                     let f = self.captured_use(&path, value, &binding, callee.span, true, true)?;
                     return self.call_value(f, args, span, callee.span);
                 }
@@ -6865,7 +7068,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let argv = argv.join(", ");
         let php = match &f.helper {
-            Some(name) => format!("{name}({argv})"),
+            // `helper` is the call's opening: the function name, plus a leading receiver.
+            Some(open) => format!(
+                "{}{argv})",
+                if argv.is_empty() {
+                    open.trim_end_matches(", ")
+                } else {
+                    open
+                }
+            ),
             None => format!("({})({argv})", f.php),
         };
         Ok(Out::new(
@@ -7592,7 +7803,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let mut recv = self.finish_value(recv, recv_span)?;
         let javascript_instance = self.javascript_module(self.fx.as_ref().expect("fn").module) && family.is_some();
-        if recv.ty == Ty::Dynamic || javascript_instance {
+        // `f.call(thisArg, ...args)` / `f.apply(thisArg, args)` choose the receiver. A function that
+        // reads `this` is a receiver function at run time, so the checked dispatcher binds it.
+        let function_receiver = matches!(recv.ty.non_null(), Ty::Fn(..)) && matches!(m, "call" | "apply");
+        if recv.ty == Ty::Dynamic || javascript_instance || function_receiver {
             let argv = self.javascript_args(args)?;
             let receiver = if optional { self.tmp_var() } else { recv.php.clone() };
             let call = format!(
@@ -9266,10 +9480,13 @@ fn check_callback_parameters(given: &[Ty], declared: &[Ty], span: Span) -> Resul
 }
 
 fn callable_parameters(function: &Func, parameters: &[Ty]) -> Vec<Ty> {
+    // A receiver function's `this` is supplied by the call (method, call/apply), not an argument.
+    let skip = usize::from(receives_this(function));
     function
         .params
         .iter()
         .zip(parameters)
+        .skip(skip)
         .map(|(parameter, ty)| {
             if parameter.rest {
                 Ty::Rest(Box::new(ty.clone()))
@@ -9311,6 +9528,11 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
     } else {
         ""
     }
+}
+
+/// Whether an ordinary function takes its receiver as the hidden `this` parameter.
+fn receives_this(f: &Func) -> bool {
+    f.receives_this
 }
 
 /// The inner function of a lowered named function expression: an immediately called

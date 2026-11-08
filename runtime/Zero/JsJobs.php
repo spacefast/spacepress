@@ -58,6 +58,35 @@ final class JsJobs
         return $promise;
     }
 
+    private static int $depth = 0;
+
+    /**
+     * A handler root. The outermost root starts on an empty queue and finishes it; a root
+     * called from another (a hook during an action) shares the caller's queue.
+     */
+    public static function run(\Closure $root, array $args): mixed
+    {
+        if (self::$depth > 0) {
+            return $root(...$args);
+        }
+        self::$queue = new \SplQueue();
+        self::$unhandled = null;
+        self::$depth++;
+        try {
+            return self::finish($root(...$args));
+        } finally {
+            self::$depth--;
+            self::$queue = null;
+            self::$unhandled = null;
+        }
+    }
+
+    /** An async function value: each call starts a new body. */
+    public static function asyncFunction(\Closure $body): \Closure
+    {
+        return static fn (mixed ...$args): JsPromise => self::async($body, $args);
+    }
+
     /** Resumes a fiber and lets the value it suspended with (a promise) schedule the next resume. */
     private static function step(\Fiber $fiber, \Closure $resume): void
     {

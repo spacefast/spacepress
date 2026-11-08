@@ -140,8 +140,8 @@ test("the converter's refusals on a rebuilt capsule keep their reasons", { skip:
   assert.ok(labels(services).includes("refusal:ctx.jwt"), labels(services).join());
 
   // A language construct outside the v2 subset, in a copied helper.
-  const language = convert(payload('function big(n){return n*10n}var app_default=capsule({name:"t",schema:{notes:table({body:string()})},queries:{n:query(async ctx=>String(big(1n)))}});', { pages: [] }));
-  assert.ok(labels(language).includes("refusal:language: BigInt"), labels(language).join());
+  const language = convert(payload('function pick(o){with(o){return a}}var app_default=capsule({name:"t",schema:{notes:table({body:string()})},queries:{n:query(async ctx=>String(pick({a:1})))}});', { pages: [] }));
+  assert.ok(labels(language).includes("refusal:language: other construct"), labels(language).join());
 
   // An erased input is not a refusal: only the source can say what it was.
   const erased = convert(payload('var app_default=capsule({name:"t",schema:{notes:table({body:string()})},mutations:{add:mutation(async(ctx,body)=>ctx.db.notes.insert({body}))}});', { pages: [] }));

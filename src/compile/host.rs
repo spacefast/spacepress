@@ -271,8 +271,8 @@ impl Compiler<'_, '_> {
         }
     }
 
-    /// `new Headers(init)`. `URL` and `URLSearchParams` are standard objects (`compile.rs`
-    /// `typed_url`); other web constructors are refused.
+    /// `new Headers(init)`. `URL`, `URLSearchParams` and `AbortController` are standard objects
+    /// (`compile.rs`); other web constructors are refused.
     pub(super) fn host_new(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
         let ExprKind::Ident(n) = &callee.kind else {
             return Ok(None);
@@ -301,13 +301,6 @@ impl Compiler<'_, '_> {
                     span,
                     format!("`{g}` isn't available in Zero code"),
                     "send a string or URLSearchParams body",
-                );
-            }
-            "AbortController" => {
-                return err_help(
-                    span,
-                    "`AbortController` isn't available in Zero code",
-                    "every fetch() call already ends after 10 s",
                 );
             }
             _ => return Ok(None),

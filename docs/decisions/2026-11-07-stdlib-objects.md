@@ -135,16 +135,15 @@ is the only point where it can run.
 - `setTimeout` returns an opaque `Zero\JsTimeout` handle, as Node's Timeout
   object, and `clearTimeout` accepts it. `Timers::run()` wraps every action, route
   and job handler, and nested handlers share the outermost timer list.
-- `new Promise` is agent 4's, so there is no interim await shape here. Until their
-  queue lands, a timer can only be created, cleared and checked at handler end.
-  That covers files-sdk's per-attempt timeout (`mergeSignals` + `cleanup`). Its
-  backoff sleep needs `new Promise` and arrives with agent 4's queue.
+- `new Promise` is agent 4's, and it lives on main (#174). `JsJobs` drains
+  `Timers::runNext()` when its microtasks are empty, and calls
+  `Timers::assertNonePending()` at handler end. So files-sdk's backoff sleep
+  (`await new Promise((r) => setTimeout(r, ms))`) waits the delay in imported
+  JavaScript, and on a pinned clock it waits instantly.
 
-Capability: `setTimeout` and `AbortSignal.timeout` call
-`Compiler::uses("timers", ..)`, the recognition point `feat/plugin-capabilities`
-(#142) defines. Until #142 lands, `uses` is a no-op stub with #142's signature.
-Whichever PR merges second keeps #142's body and adds a `("timers", "sets timers
-with")` row to `src/plugins.rs` `KINDS`.
+Capability: `setTimeout` and `AbortSignal.timeout` record a `timers` use at
+`Compiler::uses`, the recognition point #142 defines, so a plugin's lock lists the
+timers it sets. `src/plugins.rs` `KINDS` has the `("timers", "sets timers with")` row.
 
 ## Date, Math, JSON
 

@@ -4,7 +4,7 @@ import { collection, id, text, integer, defineConfig, action, json, group, repea
 import { job, jobs, once } from "zero"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
-import { jsCollections } from "./stdlib.js";
+import { jsAbort, jsCollections, jsTimers } from "./stdlib.js";
 
 const n = table({ id: id() });
 
@@ -950,6 +950,37 @@ function stdlibActions() {
       return [byObj.get(k) ?? "none", byObj.has({ n: 9 }), nums.get(NaN) ?? "", nums.get(-0) ?? "", nums.size, 1 / ([...nums.keys()][1] ?? 1), mixed.get("1"), mixed.get(1), mixed.get(null), mixed.size];
     }),
     jsCollections: run(() => jsCollections()),
+    jsAbort: run(() => jsAbort()),
+    jsTimers: run(() => jsTimers()),
+    typedAbort: run(() => {
+      const order: string[] = [];
+      const c = new AbortController();
+      const signal: AbortSignal = c.signal;
+      const once = () => { order.push("once"); };
+      const kept = () => { order.push("kept"); };
+      const removed = () => { order.push("removed"); };
+      signal.addEventListener("abort", once, { once: true });
+      signal.addEventListener("abort", kept);
+      signal.addEventListener("abort", kept);
+      signal.addEventListener("abort", removed);
+      signal.removeEventListener("abort", removed);
+      const before = signal.aborted;
+      c.abort(new Error("stop"));
+      c.abort(new Error("again"));
+      let thrown = "none";
+      try { signal.throwIfAborted(); } catch (e) { thrown = e.message; }
+      const timer = setTimeout(() => { order.push("never"); }, 10);
+      clearTimeout(timer);
+      // Static constructors from typed code, and nested AbortSignal.any folding.
+      const root = new AbortController();
+      const inner = AbortSignal.any([root.signal]);
+      const outer = AbortSignal.any([inner, AbortSignal.timeout(1000)]);
+      outer.addEventListener("abort", () => { order.push("outer"); });
+      root.abort(new Error("root"));
+      const pre = AbortSignal.abort(new Error("pre"));
+      const parsed = URL.parse("https://example.com/a?b=1");
+      return [before, signal.aborted, order, thrown, signal.reason === undefined, inner.aborted, outer.aborted, pre.aborted, parsed?.pathname ?? "none", URL.canParse("nope")];
+    }),
     typedUrls: run(() => {
       const disposition = 'attachment; filename="a b.txt"';
       const query = `memory://k?${new URLSearchParams({ "response-content-disposition": disposition }).toString()}`;

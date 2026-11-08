@@ -129,7 +129,7 @@ test("dropping a kind or field that holds rows needs --drop with the exact live 
     ["drop_has_rows", "memos.state", 2],
     ["drop_has_rows", "likes", 3],
   ]);
-  assert.match(error.refusals[1].fix, /--drop likes=3/);
+  assert.match(error.refusals[1].fix, /--drop=likes=3/);
   assert.deepEqual(error.drop, ["memos.state=2", "likes=3"]);
   // One confirmation is not both: the other still refuses, and nothing runs.
   assert.deepEqual(refused("--drop=likes=3").refusals.map((r) => r.name), ["memos.state"]);
@@ -142,6 +142,8 @@ test("dropping a kind or field that holds rows needs --drop with the exact live 
   assert.equal(rows("wp_zero_likes"), 4, "a stale count deleted nothing");
   const invalid = migrate("--drop=likes");
   assert.equal(invalid.error?.code, "invalid_drop");
+  // `--drop likes=4` (a space) reaches WP-CLI as a bare flag plus a stray argument: an error, not ignored.
+  assert.equal(migrate("--drop", "likes=4").error?.code, "invalid_drop");
   assert.deepEqual(applied("--drop=likes=4,memos.state=2"), ["0001_init", "0002_update", "0003_update", "0004_update", "0005_update", "0006_update"]);
   assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_zero\\_likes'"), []);
   assert.equal(rows("wp_zero_memos"), 2, "dropping a field keeps the rows");
@@ -151,14 +153,18 @@ test("a table the app didn't create is never altered or dropped without --drop, 
   install("adoptedField");
   const before = state();
   const field = refused();
-  assert.deepEqual(field.refusals.map((r) => [r.code, r.name, r.rows]), [["drop_adopted_table", "tasks.note", 1]]);
-  assert.match(field.refusals[0].message, new RegExp(adopted));
+  // Renaming one of its columns needs --drop too: another reader of that table would lose it.
+  assert.deepEqual(field.refusals.map((r) => [r.code, r.name, r.rows]), [
+    ["drop_adopted_table", "tasks.title", 2],
+    ["drop_adopted_table", "tasks.note", 1],
+  ]);
+  assert.match(field.refusals[1].message, new RegExp(adopted));
   // Emptying the column is not consent: the deploy still has to name it.
   sql(`UPDATE ${adopted} SET note = NULL`);
-  assert.deepEqual(refused().refusals.map((r) => [r.code, r.rows]), [["drop_adopted_table", 0]]);
+  assert.deepEqual(refused("--drop=tasks.title=2").refusals.map((r) => [r.code, r.rows]), [["drop_adopted_table", 0]]);
   assert.deepEqual(state().columns, before.columns);
-  assert.deepEqual(applied("--drop=tasks.note=0"), ["0001_init", "0002_update", "0003_update", "0004_update", "0005_update", "0006_update", "0007_update"]);
-  assert.deepEqual(sql(`SELECT title FROM ${adopted} ORDER BY id`), [{ title: "kept" }, { title: "also kept" }]);
+  assert.deepEqual(applied("--drop=tasks.title=2,tasks.note=0"), ["0001_init", "0002_update", "0003_update", "0004_update", "0005_update", "0006_update", "0007_update"]);
+  assert.deepEqual(sql(`SELECT name FROM ${adopted} ORDER BY id`), [{ name: "kept" }, { name: "also kept" }]);
 
   // Removing the kind: refused with its rows, then refused when empty too.
   install("adoptedKind");
@@ -169,4 +175,55 @@ test("a table the app didn't create is never altered or dropped without --drop, 
   assert.deepEqual(sql(`SHOW TABLES LIKE '${adopted}'`), [{ [`Tables_in_wordpress (${adopted})`]: adopted }]);
   assert.deepEqual(applied("--drop=tasks=0"), ["0001_init", "0002_update", "0003_update", "0004_update", "0005_update", "0006_update", "0007_update", "0008_update"]);
   assert.deepEqual(sql(`SHOW TABLES LIKE '${adopted}'`), []);
+});
+
+test("a narrower column refuses while values wouldn't fit, and is never truncated", () => {
+  install("narrow");
+  // Two memos: one that fits in 5 characters, one that doesn't.
+  sql("UPDATE wp_zero_memos SET text = 'ok'");
+  sql("UPDATE wp_zero_memos SET text = 'far too long' WHERE id = (SELECT MIN(id) FROM (SELECT id FROM wp_zero_memos) AS m)");
+  const error = refused();
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["value_does_not_fit", "memos.text", 1]]);
+  assert.deepEqual(sql("SELECT text FROM wp_zero_memos WHERE text = 'far too long'"), [{ text: "far too long" }], "nothing was truncated");
+  sql("UPDATE wp_zero_memos SET text = 'short' WHERE text = 'far too long'");
+  assert.deepEqual(applied().at(-1), "0009_update");
+});
+
+test("several pending files are checked under the names each statement will see", () => {
+  // A site that missed the rename and drop deploys takes 0005 to 0009 together: 0005 renames notes
+  // to memos, 0006 drops memos.state and the likes kind. 0006's checks must count the rows still in
+  // wp_zero_notes, not find no wp_zero_memos and pass. Storage rewinds to before 0005, as such a site has it.
+  sql("RENAME TABLE wp_zero_memos TO wp_zero_notes");
+  sql("ALTER TABLE wp_zero_notes CHANGE COLUMN text body LONGTEXT, ADD COLUMN state LONGTEXT DEFAULT ('open') NOT NULL");
+  sql("CREATE TABLE wp_zero_likes (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, post BIGINT NOT NULL, emoji LONGTEXT NOT NULL, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  sql("INSERT INTO wp_zero_likes (post, emoji) VALUES (1, 'x')");
+  // 0007 and 0008 changed the adopted table, which this rewind doesn't bring back: keep them applied.
+  sql("DELETE FROM wp_zero__migrations WHERE app = 'schema-check' AND id IN ('0005_update', '0006_update', '0009_update')");
+  const error = refused();
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [
+    ["drop_has_rows", "memos.state", 2],
+    ["drop_has_rows", "likes", 1],
+  ]);
+  assert.equal(rows("wp_zero_notes"), 2, "nothing ran");
+  assert.deepEqual(applied("--drop=memos.state=2,likes=1").at(-1), "0009_update");
+  assert.deepEqual(sql("SHOW COLUMNS FROM wp_zero_memos").map((r) => r.Field), ["id", "text"]);
+});
+
+test("a refusal at activation keeps the plugin active so --drop can confirm it", () => {
+  // Deactivate, then make the next activation hit a refused drop: a memo field the next build drops.
+  wp("plugin", "deactivate", "zero-app-schema-check");
+  sql("ALTER TABLE wp_zero_memos ADD COLUMN legacy LONGTEXT");
+  sql("UPDATE wp_zero_memos SET legacy = 'keep?'");
+  // A later build drops it: the migration that build would ship, with its check line.
+  const live = process.env.ZERO_SCHEMA_CHECK_LIVE ?? "";
+  execFileSync("sh", ["-c", `printf '%s' "$0" > "$1"`,
+    '-- zero-check {"check":"drop","name":"memos.legacy","table":"{prefix}zero_memos","column":"legacy","adopted":false}\nALTER TABLE `{prefix}zero_memos` DROP COLUMN `legacy`;',
+    `${live}/plugins/zero-app-schema-check/zero/app/migrations/0010_update.sql`]);
+  const activation = wpTry("plugin", "activate", "zero-app-schema-check");
+  assert.match(activation, /Plugin 'zero-app-schema-check' activated/);
+  assert.equal(wp("plugin", "is-active", "zero-app-schema-check") === "", true);
+  const error = refused();
+  assert.deepEqual(error.drop, ["memos.legacy=2"]);
+  assert.deepEqual(applied("--drop=memos.legacy=2").at(-1), "0010_update");
+  assert.deepEqual(sql("SHOW COLUMNS FROM wp_zero_memos").map((r) => r.Field), ["id", "text"]);
 });

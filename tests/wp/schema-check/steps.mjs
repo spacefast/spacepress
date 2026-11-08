@@ -52,14 +52,17 @@ export const steps = {
   text: text(),
 }, { was: "notes" });`,
     "const tags = table({ id: id(), name: text() });"], "tasks, memos, tags"),
-  // 7. The adopted table loses a field, then (8) its kind: never without --drop, even when empty.
+  // 7. The adopted table renames a field and loses one, then (8) its kind: never without --drop, even when empty.
   adoptedField: app([`const tasks = table({
   id: id(),
-  title: text().notNull(),
+  name: text().notNull().was("title"),
 }, { existingTable: "sf_spc_schema_check_tasks_0123456789" });`,
     "const memos = table({ id: id(), text: text() }, { was: \"notes\" });",
     "const tags = table({ id: id(), name: text() });"], "tasks, memos, tags"),
   adoptedKind: app(["const memos = table({ id: id(), text: text() }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text() });"], "memos, tags"),
+  // 9. A narrower column: values that wouldn't fit refuse; MySQL would truncate them.
+  narrow: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
     "const tags = table({ id: id(), name: text() });"], "memos, tags"),
 };
 

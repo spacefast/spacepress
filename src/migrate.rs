@@ -42,8 +42,9 @@ fn physical(t: &str, tables: &Map) -> String {
     table(t, tables).trim_matches('`').replace("``", "`")
 }
 
-/// Whether Zero created this table. A table it adopted (`existingTable`) is never dropped, and
-/// never loses or renames a column, without an explicit `--drop` naming it, even when empty.
+/// Whether Zero didn't create this table (`existingTable`, e.g. adopted from Zero 0.8). Such a table
+/// is never dropped, and no column of it is dropped, renamed or retyped, without an explicit
+/// `--drop` naming it, even when empty. Columns and indexes may still be added.
 fn adopted(def: &Json) -> bool {
     def["existingTable"].is_string()
 }
@@ -440,6 +441,53 @@ impl Renames {
     }
 }
 
+/// For a column whose stored type changes from `before` to `after`, the SQL condition (over `{col}`)
+/// a value must meet to survive the change, or None when every value of `before` fits `after`.
+/// `"false"` means no value survives: any non-null value refuses.
+fn fits(before: &Json, after: &Json) -> Option<String> {
+    let render = |c: &Json| column_sql("{col}", c);
+    let ty = |c: &Json| -> &'static str {
+        let sql = render(c);
+        let sql = sql.strip_prefix("`{col}` ").unwrap_or(&sql);
+        match sql.split(['(', ' ']).next().unwrap_or("") {
+            "BIGINT" if sql.starts_with("BIGINT UNSIGNED") => "unsigned",
+            "BIGINT" => "bigint",
+            "DOUBLE" => "double",
+            "TINYINT" => "boolean",
+            "CHAR" | "VARCHAR" | "LONGTEXT" => "text",
+            _ => "other",
+        }
+    };
+    let width = |c: &Json| -> Option<u32> {
+        let sql = render(c);
+        let open = sql.find('(')?;
+        sql[open + 1..].split(')').next()?.parse().ok()
+    };
+    let (from, to) = (ty(before), ty(after));
+    let col = "{col}";
+    let numeric = format!("{col} REGEXP '^-?[0-9]+$'");
+    match (from, to) {
+        (a, b) if a == b && a != "text" => None,
+        ("text", "text") => match (width(before), width(after)) {
+            (_, None) => None,
+            (Some(a), Some(b)) if a <= b => None,
+            (_, Some(b)) => Some(format!("CHAR_LENGTH({col}) <= {b}")),
+        },
+        (_, "text") => width(after).map(|b| format!("CHAR_LENGTH({col}) <= {b}")),
+        ("unsigned", "bigint") => Some(format!("{col} <= 9223372036854775807")),
+        ("bigint", "unsigned") => Some(format!("{col} >= 0")),
+        ("boolean", "bigint" | "unsigned" | "double") => None,
+        ("bigint" | "unsigned", "double") => Some(format!("ABS({col}) <= 9007199254740992")),
+        ("double", "bigint") => Some(format!("{col} = FLOOR({col})")),
+        ("double", "unsigned") => Some(format!("{col} = FLOOR({col}) AND {col} >= 0")),
+        (_, "boolean") => Some(format!("{col} IN (0, 1)")),
+        ("text", "bigint") => Some(numeric),
+        ("text", "unsigned") => Some(format!("{col} REGEXP '^[0-9]+$'")),
+        ("text", "double") => Some(format!("{col} REGEXP '^-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?$'")),
+        _ => Some("false".into()),
+    }
+}
+
 /// The SQL literal of a column's constant default.
 fn default_literal(ty: &str, v: &Json) -> String {
     match (ty, v) {
@@ -462,17 +510,37 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
     let next_t = tables(next);
     let empty = Map::new();
     let mut out = Vec::new();
-    // Renamed tables move first, so everything after sees the new names. A table bound with
+    // Constraints that point at a table about to be renamed are dropped before the rename, and added
+    // back under the new name below. On SQLite the rename is a copy, and a constraint still naming
+    // the old table would cascade when it's dropped.
+    let mut dropped_early: Vec<(String, String)> = Vec::new();
+    for (stored, def) in &stored_t {
+        for (k, c) in def["columns"].as_object().unwrap_or(&empty) {
+            let Some(target) = c["references"]["table"].as_str() else {
+                continue;
+            };
+            if renames.tables.iter().any(|(_, old)| old == target) && fk_sql(stored, k, c, &stored_t).is_some() {
+                out.push(format!(
+                    "ALTER TABLE {} DROP FOREIGN KEY `{}`;",
+                    table(stored, &stored_t),
+                    fk_name(stored, k)
+                ));
+                dropped_early.push((stored.clone(), k.clone()));
+            }
+        }
+    }
+    // Renamed tables move next, so everything after sees the new names. A table bound with
     // `existingTable` keeps its physical name; only its key (and its revisions) move.
     for (new, old) in &renames.tables {
         let (Some(before), Some(after)) = (stored_t.get(old), next_t.get(new)) else {
             continue;
         };
         if before["existingTable"].is_null() && after["existingTable"].is_null() {
-            out.push(format!(
-                "RENAME TABLE {} TO {};",
-                table(old, &stored_t),
-                table(new, &next_t)
+            // The check line tells the deploy check the table's name changes here, so checks of later
+            // statements (in this file or the next) count rows under the new name.
+            out.push(checked(
+                json!({ "check": "rename", "table": physical(old, &stored_t), "to": physical(new, &next_t) }),
+                format!("RENAME TABLE {} TO {};", table(old, &stored_t), table(new, &next_t)),
             ));
         }
         if stored_t.contains_key(REVISIONS) {
@@ -536,7 +604,8 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
                 .find(|(table, _, old)| table == t && old == k)
                 .map_or(k.as_str(), |(_, new, _)| new.as_str());
             let after = nc.get(renamed).and_then(|nc| fk_sql(t, renamed, nc, &next_t));
-            if before.is_some() && before != after {
+            let early = dropped_early.iter().any(|(s, c)| s == stored && c == k);
+            if before.is_some() && before != after && !early {
                 out.push(format!(
                     "ALTER TABLE {table} DROP FOREIGN KEY `{}`;",
                     fk_name(stored, k)
@@ -550,7 +619,14 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
         for (rt, new, old) in &renames.columns {
             if rt == t {
-                out.push(format!("ALTER TABLE {table} RENAME COLUMN {} TO {};", q(old), q(new)));
+                // `definition` is for SQLite, where the deploy runs this as a CHANGE COLUMN (the SQLite
+                // Database Integration driver loses the values on RENAME COLUMN). RENAME keeps the
+                // stored type on MySQL, which matters for a table Zero didn't create.
+                out.push(checked(
+                    json!({ "check": "rename", "name": format!("{t}.{old}"), "table": physical,
+                        "column": old, "to": new, "definition": column_sql(new, &pc[new]), "adopted": adopted }),
+                    format!("ALTER TABLE {table} RENAME COLUMN {} TO {};", q(old), q(new)),
+                ));
             }
         }
         for (k, sql) in &nr {
@@ -572,27 +648,44 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
                 }
                 Some((_, psql)) if psql != sql => {
                     let modify = format!("ALTER TABLE {table} MODIFY COLUMN {sql};");
-                    if required && pc[k]["notNull"] != true {
-                        if c["default"].is_null() {
-                            let column = renames.stored_column(t, k);
-                            out.push(checked(
-                                json!({ "check": "required", "name": name, "table": physical, "column": column }),
-                                modify,
-                            ));
-                        } else {
-                            // Empty rows get the declared default, then the column becomes required.
-                            let ty = c["type"].as_str().unwrap_or("text");
-                            out.push(format!(
-                                "UPDATE {table} SET {} = {} WHERE {} IS NULL;",
-                                q(k),
-                                default_literal(ty, &c["default"]),
-                                q(k)
-                            ));
-                            out.push(modify);
-                        }
-                    } else {
-                        out.push(modify);
+                    let column = renames.stored_column(t, k);
+                    // A narrower type or length: MySQL without strict mode (WordPress's) would
+                    // truncate or coerce the values that don't fit, so they're counted first.
+                    let fits = fits(&pc[k], c);
+                    let tightens = required && pc[k]["notNull"] != true;
+                    if tightens && !c["default"].is_null() {
+                        // Empty rows get the declared default, then the column becomes required.
+                        let ty = c["type"].as_str().unwrap_or("text");
+                        out.push(format!(
+                            "UPDATE {table} SET {} = {} WHERE {} IS NULL;",
+                            q(k),
+                            default_literal(ty, &c["default"]),
+                            q(k)
+                        ));
                     }
+                    // A table Zero didn't create may store the column under another type than the snapshot
+                    // says (adoption checks names, not types), so any change to one is confirmed first.
+                    let mut check = match (tightens && c["default"].is_null(), &fits) {
+                        (true, _) => json!({ "check": "required", "name": name, "table": physical, "column": column }),
+                        (false, Some(_)) => {
+                            json!({ "check": "narrow", "name": name, "table": physical, "column": column })
+                        }
+                        (false, None) if adopted => {
+                            json!({ "check": "alter", "name": name, "table": physical, "column": column })
+                        }
+                        (false, None) => Json::Null,
+                    };
+                    if let Some(fits) = fits {
+                        check["fits"] = fits.into();
+                    }
+                    if !check.is_null() {
+                        check["adopted"] = adopted.into();
+                    }
+                    out.push(if check.is_null() {
+                        modify
+                    } else {
+                        checked(check, modify)
+                    });
                 }
                 _ => {}
             }
@@ -613,9 +706,10 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
         for (k, c) in nc {
             let stored_k = renames.stored_column(t, k);
+            let early = dropped_early.iter().any(|(s, c)| s == stored && c == stored_k);
             let before = sc.get(stored_k).and_then(|sc| fk_sql(stored, stored_k, sc, &stored_t));
             if let Some(after) = fk_sql(t, k, c, &next_t)
-                && before.as_ref() != Some(&after)
+                && (early || before.as_ref() != Some(&after))
             {
                 out.push(format!("ALTER TABLE {table} ADD {after};"));
             }
@@ -782,7 +876,7 @@ mod tests {
         assert_eq!(
             plan(&v2, &v3),
             vec![
-                "-- zero-check {\"check\":\"required\",\"name\":\"items.note\",\"table\":\"{prefix}zero_items\",\"column\":\"note\"}\nALTER TABLE `{prefix}zero_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()
+                "-- zero-check {\"check\":\"required\",\"name\":\"items.note\",\"table\":\"{prefix}zero_items\",\"column\":\"note\",\"adopted\":false}\nALTER TABLE `{prefix}zero_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()
             ]
         );
         assert_eq!(preservation_problems(&v2, &v3), vec!["changes field items.note"]);
@@ -951,12 +1045,24 @@ mod tests {
         assert!(plan(&v1, &v2).iter().any(|s| s.contains("DROP TABLE")));
         v2["tables"]["reactions"]["was"] = json!("likes");
         v2["tables"]["reactions"]["columns"]["text"]["was"] = json!("body");
+        let statements = plan(&v1, &v2);
+        let sql: Vec<&str> = statements.iter().map(|s| s.lines().last().unwrap()).collect();
         assert_eq!(
-            plan(&v1, &v2),
+            sql,
             [
                 "RENAME TABLE `{prefix}zero_likes` TO `{prefix}zero_reactions`;",
                 "UPDATE `{prefix}zero__revisions` SET `collection` = 'reactions' WHERE `collection` = 'likes';",
                 "ALTER TABLE `{prefix}zero_reactions` RENAME COLUMN `body` TO `text`;",
+            ]
+        );
+        // Every check names the table as stored before the plan runs; the deploy follows the rename.
+        let checks: Vec<Json> = statements.iter().filter_map(|s| check_of(s)).collect();
+        assert_eq!(
+            checks,
+            [
+                json!({ "check": "rename", "table": "{prefix}zero_likes", "to": "{prefix}zero_reactions" }),
+                json!({ "check": "rename", "name": "reactions.body", "table": "{prefix}zero_likes", "column": "body",
+                    "to": "text", "definition": "`text` LONGTEXT", "adopted": false }),
             ]
         );
         assert!(destructive(&v1, &v2).is_empty());
@@ -987,6 +1093,75 @@ mod tests {
         assert_eq!(
             checks,
             [json!({ "check": "drop", "name": "tasks", "table": "sf_space_tasks_hash", "adopted": true })]
+        );
+    }
+
+    #[test]
+    fn narrowing_a_column_counts_the_values_that_would_not_fit() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(
+            json!({ "posts": table(json!({ "id": id(), "title": col("text"), "views": col("integer"), "slug": col("text") })) }),
+        );
+        let mut v2 = v1.clone();
+        v2["tables"]["posts"]["columns"]["title"]["max"] = json!(100);
+        v2["tables"]["posts"]["columns"]["views"]["type"] = json!("boolean");
+        v2["tables"]["posts"]["columns"]["slug"]["unique"] = json!(true);
+        let checks: Vec<Json> = plan(&v1, &v2).iter().filter_map(|s| check_of(s)).collect();
+        let fits: Vec<(&str, &str)> = checks
+            .iter()
+            .map(|c| (c["name"].as_str().unwrap(), c["fits"].as_str().unwrap()))
+            .collect();
+        assert_eq!(
+            fits,
+            [
+                ("posts.title", "CHAR_LENGTH({col}) <= 100"),
+                ("posts.views", "{col} IN (0, 1)"),
+                ("posts.slug", "CHAR_LENGTH({col}) <= 191"),
+            ]
+        );
+        // Widening back needs no check.
+        assert!(
+            plan(&v2, &v1)
+                .iter()
+                .all(|s| check_of(s).is_none_or(|c| c["check"] != "narrow"))
+        );
+    }
+
+    #[test]
+    fn a_constraint_on_a_renamed_table_is_dropped_before_the_rename_and_added_after() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let mut fk = col("integer");
+        fk["references"] =
+            json!({ "table": "notes", "column": "id", "onDelete": "set null", "onUpdate": null, "unsigned": true });
+        let v1 = snap(
+            json!({ "notes": table(json!({ "id": id() })), "kids": table(json!({ "id": id(), "noteId": fk.clone() })) }),
+        );
+        let mut fk2 = fk;
+        fk2["references"]["table"] = json!("memos");
+        let mut v2 =
+            snap(json!({ "memos": table(json!({ "id": id() })), "kids": table(json!({ "id": id(), "noteId": fk2 })) }));
+        v2["tables"]["memos"]["was"] = json!("notes");
+        let sql: Vec<String> = plan(&v1, &v2)
+            .iter()
+            .map(|s| s.lines().last().unwrap().to_string())
+            .collect();
+        let at = |prefix: &str| {
+            sql.iter()
+                .position(|s| s.starts_with(prefix))
+                .unwrap_or_else(|| panic!("{prefix} in {sql:?}"))
+        };
+        assert!(
+            at("ALTER TABLE `{prefix}zero_kids` DROP FOREIGN KEY") < at("RENAME TABLE"),
+            "{sql:?}"
+        );
+        assert!(
+            at("RENAME TABLE") < at("ALTER TABLE `{prefix}zero_kids` ADD CONSTRAINT"),
+            "{sql:?}"
+        );
+        assert_eq!(
+            sql.iter().filter(|s| s.contains("DROP FOREIGN KEY")).count(),
+            1,
+            "{sql:?}"
         );
     }
 }

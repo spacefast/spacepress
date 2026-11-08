@@ -341,6 +341,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         let mut columns = IndexMap::new();
         for (name, b) in &c.columns {
             let col = column(name, b, &owner, &[], Place::Top, ev, &mut out)?;
+            if col.was.is_some() && c.kind != StorageKind::Table {
+                return Err(Diag::new(
+                    b.span_of("was"),
+                    "`.was()` renames a column of a table(); this kind stores its fields elsewhere",
+                )
+                .help("rename the field without `.was()` and move its values yourself, or keep the old name"));
+            }
             columns.insert(name.clone(), col);
         }
         let pks: Vec<&Column> = columns.values().filter(|c| c.primary_key).collect();
@@ -1299,6 +1306,13 @@ fn column(
     if !valid_ident(name) {
         return Err(Diag::new(b.span, format!("\"{name}\" isn't a valid column name"))
             .help("use letters, digits, and underscores, starting with a letter"));
+    }
+    if b.was.is_some() && place != Place::Top {
+        return Err(Diag::new(
+            b.span_of("was"),
+            "`.was()` renames a stored column; only a kind's own fields have one",
+        )
+        .help("remove `.was()` here"));
     }
     let mut path = parent.to_vec();
     path.push(name.to_string());

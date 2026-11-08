@@ -243,9 +243,11 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop name=rows` |
-| `--drop name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
-| A table the app didn't create (`existingTable`) loses a field or its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |
-| `.was("old")` on a field, `was: "old"` on a table | renamed in place, rows kept |
+| A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
+| `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
+| A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |
+| `.was("old")` on a `table()` field, `was: "old"` on a `table()` | renamed in place, rows kept |
+| The database doesn't have a table or column the migrations expect | refused: `schema_out_of_step` |
 
 A refusal changes nothing: no table, row or ledger entry. Every refusal in the
 deploy is reported at once:
@@ -255,19 +257,29 @@ $ wp zero migrate
 {"error":{"status":409,"code":"schema_refused","refusals":[
   {"migration":"0006_update","code":"drop_has_rows","name":"likes","rows":1204,
    "message":"Dropping the kind likes would delete 1204 rows.",
-   "fix":"Keep likes in the schema, rename it with .was() if it moved, or deploy with --drop likes=1204 to delete them.",
-   "table":"{prefix}zero_likes","drop":"likes=1204"}],
+   "fix":"Keep likes in the schema, rename it with .was() if it moved, or deploy with --drop=likes=1204 to delete them.",
+   "table":"wp_zero_likes","drop":"likes=1204"}],
  "drop":["likes=1204"]}}
 $ wp zero migrate --drop=likes=1204
 ```
 
 `--drop` names a kind (`likes=1204`) or a field (`likes.emoji=17`, counting rows
-that have a value), comma-separated. The count must match the live data, so a
+that have a value, or for a narrowing the values that wouldn't fit), comma-separated,
+after an equals sign (`--drop=…`). The count must match the live data, so a
 confirmation can't delete rows that arrived after it was written. `drop` in the
 refusal lists the arguments that accept today's counts. `zero dev --allow-destructive`
 passes them for you on the local site.
 
-Renames run once: after the deploy, `.was()` is inert and can stay or go.
+Several pending migrations are checked together, before any of them runs, under
+the names each statement will see: a drop that follows a rename counts the rows
+still under the old name. While a refusal stands, the site keeps serving WordPress,
+Zero's routes answer 503, and wp-admin shows the refusal with its `wp zero migrate
+--drop=…` command; requests don't recount the rows until the build or the ledger
+changes. A plugin activated into a refusal stays active, so the command can run.
+
+Renames run once: after the deploy, `.was()` is inert and can stay or go. Only a
+`table()`'s own fields take `.was()`: a collection's fields live in post meta,
+and a field inside a group, repeater or blocks has no column of its own.
 
 ### Access
 

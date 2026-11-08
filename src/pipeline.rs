@@ -268,10 +268,17 @@ pub fn build(
     let previous = previous_value;
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
-            if let Some(next) = snapshot["tables"].get(stored)
+            // The table that keeps `stored`'s rows: the same name, or the one that declares `was: stored`.
+            let successor = snapshot["tables"].get(stored).or_else(|| {
+                snapshot["tables"]
+                    .as_object()?
+                    .values()
+                    .find(|t| t["was"].as_str() == Some(stored.as_str()))
+            });
+            if let Some(next) = successor
                 && tables[stored]["existingTable"] != next["existingTable"]
             {
-                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot; move data explicitly before changing storage")).phase(diag::Code::Schema));
+                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot, including through a `was` rename; move data explicitly before changing storage")).phase(diag::Code::Schema));
             }
             let canonical = crate::schema::physical_name(stored);
             if &canonical != stored

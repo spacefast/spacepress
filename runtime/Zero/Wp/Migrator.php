@@ -85,6 +85,12 @@ final class Migrator
             $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
             $migrations[$id] = self::statements($sql);
         }
+        // A ledger from before rows were keyed by app is converted first, so the check below skips
+        // the files it already records (a missing ledger stays missing until DDL runs).
+        $exists = $this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$this->table('zero__migrations')]) !== [];
+        if ($exists && !$this->keyed()) {
+            $this->ledger();
+        }
         $done = $this->keyed() ? array_flip($this->done()) : [];
         // The deploy-time schema check (spec §2.9): every pending statement that could lose rows or
         // leave them without a required value is measured first, across all pending files, so a
@@ -128,7 +134,7 @@ final class Migrator
                     continue;
                 }
                 try {
-                    $this->db->run(SchemaCheck::sql($statement));
+                    $this->execute($statement);
                 } catch (DbError $e) {
                     throw new \RuntimeException("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0, $e);
                 }
@@ -141,6 +147,45 @@ final class Migrator
 
         $this->requireCompatibleTables();
         return $applied;
+    }
+
+    /**
+     * Runs one migration statement. On the SQLite Database Integration driver, renames take another
+     * route: it has no RENAME TABLE (the table is copied under its new name, rows and auto-increment
+     * included, and the old one dropped, in one transaction), and its RENAME COLUMN loses the values
+     * (it runs as CHANGE COLUMN with the definition the compiler recorded).
+     */
+    private function execute(string $statement): void
+    {
+        $sql = SchemaCheck::sql($statement);
+        $check = SchemaCheck::parse($statement);
+        if (!$this->db->sqlite() || ($check['check'] ?? null) !== 'rename') {
+            $this->db->run($sql);
+
+            return;
+        }
+        if (isset($check['column'])) {
+            // The statement names the table as it is when it runs (an earlier rename may have moved it);
+            // the check names it as it was before the plan.
+            preg_match('/^ALTER TABLE (`(?:[^`]|``)+`)/', $sql, $m);
+            $this->db->run("ALTER TABLE {$m[1]} CHANGE COLUMN `" . str_replace('`', '``', (string) $check['column']) . '` ' . $check['definition']);
+
+            return;
+        }
+        $from = '`' . str_replace('`', '``', (string) $check['table']) . '`';
+        $to = '`' . str_replace('`', '``', (string) $check['to']) . '`';
+        $create = array_values($this->db->run("SHOW CREATE TABLE $from")[0])[1];
+        $dbh = $this->db->wpdb()->dbh;
+        $dbh->query('START TRANSACTION');
+        try {
+            $dbh->query((string) preg_replace('/^CREATE TABLE `(?:[^`]|``)+`/', "CREATE TABLE $to", $create));
+            $dbh->query("INSERT INTO $to SELECT * FROM $from");
+            $dbh->query("DROP TABLE $from");
+            $dbh->query('COMMIT');
+        } catch (\Throwable $e) {
+            $dbh->query('ROLLBACK');
+            throw new DbError($e->getMessage() . " [$sql]", 0);
+        }
     }
 
     private function requireCompatibleTables(): void
@@ -286,6 +331,15 @@ final class Migrator
         }
 
         return $owners;
+    }
+
+    /** @return list<string> this app's recorded ids, sorted (for comparing ledger states) */
+    public function applied(): array
+    {
+        $done = $this->done();
+        sort($done, SORT_STRING);
+
+        return $done;
     }
 
     /** @return list<string> this app's recorded ids (files and in-progress `<id>:<n>` steps) */

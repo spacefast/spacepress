@@ -7,6 +7,20 @@ import { detached, factory, mod, moduleReceivers, receivers, rich, richReceivers
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
+// A module-level literal is built once, while the config is evaluated. Its methods type `this` as
+// the module object, its fields plus its sibling methods, as an inline literal does (zero#205).
+const plain = { first() { return this.second(); }, second() { return 1; } };
+const api = {
+  n: 2,
+  first() { return this.second() + 1; },
+  second() { return this.n * 10; },
+  fact(k: number): number { return k ? this.n * this.fact(k - 1) : 1; },
+  bump() { this.n += 1; return this.n; },
+  later() { const read = () => this.n; return read(); },
+  nested: { v: 7, read() { return this.v; } },
+};
+const annotated = { n: 4, half(this: { n: number }) { return this.n / 2; }, twice(this: void, x: number) { return x * 2; } };
+
 function who(this: unknown): string {
   return typeof this;
 }
@@ -65,5 +79,16 @@ export default defineConfig({
       const parsed = { data: JSON.parse("[1]") as unknown, kind(): string { return Array.isArray(this.data) ? "array" : "other"; } };
       return [o.first(), o.fact(3), { ...o, n: 3 }.first(), parsed.kind()];
     }),
+    thisModuleLiteral: run(() => [
+      plain.first(),
+      api.first(),
+      api.fact(3),
+      api.bump(),
+      api.first(),
+      api.later(),
+      api.nested.read(),
+      annotated.half(),
+      annotated.twice(3),
+    ]),
   },
 });

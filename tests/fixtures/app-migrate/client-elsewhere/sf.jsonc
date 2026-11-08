@@ -1,0 +1,4 @@
+{
+  // A client app without pages whose entry lives outside client/.
+  "runtime": { "kind": "zero", "server": "server/index.ts", "client": "web/main.tsx" },
+}

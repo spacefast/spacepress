@@ -3,6 +3,7 @@ mod client;
 pub(super) mod codes;
 mod endpoints;
 mod manifest;
+mod omitted;
 mod pages;
 mod spacefast;
 mod transform;
@@ -274,7 +275,19 @@ pub fn migrate_manifest(fs: Rc<dyn Fs>, text: &str, source: Option<&Path>, table
             ),
         ));
     }
-    migrate(memory, &published, tables, users)
+    let mut candidate = migrate(memory, &published, tables, users);
+    // The manifest records the capsule's source, not the static files served beside it.
+    let recorded = verified.keys().cloned().collect();
+    let mut unverified = vec![];
+    if let Ok(root) = fs.canonicalize(root) {
+        omitted::unverified(fs.as_ref(), &root, &recorded, &mut unverified);
+    }
+    if !unverified.is_empty() {
+        candidate.report.errors.extend(unverified);
+        candidate.report.status = "refused";
+        candidate.files.clear();
+    }
+    candidate
 }
 
 pub fn migrate(fs: Rc<dyn Fs>, input: &Path, tables: Tables, users: bool) -> Candidate {
@@ -325,7 +338,7 @@ fn convert(
             refuse_pages(&*fs, &root.join(dir), &format!("/{dir}"), &mut report.errors)?;
         }
     }
-    let converted = convert_pages(&*fs, &root, report, &mut sources)?;
+    let (converted, page_sources) = convert_pages(&*fs, &root, report, &mut sources)?;
     // 0.8 served `client/` as a single-page app when the capsule had no pages.
     let client_app = if converted.is_empty() && !has_pages(&*fs, &root) {
         client_entry(&*fs, &root)?
@@ -344,6 +357,7 @@ fn convert(
         &mut report.errors,
     )?;
     report.connector_roles = transformed.connector_roles;
+    let declares_posts = transformed.declares_posts;
     let client_files = match &client_app {
         Some(file) => {
             if fs.exists(&root.join("public")) {
@@ -390,6 +404,73 @@ fn convert(
         "export { default } from \"./server/index\";\n".into(),
     );
     let page_files = converted;
+    // Fail closed: whatever 0.8 served that the candidate does not reproduce is an error, so a
+    // candidate without errors can replace the published version. Static files v2 serves
+    // unchanged travel in public/.
+    let config = CONFIG_FILES
+        .iter()
+        .find(|f| fs.is_file(&root.join(f)))
+        .and_then(|name| {
+            let text = fs.read_to_string(&root.join(name)).ok()?;
+            let value = serde_json::from_str::<serde_json::Value>(&strip_jsonc(&text)).ok()?;
+            Some((*name, value, text))
+        });
+    // A page or client file already refused with its own reason isn't reported twice.
+    let reported: BTreeSet<String> = report.errors.iter().map(|e| e.pointer_file()).collect();
+    let mut handled: Vec<String> = page_sources.clone();
+    handled.extend(reported.iter().cloned());
+    // The 0.8 client entry wherever `runtime.client` puts it, pages or not.
+    let resolved_client = client_entry(&*fs, &root)?;
+    let mut static_files = omitted::sweep(
+        &*fs,
+        &root,
+        config.as_ref().map(|(name, value, text)| (*name, value, text.as_str())),
+        &handled,
+        resolved_client.as_deref(),
+        // The client is reproduced as the pages layout, or converted to public/ by `client`.
+        page_files.contains_key("pages/layout.tsx") || client_app.is_some(),
+        client_app.is_some(),
+        declares_posts,
+        &client_files.keys().cloned().collect::<Vec<_>>(),
+        &mut report.errors,
+    );
+    // A static file never replaces a generated client file; that would be a silent drop.
+    for path in client_files.keys() {
+        if static_files.files.remove(path).is_some() {
+            let name = path.trim_start_matches("public/").to_string();
+            static_files.carried.retain(|c| *c != name);
+            report.errors.push(
+                fail(
+                    &format!("/{name}"),
+                    format!("{}: the converted client app writes public/{name}", omitted::STATIC),
+                )
+                .located(name, 1, 1),
+            );
+        }
+    }
+    // The platform keys travel in the candidate's own sf.jsonc, unchanged and in their order;
+    // every other key was refused above, or changes nothing the candidate serves.
+    if let Some((name, _, _)) = &config {
+        let kept = std::mem::take(&mut static_files.kept);
+        if !kept.is_empty() {
+            for key in kept.keys() {
+                report.entries.push(super::entry(
+                    &format!("/{name}/{key}"),
+                    "mapped",
+                    format!("Spacefast applies `{key}` to the Space; it travels unchanged in the candidate's sf.jsonc"),
+                ));
+            }
+            let text = serde_json::to_string_pretty(&serde_json::Value::Object(kept)).expect("config json");
+            static_files.config = Some(format!("{text}\n"));
+        }
+    }
+    for name in &static_files.carried {
+        report.entries.push(super::entry(
+            &format!("/{name}"),
+            "mapped",
+            format!("static file carried over as public/{name}, served at the same URL"),
+        ));
+    }
     // Both dry runs and writes compile the same candidate, before creating a destination.
     if !report.errors.is_empty() {
         return Ok(());
@@ -428,6 +509,12 @@ fn convert(
     }
     for (path, text) in client_files {
         files.insert(path, text);
+    }
+    for (path, text) in static_files.files {
+        files.insert(path, text);
+    }
+    if let Some(text) = static_files.config {
+        files.insert("sf.jsonc".into(), text);
     }
     // A Space binding adopts its tables; without one the candidate creates them.
     let first = if matches!(tables, Tables::Adopt(_)) {
@@ -651,11 +738,13 @@ fn convert_pages(
     root: &Path,
     report: &mut Report,
     sources: &mut BTreeMap<PathBuf, String>,
-) -> Result<BTreeMap<String, String>, Failure> {
+) -> Result<(BTreeMap<String, String>, Vec<String>), Failure> {
     let mut out = BTreeMap::new();
+    // The 0.8 page files that became v2 pages, capsule-relative.
+    let mut converted = vec![];
     let pages_dir = root.join("pages");
     if !fs.exists(&pages_dir) {
-        return Ok(out);
+        return Ok((out, converted));
     }
     let mut stack = vec![pages_dir];
     let mut files = vec![];
@@ -734,6 +823,7 @@ fn convert_pages(
                         page.file
                     ),
                 ));
+                converted.push(relative.to_string_lossy().replace('\\', "/"));
                 if out.insert(page.file.clone(), page.source).is_some() {
                     report
                         .errors
@@ -759,7 +849,7 @@ fn convert_pages(
             Err(e) => report.errors.push(e),
         }
     }
-    Ok(out)
+    Ok((out, converted))
 }
 
 fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -> Result<(), Failure> {

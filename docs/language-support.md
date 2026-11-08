@@ -376,6 +376,14 @@ Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\Js
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
 
+## whatwg-url
+
+Status: **supported**.
+
+`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named Zero classes.
+
+[Evidence](../tests/compiler_contracts.rs) (`url_vectors_agree_in_node_and_generated_php`)
+
 ## builtin-overloads
 
 Status: **supported**.
@@ -559,14 +567,6 @@ Status: **refused**. Diagnostic: `Z4001`.
 Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormData, ArrayBuffer and stream bodies are not available.
 
 [Evidence](../tests/fixtures/reject-fetch-body)
-
-## url-objects
-
-Status: **refused**. Diagnostic: `Z4001`.
-
-fetch() takes a URL string. Build it with encodeURIComponent and URLSearchParams.toString(). URL and Request objects are not compiled.
-
-[Evidence](../tests/fixtures/reject-fetch-url-object)
 
 ## response-streams
 

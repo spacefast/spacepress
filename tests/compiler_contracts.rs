@@ -3438,6 +3438,7 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
             first,
             "async () => { let n = 0; for await (const v of [first([1, 3, 2])]) n += v; return n; }",
         ),
+        (first, "() => (first([1, 3, 2]) ? 1 : 0)"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(

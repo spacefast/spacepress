@@ -1021,4 +1021,34 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
         refused["errors"][0]["reason"].as_str().unwrap().contains("allows null"),
         "{refused:#}"
     );
+
+    // A default typed by a named alias may allow null, and a default that reads the context has
+    // no context binding in the generated handler: both need a manual port.
+    for (case, capsule, reason) in [
+        (
+            "alias",
+            r#"{ name: "params", queries: { page: query(async (ctx, label: Label = "all") => label) } }"#,
+            "allows null",
+        ),
+        (
+            "context",
+            r#"{ name: "params", queries: { page: query(async (ctx, mine: boolean = ctx.auth.isSignedIn) => mine) } }"#,
+            "reads the context",
+        ),
+    ] {
+        let root = temp.path().join(case);
+        project(&root, capsule);
+        let index = root.join("server/index.ts");
+        let text = std::fs::read_to_string(&index).unwrap().replace(
+            "import { capsule }",
+            "type Label = string | null;\nimport { capsule, query }",
+        );
+        std::fs::write(&index, text).unwrap();
+        let (ok, refused) = migrate(&root, &temp.path().join(format!("{case}-out")), &["--dry-run"]);
+        assert!(!ok, "{capsule}");
+        assert!(
+            refused["errors"][0]["reason"].as_str().unwrap().contains(reason),
+            "{refused:#}"
+        );
+    }
 }

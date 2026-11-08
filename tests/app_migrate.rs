@@ -313,7 +313,12 @@ fn omissions_are_errors_and_static_files_carry_over() {
         .filter(|e| e["reason"].as_str().unwrap().starts_with("static file carried over"))
         .map(|e| e["pointer"].as_str().unwrap())
         .collect();
-    assert_eq!(carried, ["/assets/app.css", "/docs/guide.html", "/index.html"]);
+    // Plain JavaScript outside the source roots is content 0.8 served (zero-compile's capsule test
+    // publishes assets/search.js); TypeScript is never served, wherever it is.
+    assert_eq!(
+        carried,
+        ["/assets/app.css", "/assets/app.js", "/docs/guide.html", "/index.html"]
+    );
     // A client app with no pages is converted (#192), which clears Z08_OMITTED_CLIENT. 0.8
     // generated its index.html, so the author's never served and isn't carried; the converted app
     // owns public/ and reports a clash there itself.

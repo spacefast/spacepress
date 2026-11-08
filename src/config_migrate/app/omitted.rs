@@ -63,7 +63,10 @@ const REPOSITORY_FILES: &[&str] = &[
     "_routes.json",
 ];
 const REPOSITORY_ROOTS: &[&str] = &[".github", "test", "tests", "tools"];
+/// zero-compile's `ZERO_SOURCE_CODE_EXTENSIONS`.
 const CODE: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
+/// zero-compile's `TYPESCRIPT_SOURCE_FILE`, never served wherever it is.
+const TYPESCRIPT: &[&str] = &["ts", "tsx", "mts", "cts"];
 /// The rule files 0.8 compiled into routing instead of serving.
 const RULE_FILES: &[&str] = &["_redirects", "_headers"];
 /// The config keys 0.8 applied when serving the version, by the error each one raises.
@@ -128,9 +131,13 @@ fn served(relative: &str) -> bool {
         || super::CONFIG_FILES.contains(&relative)
         || relative == "spacefast.config.ts"
         || relative == "theme.json"
+        // isZeroCapsuleOwnedPath: code inside a source root, and package.json at any depth.
         || (root == "content" && CODE.contains(&extension))
-        || (relative.starts_with("tsconfig") && relative.ends_with(".json"))
-        || CODE.contains(&extension)
+        || relative.rsplit('/').next() == Some("package.json")
+        // isZeroProjectOnlyPath: TypeScript anywhere and tsconfig files. Plain JavaScript outside
+        // the source roots is the author's content, and 0.8 served it.
+        || (!relative.contains('/') && relative.starts_with("tsconfig") && relative.ends_with(".json"))
+        || TYPESCRIPT.contains(&extension)
         || policy(relative) != Policy::Keep)
 }
 

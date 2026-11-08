@@ -204,28 +204,25 @@ fn every_refusal_carries_the_diagnostic_contract() {
     assert_eq!(at("/auth/onGuestUpgrade")["code"], "Z08_AUTH_CALLBACK");
     assert_eq!(at("/pages/live.tsx")["file"], "pages/live.tsx");
     // A construct the v2 compiler refuses names itself in `feature`, located in the converted entry.
-    let capsule = temp.path().join("generator");
+    let capsule = temp.path().join("with");
     project(&capsule, "{}");
     std::fs::write(
         capsule.join("server/index.ts"),
-        "import { capsule, query, string, table } from \"@spacefast/zero/server\";\nfunction* count() { yield 1; }\nexport default capsule({ name: \"g\", schema: { notes: table({ body: string() }) }, queries: { n: query(async (ctx) => [...count()].length) } });\n",
+        "import { capsule, query, string, table } from \"@spacefast/zero/server\";\nfunction f(o: { a: number }) { with (o) { return a; } }\nexport default capsule({ name: \"g\", schema: { notes: table({ body: string() }) }, queries: { n: query(async (ctx) => f({ a: 1 })) } });\n",
     )
     .unwrap();
     let (ok, report) = migrate(
         &capsule,
-        &temp.path().join("out-g"),
+        &temp.path().join("out-with"),
         &["--space", "spc_migrate_test", "--dry-run"],
     );
     assert!(!ok);
     let e = &report["errors"][0];
     assert_eq!(e["code"], "Z08_LANGUAGE", "{report}");
-    assert!(
-        e["feature"].as_str().unwrap().starts_with("JavaScript construct: "),
-        "{e}"
-    );
+    assert_eq!(e["feature"], "JavaScript construct: `with`", "{e}");
     assert_eq!(
-        (e["file"].as_str(), e["line"].as_u64()),
-        (Some("server/index.ts"), Some(2)),
+        (e["file"].as_str(), e["line"].as_u64(), e["column"].as_u64()),
+        (Some("server/index.ts"), Some(2), Some(32)),
         "{e}"
     );
 }

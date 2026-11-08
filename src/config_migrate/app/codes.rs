@@ -463,7 +463,7 @@ pub static RULES: &[Rule] = &[
         test: |_, r| r.contains(LANGUAGE),
         example: (
             "",
-            "generated application refused by v2 compiler: error: Zero code doesn't support generators",
+            "generated application refused by v2 compiler: error: Zero code doesn't support `with`",
         ),
     },
     Rule {

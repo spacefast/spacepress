@@ -4,11 +4,33 @@
 //! The lock is written by `zero abilities pull` (src/commands/abilities.rs). Building reads only the
 //! lock; nothing here touches the network.
 
-use crate::schema::Schema;
+use crate::schema::{ColType, Schema};
 use crate::types::{self, Ty};
 use indexmap::IndexMap;
 use serde_json::Value;
 use std::collections::BTreeMap;
+
+/// The app's own abilities as data: name → (input properties, the required ones). For the drift
+/// test against `Register::operations()`; inputs that are not objects list nothing.
+pub fn own_inputs(schema: &Schema) -> BTreeMap<String, (Vec<String>, Vec<String>)> {
+    own(schema)
+        .into_iter()
+        .map(|(name, (input, _))| {
+            let (mut keys, mut required) = (Vec::new(), Vec::new());
+            if let Ty::Obj(fields) = input {
+                for (k, (_, optional)) in fields {
+                    if !optional {
+                        required.push(k.clone());
+                    }
+                    keys.push(k);
+                }
+            }
+            keys.sort();
+            required.sort();
+            (name, (keys, required))
+        })
+        .collect()
+}
 
 /// Where the lock lives in a project.
 pub const LOCK: &str = "zero/abilities.json";
@@ -213,8 +235,10 @@ fn escape(key: &str) -> String {
     key.replace('~', "~0").replace('/', "~1")
 }
 
-/// The app's own abilities (runtime/Zero/Wp/Abilities/Register.php names them), typed from the
-/// schema. Action results are `unknown`: the registered output schema is empty.
+/// The app's own abilities, typed from the schema: one entry per operation
+/// `runtime/Zero/Wp/Abilities/Register::build` registers, with the same names and input properties
+/// (`wordpress_own_abilities_match_the_registered_ones` in tests/compiler_contracts.rs runs both and
+/// compares them). Results the runtime publishes no output schema for are `unknown`.
 fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
     let app = kebab(&schema.name);
     let mut out = Vec::new();
@@ -226,17 +250,29 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
                 .collect(),
         )
     };
-    let list_input = || {
-        opt(&[
+    let paging = |extra: &[(&str, Ty, bool)]| {
+        let mut fields = vec![
             ("where", Ty::Unknown, true),
             ("orderBy", Ty::Unknown, true),
             ("limit", Ty::Num, true),
             ("offset", Ty::Num, true),
-            ("with", Ty::Unknown, true),
-            ("locale", Ty::Str, true),
-        ])
+        ];
+        fields.extend(extra.iter().cloned());
+        opt(&fields)
     };
     for c in schema.collections.values() {
+        // As Register::collection: `with` when there is something to load, `locale` when localized.
+        let mut extra = Vec::new();
+        if !c.relations.is_empty()
+            || c.columns
+                .values()
+                .any(|col| matches!(col.ty, ColType::Media | ColType::MediaList))
+        {
+            extra.push(("with", Ty::Unknown, true));
+        }
+        if c.localized {
+            extra.push(("locale", Ty::Str, true));
+        }
         let k = kebab(&c.table);
         let row = types::row_of(c);
         let pk = c
@@ -244,27 +280,17 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             .map(|p| types::col_base(p, &types::json_ty, false))
             .unwrap_or(Ty::Num);
         let rows = opt(&[("rows", Ty::Array(Box::new(row.clone())), false)]);
+        let id = || opt(&[("id", pk.clone(), false)]);
         if c.api.list {
-            out.push((format!("{app}/{k}-list"), (list_input(), rows)));
+            out.push((format!("{app}/{k}-list"), (paging(&extra), rows)));
         }
         if c.api.get {
-            out.push((
-                format!("{app}/{k}-get"),
-                (
-                    opt(&[
-                        ("id", pk.clone(), false),
-                        ("with", Ty::Unknown, true),
-                        ("locale", Ty::Str, true),
-                    ]),
-                    row.clone(),
-                ),
-            ));
+            let mut get = vec![("id", pk.clone(), false)];
+            get.extend(extra.iter().cloned());
+            out.push((format!("{app}/{k}-get"), (opt(&get), row.clone())));
         }
         if c.api.create {
-            out.push((
-                format!("{app}/{k}-create"),
-                (types::insert_with(schema, &c.table, &types::json_ty), row.clone()),
-            ));
+            out.push((format!("{app}/{k}-create"), (create_input(schema, c), row.clone())));
         }
         if c.api.update {
             let patch = types::partial(types::insert_with(schema, &c.table, &types::json_ty));
@@ -274,13 +300,44 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             ));
         }
         if c.api.delete {
-            out.push((format!("{app}/{k}-delete"), (opt(&[("id", pk, false)]), row)));
+            out.push((format!("{app}/{k}-delete"), (id(), row.clone())));
+        }
+        if c.revisions {
+            let user = opt(&[("id", Ty::Num, false), ("name", Ty::Str, false)]).nullable();
+            let revision = opt(&[("id", Ty::Num, false), ("at", Ty::Str, false), ("user", user, false)]);
+            out.push((
+                format!("{app}/{k}-revisions"),
+                (id(), opt(&[("revisions", Ty::Array(Box::new(revision)), false)])),
+            ));
+        }
+        if c.sync.is_some() {
+            out.push((
+                format!("{app}/{k}-sync-read"),
+                (
+                    opt(&[("after", pk.clone(), true), ("first", Ty::Num, true)]),
+                    Ty::Unknown,
+                ),
+            ));
+            out.push((
+                format!("{app}/{k}-sync-apply"),
+                (
+                    opt(&[
+                        ("record", Ty::Map(Box::new(Ty::Unknown)), false),
+                        ("expect", Ty::Str, false),
+                    ]),
+                    Ty::Unknown,
+                ),
+            ));
+            out.push((
+                format!("{app}/{k}-sync-trash"),
+                (opt(&[("uid", Ty::Str, false), ("expect", Ty::Str, false)]), Ty::Unknown),
+            ));
         }
     }
     for a in schema.actions.values() {
         out.push((
             format!("{app}/{}", kebab(&a.name)),
-            (types::action_input(&a.input, &types::json_ty), Ty::Unknown),
+            (fields_input(&a.input), Ty::Unknown),
         ));
     }
     for (name, g) in &schema.globals {
@@ -292,7 +349,77 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             (types::partial(values.clone()), values),
         ));
     }
+    let media = Ty::Map(Box::new(Ty::Unknown));
+    let media_id = opt(&[("id", Ty::Num, false)]);
+    out.push((
+        format!("{app}/media-list"),
+        (paging(&[]), opt(&[("rows", Ty::Array(Box::new(media.clone())), false)])),
+    ));
+    out.push((format!("{app}/media-get"), (media_id.clone(), media.clone())));
+    out.push((format!("{app}/media-delete"), (media_id, media)));
+    for (name, j) in &schema.jobs {
+        if j.agents {
+            out.push((
+                format!("{app}/job-{}", kebab(name)),
+                (
+                    fields_input(&j.input),
+                    opt(&[("id", Ty::union([Ty::Num, Ty::Str]), false)]),
+                ),
+            ));
+        }
+    }
     out
+}
+
+/// `JsonSchema::isRequired`: a NOT NULL column without a default or auto-increment.
+fn required(col: &crate::schema::Column) -> bool {
+    col.not_null && col.default.is_none() && !col.auto_increment
+}
+
+/// An action's or job's input as `JsonSchema::input` publishes it: every field, required ones as
+/// `Schema::isRequired` says, optional ones nullable.
+fn fields_input(fields: &indexmap::IndexMap<String, crate::schema::Column>) -> Ty {
+    let Ty::Obj(types) = types::action_input(fields, &types::json_ty) else {
+        unreachable!()
+    };
+    Ty::Obj(
+        types
+            .into_iter()
+            .map(|(k, (t, _))| {
+                let optional = !required(&fields[&k]);
+                (k, (t, optional))
+            })
+            .collect(),
+    )
+}
+
+/// The create input `JsonSchema::insert` publishes: writable columns (not hidden, derived or
+/// auto-increment), required as the pipeline requires them before hooks (not filled by a
+/// before-create hook, not the generated slug), plus Register::collection's virtual inputs.
+fn create_input(schema: &Schema, c: &crate::schema::Collection) -> Ty {
+    let Ty::Obj(mut all) = types::insert_with(schema, &c.table, &types::json_ty) else {
+        unreachable!()
+    };
+    let mut fields = IndexMap::new();
+    for col in c.columns.values() {
+        if col.hidden || col.derived || col.auto_increment {
+            continue;
+        }
+        let Some((t, _)) = all.shift_remove(&col.name) else {
+            continue;
+        };
+        let optional =
+            !required(col) || c.before_create_fills.contains(&col.name) || c.slug.as_deref() == Some(col.name.as_str());
+        fields.insert(col.name.clone(), (t, optional));
+    }
+    // translationOf (localized) is already in the insert type; keep it.
+    if let Some(t) = all.shift_remove("translationOf") {
+        fields.insert("translationOf".into(), t);
+    }
+    if c.auth {
+        fields.insert("password".into(), (Ty::Str, true));
+    }
+    Ty::Obj(fields)
 }
 
 /// The runtime's kebab-case (`Register::kebab`, `extract::kebab`).

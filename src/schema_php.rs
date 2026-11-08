@@ -328,8 +328,9 @@ pub fn render(schema: &Schema) -> String {
             route.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into())
         );
     }
-    if !schema.wp_hooks.is_empty() {
-        // The fields each class view exposes: the catalog's, so runtime and types agree.
+    // The fields each WordPress class view exposes (hook arguments, function results): the
+    // catalog's, so the runtime and the types agree. Only apps that touch WordPress carry them.
+    if schema.wp_views {
         out.push_str("    ],\n    'wpViews' => [\n");
         for class in ["WP_Post", "WP_User"] {
             let fields = crate::wordpress::class_fields(class);
@@ -340,6 +341,8 @@ pub fn render(schema: &Schema) -> String {
                 fields.iter().map(|f| php_str(f)).collect::<Vec<_>>().join(", ")
             );
         }
+    }
+    if !schema.wp_hooks.is_empty() {
         out.push_str("    ],\n    'wpHooks' => [\n");
         for h in &schema.wp_hooks {
             let _ = writeln!(

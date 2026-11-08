@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ownedState, publishPlugins, sourceDigest, watchSources, lock } from './studio.mjs';
@@ -61,6 +61,24 @@ test('publishing replaces managed plugins while retaining extra plugins and refu
   await writeFile(join(content, 'zero-manifest.json'), JSON.stringify({ ...manifest, plugins: { ...manifest.plugins, extra: '1' } }));
   await assert.rejects(publishPlugins(content, managed), /not managed by Zero/);
   assert.equal(await readFile(join(plugins, 'zero-app-test/zero-app-test.php'), 'utf8'), 'second build');
+  // A plugin WordPress already ships (Akismet in every new site), byte-identical to the build's pin, is
+  // adopted; the same slug with the owner's own edits is not.
+  await writeFile(join(source, 'zero-app-test.php'), 'third build');
+  await mkdir(join(plugins, 'bundled/inc'), { recursive: true });
+  await writeFile(join(plugins, 'bundled/bundled.php'), 'as shipped');
+  await writeFile(join(plugins, 'bundled/inc/a.php'), 'a');
+  await cp(join(plugins, 'bundled'), join(content, 'plugins/bundled'), { recursive: true });
+  await writeFile(join(content, 'zero-manifest.json'), JSON.stringify({ ...manifest, plugins: { ...manifest.plugins, bundled: '1' } }));
+  await publishPlugins(content, managed);
+  assert.equal(await readFile(join(plugins, 'zero-app-test/zero-app-test.php'), 'utf8'), 'third build');
+  assert.ok(managed.owner.generated.includes('bundled'));
+  await mkdir(join(plugins, 'edited'), { recursive: true });
+  await writeFile(join(plugins, 'edited/edited.php'), 'owner change');
+  await mkdir(join(content, 'plugins/edited'), { recursive: true });
+  await writeFile(join(content, 'plugins/edited/edited.php'), 'as shipped');
+  await writeFile(join(content, 'zero-manifest.json'), JSON.stringify({ ...manifest, plugins: { ...manifest.plugins, edited: '1' } }));
+  await assert.rejects(publishPlugins(content, managed), /not managed by Zero/);
+  assert.equal(await readFile(join(plugins, 'edited/edited.php'), 'utf8'), 'owner change');
 });
 
 test('watch inputs include imported TypeScript and public files without reacting to generated output', async (t) => {

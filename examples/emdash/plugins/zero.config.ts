@@ -14,7 +14,7 @@ const entries = collection({
   palette: text().pattern(/^#[0-9a-fA-F]{6}$/).default("#375c48"),
   embeds: json(),
 }, {
-  title: "title", content: "body", label: "Plugin stories",
+  title: "title", content: "body", label: "Plugin stories", comments: true,
   access: { read: "anyone", create: "editor", update: "editor", delete: "editor" },
 });
 

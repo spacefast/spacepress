@@ -100,6 +100,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "label",
     "drafts",
     "revisions",
+    "comments",
     "title",
     "content",
     "access",
@@ -310,6 +311,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     editor: true,
                     drafts: true,
                     revisions: true,
+                    comments: false,
                     title: None,
                     content: None,
                     slug: None,
@@ -361,6 +363,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
+        coll.comments = opts.comments;
         coll.title = opts.title;
         coll.content = opts.content;
         coll.slug = opts.slug;
@@ -736,6 +739,7 @@ struct CollOpts {
     editor: bool,
     drafts: bool,
     revisions: bool,
+    comments: bool,
     title: Option<String>,
     content: Option<String>,
     slug: Option<String>,
@@ -852,6 +856,15 @@ fn collection_options(
         }
         Some(r) => r,
         None => editor,
+    };
+    // spec.md §6: comments are off on every kind that doesn't turn them on.
+    let comments = match flag("comments")? {
+        Some(true) if !editor => {
+            return Err(Diag::new(span("comments"), "only collection() kinds take comments")
+                .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
+        }
+        Some(on) => on,
+        None => false,
     };
 
     if editor && c.table().len() > MAX_POST_TYPE_TABLE {
@@ -1069,6 +1082,7 @@ fn collection_options(
         editor,
         drafts,
         revisions,
+        comments,
         title,
         content,
         slug,

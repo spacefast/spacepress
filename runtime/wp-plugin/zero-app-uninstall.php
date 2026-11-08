@@ -20,6 +20,7 @@ if ($app === '') {
 }
 
 delete_option('zero_' . $app . '_schema');
+delete_option('zero_rewrite_rules');
 
 // Exactly the capability names WordPress derives from this app's `capability_type` ([<type>_item,
 // <type>]): the meta caps on the singular and the primitive caps on the plural. Matched whole, so

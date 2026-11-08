@@ -247,6 +247,14 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "collections: { notes: collection({ title: text().notNull() }, { revisions: false }) }",
             "collections always have native revisions",
         ),
+        (
+            "tables: { notes: table({ title: text() }, { comments: true }) }",
+            "only collection() kinds take comments",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }, { comments: 'yes' }) }",
+            "`comments` must be true or false",
+        ),
     ] {
         std::fs::write(tmp.path().join("zero.config.ts"), format!(
             "import {{ collection, table, global, id, text, defineConfig }} from 'zero'; const shared = table({{}}); export default defineConfig({{ {body} }});"

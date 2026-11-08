@@ -207,6 +207,7 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'editor' => {},", c.editor);
     let _ = writeln!(out, "            'drafts' => {},", c.drafts);
     let _ = writeln!(out, "            'revisions' => {},", c.revisions);
+    let _ = writeln!(out, "            'comments' => {},", c.comments);
     let _ = writeln!(out, "            'uid' => {},", c.uid);
     let _ = writeln!(
         out,

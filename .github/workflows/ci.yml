@@ -349,6 +349,8 @@ jobs:
         run: ZERO_WP_PROJECT=zero-wp-fetch ZERO_WP_PORT=8899 tests/wp/fetch/run.sh
       - name: WordPress abilities and wp-hooks from TypeScript
         run: ZERO_WP_PROJECT=zero-wp-wordpress ZERO_WP_PORT=8898 tests/wp/wordpress/run.sh
+      - name: Opinionated WordPress hardening, and stock WordPress without an app
+        run: ZERO_WP_PROJECT=zero-wp-hardening ZERO_WP_PORT=8896 tests/wp/hardening/run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

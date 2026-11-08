@@ -41,6 +41,7 @@ final class Plugin
     {
         self::$instance = $this;
         $this->mainFile = $mainFile;
+        Hardening::apply($schema);
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
@@ -370,7 +371,7 @@ final class Plugin
                 'show_in_rest' => true,
                 'rest_base' => $type,
                 'menu_icon' => 'dashicons-database',
-                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, 'author', 'custom-fields'])),
+                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields'])),
                 // Singular differs from plural so `edit_<type>` stays a primitive cap. Every cap of the type
                 // is answered from the collection's access rules (CoreAccess::mapMetaCap), not from roles.
                 'capability_type' => [$type . '_item', $type],

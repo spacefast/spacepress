@@ -246,6 +246,7 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "fetch",
     "crypto",
     "mail",
+    "definePlugin",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
 const ZERO_TYPES: &[&str] = &[
@@ -294,6 +295,7 @@ const ZERO_TYPES: &[&str] = &[
     "ServiceFormField",
     "ServiceProduct",
     "InferActionInput",
+    "Plugin",
 ];
 
 pub const GLOBALS: &[&str] = &[
@@ -1958,6 +1960,14 @@ impl<'p> Evaluator<'p> {
                 Ok(Value::object(out))
             }
             Builtin::DefineConfig => Ok(arg(0)),
+            Builtin::DefinePlugin => match arg(0) {
+                config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
+                _ => err_help(
+                    span,
+                    "definePlugin() needs `{ name, hooks?, actions?, jobs?, routes? }`",
+                    "pass the plugin definition as an object literal",
+                ),
+            },
             Builtin::Env => match arg(0) {
                 Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
                     Ok(Value::Env(n))
@@ -2604,6 +2614,7 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "global" => Builtin::DefineGlobal,
         "defineRelations" => Builtin::DefineRelations,
         "defineConfig" => Builtin::DefineConfig,
+        "definePlugin" => Builtin::DefinePlugin,
         "action" => Builtin::Action,
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,

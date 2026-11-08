@@ -370,6 +370,30 @@
       "evidence": "tests/compiler_contracts.rs",
       "test": "wp_hooks_register_in_file_order_with_their_priorities",
       "guidance": "wp-hooks/<hook>.ts and wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`."
+    },
+    {
+      "id": "plugin-narrowed-write",
+      "status": "refused",
+      "code": "Z4201",
+      "fixture": "tests/fixtures/reject-plugin-write",
+      "message": "plugin \"seo\" writes posts.body; zero/plugins.lock.json grants it only posts.summary",
+      "guidance": "A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry."
+    },
+    {
+      "id": "plugin-static-host",
+      "status": "refused",
+      "code": "Z4201",
+      "fixture": "tests/fixtures/reject-plugin-http",
+      "message": "plugin \"ping\" fetches from tracker.example.net; zero/plugins.lock.json grants it only api.example.com",
+      "guidance": "A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop."
+    },
+    {
+      "id": "plugin-cross-import",
+      "status": "refused",
+      "code": "Z1201",
+      "fixture": "tests/fixtures/reject-plugin-isolation",
+      "message": "plugin \"b\" can't import \"zero-plugin-a\": it belongs to plugin \"a\"",
+      "guidance": "A plugin package imports its own modules, \"zero\" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin."
     }
   ]
 }

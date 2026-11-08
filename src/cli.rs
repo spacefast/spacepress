@@ -167,6 +167,7 @@ pub fn main() -> ExitCode {
         // The hosted pipeline's internal steps; not author commands, so not in the table.
         "sources" => crate::bundle::sources_cli(&rest),
         "compile-sources" => crate::bundle::compile_cli(&rest),
+        "compile-to-store" => crate::bundle::compile_to_store_cli(&rest),
         "deploy" if rest.first().is_some_and(|mode| mode == "wp") => {
             eprintln!(
                 "{}",

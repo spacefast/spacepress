@@ -215,6 +215,87 @@ impl Compiler<'_, '_> {
     }
 }
 
+impl Compiler<'_, '_> {
+    /// Imported JavaScript `async` and `function*` bodies run behind the promise/iterator runtime.
+    pub(super) fn suspends(&self, f: &Func) -> bool {
+        (f.is_async || f.is_generator) && self.javascript_module(f.module)
+    }
+
+    /// A generator body must be a PHP Generator even when no `yield` is reached.
+    pub(super) fn generator_prologue(&mut self, f: &Func, indent: usize) -> String {
+        if !(f.is_generator && self.javascript_module(f.module)) {
+            return String::new();
+        }
+        format!("{}if (false) {{ yield; }}\n", pad(indent))
+    }
+
+    fn suspending_kind(&mut self, f: &Func) -> &'static str {
+        self.uses_jobs |= f.is_async;
+        match (f.is_async, f.is_generator) {
+            (true, true) => "\\Zero\\JsAsyncGenerator",
+            (false, true) => "\\Zero\\JsGenerator",
+            _ => "\\Zero\\JsJobs",
+        }
+    }
+
+    /// The call of a module-level async/generator function's `__body` helper.
+    pub(super) fn suspending_wrapper(&mut self, f: &Func, body: &str) -> String {
+        let callee = format!("\\Closure::fromCallable({})", php_str(body));
+        match self.suspending_kind(f) {
+            "\\Zero\\JsJobs" => format!("\\Zero\\JsJobs::async({callee}, $args)"),
+            kind => format!("new {kind}({callee}(...$args))"),
+        }
+    }
+
+    /// An async/generator closure value: each call starts a new body.
+    pub(super) fn suspending_closure(&mut self, f: &Func, closure: String) -> String {
+        match self.suspending_kind(f) {
+            "\\Zero\\JsJobs" => format!("\\Zero\\JsJobs::asyncFunction({closure})"),
+            kind => format!("{kind}::function({closure})"),
+        }
+    }
+
+    pub(super) fn yield_expr(&mut self, arg: Option<&Expr>, delegate: bool, span: Span) -> Result<Out> {
+        if !self.fx().is_generator {
+            return err(span, "`yield` only works in generator functions");
+        }
+        let value = match arg {
+            Some(arg) => {
+                let v = self.expr(arg)?;
+                self.finish_value(v, arg.span)?.php
+            }
+            None => "\\Zero\\Js::undefined()".into(),
+        };
+        let is_async = self.fx().is_async;
+        let php = match (delegate, is_async) {
+            (true, false) => format!("(yield from \\Zero\\JsIter::delegate({value}))"),
+            (true, true) => format!("(yield from \\Zero\\JsIter::asyncDelegate({value}))"),
+            // An async generator awaits the operand before yielding it, and a received value is undefined
+            // until the next call supplies one.
+            (false, true) => format!("(yield \\Zero\\JsJobs::await({value}))"),
+            (false, false) => format!("(yield {value})"),
+        };
+        Ok(Out::atom(php, Ty::Dynamic))
+    }
+
+    /// Every root starts on an empty queue and, when generated code can queue jobs, finishes it.
+    pub(super) fn wrap_roots_with_job_queue(&mut self, roots: &[(Slot, String)]) {
+        for (_, name) in roots {
+            let header = format!("function {name}(");
+            let Some(start) = self.output.find(&header) else {
+                continue;
+            };
+            let renamed = format!("function {name}__root(");
+            self.output.replace_range(start..start + header.len(), &renamed);
+            let _ = writeln!(
+                self.output,
+                "function {name}(mixed ...$args)\n{{\n    return \\Zero\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
+                php_str(&format!("\\ZeroApp\\{name}__root"))
+            );
+        }
+    }
+}
+
 pub(super) struct VarBinding<'a> {
     pub name: &'a str,
     pub span: Span,

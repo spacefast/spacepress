@@ -859,8 +859,10 @@ impl CommonJsScope<'_> {
             | ExprKind::Member { obj: value, .. }
             | ExprKind::Chain(value)
             | ExprKind::Await(value)
+            | ExprKind::Yield { arg: Some(value), .. }
             | ExprKind::As(value, _)
             | ExprKind::NonNull(value) => self.expression(value)?,
+            ExprKind::Yield { arg: None, .. } => {}
             ExprKind::Instanceof(left, right)
             | ExprKind::In(left, right)
             | ExprKind::Binary(_, left, right)

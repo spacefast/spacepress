@@ -618,3 +618,33 @@ test("protected visibility is batched and cached before core pagination", () => 
   assert.deepEqual(result, [true, true, 200, true, 1, 404, 200, true, true, null, true,
     ['hidden', [503, 'storage_unavailable']], [null, true], [true, true, true]]);
 });
+
+test("core meta and Zero's query args keep every denial: masks, hidden filters, drafts, read rules", async () => {
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Masked ${run}`, salary: "70k", notes: { open: "o", sealed: "s" } }))[0].id;
+  // Field masks: `meta` drops what `acf` drops.
+  const anon = (await http("GET", `${core}/zero_payroll/${id}`)).json;
+  assert.deepEqual(["salary" in anon.meta, "notes" in anon.meta, "title" in anon.meta], [false, false, false]);
+  assert.equal((await http("GET", `${core}/zero_payroll/${id}`, { as: "admin" })).json.meta.salary, "70k");
+  // A filter, sort or relation through a hidden field is the facade's 403, never a probe.
+  for (const params of [{ where: JSON.stringify({ salary: "70k" }) }, { orderBy: "salary" }, { where: JSON.stringify({ notes: { isNull: false } }) }]) {
+    const r = await http("GET", `${core}/zero_payroll?` + new URLSearchParams(params), { as: "editor" });
+    assert.deepEqual([r.status, r.json.code], [403, "forbidden"], JSON.stringify(params));
+  }
+  assert.deepEqual(ids(await http("GET", `${core}/zero_payroll?` + new URLSearchParams({ where: JSON.stringify({ salary: "70k", title: `Masked ${run}` }) }), { as: "admin" })), [id]);
+  // A search leaves out fields hidden from the viewer: the salary can't be found by its value.
+  assert.deepEqual((await http("GET", `${core}/zero_payroll?search=70k`, { as: "editor" })).json, []);
+  // The read rule still filters: `where` can't widen what the author may read.
+  const listed = await http("GET", `${core}/zero_ledger?` + new URLSearchParams({ where: JSON.stringify({ id: { in: [mine, theirs] } }) }), { as: "author" });
+  assert.deepEqual(ids(listed), [mine]);
+  assert.equal((await http("GET", `${core}/zero_vault?` + new URLSearchParams({ where: "{}" }))).status, 401);
+  // Draft visibility: an anonymous `where` on status can't reveal a draft.
+  const draft = zero("insert", "posts", JSON.stringify({ title: `Draft ${run}`, status: "draft" }))[0].id;
+  const anonDraft = await http("GET", `${core}/zero_posts?` + new URLSearchParams({ where: JSON.stringify({ id: draft, status: "draft" }), status: "draft" }));
+  assert.ok(anonDraft.status >= 400 || anonDraft.json.length === 0, JSON.stringify(anonDraft.json));
+  assert.deepEqual((await http("GET", `${core}/zero_posts?` + new URLSearchParams({ where: JSON.stringify({ id: draft }) }))).json, []);
+  // Meta writes are authorized like `acf` ones: a hidden field can't be written, even unchanged.
+  const write = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { meta: { salary: "70k" } } });
+  assert.deepEqual([write.status, write.json.data?.pointer], [403, "/salary"]);
+  const twice = await http("POST", `${core}/zero_payroll/${id}`, { as: "admin", body: { meta: { salary: "1" }, acf: { zero_salary: "2" } } });
+  assert.deepEqual([twice.status, twice.json.data?.pointer], [403, "/salary"], "one field, one selector");
+});

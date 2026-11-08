@@ -268,6 +268,13 @@ final class CoreAccess
             return $response;
         }
         $spec = self::schema()->collection($collection);
+        if (is_array($data['meta'] ?? null) && $stored !== null) {
+            // Zero values, judged on the same row: a revision's `meta` is its own snapshot, not the
+            // raw postmeta core's revisions controller would read.
+            foreach (PostMeta::fields($spec) as $col => $_) {
+                $data['meta'][$col] = \Zero\Js::jsonTree($stored[$col] ?? null);
+            }
+        }
         $visible = $viewer === null || $stored === null ? null : (self::visibleFields($stored, $collection, $viewer));
         $dropped = false;
         foreach ($spec['columns'] as $col => $def) {
@@ -288,6 +295,9 @@ final class CoreAccess
                 $spec['slug'] ?? null => self::unset($data, ['slug', 'generated_slug', 'permalink_template', 'link']),
                 default => is_array($data['acf'] ?? null) ? self::unset($data['acf'], [$spec['wp']['metaPrefix'] . $col, $spec['wp']['metaPrefix'] . $col . '_source']) : null,
             };
+            if (is_array($data['meta'] ?? null)) {
+                unset($data['meta'][$col]);
+            }
         }
         $response->set_data($data);
         if ($dropped) {
@@ -601,6 +611,18 @@ final class CoreAccess
         }
         if (($spec['drafts'] ?? false) && is_string($status = $request->get_param('status'))) {
             $data['status'] = ['publish' => 'published', 'future' => 'scheduled'][$status] ?? 'draft';
+        }
+        // Core `meta` (PostMeta): each field under its own name, in Zero's value form.
+        $meta = PostMeta::input($request);
+        if (is_array($meta)) {
+            foreach (PostMeta::fields($spec) as $col => $def) {
+                if (array_key_exists($col, $meta)) {
+                    if ($singleSelector && array_key_exists($col, $data)) {
+                        throw new HttpError(403, 'forbidden', "Submit $col only once", HttpError::seg((string) $col));
+                    }
+                    $data[$col] = \Zero\Seam::toPhp($meta[$col], $def);
+                }
+            }
         }
         $acf = $request->get_param('acf');
         if (is_array($acf)) {

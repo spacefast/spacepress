@@ -54,12 +54,7 @@ final class Scf
                 continue;
             }
             $fields = [];
-            foreach ($spec['columns'] as $col => $def) {
-                $col = (string) $col;
-                if ($col === $spec['primaryKey'] || $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null)
-                    || $col === ($spec['slug'] ?? null) || ($def['system'] ?? false)) {
-                    continue;
-                }
+            foreach (PostMeta::fields($spec) as $col => $def) {
                 $fields[] = ['zero_top' => true] + self::field($schema, $spec['wp']['fieldKeyPrefix'] . $col, $spec['wp']['metaPrefix'] . $col, $col, $def, $spec);
             }
             acf_add_local_field_group([

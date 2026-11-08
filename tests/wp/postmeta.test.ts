@@ -5,7 +5,7 @@
 // The SQL text is pinned in tests/php/sql_test.php; this suite proves MariaDB agrees with it.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { ok, problem, qs, run, sql, wp } from "./env.ts";
+import { core, http, ok, problem, qs, run, sql, wp } from "./env.ts";
 
 const ids: Record<string, number> = {};
 let post: any;
@@ -105,4 +105,67 @@ test("relation filters only see target rows the viewer may read", async () => {
   const keyOracle = where({ signups: { email: { like: `sk-live-7%` } } });
   await problem("GET", "/posts" + keyOracle, {}, { status: 401, code: "unauthenticated", pointer: undefined });
   assert.deepEqual((await ok("GET", "/posts" + keyOracle, { as: "editor" })).map((p: any) => p.id), [byGhost.id]);
+});
+
+// Core /wp/v2 for a post kind (spec §3a): fields under `meta` in Zero's value form, and Zero's own
+// `where`/`orderBy`/`with`/`search` on the list route, answering what /zero/v1 answers.
+const coreTitles = async (params: Record<string, unknown>, as?: "editor") => {
+  const r = await http("GET", `${core}/zero_events` + qs({ per_page: "100", ...params }), as ? { as } : {});
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  return r.json.map((e: any) => e.title.rendered[0]).join("");
+};
+
+test("core meta holds every field as Zero reads it", async () => {
+  const [row] = await ok("GET", "/events" + qs({ where: { id: ids.B } }));
+  const item = await http("GET", `${core}/zero_events/${ids.B}`);
+  assert.equal(item.status, 200, JSON.stringify(item.json));
+  const { seats, price, open, day, startsAt, kinds, postId, extra } = row;
+  const { seats: s, price: p, open: o, day: d, startsAt: t, kinds: k, postId: i, extra: x } = item.json.meta;
+  assert.deepEqual({ seats: s, price: p, open: o, day: d, startsAt: t, kinds: k, postId: i, extra: x }, { seats, price, open, day, startsAt, kinds, postId, extra });
+  const schema = (await http("OPTIONS", `${core}/zero_events`)).json.schema.properties.meta.properties;
+  assert.deepEqual([schema.seats.type, schema.kinds.type, schema.kinds.items.enum], [["integer", "null"], "array", ["talk", "workshop", "social"]]);
+});
+
+test("core list routes take Zero's where, orderBy and search", async () => {
+  const mine = { id: { in: [ids.A, ids.B, ids.C] } };
+  for (const [where, orderBy] of [[{ seats: { gte: 10 } }, "seats"], [{}, "-seats"], [{ kinds: { has: "talk" } }, "title"], [{ day: { gte: "2026-01-01" } }, "day"]] as const) {
+    const zero = (await ok("GET", "/events" + qs({ where: { AND: [where, mine] }, orderBy }))).map((e: any) => e.title[0]).join("");
+    assert.equal(await coreTitles({ where: { AND: [where, mine] }, orderBy }), zero, JSON.stringify(where));
+  }
+  // Pagination is core's, over the rows the query selected, in Zero's order.
+  const page = await http("GET", `${core}/zero_events` + qs({ where: mine, orderBy: "-seats", per_page: "1", page: "2" }));
+  assert.deepEqual([page.json.map((e: any) => e.title.rendered[0]), (await fetch(`${core}/zero_events` + qs({ where: mine, per_page: "1" }))).headers.get("x-wp-total")], [["B"], "3"]);
+  // search matches any text field, not only title and content.
+  const noted = await ok("POST", "/events", { as: "editor", body: { title: `Noted ${run}` } });
+  assert.equal(await coreTitles({ search: run, where: { id: { in: [ids.A, noted.id] } }, orderBy: "title" }), "AN");
+  // The same refusals as /zero/v1, as WP_Error.
+  const bad = await http("GET", `${core}/zero_events` + qs({ where: { kinds: { in: ["talk"] } } }));
+  assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [400, "invalid_query", "/where/kinds/in"]);
+});
+
+test("core routes attach `with` relations as Zero rows", async () => {
+  const list = await http("GET", `${core}/zero_events` + qs({ where: { id: ids.A }, with: "post" }));
+  assert.deepEqual(list.json.map((e: any) => [e.id, e.with.post.id, e.with.post.title]), [[ids.A, post.id, `Meta ${run}`]]);
+  const item = await http("GET", `${core}/zero_events/${ids.A}` + qs({ with: { post: true } }));
+  assert.equal(item.json.with.post.id, post.id);
+  const unknown = await http("GET", `${core}/zero_events/${ids.A}?with=nope`);
+  assert.deepEqual([unknown.status, unknown.json.data.pointer], [400, "/with/nope"]);
+});
+
+test("core meta writes go through Zero's codec and validation", async () => {
+  const created = await http("POST", `${core}/zero_events`, { as: "editor", body: { title: `Core ${run}`, status: "publish", meta: { seats: 12, day: "2026-03-04", startsAt: "2026-03-04T10:00:00+02:00", kinds: ["social"], extra: { a: {} } } } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = created.json.id;
+  assert.deepEqual(
+    [created.json.meta.seats, created.json.meta.day, created.json.meta.startsAt, created.json.meta.kinds, created.json.meta.extra],
+    [12, "2026-03-04", "2026-03-04T08:00:00.000Z", ["social"], { a: {} }],
+  );
+  const meta = Object.fromEntries(sql(`SELECT meta_key AS k, meta_value AS v FROM wp_postmeta WHERE post_id = ${id} AND meta_key IN ('zero_day', 'zero_startsAt')`).map((r) => [r.k, r.v]));
+  assert.deepEqual(meta, { zero_day: "20260304", zero_startsAt: "2026-03-04 08:00:00" });
+  const updated = await http("POST", `${core}/zero_events/${id}`, { as: "editor", body: { meta: { seats: null, open: true } } });
+  assert.deepEqual([updated.status, updated.json.meta.seats, updated.json.meta.open], [200, null, true]);
+  assert.deepEqual([(await ok("GET", `/events/${id}`)).seats, (await ok("GET", `/events/${id}`)).open], [null, true]);
+  const bad = await http("POST", `${core}/zero_events/${id}`, { as: "editor", body: { meta: { day: "2026-02-30" } } });
+  assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [422, "invalid_input", "/day"]);
+  assert.equal((await ok("GET", `/events/${id}`)).day, "2026-03-04", "a refused save changes nothing");
 });

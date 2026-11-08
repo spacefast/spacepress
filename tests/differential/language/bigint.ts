@@ -47,7 +47,8 @@ function errors(): string[] {
   return [
     attempt("mix", () => (1n as unknown as number) + 1),
     attempt("divide by zero", () => 1n / 0n),
-    attempt("negative exponent", () => 2n ** -1n),
+    // V8 reworded this message between Node 22 builds, so only the error's name is compared.
+    attempt("negative exponent", () => { try { return 2n ** -1n; } catch (error) { throw new Error((error as Error).name); } }),
     attempt("fraction", () => BigInt(1.5)),
     attempt("bad text", () => BigInt("1e3")),
     attempt("json", () => JSON.stringify({ id: 1n })),

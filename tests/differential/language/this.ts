@@ -3,7 +3,7 @@
 // compiled PHP; the JSON results must be byte-identical. `this-helpers.mjs` runs the untyped forms.
 import { action, defineConfig } from "zero";
 import * as thisModule from "./this-helpers.mjs";
-import { detached, factory, mod, moduleReceivers, receivers, store } from "./this-helpers.mjs";
+import { detached, factory, mod, moduleReceivers, receivers, rich, richReceivers, store } from "./this-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -35,7 +35,8 @@ export default defineConfig({
       counter.inc(2);
       return [counter.inc(3), counter.describe()];
     }),
-    thisModuleObjects: run(() => [mod.who(), store.get(), thisModule.nsThis(), moduleReceivers()]),
+    thisModuleObjects: run(() => [mod.who(), store.get(), thisModule.store.get(), thisModule.mod.who(), moduleReceivers()]),
+    thisRichFields: run(() => [rich.kind(), rich.size(), richReceivers()]),
     thisDirectHelper: run(() => [who(), tag(1), tag.call("r", 2), who.apply(5, [])]),
     thisSpreadLiteral: run(() => {
       const base = { count: 1 };

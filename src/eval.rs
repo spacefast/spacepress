@@ -455,6 +455,9 @@ pub struct Evaluator<'p> {
     duplicate_keys: HashMap<usize, (Value, Vec<(String, Span)>)>,
     /// Labels directly on the statement being executed, taken by the loop they label.
     pending_labels: Vec<String>,
+    /// Allocations of `import * as ns` namespace objects. Node binds such a namespace as `this`
+    /// for `ns.f()`, and it's frozen and holds live bindings, which a copy can't reproduce.
+    pub namespace_imports: HashSet<usize>,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -478,6 +481,7 @@ impl<'p> Evaluator<'p> {
             key_spans: HashMap::new(),
             duplicate_keys: HashMap::new(),
             pending_labels: Vec::new(),
+            namespace_imports: HashSet::new(),
         }
     }
 
@@ -852,7 +856,11 @@ impl<'p> Evaluator<'p> {
                         Value::object(map)
                     } else {
                         let target = self.program.resolved[&(id, source.to_string())];
-                        Value::object(self.exports[target].clone())
+                        let namespace = Value::object(self.exports[target].clone());
+                        if let Some(ptr) = ptr_of(&namespace) {
+                            self.namespace_imports.insert(ptr);
+                        }
+                        namespace
                     }
                 }
             };

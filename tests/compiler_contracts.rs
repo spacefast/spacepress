@@ -3780,6 +3780,16 @@ fn language_refusals_carry_a_location_and_a_fix() {
         ),
         ("dynamic import", "", "{ const m = import('./x'); return 1; }"),
         (
+            "this through a module namespace",
+            "import * as ns from './ns.mjs';",
+            "ns.nsThis()",
+        ),
+        (
+            "function with properties in a this receiver",
+            "import { withHelper } from './ns.mjs';",
+            "withHelper.read()",
+        ),
+        (
             "this before super",
             "class A {} class B extends A { constructor(public n: number = (this as unknown as { n: number }).n) { super(); } }",
             "new B()",
@@ -3787,6 +3797,11 @@ fn language_refusals_carry_a_location_and_a_fix() {
     ];
     for (name, declarations, handler) in cases {
         let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("ns.mjs"),
+            "export function nsThis() { return typeof this; }\nfunction helper() { return 1; }\nhelper.x = 42;\nexport const withHelper = { helper, read() { return this.helper.x; } };\n",
+        )
+        .unwrap();
         std::fs::write(
             tmp.path().join("zero.config.ts"),
             format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});\n"),

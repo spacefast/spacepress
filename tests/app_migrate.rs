@@ -1549,3 +1549,398 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
         assert!(ok, "{capsule}: {report:#}");
     }
 }
+
+/// A 0.8 client app without pages converts: actions and tables into zero.config.ts, the client
+/// into public/, and the candidate checks with no diagnostics.
+#[test]
+fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    for file in [
+        "zero.config.ts",
+        "public/index.html",
+        "public/zero/main.js",
+        "public/zero/client.js",
+        "public/zero/handlers.js",
+        "public/app/client/index.js",
+        "public/app/client/Shelf.js",
+        "public/app/shared/format.js",
+        "public/client/styles.css",
+    ] {
+        assert!(out.join(file).is_file(), "{file}");
+    }
+    let review = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["pointer"] == "/client/index.tsx" && e["outcome"] == "review");
+    assert!(review, "{report:#}");
+    // No client file is dropped: every module reaches public/app/ and every stylesheet public/.
+    for source in walk(&fixture("client-app/client"))
+        .into_iter()
+        .chain(walk(&fixture("client-app/shared")))
+    {
+        let relative = source.strip_prefix(fixture("client-app")).unwrap();
+        let emitted = if relative.extension().is_some_and(|e| e == "css") {
+            out.join("public").join(relative)
+        } else {
+            out.join("public/app").join(relative.with_extension("js"))
+        };
+        assert!(emitted.is_file(), "{} was dropped", relative.display());
+    }
+    let checked = Command::new(env!("CARGO_BIN_EXE_zero"))
+        .args(["check", "--json"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    let checked: Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(checked["ok"], true, "{checked}");
+    assert_eq!(checked["diagnostics"].as_array().unwrap().len(), 0, "{checked}");
+}
+
+/// The bridge posts a 0.8 positional call as the input the generated v2 action declares, and the
+/// action answers it: the browser modules run in Node, the action in the built PHP plugin.
+#[test]
+fn the_client_bridge_calls_the_generated_v2_action() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    // 0.8's `useAction("banner")("ab", 3)`, through the converted module, against a recording fetch.
+    let script = r#"
+const sent = [];
+globalThis.fetch = async (url, init) => {
+  sent.push({ url, method: init.method, body: JSON.parse(init.body) });
+  return new Response(JSON.stringify({ data: "ABABAB" }), { status: 200 });
+};
+const bridge = await import(process.argv[1]);
+const result = await bridge.run("banner", ["ab", 3]);
+console.log(JSON.stringify({ sent, result }));
+"#;
+    let node = Command::new("node")
+        .args(["--input-type=module", "-e", script])
+        .arg(out.join("public/zero/client.js"))
+        .output()
+        .expect("node is required");
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let ran: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(ran["sent"][0]["url"], "/wp-json/zero/v1/actions/banner", "{ran}");
+    assert_eq!(ran["sent"][0]["method"], "POST");
+    assert_eq!(ran["result"], "ABABAB");
+    // The body the bridge sent is exactly what the generated action takes.
+    build(&out);
+    let results = run_actions(
+        &out,
+        &[],
+        &serde_json::json!([["banner", ran["sent"][0]["body"].clone()]]),
+    );
+    assert_eq!(results, serde_json::json!([{ "data": "ABABAB" }]));
+}
+
+/// What the bridge can't carry is refused with a registered Z08_CLIENT_* code at the import.
+#[test]
+fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    copy_dir(&fixture("client-app"), &root);
+    let shelf = root.join("client/Shelf.tsx");
+    let text = std::fs::read_to_string(&shelf).unwrap();
+    std::fs::write(
+        &shelf,
+        text.replace(
+            "import { useMutation, useQuery } from \"@spacefast/zero/client\";",
+            "import { storage, useMutation, useQuery } from \"@spacefast/zero/client\";\nimport { Card } from \"@spacefast/zero/kit\";",
+        ),
+    )
+    .unwrap();
+    let (ok, report) = migrate(
+        &root,
+        &temp.path().join("out"),
+        &["--space", "s", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = report["errors"].as_array().unwrap();
+    let codes: Vec<(&str, &str, u64, u64)> = errors
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+                e["line"].as_u64().unwrap(),
+                e["column"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    // Each refusal points at its import's module specifier.
+    let edited = std::fs::read_to_string(&shelf).unwrap();
+    let column = |line: usize| edited.lines().nth(line - 1).unwrap().find('"').unwrap() as u64 + 1;
+    assert_eq!(
+        codes,
+        [
+            ("Z08_CLIENT_STORAGE", "client/Shelf.tsx", 2, column(2)),
+            ("Z08_CLIENT_KIT", "client/Shelf.tsx", 3, column(3))
+        ],
+        "{report:#}"
+    );
+    for e in errors {
+        assert_eq!(e["pointer"], "/client/Shelf.tsx");
+        assert!(!e["fix"].as_str().unwrap().is_empty());
+    }
+    // An existing public/ (where the client goes) and an unreadable module have their own codes.
+    std::fs::write(&shelf, text).unwrap();
+    std::fs::create_dir_all(root.join("public")).unwrap();
+    std::fs::write(root.join("public/robots.txt"), "").unwrap();
+    std::fs::write(root.join("client/Feed.tsx"), [0xff, 0xfe, 0x00]).unwrap();
+    let (ok, report) = migrate(
+        &root,
+        &temp.path().join("out2"),
+        &["--space", "s", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let codes: Vec<(&str, &str)> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            ("Z08_CLIENT_PUBLIC", "public"),
+            ("Z08_CLIENT_UNREADABLE", "client/Feed.tsx")
+        ],
+        "{report:#}"
+    );
+    // A stylesheet's relative url(...) names a file the text-only candidate can't carry: refused at
+    // the reference. Data URIs, absolute URLs and commented-out references need no file.
+    std::fs::remove_dir_all(root.join("public")).unwrap();
+    std::fs::copy(fixture("client-app/client/Feed.tsx"), root.join("client/Feed.tsx")).unwrap();
+    let css = "/* url(./old.png) */\nmain { background: url(data:image/png;base64,AAAA); }\nh1 { background: url( 'https://cdn.test/a.png' ); }\nheader { background: url(\"./logo.png\"); }\n";
+    std::fs::write(root.join("client/styles.css"), css).unwrap();
+    let (ok, report) = migrate(
+        &root,
+        &temp.path().join("out3"),
+        &["--space", "s", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = report["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 1, "{report:#}");
+    let e = &errors[0];
+    assert_eq!(
+        (
+            e["code"].as_str(),
+            e["file"].as_str(),
+            e["line"].as_u64(),
+            e["column"].as_u64()
+        ),
+        (
+            Some("Z08_CLIENT_ASSET"),
+            Some("client/styles.css"),
+            Some(4),
+            Some(css.lines().nth(3).unwrap().find("url(").unwrap() as u64 + 1)
+        ),
+        "{e}"
+    );
+    assert!(e["reason"].as_str().unwrap().contains("url(./logo.png)"), "{e}");
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    for path in walk(from) {
+        let target = to.join(path.strip_prefix(from).unwrap());
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::copy(&path, target).unwrap();
+    }
+}
+
+/// Runs `script` as an ES module in Node with the converted bridge's path as `process.argv[1]`.
+fn bridge(out: &Path, script: &str) -> Value {
+    let node = Command::new("node")
+        .args(["--input-type=module", "-e", script])
+        .arg(out.join("public/zero/client.js"))
+        .output()
+        .expect("node is required");
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    serde_json::from_slice(&node.stdout).unwrap()
+}
+
+/// `usePaginatedQuery("page", { shelf })` reaches `page(ctx, shelf, options: PaginationOptions)` with
+/// the shelf as the first input and `{ numItems, cursor }` as the second, as the action declares.
+#[test]
+fn the_client_bridge_maps_paginated_queries_onto_the_handler_inputs() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    let ran = bridge(
+        &out,
+        r#"
+const sent = [];
+globalThis.fetch = async (url, init) => {
+  sent.push(JSON.parse(init.body));
+  return new Response(JSON.stringify({ data: { page: [], isDone: true, continueCursor: null } }), { status: 200 });
+};
+const bridge = await import(process.argv[1]);
+await bridge.run("page", bridge.paginatedArgs("page", { shelf: "inbox" }, { numItems: 2, cursor: null }));
+console.log(JSON.stringify(sent[0]));
+"#,
+    );
+    assert_eq!(
+        ran,
+        serde_json::json!({ "shelf": "inbox", "options": { "numItems": 2, "cursor": null } })
+    );
+    // Those are exactly the inputs the generated action takes.
+    build(&out);
+    let plugin = out.join(".zero/wp-content/plugins/zero-app-shelf-notes/zero/app/schema.php");
+    let script = "echo json_encode(array_keys((require $argv[1])['actions']['page']['input']));";
+    let php = Command::new("php").args(["-r", script]).arg(plugin).output().unwrap();
+    assert!(php.status.success(), "{}", String::from_utf8_lossy(&php.stderr));
+    let inputs: Value = serde_json::from_slice(&php.stdout).unwrap();
+    assert_eq!(inputs, serde_json::json!(["shelf", "options"]));
+}
+
+/// A guest whose access token expired is refreshed and stays the same guest; a handler that refuses
+/// guests leaves the session alone; a new guest is minted only without a session, or when the
+/// session can't be renewed.
+#[test]
+fn the_client_bridge_keeps_a_guest_identity_across_token_expiry() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    // A server that issues guest-1 once, expires its first access token, and refreshes it.
+    let ran = bridge(
+        &out,
+        r#"
+const store = new Map();
+globalThis.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+const calls = [];
+let guests = 0;
+const json = (status, body) => new Response(JSON.stringify(body), { status });
+globalThis.fetch = async (url, init) => {
+  const auth = init.headers?.authorization ?? null;
+  calls.push(`${init.method} ${url} ${auth ?? "-"}`);
+  if (url.endsWith("/auth/guest")) {
+    const n = ++guests;
+    return json(201, { data: { accessToken: n === 1 ? "a1" : `g${n}`, refreshToken: n === 1 ? "r1" : `rg${n}`, clientId: "guests", user: { id: n } } });
+  }
+  if (url.endsWith("/auth/config")) return json(200, { data: { issuer: "https://site.test/identity" } });
+  if (url === "https://site.test/identity/token") {
+    const form = new URLSearchParams(init.body);
+    if (form.get("refresh_token") !== "r1" || form.get("client_id") !== "guests") return json(400, { error: "invalid_grant" });
+    return json(200, { access_token: "a2", refresh_token: "r2", expires_in: 3600 });
+  }
+  if (url.endsWith("/me")) return json(200, { data: null });
+  if (url.endsWith("/actions/banner")) return json(401, { code: "unauthorized", detail: "Sign in to continue." });
+  if (auth === null) return json(401, { code: "unauthorized", detail: "An identity is required." });
+  if (auth === "Bearer a1" && store.has("expired")) return json(401, { code: "unauthenticated", detail: "expired" });
+  return json(200, { data: auth });
+};
+const bridge = await import(process.argv[1]);
+const first = await bridge.run("add", ["inbox", "x"]);
+store.set("expired", "1");
+const second = await bridge.run("add", ["inbox", "y"]);
+const refused = await bridge.run("banner", ["ab", 1]).then(() => "ok", (e) => e.code);
+const kept = JSON.parse(store.get("zero08.session"));
+// A session the issuer won't renew (a refresh token it refused) falls back to a new guest, once.
+store.set("zero08.session", JSON.stringify({ accessToken: "a1", refreshToken: "stale", clientId: "guests" }));
+const fallback = await bridge.run("add", ["inbox", "z"]);
+console.log(JSON.stringify({ first, second, refused, guests, session: kept, fallback, calls: calls.filter((c) => !c.includes("/me")) }));
+"#,
+    );
+    assert_eq!(ran["first"], "Bearer a1", "{ran:#}");
+    assert_eq!(
+        ran["second"], "Bearer a2",
+        "the refreshed token, not a new guest: {ran:#}"
+    );
+    assert_eq!(ran["refused"], "unauthorized", "{ran:#}");
+    assert_eq!(
+        ran["session"],
+        serde_json::json!({ "accessToken": "a2", "refreshToken": "r2", "clientId": "guests" })
+    );
+    // Only the unrenewable session minted a second guest; refresh and refusal minted none.
+    assert_eq!(ran["guests"], 2, "{ran:#}");
+    assert_eq!(ran["fallback"], "Bearer g2", "the new guest's token: {ran:#}");
+}
+
+/// A refresh that can't reach the issuer keeps the session and fails the call, as runtime/client
+/// does: no new guest. Once the issuer is back, the same session renews, and `/me` (useAuth) goes
+/// through the same renewal instead of reporting a signed-out visitor.
+#[test]
+fn the_client_bridge_keeps_the_session_when_a_refresh_fails_on_the_network() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    let ran = bridge(
+        &out,
+        r#"
+const store = new Map([["zero08.session", JSON.stringify({ accessToken: "a1", refreshToken: "r1", clientId: "guests" })]]);
+globalThis.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+let offline = true;
+let guests = 0;
+const me = [];
+const json = (status, body) => new Response(JSON.stringify(body), { status });
+globalThis.fetch = async (url, init) => {
+  const auth = init.headers?.authorization ?? null;
+  if (url.endsWith("/me")) me.push(auth);
+  if (url.endsWith("/auth/guest")) return json(201, { data: { accessToken: `g${++guests}`, refreshToken: "rg", clientId: "guests" } });
+  if (url.endsWith("/auth/config")) return json(200, { data: { issuer: "https://site.test/identity" } });
+  if (url === "https://site.test/identity/token") {
+    if (offline) throw new TypeError("fetch failed");
+    return json(200, { access_token: "a2", refresh_token: "r2", expires_in: 300 });
+  }
+  if (auth === "Bearer a1") return json(401, { code: "unauthenticated", detail: "expired" });
+  if (url.endsWith("/me")) return json(200, { data: { id: 7, name: "Guest 7", role: "guest" } });
+  return json(200, { data: auth });
+};
+const bridge = await import(process.argv[1]);
+const failed = await bridge.run("add", ["inbox", "x"]).then(() => "ok", (e) => e.message);
+const kept = JSON.parse(store.get("zero08.session"));
+offline = false;
+const retried = await bridge.run("add", ["inbox", "y"]);
+// The renewal refreshes useAuth: /me goes out with the renewed token, not the expired one.
+for (let i = 0; i < 20 && me.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+const renewedMe = me.slice(0, 1);
+// /me itself renews: with an expired token held and the issuer up, auth still reports the user.
+store.set("zero08.session", JSON.stringify({ accessToken: "a1", refreshToken: "r2", clientId: "guests" }));
+const auth = await bridge.currentAuth();
+console.log(JSON.stringify({ failed, kept, retried, guests, me: renewedMe, auth: auth.userId, session: JSON.parse(store.get("zero08.session")) }));
+"#,
+    );
+    assert_eq!(
+        ran["failed"], "fetch failed",
+        "the network error reaches the caller: {ran:#}"
+    );
+    assert_eq!(
+        ran["kept"],
+        serde_json::json!({ "accessToken": "a1", "refreshToken": "r1", "clientId": "guests" }),
+        "the session survives a failed refresh: {ran:#}"
+    );
+    assert_eq!(ran["retried"], "Bearer a2", "{ran:#}");
+    assert_eq!(ran["guests"], 0, "no guest was minted: {ran:#}");
+    assert_eq!(ran["me"], serde_json::json!(["Bearer a2"]), "{ran:#}");
+    assert_eq!(ran["auth"], "7", "/me renewed instead of reporting a guest: {ran:#}");
+    assert_eq!(ran["session"]["refreshToken"], "r2");
+}

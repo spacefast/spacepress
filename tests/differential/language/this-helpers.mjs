@@ -46,9 +46,25 @@ function whoModule() { return typeof this; }
 export const mod = { who: whoModule };
 export const store = { count: 2, get() { return this.count; } };
 export const counter = { count: 0, inc() { this.count += 1; return this.count; }, peek() { return this.count; } };
-export function nsThis() { return typeof this; }
+// Every kind of field stays readable through `this`: regexes, nested objects with methods, Maps.
+export const rich = {
+  re: /ab+/g,
+  cfg: { v: 7, bump() { this.v += 1; return this.v; } },
+  m: new Map([[1, 2]]),
+  tags: ["a", "b"],
+  kind() { return typeof this.re; },
+  read() { return this.cfg.v; },
+  size() { return this.m.size; },
+  test() { return this.re.test("xabbb"); },
+  first() { return this.tags[0]; },
+};
 
 export function moduleReceivers() {
   counter.inc();
   return [mod.who(), store.get(), counter.inc(), counter.peek(), counter.count];
+}
+
+export function richReceivers() {
+  const bumped = rich.cfg.bump();
+  return [rich.kind(), bumped, rich.read(), rich.cfg.v, rich.size(), rich.test(), rich.first()];
 }

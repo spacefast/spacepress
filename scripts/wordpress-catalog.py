@@ -16,6 +16,8 @@ import io
 import json
 import re
 import tarfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -105,7 +107,16 @@ def fetch(name):
     CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / pin["url"].rsplit("/", 1)[1]
     if not path.exists():
-        data = urllib.request.urlopen(pin["url"]).read()
+        # GitHub and npm archive downloads fail transiently (502/503/504) on CI runners; the bytes
+        # are checked against the pin below, so a retry can't change what's accepted.
+        for attempt in range(5):
+            try:
+                data = urllib.request.urlopen(pin["url"], timeout=60).read()
+                break
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as error:
+                if attempt == 4 or (isinstance(error, urllib.error.HTTPError) and error.code < 500):
+                    raise
+                time.sleep(2 ** attempt * 3)
         path.write_bytes(data)
     data = path.read_bytes()
     digest = hashlib.sha256(data).hexdigest()

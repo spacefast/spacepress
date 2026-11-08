@@ -114,7 +114,7 @@ export async function lock(state) {
 }
 
 async function migrationHistory(project) {
-  const directory = join(project, 'zero/migrations');
+  const directory = join(project, 'zero/_generated/migrations');
   if (!await exists(directory)) return {};
   const history = {};
   for (const name of (await readdir(directory)).filter((name) => name.endsWith('.sql')).sort()) {
@@ -348,12 +348,12 @@ async function main() {
     await execute(zero, args, { timeout: 300000 });
     managed.owner.pending = {
       migrations: await migrationHistory(project),
-      snapshot: await json(join(project, 'zero/migrations/snapshot.json')),
+      snapshot: await json(join(project, 'zero/_generated/migrations/snapshot.json')),
     };
     await atomicJson(managed.marker, managed.owner);
   };
   const configure = async () => {
-    const snapshot = await json(join(project, 'zero/migrations/snapshot.json'));
+    const snapshot = await json(join(project, 'zero/_generated/migrations/snapshot.json'));
     const manifest = await json(join(content, 'zero-manifest.json'));
     const retired = managed.owner.generated.filter((slug) => !(slug in manifest.plugins));
     for (const slug of retired) await plainDirectory(join(managed.owner.site, 'wp-content/plugins', slug));

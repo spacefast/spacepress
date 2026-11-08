@@ -29,10 +29,14 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
         "export const suffix = '-installed';",
     );
     write(&project, "public/logo.svg", "<svg/>");
-    write(&project, "zero/migrations/0001_adopt.sql", "SELECT 'archived only';");
     write(
         &project,
-        "zero/migrations/snapshot.json",
+        "zero/_generated/migrations/0001_adopt.sql",
+        "SELECT 'archived only';",
+    );
+    write(
+        &project,
+        "zero/_generated/migrations/snapshot.json",
         r#"{"version":2,"tables":{}}"#,
     );
     write(&project, "unrelated.ts", "this is not an input");

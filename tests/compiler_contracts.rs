@@ -180,7 +180,7 @@ export default defineConfig({ name: "presentation", collections: { notes } });"#
     assert_eq!(field["placeholder"], "Jane");
     assert_eq!(field["wrapper"]["width"], 50);
     assert_eq!(got["json"]["instructions"], "Enter valid JSON.");
-    let snapshot = tmp.path().join("zero/migrations/snapshot.json");
+    let snapshot = tmp.path().join("zero/_generated/migrations/snapshot.json");
     let before = std::fs::read(&snapshot).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
@@ -194,7 +194,7 @@ export default defineConfig({ name: "presentation", collections: { notes } });"#
         "presentation changes cannot change storage"
     );
     assert_eq!(
-        std::fs::read_dir(tmp.path().join("zero/migrations"))
+        std::fs::read_dir(tmp.path().join("zero/_generated/migrations"))
             .unwrap()
             .filter(|entry| entry.as_ref().unwrap().path().extension().is_some_and(|e| e == "sql"))
             .count(),

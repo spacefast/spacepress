@@ -121,10 +121,10 @@ const compile = () => {
     outputs = {
       "zero/app/functions.php": output.functionsPhp,
       "zero/app/schema.php": output.schemaPhp,
-      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`zero/migrations/${name}`, sql])),
+      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`zero/_generated/migrations/${name}`, sql])),
       ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`zero/client/${name}`, text])),
       "zero.gen.ts": output.genTs,
-      "zero/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
+      "zero/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
     };
     updateFileMenu(selected);
     status.dataset.state = "ok";

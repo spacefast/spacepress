@@ -27,7 +27,7 @@ url=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "
 password=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["users"]["admin"]["appPassword"])' "$work/harness.json")
 # The pull lists the site's abilities as an administrator, from the environment only.
 ZERO_APP_PASSWORD="admin:$password" "$zero" abilities pull "$work/app" --site "$url" --only 'acme/*'
-python3 - "$work/app/zero/abilities.json" <<'PY'
+python3 - "$work/app/zero/_generated/abilities.json" <<'PY'
 import json, sys
 lock = json.load(open(sys.argv[1]))
 assert [a["name"] for a in lock["abilities"]] == ["acme/word-count"], lock
@@ -38,7 +38,7 @@ cp "$here/zero.config.ts" "$work/app/zero.config.ts"
 cp -r "$here/wp-hooks" "$work/app/wp-hooks"
 "$zero" build "$work/app" --out "$work/next" --quiet >/dev/null
 rsync -a --delete "$work/next/plugins/zero-app-abilities-lane/" "$work/app/zero/dist/wp-content/plugins/zero-app-abilities-lane/"
-grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/zero.gen.ts"
+grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/zero/_generated/db.d.ts"
 # Doctor reports the lock as satisfied, then the change once the site's schema moves.
 ZERO_APP_PASSWORD="admin:$password" "$zero" doctor "$work/app" --out "$work/next" --site "$url" > "$work/doctor.txt" || true
 grep -q '✓ locked abilities: all present and unchanged' "$work/doctor.txt" || { cat "$work/doctor.txt" >&2; exit 1; }

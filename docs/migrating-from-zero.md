@@ -154,6 +154,20 @@ zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_exam
 zero check ./migrated-app
 ```
 
+A capsule with a schema needs a table mode, set by one of two flags:
+
+- `--space <id>` adopts the published Space's existing 0.8 tables
+  (`sf_<space>_<table>_<hash>`). The first migration is
+  `zero/migrations/0001_adopt.sql`.
+- `--fresh` declares plain v2 tables and creates them empty. Use it for a Space
+  that has no 0.8 tables yet. The first migration is
+  `zero/migrations/0001_init.sql`, and no rows are copied.
+
+The two flags exclude each other. With neither, the schema is refused with
+`Z08_SPACE_REQUIRED`. The browser build takes the same choice as
+`space: "<id>"` or `fresh: true`; `fresh` wins when both are given. The report's
+`tables` field says which mode ran: `adopt`, `fresh` or `unset`.
+
 To start from what a 0.8 publish stored instead, pass its finalize payload:
 `--manifest finalize.json ./old-app` checks that every source file matches the
 published SHA-256 before converting, and `--manifest finalize.json` alone

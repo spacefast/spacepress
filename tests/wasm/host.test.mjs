@@ -31,6 +31,19 @@ test('wasm migrates real source and returns a compilable file map without writes
   assert.equal(candidate.report.status, 'candidate');
   assert.ok(candidate.files['zero/migrations/snapshot.json']);
   assert.deepEqual(call(exports, 'zero_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);
+  // A new Space has no 0.8 tables: `fresh: true` creates them instead of adopting; a schema with
+  // neither `fresh` nor `space` is refused with the choice.
+  const unset = call(exports, 'zero_migrate_app', { project });
+  assert.deepEqual(unset.report.errors.map((e) => e.code), ['Z08_SPACE_REQUIRED']);
+  for (const request of [{ project, space: 'spc_new', fresh: true }, { project, fresh: true }]) {
+    const fresh = call(exports, 'zero_migrate_app', request);
+    assert.deepEqual(fresh.report.errors, [], JSON.stringify(request));
+    assert.equal(fresh.report.tables, 'fresh');
+    assert.ok(fresh.files['zero/migrations/0001_init.sql'].includes('CREATE TABLE'));
+    assert.ok(!fresh.files['server/index.ts'].includes('existingTable'));
+    assert.equal(JSON.parse(fresh.files['zero/migrations/snapshot.json']).tables.tasks.existingTable, undefined);
+    assert.deepEqual(call(exports, 'zero_check', { project: '/candidate', files: fresh.files }).check.diagnostics, []);
+  }
   const config = call(exports, 'zero_migrate_config', { project: path.resolve('tests/wp/legacy'), input: 'capsule.ts' });
   assert.equal(config.status, 'candidate');
   assert.deepEqual(config.errors, []);

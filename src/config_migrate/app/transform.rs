@@ -182,12 +182,13 @@ impl Field {
 }
 struct Table {
     name: String,
-    physical: String,
+    /// The 0.8 table this adopts (`sf_<space>_<table>_<hash>`), or None for a new v2 table.
+    physical: Option<String>,
     fields: Vec<Field>,
     indexes: BTreeMap<String, Vec<String>>,
 }
 
-fn table(e: &Expr, name: &str, space: Option<&str>, aliases: &BTreeMap<String, String>) -> Result<Table, Failure> {
+fn table(e: &Expr, name: &str, tables: super::Tables, aliases: &BTreeMap<String, String>) -> Result<Table, Failure> {
     let at = pointer("/schema", name);
     ident(name, &at)?;
     let mut e = e;
@@ -273,15 +274,15 @@ fn table(e: &Expr, name: &str, space: Option<&str>, aliases: &BTreeMap<String, S
                         }
                     }
                 }
-                let space = space.filter(|s| !s.is_empty()).ok_or_else(|| {
-                    fail(
-                        &at,
-                        "--space is required to bind the actual sf_<space>_<table>_<hash> table",
-                    )
-                })?;
+                // Without a table mode the table still converts as fresh, so handlers check
+                // against it; `app` reports the one SPACE_REQUIRED refusal for the schema.
+                let physical = match tables {
+                    super::Tables::Adopt(space) => Some(physical(space, name)),
+                    super::Tables::Fresh | super::Tables::Unset => None,
+                };
                 return Ok(Table {
                     name: name.into(),
-                    physical: physical(space, name),
+                    physical,
                     fields,
                     indexes,
                 });
@@ -352,7 +353,7 @@ pub(super) struct Transformed {
 pub(super) fn app(
     path: &Path,
     source: &str,
-    space: Option<&str>,
+    table_mode: super::Tables,
     users: bool,
     content_posts: bool,
     entries: &mut Vec<Entry>,
@@ -487,11 +488,20 @@ pub(super) fn app(
         ));
     }
     let mut tables = BTreeMap::new();
+    if let Some(schema) = root.get("schema")
+        && table_mode == super::Tables::Unset
+        && !obj(schema, "/schema")?.is_empty()
+    {
+        errors.push(fail("/schema", super::SPACE_REQUIRED).spanned(schema.span, Path::new("")));
+    }
     if let Some(schema) = root.get("schema") {
         for (name, e) in obj(schema, "/schema")? {
-            match table(e, &name, space, &aliases) {
+            match table(e, &name, table_mode, &aliases) {
                 Ok(t) => {
-                    entries.push(entry(&pointer("/schema",&name),"mapped",format!("bind existing SQL table {}; BIGINT id, TEXT metadata/scalars and DOUBLE numbers; no rows copied",t.physical)));
+                    entries.push(entry(&pointer("/schema", &name), "mapped", match &t.physical {
+                        Some(physical) => format!("bind existing SQL table {physical}; BIGINT id, TEXT metadata/scalars and DOUBLE numbers; no rows copied"),
+                        None => "new v2 table, created by the candidate's first migration; TEXT metadata/scalars and DOUBLE numbers".into(),
+                    }));
                     tables.insert(name, t);
                 }
                 Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
@@ -912,7 +922,11 @@ pub(super) fn app(
         config.push_str(&format!("routes: {{\n{}\n}},", routes.join(",\n")));
     }
     config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
-    entries.push(entry("","review","Adoption requires the original MariaDB database and --space binding. IDs above Number.MAX_SAFE_INTEGER, existing sessions, client routes, realtime and deployment activation need separate validation. No deployment is performed."));
+    entries.push(if tables.values().any(|t| t.physical.is_none()) {
+        entry("", "review", "Fresh tables: the candidate creates new, empty v2 tables and copies no 0.8 rows. Bind --space instead to adopt a published Space's tables. Sessions, client routes and deployment activation need separate validation. No deployment is performed.")
+    } else {
+        entry("","review","Adoption requires the original MariaDB database and --space binding. IDs above Number.MAX_SAFE_INTEGER, existing sessions, client routes, realtime and deployment activation need separate validation. No deployment is performed.")
+    });
     Ok(Transformed {
         config,
         content_config,
@@ -1016,7 +1030,12 @@ fn table_code(t: &Table) -> String {
     for f in &t.fields {
         out.push_str(&format!("{}: {},\n", q(&f.name), f.builder()));
     }
-    out.push_str(&format!("}}, {{ existingTable: {}, api: {{ list:false, get:false, create:false, update:false, delete:false }}, agents:false }});\n",q(&t.physical)));
+    let existing = t
+        .physical
+        .as_deref()
+        .map(|p| format!("existingTable: {}, ", q(p)))
+        .unwrap_or_default();
+    out.push_str(&format!("}}, {{ {existing}api: {{ list:false, get:false, create:false, update:false, delete:false }}, agents:false }});\n"));
     out.push_str(&format!("function __z08_{n}_row(row: InferSelectModel<typeof __z08_{n}>) {{ return {{ id: String(row.id), createdAt: row.createdAt, updatedAt: row.updatedAt,"));
     for f in &t.fields {
         out.push_str(&format!(

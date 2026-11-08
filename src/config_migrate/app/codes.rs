@@ -32,8 +32,30 @@ pub struct Rule {
 
 const LANGUAGE: &str = "error: Zero code doesn't support ";
 
+/// `Z08_SCHEMA` when the candidate creates new tables: nothing is adopted, so the fix names the
+/// v2 declaration to write, not the 0.8 table to match.
+pub static SCHEMA_FRESH: Rule = Rule {
+    code: "Z08_SCHEMA_FRESH",
+    feature: "schema table or field, for a new v2 table",
+    v2: "table() with text, real, boolean and json columns",
+    fix: "Declare the table with literal field types and literal defaults; it is created empty.",
+    test: |p, _| p.starts_with("/schema"),
+    example: ("/schema/tasks/title", "default must be a literal scalar"),
+};
+
 /// First match wins, so specific rules come before the general ones they overlap.
 pub static RULES: &[Rule] = &[
+    Rule {
+        code: "Z08_SPACE_REQUIRED",
+        feature: "schema tables without a table mode",
+        v2: "new v2 tables (--fresh) or the Space's adopted 0.8 tables (--space)",
+        fix: "Pass --fresh for a Space with no 0.8 tables, or --space <id> to adopt existing ones.",
+        test: |_, r| r.starts_with("the schema needs a table mode"),
+        example: (
+            "/schema/tasks",
+            "the schema needs a table mode: pass --fresh for a Space with no 0.8 tables",
+        ),
+    },
     Rule {
         code: "Z08_SOURCE_NOT_RECOVERABLE",
         feature: "a published 0.8 version without its authored source",
@@ -554,9 +576,13 @@ fn feature(rule: &Rule, pointer: &str, reason: &str) -> String {
 }
 
 /// Fills in the contract on every refusal; `file` is where an unlocated refusal points.
-pub fn finish(errors: &mut [Failure], file: &str) {
+pub fn finish(errors: &mut [Failure], file: &str, fresh: bool) {
     for error in errors {
-        let rule = rule(&error.pointer, &error.reason);
+        let mut rule = rule(&error.pointer, &error.reason);
+        // Fresh tables are created, not adopted, so a schema refusal there has its own code and fix.
+        if fresh && rule.code == "Z08_SCHEMA" {
+            rule = &SCHEMA_FRESH;
+        }
         // A page, layout or island pointer names its file; anything else unlocated is the server entry's.
         let named = ["/pages/", "/layouts/", "/islands/", "/_pages/", "/client/"]
             .iter()
@@ -586,12 +612,15 @@ mod tests {
     #[test]
     fn every_rule_is_complete_unique_and_claims_its_example() {
         let mut codes = std::collections::BTreeSet::new();
-        for r in RULES {
+        assert_eq!(rule(SCHEMA_FRESH.example.0, SCHEMA_FRESH.example.1).code, "Z08_SCHEMA");
+        for r in RULES.iter().chain([&SCHEMA_FRESH]) {
             assert!(r.code.starts_with("Z08_") && codes.insert(r.code), "{}", r.code);
             for (name, text) in [("feature", r.feature), ("v2", r.v2), ("fix", r.fix)] {
                 assert!(!text.is_empty() && !text.contains('\n'), "{} {name}", r.code);
             }
-            assert_eq!(rule(r.example.0, r.example.1).code, r.code, "{:?}", r.example);
+            if r.code != SCHEMA_FRESH.code {
+                assert_eq!(rule(r.example.0, r.example.1).code, r.code, "{:?}", r.example);
+            }
         }
         let registry: serde_json::Value =
             serde_json::from_str(include_str!("../../../tests/compatibility/registry.json")).unwrap();

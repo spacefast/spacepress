@@ -344,9 +344,30 @@ function __z08RangeBoolean(value: boolean | null | undefined): boolean { if (val
 "#;
 
 pub(super) struct Transformed {
+    /// The 0.8 display name, else the v2 app name.
+    pub title: String,
     pub config: String,
     pub content_config: Option<String>,
     pub connector_roles: Value,
+    /// Each converted query, mutation and action: its name, its v2 input names in 0.8's positional
+    /// order, and whether the last one collects the rest arguments. The client bridge reads this.
+    pub handlers: Vec<(String, Vec<String>, bool)>,
+}
+
+/// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
+fn input_names(f: &Func) -> (Vec<String>, bool) {
+    let mut names = vec![];
+    for (position, p) in f.params.iter().skip(1).enumerate() {
+        names.push(match &p.pat {
+            Pat::Id(n, _) => n.clone(),
+            Pat::Default(inner, _) => match &**inner {
+                Pat::Id(n, _) => n.clone(),
+                _ => format!("arg{}", position + 1),
+            },
+            Pat::Obj { .. } | Pat::Arr { .. } => format!("arg{}", position + 1),
+        });
+    }
+    (names, f.params.last().is_some_and(|p| p.rest) && f.params.len() > 1)
 }
 
 pub(super) fn app(
@@ -633,6 +654,7 @@ pub(super) fn app(
             .get("auth")
             .is_some_and(|auth| !matches!(literal(auth), Ok(Value::Bool(false))));
     let mut handlers = Vec::new();
+    let mut client_handlers = Vec::new();
     let mut names = BTreeSet::new();
     for section in ["queries", "mutations", "actions"] {
         if let Some(group) = root.get(section) {
@@ -657,7 +679,7 @@ pub(super) fn app(
                     let E::Func(f) = &a[0].kind else {
                         return Err(fail(&at, "handler must be an inline function"));
                     };
-                    handler(
+                    let converted = handler(
                         source,
                         f,
                         &tables,
@@ -670,7 +692,10 @@ pub(super) fn app(
                             sends: section != "queries",
                             route: None,
                         },
-                    )
+                    )?;
+                    let (inputs, rest) = input_names(f);
+                    client_handlers.push((name.clone(), inputs, rest));
+                    Ok(converted)
                 })();
                 match result {
                     Ok((h, generated)) => {
@@ -905,9 +930,11 @@ pub(super) fn app(
     config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
     entries.push(entry("","review","Adoption requires the original MariaDB database and --space binding. IDs above Number.MAX_SAFE_INTEGER, existing sessions, client routes, realtime and deployment activation need separate validation. No deployment is performed."));
     Ok(Transformed {
+        title: title.clone().unwrap_or_else(|| name.clone()),
         config,
         content_config,
         connector_roles: Value::Object(connector_roles),
+        handlers: client_handlers,
     })
 }
 

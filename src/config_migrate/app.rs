@@ -1,4 +1,5 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
+mod client;
 mod endpoints;
 mod manifest;
 mod pages;
@@ -277,6 +278,12 @@ fn convert(
         }
     }
     let converted = convert_pages(&*fs, &root, report, &mut sources)?;
+    // 0.8 served `client/` as a single-page app when the capsule had no pages.
+    let client_app = if converted.is_empty() && !has_pages(&*fs, &root) {
+        client_entry(&*fs, &root)?
+    } else {
+        None
+    };
     let transformed = transform::app(
         &entry,
         sources
@@ -289,6 +296,27 @@ fn convert(
         &mut report.errors,
     )?;
     report.connector_roles = transformed.connector_roles;
+    let client_files = match &client_app {
+        Some(file) => {
+            if fs.exists(&root.join("public")) {
+                report.errors.push(fail(
+                    "/public",
+                    "the capsule already has public/, where the converted client app goes; move those files into the client or out of the capsule",
+                ));
+            }
+            client::convert(
+                &*fs,
+                &root,
+                file,
+                &transformed.title,
+                &transformed.handlers,
+                &mut report.entries,
+                &mut report.errors,
+            )
+            .files
+        }
+        None => BTreeMap::new(),
+    };
     if sources.contains_key(Path::new("zero.config.ts")) || sources.contains_key(Path::new("server/__z08-content.ts")) {
         return Err(fail("", "input imports a reserved generated config path"));
     }
@@ -344,6 +372,9 @@ fn convert(
         files.insert(path.to_string_lossy().replace('\\', "/"), text);
     }
     for (path, text) in page_files {
+        files.insert(path, text);
+    }
+    for (path, text) in client_files {
         files.insert(path, text);
     }
     files.insert("zero/migrations/0001_adopt.sql".into(), sql);
@@ -477,6 +508,37 @@ fn server_entry(fs: &dyn Fs, root: &Path, report: &mut Report) -> Result<PathBuf
         ));
     }
     Ok(PathBuf::from(server))
+}
+
+/// The 0.8 config's `runtime.client`, else `client/index.tsx`, when that file exists.
+fn client_entry(fs: &dyn Fs, root: &Path) -> Result<Option<PathBuf>, Failure> {
+    let mut client = "client/index.tsx".to_string();
+    if let Some(name) = CONFIG_FILES.iter().find(|f| fs.is_file(&root.join(f))) {
+        let text = fs.read_to_string(&root.join(name)).map_err(io)?;
+        let config: serde_json::Value = serde_json::from_str(&strip_jsonc(&text))
+            .map_err(|e| fail(&format!("/{name}"), format!("cannot read {name}: {e}")))?;
+        if let Some(c) = config.pointer("/runtime/client").and_then(serde_json::Value::as_str) {
+            client = c.trim_start_matches("./").to_string();
+        }
+    }
+    let path = PathBuf::from(&client);
+    let inside = path.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    Ok((inside && fs.is_file(&root.join(&path)) && !fs.is_symlink(&root.join(&path))).then_some(path))
+}
+
+/// Whether `pages/` holds anything 0.8 routed as a page.
+fn has_pages(fs: &dyn Fs, root: &Path) -> bool {
+    let mut stack = vec![root.join("pages")];
+    while let Some(dir) = stack.pop() {
+        for path in fs.read_dir(&dir).unwrap_or_default() {
+            if fs.is_dir(&path) {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "tsx" || e == "md" || e == "html") {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// JSONC → JSON: comments and trailing commas outside strings.

@@ -36,12 +36,37 @@ impl Source {
 pub struct Failure {
     pointer: String,
     reason: String,
+    /// A coded refusal (`Z08_*`): a stable code, where it is, and what replaces it on v2.
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    diagnostic: Option<Diagnostic>,
+}
+
+/// The contract a coded refusal carries; codes are registered in tests/compatibility/registry.json.
+#[derive(Debug, Serialize)]
+pub struct Diagnostic {
+    pub code: &'static str,
+    pub file: String,
+    pub line: u32,
+    pub column: u32,
+    pub feature: String,
+    pub v2: String,
+    pub fix: String,
 }
 
 pub(super) fn fail(at: &str, reason: impl Into<String>) -> Failure {
     Failure {
         pointer: at.into(),
         reason: reason.into(),
+        diagnostic: None,
+    }
+}
+
+/// A coded refusal: the reason reads `<feature>: <fix>`.
+pub(super) fn refuse(at: &str, diagnostic: Diagnostic) -> Failure {
+    Failure {
+        pointer: at.into(),
+        reason: format!("{}: {}", diagnostic.feature, diagnostic.fix),
+        diagnostic: Some(diagnostic),
     }
 }
 

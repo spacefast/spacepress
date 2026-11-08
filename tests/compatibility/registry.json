@@ -745,6 +745,10 @@
       "feature": "credential file in the project (keys, .env files, .npmrc, .ssh/, .aws/)"
     },
     {
+      "code": "Z08_OMITTED_POSTS",
+      "feature": "0.8 native posts content (content/posts/)"
+    },
+    {
       "code": "Z08_OMITTED_SYNC",
       "feature": "content sync of native posts"
     },

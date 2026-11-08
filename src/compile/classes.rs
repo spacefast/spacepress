@@ -29,10 +29,6 @@ struct Accessor {
     setter: bool,
 }
 
-fn key(class: &Rc<ClassValue>) -> usize {
-    Rc::as_ptr(class) as usize
-}
-
 impl<'a, 'p> Compiler<'a, 'p> {
     pub(super) fn class_shape(&self, id: usize) -> Ty {
         self.classes[&id].statics.clone()
@@ -130,7 +126,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     pub(super) fn ensure_class(&mut self, class: &Rc<ClassValue>) -> Result<usize> {
-        let id = key(class);
+        // Classes carry static state, so each plugin compiles its own copy: the id is interned
+        // per (owner, class), never derived from the pointer's bits.
+        let next = self.class_ids.len();
+        let id = *self
+            .class_ids
+            .entry((self.owner(), Rc::as_ptr(class) as usize))
+            .or_insert(next);
         if self.classes.contains_key(&id) {
             return Ok(id);
         }

@@ -1,10 +1,11 @@
 //! The `zero` command line.
 //!
 //! ```text
-//! zero build [dir] [--out <dir>] [--quiet]   write the plugins to .zero/wp-content
-//! zero check [dir] [--json]                  compile; write nothing (JSON diagnostics optional)
+//! zero build [dir] [--out <dir>] [--quiet] [--frozen]   write the plugins to .zero/wp-content
+//! zero check [dir] [--json] [--frozen]                  compile; write nothing (JSON diagnostics optional)
 //! zero dev [dir] [--port <n>] [--no-watch]   local WordPress through Studio, without Docker
 //! zero doctor [dir] [--out <dir>] [--site <url> --token <t>] [--json]
+//! zero abilities pull [dir] --site <url>    lock a site's abilities into zero/abilities.json
 //! zero sync [status|resolve <uid>] [dir] --site <url> <credential>   files ⇄ records (src/commands/sync.rs)
 //! ```
 
@@ -24,9 +25,11 @@ pub struct Args {
     pub(crate) no_watch: bool,
     pub(crate) allow_destructive: bool,
     pub(crate) preserve_data: Option<PathBuf>,
+    /// Refuse plugin grants the committed lock doesn't hold (also on whenever `CI` is set).
+    pub(crate) frozen: bool,
 }
 
-pub const USAGE: &str = "usage: zero <build|check|dev|doctor|deploy|publish|backup|restore> [project-dir] [--out dir] [--port n] [--quiet]\n       zero dev [project-dir] [--port n] [--no-watch] [--allow-destructive]\n       zero dev <stop|status> [project-dir]\n       zero dev wp [project-dir] -- <WP-CLI arguments>\n       zero build [project-dir] [--preserve-data snapshot.json]\n       zero check [project-dir] [--json]\n       zero doctor [project-dir] [--out dir] --site <url> [--token <t>] [--json]\n       zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <id>] [--dry-run] [--json]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --app-password <user:pass> | --bearer <jwt>\n       zero deploy <inspect|init|status|wp> <options>\n       zero publish --artifact dir [--baseline dir]\n       zero backup --workspace dir --output new.zip\n       zero restore --archive backup.zip --workspace new-dir --wp-cli file\n       Adapter scope and options: docs/deployment.md";
+pub const USAGE: &str = "usage: zero <build|check|dev|doctor|deploy|publish|backup|restore> [project-dir] [--out dir] [--port n] [--quiet]\n       zero dev [project-dir] [--port n] [--no-watch] [--allow-destructive]\n       zero dev <stop|status> [project-dir]\n       zero dev wp [project-dir] -- <WP-CLI arguments>\n       zero build [project-dir] [--preserve-data snapshot.json] [--frozen]\n       zero check [project-dir] [--json] [--frozen]\n       zero doctor [project-dir] [--out dir] --site <url> [--token <t>] [--json]\n       zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <id>] [--dry-run] [--json]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero abilities pull [project-dir] --site <url> [--only vendor/*]   (ZERO_APP_PASSWORD for credentials)\n       zero sync [status | resolve <uid>] [dir] --site <url> --app-password <user:pass> | --bearer <jwt>\n       zero deploy <inspect|init|status|wp> <options>\n       zero publish --artifact dir [--baseline dir]\n       zero backup --workspace dir --output new.zip\n       zero restore --archive backup.zip --workspace new-dir --wp-cli file\n       Adapter scope and options: docs/deployment.md";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -44,6 +47,7 @@ fn parse_args() -> Result<Args, String> {
         no_watch: false,
         allow_destructive: false,
         preserve_data: None,
+        frozen: false,
     };
     if args.command == "sync" {
         args.rest = it.collect();
@@ -64,6 +68,7 @@ fn parse_args() -> Result<Args, String> {
             "--site" => args.site = Some(it.next().ok_or("--site needs a URL")?),
             "--token" => args.token = Some(it.next().ok_or("--token needs a bearer token")?),
             "--json" => args.json = true,
+            "--frozen" if matches!(args.command.as_str(), "build" | "check") => args.frozen = true,
             "--out" => args.out = Some(PathBuf::from(it.next().ok_or("--out needs a directory")?)),
             "--port" => {
                 args.port = it
@@ -96,6 +101,7 @@ pub fn main() -> ExitCode {
         Some("sources") => return crate::bundle::sources_cli(&lifecycle_args),
         Some("compile-sources") => return crate::bundle::compile_cli(&lifecycle_args),
         Some("deploy") => return crate::commands::deploy::cli(&lifecycle_args),
+        Some("abilities") => return crate::commands::abilities::cli(&lifecycle_args),
         Some("publish" | "backup" | "restore") => {
             return crate::commands::deploy::cli(&std::env::args().skip(1).collect::<Vec<_>>());
         }

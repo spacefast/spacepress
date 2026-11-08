@@ -121,17 +121,17 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// Keys Spacefast applies to the Space, not the Zero app, the same under v2: written unchanged
 /// into the candidate's own sf.jsonc, which the v2 publish uploads and finalize compiles.
 /// - Engine serving rules that run before an unmatched request falls through to WordPress, where
-///   v2 renders (monorepo runtime/engine/runtime/serve.php): `redirects`, `headers`, and
-///   `cleanUrls` and `index` over the static files published from public/. Not `rewrites` or
-///   `listing`: the engine's path check sees 0.8's pages but not v2's, which render in WordPress,
-///   so a catch-all rewrite or a root listing would shadow the v2 app.
+///   v2 renders (monorepo runtime/engine/runtime/serve.php): `redirects`, and `cleanUrls` and
+///   `index` over the static files published from public/. Not `rewrites` or `listing`: the
+///   engine's path check sees 0.8's pages but not v2's, which render in WordPress, so a catch-all
+///   rewrite or a root listing would shadow the v2 app. Not `headers`: header rules apply to
+///   response-table entries only, which 0.8's page shells were and v2's WordPress pages aren't.
 /// - Platform settings the control plane applies from the committed file whatever the runtime:
 ///   access, crons, analytics, sell, build, placement, the system manifest, edge cache and firewall
 ///   (monorepo `spaceConfigFileSchema`). `network`, `dataSources` and `defaultDataSource` are Space
 ///   overlay settings that the file can't set, so they are refused, never reported as carried.
 pub(super) const PLATFORM_KEYS: &[&str] = &[
     "redirects",
-    "headers",
     "cleanUrls",
     "index",
     "access",
@@ -149,11 +149,14 @@ const THEME_JSON: &str = "theme.json";
 /// The serving keys with their own error; any other key raises `CONFIG`.
 /// - `rewrites`, `listing`: the engine checks a rewrite's path, and compiles a listing, against
 ///   0.8's pages; v2's render in WordPress, so the rule would take over the v2 app's URLs.
+/// - `headers`: header rules apply to response-table entries only, so on v2 they'd skip the app's
+///   WordPress-rendered pages that they covered on 0.8.
 /// - `fallback`: not shown to leave v2's WordPress-rendered pages alone.
 /// - `inject`: not shown to reach WordPress-rendered HTML.
 /// - `serve`: 0.8's own serving block.
 const SERVING_KEYS: &[(&str, &str)] = &[
     ("rewrites", SERVE),
+    ("headers", SERVE),
     ("listing", SERVE),
     ("fallback", SERVE),
     ("serve", SERVE),

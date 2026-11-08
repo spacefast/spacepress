@@ -487,10 +487,9 @@ fn omissions_are_errors_and_static_files_carry_over() {
     copy_tree(&fixture("server-only"), &platform);
     let settings = serde_json::json!({
         "redirects": [{ "source": "/old", "destination": "/new", "status": 301 }],
-        "headers": [{ "source": "/(.*)", "headers": [{ "key": "x-frame-options", "value": "DENY" }] }],
         "cleanUrls": false,
         "access": "public",
-        "crons": { "nightly": { "path": "/api/nightly", "schedule": "daily" } },
+        "crons": [{ "path": "/api/nightly", "schedule": "daily" }],
         "build": { "outputDirectory": "dist" },
     });
     let mut config = settings.clone();
@@ -509,6 +508,10 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // they would take over the app's URLs: refused.
     overlay["rewrites"] = serde_json::json!([{ "source": "/(.*)", "destination": "/index.html" }]);
     overlay["listing"] = true.into();
+    // Header rules apply to response-table entries only, so on v2 they would skip the app's
+    // WordPress-rendered pages: refused.
+    overlay["headers"] =
+        serde_json::json!([{ "source": "/(.*)", "headers": [{ "key": "x-frame-options", "value": "DENY" }] }]);
     std::fs::write(
         platform.join("sf.jsonc"),
         serde_json::to_string_pretty(&overlay).unwrap(),
@@ -533,6 +536,7 @@ fn omissions_are_errors_and_static_files_carry_over() {
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/network"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/rewrites"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/listing"),
+            ("Z08_OMITTED_SERVE", "/sf.jsonc/headers"),
         ]
     );
     std::fs::write(

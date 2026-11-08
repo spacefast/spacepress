@@ -101,7 +101,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_OMITTED_REDIRECTS",
         feature: "redirect and header rule files (_redirects, _headers)",
         v2: "redirects, rewrites and headers in sf.jsonc",
-        fix: "Move each rule into sf.jsonc `redirects`, `rewrites` or `headers`; the candidate carries those.",
+        fix: "Move each redirect into sf.jsonc `redirects`, which the candidate carries; port rewrites and headers to v2 routes.",
         test: |_, r| r.starts_with(omitted::REDIRECTS),
         example: (
             "/_redirects",
@@ -110,7 +110,7 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_OMITTED_SERVE",
-        feature: "serving settings (rewrites, listing, fallback, serve, inject)",
+        feature: "serving settings (rewrites, headers, listing, fallback, serve, inject)",
         v2: "WordPress serving and the Space's own settings",
         fix: "Move each rewrite into a v2 route, drop the setting, or keep the Space on 0.8; v2 serves the app through WordPress.",
         test: |_, r| r.starts_with(omitted::SERVE),

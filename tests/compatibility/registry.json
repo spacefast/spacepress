@@ -714,7 +714,7 @@
     },
     {
       "code": "Z08_OMITTED_SERVE",
-      "feature": "serving settings (rewrites, listing, fallback, serve, inject)"
+      "feature": "serving settings (rewrites, headers, listing, fallback, serve, inject)"
     },
     {
       "code": "Z08_OMITTED_CONNECTORS",

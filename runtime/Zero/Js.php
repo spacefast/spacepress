@@ -1319,6 +1319,52 @@ final class Js
         return true;
     }
 
+    /**
+     * A tagged template's first argument (ECMAScript 13.2.8.4): the cooked strings, undefined
+     * where an escape is invalid, with a `raw` property holding the source text of each part.
+     * One array per call site (`$site` names it), so repeated calls see the same array.
+     */
+    public static function templateStrings(string $site, array $cooked, array $raw): JsArray
+    {
+        static $sites = [];
+        if (!isset($sites[$site])) {
+            $strings = new JsArray($cooked);
+            $strings->p['raw'] = new JsArray($raw);
+            $sites[$site] = $strings;
+        }
+        return $sites[$site];
+    }
+
+    /** `strings.raw` on a TemplateStringsArray; any other string array has no `raw`. */
+    public static function templateRaw(JsArray $strings): JsArray
+    {
+        $raw = $strings->p['raw'] ?? null;
+        if (!$raw instanceof JsArray) { throw new JsError('This string array is not a tagged template\'s strings', 'TypeError'); }
+        return $raw;
+    }
+
+    /**
+     * `String.raw(template, ...substitutions)`: the template's `raw` strings interleaved with the
+     * substitutions converted to strings; only as many substitutions as there are gaps are read.
+     */
+    public static function stringRaw(mixed $template, mixed ...$substitutions): string
+    {
+        $raw = self::dynamicGet(self::requirePresent($template), 'raw');
+        $length = self::toLength(self::dynamicGet(self::requirePresent($raw), 'length'));
+        $out = '';
+        for ($i = 0; $i < $length; $i++) {
+            $out .= self::str(self::dynamicGet($raw, (string) $i));
+            if ($i + 1 < $length && array_key_exists($i, $substitutions)) { $out .= self::str($substitutions[$i]); }
+        }
+        return $out;
+    }
+
+    private static function toLength(mixed $value): int
+    {
+        $n = self::toInteger(self::toNumber($value));
+        return $n <= 0 ? 0 : (int) min($n, 9007199254740991);
+    }
+
     /** += needs the actual primitive types, including an absent old property. */
     public static function plus(mixed $a, mixed $b, bool $missing): mixed
     {
@@ -2263,15 +2309,6 @@ final class Js
             $year, $m, $d,
             intdiv($rem, 3600000), intdiv($rem, 60000) % 60, intdiv($rem, 1000) % 60, $rem % 1000,
         );
-    }
-
-    public static function uuid(): string
-    {
-        $b = random_bytes(16);
-        $b[6] = chr(ord($b[6]) & 0x0F | 0x40);
-        $b[8] = chr(ord($b[8]) & 0x3F | 0x80);
-
-        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
     }
 
     public static function random(): float

@@ -1042,7 +1042,8 @@ switches and blocks (`break label`, `continue label`) follow JavaScript.
 Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
 assigns existing variables and fields in JavaScript order. Tagged templates
 call the tag with the call site's strings array (with `raw`) and the
-substitutions; `String.raw` is supported.
+substitutions; `String.raw` is supported. BigInt (`10n`, `bigint`, `BigInt(x)`)
+is exact; mixing it with numbers in arithmetic is a TypeError, as in JavaScript.
 
 Host globals: `fetch`, `Headers`, `URLSearchParams`, `process.env.NAME`,
 `crypto.randomUUID()`, `Buffer.from`/`Buffer.byteLength` in the forms above, and
@@ -1052,7 +1053,7 @@ Host globals: `fetch`, `Headers`, `URLSearchParams`, `process.env.NAME`,
 
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,
-getters/setters, BigInt, dynamic `import()`, `any`,
+getters/setters, dynamic `import()`, `any`,
 `eval`/`Function`, `setTimeout`, `globalThis`, `Promise`, `URL`, `Request`,
 `Response`, `FormData`, `Blob`, `AbortController`, `require` outside static
 CommonJS sources, assigning to module-level state from a hook,
@@ -1157,10 +1158,22 @@ include methods or class metadata. Object spread copies own fields shallowly.
 produce plain data without class identity. Use object types in `json().$type<T>()`;
 class types and assertions that would pretend to hydrate a class are refused.
 
+Private names (`#field`, `#method()`, `static #x` and `#x in value`) belong to
+the class that declares them, as in JavaScript. A subclass declaring the same
+`#x` gets a separate slot, and only code inside the declaring class body can
+name it. Private state is invisible to `Object.keys`, JSON, spread and
+`structuredClone`; a clone does not carry the brand. Reading a private member
+from an object the class did not initialize throws `TypeError`.
+
+Classes in imported JavaScript (`.js`, `.mjs`, `.cjs`) need no annotations:
+fields, parameters and returns use checked JavaScript values, and method values
+such as `instance.method` keep one identity per class, so `call` supplies the
+receiver.
+
 These class features remain outside the supported surface, with located errors:
 class expressions, default-export class declarations and
 anonymous/local/abstract/ambient/generic classes;
-decorators; private/protected/`#` members; accessors; static blocks; computed names;
+decorators; private/protected members; accessors; static blocks; computed names;
 generic/rest methods; dynamic or built-in inheritance; constructor return values;
 prototype/reflection machinery and custom coercion/serialization protocol members.
 Indexed class members and recursive class field types are also refused.

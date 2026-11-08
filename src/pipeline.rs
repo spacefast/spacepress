@@ -72,6 +72,20 @@ impl Previous {
         snapshot: Option<serde_json::Value>,
         migration_files: impl IntoIterator<Item = &'a str>,
     ) -> Result<Self, Diag> {
+        let migration_files: Vec<&str> = migration_files.into_iter().collect();
+        // A ledger from before the flat layout (`wp/` and `sqlite/` subdirectories, moved here as-is
+        // by `git mv`) is refused rather than read as "no migrations yet", which would restart the
+        // numbering at 0001 and ship an app plugin without its earlier files.
+        for nested in ["wp", "sqlite"] {
+            if migration_files.contains(&nested) {
+                return Err(Diag::new(
+                    Span::NONE,
+                    format!(
+                        "{LEDGER}/{nested}/ is from an earlier layout; move {LEDGER}/wp/*.sql and {LEDGER}/wp/snapshot.json into {LEDGER}/, then delete the {LEDGER}/wp/ and {LEDGER}/sqlite/ directories"
+                    ),
+                ));
+            }
+        }
         let snapshot = match snapshot {
             None => serde_json::json!({ "version": 2, "tables": {} }),
             Some(snapshot) if snapshot["version"] == 2 => snapshot,
@@ -459,6 +473,20 @@ mod tests {
         );
         assert_eq!(Previous::from_project(None, files).unwrap().next_migration, 4);
         assert_eq!(Previous::from_project(Some(snapshot), []).unwrap().next_migration, 1);
+    }
+
+    #[test]
+    fn the_earlier_nested_layout_is_refused_before_the_snapshot_is_read() {
+        for nested in ["wp", "sqlite"] {
+            let error = Previous::from_project(None, [nested, "0001_init.sql"]).unwrap_err();
+            assert!(
+                error.message.starts_with(&format!(
+                    "zero/_generated/migrations/{nested}/ is from an earlier layout"
+                )),
+                "{}",
+                error.message
+            );
+        }
     }
 
     #[test]

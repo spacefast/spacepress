@@ -1867,7 +1867,18 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     std::fs::create_dir_all(&migrations).unwrap();
     refused("zero/migrations/ moved to zero/_generated/migrations/");
     std::fs::remove_dir(&migrations).unwrap();
+    // A pre-flat checkout moved as-is keeps its `wp/` and `sqlite/` subdirectories: still refused
+    // at the new path, so following the first message can't restart the numbering.
     std::fs::rename(&old, &migrations).unwrap();
+    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
+    for nested in ["wp", "sqlite"] {
+        std::fs::create_dir_all(migrations.join(nested)).unwrap();
+        std::fs::write(migrations.join(nested).join("0001_init.sql"), &init).unwrap();
+        refused(&format!(
+            "zero/_generated/migrations/{nested}/ is from an earlier layout"
+        ));
+        std::fs::remove_dir_all(migrations.join(nested)).unwrap();
+    }
     let mut v1: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
     v1["version"] = serde_json::json!(1);
     std::fs::write(

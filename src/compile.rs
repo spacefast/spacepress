@@ -1456,11 +1456,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.predeclare_lexical(pat, *kind == DeclKind::Let);
             }
         }
-        // Local function declarations are hoisted: compile them first.
+        // Local function declarations are hoisted: compile them first. A declared signature (or
+        // an imported-JavaScript function) types the binding before its body compiles, so the
+        // body may call itself; PHP sees the binding by reference, so the call finds the closure.
         for s in stmts {
             if let Stmt::Func(f) = s {
                 let name = f.name.clone().expect("named");
-                let php = self.declare_local(&name, Ty::Unknown, false, f.span);
+                let signature = self.declared_signature(f)?;
+                let recursive = signature.is_some();
+                let php = self.declare_local(&name, signature.unwrap_or(Ty::Unknown), recursive, f.span);
                 let c = self.closure_expr(f)?;
                 self.set_local_ty(&name, c.ty.clone());
                 let _ = writeln!(out, "{}{php} = {};", pad(indent), c.php);
@@ -4229,6 +4233,36 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         check_callback_parameters(params, declared, e.span)?;
         Ok(v)
+    }
+
+    /// A function's type from its annotations alone: every parameter and the result annotated,
+    /// or a function in imported JavaScript. `None` when the body must be compiled to know it.
+    fn declared_signature(&mut self, f: &Func) -> Result<Option<Ty>> {
+        if self.javascript_module(f.module) {
+            let params = f
+                .params
+                .iter()
+                .map(|p| {
+                    if p.rest {
+                        Ty::Rest(Box::new(Ty::Array(Box::new(Ty::Dynamic))))
+                    } else {
+                        Ty::Dynamic
+                    }
+                })
+                .collect();
+            return Ok(Some(Ty::Fn(params, Box::new(Ty::Dynamic))));
+        }
+        let (Some(ret), false) = (&f.ret, f.is_async || !f.type_params.is_empty()) else {
+            return Ok(None);
+        };
+        let mut params = Vec::new();
+        for p in &f.params {
+            let Some(ann) = &p.ann else { return Ok(None) };
+            let ty = parameter_input_type(p, self.resolve_runtime_ann(ann, f.module)?);
+            params.push(if p.rest { Ty::Rest(Box::new(ty)) } else { ty });
+        }
+        let ret = self.resolve_runtime_ann(ret, f.module)?;
+        Ok(Some(Ty::Fn(params, Box::new(ret))))
     }
 
     fn closure_with_types(&mut self, f: &Rc<Func>, params: Option<&[Ty]>) -> Result<Out> {

@@ -3124,7 +3124,8 @@ fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
 }
 
 #[test]
-fn named_function_expressions_refuse_with_a_source_position() {
+fn named_function_expressions_bind_their_name_inside_themselves() {
+    // The inner name shadows an outer binding of the same name, at build time and in a handler.
     for declaration in [
         "const x=7;const folded=(function x(){return typeof x;})();",
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
@@ -3132,22 +3133,26 @@ fn named_function_expressions_refuse_with_a_source_position() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{report}");
-        let diagnostic = &report["diagnostics"][0];
-        assert_eq!(diagnostic["code"], "Z1002", "{report}");
-        assert!(
-            diagnostic["message"]
-                .as_str()
-                .unwrap()
-                .contains("named function expressions"),
-            "{report}"
-        );
-        assert!(diagnostic["location"].is_object(), "{report}");
-        assert_eq!(
-            diagnostic["help"], "use an anonymous function expression or a function declaration",
-            "{report}"
-        );
+        assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
+    // Strict JavaScript throws on a write to the name, so it is refused where it is written.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nconst f=function g(){ g = () => 1; return 1; };\nexport default defineConfig({actions:{probe:action({handler:()=>f()})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    let diagnostic = &report["diagnostics"][0];
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .unwrap()
+            .contains("assigning to a named function expression's own name"),
+        "{report}"
+    );
+    assert_eq!(diagnostic["location"]["line"], 2, "{report}");
+    assert!(
+        diagnostic["help"].as_str().unwrap().contains("local variable"),
+        "{report}"
+    );
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the

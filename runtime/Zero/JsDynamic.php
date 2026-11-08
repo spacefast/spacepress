@@ -368,6 +368,20 @@ trait JsDynamic
 
     public static function dynamicForIn(mixed $value): \Generator
     {
+        // A class inherits its parent's static fields, which for-in visits after its own (and
+        // Object.keys does not).
+        if ($value instanceof JsClass) {
+            $seen = [];
+            for ($class = $value; $class !== null; $class = $class->parent) {
+                foreach (self::ownKeys($class->statics->p) as $key) {
+                    $key = (string) $key;
+                    if (isset($seen[$key])) { continue; }
+                    $seen[$key] = true;
+                    yield $key;
+                }
+            }
+            return;
+        }
         foreach (self::dynamicKeys($value)->a as $key) {
             if (($value instanceof JsArray || $value instanceof JsArguments)
                 && !array_key_exists($key, $value->a) && !array_key_exists($key, $value->p)) { continue; }

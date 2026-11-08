@@ -31,6 +31,7 @@ final class Js
             $v === null => 'null',
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
+            $v instanceof JsBigInt => (string) $v,
             $v instanceof JsArray, $v instanceof JsArguments, $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
             $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace, $v instanceof JsWeakMap, $v instanceof JsWeakSet => self::dynamicObjectTag($v),
             $v instanceof JsSymbol => throw new JsError('Cannot convert a Symbol value to a string', 'TypeError'),
@@ -118,10 +119,18 @@ final class Js
         throw new \LogicException('Finite double has no round-tripping decimal');
     }
 
+    /** `Number(value)`: like ToNumber, except a BigInt converts to its nearest double. */
+    public static function number(mixed $v): int|float
+    {
+        $v = $v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments ? self::dynamicPrimitive($v, 'number') : $v;
+        return $v instanceof JsBigInt ? $v->toNumber() : self::toNumber($v);
+    }
+
     public static function toNumber(mixed $v): int|float
     {
         if ($v instanceof JsDate) { return $v->milliseconds; }
         if ($v instanceof JsSymbol) { throw new JsError('Cannot convert a Symbol value to a number', 'TypeError'); }
+        if ($v instanceof JsBigInt) { throw new JsError('Cannot convert a BigInt value to a number', 'TypeError'); }
         if ($v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
         if (is_int($v)) {
             return self::n($v);
@@ -290,23 +299,29 @@ final class Js
      * result through n(). So arithmetic matches JS on every operand, while the operands themselves,
      * and any id compiled code passes on, keep their exact stored value.
      */
-    public static function add(int|float $a, int|float $b): int|float
+    public static function add(int|float|JsBigInt $a, int|float|JsBigInt $b): int|float|JsBigInt
     {
+        if ($a instanceof JsBigInt || $b instanceof JsBigInt) { return self::dynamicBinary('+', $a, $b); }
         return self::n(self::n($a) + self::n($b));
     }
 
-    public static function sub(int|float $a, int|float $b): int|float
+    public static function sub(int|float|JsBigInt $a, int|float|JsBigInt $b): int|float|JsBigInt
     {
+        if ($a instanceof JsBigInt || $b instanceof JsBigInt) { return self::dynamicBinary('-', $a, $b); }
         return self::n(self::n($a) - self::n($b));
     }
 
-    public static function mul(int|float $a, int|float $b): int|float
+    public static function mul(int|float|JsBigInt $a, int|float|JsBigInt $b): int|float|JsBigInt
     {
+        if ($a instanceof JsBigInt || $b instanceof JsBigInt) { return self::dynamicBinary('*', $a, $b); }
         return self::num((float) self::n($a) * (float) self::n($b));
     }
 
-    public static function neg(mixed $a): int|float
+    public static function neg(mixed $a): int|float|JsBigInt
     {
+        if ($a instanceof JsBigInt) { return $a->neg(); }
+        $a = self::dynamicPrimitive($a, 'number');
+        if ($a instanceof JsBigInt) { return $a->neg(); }
         return -(float) self::toNumber($a);
     }
 
@@ -342,8 +357,9 @@ final class Js
     }
 
     /** Exact powers, square roots and IEEE special values; refuse engine-dependent rounding. */
-    public static function pow(int|float $a, int|float $b): int|float
+    public static function pow(int|float|JsBigInt $a, int|float|JsBigInt $b): int|float|JsBigInt
     {
+        if ($a instanceof JsBigInt || $b instanceof JsBigInt) { return self::dynamicBinary('**', $a, $b); }
         [$a, $b] = [(float) self::n($a), (float) self::n($b)];
         if ($b == 0) { return 1; }
         if (is_nan($a) || is_nan($b) || (abs($a) == 1 && is_infinite($b))) { return NAN; }
@@ -427,8 +443,10 @@ final class Js
     }
 
     /** Compiled `~a`: ToInt32, then the complement, a signed 32-bit result. */
-    public static function bitNot(mixed $a): int
+    public static function bitNot(mixed $a): int|JsBigInt
     {
+        $a = self::dynamicPrimitive($a, 'number');
+        if ($a instanceof JsBigInt) { return $a->not(); }
         return ~self::toInt32(self::toNumber($a));
     }
 
@@ -488,6 +506,7 @@ final class Js
         return match (true) {
             $v === JsUndefined::Value, $v === null, $v === false, $v === '', $v === 0 => false,
             is_float($v) => !($v == 0.0 || is_nan($v)),
+            $v instanceof JsBigInt => !$v->isZero(),
             default => true,
         };
     }
@@ -499,6 +518,7 @@ final class Js
             is_string($v) => 'string',
             is_int($v), is_float($v) => 'number',
             is_bool($v) => 'boolean',
+            $v instanceof JsBigInt => 'bigint',
             $v instanceof \Closure, $v instanceof JsClass => 'function',
             $v instanceof JsSymbol => 'symbol',
             default => 'object',
@@ -515,6 +535,9 @@ final class Js
     {
         if ((is_int($a) || is_float($a)) && (is_int($b) || is_float($b))) {
             return is_int($a) && is_int($b) ? $a === $b : (float) $a == (float) $b;
+        }
+        if ($a instanceof JsBigInt || $b instanceof JsBigInt) {
+            return $a instanceof JsBigInt && $b instanceof JsBigInt && $a->equals($b);
         }
 
         return $a === $b;
@@ -1934,6 +1957,7 @@ final class Js
             if ($custom) { throw new JsError('Custom toJSON callbacks are not supported', 'TypeError'); }
         }
         if ($value === JsUndefined::Value) { return null; }
+        if ($value instanceof JsBigInt) { throw new JsError('Do not know how to serialize a BigInt', 'TypeError'); }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError || $value instanceof JsWeakMap || $value instanceof JsWeakSet) { return new \stdClass(); }
         if ($value instanceof JsSymbol) { return null; }

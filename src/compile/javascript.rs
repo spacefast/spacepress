@@ -56,6 +56,12 @@ impl Compiler<'_, '_> {
             BinOp::LooseNe => ("!=", Ty::Bool),
             bitwise => (bitwise.bitwise_symbol().expect("bitwise operator"), Ty::Num),
         };
+        // A numeric result may be a BigInt when either operand is unchecked JavaScript.
+        let ty = if ty == Ty::Num && (a.ty == Ty::Dynamic || b.ty == Ty::Dynamic) {
+            Ty::Dynamic
+        } else {
+            ty
+        };
         Ok(Out::atom(
             format!("\\Zero\\Js::dynamicBinary({}, {}, {})", php_str(operator), a.php, b.php),
             ty,

@@ -1880,6 +1880,11 @@ fn initialized(pattern: &Pat, pending: &mut Vec<(&str, Span)>) {
     pending.retain(|(name, span)| !bound.iter().any(|(b, s)| b == name && s == span));
 }
 
+/// Whether `value` reads the identifier `name` (not a string or a property key with that text).
+pub fn reads_identifier(value: &Expr, name: &str) -> bool {
+    check_parameter_default(value, &[(name, value.span)], true).is_err_and(|d| d.message.contains("current or a later"))
+}
+
 fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_functions: bool) -> Result<()> {
     let children: Vec<&Expr> = match &value.kind {
         ExprKind::Func(function) if allow_functions => {

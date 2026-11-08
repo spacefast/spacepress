@@ -1123,6 +1123,25 @@ fn legacy_type(name: &str) -> Option<&'static str> {
     })
 }
 
+/// A destructured parameter's source text split into its pattern and its type annotation,
+/// without a `= default`. Uses the parser, so object types and nested patterns are read exactly.
+fn destructured_parameter(text: &str) -> Option<(String, String)> {
+    use oxc_span::GetSpan;
+    let arena = Allocator::default();
+    let wrapped = format!("({text}) => 0");
+    let parsed = Parser::new(&arena, &wrapped, SourceType::ts())
+        .parse_expression()
+        .ok()?;
+    let oxc_ast::ast::Expression::ArrowFunctionExpression(arrow) = &parsed else {
+        return None;
+    };
+    let item = arrow.params.items.first()?;
+    let annotation = item.type_annotation.as_ref()?;
+    let pattern = &wrapped[item.pattern.span().start as usize..item.pattern.span().end as usize];
+    let ty = &wrapped[annotation.type_annotation.span().start as usize..annotation.type_annotation.span().end as usize];
+    Some((pattern.to_string(), ty.to_string()))
+}
+
 fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Result<String, Failure> {
     let (base, nullable) = match ty {
         TyAnn::Str => ("__z08Text()".into(), false),
@@ -1189,28 +1208,122 @@ fn handler(
     };
     let mut input = vec![];
     let mut bindings = String::new();
-    for p in f.params.iter().skip(1) {
-        let Pat::Id(n, _) = &p.pat else {
-            return Err(fail(at, "destructured input parameters require a manual port"));
+    for (position, p) in f.params.iter().skip(1).enumerate() {
+        // 0.8 called `handler(ctx, ...args)` with the client's positional arguments; each
+        // parameter becomes one named v2 input. A destructured parameter becomes one JSON input
+        // named after its position, destructured in the handler exactly as 0.8 did.
+        let destructured = match &p.pat {
+            Pat::Obj { .. } | Pat::Arr { .. } => true,
+            Pat::Default(inner, _) => matches!(&**inner, Pat::Obj { .. } | Pat::Arr { .. }),
+            Pat::Id(..) => false,
         };
-        ident(n, at)?;
-        if p.rest || p.default.is_some() {
-            return Err(fail(at, "rest and default parameters need a manual input schema"));
+        if destructured {
+            if p.rest {
+                return Err(fail(
+                    at,
+                    "destructured input parameters require a manual port when they collect rest arguments",
+                ));
+            }
+            let ann = p
+                .ann
+                .as_ref()
+                .ok_or_else(|| fail(at, "handler parameters require explicit types"))?;
+            if !matches!(ann, TyAnn::Obj(_) | TyAnn::Ref(..) | TyAnn::Array(_) | TyAnn::Tuple(_)) {
+                return Err(fail(
+                    at,
+                    "destructured input parameters require a manual port unless typed as an object or array",
+                ));
+            }
+            let text = raw(source, p.span);
+            let (pattern, ty) =
+                destructured_parameter(text).ok_or_else(|| fail(at, "cannot read the destructured parameter"))?;
+            let n = format!("arg{}", position + 1);
+            if f.params
+                .iter()
+                .skip(1)
+                .any(|other| matches!(&other.pat, Pat::Id(id, _) if *id == n))
+            {
+                return Err(fail(at, "destructured input parameters require a manual port"));
+            }
+            let optional = p.optional || p.default.is_some();
+            input.push(format!(
+                "{}: __z08Json().$type<{ty}>(){}",
+                q(&n),
+                if optional { "" } else { ".notNull()" }
+            ));
+            let value = match &p.default {
+                Some(default) => format!("__z08input.{n} ?? ({})", raw(source, default.span)),
+                None if p.optional => format!("__z08input.{n} ?? undefined"),
+                None => format!("__z08input.{n}"),
+            };
+            bindings.push_str(&format!("const {pattern}: {ty} = {value};\n"));
+            continue;
         }
+        let n = match &p.pat {
+            Pat::Id(n, _) => n.clone(),
+            Pat::Default(inner, _) => {
+                let Pat::Id(n, _) = &**inner else {
+                    unreachable!("destructured above")
+                };
+                n.clone()
+            }
+            _ => unreachable!("destructured above"),
+        };
+        ident(&n, at)?;
         let ann = p
             .ann
             .as_ref()
             .ok_or_else(|| fail(at, "handler parameters require explicit types"))?;
         let text = raw(source, p.span);
+        // The annotation text, without a `...` or a `= default` around it.
         let ty = text
             .split_once(':')
             .map(|(_, s)| s.trim())
             .ok_or_else(|| fail(at, "missing parameter type"))?;
-        input.push(format!("{}: {}", q(n), input_builder(ann, ty, p.optional, at)?));
-        bindings.push_str(&format!(
-            "const {n} = __z08input.{n}{};\n",
-            if p.optional { " ?? undefined" } else { "" }
-        ));
+        let ty = match &p.default {
+            Some(default) => ty
+                .strip_suffix(raw(source, default.span))
+                .map(|t| t.trim_end().trim_end_matches('=').trim_end())
+                .ok_or_else(|| fail(at, "cannot read the parameter type"))?,
+            None => ty,
+        };
+        if p.rest {
+            // `...xs: T[]` received the trailing positional arguments: one JSON array input.
+            if !matches!(ann, TyAnn::Array(_)) && !ty.ends_with("[]") {
+                return Err(fail(
+                    at,
+                    "rest and default parameters need a manual input schema unless the rest type is an array",
+                ));
+            }
+            input.push(format!("{}: __z08Json().$type<{ty}>()", q(&n)));
+            bindings.push_str(&format!("const {n}: {ty} = __z08input.{n} ?? [];\n"));
+            continue;
+        }
+        let optional = p.optional || p.default.is_some();
+        input.push(format!("{}: {}", q(&n), input_builder(ann, ty, optional, at)?));
+        match &p.default {
+            // 0.8 applied a default only to a missing argument. A v2 optional input reads a missing
+            // value as null, so `??` is exact when the declared type excludes null; when it admits
+            // null, an explicit null and a missing argument can no longer be told apart.
+            Some(default) => {
+                if matches!(ann, TyAnn::Null | TyAnn::Unknown | TyAnn::Any(_))
+                    || matches!(ann, TyAnn::Union(xs) if xs.iter().any(|x| matches!(x, TyAnn::Null)))
+                {
+                    return Err(fail(
+                        at,
+                        "rest and default parameters need a manual input schema when the type allows null: v2 inputs read a missing argument as null",
+                    ));
+                }
+                bindings.push_str(&format!(
+                    "const {n}: {ty} = __z08input.{n} ?? ({});\n",
+                    raw(source, default.span)
+                ))
+            }
+            None => bindings.push_str(&format!(
+                "const {n} = __z08input.{n}{};\n",
+                if p.optional { " ?? undefined" } else { "" }
+            )),
+        }
     }
     let mut r = Rewrite {
         source,

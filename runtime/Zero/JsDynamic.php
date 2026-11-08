@@ -34,7 +34,7 @@ trait JsDynamic
             $receiver instanceof JsArray => 'Array', is_string($receiver) => 'String',
             $receiver instanceof RegExp => 'RegExp', $receiver instanceof JsDate => 'Date',
             $receiver instanceof JsError => 'Error',
-            $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map',
+            $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map', $receiver instanceof JsIterator => 'Iterator',
             $receiver instanceof JsWeakMap => 'WeakMap', $receiver instanceof JsWeakSet => 'WeakSet',
             $receiver instanceof JsSymbol => 'Symbol',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
@@ -168,7 +168,7 @@ trait JsDynamic
             };
         }
         if ($key === 'size' && ($value instanceof JsSet || $value instanceof JsMap)) {
-            return count($value instanceof JsSet ? $value->values : $value->entries);
+            return $value->size();
         }
         return self::dynamicMethodValue($value, $key);
     }
@@ -329,7 +329,7 @@ trait JsDynamic
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
-        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
+        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
 
@@ -360,6 +360,19 @@ trait JsDynamic
         return new JsArray(iterator_to_array(self::dynamicIterator($value), false));
     }
 
+    /** Array-pattern destructuring of a JavaScript value: the first $count iterated values (all when null). */
+    public static function destructure(mixed $value, ?int $count): JsArray
+    {
+        if (self::isNullish($value)) { throw new JsError('Cannot destructure ' . self::str($value) . ' as it is not iterable', 'TypeError'); }
+        $out = new JsArray();
+        if ($count === 0) { return $out; }
+        foreach (self::dynamicIterator($value) as $item) {
+            $out->a[] = $item;
+            if ($count !== null && count($out->a) >= $count) { break; }
+        }
+        return $out;
+    }
+
     public static function dynamicIterator(mixed $value): \Generator
     {
         if ($value instanceof JsArray) {
@@ -369,9 +382,11 @@ trait JsDynamic
         } elseif (is_string($value)) {
             yield from self::from($value)->a;
         } elseif ($value instanceof JsSet) {
-            for ($i = 0; $i < count($value->values); $i++) { yield $value->values[$i]; }
+            yield from $value->iterate();
         } elseif ($value instanceof JsMap) {
-            for ($i = 0; $i < count($value->entries); $i++) { yield new JsArray($value->entries[$i]); }
+            yield from $value->entriesIterator();
+        } elseif ($value instanceof JsIterator) {
+            yield from $value->rest();
         } elseif ($value instanceof JsGenerator || $value instanceof JsObject && JsIter::wellKnownMethod($value, 'iterator') !== null) {
             // Spread, Array.from and the combinators follow the iterator protocol, closing on a throw.
             $iter = JsIter::open($value);
@@ -393,6 +408,7 @@ trait JsDynamic
             is_bool($value) => 'Boolean', is_int($value), is_float($value) => 'Number', is_string($value) => 'String',
             $value instanceof JsArray => 'Array', $value instanceof JsArguments => 'Arguments', $value instanceof JsSet => 'Set',
             $value instanceof JsMap => 'Map', $value instanceof JsDate => 'Date', $value instanceof RegExp => 'RegExp',
+            $value instanceof JsIterator => $value->tag,
             $value instanceof JsWeakMap => 'WeakMap', $value instanceof JsWeakSet => 'WeakSet', $value instanceof JsSymbol => 'Symbol',
             $value instanceof JsNamespace => $value->name,
             $value instanceof JsError => 'Error',
@@ -495,7 +511,7 @@ trait JsDynamic
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
-            $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map',
+            $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map', $receiver instanceof JsIterator => 'iterator',
             $receiver instanceof JsWeakMap => 'weakmap', $receiver instanceof JsWeakSet => 'weakset', $receiver instanceof JsSymbol => 'symbol',
             is_bool($receiver) => 'boolean', $receiver instanceof \Closure => 'function',
             default => 'object',
@@ -526,10 +542,31 @@ trait JsDynamic
             };
         }
         if ($receiver instanceof JsSet) {
-            return match ($name) { 'add' => $receiver->add($get(0)), 'has' => $receiver->has($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+            return match ($name) {
+                'add' => $receiver->add($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)),
+                'clear' => self::cleared($receiver),
+                'forEach' => self::dynamicCollectionForEach($receiver, $get(0), $get(1)),
+                'values', 'keys' => new JsIterator($receiver->valuesIterator(), 'Set Iterator'),
+                'entries' => new JsIterator($receiver->entriesIterator(), 'Set Iterator'),
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
         }
         if ($receiver instanceof JsMap) {
-            return match ($name) { 'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+            return match ($name) {
+                'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)),
+                'delete' => $receiver->delete($get(0)), 'clear' => self::cleared($receiver),
+                'forEach' => self::dynamicCollectionForEach($receiver, $get(0), $get(1)),
+                'keys' => new JsIterator($receiver->keysIterator(), 'Map Iterator'),
+                'values' => new JsIterator($receiver->valuesIterator(), 'Map Iterator'),
+                'entries' => new JsIterator($receiver->entriesIterator(), 'Map Iterator'),
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
+        }
+        if ($receiver instanceof JsIterator) {
+            return match ($name) { 'next' => $receiver->next(), default => throw new JsError($name . ' is not a function', 'TypeError') };
+        }
+        if ($receiver instanceof JsArray && in_array($name, ['keys', 'values', 'entries'], true)) {
+            return new JsIterator(self::arrayIterator($receiver, $name), 'Array Iterator');
         }
         if ($receiver instanceof JsWeakMap) {
             return match ($name) { 'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
@@ -637,6 +674,27 @@ trait JsDynamic
         return new JsArray(array_splice($source->a, $start, $count, array_slice($args->a, 2)));
     }
 
+    private static function cleared(JsMap|JsSet $collection): JsUndefined
+    {
+        $collection->clear();
+        return JsUndefined::Value;
+    }
+
+    private static function dynamicCollectionForEach(JsMap|JsSet $collection, mixed $callback, mixed $thisArg): JsUndefined
+    {
+        if ($thisArg !== JsUndefined::Value) { throw new JsError('forEach thisArg is not supported', 'TypeError'); }
+        $collection->forEach(self::dynamicCallback($callback));
+        return JsUndefined::Value;
+    }
+
+    /** Array iterators read the live array by index, as %ArrayIteratorPrototype%.next does. */
+    public static function arrayIterator(JsArray $array, string $kind): \Generator
+    {
+        for ($i = 0; $i < count($array->a); $i++) {
+            yield match ($kind) { 'keys' => $i, 'values' => $array->a[$i], default => new JsArray([$i, $array->a[$i]]) };
+        }
+    }
+
     private static function dynamicArrayFind(JsArray $source, string $method, \Closure $callback): mixed
     {
         $matched = JsUndefined::Value;
@@ -656,10 +714,11 @@ trait JsDynamic
         $result = new JsArray();
         if ($source instanceof JsArray) {
             for ($i = 0; $i < count($source->a); $i++) { $value = $source->a[$i]; $result->a[] = $callback === null ? $value : $callback($value, $i); }
-        } elseif ($source instanceof JsSet || $source instanceof JsMap) {
-            for ($i = 0; $i < count($source instanceof JsSet ? $source->values : $source->entries); $i++) {
-                $value = $source instanceof JsSet ? $source->values[$i] : new JsArray($source->entries[$i]);
+        } elseif ($source instanceof JsSet || $source instanceof JsMap || $source instanceof JsIterator) {
+            $i = 0;
+            foreach (self::dynamicIterator($source) as $value) {
                 $result->a[] = $callback === null ? $value : $callback($value, $i);
+                $i++;
             }
         } elseif ($source instanceof JsArguments) {
             for ($i = 0; $i < max(0, self::toInteger(self::toNumber($source->length))); $i++) {

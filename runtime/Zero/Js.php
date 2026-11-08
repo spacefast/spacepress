@@ -1908,9 +1908,9 @@ final class Js
             };
             $seen[$value] = $copy;
             if ($value instanceof JsSet) {
-                foreach ($value->values as $item) { $copy->add(self::copyGraph($item, $seen, $structured)); }
+                foreach ($value->values() as $item) { $copy->add(self::copyGraph($item, $seen, $structured)); }
             } elseif ($value instanceof JsMap) {
-                foreach ($value->entries as [$key, $item]) { $copy->set(self::copyGraph($key, $seen, $structured), self::copyGraph($item, $seen, $structured)); }
+                foreach ($value->entries() as [$key, $item]) { $copy->set(self::copyGraph($key, $seen, $structured), self::copyGraph($item, $seen, $structured)); }
             } elseif ($value instanceof JsArguments) {
                 foreach ($value->a as $key => $item) { $copy->a[$key] = self::copyGraph($item, $seen, $structured); }
                 foreach ($value->p as $key => $item) { $copy->p[$key] = self::copyGraph($item, $seen, $structured); }
@@ -2275,6 +2275,45 @@ final class Js
      * every read advances the pinned clock by that step: a test-only seam that makes "two reads see two
      * instants" deterministic. Inside atInstant() it is that one instant.
      */
+    /** Typed `new Map(entries?)`: entries are [key, value] arrays already checked by the compiler. */
+    public static function newMap(mixed $entries = JsUndefined::Value): JsMap
+    {
+        return self::dynamicConstruct('Map', new JsArray($entries === JsUndefined::Value ? [] : [$entries]));
+    }
+
+    /** Typed `new Set(values?)`. */
+    public static function newSet(mixed $values = JsUndefined::Value): JsSet
+    {
+        return self::dynamicConstruct('Set', new JsArray($values === JsUndefined::Value ? [] : [$values]));
+    }
+
+    public static function clearCollection(JsMap|JsSet $collection): JsUndefined
+    {
+        $collection->clear();
+        return JsUndefined::Value;
+    }
+
+    public static function collectionForEach(JsMap|JsSet $collection, \Closure $callback): JsUndefined
+    {
+        $collection->forEach($callback);
+        return JsUndefined::Value;
+    }
+
+    /** Typed iteration over Map, Set, iterators, arrays and strings, live as in JavaScript. */
+    public static function iter(mixed $value): \Generator
+    {
+        return self::dynamicIterator($value);
+    }
+
+    /** Typed spread / Array.from of a Map, Set or iterator. */
+    public static function iterArray(mixed $value, ?\Closure $mapper = null): JsArray
+    {
+        $out = new JsArray();
+        $i = 0;
+        foreach (self::dynamicIterator($value) as $item) { $out->a[] = $mapper === null ? $item : $mapper($item, $i); $i++; }
+        return $out;
+    }
+
     public static function now(): int
     {
         if (self::$instant !== null) {

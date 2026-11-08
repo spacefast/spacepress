@@ -1778,7 +1778,7 @@ impl<'p> Evaluator<'p> {
                     self.call(&f, argv, call_span)?
                 }
             }
-            ExprKind::New { callee, args } => {
+            ExprKind::New { callee, args, .. } => {
                 let f = self.eval(callee, scope)?;
                 let argv = self.eval_args(args, scope)?;
                 let constructor = match &f {
@@ -1802,6 +1802,43 @@ impl<'p> Evaluator<'p> {
                             e.span,
                             "class instances are only constructed inside compiled callbacks; configuration stays plain data",
                         );
+                    }
+                    Value::Builtin(Builtin::Global(g @ ("Map" | "Set"))) => {
+                        // Module constants like `new Set([404])`: build-time contents, one runtime collection.
+                        let set = g == "Set";
+                        let mut entries: Vec<(Value, Value)> = Vec::new();
+                        if let Some(source) = argv
+                            .into_iter()
+                            .next()
+                            .filter(|v| !matches!(v, Value::Undef | Value::Null))
+                        {
+                            let mut items = ValueIterator::new(source, e.span)?;
+                            while let Some(item) = items.next(e.span)? {
+                                self.tick(e.span)?;
+                                let (key, value) = if set {
+                                    (item.clone(), item)
+                                } else {
+                                    let Value::Array(pair) = &item else {
+                                        return err(e.span, "Map entries must be [key, value] arrays");
+                                    };
+                                    let pair = pair.borrow();
+                                    (
+                                        pair.first().cloned().unwrap_or(Value::Undef),
+                                        pair.get(1).cloned().unwrap_or(Value::Undef),
+                                    )
+                                };
+                                // SameValueZero stores -0 as +0.
+                                let key = match key {
+                                    Value::Num(n) => Value::Num(n + 0.0),
+                                    k => k,
+                                };
+                                match entries.iter_mut().find(|(k, _)| k.same_value_zero(&key)) {
+                                    Some(entry) => entry.1 = value,
+                                    None => entries.push((key, value)),
+                                }
+                            }
+                        }
+                        return Ok(Value::Coll(Rc::new(crate::value::CollVal { set, entries })));
                     }
                     Value::Builtin(Builtin::Global(kind @ ("WeakMap" | "WeakSet"))) => {
                         Value::Weak(Rc::new(WeakVal { set: kind == "WeakSet" }))
@@ -2017,6 +2054,8 @@ impl<'p> Evaluator<'p> {
                 "length" => Ok(Value::Num(s.encode_utf16().count() as f64)),
                 _ => bound(),
             },
+            Value::Coll(c) if prop == "size" => Ok(Value::Num(c.entries.len() as f64)),
+            Value::Coll(_) => bound(),
             Value::Regex(p, _) if prop == "source" => Ok(Value::str(&crate::builtins::regex_source(p))),
             Value::Regex(_, f) if prop == "flags" => Ok(Value::str(f)),
             Value::Num(_) | Value::Column(_) | Value::Regex(..) => bound(),
@@ -2857,6 +2896,22 @@ impl<'p> Evaluator<'p> {
                 }
             }
             Value::Array(a) => self.array_method(a, m, args, span),
+            Value::Coll(c) => {
+                let find = |key: &Value| c.entries.iter().find(|(k, _)| k.same_value_zero(key));
+                let key = args.first().cloned().unwrap_or(Value::Undef);
+                match (c.set, m) {
+                    (_, "has") => Ok(Value::Bool(find(&key).is_some())),
+                    (false, "get") => Ok(find(&key).map_or(Value::Undef, |(_, v)| v.clone())),
+                    _ => err_help(
+                        span,
+                        format!(
+                            "`{m}` on a {} isn't available while the config is evaluated",
+                            if c.set { "Set" } else { "Map" }
+                        ),
+                        "build the collection with its entries; mutate it inside a hook or action",
+                    ),
+                }
+            }
             other => err(span, format!("{} has no method `{m}`", other.describe())),
         }
     }
@@ -3642,7 +3697,7 @@ fn returns_new_date(f: &Func) -> bool {
             _ => return false,
         },
     };
-    matches!(&body.kind, ExprKind::New { callee, args }
+    matches!(&body.kind, ExprKind::New { callee, args, .. }
         if args.is_empty() && matches!(&callee.kind, ExprKind::Ident(n) if n == "Date"))
 }
 

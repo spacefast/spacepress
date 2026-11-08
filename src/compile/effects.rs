@@ -1056,7 +1056,7 @@ impl Graph {
                 self.history.entry(owner).or_default().insert(e.span);
                 return None;
             }
-            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
+            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => {
                 let callee_value = self.expr(callee, names, env, owner);
                 let argv: Vec<_> = args
                     .iter()

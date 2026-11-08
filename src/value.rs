@@ -44,11 +44,21 @@ pub enum Value {
     Env(Rc<str>),
     Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
+    /// A module-level `new Map(entries)` / `new Set(values)`: build-time contents in insertion
+    /// order. Configuration reads them; compiled code captures one shared runtime collection.
+    Coll(Rc<CollVal>),
     /// A JavaScript symbol created while the config is evaluated.
     Symbol(Rc<SymbolVal>),
     /// An empty `WeakMap` (`set == false`) or `WeakSet` created at module level.
     /// Each request gets its own; entries can only be added in compiled code.
     Weak(Rc<WeakVal>),
+}
+
+#[derive(Debug)]
+pub struct CollVal {
+    pub set: bool,
+    /// (key, value); a Set stores each value as its key.
+    pub entries: Vec<(Value, Value)>,
 }
 
 /// Registered and well-known symbols are identified by name; others by allocation.
@@ -412,6 +422,7 @@ impl Value {
             Value::Env(n) => format!("env({n:?})"),
             Value::Global(g) => format!("global \"{}\"", g.name),
             Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
+            Value::Coll(c) => (if c.set { "a Set" } else { "a Map" }).into(),
             Value::Symbol(s) => format!("Symbol({})", s.description().unwrap_or_default()),
             Value::Weak(w) => if w.set { "a WeakSet" } else { "a WeakMap" }.into(),
         }
@@ -479,6 +490,7 @@ impl Value {
             },
             (Value::Weak(a), Value::Weak(b)) => Rc::ptr_eq(a, b),
             (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
+            (Value::Coll(a), Value::Coll(b)) => Rc::ptr_eq(a, b),
             (Value::Builtin(a), Value::Builtin(b)) => a == b,
             _ => false,
         }

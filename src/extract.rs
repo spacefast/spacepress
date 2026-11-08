@@ -2130,7 +2130,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
             _ => r(obj),
         },
         ExprKind::Ident(n) => n == param,
-        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
+        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => {
             r(callee)
                 || args
                     .iter()

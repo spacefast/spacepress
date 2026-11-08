@@ -693,6 +693,62 @@
   ],
   "zero08": [
     {
+      "code": "Z08_OMITTED_CLIENT",
+      "feature": "0.8 client app (client/)"
+    },
+    {
+      "code": "Z08_OMITTED_PAGES",
+      "feature": "0.8 page"
+    },
+    {
+      "code": "Z08_OMITTED_STATIC",
+      "feature": "static file the candidate can't carry"
+    },
+    {
+      "code": "Z08_OMITTED_PUBLIC",
+      "feature": "0.8 public/ directory"
+    },
+    {
+      "code": "Z08_OMITTED_REDIRECTS",
+      "feature": "redirect, rewrite and header rules (_redirects, _headers, sf.jsonc)"
+    },
+    {
+      "code": "Z08_OMITTED_CLEAN_URLS",
+      "feature": "clean URLs (/<name> serving <name>.html)"
+    },
+    {
+      "code": "Z08_OMITTED_SERVE",
+      "feature": "serving settings (fallback, index, listing, inject, firewall, cache)"
+    },
+    {
+      "code": "Z08_OMITTED_CONNECTORS",
+      "feature": "connector role and its credentials"
+    },
+    {
+      "code": "Z08_OMITTED_SYMLINK",
+      "feature": "symbolic link in the project"
+    },
+    {
+      "code": "Z08_OMITTED_CONFIG",
+      "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, access or crons, or theme.json)"
+    },
+    {
+      "code": "Z08_OMITTED_UNVERIFIED_CONFIG",
+      "feature": "Space config or theme.json the finalize manifest doesn't record"
+    },
+    {
+      "code": "Z08_OMITTED_UNVERIFIED",
+      "feature": "static file the finalize manifest doesn't record"
+    },
+    {
+      "code": "Z08_DENIED_SOURCE_FILE",
+      "feature": "credential file in the project (keys, .env files, .npmrc, .ssh/, .aws/)"
+    },
+    {
+      "code": "Z08_OMITTED_SYNC",
+      "feature": "content sync of native posts"
+    },
+    {
       "code": "Z08_CLIENT_STORAGE",
       "feature": "0.8 client storage uploads"
     },
@@ -798,7 +854,7 @@
     },
     {
       "code": "Z08_ENDPOINT_REQUEST_API",
-      "feature": "endpoint request API (url, bytes, headers.entries)"
+      "feature": "endpoint request API (bytes, entries, path, the request as a value)"
     },
     {
       "code": "Z08_ENDPOINT_NAME",

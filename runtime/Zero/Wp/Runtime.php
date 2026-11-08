@@ -38,51 +38,41 @@ final class Runtime
             };
             self::$unavailable = Migrator::upgrade(new Connection($wpdb), 'zero_runtime_tables', $current, [self::class, 'applySystemTables']);
         }, 1);
-        // The build loader owns `wp zero` when present and forwards app commands to cli().
-        if (defined('WP_CLI') && WP_CLI && !class_exists(\Zero\Loader\Loader::class, false)) {
-            \WP_CLI::add_command('zero', [self::class, 'cli']);
+        if (defined('WP_CLI') && WP_CLI) {
+            \WP_CLI::add_command('zero', static function (array $args, array $flags): void {
+                if (self::$plugin === null) {
+                    \WP_CLI::error('No compatible Zero app is active.');
+                }
+                // While storage is behind, only `migrate` runs; every other command (legacy migration
+                // included) would write against tables that don't match the build.
+                if (($args[0] ?? '') !== 'migrate' && self::$plugin->unavailable() !== null) {
+                    \WP_CLI::line((string) \Zero\Js::jsonStringify(['error' => \Zero\App::problem(new \Zero\HttpError(503, 'unavailable', (string) self::$plugin->unavailable()))]));
+                    \WP_CLI::halt(1);
+                }
+                if (($args[0] ?? '') === 'seed') {
+                    $code = \Zero\Sync\Seed::wpCli(self::$plugin, $args, $flags);
+                    $code === 0 || \WP_CLI::halt($code);
+                    return;
+                }
+                if (\Zero\Wp\Legacy\Module::handles($args)) {
+                    $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
+                    $code === 0 || \WP_CLI::halt($code);
+                    return;
+                }
+                self::$plugin->cli($args, $flags);
+            });
         }
         do_action('zero_runtime_loaded');
     }
 
-    /** `wp zero <command>` for the active app. */
-    public static function cli(array $args, array $flags): void
-    {
-        if (self::$plugin === null) {
-            \WP_CLI::error('No compatible Zero app is active.');
-        }
-        // While storage is behind, only `migrate` runs; every other command (legacy migration
-        // included) would write against tables that don't match the build.
-        if (($args[0] ?? '') !== 'migrate' && self::$plugin->unavailable() !== null) {
-            \WP_CLI::line((string) \Zero\Js::jsonStringify(['error' => \Zero\App::problem(new \Zero\HttpError(503, 'unavailable', (string) self::$plugin->unavailable()))]));
-            \WP_CLI::halt(1);
-        }
-        if (($args[0] ?? '') === 'seed') {
-            $code = \Zero\Sync\Seed::wpCli(self::$plugin, $args, $flags);
-            $code === 0 || \WP_CLI::halt($code);
-            return;
-        }
-        if (\Zero\Wp\Legacy\Module::handles($args)) {
-            $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
-            $code === 0 || \WP_CLI::halt($code);
-            return;
-        }
-        self::$plugin->cli($args, $flags);
-    }
-
-    /**
-     * Mount exactly one version after platform plugins load. Visitors never migrate managed apps.
-     * Null variables keep standalone lookup (environment and wp-config constants) for plain sites.
-     */
-    public static function mount(string $runtimeFile, string $appDir, ?array $variables = []): Plugin
+    /** Mount exactly one version after platform plugins load. Visitors never migrate managed apps. */
+    public static function mount(string $runtimeFile, string $appDir, array $variables = []): Plugin
     {
         if (self::$booted && !self::$managed) {
             throw new \RuntimeException('A site-wide Zero runtime is already loaded');
         }
         self::$managed = true;
-        if ($variables !== null) {
-            \Zero\Env::isolate($variables);
-        }
+        \Zero\Env::isolate($variables);
         self::boot($runtimeFile);
         $plugin = self::app($appDir, $appDir . '/' . basename($appDir) . '.php');
         if ($plugin === null) {

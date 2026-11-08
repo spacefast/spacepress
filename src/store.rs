@@ -276,21 +276,16 @@ pub fn compile_to_store(
     })
 }
 
-/// Keep the builds in `keep` (and `current.json`'s build, when a plain site has one); remove every
-/// other build manifest and ready marker, and every runtime and app directory no kept build
-/// references. Returns the removed paths. With `dry_run`, removes nothing.
+/// Keep exactly the builds in `keep`; remove every other build manifest and ready marker, and every
+/// runtime and app directory no kept build references. Returns the removed paths. With `dry_run`,
+/// removes nothing.
 ///
-/// A host must not collect while a build it compiled is not yet in `keep`.
+/// The store never decides what to keep. The host passes the builds of every version it still
+/// serves (on a host with immutable versions: every version not deleted), including a candidate it
+/// is finalizing, and calls this only after a version is deleted.
 pub fn store_gc(root: &Path, keep: &[&str], dry_run: bool) -> Result<Vec<PathBuf>, Diag> {
     let store = Store::open(root)?;
-    let mut kept: BTreeSet<String> = keep.iter().map(|id| (*id).to_owned()).collect();
-    if let Ok(bytes) = fs::read(root.join("current.json")) {
-        let current: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|e| failure(format!("build store: current.json: {e}")))?;
-        if let Some(id) = current["build"].as_str() {
-            kept.insert(id.to_owned());
-        }
-    }
+    let kept: BTreeSet<String> = keep.iter().map(|id| (*id).to_owned()).collect();
     let mut runtimes = BTreeSet::new();
     let mut apps = BTreeSet::new();
     for id in &kept {

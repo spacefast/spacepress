@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Real WordPress/MariaDB proof of the build store (docs/decisions/2026-11-07-build-store.md):
-# two builds of one app whose action code differs, both installed in one store under wp-content.
-# Each answers its own action while both are present; deploy and rollback move the current build;
-# garbage collection keeps only what the kept builds reference. Assertions are on HTTP answers,
-# WP-CLI receipts and the store's directories, never on source text.
+# two builds of one app whose action code differs, both installed in one store. A test-only host
+# (tests/wp/store/host.php) selects the build per request. Each build initializes once, each answers
+# its own action while both are installed, selecting the older build again serves it on the newer
+# schema (rollback), and garbage collection removes only what the host's kept builds do not reference.
+# Assertions are on HTTP answers, receipts and the store's directories, never on source text.
 #
-#   ZERO_WP_PROJECT=zero-wp-store ZERO_WP_PORT=8899 tests/wp/store-run.sh
+#   ZERO_WP_PROJECT=zero-wp-store ZERO_WP_PORT=8901 tests/wp/store-run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
@@ -13,7 +14,7 @@ target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 zero="$target/debug/zero"
 export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-wp-store}"
-export ZERO_WP_PORT="${ZERO_WP_PORT:-8899}"
+export ZERO_WP_PORT="${ZERO_WP_PORT:-8901}"
 work="$(mktemp -d)"
 cleanup() { "$here/harness.sh" down; rm -rf "$work"; }
 trap cleanup EXIT
@@ -26,13 +27,14 @@ print(v if not isinstance(v,(dict,list,bool)) and v is not None else json.dumps(
 
 # The same app, two builds: only the action's returned label differs.
 for label in one two; do
-  rsync -a "$here/store/" "$work/$label/storelane/"
+  rsync -a --exclude host.php "$here/store/" "$work/$label/storelane/"
   sed -i.bak "s/BUILD_LABEL/$label/" "$work/$label/storelane/zero.config.ts" && rm "$work/$label/storelane/zero.config.ts.bak"
   "$zero" sources "$work/$label/storelane" --out "$work/$label/sources"
 done
 # The harness installs the pinned platform plugins from a native build's lock; it never serves the build.
 "$zero" build "$work/one/storelane" --quiet >/dev/null
-mkdir -p "$work/content/plugins" "$work/content/zero"
+mkdir -p "$work/content/plugins"
+cp "$here/store/host.php" "$work/content/plugins/zero-store-host.php"
 cp "$work/one/storelane/.zero/wp-content/zero-manifest.json" "$work/content/"
 # The store lives in the bind-mounted plugins directory so the container sees it; ZERO_BUILD_STORE points at it.
 store="$work/content/plugins/zero-store"
@@ -52,62 +54,56 @@ runtime=$(ls "$store/runtime")
 # through the must-use loader, not as WordPress plugins.
 "$here/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
-wp config set ZERO_BUILD_STORE /var/www/html/wp-content/plugins/zero-store --type=constant >/dev/null
-wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR);' >/dev/null
-"$here/harness.sh" compose exec -T wordpress sh -c "cp /var/www/html/wp-content/plugins/zero-store/runtime/$runtime/zero-loader.php /var/www/html/wp-content/mu-plugins/zero-loader.php"
+"$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/zero-store-host.php /var/www/html/wp-content/mu-plugins/zero-store-host.php"
 
-action() { curl -sS -X POST -H 'Content-Type: application/json' --data '{}' "$url/wp-json/zero/v1/actions/which"; }
+action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-Zero-Build: $1" --data '{}' "$url/wp-json/zero/v1/actions/which"; }
+# WP-CLI as the host: select the build before WordPress loads, then call the loader.
+host() { local build="$1"; shift; wp --exec="define('ZERO_TEST_BUILD', '$build');" eval "$@"; }
+root=/var/www/html/wp-content/plugins/zero-store
+initialize() { host "$1" "echo json_encode(Zero\\Loader\\Loader::initialize('$root', '$1'));"; }
+gc() { host "$1" "echo json_encode(Zero\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
 
-# Nothing deployed: WordPress serves without an app.
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data '{}' "$url/wp-json/zero/v1/actions/which")
-[[ $status == 404 ]] || fail "no build deployed answers 404, got $status"
-ok "an empty store mounts nothing"
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-Zero-Build: $first" --data '{}' "$url/wp-json/zero/v1/actions/which")
+[[ $status == 404 ]] || fail "an uninitialized build is not served, got $status"
+ok "a build is not served before it initializes"
 
-deploy=$(wp zero deploy "$first")
-[[ $(json data.build <<< "$deploy") == "$first" ]] || fail "deploy receipt names the build: $deploy"
-[[ $(json data.migrations.0 <<< "$deploy") == 0001_init ]] || fail "first deploy applies the init migration: $deploy"
-[[ $(json data.seed.notes.created <<< "$deploy") == 1 ]] || fail "first deploy seeds one note: $deploy"
-[[ $(action | json data.build) == one ]] || fail "build one answers after deploy"
-[[ $(action | json data.notes) == 1 ]] || fail "build one reads the seeded note"
-ok "deploy initializes, seeds and serves build one"
+receipt=$(initialize "$first")
+[[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "the first build applies the init migration: $receipt"
+[[ $(json seed.notes.created <<< "$receipt") == 1 ]] || fail "the first build seeds one note: $receipt"
+[[ $(action "$first" | json data.build) == one ]] || fail "build one answers"
+[[ $(action "$first" | json data.notes) == 1 ]] || fail "build one reads the seeded note"
+ok "initialize migrates, seeds and marks build one ready"
 
-# Initializing again returns the stored receipt without seeding twice.
-again=$(wp zero deploy "$first")
-[[ $(json data.seed.notes.created <<< "$again") == 1 ]] || fail "a repeated deploy returns the stored receipt: $again"
-[[ $(action | json data.notes) == 1 ]] || fail "a repeated deploy does not seed twice"
+again=$(initialize "$first")
+[[ $again == "$receipt" ]] || fail "a ready build returns its stored receipt: $again"
+[[ $(action "$first" | json data.notes) == 1 ]] || fail "a second initialize does not seed twice"
 ok "a ready build initializes once"
 
-deploy=$(wp zero deploy "$second")
-[[ $(json data.migrations <<< "$deploy") == '[]' ]] || fail "the second build has no new migration: $deploy"
-[[ $(json data.seed.notes.unchanged <<< "$deploy") == 1 ]] || fail "the second seed finds the note unchanged: $deploy"
-[[ $(action | json data.build) == two ]] || fail "build two answers after deploy"
-ok "deploy moves the site to build two"
-
-# Both builds are installed; each request mounts exactly the one it names.
-wp config set ZERO_BUILD "$first" --type=constant >/dev/null
-[[ $(action | json data.build) == one ]] || fail "build one still answers its own action while two is current"
-wp config delete ZERO_BUILD --type=constant >/dev/null
-[[ $(action | json data.build) == two ]] || fail "build two answers again"
+receipt=$(initialize "$second")
+[[ $(json migrations <<< "$receipt") == '[]' ]] || fail "the second build has no new migration: $receipt"
+[[ $(json seed.notes.unchanged <<< "$receipt") == 1 ]] || fail "the second seed finds the note unchanged: $receipt"
+[[ $(action "$second" | json data.build) == two ]] || fail "build two answers"
+[[ $(action "$first" | json data.build) == one ]] || fail "build one still answers its own action"
+[[ $(action "$second" | json data.build) == two ]] || fail "build two answers again"
 ok "both builds installed, each answers its own action"
 
-rollback=$(wp zero rollback)
-[[ $(json data.build <<< "$rollback") == "$first" ]] || fail "rollback returns to build one: $rollback"
-[[ $(action | json data.build) == one ]] || fail "build one answers after rollback"
-[[ $(action | json data.notes) == 1 ]] || fail "rollback keeps the data"
-ok "rollback serves build one without migrating"
+# Rollback is the host selecting the older build again: no migrations, same data.
+[[ $(action "$first" | json data.notes) == 1 ]] || fail "the older build reads the newer schema's data"
+ok "the older build serves after the newer one initialized"
 
-dry=$(wp zero gc --history=0 --dry-run)
-[[ $(json data.removed <<< "$dry" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))') == 3 ]] || fail "dry gc lists build two's manifest, ready marker and app: $dry"
-[[ $(ls "$store/app" | wc -l) -eq 2 ]] || fail "dry gc removes nothing"
-gc=$(wp zero gc --history=0)
-removed=$(json data.removed <<< "$gc")
-python3 - "$removed" "$second" <<'PY' || fail "gc removes build two's manifest, ready marker and app tree: $removed"
+# The host keeps the builds of every version it still serves; here both versions exist.
+[[ $(gc "$first" "[\"$first\",\"$second\"]" true) == '[]' ]] || fail "gc keeping both builds removes nothing"
+dry=$(gc "$first" "[\"$first\"]" true)
+python3 - "$dry" "$second" <<'PY' || fail "dry gc lists build two's manifest, ready marker and app tree: $dry"
 import json,sys
 removed=json.loads(sys.argv[1]); build=sys.argv[2]
-kinds=sorted(p.split('/')[-2] for p in removed)
-assert kinds==['app','build','ready'], kinds
+assert sorted(p.split('/')[-2] for p in removed)==['app','build','ready'], removed
 assert any(p.endswith(build+'.json') for p in removed)
 PY
-[[ $(ls "$store/app" | wc -l) -eq 1 && $(ls "$store/build" | wc -l) -eq 1 && $(ls "$store/runtime" | wc -l) -eq 1 ]] || fail "gc keeps the current build's runtime and app"
-[[ $(action | json data.build) == one ]] || fail "the current build still answers after gc"
+[[ $(ls "$store/app" | wc -l) -eq 2 ]] || fail "dry gc removes nothing"
+[[ $(gc "$first" "[\"$first\"]" false) == "$dry" ]] || fail "gc removes what the dry run listed"
+[[ $(ls "$store/app" | wc -l) -eq 1 && $(ls "$store/build" | wc -l) -eq 1 && $(ls "$store/runtime" | wc -l) -eq 1 ]] || fail "gc keeps the kept build's runtime and app"
+[[ $(action "$first" | json data.build) == one ]] || fail "the kept build still answers after gc"
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-Zero-Build: $second" --data '{}' "$url/wp-json/zero/v1/actions/which")
+[[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"

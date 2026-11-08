@@ -621,6 +621,67 @@ impl Graph {
         }
     }
 
+    fn assign_pattern(
+        &mut self,
+        pattern: &AssignPat,
+        src: Option<Place>,
+        names: &mut Names,
+        env: &Rc<Scope>,
+        owner: Span,
+        event: Span,
+    ) {
+        match pattern {
+            AssignPat::Target(target) => {
+                if let Some(p) = self.expr(target, names, env, owner) {
+                    self.write_events.entry(event).or_default().insert(p.clone());
+                    self.function_writes.entry(owner).or_default().insert(p.clone());
+                    self.events.entry(event).or_default().insert(p.clone());
+                    self.copy(src, Some(p), owner);
+                }
+            }
+            AssignPat::Default(inner, default) => {
+                let d = self.expr(default, names, env, owner);
+                self.assign_pattern(inner, src, names, env, owner, event);
+                if let Some(d) = d {
+                    for target in inner.targets() {
+                        if let Some(p) = self.expr(target, names, env, owner) {
+                            self.copy(Some(d.clone()), Some(p), owner);
+                        }
+                    }
+                }
+            }
+            AssignPat::Obj { props, rest, .. } => {
+                for (key, p) in props {
+                    let step = match key {
+                        PropKey::Static(k) => Some(Step::Field(k.clone())),
+                        PropKey::Computed(k) => {
+                            self.expr(k, names, env, owner);
+                            match &k.kind {
+                                ExprKind::Str(k) => Some(Step::Field(k.clone())),
+                                // A computed key reads an unknown field: the value is a copy of
+                                // some part of the source, which the target sees as its own.
+                                _ => None,
+                            }
+                        }
+                    };
+                    let part = step.and_then(|step| src.as_ref().map(|s| s.at(step)));
+                    self.assign_pattern(p, part, names, env, owner, event);
+                }
+                if let Some(r) = rest {
+                    self.assign_pattern(r, src.clone(), names, env, owner, event);
+                }
+            }
+            AssignPat::Arr { elems, rest, .. } => {
+                for p in elems.iter().flatten() {
+                    self.assign_pattern(p, src.as_ref().map(|s| s.at(Step::Index)), names, env, owner, event);
+                }
+                if let Some(r) = rest {
+                    self.assign_pattern(r, src.clone(), names, env, owner, event);
+                }
+            }
+        }
+    }
+
     fn bind_value(&mut self, pat: &Pat, src: Option<Place>, owner: Span) {
         match pat {
             Pat::Id(_, span) => self.copy(src, Some(Place::new(*span)), owner),
@@ -929,6 +990,13 @@ impl Graph {
                 self.copy(src, target.clone(), owner);
                 self.history.entry(owner).or_default().insert(e.span);
                 return target;
+            }
+            // A destructuring assignment writes each leaf target from part of the value.
+            ExprKind::AssignPattern(pattern, value) => {
+                let src = self.expr(value, names, env, owner);
+                self.assign_pattern(pattern, src.clone(), names, env, owner, e.span);
+                self.history.entry(owner).or_default().insert(e.span);
+                return src;
             }
             // `delete` writes its target place: the property becomes absent.
             ExprKind::Delete(target) => {

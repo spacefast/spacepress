@@ -80,6 +80,13 @@ impl ValueIterator {
     }
 }
 
+/// Where a destructuring-assignment leaf reads its value: already read (array elements, rests)
+/// or a property read that runs after the leaf resolves its target.
+enum PatternSource {
+    Value(Value),
+    Property(Value, String),
+}
+
 enum ValuePlace {
     Binding(String),
     Property(Value, Value),
@@ -754,6 +761,99 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    /// A destructuring assignment, in JavaScript order: each leaf resolves its target, then reads
+    /// its value, then applies its default, then writes.
+    fn assign_pattern(&mut self, pattern: &AssignPat, value: Value, scope: &Rc<Scope>) -> R<()> {
+        self.assign_pattern_from(pattern, PatternSource::Value(value), scope)
+    }
+
+    fn read_source(&self, source: PatternSource, span: Span) -> R<Value> {
+        match source {
+            PatternSource::Value(value) => Ok(value),
+            PatternSource::Property(object, key) => self.get_prop(&object, &key, span),
+        }
+    }
+
+    fn assign_pattern_from(&mut self, pattern: &AssignPat, source: PatternSource, scope: &Rc<Scope>) -> R<()> {
+        let span = pattern.span();
+        let (target, default) = match pattern {
+            AssignPat::Target(target) => (Some(target), None),
+            AssignPat::Default(inner, default) => match &**inner {
+                AssignPat::Target(target) => (Some(target), Some(default)),
+                _ => (None, Some(default)),
+            },
+            _ => (None, None),
+        };
+        if let Some(target) = target {
+            let place = self.capture_place(target, scope)?;
+            let mut value = self.read_source(source, span)?;
+            if let Some(default) = default
+                && matches!(value, Value::Undef)
+            {
+                value = self.eval(default, scope)?;
+            }
+            return self.write_place(place, value, scope, target.span);
+        }
+        let mut value = self.read_source(source, span)?;
+        let inner = match pattern {
+            AssignPat::Default(inner, default) => {
+                if matches!(value, Value::Undef) {
+                    value = self.eval(default, scope)?;
+                }
+                &**inner
+            }
+            other => other,
+        };
+        match inner {
+            AssignPat::Obj { props, rest, span } => {
+                let Value::Object(obj) = &value else {
+                    return err(*span, format!("can't destructure {} as an object", value.describe()));
+                };
+                let mut taken = Vec::new();
+                for (key, p) in props {
+                    let key = match key {
+                        PropKey::Static(k) => k.clone(),
+                        PropKey::Computed(k) => {
+                            let k = self.eval(k, scope)?;
+                            require_static_coercion(&k, *span)?;
+                            k.to_js_string()
+                                .ok_or_else(|| Ctl::Err(Diag::new(*span, "destructuring keys must be primitive")))?
+                        }
+                    };
+                    taken.push(key.clone());
+                    self.assign_pattern_from(p, PatternSource::Property(value.clone(), key), scope)?;
+                }
+                if let Some(r) = rest {
+                    let mut map = obj.borrow().clone();
+                    for key in &taken {
+                        map.shift_remove(key);
+                    }
+                    self.assign_pattern_from(r, PatternSource::Value(Value::object(map)), scope)?;
+                }
+                Ok(())
+            }
+            AssignPat::Arr { elems, rest, span } => {
+                let mut items = ValueIterator::new(value, *span)?;
+                for p in elems {
+                    let item = items.next(*span)?.unwrap_or(Value::Undef);
+                    if let Some(p) = p {
+                        self.assign_pattern_from(p, PatternSource::Value(item), scope)?;
+                    }
+                }
+                if let Some(r) = rest {
+                    let mut tail = Vec::new();
+                    while let Some(item) = items.next(*span)? {
+                        self.tick(*span)?;
+                        tail.push(item);
+                    }
+                    self.assign_pattern_from(r, PatternSource::Value(Value::array(tail)), scope)?;
+                }
+                Ok(())
+            }
+            AssignPat::Target(_) | AssignPat::Default(..) => unreachable!("handled above"),
+        }
+    }
+
     fn exec_block(&mut self, body: &[Stmt], parent: &Rc<Scope>) -> R<Flow> {
         let scope = Scope::new(Some(parent.clone()), parent.module);
         hoist(body, &scope);
@@ -1125,6 +1225,11 @@ impl<'p> Evaluator<'p> {
                 }))
             }
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
+            ExprKind::AssignPattern(pattern, value) => {
+                let value = self.eval(value, scope)?;
+                self.assign_pattern(pattern, value.clone(), scope)?;
+                value
+            }
             ExprKind::Delete(target) => {
                 let inner = match &target.kind {
                     ExprKind::Chain(inner) => inner,

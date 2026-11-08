@@ -2691,6 +2691,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }
             ExprKind::Delete(target) => self.delete(target, span)?,
+            ExprKind::AssignPattern(pattern, value) => self.assign_pattern(pattern, value)?,
             ExprKind::In(key, object) => {
                 let key = self.expr(key)?;
                 let key = self.finish_value(key, span)?;
@@ -3907,6 +3908,223 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Self::assignment_sequence(steps, Self::write_place(&write, &v.php), statement),
             v.ty,
         ))
+    }
+
+    /// `[a, b] = value` / `({ a, b: c.d = 1, ...rest } = value)`. The value is evaluated once and is
+    /// the result. Each leaf runs in JavaScript order: its computed key, then its target reference,
+    /// then the read from the value, then its default (only for undefined), then the write.
+    fn assign_pattern(&mut self, pattern: &AssignPat, value: &Expr) -> Result<Out> {
+        let v = self.expr(value)?;
+        let v = self.finish_value(v, value.span)?;
+        let source = self.tmp_var();
+        let mut steps = vec![format!("{source} = {}", v.php)];
+        // Untyped JavaScript reads absent fields as undefined: destructure through checked dispatch.
+        let ty = if self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            Ty::Dynamic
+        } else {
+            v.ty.clone()
+        };
+        self.assign_pattern_steps(pattern, &source, None, &ty, &mut steps)?;
+        Ok(Out::new(Self::sequence(steps, source), v.ty))
+    }
+
+    /// `pending` is the step that reads this pattern's value into `src`. A leaf target resolves
+    /// its reference first, as JavaScript does; a nested pattern reads first.
+    fn assign_pattern_steps(
+        &mut self,
+        pattern: &AssignPat,
+        src: &str,
+        pending: Option<String>,
+        ty: &Ty,
+        steps: &mut Vec<String>,
+    ) -> Result<()> {
+        match pattern {
+            AssignPat::Target(target) => self.assign_pattern_leaf(target, None, src, pending, ty, steps),
+            AssignPat::Default(inner, default) => {
+                if let AssignPat::Target(target) = &**inner {
+                    return self.assign_pattern_leaf(target, Some(default), src, pending, ty, steps);
+                }
+                steps.extend(pending);
+                let (value, ty) = self.assign_pattern_default(default, src, ty, steps)?;
+                self.assign_pattern_steps(inner, &value, None, &ty, steps)
+            }
+            AssignPat::Obj { props, rest, span } => {
+                steps.extend(pending);
+                if ty.is_nullable() && *ty != Ty::Dynamic {
+                    return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                let object = self.tmp_var();
+                steps.push(format!("{object} = \\Zero\\Js::requirePresent({src})"));
+                let mut keys = Vec::new();
+                for (key, p) in props {
+                    let (key_php, field_ty) = match key {
+                        PropKey::Static(k) => {
+                            let field = if *ty == Ty::Dynamic {
+                                Some(Ty::Dynamic)
+                            } else {
+                                ty.non_null().field(k).map(|(t, optional)| {
+                                    if optional || matches!(ty.non_null(), Ty::Map(_)) {
+                                        Ty::union([t, Ty::Undefined])
+                                    } else {
+                                        t
+                                    }
+                                })
+                            };
+                            let Some(field) = field else {
+                                return Err(self.no_field(ty, k, p.span()));
+                            };
+                            (php_str(k), field)
+                        }
+                        PropKey::Computed(k) => {
+                            let key = self.expr(k)?;
+                            let key = self.finish_value(key, k.span)?;
+                            let tmp = self.tmp_var();
+                            steps.push(format!("{tmp} = \\Zero\\Js::key({})", key.php));
+                            let literal = match &key.ty {
+                                Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
+                                _ => None,
+                            };
+                            let field = match ty.non_null() {
+                                Ty::Dynamic => Ty::Dynamic,
+                                Ty::Map(t) => Ty::union([*t, Ty::Undefined]),
+                                fields @ (Ty::Obj(_) | Ty::Instance(..)) if literal.is_some() => {
+                                    let name = literal.expect("literal key");
+                                    let Some((t, optional)) = fields.field(&name) else {
+                                        return Err(self.no_field(ty, &name, k.span));
+                                    };
+                                    if optional { Ty::union([t, Ty::Undefined]) } else { t }
+                                }
+                                other => {
+                                    return err(
+                                        k.span,
+                                        format!(
+                                            "a computed destructuring key needs an open map, not {}",
+                                            other.describe()
+                                        ),
+                                    );
+                                }
+                            };
+                            (tmp, field)
+                        }
+                    };
+                    keys.push(key_php.clone());
+                    let read = self.tmp_var();
+                    let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };
+                    let pending = format!("{read} = \\Zero\\Js::{getter}({object}, {key_php})");
+                    self.assign_pattern_steps(p, &read, Some(pending), &field_ty, steps)?;
+                }
+                if let Some(r) = rest {
+                    let value = self.tmp_var();
+                    let pending = format!("{value} = \\Zero\\Js::omit({object}, [{}])", keys.join(", "));
+                    let rest_ty = match ty.non_null() {
+                        Ty::Obj(f) => Ty::Obj(
+                            f.into_iter()
+                                .filter(|(k, _)| {
+                                    !props.iter().any(|(pk, _)| matches!(pk, PropKey::Static(s) if s == k))
+                                })
+                                .collect(),
+                        ),
+                        other => other,
+                    };
+                    self.assign_pattern_steps(r, &value, Some(pending), &rest_ty, steps)?;
+                }
+                Ok(())
+            }
+            AssignPat::Arr { elems, rest, span } => {
+                steps.extend(pending);
+                let element = match ty.non_null() {
+                    Ty::Dynamic => None,
+                    Ty::Array(t) | Ty::NonEmptyArray(t) => Some(Ty::union([*t, Ty::Undefined])),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(Ty::union(ts.into_iter().chain([Ty::Undefined]))),
+                    _ => return err(*span, format!("can't destructure {} as an array", ty.describe())),
+                };
+                if ty.is_nullable() && *ty != Ty::Dynamic {
+                    return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                // The iterable is read once; for checked JavaScript it may be any iterable.
+                let list = self.tmp_var();
+                steps.push(match element {
+                    None => format!("{list} = \\Zero\\Js::dynamicIterable({src})"),
+                    Some(_) => format!("{list} = \\Zero\\Js::arrSlice({src}, 0)"),
+                });
+                for (i, p) in elems.iter().enumerate() {
+                    let Some(p) = p else { continue };
+                    let read = self.tmp_var();
+                    let el_ty = match (&element, ty.non_null()) {
+                        (None, _) => Ty::Dynamic,
+                        (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => ts.get(i).cloned().unwrap_or(Ty::Undefined),
+                        (Some(t), _) => t.clone(),
+                    };
+                    let pending = format!("{read} = \\Zero\\Js::dynamicGet({list}, {i})");
+                    self.assign_pattern_steps(p, &read, Some(pending), &el_ty, steps)?;
+                }
+                if let Some(r) = rest {
+                    let value = self.tmp_var();
+                    let pending = format!("{value} = \\Zero\\Js::arrSlice({list}, {})", elems.len());
+                    let rest_ty = match (&element, ty.non_null()) {
+                        (None, _) => Ty::Dynamic,
+                        (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => {
+                            Ty::Array(Box::new(Ty::union(ts.into_iter().skip(elems.len()))))
+                        }
+                        (Some(_), Ty::Array(t) | Ty::NonEmptyArray(t)) => Ty::Array(t),
+                        _ => unreachable!("array element type"),
+                    };
+                    self.assign_pattern_steps(r, &value, Some(pending), &rest_ty, steps)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn assign_pattern_default(
+        &mut self,
+        default: &Expr,
+        src: &str,
+        ty: &Ty,
+        steps: &mut Vec<String>,
+    ) -> Result<(String, Ty)> {
+        let value = self.tmp_var();
+        let d = self.expr(default)?;
+        let d = self.finish_value(d, default.span)?;
+        steps.push(format!(
+            "{value} = ({src} === \\Zero\\Js::undefined() ? {} : {src})",
+            d.php
+        ));
+        Ok((value, Ty::union([defined_type(ty), d.ty])))
+    }
+
+    fn assign_pattern_leaf(
+        &mut self,
+        target: &Expr,
+        default: Option<&Expr>,
+        src: &str,
+        pending: Option<String>,
+        ty: &Ty,
+        steps: &mut Vec<String>,
+    ) -> Result<()> {
+        let place = self.place(target)?;
+        let (captured, _, write) = self.capture_place(place.target, &place.read);
+        steps.extend(captured);
+        steps.extend(pending);
+        let (value, ty) = match default {
+            Some(default) => self.assign_pattern_default(default, src, ty, steps)?,
+            None => (src.to_string(), ty.clone()),
+        };
+        if !assignable(&ty, &place.constraint) {
+            return err(
+                target.span,
+                format!(
+                    "can't assign {} to something of type {}",
+                    ty.describe(),
+                    place.constraint.describe()
+                ),
+            );
+        }
+        steps.push(Self::write_place(&write, &value));
+        if let ExprKind::Ident(name) = &target.kind {
+            self.set_local_ty(name, ty);
+        }
+        Ok(())
     }
 
     fn assignment_sequence(mut steps: Vec<String>, result: String, statement: bool) -> String {

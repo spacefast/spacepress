@@ -40,8 +40,9 @@ async function sources(root) {
 function invoke(args, success = true, environment = {}) {
   const [mode, ...rest] = args;
   const binary = process.env.ZERO_DEPLOY_BIN;
-  const entry = ['backup', 'restore'].includes(mode) ? [mode] : ['deploy', mode];
-  const command = binary ? [...entry, ...rest] : [tool, ...args];
+  // Through the binary, WP-CLI on a workspace is `zero wp --site <workspace> <args>`.
+  const entry = mode === 'wp' ? ['wp', '--site', rest[1], ...rest.slice(3)] : ['deploy', mode, ...rest];
+  const command = binary ? entry : [tool, ...args];
   const child = spawnSync(binary || php, command, { encoding: 'utf8', timeout: 180000, env: { ...process.env, ...environment } });
   assert.equal(child.error, undefined);
   assert.equal(child.stderr, '');

@@ -317,6 +317,59 @@ fn space_user_subjects_back_owner_scoped_handlers() {
 }
 
 #[test]
+fn a_page_importing_a_component_module_refuses_at_the_page() {
+    let temp = tempfile::tempdir().unwrap();
+    for import in ["../shared/Widget", "../shared/Widget.tsx"] {
+        let root = temp.path().join(import.replace(['.', '/'], "_"));
+        project(&root, r#"{name:"p"}"#);
+        std::fs::create_dir_all(root.join("shared")).unwrap();
+        std::fs::create_dir_all(root.join("pages")).unwrap();
+        std::fs::write(
+            root.join("shared/Widget.tsx"),
+            "export function Widget() { return <b>w</b>; }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("pages/index.tsx"),
+            format!("import {{ Widget }} from \"{import}\";\nexport default function Home() {{ return <main><Widget /></main>; }}\n"),
+        )
+        .unwrap();
+        let (ok, refused) = migrate(&root, &root.with_extension("out"), &["--dry-run"]);
+        assert!(!ok);
+        assert_eq!(
+            refused["errors"][0]["pointer"], "/pages/index.tsx",
+            "{import}: {refused:#}"
+        );
+        assert!(
+            refused["errors"][0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("component module shared/Widget.tsx"),
+            "{import}: {refused:#}"
+        );
+    }
+}
+
+#[test]
+fn a_0_8_id_type_keeps_its_table_argument() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("ids");
+    project(
+        &root,
+        r#"{schema:{notes:table({body:string()})},queries:{get:query(async (ctx, id: Id<"notes">) => ctx.db.notes.get(id))}}"#,
+    );
+    let source = std::fs::read_to_string(root.join("server/index.ts")).unwrap().replace(
+        "import { capsule }",
+        "import { capsule, query, string, table, type Id }",
+    );
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    build(&out);
+}
+
+#[test]
 fn paginate_maps_to_keyset_reads_and_refuses_optional_keys() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("feed");
@@ -597,6 +650,10 @@ fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
     let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
     assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
     assert!(config.contains("__z08EndpointValue(await response.json())"), "{config}");
+    assert!(
+        config.contains("__z08EndpointValue(await (await fetch(\"https://api.example.com/status\")).json())"),
+        "an expression-bodied endpoint's body read is awaited too: {config}"
+    );
     build(&out);
 }
 
@@ -786,6 +843,34 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     std::fs::remove_dir_all(source.join("pages")).unwrap();
     std::fs::remove_file(source.join("sf.jsonc")).unwrap();
 
+    // A recorded binary asset is compared by its bytes, not refused as unreadable text.
+    let mut with_image: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    let png: &[u8] = &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe];
+    std::fs::create_dir_all(source.join("public")).unwrap();
+    std::fs::write(source.join("public/logo.png"), png).unwrap();
+    with_image["artifact"]["sourceManifest"]["files"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "path": "public/logo.png", "size": png.len(),
+            "sha256": sha2::Sha256::digest(png).iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        }));
+    let image_path = temp.path().join("with-image.json");
+    std::fs::write(&image_path, with_image.to_string()).unwrap();
+    let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b4"));
+    assert!(ok, "{report:#}");
+    std::fs::write(source.join("public/logo.png"), b"\xff\xfe changed").unwrap();
+    let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b5"));
+    assert!(!ok);
+    assert!(
+        report["errors"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("public/logo.png (changed)"),
+        "{report:#}"
+    );
+    std::fs::remove_dir_all(source.join("public")).unwrap();
+
     // A recorded sf.jsonc that names another entry than the publish compiled is refused.
     let mut renamed: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
     let config = r#"{"runtime":{"server":"server/main.ts"}}"#;
@@ -864,4 +949,76 @@ fn language_constructs_convert_and_build() {
     assert!(ok, "{written:#}");
     assert_eq!(written["status"], "written");
     build(&out);
+}
+
+/// 0.8 called `handler(ctx, ...args)` with the client's positional arguments. Default, rest and
+/// destructured parameters become named v2 inputs, and the converted actions answer each call the
+/// way the 0.8 handler did (the expected values are Node's results for the same calls).
+#[test]
+fn default_rest_and_destructured_handler_parameters_become_inputs() {
+    let temp = tempfile::tempdir().unwrap();
+    let capsule = temp.path().join("capsule");
+    project(
+        &capsule,
+        r#"{ name: "params", queries: {
+    page: query(async (ctx, limit: number = 10, label: string = "all") => [limit, label]),
+    sum: query(async (ctx, base: number, ...rest: number[]) => rest.reduce((a, b) => a + b, base)),
+    tags: query(async (ctx, ...tags: string[]) => tags.join(",")),
+    find: query(async (ctx, { status, limit = 5 }: { status: string; limit?: number }) => `${status}:${limit}`),
+    pair: query(async (ctx, [a, b]: [string, number], extra: string = "e") => `${a}${b}${extra}`),
+    opts: query(async (ctx, { sort = "asc" }: { sort?: string } = {}) => sort),
+  } }"#,
+    );
+    let index = capsule.join("server/index.ts");
+    let text = std::fs::read_to_string(&index)
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, query }");
+    std::fs::write(&index, text).unwrap();
+    let out = temp.path().join("out");
+    let (ok, report) = migrate(&capsule, &out, &[]);
+    assert!(ok, "{report:#}");
+    build(&out);
+    let calls = serde_json::json!([
+        ["page", {}], ["page", {"limit": 3}], ["sum", {"base": 1, "rest": [2, 3]}], ["sum", {"base": 1}],
+        ["tags", {"tags": ["a", "b"]}], ["tags", {}], ["find", {"arg1": {"status": "open"}}],
+        ["find", {"arg1": {"status": "x", "limit": 2}}], ["pair", {"arg1": ["a", 1]}], ["opts", {}],
+        ["opts", {"arg1": {"sort": "desc"}}]
+    ]);
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join(".zero/wp-content"))
+        .arg(r#"$r = []; foreach ($arg as [$n, $in]) { $r[] = json_decode($app->cli(['action', $n, json_encode((object) $in)])[1], true); } echo json_encode($r), "\n";"#)
+        .arg(calls.to_string())
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value =
+        serde_json::from_str(stdout.lines().next_back().unwrap_or("")).unwrap_or_else(|_| panic!("{stdout}"));
+    let want = serde_json::json!([
+        {"data": [10, "all"]}, {"data": [3, "all"]}, {"data": 6}, {"data": 1}, {"data": "a,b"}, {"data": ""},
+        {"data": "open:5"}, {"data": "x:2"}, {"data": "a1e"}, {"data": "asc"}, {"data": "desc"}
+    ]);
+    assert_eq!(got, want);
+
+    // A missing argument and an explicit null both arrive as a null v2 input, so a default on a
+    // nullable parameter can't be preserved and is refused with a pointer.
+    let nullable = temp.path().join("nullable");
+    project(
+        &nullable,
+        r#"{ name: "params", queries: { page: query(async (ctx, label: string | null = "all") => label) } }"#,
+    );
+    let index = nullable.join("server/index.ts");
+    let text = std::fs::read_to_string(&index)
+        .unwrap()
+        .replace("import { capsule }", "import { capsule, query }");
+    std::fs::write(&index, text).unwrap();
+    let (ok, refused) = migrate(&nullable, &temp.path().join("nullable-out"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["pointer"], "/queries/page");
+    assert!(
+        refused["errors"][0]["reason"].as_str().unwrap().contains("allows null"),
+        "{refused:#}"
+    );
 }

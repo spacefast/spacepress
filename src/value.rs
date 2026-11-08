@@ -119,6 +119,8 @@ pub enum Builtin {
     Mail,
     /// `abilities.call(name, input)` from "php/wordpress", compiled to `Zero\Wp\Abilities\Call::run`.
     Abilities,
+    /// A catalog WordPress function from "php/wordpress", compiled to `Zero\Wp\Functions::call`.
+    WpFunction(Rc<str>),
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,

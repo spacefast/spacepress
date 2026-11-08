@@ -334,6 +334,12 @@ function __z08RequireIdentity(user: __z08User | null, subject: string | null) {
 "#;
 
 /// v2 compiles `console.*` to the PHP error log; the declaration types it for editors.
+/// The 401 a writing handler answers without a caller when it (or a helper) reads the subject.
+const SUBJECT_GATE: &str =
+    "if (__z08ctx.user === null) throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n";
+/// Where a writing handler's gate goes until its helpers are converted (`/*__z08gate<id>*/`).
+const GATE_MARK: &str = "/*__z08gate";
+
 /// A helper's writing read of the caller's subject: 401 without a caller, as the handler gate does.
 const SUBJECT_REQUIRED: &str = "async function __z08SubjectRequired(user: __z08User | null): Promise<string> {\n  if (user === null) throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n  return (await __z08Subject(user)) ?? \"\";\n}\n";
 const LOG: &str = "declare const console: { debug(...values: unknown[]): void; info(...values: unknown[]): void; warn(...values: unknown[]): void; error(...values: unknown[]): void };\n";
@@ -820,8 +826,16 @@ pub(super) fn app(
     let mut helper_modes: BTreeMap<(String, usize), (bool, bool, Span)> = BTreeMap::new();
     let mut converted_helpers: BTreeMap<(String, usize), (bool, bool)> = BTreeMap::new();
     let mut ctx_helper_errors = Vec::new();
+    // For the 401 gates: which helpers each writing handler reaches, which helpers call which,
+    // and which read the subject themselves.
+    let mut gate_calls: BTreeMap<u32, BTreeSet<String>> = BTreeMap::new();
+    let mut callees: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut reads_subject: BTreeSet<String> = BTreeSet::new();
     while !calls.is_empty() {
         for call in std::mem::take(&mut calls) {
+            if let Some(gate) = call.gate {
+                gate_calls.entry(gate).or_default().insert(call.function.clone());
+            }
             let mode = helper_modes.entry((call.function.clone(), call.position)).or_insert((
                 call.writes,
                 call.sends,
@@ -839,9 +853,16 @@ pub(super) fn app(
             let f = module_functions[function];
             let at = pointer("/helpers", function);
             match ctx_helper(source, f, *position, &tables, &at, *writes, *sends, users, &functions) {
-                Ok((code, generated, next)) => {
+                Ok(((code, generated, next), reads)) => {
                     ctx_helpers.insert(function.clone(), code);
                     helpers.extend(generated);
+                    if reads {
+                        reads_subject.insert(function.clone());
+                    }
+                    callees
+                        .entry(function.clone())
+                        .or_default()
+                        .extend(next.iter().map(|c| c.function.clone()));
                     calls.extend(next);
                 }
                 Err(e) => ctx_helper_errors.push(e.spanned(*span, Path::new(""))),
@@ -849,6 +870,41 @@ pub(super) fn app(
         }
     }
     errors.extend(ctx_helper_errors);
+    // A helper reads the subject if it does or any helper it calls does.
+    loop {
+        let more: Vec<String> = callees
+            .iter()
+            .filter(|(f, called)| !reads_subject.contains(*f) && called.iter().any(|c| reads_subject.contains(c)))
+            .map(|(f, _)| f.clone())
+            .collect();
+        if more.is_empty() {
+            break;
+        }
+        reads_subject.extend(more);
+    }
+    // A writing handler that reaches a subject read through a helper answers 401 without a
+    // caller, as it does when it reads the subject itself; otherwise its marker goes.
+    let settle = |code: &str| -> String {
+        let mut code = code.to_string();
+        for (gate, called) in &gate_calls {
+            let text = if called.iter().any(|c| reads_subject.contains(c)) {
+                SUBJECT_GATE
+            } else {
+                ""
+            };
+            code = code.replace(&format!("{GATE_MARK}{gate}*/"), text);
+        }
+        code
+    };
+    for h in &mut handlers {
+        *h = settle(h);
+    }
+    for (_, code) in &mut routes {
+        *code = settle(code);
+    }
+    for (_, _, _, code) in &mut prefixes {
+        *code = settle(code);
+    }
     for (function, _) in converted_helpers.keys() {
         entries.push(entry(
             &pointer("/helpers", function),
@@ -1459,6 +1515,7 @@ fn handler(
         services: BTreeMap::new(),
         calls: vec![],
         inline_subject: None,
+        reads_subject: false,
     };
     let body = match &f.body {
         FnBody::Expr(e) => {
@@ -1498,12 +1555,15 @@ fn handler(
         }
     };
     let gate = if signed_in {
-        "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
+        "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n".to_string()
     } else if r.uses_subject && writes {
         // 0.8 gave every visitor a guest identity; a v2 client starts a guest session on this 401.
-        "if (__z08ctx.user === null) throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
+        SUBJECT_GATE.to_string()
+    } else if writes && !r.calls.is_empty() {
+        // A helper may read the subject; `transform::app` settles this once helpers are converted.
+        r.gate_marker(f.span.start)
     } else {
-        ""
+        String::new()
     };
     // Writes run behind the 401 gate below, so their subject is never null.
     let subject = match (r.uses_subject, writes || signed_in) {
@@ -1537,7 +1597,7 @@ fn ctx_helper(
     sends: bool,
     subjects: bool,
     functions: &BTreeSet<String>,
-) -> Result<Converted, Failure> {
+) -> Result<(Converted, bool), Failure> {
     let param = f
         .params
         .get(position)
@@ -1573,6 +1633,7 @@ fn ctx_helper(
         services: BTreeMap::new(),
         calls: vec![],
         inline_subject: Some(f.is_async),
+        reads_subject: false,
     };
     // The parameter, with its 0.8 type annotation, becomes the typed v2 context.
     r.edits.push((param.span, "__z08ctx: __z08HookCtx".into()));
@@ -1589,7 +1650,7 @@ fn ctx_helper(
     }
     // `ctx` itself is now `__z08ctx`; the remaining reads were rewritten as services.
     let text = r.apply(f.span);
-    Ok((text, r.helpers, r.calls))
+    Ok(((text, r.helpers, r.calls), r.reads_subject))
 }
 
 /// A 0.8 endpoint as a v2 route: `(ctx, req)` becomes `(req, __z08ctx)` and every return goes
@@ -1638,6 +1699,7 @@ fn endpoint(
         services: BTreeMap::new(),
         calls: vec![],
         inline_subject: None,
+        reads_subject: false,
     };
     for span in super::endpoints::returns(f) {
         r.returns.push(span);
@@ -1682,12 +1744,14 @@ fn endpoint(
         }
     };
     let gate = if mode.signed_in {
-        "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
+        "if (__z08ctx.user === null || String(__z08ctx.user.role) === \"guest\") throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n".to_string()
     } else if r.uses_subject && route.writes {
         // As for actions: 0.8 gave every visitor a guest identity; a v2 client starts one on this 401.
-        "if (__z08ctx.user === null) throw new __z08HttpError(401, \"unauthorized\", \"Sign in to continue.\");\n"
+        SUBJECT_GATE.to_string()
+    } else if route.writes && !r.calls.is_empty() {
+        r.gate_marker(f.span.start)
     } else {
-        ""
+        String::new()
     };
     // A writing route runs behind the gate above, so its subject is never null, as for actions.
     let subject = match (r.uses_subject, route.writes || mode.signed_in) {
@@ -1761,6 +1825,8 @@ struct Rewrite<'a> {
     /// In a helper, the Space Users subject is looked up where it is read (`Some(async)`); in a
     /// handler it is `__z08subject`, computed once behind the handler's gate (`None`).
     inline_subject: Option<bool>,
+    /// A helper read the caller's subject, so a writing caller needs the 401 gate.
+    reads_subject: bool,
 }
 
 /// A call that passes the context to a module function at one argument position.
@@ -1770,6 +1836,8 @@ pub(super) struct CtxCall {
     writes: bool,
     sends: bool,
     span: Span,
+    /// The writing handler whose 401 gate depends on what this helper reads (its gate marker).
+    gate: Option<u32>,
 }
 
 const DESTRUCTURE: &str = "context destructuring needs plain service names (`const { db, auth } = ctx`); nested patterns, defaults and rest need a manual port";
@@ -1789,6 +1857,14 @@ fn services_pattern(pat: &Pat) -> Option<Vec<(String, String)>> {
 }
 
 impl Rewrite<'_> {
+    /// A placeholder for a writing handler's 401 gate, tied to the helpers it passes ctx to.
+    fn gate_marker(&mut self, id: u32) -> String {
+        for call in &mut self.calls {
+            call.gate = Some(id);
+        }
+        format!("{GATE_MARK}{id}*/")
+    }
+
     /// The caller's 0.8 Space Users subject, as an expression.
     fn subject(&mut self) -> Result<String, Failure> {
         match self.inline_subject {
@@ -1802,10 +1878,14 @@ impl Rewrite<'_> {
             )),
             // A write answers 401 without a caller, as its handler would; a read sees null.
             Some(true) if self.writes => {
+                self.reads_subject = true;
                 self.helpers.push(SUBJECT_REQUIRED.into());
                 Ok("(await __z08SubjectRequired(__z08ctx.user))".into())
             }
-            Some(true) => Ok("(await __z08Subject(__z08ctx.user))".into()),
+            Some(true) => {
+                self.reads_subject = true;
+                Ok("(await __z08Subject(__z08ctx.user))".into())
+            }
         }
     }
 
@@ -2113,6 +2193,7 @@ impl Rewrite<'_> {
                             writes: self.writes,
                             sends: self.sends,
                             span: x.span,
+                            gate: None,
                         });
                         self.edits.push((x.span, "__z08ctx".into()));
                     }

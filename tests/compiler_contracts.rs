@@ -3814,6 +3814,11 @@ fn language_refusals_carry_a_location_and_a_fix() {
             "withHelper.read()",
         ),
         (
+            "handler reading this",
+            "",
+            "{ return 1; } }), other: action({ input: {}, handler: function () { return typeof this; }",
+        ),
+        (
             "receiver-typed callback",
             "",
             "[1].map(function (this: { x: number }, value) { return this.x + value; })",

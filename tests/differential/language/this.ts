@@ -61,7 +61,9 @@ export default defineConfig({
         second() { return this.n * 10; },
         fact(k: number): number { return k ? this.n * this.fact(k - 1) : 1; },
       };
-      return [o.first(), o.fact(3), { ...o, n: 3 }.first()];
+      // A field typed unknown is still a field `this` can read.
+      const parsed = { data: JSON.parse("[1]") as unknown, kind(): string { return Array.isArray(this.data) ? "array" : "other"; } };
+      return [o.first(), o.fact(3), { ...o, n: 3 }.first(), parsed.kind()];
     }),
   },
 });

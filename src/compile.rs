@@ -1005,6 +1005,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "use generic type aliases with concrete function signatures",
             );
         }
+        if params.is_some() && receives_this(&f) {
+            return err_help(
+                f.span,
+                "Zero calls this function without a receiver, so `this` is undefined in it",
+                "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
+            );
+        }
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
             let declared = match &p.ann {
@@ -3244,11 +3251,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             entry.0 = ty;
                         }
                     }
+                    // Keys still held by a method with no type yet: left out of `this`.
+                    let mut untyped: HashSet<String> = deferred
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, (_, _, _, name))| {
+                            live(*i, name, &owner) && fields.get(name).is_some_and(|(t, _)| *t == Ty::Unknown)
+                        })
+                        .map(|(_, (_, _, _, name))| name.clone())
+                        .collect();
                     let mut pending: Vec<usize> = (0..deferred.len()).collect();
                     while !pending.is_empty() {
                         let this: IndexMap<String, (Ty, bool)> = fields
                             .iter()
-                            .filter(|(_, (t, _))| *t != Ty::Unknown)
+                            .filter(|(k, _)| !untyped.contains(*k))
                             .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
                             .collect();
                         let mut failed = Vec::new();
@@ -3261,6 +3277,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                         && let Some(entry) = fields.get_mut(name)
                                     {
                                         entry.0 = v.ty.clone();
+                                        untyped.remove(name);
                                     }
                                     parts[*slot] = format!("[{key_php} => {}]", v.php);
                                 }

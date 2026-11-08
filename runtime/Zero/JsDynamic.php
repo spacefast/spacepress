@@ -192,6 +192,18 @@ trait JsDynamic
         throw new JsError('Cannot create property on a primitive value', 'TypeError');
     }
 
+    /** `{ a, ...rest } = value` in imported JavaScript: the value's own enumerable keys except those named. */
+    public static function dynamicRest(mixed $value, array $keys): JsObject
+    {
+        self::requirePresent($value);
+        $skip = array_fill_keys($keys, true);
+        $out = new JsObject();
+        foreach (self::dynamicKeys($value)->a as $key) {
+            if (!isset($skip[$key])) { $out->p[$key] = self::dynamicGet($value, $key); }
+        }
+        return $out;
+    }
+
     public static function dynamicKeys(mixed $value): JsArray
     {
         if (self::isNullish($value)) { return new JsArray(); }

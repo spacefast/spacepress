@@ -2174,8 +2174,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let _ = writeln!(out, "{p}{source} = \\Zero\\Js::requirePresent({src});");
                 let src = &source;
                 let t = ty.non_null();
-                if ty.is_nullable() {
+                if ty.is_nullable() && ty != Ty::Dynamic {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                // Imported JavaScript: any field may be read, and an absent one is undefined.
+                if ty == Ty::Dynamic {
+                    for (key, p2) in props {
+                        let access = format!("\\Zero\\Js::dynamicGet({src}, {})", php_str(key));
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        self.bind_pattern_types(p2, &access, types, mutable, out, indent)?;
+                    }
+                    if let Some((name, span)) = rest {
+                        let keys: Vec<String> = props.iter().map(|(k, _)| php_str(k)).collect();
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        let php = self.declare_binding(name, types, mutable, *span);
+                        self.fresh_binding(&php, *span, out, indent);
+                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::dynamicRest({src}, [{}]);", keys.join(", "));
+                    }
+                    return Ok(());
                 }
                 for (key, p2) in props {
                     let Some((ft, optional)) = t.field(key) else {
@@ -2223,6 +2245,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Pat::Arr { elems, rest, span } => {
                 let source = self.tmp_var();
+                // Imported JavaScript destructures any iterable, read once.
+                if ty == Ty::Dynamic {
+                    let _ = writeln!(out, "{p}{source} = \\Zero\\Js::dynamicIterable({src});");
+                    for (i, e) in elems.iter().enumerate() {
+                        if let Some(e) = e {
+                            let access = format!("\\Zero\\Js::dynamicGet({source}, {i})");
+                            let types = BindingTypes {
+                                read: Ty::Dynamic,
+                                constraint: Ty::Dynamic,
+                            };
+                            self.bind_pattern_types(e, &access, types, mutable, out, indent)?;
+                        }
+                    }
+                    if let Some((name, span)) = rest {
+                        let types = BindingTypes {
+                            read: Ty::Dynamic,
+                            constraint: Ty::Dynamic,
+                        };
+                        let php = self.declare_binding(name, types, mutable, *span);
+                        self.fresh_binding(&php, *span, out, indent);
+                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::arrSlice({source}, {});", elems.len());
+                    }
+                    return Ok(());
+                }
                 let _ = writeln!(out, "{p}{source} = {src};");
                 let src = &source;
                 if ty.is_nullable() {

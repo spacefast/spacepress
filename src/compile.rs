@@ -372,6 +372,13 @@ pub struct Compiler<'a, 'p> {
     async_callback: bool,
     /// The `this` type for the next object-literal method compiled (the literal's own type).
     implicit_this: Option<Ty>,
+    /// The build-time object the next `captured_use` reads a member of, as a method call's
+    /// receiver or a member of a receiver object: a module-level literal's method that reads
+    /// `this` is typed as its own object, so it is used only through that object.
+    home_receiver: Option<usize>,
+    /// Module-level literal methods whose `this` type is being built, by (owner, closure): a
+    /// sibling method that reads one of them leaves it out of its `this`.
+    typing_this: HashSet<(usize, usize)>,
     /// A named function expression passed as a callback: its inner declaration's span and the
     /// callback's parameter types.
     named_callback: Option<(Span, Vec<Ty>)>,
@@ -446,6 +453,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             resolving_json_types: HashSet::new(),
             async_callback: false,
             implicit_this: None,
+            home_receiver: None,
+            typing_this: HashSet::new(),
             named_callback: None,
             uses_jobs: false,
             helpers: HashMap::new(),
@@ -1013,7 +1022,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let mut param_tys = Vec::new();
+        // A module-level literal's method types its hidden receiver as its object (see
+        // `home_this_type`), as `closure_with_types` does for a literal inside a function.
+        let mut implicit_this = if params.is_none() {
+            self.implicit_this.take()
+        } else {
+            None
+        };
         for (i, p) in f.params.iter().enumerate() {
+            if i == 0
+                && p.ann.is_none()
+                && params.is_none()
+                && let Some(this) = implicit_this.take()
+            {
+                param_tys.push(this);
+                continue;
+            }
+            if i == 0 && receives_this(&f) && p.ann.is_none() && !self.javascript_module(f.module) {
+                return Err(Diag::new(
+                    p.span,
+                    "Zero code doesn't support `this` without a type in a function that isn't a method of an object literal",
+                )
+                .code(crate::diag::Code::Unsupported)
+                .help(
+                    "declare it, e.g. `function f(this: { count: number })`, or write the function as a method in the object literal it is called on",
+                ));
+            }
             let declared = match &p.ann {
                 Some(a) => Some(self.resolve_runtime_ann(a, f.module)?),
                 None => None,
@@ -1190,7 +1224,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
-                    let hint = php_hint(&t);
+                    // A hidden receiver is whatever the call supplies, undefined for a detached
+                    // call, so it takes no PHP type: reading through it throws as in JavaScript.
+                    let hint = if i == 0 && receives_this(f) { "" } else { php_hint(&t) };
                     if hint == "\\Zero\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
@@ -3853,6 +3889,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// `member`: the value was read through a static member chain (`ns.a.b`), so its type
     /// is the widened property type rather than a `const` binding's literal.
     fn captured_use(&mut self, n: &str, v: Value, b: &Binding, span: Span, callee: bool, member: bool) -> Result<Out> {
+        let home_receiver = self.home_receiver.take();
         if b.mutable && b.module_level && !self.javascript_module(self.fx.as_ref().expect("fn").module) {
             return err_help(
                 span,
@@ -3872,6 +3909,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
             Value::Closure(c) => {
                 let key = closure_key(c);
+                let home = self.method_home(c);
+                if let Some(home) = &home
+                    && home_receiver != Some(Rc::as_ptr(home) as usize)
+                {
+                    let method = n.rsplit('.').next().unwrap_or(n);
+                    return Err(Diag::new(
+                        span,
+                        format!("Zero code doesn't support using `{n}` apart from the object literal that defines it"),
+                    )
+                    .code(crate::diag::Code::Unsupported)
+                    .help(format!(
+                        "`{method}` reads `this`, which is typed as that object, so call it on the object, e.g. `obj.{method}()`; to call it with another receiver, declare its `this`, e.g. `{method}(this: {{ count: number }})`"
+                    )));
+                }
                 let helper_key = (self.owner(), key, self.fx().no_db);
                 let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
@@ -3879,7 +3930,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
                         self.attempt(|this| {
                             this.helpers.insert(helper_key, name.clone());
-                            this.compile_helper_now(c, &name)
+                            match &home {
+                                Some(home) => this.compile_method_now(c, home, &name, n, b, span),
+                                None => this.compile_helper_now(c, &name, None),
+                            }
                         })?;
                         name
                     }
@@ -4352,6 +4406,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
                     )));
                 } else {
+                    this.home_receiver = Some(Rc::as_ptr(o) as usize);
                     this.captured_use(&member_path, member, binding, span, true, true)
                         .map_err(|d| {
                             if d.help.is_some() {
@@ -4371,6 +4426,166 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })?;
         self.output.push_str(&body);
         Ok(format!("\\ZeroApp\\{name}()"))
+    }
+
+    /// The object literal a TypeScript method that reads an untyped `this` was written in, when
+    /// the literal was built while the config was evaluated (see `Evaluator::method_homes`).
+    fn method_home(&self, c: &Rc<Closure>) -> Option<Obj> {
+        let f = &c.func;
+        if !receives_this(f) || f.params.first().is_some_and(|p| p.ann.is_some()) || self.javascript_module(f.module) {
+            return None;
+        }
+        self.ev.method_homes.get(&closure_key(c)).map(|(_, home)| home.clone())
+    }
+
+    /// Compiles a module-level literal's method with `this` typed as its object, as
+    /// `method_with_this` does for a literal inside a function: its fields, plus the sibling
+    /// methods typed so far (annotated or compiled), plus the siblings it reads through `this`
+    /// (`Func::this_reads`), each compiled first. A sibling still being typed (a cycle without
+    /// return types) is left out, and the refusal names the annotation that breaks the cycle.
+    fn compile_method_now(
+        &mut self,
+        c: &Rc<Closure>,
+        home: &Obj,
+        name: &str,
+        path: &str,
+        b: &Binding,
+        span: Span,
+    ) -> Result<()> {
+        let typing = (self.owner(), closure_key(c));
+        self.typing_this.insert(typing);
+        let home_path = path.rsplit_once('.').map_or(path, |(home, _)| home);
+        let binding = Binding { ann: None, ..b.clone() };
+        let result = self
+            .home_this_type(home, home_path, &c.func.this_reads, &binding, span, &mut Vec::new())
+            .and_then(|(this, left_out)| {
+                self.compile_helper_now(c, name, Some(this))
+                    .map_err(|d| self.this_cycle_help(d, home, path, &left_out))
+            });
+        self.typing_this.remove(&typing);
+        result
+    }
+
+    /// The fix for a `this` read refused because a sibling method had no type yet: a method that
+    /// calls itself, or methods calling each other, need one return type annotated; a method
+    /// reached through `this` held in a variable, spread or destructured isn't compiled first.
+    fn this_cycle_help(&self, d: Diag, home: &Obj, path: &str, left_out: &[String]) -> Diag {
+        let method = path.rsplit('.').next().unwrap_or(path);
+        let Some(m) = left_out
+            .iter()
+            .find(|m| d.message.ends_with(&format!("has no field `{m}`")))
+        else {
+            return d;
+        };
+        let Some(Value::Closure(c)) = home.borrow().get(m).cloned() else {
+            return d;
+        };
+        let params = c
+            .func
+            .params
+            .iter()
+            .skip(usize::from(receives_this(&c.func)))
+            .map(|p| match &p.pat {
+                Pat::Id(n, _) => format!("{n}: number"),
+                _ => "value: number".into(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let calls_back = c.func.this_reads.iter().any(|r| r == method || r == m);
+        let reads_directly = path_reads(home, method).is_some_and(|reads| reads.iter().any(|r| r == m));
+        let help = if m == method {
+            format!("`{m}` calls itself through `this`; annotate its return type, e.g. `{m}({params}): number`")
+        } else if calls_back && reads_directly {
+            format!(
+                "`{m}` and `{method}` call each other through `this`; annotate the return type of `{m}`, e.g. `{m}({params}): number`"
+            )
+        } else {
+            format!(
+                "`{method}` reaches `{m}` through `this` held in a variable, spread or destructured, so `{m}` isn't typed first; call it as `this.{m}(...)`, or annotate its parameters and return type, e.g. `{m}({params}): number`"
+            )
+        };
+        d.help(help)
+    }
+
+    /// The type of `home` as a method's `this`, and the keys left out because their method is
+    /// still being typed. `reads` names the members the method reads through `this`.
+    fn home_this_type(
+        &mut self,
+        home: &Obj,
+        path: &str,
+        reads: &[String],
+        binding: &Binding,
+        span: Span,
+        seen: &mut Vec<usize>,
+    ) -> Result<(Ty, Vec<String>)> {
+        seen.push(Rc::as_ptr(home) as usize);
+        let members: Vec<(String, Value)> = home.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let mut fields = IndexMap::new();
+        let mut left_out = Vec::new();
+        for (key, member) in members {
+            let needed = reads.contains(&key);
+            let member_path = format!("{path}.{key}");
+            let ty = match &member {
+                Value::Closure(c) => {
+                    if let Some(ty) = self.helper_types.get(&closure_key(c)).cloned() {
+                        Some(ty)
+                    } else if let Some(ty) = self.declared_signature(&c.func)? {
+                        Some(ty)
+                    } else if needed && !self.typing_this.contains(&(self.owner(), closure_key(c))) {
+                        self.attempt(|this| {
+                            this.home_receiver = Some(Rc::as_ptr(home) as usize);
+                            this.captured_use(&member_path, member.clone(), binding, span, true, true)
+                        })?;
+                        self.helper_types.get(&closure_key(c)).cloned()
+                    } else {
+                        None
+                    }
+                }
+                Value::Object(o) if is_static_namespace(&member) => {
+                    if seen.contains(&(Rc::as_ptr(o) as usize)) {
+                        None
+                    } else {
+                        // A nested object's methods are compiled when the method reads it.
+                        let all: Vec<String> = if needed {
+                            o.borrow().keys().cloned().collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Some(self.home_this_type(o, &member_path, &all, binding, span, seen)?.0)
+                    }
+                }
+                _ => match self
+                    .ev
+                    .method_home_fields
+                    .get(&(Rc::as_ptr(home) as usize, key.clone()))
+                    .cloned()
+                {
+                    Some((ann, module)) => Some(self.resolve_runtime_ann(&ann, module)?),
+                    // `receiver_value` builds every member in PHP, so a member that can't be
+                    // built is refused here, the first time it is compiled, never dropped.
+                    None => Some(
+                        self.attempt(|this| this.captured_use(&member_path, member.clone(), binding, span, false, true))
+                            .map_err(|d| {
+                                if d.help.is_some() {
+                                    return d;
+                                }
+                                d.help(format!(
+                                    "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                                ))
+                            })?
+                            .ty,
+                    ),
+                },
+            };
+            match ty {
+                Some(ty) => {
+                    fields.insert(key, (widen_fresh_literals(&ty), false));
+                }
+                None => left_out.push(key),
+            }
+        }
+        seen.pop();
+        Ok((Ty::Obj(fields), left_out))
     }
 
     /// Builds a helper, class or captured-value helper so that a refusal registers nothing.
@@ -4398,12 +4613,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         built
     }
 
-    fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {
+    /// `this`: the type of a module-level literal method's hidden receiver (`compile_method_now`).
+    fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str, this: Option<Ty>) -> Result<()> {
         // Compile the helper before its caller so its return type is known.
         let no_db = self.fx().no_db;
         let saved_out = std::mem::take(&mut self.output);
         let saved_fx = self.fx.take();
+        let saved_this = std::mem::replace(&mut self.implicit_this, this);
         let r = self.compile_function(c, name, None, None, no_db);
+        self.implicit_this = saved_this;
         self.fx = saved_fx;
         let helper_src = std::mem::replace(&mut self.output, saved_out);
         self.output.push_str(&helper_src);
@@ -5638,6 +5856,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
         }
+        // A literal's method typed by its object is used only through it: reading it as a value
+        // is refused where it is read (see `captured_use`).
+        if let Some((path, value @ Value::Closure(_), binding)) = self.static_member(obj, prop, prop_span)?
+            && matches!(&value, Value::Closure(c) if self.method_home(c).is_some())
+        {
+            return self.captured_use(&path, value, &binding, span, false, true);
+        }
         // A namespace with methods that read `this` is one per-request object: its methods may
         // write its fields, so reads go to that object rather than the build-time constant.
         if let Some(receiver) = self.stateful_namespace(obj)? {
@@ -6657,6 +6882,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // the function reads `this`: then the namespace is its receiver, as in JavaScript.
                 if let Some((path, value, binding)) = self.static_member(obj, prop, *prop_span)? {
                     if matches!(&value, Value::Closure(c) if receives_this(&c.func)) {
+                        if let Some((_, Value::Object(o), _)) = self.static_receiver(obj)? {
+                            self.home_receiver = Some(Rc::as_ptr(&o) as usize);
+                        }
                         let f = self.captured_use(&path, value, &binding, callee.span, true, true)?;
                         // The namespace exists only at build time; the receiver is a run-time copy of
                         // it, built once per request, holding its data and its functions' values.
@@ -9660,6 +9888,14 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
         " = \\Zero\\JsUndefined::Value"
     } else {
         ""
+    }
+}
+
+/// The `this.<key>` names the method stored under `key` in `home` reads (`Func::this_reads`).
+fn path_reads(home: &Obj, key: &str) -> Option<Vec<String>> {
+    match home.borrow().get(key) {
+        Some(Value::Closure(c)) => Some(c.func.this_reads.clone()),
+        _ => None,
     }
 }
 

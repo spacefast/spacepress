@@ -46,6 +46,13 @@ function whoModule() { return typeof this; }
 export const mod = { who: whoModule };
 export const store = { count: 2, get() { return this.count; } };
 export const counter = { count: 0, inc() { this.count += 1; return this.count; }, peek() { return this.count; } };
+// Siblings through `this`: one defined later, and one calling itself.
+export const chain = {
+  n: 3,
+  first() { return this.second() + 1; },
+  second() { return this.n * 10; },
+  fact(k) { return k ? this.n * this.fact(k - 1) : 1; },
+};
 // Every kind of field stays readable through `this`: regexes, nested objects with methods, Maps.
 export const rich = {
   re: /ab+/g,
@@ -61,7 +68,7 @@ export const rich = {
 
 export function moduleReceivers() {
   counter.inc();
-  return [mod.who(), store.get(), counter.inc(), counter.peek(), counter.count];
+  return [mod.who(), store.get(), counter.inc(), counter.peek(), counter.count, chain.first(), chain.fact(2)];
 }
 
 export function richReceivers() {

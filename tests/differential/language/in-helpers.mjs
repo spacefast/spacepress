@@ -9,6 +9,7 @@ export function inUntyped(keys) {
     record: keys.map((key) => key in record),
     list: keys.map((key) => key in list),
     numbers: [0 in list, 2 in list, 3 in list, -1 in list, 1.5 in list],
+    functionMetadata: ["arguments" in (() => 1), "caller" in function () {}, "call" in (() => 1), "name" in (() => 1)],
     collections: ["size" in new Map(), "get" in new Map(), "add" in new Map(), "size" in new Set(), "add" in new Set(), "get" in new Set()],
     nested: ["inner" in nested, "deep" in nested, "deep" in nested.inner],
     primitives: ["text", 5, true, null, undefined].map((value) => {

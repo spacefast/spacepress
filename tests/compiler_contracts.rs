@@ -2948,3 +2948,59 @@ fn language_constructs_match_node_through_generated_php() {
         assert_eq!(php, node, "{name}: the PHP envelope is not byte-identical to Node's");
     }
 }
+
+/// Type-level rules of the language constructs added for 0.8 apps (zero#138): each source either
+/// checks cleanly or is refused with the named diagnostic, matching TypeScript or JavaScript.
+#[test]
+fn language_construct_type_rules() {
+    let cases: &[(&str, &str, Option<&str>)] = &[
+        // A typo in `delete` is a missing field, as for any typed read.
+        (
+            "type D = { title: string; secret?: string }; function g(d: D) { delete d.secert; return d; }",
+            "g({ title: 't' })",
+            Some("has no field `secert`"),
+        ),
+        (
+            "type D = { title: string; secret?: string }; function g(d: D) { delete d.secret; return d; }",
+            "g({ title: 't' })",
+            None,
+        ),
+        // A constructor return value stays refused when a label wraps it.
+        (
+            "class C { n = 1; constructor() { result: { if (this.n) return { n: 2 } as unknown as C; } } }",
+            "new C().n",
+            Some("constructor return values"),
+        ),
+        // A `never` do-while test ends the function; no fall-through return is needed.
+        (
+            "function fail(): never { throw new Error('x'); } function f(): number { do {} while (fail()); }",
+            "f()",
+            None,
+        ),
+        // An invalid escape still passes a TemplateStringsArray, whose element is undefined at runtime.
+        (
+            "function tag(s: TemplateStringsArray) { return s.length; }",
+            "tag`\\unicode`",
+            None,
+        ),
+    ];
+    for (declarations, handler, refusal) in cases {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ name: 'rules', actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        match refusal {
+            None => assert_eq!(out.status.code(), Some(0), "{declarations}: {report}"),
+            Some(message) => {
+                assert_eq!(out.status.code(), Some(1), "{declarations}: {report}");
+                assert!(
+                    report["diagnostics"][0]["message"].as_str().unwrap().contains(message),
+                    "{declarations}: {report}"
+                );
+            }
+        }
+    }
+}

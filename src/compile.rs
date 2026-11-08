@@ -2707,11 +2707,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let site = format!("{}:{}:{}", span.file, span.start, span.end);
                 Out::atom(
                     format!("\\Zero\\Js::templateStrings({}, [{items}], [{raw}])", php_str(&site)),
-                    Ty::NonEmptyArray(Box::new(if cooked.iter().all(Option::is_some) {
-                        Ty::Str
-                    } else {
-                        Ty::union([Ty::Str, Ty::Undefined])
-                    })),
+                    // TypeScript types every cooked string as `string`, so a TemplateStringsArray
+                    // tag still accepts an invalid escape; its element is undefined at runtime.
+                    Ty::NonEmptyArray(Box::new(Ty::Str)),
                 )
             }
             ExprKind::AssignPattern(pattern, value) => self.assign_pattern(pattern, value)?,
@@ -3989,7 +3987,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let object = self.tmp_var();
                 steps.push(format!("{object} = \\Zero\\Js::requirePresent({src})"));
                 let mut keys = Vec::new();
+                let mut literal_keys: Vec<Option<String>> = Vec::new();
                 for (key, p) in props {
+                    let mut computed_literal = None;
                     let (key_php, field_ty) = match key {
                         PropKey::Static(k) => {
                             let field = if *ty == Ty::Dynamic {
@@ -4017,6 +4017,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
                                 _ => None,
                             };
+                            computed_literal = literal.clone();
                             let field = match ty.non_null() {
                                 Ty::Dynamic => Ty::Dynamic,
                                 Ty::Map(t) => Ty::union([*t, Ty::Undefined]),
@@ -4041,6 +4042,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     };
                     keys.push(key_php.clone());
+                    literal_keys.push(match key {
+                        PropKey::Static(k) => Some(k.clone()),
+                        PropKey::Computed(_) => computed_literal.clone(),
+                    });
                     let read = self.tmp_var();
                     let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };
                     let pending = format!("{read} = \\Zero\\Js::{getter}({object}, {key_php})");
@@ -4052,9 +4057,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let rest_ty = match ty.non_null() {
                         Ty::Obj(f) => Ty::Obj(
                             f.into_iter()
-                                .filter(|(k, _)| {
-                                    !props.iter().any(|(pk, _)| matches!(pk, PropKey::Static(s) if s == k))
-                                })
+                                .filter(|(k, _)| !literal_keys.iter().flatten().any(|taken| taken == k))
                                 .collect(),
                         ),
                         other => other,
@@ -4074,11 +4077,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if ty.is_nullable() && *ty != Ty::Dynamic {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
-                // The iterable is read once; for checked JavaScript it may be any iterable.
+                // An array is read live, element by element, as JavaScript's array iterator does,
+                // so an earlier target write is seen by later reads. Checked JavaScript may pass any
+                // other iterable, which is read once up front.
                 let list = self.tmp_var();
                 steps.push(match element {
-                    None => format!("{list} = \\Zero\\Js::dynamicIterable({src})"),
-                    Some(_) => format!("{list} = \\Zero\\Js::arrSlice({src}, 0)"),
+                    None => format!("{list} = \\Zero\\Js::dynamicIterableLive({src})"),
+                    Some(_) => format!("{list} = {src}"),
                 });
                 for (i, p) in elems.iter().enumerate() {
                     let Some(p) = p else { continue };
@@ -4093,7 +4098,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if let Some(r) = rest {
                     let value = self.tmp_var();
-                    let pending = format!("{value} = \\Zero\\Js::arrSlice({list}, {})", elems.len());
+                    let pending = format!("{value} = \\Zero\\Js::restFrom({list}, {})", elems.len());
                     let rest_ty = match (&element, ty.non_null()) {
                         (None, _) => Ty::Dynamic,
                         (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => {
@@ -4477,6 +4482,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("can't delete `{prop}`: the type requires it"),
                     "make the property optional (`key?: T`), as TypeScript requires for `delete`",
                 );
+            }
+            // A closed object type without the property: TypeScript rejects the read, and a typo
+            // here would silently delete nothing.
+            let closed_without = |ty: &Ty| match ty {
+                Ty::Obj(fields) => !fields.contains_key(&prop),
+                Ty::Instance(_, fields) => matches!(&**fields, Ty::Obj(f) if !f.contains_key(&prop)),
+                _ => false,
+            };
+            if members.iter().any(closed_without) {
+                return Err(self.no_field(&receiver_ty, &prop, span));
             }
         } else if matches!(receiver_ty.non_null(), Ty::Obj(_) | Ty::Instance(..)) {
             return err_help(
@@ -8076,7 +8091,10 @@ fn stmt_completions(
             let mut flow = block_completions(body, diverging, exhaustive_switches);
             let breaks = flow.remove(&Break);
             let tested = flow.remove(&Normal) | flow.remove(&Continue);
-            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) {
+            if tested && diverging.contains(&test.span) {
+                flow.insert(Throw);
+            }
+            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) && !diverging.contains(&test.span) {
                 flow.insert(Normal);
             }
             flow

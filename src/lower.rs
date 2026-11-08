@@ -1808,6 +1808,7 @@ fn contains_constructor_return(body: &[Stmt]) -> bool {
                 || finalizer.as_ref().is_some_and(|b| contains_constructor_return(b))
         }
         Stmt::Switch { cases, .. } => cases.iter().any(|(_, b)| contains_constructor_return(b)),
+        Stmt::Labeled(_, body, _) => contains_constructor_return(std::slice::from_ref(body)),
         _ => false,
     })
 }

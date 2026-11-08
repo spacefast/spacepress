@@ -744,7 +744,8 @@ function wpTemplate(string $file, array $fixture): string
     $repo = dirname(__DIR__, 2);
     $name = (string) ($fixture['schema']['name'] ?? 'app');
     $platform = json_decode((string) file_get_contents("$repo/tests/fixtures/platform.json"), true, 512, JSON_THROW_ON_ERROR);
-    $requires = 'secure-custom-fields, action-scheduler, mcp-adapter, zero-runtime' . (($fixture['schema']['locales'] ?? null) !== null ? ', polylang' : '');
+    $localized = ($fixture['schema']['locales'] ?? null) !== null;
+    $requires = implode(', ', [...array_keys(array_filter($platform['plugins'], static fn (string $slug): bool => $slug !== 'polylang' || $localized, ARRAY_FILTER_USE_KEY)), 'zero-runtime']);
     $vars = ['name' => $name, 'slug' => "zero-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires,
         'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/Zero/Schema.php", 'SERIES'),
         'zeroVersion' => wpConstant("$repo/runtime/Zero/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/Zero/Wp/Runtime.php", 'VERSION'),

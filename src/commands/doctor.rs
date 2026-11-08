@@ -183,6 +183,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                 "secure-custom-fields" => "scf",
                 "action-scheduler" => "actionScheduler",
                 "mcp-adapter" => "mcpAdapter",
+                "two-factor" => "twoFactor",
                 other => other,
             };
             let found = versions[key].as_str().unwrap_or("inactive");

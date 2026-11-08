@@ -161,12 +161,12 @@ pub(crate) fn plugin_vars(schema: &schema::Schema, schema_php: &str) -> Vec<(&'s
         ("phpVersion", platform::PHP.to_string()),
         (
             "requires",
-            if schema.locales.is_some() {
-                "secure-custom-fields, action-scheduler, mcp-adapter, zero-runtime, polylang"
-            } else {
-                "secure-custom-fields, action-scheduler, mcp-adapter, zero-runtime"
-            }
-            .to_string(),
+            platform::plugins(schema.locales.is_some())
+                .into_iter()
+                .map(|p| p.slug)
+                .chain(["zero-runtime".to_string()])
+                .collect::<Vec<_>>()
+                .join(", "),
         ),
         ("label", label.clone()),
         ("Name", label),

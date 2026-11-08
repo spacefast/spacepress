@@ -33,8 +33,9 @@ a new pin; replacing bytes at the same source/version fails. To intentionally
 repin that release, remove its lock entry and supply the new authored checksum.
 
 Required platform plugins are supplied by Zero through the same resolver; users
-need not list them. The current pins are SCF 6.9.7, Action Scheduler 4.2.0, and MCP
-Adapter 0.7.1, plus Polylang 3.9 when `locales` is configured. Explicit overrides
+need not list them. The current pins are SCF 6.9.7, Action Scheduler 4.2.0, MCP
+Adapter 0.7.1, Akismet 5.7.2 and Two Factor 0.17.0, plus Polylang 3.9 when `locales`
+is configured. Users cannot remove them. Explicit overrides
 must satisfy the platform floor. `wp_plugins::version::at_least` owns comparison
 using PHP `version_compare` ordering, including WordPress beta/RC/pl suffixes.
 The exact header version is checked against the declaration; numeric trailing

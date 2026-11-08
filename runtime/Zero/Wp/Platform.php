@@ -15,8 +15,12 @@ final class Platform
         'secure-custom-fields' => ['version' => '6.9.7', 'sha256' => '5b10edab948f64b84d44d81a29fd5794a2573205e0d5e7ea9538024fc93ff52c'],
         'action-scheduler' => ['version' => '4.2.0', 'sha256' => 'a360712a5adb066a0d60db76cbe2768234731cbcc363ba7dc2d51bf4559e4551'],
         'mcp-adapter' => ['version' => '0.7.1', 'sha256' => '719d81aa1250615acfd8256f0acc8c13f1712f1ae398c3d5883c8b166024fe9b'],
+        'akismet' => ['version' => '5.7.2', 'sha256' => 'e76d9ad61b95fb36c99b580e23c23e16a2cf9fd8483baa16d756d47f1994126d'],
+        'two-factor' => ['version' => '0.17.0', 'sha256' => '4d1b0f8e5d82e24876c2b4e86f119122e28a8dbaf76dfde495173226c3356f37'],
         'polylang' => ['version' => '3.9', 'sha256' => '6a8b939d5209090e33600114f6f6dae03513688856514734118613c5147c68c2'],
     ];
+    /** versions() keys that differ from the plugin slug (also `runtime.wp` in the schema description). */
+    private const KEYS = ['wordpress' => 'version', 'secure-custom-fields' => 'scf', 'action-scheduler' => 'actionScheduler', 'mcp-adapter' => 'mcpAdapter', 'two-factor' => 'twoFactor'];
 
     public static function requirements(): array
     {
@@ -47,6 +51,8 @@ final class Platform
             // is empty; read the plugin's header instead.
             'actionScheduler' => class_exists('ActionScheduler_Versions') ? (\ActionScheduler_Versions::instance()->latest_version() ?: $headers['action-scheduler']) : null,
             'mcpAdapter' => in_array('mcp-adapter/mcp-adapter.php', (array) get_option('active_plugins', []), true) || isset(get_site_option('active_sitewide_plugins', [])['mcp-adapter/mcp-adapter.php']) ? (defined('MCP_ADAPTER_VERSION') ? MCP_ADAPTER_VERSION : $headers['mcp-adapter']) : null,
+            'akismet' => defined('AKISMET_VERSION') ? AKISMET_VERSION : null,
+            'twoFactor' => defined('TWO_FACTOR_VERSION') ? TWO_FACTOR_VERSION : null,
             'polylang' => defined('POLYLANG_VERSION') ? POLYLANG_VERSION : null,
             'identity' => Runtime::identity(), 'imageCdn' => function_exists('jetpack_photon_url'),
         ];
@@ -64,8 +70,7 @@ final class Platform
         }
         $problems = [];
         foreach ($required as $name => $minimum) {
-            $key = match ($name) { 'wordpress' => 'version', 'secure-custom-fields' => 'scf', 'action-scheduler' => 'actionScheduler', 'mcp-adapter' => 'mcpAdapter', default => $name };
-            $version = $versions[$key];
+            $version = $versions[self::KEYS[$name] ?? $name];
             if ($version === null || version_compare($version, $minimum, '<')) {
                 $problems[] = "$name $minimum+ is required (found " . ($version ?? 'inactive') . ')';
             }

@@ -29,7 +29,7 @@ const project = join(work, "wp-site");
 const artifact = join(work, "wp-artifact");
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
-const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "polylang", "zero-runtime", "zero-identity", "zero-app-site"];
+const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "akismet", "two-factor", "polylang", "zero-runtime", "zero-identity", "zero-app-site"];
 
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const wpFails = (...args: string[]) => {

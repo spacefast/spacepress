@@ -56,7 +56,7 @@ The app's schema is the authoritative runtime series check; the runtime
 refuses a mismatched series or a second app plugin.
 
 `GET /_schema` on WordPress includes `runtime.wp` with WordPress/PHP/database
-versions, `scf`, `actionScheduler`, `mcpAdapter`, `polylang`, `identity`,
+versions, `scf`, `actionScheduler`, `mcpAdapter`, `akismet`, `twoFactor`, `polylang`, `identity`,
 `imageCdn`, and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.

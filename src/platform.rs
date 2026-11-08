@@ -24,6 +24,16 @@ pub fn plugins(localized: bool) -> Vec<crate::wp_plugins::Plugin> {
             "0.7.1",
             "719d81aa1250615acfd8256f0acc8c13f1712f1ae398c3d5883c8b166024fe9b",
         ),
+        (
+            "akismet",
+            "5.7.2",
+            "e76d9ad61b95fb36c99b580e23c23e16a2cf9fd8483baa16d756d47f1994126d",
+        ),
+        (
+            "two-factor",
+            "0.17.0",
+            "4d1b0f8e5d82e24876c2b4e86f119122e28a8dbaf76dfde495173226c3356f37",
+        ),
     ];
     if localized {
         pins.push((

@@ -43,9 +43,15 @@ builds() {
   return 1
 }
 already=()
+# Squash merges leave the branch outside main's history, so a merged PR whose
+# head is the branch's current head also counts as already in main.
+merged_heads=$(gh pr list -R spacefast/zero --state merged --limit 200 --json headRefName,headRefOid \
+  --jq '.[] | "\(.headRefName) \(.headRefOid)"' 2>/dev/null || true)
 for branch in $branches; do
   sha=$(git -C "$repo" rev-parse --short "origin/$branch")
-  if git -C "$repo" merge-base --is-ancestor "origin/$branch" origin/main; then
+  full=$(git -C "$repo" rev-parse "origin/$branch")
+  if git -C "$repo" merge-base --is-ancestor "origin/$branch" origin/main \
+    || grep -qxF "$branch $full" <<<"$merged_heads"; then
     already+=("$branch@$sha")
     continue
   fi

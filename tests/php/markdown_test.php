@@ -293,6 +293,63 @@ eq('PATH_INFO follows REQUEST_URI, /index.md included', [$rootInfo, $_SERVER['PA
 unset($_SERVER['PATH_INFO']);
 eq('the next browser request still gets HTML', str_starts_with(fetch("$url/hello-world/")['headers']['content-type'][0] ?? '', 'text/html'), true);
 
+// ================================================================ purges: zero_purge_urls after a committed write
+
+$announced = [];
+$listen = static function (array $paths) use (&$announced): void {
+    $announced[] = $paths;
+};
+$writes = static function (callable $write) use (&$announced): array {
+    $announced = [];
+    $write();
+    \Zero\Wp\Purges::flush();
+
+    return $announced;
+};
+wp_set_current_user(1);
+eq('no listener (off Spacefast): a write announces nothing', $writes(static fn () => wp_update_post(['ID' => $hello, 'post_excerpt' => 'Still short.'])), []);
+add_action('zero_purge_urls', $listen);
+$edit = $writes(static fn () => wp_update_post(['ID' => $hello, 'post_name' => 'hello-again']));
+eq('one write, one announcement', count($edit), 1);
+$paths = $edit[0] ?? [];
+foreach (['/hello-world/', '/hello-world.md', '/hello-again/', '/hello-again.md', '/', '/index.md', '/page/2/', '/page/2.md',
+    '/category/field-notes/', '/category/field-notes.md', '/author/admin/', '/author/admin.md', '/feed/', '/llms.txt'] as $path) {
+    check("a slug change purges $path", in_array($path, $paths, true), $paths);
+}
+check('feeds and llms.txt get no .md twin', !in_array('/feed.md', $paths, true) && !in_array('/llms.txt.md', $paths, true), $paths);
+eq('every path is root-relative and listed once', [count($paths), count(array_unique($paths)), array_filter($paths, static fn (string $p): bool => !str_starts_with($p, '/'))], [count($paths), count($paths), []]);
+$cat = wp_insert_term('Elsewhere', 'category');
+$moved = $writes(static fn () => wp_set_post_categories($hello, [$cat['term_id']]))[0] ?? [];
+check('a term change purges the old and new term archives', in_array('/category/field-notes/', $moved, true) && in_array('/category/elsewhere.md', $moved, true), $moved);
+$trashed = $writes(static fn () => wp_trash_post($secondPost))[0] ?? [];
+check('trashing a published post purges where it was', in_array('/second-post/', $trashed, true) && in_array('/index.md', $trashed, true), $trashed);
+eq('a draft that stays a draft purges nothing', $writes(static fn () => wp_update_post(['ID' => $draft, 'post_content' => 'Still a draft.'])), []);
+eq('a Zero collection row (not public) purges nothing', $writes(static fn () => wp_update_post(['ID' => $note, 'post_content' => 'New note.'])), []);
+$termEdit = $writes(static fn () => wp_update_term($category['term_id'], 'category', ['description' => 'New description.']))[0] ?? [];
+check('editing a term purges its archive and twin', in_array('/category/field-notes/', $termEdit, true) && in_array('/category/field-notes.md', $termEdit, true), $termEdit);
+$connection = $site->connection();
+$inside = null;
+$committed = $writes(static function () use ($connection, $about, &$announced, &$inside): void {
+    $connection->transaction(static function () use ($about, &$announced, &$inside): void {
+        wp_update_post(['ID' => $about, 'post_content' => 'About, edited.']);
+        wp_update_post(['ID' => $about, 'post_title' => 'About us']);
+        $inside = $announced;
+    });
+});
+eq('inside a transaction nothing is announced; after its commit, one announcement for every write', [$inside, count($committed), in_array('/about.md', $committed[0] ?? [], true)], [[], 1, true]);
+$rolled = $writes(static function () use ($connection, $about): void {
+    try {
+        $connection->transaction(static function () use ($about): void {
+            wp_update_post(['ID' => $about, 'post_content' => 'Never saved.']);
+            throw new RuntimeException('roll back');
+        });
+    } catch (RuntimeException) {
+    }
+});
+eq('a rolled-back write announces nothing', $rolled, []);
+remove_action('zero_purge_urls', $listen);
+wp_set_current_user(0);
+
 // ================================================================ WordPress without a Zero app is unchanged
 
 deactivate_plugins('zero-app-notes/zero-app-notes.php', true);

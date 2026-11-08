@@ -367,6 +367,30 @@ filters cannot probe them. Media and private file references work on both kinds.
 
 `ctx` is `{ user: { id, name, role } | null }`.
 
+`ctx` is an ordinary value. Pass it to helpers, return it, and read its keys,
+including `ctx["user"]` and keys typed `keyof HookCtx`. Type a helper's
+parameters with the types `"zero"` exports:
+
+- `HookCtx` for the context of an action, hook or route;
+- `JobCtx` for a job's context, which adds `attempt` and `jobId`;
+- `User` and `Role` for `ctx.user` and its role;
+- `RouteRequest` and `RouteResponse` for a route's request and result.
+
+```ts
+import { db, type HookCtx, type User } from "zero";
+
+function author(ctx: HookCtx): string {
+  return ctx.user === null ? "guest" : ctx.user.name;
+}
+async function addNote(ctx: HookCtx, body: string) {
+  await db.insert(notes).values({ body, author: author(ctx) });
+}
+```
+
+A key read whose value no type bounds, such as `ctx[name]` with
+`name: string`, is refused. Use a `keyof` type, a `switch` or a
+`Record<string, T>` instead.
+
 Throwing anything aborts the request and rolls back every write in it.
 `throw new HttpError(status, code, message)` picks the HTTP response.
 

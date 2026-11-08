@@ -27,6 +27,9 @@ mb_internal_encoding('ISO-8859-1');
 $re = Js::re(...);
 
 $cases = [
+    // Object rest over a class collects its static fields; methods are non-enumerable.
+    ['(() => { class C { static theme = "dark"; static size = 3; static describe() { return 1; } } const { ...rest } = C; return [Object.keys(C), rest]; })()',
+        function () { $c = new \Zero\JsClass(null, null, static function () {}, [], ['describe' => static fn () => 1], new JsObject(['theme' => 'dark', 'size' => 3])); return [Js::dynamicKeys($c), Js::dynamicRest($c, [])]; }],
     ['(() => { const groups = /(?<x>a)/.exec("a").groups; groups.__proto__ = "own"; return [typeof groups.toString, typeof structuredClone(groups).toString, JSON.stringify(groups)]; })()',
         function () { $groups = Js::dynamicGet(Js::dynamicRegExpExec(new \Zero\RegExp('(?<x>a)'), 'a'), 'groups'); Js::dynamicSet($groups, '__proto__', 'own'); $snapshot = Js::detach($groups); return [Js::typeOf(Js::dynamicGet($snapshot, 'toString')), Js::typeOf(Js::dynamicGet(Js::clone($groups), 'toString')), Js::jsonStringify($snapshot)]; }],
     // Imported JS values use checked dynamic operations, with undefined distinct from null.

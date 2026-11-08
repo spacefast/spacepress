@@ -30,6 +30,8 @@ trait JsDynamic
             $receiver instanceof RegExp => 'RegExp', $receiver instanceof JsDate => 'Date',
             $receiver instanceof JsError => 'Error',
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map',
+            $receiver instanceof JsWeakMap => 'WeakMap', $receiver instanceof JsWeakSet => 'WeakSet',
+            $receiver instanceof JsSymbol => 'Symbol',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
             is_int($receiver), is_float($receiver) => 'Number', $receiver instanceof JsBigInt => 'BigInt',
             default => 'Object',
@@ -38,7 +40,7 @@ trait JsDynamic
             throw new JsError('Function metadata and binding are not supported', 'TypeError');
         }
         if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date', 'BigInt'], true)
-            || $name === 'toString' && in_array($owner, ['Math', 'Set', 'Map'], true)) { $owner = 'Object'; }
+            || $name === 'toString' && in_array($owner, ['Math', 'Set', 'Map', 'WeakMap', 'WeakSet'], true)) { $owner = 'Object'; }
         $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
             if (Builtins::has('object', $name)) { throw new JsError('Unsupported inherited method ' . $name, 'TypeError'); }
@@ -74,6 +76,8 @@ trait JsDynamic
             'RegExp' => $receiver instanceof RegExp, 'Date' => $receiver instanceof JsDate,
             'Error' => $receiver instanceof JsError,
             'Set' => $receiver instanceof JsSet, 'Map' => $receiver instanceof JsMap,
+            'WeakMap' => $receiver instanceof JsWeakMap, 'WeakSet' => $receiver instanceof JsWeakSet,
+            'Symbol' => $receiver instanceof JsSymbol,
             'Function' => $receiver instanceof \Closure, 'Object' => $receiver instanceof JsObject,
             default => false,
         };
@@ -116,7 +120,11 @@ trait JsDynamic
     public static function dynamicGet(mixed $value, mixed $key): mixed
     {
         if (self::isNullish($value)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
+        if ($key instanceof JsSymbol) { return self::symbolGet($value, $key); }
         $key = self::key($key);
+        if ($value instanceof JsSymbol) {
+            return $key === 'description' ? $value->description : self::dynamicMethodValue($value, $key);
+        }
         if ($value instanceof JsObject) {
             if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
             if (array_key_exists($key, $value->p)) { return $value->p[$key]; }
@@ -185,6 +193,10 @@ trait JsDynamic
     public static function dynamicSet(mixed $target, mixed $key, mixed $value): mixed
     {
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
+        if ($key instanceof JsSymbol) {
+            if (!$target instanceof JsObject) { throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError'); }
+            return $target->setSymbol($key, $value);
+        }
         $key = self::key($key);
         if ($target instanceof JsObject && array_key_exists($key, $target->hidden)) {
             $target->hidden[$key] = $value;
@@ -217,6 +229,57 @@ trait JsDynamic
         throw new JsError('Cannot create property on a primitive value', 'TypeError');
     }
 
+    /** Reading a symbol key: undefined when absent, unless an unmodeled inherited symbol could answer. */
+    private static function symbolGet(mixed $value, JsSymbol $key): mixed
+    {
+        if (!self::symbolAbsentInherited($value, $key)) {
+            throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
+        }
+        return $value instanceof JsObject ? $value->getSymbol($key) : JsUndefined::Value;
+    }
+
+    /**
+     * Object literals with runtime keys or spreads: ['k', key, value] and ['s', source] in
+     * source order. Both define own data properties, so a '__proto__' key is ordinary data.
+     */
+    public static function dynamicObject(array ...$parts): JsObject
+    {
+        $out = new JsObject();
+        foreach ($parts as $part) {
+            if ($part[0] === 'k') {
+                if ($part[1] instanceof JsSymbol) { self::defineSymbol($out, $part[1], $part[2]); }
+                else { $out->p[self::key($part[1])] = $part[2]; }
+                continue;
+            }
+            $source = $part[1];
+            if (self::isNullish($source) || is_bool($source) || is_int($source) || is_float($source) || $source instanceof JsSymbol) { continue; }
+            if (is_string($source)) {
+                for ($index = 0, $length = self::length($source); $index < $length; $index++) { $out->p[$index] = self::strAt($source, $index); }
+                continue;
+            }
+            if ($source instanceof JsObject) {
+                foreach (self::ownKeys($source->p) as $key) { $out->p[$key] = $source->p[$key]; }
+                foreach ($source->symbols as [$symbol, $value, $enumerable]) {
+                    if ($enumerable) { self::defineSymbol($out, $symbol, $value); }
+                }
+                continue;
+            }
+            if ($source instanceof JsArray) {
+                foreach ($source->a as $index => $item) { $out->p[$index] = $item; }
+                foreach (self::ownKeys($source->p) as $key) { $out->p[$key] = $source->p[$key]; }
+                continue;
+            }
+            if ($source instanceof JsArguments) {
+                foreach (self::dynamicKeys($source)->a as $key) { $out->p[$key] = self::dynamicGet($source, $key); }
+                continue;
+            }
+            if ($source instanceof JsSet || $source instanceof JsMap || $source instanceof JsWeakMap || $source instanceof JsWeakSet
+                || $source instanceof JsDate || $source instanceof RegExp || $source instanceof JsError || $source instanceof \Closure) { continue; }
+            throw new JsError('Unsupported object spread source', 'TypeError');
+        }
+        return $out;
+    }
+
     /** `{ a, ...rest } = value` in imported JavaScript: the value's own enumerable keys except those named. */
     public static function dynamicRest(mixed $value, array $keys): JsObject
     {
@@ -229,17 +292,54 @@ trait JsDynamic
         return $out;
     }
 
+    /** CreateDataProperty for a symbol key: an ordinary writable, enumerable, configurable slot. */
+    private static function defineSymbol(JsObject $target, JsSymbol $key, mixed $value): void
+    {
+        $target->symbols[spl_object_id($key)] = [$key, $value, true, true, true];
+    }
+
+    /**
+     * Object.defineProperty with a data descriptor. Symbol keys keep their attributes;
+     * string keys have no attribute model, so only an ordinary assignment-equivalent
+     * descriptor (writable, enumerable and configurable) is accepted for them.
+     */
+    private static function dynamicDefineProperty(mixed $target, mixed $key, mixed $descriptor): mixed
+    {
+        if (!is_object($target) || $target instanceof JsUndefined || $target instanceof JsSymbol) { throw new JsError('Object.defineProperty called on non-object', 'TypeError'); }
+        if (!$descriptor instanceof JsObject) { throw new JsError('Property description must be an object', 'TypeError'); }
+        foreach (['get', 'set'] as $accessor) {
+            if (array_key_exists($accessor, $descriptor->p)) { throw new JsError('Accessor property descriptors are not supported', 'TypeError'); }
+        }
+        if (!$target instanceof JsObject) { throw new JsError('Object.defineProperty is only supported on plain objects', 'TypeError'); }
+        $flag = static fn (string $name): bool => array_key_exists($name, $descriptor->p) && self::truthy($descriptor->p[$name]);
+        $value = array_key_exists('value', $descriptor->p) ? $descriptor->p['value'] : JsUndefined::Value;
+        if ($key instanceof JsSymbol) {
+            $id = spl_object_id($key);
+            $existing = $target->symbols[$id] ?? null;
+            if ($existing !== null && !$existing[4]) { throw new JsError('Cannot redefine property: ' . $key->descriptiveString(), 'TypeError'); }
+            $target->symbols[$id] = [$key, $value, $flag('enumerable'), $flag('writable'), $flag('configurable')];
+            return $target;
+        }
+        if (!$flag('writable') || !$flag('enumerable') || !$flag('configurable')) {
+            throw new JsError('Non-writable, non-enumerable or non-configurable string-keyed properties are not supported', 'TypeError');
+        }
+        self::set($target, self::key($key), $value);
+        return $target;
+    }
+
     public static function dynamicKeys(mixed $value): JsArray
     {
         if (self::isNullish($value)) { return new JsArray(); }
         if ($value instanceof JsObject) { return new JsArray(array_map('strval', self::ownKeys($value->p))); }
+        // A class's enumerable own properties are its static fields (methods are non-enumerable).
+        if ($value instanceof JsClass) { return new JsArray(array_map('strval', self::ownKeys($value->statics->p))); }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             $properties = $value->a;
             foreach ($value->p as $key => $item) { $properties[$key] = $item; }
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
-        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
+        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
 
@@ -294,6 +394,7 @@ trait JsDynamic
             is_bool($value) => 'Boolean', is_int($value), is_float($value) => 'Number', is_string($value) => 'String',
             $value instanceof JsArray => 'Array', $value instanceof JsArguments => 'Arguments', $value instanceof JsSet => 'Set',
             $value instanceof JsMap => 'Map', $value instanceof JsDate => 'Date', $value instanceof RegExp => 'RegExp',
+            $value instanceof JsWeakMap => 'WeakMap', $value instanceof JsWeakSet => 'WeakSet', $value instanceof JsSymbol => 'Symbol',
             $value instanceof JsNamespace => $value->name,
             $value instanceof JsError, $value instanceof JsObject && $value->class?->builtinRoot() !== null => 'Error',
             $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
@@ -363,6 +464,10 @@ trait JsDynamic
     public static function dynamicMethod(mixed $receiver, mixed $name): \Closure
     {
         self::requirePresent($receiver);
+        if ($name instanceof JsSymbol) {
+            $method = self::symbolGet($receiver, $name);
+            return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+        }
         $name = self::key($name);
         $properties = match (true) {
             $receiver instanceof JsObject, $receiver instanceof JsArray, $receiver instanceof JsArguments => $receiver->p,
@@ -411,6 +516,7 @@ trait JsDynamic
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
             $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map',
+            $receiver instanceof JsWeakMap => 'weakmap', $receiver instanceof JsWeakSet => 'weakset', $receiver instanceof JsSymbol => 'symbol',
             is_bool($receiver) => 'boolean', $receiver instanceof \Closure => 'function',
             default => 'object',
         };
@@ -423,7 +529,8 @@ trait JsDynamic
                 if (array_key_exists('join', $receiver->p) && !$receiver->p['join'] instanceof \Closure) { return self::dynamicObjectTag($receiver); }
                 return self::dynamicCallMethod($receiver, 'join', new JsArray());
             }
-            if ($receiver instanceof JsArguments || $receiver instanceof JsObject || $receiver instanceof JsSet || $receiver instanceof JsMap || $receiver instanceof JsNamespace) { return self::dynamicObjectTag($receiver); }
+            if ($receiver instanceof JsSymbol) { return $receiver->descriptiveString(); }
+            if ($receiver instanceof JsArguments || $receiver instanceof JsObject || $receiver instanceof JsSet || $receiver instanceof JsMap || $receiver instanceof JsWeakMap || $receiver instanceof JsWeakSet || $receiver instanceof JsNamespace) { return self::dynamicObjectTag($receiver); }
             return self::str($receiver);
         }
         if ($name === 'valueOf') { return $receiver instanceof JsDate ? $receiver->milliseconds : $receiver; }
@@ -443,6 +550,12 @@ trait JsDynamic
         }
         if ($receiver instanceof JsMap) {
             return match ($name) { 'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+        }
+        if ($receiver instanceof JsWeakMap) {
+            return match ($name) { 'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+        }
+        if ($receiver instanceof JsWeakSet) {
+            return match ($name) { 'add' => $receiver->add($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
         }
         if ($receiver instanceof RegExp) {
             return match ($name) { 'exec' => self::dynamicRegExpExec($receiver, self::str($get(0))), 'test' => self::dynamicRegExpExec($receiver, self::str($get(0))) !== null, default => throw new JsError($name . ' is not a function', 'TypeError') };
@@ -638,6 +751,12 @@ trait JsDynamic
                 if ($method === 'keys') { return $keys; }
                 return new JsArray(array_map(static fn ($key) => $method === 'values' ? self::dynamicGet($source, $key) : new JsArray([$key, self::dynamicGet($source, $key)]), $keys->a));
             }
+            if ($method === 'defineProperty') { return self::dynamicDefineProperty($source, $get(1), $get(2)); }
+            if ($method === 'hasOwn' && $get(1) instanceof JsSymbol) {
+                self::requirePresent($source);
+                if ($source instanceof JsObject) { return $source->hasSymbol($get(1)); }
+                throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
+            }
             if ($method === 'hasOwn') {
                 self::requirePresent($source); $key = self::key($get(1));
                 if ($source instanceof \Closure || $source instanceof JsClass) { throw new JsError('Object.hasOwn on functions is not supported', 'TypeError'); }
@@ -730,6 +849,17 @@ trait JsDynamic
             $value = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             return new JsDate($a === [] ? self::now() : ($value instanceof JsDate ? $value->milliseconds : self::date($value)));
         }
+        if ($constructor === 'WeakMap' || $constructor === 'WeakSet') {
+            $result = $constructor === 'WeakSet' ? new JsWeakSet() : new JsWeakMap();
+            if (!self::isNullish($a[0] ?? JsUndefined::Value)) {
+                foreach (self::dynamicIterable($a[0])->a as $value) {
+                    if ($result instanceof JsWeakSet) { $result->add($value); }
+                    elseif ($value instanceof JsArray || $value instanceof JsArguments || $value instanceof JsObject) { $result->set(self::dynamicGet($value, '0'), self::dynamicGet($value, '1')); }
+                    else { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
+                }
+            }
+            return $result;
+        }
         if ($constructor === 'Set' || $constructor === 'Map') {
             $result = $constructor === 'Set' ? new JsSet() : new JsMap();
             if (!self::isNullish($a[0] ?? JsUndefined::Value)) {
@@ -780,7 +910,7 @@ trait JsDynamic
             }
             throw new JsError('Cannot convert object to primitive value', 'TypeError');
         }
-        if (is_object($value) && !$value instanceof JsUndefined && !$value instanceof JsBigInt) { return self::str($value); }
+        if (is_object($value) && !$value instanceof JsUndefined && !$value instanceof JsSymbol && !$value instanceof JsBigInt) { return self::str($value); }
         return $value;
     }
 

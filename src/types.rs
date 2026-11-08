@@ -697,11 +697,20 @@ fn obj(fields: &[(&str, Ty)]) -> Ty {
 
 /// `{ id, name, role }` (§5.1).
 pub fn user() -> Ty {
-    obj(&[
-        ("id", Ty::Num),
-        ("name", Ty::Str),
-        ("role", Ty::union(ROLES.map(|role| Ty::StrLit(role.into())))),
-    ])
+    obj(&[("id", Ty::Num), ("name", Ty::Str), ("role", role())])
+}
+
+/// `Role`: the roles a `User` can have.
+pub fn role() -> Ty {
+    Ty::union(ROLES.map(|role| Ty::StrLit(role.into())))
+}
+
+/// `HookCtx<T>` as a helper names it: what every hook and action handler receives. Before-hooks
+/// also carry their data, so `data` is optional and the action and after-hook context fit too.
+pub fn hook_ctx_with(data: Ty) -> Ty {
+    let Ty::Obj(mut f) = hook_ctx() else { unreachable!() };
+    f.insert("data".into(), (data, true));
+    Ty::Obj(f)
 }
 
 /// `ctx` for hooks and actions (§1.7).

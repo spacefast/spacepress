@@ -14,8 +14,8 @@ my-project/                  # the project root: your app, if you have one
 ├── package.json
 ├── src/                     # e.g. Next.js, Astro, TanStack Start (optional; Zero never reads it)
 └── zero/                    # the Zero root
-    ├── schema.ts            # data (§2); or schema/*.ts
-    ├── server/              # actions and jobs (§4)
+    ├── schema.ts            # convention: data (§2). Any file name works (§1.1)
+    ├── server/              # convention: actions and jobs (§4)
     ├── app/                 # pages and HTTP routes (rendering.md)
     ├── components/          # imported by app/; "use client" files are interactive
     ├── wp-hooks/            # WordPress actions/filters, one per hook name
@@ -33,8 +33,45 @@ my-project/                  # the project root: your app, if you have one
   the rule otherwise couldn't load `defineConfig`.
 - Code in `zero/` imports nothing from outside `zero/` except npm packages.
   The app may import `zero/_generated/client`.
-- Discovery covers only `schema.ts`/`schema/`, `server/`, `app/`, `wp-hooks/`,
-  `content/` and `public/`. Everything else is reached by import.
+
+### 1.1 No required file names
+
+Zero loads `zero.config.ts` and every `.ts` file under `zero/`, except the
+folders that have their own meaning (`app/`, `components/`, `wp-hooks/`,
+`content/`, `public/`, `_generated/`, `dist/`). Every exported kind, action and
+job in those files is registered under its export name. File names and folders
+are up to you:
+
+- **One file:** a whole backend can live in `zero/index.ts`, with kinds,
+  hooks, actions and jobs side by side.
+- **The convention** `zero init` writes and the docs use: `schema.ts` for
+  kinds and `server/*.ts` for actions and jobs. When a project grows, split
+  `schema.ts` into `schema/*.ts`.
+- **Moving code never changes the API.** Names come from exports, not paths,
+  so moving `like` from `index.ts` to `server/posts.ts` keeps
+  `zero.like()`, its endpoint and its Ability.
+- Export names are unique across the app: two exports named `like`, or an
+  action named like a kind, fail the build (`Z1221`) and name both files.
+  Rename one, or set `action({ name: "posts.like" }, …)`.
+- An export that isn't a kind, action or job is ignored, so helper modules need
+  no special place.
+- `app/`, `components/`, `wp-hooks/`, `content/` and `public/` are the only
+  folders whose names Zero reads.
+
+```ts
+// zero/index.ts: a complete app in one file
+import { wp, table, ref, action, job } from "zero";
+
+export const posts = wp.posts.extend({}, { url: "/blog/:slug", comments: true });
+export const likes = table({ post: ref(posts).onDelete("cascade") }, { access: { create: "subscriber", read: "anyone" } });
+
+export const like = action({ access: "subscriber" }, async ({ post }: { post: number }) => {
+  await likes.create({ post });
+  return likes.count({ where: { post } });
+});
+
+export const digest = job(async () => { /* … */ }, { every: "1d" });
+```
 
 ## 2. Schema
 
@@ -270,7 +307,7 @@ await users.me();  await settings.get();  await menus.get("primary");
 ## 4. Server code
 
 ```ts
-// zero/server/posts.ts → zero.posts.feature(), notifySubscribers.enqueue(...)
+// zero/server/posts.ts (any file under zero/ works) → zero.feature(), notifySubscribers.enqueue(...)
 import { action, job } from "zero";
 import { posts } from "zero:db";
 
@@ -280,8 +317,9 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 ```
 
 - **`action`** takes its types from the handler signature. Options: `access`
-  (default `editor`), `idempotent`, `signature`, `abilities`. Each action gets
-  `POST /wp-json/zero/v1/<file>/<name>`, a typed client method, and an Ability.
+  (default `editor`), `idempotent`, `signature`, `abilities`, `name`. Each
+  action gets `POST /wp-json/zero/v1/actions/<name>`, a typed client method
+  `zero.<name>()`, and an Ability. The name is the export name (§1.1).
   It can also be called from a form (rendering.md).
 - **`job`** runs on Action Scheduler after the request commits. A plain call
   becomes an async action. `every` compiles to a recurring action and `cron`

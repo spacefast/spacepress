@@ -6,8 +6,10 @@ monorepo main (Cast live updates #5152).
 
 ## The product in one paragraph
 
-You add `zero.config.ts` and a `zero/` folder to any project. `schema.ts` says what your data is,
-`server/` what your app does, and `app/` (optional) which pages exist. Zero
+You add `zero.config.ts` and a `zero/` folder to any project. Exported kinds
+say what your data is, exported actions and jobs what your app does, and `app/`
+(optional) which pages exist. One file can hold all of it; `schema.ts` and
+`server/` are conventions, not requirements. Zero
 compiles it ahead of time into a WordPress plugin plus prebuilt files. At
 request time, only PHP runs, and as little of it as possible. You get WordPress
 admin and login, an editor for every collection, and every operation as an
@@ -46,7 +48,9 @@ front, with a typed client and cache purges that just work.
 
 ## Principles
 
-1. One concept, one place. Data in `schema.ts`, behavior in `server/`, pages in `app/`.
+1. One concept, one declaration. A kind, action or job is declared once and
+   named by its export. Only `app/`, `components/`, `wp-hooks/`, `content/` and
+   `public/` are folder conventions Zero reads.
 2. Infer, with one named override for each inference.
 3. Prebuild everything that doesn't depend on the request. At request time do
    a lookup, the visitor-dependent part, and nothing else.

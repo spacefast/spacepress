@@ -686,6 +686,10 @@
   ],
   "zero08": [
     {
+      "code": "Z08_SPACE_REQUIRED",
+      "feature": "schema tables without a table mode"
+    },
+    {
       "code": "Z08_SOURCE_NOT_RECOVERABLE",
       "feature": "a published 0.8 version without its authored source"
     },
@@ -816,6 +820,10 @@
     {
       "code": "Z08_SCHEMA",
       "feature": "schema table or field"
+    },
+    {
+      "code": "Z08_SCHEMA_FRESH",
+      "feature": "schema table or field, for a new v2 table"
     },
     {
       "code": "Z08_IMAGE_RESPONSE",

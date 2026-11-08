@@ -2367,27 +2367,6 @@ fn class_member_name(key: &a::PropertyKey<'_>) -> Option<String> {
     }
 }
 
-#[cfg(test)]
-mod refusal_help {
-    /// Every refusal tells the author (often an agent) what to write instead.
-    #[test]
-    fn every_unsupported_construct_names_a_fix() {
-        let source = include_str!("lower.rs");
-        let empty: Vec<_> = source
-            .match_indices("self.unsupported(")
-            .filter_map(|(at, _)| {
-                let call = &source[at..source[at..].find(')').map_or(source.len(), |end| at + end)];
-                let args: Vec<_> = call.split(',').collect();
-                (args.len() >= 3 && args[2].trim() == "\"\"").then(|| source[..at].lines().count() + 1)
-            })
-            .collect();
-        assert!(
-            empty.is_empty(),
-            "refusals without a fix at src/lower.rs lines {empty:?}"
-        );
-    }
-}
-
 /// Whether a function's own body assigns its name (not shadowed by a parameter, a `var` or a
 /// nested binding). A named function expression's name is immutable there: writing it throws.
 fn func_assigns_own_name(func: &Func, name: &str) -> bool {
@@ -2525,5 +2504,26 @@ fn expr_children<'a>(x: &'a Expr, out: &mut Vec<&'a Expr>) {
         ExprKind::Cond(a, b, c) => out.extend([&**a, &**b, &**c]),
         ExprKind::Template(_, values) | ExprKind::Sequence(values) => out.extend(values.iter()),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod refusal_help {
+    /// Every refusal tells the author (often an agent) what to write instead.
+    #[test]
+    fn every_unsupported_construct_names_a_fix() {
+        let source = include_str!("lower.rs");
+        let empty: Vec<_> = source
+            .match_indices("self.unsupported(")
+            .filter_map(|(at, _)| {
+                let call = &source[at..source[at..].find(')').map_or(source.len(), |end| at + end)];
+                let args: Vec<_> = call.split(',').collect();
+                (args.len() >= 3 && args[2].trim() == "\"\"").then(|| source[..at].lines().count() + 1)
+            })
+            .collect();
+        assert!(
+            empty.is_empty(),
+            "refusals without a fix at src/lower.rs lines {empty:?}"
+        );
     }
 }

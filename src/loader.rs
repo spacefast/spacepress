@@ -515,6 +515,7 @@ fn commonjs_module(fs: &dyn Fs, path: &Path, body: &[Stmt]) -> Result<Option<Com
     CommonJsScope {
         arguments_bound: false,
         in_function: false,
+        shadowed: WrapperNames::default(),
         requires: &requires,
     }
     .block(body)?;
@@ -522,6 +523,41 @@ fn commonjs_module(fs: &dyn Fs, path: &Path, body: &[Stmt]) -> Result<Option<Com
         names: commonjs_names(body),
         requires: requires.into_inner(),
     }))
+}
+
+/// The CommonJS wrapper parameters a nested function can rebind.
+#[derive(Clone, Copy, Default)]
+struct WrapperNames {
+    module: bool,
+    exports: bool,
+    require: bool,
+}
+
+impl WrapperNames {
+    fn contains(self, name: &str) -> bool {
+        match name {
+            "module" => self.module,
+            "exports" => self.exports,
+            "require" => self.require,
+            _ => false,
+        }
+    }
+
+    fn with_parameters(mut self, function: &Func) -> Self {
+        for parameter in &function.params {
+            let mut names = Vec::new();
+            parameter.pat.bindings(&mut names);
+            for (name, _) in names {
+                match name {
+                    "module" => self.module = true,
+                    "exports" => self.exports = true,
+                    "require" => self.require = true,
+                    _ => {}
+                }
+            }
+        }
+        self
+    }
 }
 
 fn validate_commonjs_name(name: &str, span: Span) -> Result<()> {
@@ -555,6 +591,10 @@ struct CommonJsScope<'a> {
     arguments_bound: bool,
     /// Inside a function body, which runs in PHP at request time.
     in_function: bool,
+    /// Node wrapper names a function parameter rebinds, such as TypeScript's
+    /// `__exportStar = function (m, exports) { … }`. Inside that function the name is an
+    /// ordinary local, so the wrapper rules don't apply to it.
+    shadowed: WrapperNames,
     requires: &'a std::cell::RefCell<Vec<(String, Span)>>,
 }
 
@@ -568,6 +608,19 @@ impl CommonJsScope<'_> {
             scope.statement(statement)?;
         }
         Ok(())
+    }
+
+    /// A function parameter may rebind `module`, `exports` or `require`; inside the function it
+    /// is a local (see `shadowed`). Other wrapper names stay refused.
+    fn parameter(self, pattern: &Pat) -> Result<()> {
+        match pattern {
+            Pat::Id(name, _) if matches!(name.as_str(), "module" | "exports" | "require") => Ok(()),
+            Pat::Default(pattern, value) => {
+                self.parameter(pattern)?;
+                self.expression(value)
+            }
+            other => self.pattern(other),
+        }
     }
 
     fn pattern(self, pattern: &Pat) -> Result<()> {
@@ -606,10 +659,11 @@ impl CommonJsScope<'_> {
             arguments_bound: (function.is_arrow && self.arguments_bound)
                 || function.params.iter().any(|parameter| binds_arguments(&parameter.pat)),
             in_function: true,
+            shadowed: self.shadowed.with_parameters(function),
             ..self
         };
         for parameter in &function.params {
-            scope.pattern(&parameter.pat)?;
+            scope.parameter(&parameter.pat)?;
             if let Some(value) = &parameter.default {
                 scope.expression(value)?;
             }
@@ -748,6 +802,7 @@ impl CommonJsScope<'_> {
 
     fn expression(self, expression: &Expr) -> Result<()> {
         match &expression.kind {
+            ExprKind::Ident(name) if self.shadowed.contains(name) => {}
             ExprKind::Ident(name) => {
                 match name.as_str() {
                     // `module.exports` is matched by its member expression below.
@@ -779,7 +834,7 @@ impl CommonJsScope<'_> {
                     ));
                 }
             }
-            ExprKind::Member { obj, .. } if is_ident(obj, "module") => {
+            ExprKind::Member { obj, .. } if is_ident(obj, "module") && !self.shadowed.module => {
                 if !is_module_exports(expression) {
                     return Err(commonjs_error(
                         expression.span,
@@ -787,7 +842,7 @@ impl CommonJsScope<'_> {
                     ));
                 }
             }
-            ExprKind::Call { callee, args, .. } if is_ident(callee, "require") => {
+            ExprKind::Call { callee, args, .. } if is_ident(callee, "require") && !self.shadowed.require => {
                 let [
                     ArrEl::Item(Expr {
                         kind: ExprKind::Str(spec),
@@ -808,7 +863,9 @@ impl CommonJsScope<'_> {
                 }
                 self.requires.borrow_mut().push((spec.clone(), expression.span));
             }
-            ExprKind::Assign { target, .. } | ExprKind::Update { target, .. } if wrapper_root(target).is_some() => {
+            ExprKind::Assign { target, .. } | ExprKind::Update { target, .. }
+                if wrapper_root(target).is_some_and(|root| !self.shadowed.contains(root)) =>
+            {
                 let root = wrapper_root(target).expect("matched above");
                 if self.in_function {
                     return Err(commonjs_error(
@@ -1487,6 +1544,23 @@ mod tests {
             ),
         ]);
         assert_eq!(json(&result), r#"[2,true,true,"marker",true]"#);
+    }
+
+    #[test]
+    fn commonjs_function_parameters_can_shadow_wrapper_names_like_node() {
+        // ret's `__exportStar = function (m, exports) { … }`: inside the function `exports` is
+        // the argument, not the module's exports. Writes through it are ordinary local writes.
+        let result = evaluate(&[
+            (
+                "/p/zero.config.ts",
+                "import star from './star.cjs'; export default [star.copied, star.own, star.target.a, star.target.b, star.req];",
+            ),
+            (
+                "/p/star.cjs",
+                "var __exportStar = (this && this.__exportStar) || function (m, exports) { for (var p in m) if (p !== 'default' && !Object.hasOwn(exports, p)) exports[p] = m[p]; return exports; };\nconst target = { b: 2 };\n__exportStar({ a: 1, b: 9, default: 0 }, target);\nfunction pick(module, require) { return module.name + require; }\nexports.target = target;\nexports.copied = Object.keys(target).join(',');\nexports.own = Object.keys(module.exports).join(',');\nexports.req = pick({ name: 'm' }, '!');",
+            ),
+        ]);
+        assert_eq!(json(&result), r#"["b,a","target,copied",1,2,"m!"]"#);
     }
 
     #[test]

@@ -586,8 +586,31 @@ pub(crate) fn compile_tree(
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
+    // The URLs the app answers outside /wp-json, so the host can hand them to WordPress without
+    // booting it to ask. `routes` (any method) and `pagePaths` (GET and HEAD) use the route path
+    // grammar: a leading `/`, literal segments, `:name` for one segment and a final `*name` for
+    // one or more. The runtime picks the most specific match (Zero\App::routeFor); this only says
+    // whether one exists.
+    let mut routes: Vec<(&str, &str)> = built
+        .schema
+        .routes
+        .values()
+        .map(|r| (r.path.as_str(), r.method.as_str()))
+        .collect();
+    routes.sort();
+    routes.dedup();
+    let routes: Vec<_> = routes
+        .iter()
+        .map(|(path, method)| serde_json::json!({"method": method, "path": path}))
+        .collect();
+    let mut page_paths: Vec<String> = pages
+        .as_ref()
+        .map(|p| p.patterns.iter().map(|pattern| page_path(pattern)).collect())
+        .unwrap_or_default();
+    page_paths.sort();
+    page_paths.dedup();
     let manifest = serde_json::json!({"format":"zero.hosted.v1", "compiler":VERSION, "app":built.schema.name,
-        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("zero-pages-{}", p.app)), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("zero-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths, "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -668,4 +691,14 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// A page route pattern (`/notes/[]`, whose last segment is an item) in the route path grammar
+/// (`/notes/:item`), so one matcher serves `routes` and `pagePaths`.
+fn page_path(pattern: &str) -> String {
+    pattern
+        .split('/')
+        .map(|segment| if segment == "[]" { ":item" } else { segment })
+        .collect::<Vec<_>>()
+        .join("/")
 }

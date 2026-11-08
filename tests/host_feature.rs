@@ -182,6 +182,23 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     let compiled = work.path().join("compiled");
     let manifest = zero::host::compile_sources(&host, &compiled, &host, None).unwrap();
     assert_eq!(manifest["pages"], "zero-pages-fullsite");
+    // The URLs outside /wp-json the app answers, so the host can hand them to WordPress: each
+    // route with its method, and each page (GET and HEAD) in the same path grammar.
+    assert_eq!(
+        manifest["routes"],
+        serde_json::json!([
+            { "method": "GET", "path": "/api/feed.json" },
+            { "method": "POST", "path": "/webhooks/stripe" }
+        ])
+    );
+    assert_eq!(
+        manifest["pagePaths"],
+        serde_json::json!(["/", "/about", "/notes", "/notes/:item", "/notes/featured"])
+    );
+    let written: serde_json::Value =
+        serde_json::from_slice(&fs::read(compiled.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(written["routes"], manifest["routes"]);
+    assert_eq!(written["pagePaths"], manifest["pagePaths"]);
     let plugin = tree(&compiled.join("plugins/zero-pages-fullsite"));
     let artifact: serde_json::Value = serde_json::from_str(app["files"]["zero/pages.json"].as_str().unwrap()).unwrap();
     assert_eq!(

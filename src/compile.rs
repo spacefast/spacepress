@@ -4950,7 +4950,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(x)?;
         let module = self.fx().module;
-        if self.javascript_module(module) {
+        // Zero's own typed async calls (fetch, database builders, typed helpers) block, as in
+        // TypeScript; any other awaited value from checked JavaScript goes through the job queue.
+        if self.javascript_module(module) && !matches!(v.ty, Ty::Promise(_) | Ty::Builder(_)) {
             let v = self.finish_value(v, x.span)?;
             self.uses_jobs = true;
             return Ok(Out::atom(

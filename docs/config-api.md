@@ -995,11 +995,12 @@ switches and blocks (`break label`, `continue label`) follow JavaScript.
 Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
 assigns existing variables and fields in JavaScript order. Tagged templates
 call the tag with the call site's strings array (with `raw`) and the
-substitutions; `String.raw` is supported.
+substitutions; `String.raw` is supported. BigInt (`10n`, `bigint`, `BigInt(x)`)
+is exact; mixing it with numbers in arithmetic is a TypeError, as in JavaScript.
 
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,
-getters/setters, BigInt, dynamic `import()`, `any`,
+getters/setters, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal

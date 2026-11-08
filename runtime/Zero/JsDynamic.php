@@ -659,6 +659,12 @@ trait JsDynamic
         return self::dynamicConstruct('RegExp', $args);
     }
 
+    /** ToPrimitive for callers outside this trait (BigInt conversion). */
+    public static function primitive(mixed $value, string $hint = 'default'): mixed
+    {
+        return self::dynamicPrimitive($value, $hint);
+    }
+
     private static function dynamicPrimitive(mixed $value, string $hint = 'default'): mixed
     {
         if ($value instanceof JsDate) {
@@ -672,11 +678,11 @@ trait JsDynamic
                     $result = self::dynamicInvoke($value->p[$method], $value, new JsArray());
                 } elseif ($value instanceof JsObject && $value->nullPrototype) { continue; }
                 else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
-                if ($result === JsUndefined::Value || !is_object($result)) { return $result; }
+                if ($result === JsUndefined::Value || !is_object($result) || $result instanceof JsBigInt) { return $result; }
             }
             throw new JsError('Cannot convert object to primitive value', 'TypeError');
         }
-        if (is_object($value) && !$value instanceof JsUndefined) { return self::str($value); }
+        if (is_object($value) && !$value instanceof JsUndefined && !$value instanceof JsBigInt) { return self::str($value); }
         return $value;
     }
 
@@ -684,8 +690,9 @@ trait JsDynamic
     {
         if ($operator === '===' || $operator === '!==') { $equal = self::strictEq($left, $right); return $operator === '===' ? $equal : !$equal; }
         if ($operator === '==' || $operator === '!=') { $equal = self::looseEq($left, $right); return $operator === '==' ? $equal : !$equal; }
-        if (in_array($operator, ['&', '|', '^', '<<', '>>', '>>>'], true)) { return self::bitwise($operator, $left, $right); }
         $left = self::dynamicPrimitive($left); $right = self::dynamicPrimitive($right);
+        if ($left instanceof JsBigInt || $right instanceof JsBigInt) { return self::bigintBinary($operator, $left, $right); }
+        if (in_array($operator, ['&', '|', '^', '<<', '>>', '>>>'], true)) { return self::bitwise($operator, $left, $right); }
         if ($operator === '+') {
             return is_string($left) || is_string($right) ? self::str($left) . self::str($right) : self::add(self::toNumber($left), self::toNumber($right));
         }
@@ -701,11 +708,70 @@ trait JsDynamic
         };
     }
 
+    /**
+     * An operator on primitives where one is a BigInt (ECMAScript 13.15.3 ApplyStringOrNumericBinaryOperator).
+     * `+` with a string concatenates; relational and equality operators compare mathematically
+     * across BigInt, number and numeric strings; everything else needs two BigInts.
+     */
+    private static function bigintBinary(string $operator, mixed $left, mixed $right): mixed
+    {
+        if ($operator === '+' && (is_string($left) || is_string($right))) { return self::str($left) . self::str($right); }
+        if (in_array($operator, ['<', '<=', '>', '>=', '==', '!='], true)) {
+            $c = self::bigintCompare($left, $right);
+            if ($operator === '==' || $operator === '!=') { return ($c === 0) === ($operator === '=='); }
+            if ($c === null) { return false; }
+            return match ($operator) { '<' => $c < 0, '<=' => $c <= 0, '>' => $c > 0, '>=' => $c >= 0 };
+        }
+        if (!$left instanceof JsBigInt || !$right instanceof JsBigInt) {
+            throw new JsError('Cannot mix BigInt and other types, use explicit conversions', 'TypeError');
+        }
+        return match ($operator) {
+            '+' => $left->add($right), '-' => $left->sub($right), '*' => $left->mul($right),
+            '/' => $left->divRem($right)[0], '%' => $left->divRem($right)[1], '**' => $left->pow($right),
+            '&', '|', '^' => $left->bitwise($operator, $right),
+            '<<' => $left->shift($right, true), '>>' => $left->shift($right, false),
+            '>>>' => throw new JsError('BigInts have no unsigned right shift, use >> instead', 'TypeError'),
+            default => throw new JsError('Unsupported JavaScript operator ' . $operator, 'TypeError'),
+        };
+    }
+
+    /** Mathematical comparison of a BigInt with a BigInt, number, string or boolean; null when unordered. */
+    private static function bigintCompare(mixed $a, mixed $b): ?int
+    {
+        $side = static function (mixed $v): JsBigInt|int|float|null {
+            if ($v instanceof JsBigInt) { return $v; }
+            if (is_string($v)) { return JsBigInt::parse($v); }
+            if (is_bool($v) || $v === null) { return $v ? 1 : 0; }
+            if (is_int($v) || is_float($v)) { return $v; }
+            return null;
+        };
+        [$x, $y] = [$side($a), $side($b)];
+        if ($x === null || $y === null) { return null; }
+        if (is_float($x) && is_nan($x) || is_float($y) && is_nan($y)) { return null; }
+        if (!$x instanceof JsBigInt && !$y instanceof JsBigInt) { return $x <=> $y; }
+        $flip = !$x instanceof JsBigInt;
+        if ($flip) { [$x, $y] = [$y, $x]; }
+        if ($y instanceof JsBigInt) { $c = $x->compare($y); }
+        elseif (is_infinite((float) $y)) { $c = $y > 0 ? -1 : 1; }
+        else {
+            // Compare with the number's integer part, then its fraction.
+            $whole = $y < 0 ? ceil((float) $y) : floor((float) $y);
+            $c = $x->compare(JsBigInt::fromNumber($whole));
+            if ($c === 0 && (float) $y !== $whole) { $c = $y > $whole ? -1 : 1; }
+        }
+        return $flip ? -$c : $c;
+    }
+
     public static function looseEq(mixed $a, mixed $b): bool
     {
         if (self::isNullish($a) || self::isNullish($b)) { return self::isNullish($a) && self::isNullish($b); }
         $ta = self::typeOf($a); $tb = self::typeOf($b);
         if ($ta === $tb) { return self::strictEq($a, $b); }
+        if ($ta === 'bigint' || $tb === 'bigint') {
+            $other = $ta === 'bigint' ? $b : $a;
+            if (is_object($other) && !$other instanceof JsBigInt) { return self::looseEq($ta === 'bigint' ? $a : self::dynamicPrimitive($a), $ta === 'bigint' ? self::dynamicPrimitive($b) : $b); }
+            return self::bigintCompare($a, $b) === 0;
+        }
         if (is_bool($a)) { return self::looseEq((int) $a, $b); }
         if (is_bool($b)) { return self::looseEq($a, (int) $b); }
         if ($ta === 'function' && ($tb === 'number' || $tb === 'string')) { return self::looseEq(self::dynamicPrimitive($a), $b); }

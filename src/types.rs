@@ -19,6 +19,8 @@ pub enum Ty {
     Num,
     NumLit(f64),
     FreshNumLit(f64),
+    /// A JavaScript BigInt (`Zero\JsBigInt` at runtime).
+    BigInt,
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
     StrLit(String),
@@ -273,6 +275,7 @@ impl Ty {
             Ty::Predicate(_, target) => format!("a type predicate for {}", target.describe()),
             Ty::Promise(t) => format!("Promise<{}>", t.describe()),
             Ty::Date => "Date".into(),
+            Ty::BigInt => "bigint".into(),
             Ty::Regex => "RegExp".into(),
             Ty::Error => "Error".into(),
             Ty::Collection(t) => format!("collection \"{t}\""),

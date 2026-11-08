@@ -101,7 +101,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_OMITTED_REDIRECTS",
         feature: "redirect and header rule files (_redirects, _headers)",
         v2: "redirects in sf.jsonc, and v2 routes",
-        fix: "Move each redirect into sf.jsonc `redirects`, which the candidate carries; port rewrites and headers to v2 routes.",
+        fix: "Move each redirect into sf.jsonc `redirects`, which the candidate carries when no source sits under a WordPress, Zero or converted-app path; port rewrites and headers to v2 routes.",
         test: |_, r| r.starts_with(omitted::REDIRECTS),
         example: (
             "/_redirects",

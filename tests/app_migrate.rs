@@ -2203,6 +2203,9 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
         .map(|e| (e["code"].as_str().unwrap(), e["pointer"].as_str().unwrap()))
         .collect();
     assert_eq!(errors, [("Z08_OMITTED_CONFIG", "/sf.jsonc/redirects")], "{refused:#}");
+    // The refusal names the first rule that blocks the key.
+    let reason = refused["errors"][0]["reason"].as_str().unwrap();
+    assert!(reason.contains("the rule on `/app/*`"), "{refused:#}");
 }
 
 /// The bridge posts a 0.8 positional call as the input the generated v2 action declares, and the

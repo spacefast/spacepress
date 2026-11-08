@@ -124,9 +124,9 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// sf.jsonc, which the migrated publish uploads.
 /// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
 ///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php). Only
-///   when no rule can reach `/wp-json`, though: 0.8's data URLs were reserved from redirects, but
-///   v2's `/wp-json/zero/v1/*` isn't, and the REST door hands a path a redirect claims to the rules
-///   stage (see `redirect_reaches_wp_json`).
+///   when no rule can reach a URL the v2 app answers that 0.8 kept out of the redirect stage:
+///   WordPress's and Zero's paths (v2's `/wp-json/zero/v1/*` isn't reserved from redirects as 0.8's
+///   data URLs were) and the folders the candidate serves (see `redirect_reaches_app`).
 /// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
 /// - `analytics`, `system`: frozen from the file config whatever the runtime.
 /// - `build`, `placement`: read from the repository or the Space at build or creation time, never
@@ -637,10 +637,23 @@ pub(super) fn sweep(
                 .find(|(k, _)| k == key)
                 .map_or(CONFIG, |(_, reason)| reason);
             let (line, column) = line_of(key);
+            // Name the redirect that blocks the key, so the author knows which rule to move.
+            let blocking = (key == "redirects")
+                .then(|| value.as_array())
+                .flatten()
+                .and_then(|rules| rules.iter().find(|r| redirect_reaches_app(r, &served)))
+                .and_then(|r| r.get("source"))
+                .and_then(serde_json::Value::as_str)
+                .map(|source| {
+                    format!(
+                        "; the rule on `{source}` can reach a path WordPress, Zero or the converted app answers on v2"
+                    )
+                })
+                .unwrap_or_default();
             errors.push(
                 fail(
                     &pointer(&format!("/{config_file}"), key),
-                    format!("{reason}: 0.8 applied {config_file} `{key}` to the Space"),
+                    format!("{reason}: 0.8 applied {config_file} `{key}` to the Space{blocking}"),
                 )
                 .located(config_file.to_string(), line, column),
             );
@@ -666,7 +679,7 @@ pub(super) fn sweep(
 mod tests {
     use super::redirect_reaches_app;
 
-    /// A redirect is carried only when its source can't match the app's `/wp-json` data URLs.
+    /// A redirect is carried only when its first segment is a literal nothing on v2 answers.
     #[test]
     fn a_redirect_reaches_the_app_unless_its_first_segment_is_a_free_literal() {
         let served: std::collections::BTreeSet<String> = ["app", "zero", "client", "assets"].map(String::from).into();

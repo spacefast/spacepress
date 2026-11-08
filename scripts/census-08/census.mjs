@@ -27,14 +27,11 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { classify, SOURCE_NOT_RECOVERABLE } from "./classify.mjs";
+import { clientFacts } from "./extract.mjs";
 import { writeCapsule } from "./reconstruct.mjs";
 
 /** Census rules on the payload itself, applied before the converter runs. */
 export const RULES = {
-  // 0.8 serves `client/` as a single-page app when a capsule has no pages (`standaloneClient` in
-  // zero-compile's compile.ts). The converter reads `client/` only for a pages Layout, so it would
-  // drop this app's whole interface; v2 has no counterpart.
-  standaloneClient: "client app without pages (no v2 conversion)",
   // The source would draw `ImageResponse` with JSX, which the converter refuses on the server.
   // The bundle has that JSX compiled away, so the census reads the SDK import instead; esbuild
   // drops unused imports, so an imported `ImageResponse` is used.
@@ -94,12 +91,57 @@ export function verifySource(artifact, dir) {
   return true;
 }
 
-/** Census-rule refusals the payload decides before any converter runs. */
-export function payloadRefusals(artifact) {
-  const out = [];
+/**
+ * A client app without pages (0.8 served `client/` as a single-page app when a capsule had no pages)
+ * converts to v2 static files with a bridge for `@spacefast/zero/client` (src/config_migrate/app/client.rs).
+ * Its body is not in the payload, so the census decides only what the uploaded `client.js` shows: the
+ * platform modules it imports and the SDK names it uses. Each label matches a Z08_CLIENT_* code.
+ */
+// The 0.8 client names the bridge provides (BRIDGED in app/client.rs).
+const BRIDGED = new Set(["useQuery", "useMutation", "useAction", "usePaginatedQuery", "queryOptions", "createClient", "useAuth", "signOut", "Router", "Routes", "Route", "Link", "navigate", "useLocation", "useNavigate", "useParams"]);
+const SIGN_IN = ["SignInWithGoogle", "SignInWithGravatar", "SignInWithSpacefast", "signInWithGoogle", "signInWithGravatar", "signInWithSpacefast", "getIdentity", "getCurrentUser", "retryAuth", "canAccessApp"];
+const CONNECTORS = ["useConnectorState", "useConnectorRoleState", "retryConnectorQueries"];
+// What the 0.8 import map answered (`platform()` in app/client.rs); anything else bare is a package.
+const PLATFORM = /^(?:@spacefast\/zero\/(?:client|kit|charts)|(?:@spacefast\/compat-lakebed|lakebed)\/client|preact(?:\/.*)?|react(?:\/.*)?|react-dom(?:\/.*)?|react-is|lucide-react|recharts)$/;
+
+// The labels match classify.mjs's client rules, so a census refusal and a converter refusal of the
+// same thing count as one reason.
+export const CLIENT_RULES = [
+  ["client: kit components", (c) => c.modules.has("@spacefast/zero/kit")],
+  ["client: charts", (c) => c.modules.has("@spacefast/zero/charts") || c.modules.has("recharts")],
+  ["client: storage uploads", (c) => c.zero.has("storage")],
+  ["client: authenticatedFetch", (c) => c.zero.has("authenticatedFetch")],
+  ["client: connector state", (c) => CONNECTORS.some((n) => c.zero.has(n))],
+  ["client: content reads", (c) => c.zero.has("contentQueryOptions")],
+  ["client: 0.8 sign-in", (c) => SIGN_IN.some((n) => c.zero.has(n))],
+  // Any other name the 0.8 SDK module gives that the bridge lacks.
+  ["client: other 0.8 client API", (c) => [...c.zero].some((n) => !BRIDGED.has(n) && n !== "storage" && n !== "authenticatedFetch" && n !== "contentQueryOptions" && !SIGN_IN.includes(n) && !CONNECTORS.includes(n))],
+  // client.js leaves only platform modules external, so a bare import that isn't one is a package
+  // 0.8's import map answered (lucide-react) or the client bundled; both need a prebuilt bundle.
+  ["client: npm package", (c) => [...c.modules].some((m) => !m.startsWith(".") && !m.startsWith("/") && (!PLATFORM.test(m) || m === "lucide-react"))],
+  ["client: import outside the capsule", (c) => [...c.modules].some((m) => m.startsWith("/") || m.startsWith("../"))],
+  ["client: dynamic import", (c) => c.dynamicImport],
+  ["client: non-script import", (c) => [...c.modules].some((m) => /\.(svg|png|jpe?g|gif|webp|woff2?|json|wasm)$/i.test(m))],
+];
+
+/** True for a capsule 0.8 served as a single-page client app. */
+export function standaloneClient(artifact) {
   const files = new Set((artifact?.sourceManifest?.files ?? []).map((f) => f.path));
   const client = artifact?.sourceManifest?.entries?.client;
-  if ((artifact?.pages ?? []).length === 0 && client && files.has(client)) out.push(RULES.standaloneClient);
+  return (artifact?.pages ?? []).length === 0 && Boolean(client) && files.has(client);
+}
+
+/**
+ * What the payload decides before any converter runs: census-rule refusals, and what only the
+ * source can settle. `ts` reads the uploaded `client.js` when the payload kept it.
+ */
+export function payloadCensus(ts, finalize) {
+  const artifact = finalize?.artifact ?? finalize;
+  const out = { refusals: [], missing: [] };
+  if (!standaloneClient(artifact)) return out;
+  const facts = clientFacts(ts, finalize, [], true);
+  if (facts.measured) out.refusals.push(...CLIENT_RULES.filter(([, test]) => test(facts)).map(([label]) => label));
+  out.missing.push("client app body");
   return out;
 }
 
@@ -135,13 +177,16 @@ function run(bin, input, out, users) {
 }
 
 /** One Space's outcome for one binary. */
-export function outcome({ verified, report, census }) {
+export function outcome({ verified, report, census, missing: unrecorded = [] }) {
   const errors = (report?.errors ?? []).map(classify);
   const refusals = [...new Set([...census, ...errors.filter((e) => e.kind === "refusal").map((e) => e.label)])].sort();
   const missing = [...new Set(errors.filter((e) => e.kind === "source").map((e) => e.label))].sort();
   if (verified && report?.status === "dry-run" && census.length === 0) return { outcome: "accepted", refusals, missing };
   if (refusals.length > 0) return { outcome: "refused", refusals, missing };
-  if (!verified) return { outcome: "not recoverable", refusals, missing: missing.length ? missing : ["stored payload only"] };
+  if (!verified) {
+    const all = [...new Set([...missing, ...unrecorded])].sort();
+    return { outcome: "not recoverable", refusals, missing: all.length ? all : ["stored payload only"] };
+  }
   // Verified source whose only errors are source-kind still did not convert.
   return { outcome: "refused", refusals: ["converter error on recovered source"], missing };
 }
@@ -212,9 +257,9 @@ async function main() {
       const verified = verifySource(artifact, source);
       const dir = path.join(scratch, `app-${i}`);
       const rebuilt = writeCapsule(ts, finalize, dir);
-      const census = payloadRefusals(artifact);
+      const { refusals: census, missing } = payloadCensus(ts, finalize);
       if (rebuilt.imageResponse) census.push(RULES.imageResponse);
-      return { version, verified, input: verified ? source : dir, census };
+      return { version, verified, input: verified ? source : dir, census, missing };
     });
     const summaries = [];
     const detail = {};
@@ -227,7 +272,7 @@ async function main() {
           failures.push(`${s.version}: exit ${result.code ?? "none"}${result.signal ? ` signal ${result.signal}` : ""}`);
           return null;
         }
-        return { version: s.version, verified: s.verified, ...outcome({ verified: s.verified, report, census: s.census }) };
+        return { version: s.version, verified: s.verified, ...outcome({ verified: s.verified, report, census: s.census, missing: s.missing }) };
       });
       // A crashing or truncating binary must not look like an improvement: stop instead of counting.
       if (failures.length > 0) {

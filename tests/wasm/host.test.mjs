@@ -49,6 +49,13 @@ test('wasm migrates real source and returns a compilable file map without writes
   assert.deepEqual(config.errors, []);
 });
 
+test('wasm refuses a 0.8 client app with a coded diagnostic instead of a partial public/', () => {
+  const candidate = call(exports, 'zero_migrate_app', { project: path.resolve('tests/fixtures/app-migrate/client-app'), space: 'spc_migrate_test', users: true });
+  assert.equal(candidate.report.status, 'refused');
+  assert.deepEqual(candidate.files, {});
+  assert.deepEqual(candidate.report.errors.map((e) => [e.code, e.file, e.line, e.column]), [['Z08_CLIENT_NATIVE', 'client/index.tsx', 1, 1]]);
+});
+
 test('host capture gives npm imports an actionable stable diagnostic', () => {
   const response = call(exports, 'zero_sources', { project: '/project', packages: false, files: {
     'zero.config.ts': 'import thing from "some-npm-package"; export default thing;',

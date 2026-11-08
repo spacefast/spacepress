@@ -620,7 +620,9 @@ impl Lowerer {
             .transpose()?
             .flatten();
         let result = self.function_inner(f).map(|func| {
-            if !self.reads_this.get() && this_ann.is_none() {
+            // A `this` annotation alone (`this: void`, a common idiom) types nothing the body
+            // reads, so only a body that reads `this` takes the hidden receiver.
+            if !self.reads_this.get() {
                 return func;
             }
             // A function that reads `this` takes its receiver as a hidden first parameter, as

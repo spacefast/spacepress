@@ -44,5 +44,24 @@ export default defineConfig({
       return [counter.inc(), counter.inc()];
     }),
     thisTypedParameter: run(() => [describe.call({ name: "Ada", role: "admin" }, "Dr "), describe.apply({ name: "Bo", role: "editor" }, [""])]),
+    // A callback reading `this` keeps its argument positions; `this: void` alone takes no receiver.
+    thisCallbacks: run(() => {
+      const api = { f(this: void, x: number): number { return x * 2; }, count: 1 };
+      return [
+        ["x", "yy"].map(function (value, i) { return [typeof this, value.length, i]; }),
+        [1, 2, 3].reduce(function (acc, v) { void this; return acc + v; }, 0),
+        api.count + api.f(2),
+      ];
+    }),
+    // A method may call a sibling defined after it, itself, or one whose type it needs first.
+    thisSiblingMethods: run(() => {
+      const o = {
+        n: 2,
+        first() { return this.second() + 1; },
+        second() { return this.n * 10; },
+        fact(k: number): number { return k ? this.n * this.fact(k - 1) : 1; },
+      };
+      return [o.first(), o.fact(3), { ...o, n: 3 }.first()];
+    }),
   },
 });

@@ -3415,6 +3415,30 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
+/// An object literal's method that reads `this` is typed after the other properties, so a later
+/// property or spread with its key must win: calling the replaced method is refused, as Node
+/// would throw.
+#[test]
+fn a_method_replaced_by_a_later_property_is_not_callable() {
+    for body in [
+        "({ f() { return this.x; }, ...{ f: 1 }, x: 1 }).f()",
+        "({ f() { return this.x; }, f: 1, x: 1 }).f()",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {body} }}) }} }});\n"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{body}: {report}");
+        assert_eq!(
+            report["diagnostics"][0]["message"], "number isn't a function",
+            "{body}: {report}"
+        );
+    }
+}
+
 #[test]
 fn language_constructs_match_node_through_generated_php() {
     let dir = root().join("tests/differential/language");

@@ -3161,6 +3161,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // function evaluates nothing, so this keeps JavaScript's order), typed by the
                 // finished fields; their PHP fills the slot reserved at their position.
                 let mut deferred: Vec<(usize, &Rc<Func>, String, String)> = Vec::new();
+                // The deferred method each key still holds; a later property or spread with the
+                // same key replaces it, and the literal's field takes that value's type.
+                let mut owner: HashMap<String, usize> = HashMap::new();
                 for p in props {
                     match p {
                         Prop::KV(key, value) => {
@@ -3184,6 +3187,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             {
                                 fields.shift_remove(k);
                                 fields.insert(k.clone(), (Ty::Unknown, false));
+                                owner.insert(k.clone(), deferred.len());
                                 deferred.push((parts.len(), f, key_php, k.clone()));
                                 parts.push(String::new());
                                 continue;
@@ -3191,6 +3195,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let v = self.expr(value)?;
                             let v = self.finish_value(v, value.span)?;
                             if let Some(k) = name {
+                                owner.remove(k);
                                 fields.shift_remove(k);
                                 fields.insert(k.clone(), (v.ty.clone(), false));
                             } else {
@@ -3207,6 +3212,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             match shape {
                                 Ty::Obj(f) => {
                                     for (k, t) in f {
+                                        owner.remove(&k);
                                         fields.shift_remove(&k);
                                         fields.insert(k, t);
                                     }
@@ -3224,17 +3230,50 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 if !deferred.is_empty() {
-                    let this: IndexMap<String, (Ty, bool)> = fields
-                        .iter()
-                        .filter(|(_, (t, _))| *t != Ty::Unknown)
-                        .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
-                        .collect();
-                    for (slot, f, key_php, name) in deferred {
-                        let v = self.method_with_this(f, Ty::Obj(this.clone()))?;
-                        if let Some(entry) = fields.get_mut(&name) {
-                            entry.0 = v.ty.clone();
+                    // `this` is typed by the finished fields plus the methods typed so far: those
+                    // whose annotations give their signature first (so a method may call itself),
+                    // then each method that compiles. A method calling one not yet typed is tried
+                    // again once a pass types another; the first refusal of a pass that types
+                    // none is the error.
+                    let live = |i: usize, name: &str, owner: &HashMap<String, usize>| owner.get(name) == Some(&i);
+                    for (i, (_, f, _, name)) in deferred.iter().enumerate() {
+                        if live(i, name, &owner)
+                            && let Some(ty) = self.declared_signature(f)?
+                            && let Some(entry) = fields.get_mut(name)
+                        {
+                            entry.0 = ty;
                         }
-                        parts[slot] = format!("[{key_php} => {}]", v.php);
+                    }
+                    let mut pending: Vec<usize> = (0..deferred.len()).collect();
+                    while !pending.is_empty() {
+                        let this: IndexMap<String, (Ty, bool)> = fields
+                            .iter()
+                            .filter(|(_, (t, _))| *t != Ty::Unknown)
+                            .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
+                            .collect();
+                        let mut failed = Vec::new();
+                        let mut first_error = None;
+                        for &i in &pending {
+                            let (slot, f, key_php, name) = &deferred[i];
+                            match self.method_with_this(f, Ty::Obj(this.clone())) {
+                                Ok(v) => {
+                                    if live(i, name, &owner)
+                                        && let Some(entry) = fields.get_mut(name)
+                                    {
+                                        entry.0 = v.ty.clone();
+                                    }
+                                    parts[*slot] = format!("[{key_php} => {}]", v.php);
+                                }
+                                Err(e) => {
+                                    first_error.get_or_insert(e);
+                                    failed.push(i);
+                                }
+                            }
+                        }
+                        if failed.len() == pending.len() {
+                            return Err(first_error.expect("a failed method"));
+                        }
+                        pending = failed;
                     }
                 }
                 let ty = if is_map {
@@ -4477,7 +4516,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(None);
         };
         let mut params = Vec::new();
-        for p in &f.params {
+        for p in f.params.iter().skip(usize::from(receives_this(f))) {
             let Some(ann) = &p.ann else { return Ok(None) };
             let ty = parameter_input_type(p, self.resolve_runtime_ann(ann, f.module)?);
             params.push(if p.rest { Ty::Rest(Box::new(ty)) } else { ty });
@@ -4496,8 +4535,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let module = f.module;
         let mut param_tys = Vec::new();
+        // A receiver function's hidden first parameter is `this`, supplied by the call and never
+        // an argument: the callback's argument `i` is its parameter `i + 1`.
+        let receiver = usize::from(receives_this(f));
         for (i, p) in f.params.iter().enumerate() {
-            let given = params.and_then(|ps| {
+            let is_this = i < receiver;
+            let given = params.filter(|_| !is_this).and_then(|ps| {
+                let i = i - receiver;
                 if p.rest {
                     Some(Ty::Array(Box::new(Ty::union(
                         ps.iter().skip(i).map(widen_fresh_literals),
@@ -4506,16 +4550,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ps.get(i).cloned()
                 }
             });
-            let implicit_this = (i == 0 && receives_this(f) && p.ann.is_none())
+            let implicit_this = (is_this && p.ann.is_none())
                 .then(|| self.implicit_this.take())
                 .flatten();
             let t = match (&p.ann, implicit_this) {
                 (None, Some(this)) => this,
+                // A callback is called without a receiver it could rely on.
+                (None, None) if is_this && params.is_some() => Ty::Unknown,
                 (Some(a), _) => {
                     let declared = self.resolve_runtime_ann(a, module)?;
                     if let Some(given) = &given {
                         check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
-                    } else if params.is_some() && !p.optional && p.default.is_none() {
+                    } else if params.is_some() && !is_this && !p.optional && p.default.is_none() {
                         return err(p.span, "this callback parameter is never given a value");
                     }
                     declared

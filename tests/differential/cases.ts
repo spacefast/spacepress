@@ -1,8 +1,10 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
-import { job, jobs, once, env } from "zero"; // lane D
-import { jsAbort, jsCollections } from "./stdlib.js";
+import { job, jobs, once } from "zero"; // lane D
+import * as ns from "./namespace.mjs";
+import picoish from "./namespace.mjs";
+import { jsAbort, jsCollections, jsTimers } from "./stdlib.js";
 
 const n = table({ id: id() });
 
@@ -273,6 +275,16 @@ class LanguageDraftView extends LanguageView {
 }
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
+// Feature detection on globalThis is resolved at compile time in both phases.
+const GLOBAL_DETECTION = [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.Math, typeof globalThis.window, typeof globalThis.location, globalThis.Deno === undefined];
+
+// Build-time namespaces: objects holding functions, and functions with own properties,
+// are resolved member by member at compile time; they never exist in PHP.
+const local = { twice: (n: number) => n * 2, deep: { label: (s: string) => `<${s}>`, size: 4 }, list: ["a", "b"] };
+function tagged(s: string) { return `#${s}`; }
+tagged.prefix = "p";
+tagged.upper = (s: string) => s.toUpperCase();
+Object.assign(tagged, { count: 2, nested: { flag: true } });
 
 
 // Each action is independent: Node shares one module; PHP starts a process per case.
@@ -458,6 +470,20 @@ export default defineConfig({
       nullableParameter(null), nullableParameter({ n: 3 }),
     ]),
     ...laneRefs,
+    namespaceImport: run(() => {
+      const record = { count: 1 };
+      return [ns.shout("hi"), ns.touch(record), record.count, ns.utils.isObject({}), ns.utils.isObject([]), ns.utils.join("a", "b"),
+        ns.constants.SEP, ns.constants.limits.depth, ns.constants.REGEX_DOTS.source];
+    }),
+    namespaceLocal: run(() => [local.twice(3), local.deep.label("x"), local.deep.size + 1, local.list.length, local.list[1]]),
+    namespaceDefault: run(() => [picoish.count, picoish.utils.join("x", "y"), picoish.matcher("*.md")("*.md"), picoish.matcher("b", { prefix: "a" })("ab")]),
+    functionProperties: run(() => [tagged("x"), tagged.prefix, tagged.upper("y"), tagged.count, tagged.nested.flag]),
+    functionAssign: run(() => [picoish.matcher.version, picoish.matcher.test("a", "a"), picoish.matcher.test("a", "b").isMatch,
+      picoish.matcher.makeRe("a.b").source, picoish.matcher.makeRe("a..b").test("a.b"), picoish.matcher.scan("src/*.ts"), picoish.matcher.constants.SEP]),
+    globalDetection: run(() => ({
+      buildTime: GLOBAL_DETECTION,
+      runtime: [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.WeakMap, typeof globalThis.JSON, typeof globalThis.window, typeof globalThis.Bun, typeof globalThis.Deno, typeof globalThis.document, globalThis.window === undefined, globalThis.Bun !== undefined, typeof Symbol, typeof WeakSet],
+    })),
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
     argumentSerialization: run(() => argumentSerialization("original", "tail")),
@@ -826,7 +852,7 @@ export default defineConfig({
   jobs: laneDJobs(),
 });
 
-// ---- lane D: jobs, once(), env() (phase 2 §6.1). The Node shim keeps once() receipts and pending
+// ---- lane D: jobs, once(), process.env (phase 2 §6.1). The Node shim keeps once() receipts and pending
 // enqueue keys in memory; PHP keeps them in __zero_receipts and the outbox. Keys are unique per case.
 function laneDJobs() {
   return { ping: job({ input: { note: text() }, handler: async () => {} }) };
@@ -853,7 +879,7 @@ function laneDActions() {
       const same = await jobs.ping.enqueue({ note: "y" }, { key: "lane-d" });
       return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
     } }),
-    envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
+    envRead: action({ input: {}, handler: () => [process.env.ZERO_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.ZERO_LANE_D_UNSET === undefined] }),
   };
 }
 
@@ -925,6 +951,7 @@ function stdlibActions() {
     }),
     jsCollections: run(() => jsCollections()),
     jsAbort: run(() => jsAbort()),
+    jsTimers: run(() => jsTimers()),
     typedAbort: run(() => {
       const order: string[] = [];
       const c = new AbortController();

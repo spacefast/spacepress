@@ -27,6 +27,9 @@ mb_internal_encoding('ISO-8859-1');
 $re = Js::re(...);
 
 $cases = [
+    // Object rest over a class collects its static fields; methods are non-enumerable.
+    ['(() => { class C { static theme = "dark"; static size = 3; static describe() { return 1; } } const { ...rest } = C; return [Object.keys(C), rest]; })()',
+        function () { $c = new \Zero\JsClass(null, null, static function () {}, [], ['describe' => static fn () => 1], new JsObject(['theme' => 'dark', 'size' => 3])); return [Js::dynamicKeys($c), Js::dynamicRest($c, [])]; }],
     ['(() => { const groups = /(?<x>a)/.exec("a").groups; groups.__proto__ = "own"; return [typeof groups.toString, typeof structuredClone(groups).toString, JSON.stringify(groups)]; })()',
         function () { $groups = Js::dynamicGet(Js::dynamicRegExpExec(new \Zero\RegExp('(?<x>a)'), 'a'), 'groups'); Js::dynamicSet($groups, '__proto__', 'own'); $snapshot = Js::detach($groups); return [Js::typeOf(Js::dynamicGet($snapshot, 'toString')), Js::typeOf(Js::dynamicGet(Js::clone($groups), 'toString')), Js::jsonStringify($snapshot)]; }],
     // Imported JS values use checked dynamic operations, with undefined distinct from null.
@@ -242,6 +245,9 @@ $cases = [
         fn () => [Js::sameJson(Js::decodeJson('{"a":{}}'), Js::decodeJson('{"a":{}}')), Js::sameJson(Js::decodeJson('{"a":{}}'), Js::decodeJson('{"a":[]}')), Js::sameJson(Js::decodeJson('[1,{}]'), Js::decodeJson('[1,{}]'))]],
     ['JSON.stringify(JSON.parse(JSON.stringify({ a: {}, b: [], [String.fromCharCode(0) + "k"]: { e: {} } })))', fn () => Js::jsonStringify(Js::jsonParse('{"a":{},"b":[],"\\u0000k":{"e":{}}}'))],
     ['JSON.parse("{bad")', fn () => Js::jsonParse('{bad')],
+    // A long string literal next to -0: the sign survives, and the text is not limited by a regex.
+    ['(() => { const v = JSON.parse(JSON.stringify(["a\\"b".repeat(400000)]).slice(0, -1) + ", -0, \"-0\"]"); return [v[0].length, Object.is(v[1], -0), v[2]]; })()',
+        function () { $v = Js::jsonParse(substr(json_encode([str_repeat('a"b', 400000)]), 0, -1) . ', -0, "-0"]'); return [mb_strlen(Js::dynamicGet($v, '0')), (static fn ($z) => is_float($z) && $z === 0.0 && fdiv(1.0, $z) < 0)(Js::dynamicGet($v, '1')), Js::dynamicGet($v, '2')]; }],
 
     // ---- dates
     ['["2020-01-01", "2020-01-01T10:00", "2020-02", "2021-02-30", "2020-13-01", "2020-01-01T24:00:00Z", "2020-01-01T24:00:01Z", "2020-01-01T24:00:00.0000Z", "2020-01-01T24:00:00.0001Z", "+002020-01-01", "-000001-01-01T00:00:00Z", "2020-01-01T10:00:00.123456Z", "2020-01-01T10:00:00+05:30"].map(s => new Date(s).getTime())',
@@ -265,7 +271,7 @@ $deviations = [
     ['array Error cause is refused', function () { $a = new JsArray(); $a->p['cause'] = 42; return Js::dynamicConstruct('Error', new JsArray(['x', $a])); }, ['$err' => 'TypeError']],
     ['default object sort requires a comparator', fn () => Js::sort(new JsArray([new JsObject(), new JsObject()])), ['$err' => 'TypeError']],
     ['unsupported legacy control escapes are refused', fn () => Js::re('\\c0', ''), ['$err' => 'SyntaxError']],
-    ['error stack access is refused', fn () => Js::dynamicGet(new JsError('x'), 'stack'), ['$err' => 'TypeError']],
+    ['error stack is its header line', fn () => Js::dynamicGet(new JsError('x', 'TypeError'), 'stack'), 'TypeError: x'],
     ['non-ISO Date strings are refused', fn () => Js::date('2020-1-1'), ['$err' => 'RangeError']],
 ];
 

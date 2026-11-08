@@ -144,6 +144,69 @@
             "install-path": "../async-aws/s3"
         },
         {
+            "name": "brick/math",
+            "version": "1.0.0",
+            "version_normalized": "1.0.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/brick/math.git",
+                "reference": "2effe05d2177c451b86c6a073196a4034c02f211"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/brick/math/zipball/2effe05d2177c451b86c6a073196a4034c02f211",
+                "reference": "2effe05d2177c451b86c6a073196a4034c02f211",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "2.2.13",
+                "phpstan/phpstan-phpunit": "2.0.18",
+                "phpunit/phpunit": "^11.5"
+            },
+            "time": "2026-09-12T10:28:18+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "Zero\\Vendor\\Brick\\Math\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Arbitrary-precision arithmetic library",
+            "keywords": [
+                "Arbitrary-precision",
+                "BigInteger",
+                "BigRational",
+                "arithmetic",
+                "bigdecimal",
+                "bignum",
+                "bignumber",
+                "brick",
+                "decimal",
+                "integer",
+                "math",
+                "mathematics",
+                "rational"
+            ],
+            "support": {
+                "issues": "https://github.com/brick/math/issues",
+                "source": "https://github.com/brick/math/tree/1.0.0"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/BenMorel",
+                    "type": "github"
+                }
+            ],
+            "install-path": "../brick/math"
+        },
+        {
             "name": "psr/cache",
             "version": "3.0.0",
             "version_normalized": "3.0.0.0",
@@ -303,6 +366,194 @@
                 "source": "https://github.com/php-fig/log/tree/3.0.2"
             },
             "install-path": "../psr/log"
+        },
+        {
+            "name": "rowbot/idna",
+            "version": "0.3.0",
+            "version_normalized": "0.3.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/TRowbotham/idna.git",
+                "reference": "504900acc8e465a17668a61ae30391d1aebbb4f2"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/TRowbotham/idna/zipball/504900acc8e465a17668a61ae30391d1aebbb4f2",
+                "reference": "504900acc8e465a17668a61ae30391d1aebbb4f2",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "php": ">=8.1",
+                "rowbot/punycode": "^1.0",
+                "symfony/polyfill-intl-normalizer": "^1.18"
+            },
+            "require-dev": {
+                "guzzlehttp/guzzle": "^6.5 || ^7.0",
+                "phpstan/phpstan": "^2.1",
+                "phpstan/phpstan-deprecation-rules": "^2.0",
+                "phpstan/phpstan-strict-rules": "^2.0",
+                "phpunit/phpunit": "^10.0 || ^11.0 || ^12.0",
+                "squizlabs/php_codesniffer": "^3.7.1",
+                "symfony/cache": "^5.0 || ^6.0 || ^7.0"
+            },
+            "time": "2025-09-19T00:30:13+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "Zero\\Vendor\\Rowbot\\Idna\\": "src/",
+                    "Zero\\Vendor\\Rowbot\\Idna\\Resource\\": "resources/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Trevor Rowbotham"
+                }
+            ],
+            "description": "An implementation of UTS#46 Unicode IDNA Compatibility Processing.",
+            "keywords": [
+                "idn",
+                "idna",
+                "international domain names",
+                "iri",
+                "tr46",
+                "unicode",
+                "uts46"
+            ],
+            "support": {
+                "issues": "https://github.com/TRowbotham/idna/issues",
+                "source": "https://github.com/TRowbotham/idna/tree/0.3.0"
+            },
+            "install-path": "../rowbot/idna"
+        },
+        {
+            "name": "rowbot/punycode",
+            "version": "1.0.4",
+            "version_normalized": "1.0.4.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/TRowbotham/punycode.git",
+                "reference": "ec116e99cb089a25d45147813d61bfa2deb29328"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/TRowbotham/punycode/zipball/ec116e99cb089a25d45147813d61bfa2deb29328",
+                "reference": "ec116e99cb089a25d45147813d61bfa2deb29328",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.1"
+            },
+            "require-dev": {
+                "ext-mbstring": "*",
+                "phpstan/phpstan": "^1.2",
+                "phpstan/phpstan-deprecation-rules": "^1.0",
+                "phpstan/phpstan-strict-rules": "^1.0",
+                "phpunit/phpunit": "^7.0 || ^8.0 || ^9.0",
+                "squizlabs/php_codesniffer": "^3.5.1"
+            },
+            "time": "2024-05-03T00:56:10+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "Zero\\Vendor\\Rowbot\\Punycode\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Trevor Rowbotham",
+                    "homepage": "https://trowbotham.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "A Bootstring encoding of Unicode for Internationalized Domain Names in Applications (IDNA).",
+            "keywords": [
+                "punycode",
+                "rfc-3492",
+                "rfc3492"
+            ],
+            "support": {
+                "issues": "https://github.com/TRowbotham/punycode/issues",
+                "source": "https://github.com/TRowbotham/punycode/tree/1.0.4"
+            },
+            "install-path": "../rowbot/punycode"
+        },
+        {
+            "name": "rowbot/url",
+            "version": "4.2.1",
+            "version_normalized": "4.2.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/TRowbotham/URL-Parser.git",
+                "reference": "9b1bd1ac757672cb0682f697b53dc5aa03c76297"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/TRowbotham/URL-Parser/zipball/9b1bd1ac757672cb0682f697b53dc5aa03c76297",
+                "reference": "9b1bd1ac757672cb0682f697b53dc5aa03c76297",
+                "shasum": ""
+            },
+            "require": {
+                "brick/math": "^0.12 || ^0.13 || ^0.14 || ^0.15 || ^0.16 || ^0.17 || ^0.18 || ^0.19 || ^0.20 || ^1.0",
+                "ext-mbstring": "*",
+                "php": ">=8.1",
+                "psr/log": "^2.0 || ^3.0",
+                "rowbot/idna": "^0.3.0"
+            },
+            "require-dev": {
+                "guzzlehttp/guzzle": "^7.0",
+                "phpstan/phpstan": "^2.1",
+                "phpstan/phpstan-deprecation-rules": "^2.0",
+                "phpstan/phpstan-strict-rules": "^2.0",
+                "phpunit/phpunit": "^10.0 || ^11.0 || ^12.0",
+                "slevomat/coding-standard": "^8.0",
+                "squizlabs/php_codesniffer": "^3.7.1",
+                "symfony/cache": "^5.0 || ^6.0 || ^7.0"
+            },
+            "time": "2026-10-03T01:15:39+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "Zero\\Vendor\\Rowbot\\URL\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Trevor Rowbotham",
+                    "homepage": "https://trowbotham.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "A WHATWG URL spec compliant URL parser for working with URLs and their query strings.",
+            "keywords": [
+                "WHATWG",
+                "query-string",
+                "querystring",
+                "uri",
+                "url",
+                "url-parser",
+                "url-parsing"
+            ],
+            "support": {
+                "issues": "https://github.com/TRowbotham/URL-Parser/issues",
+                "source": "https://github.com/TRowbotham/URL-Parser/tree/4.2.1"
+            },
+            "install-path": "../rowbot/url"
         },
         {
             "name": "symfony/deprecation-contracts",
@@ -568,6 +819,94 @@
             "install-path": "../symfony/http-client-contracts"
         },
         {
+            "name": "symfony/polyfill-intl-normalizer",
+            "version": "v1.43.0",
+            "version_normalized": "1.43.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/symfony/polyfill-intl-normalizer.git",
+                "reference": "ebd57ccc7edb93d632e184efbe7693d2517bab3b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/symfony/polyfill-intl-normalizer/zipball/ebd57ccc7edb93d632e184efbe7693d2517bab3b",
+                "reference": "ebd57ccc7edb93d632e184efbe7693d2517bab3b",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.2"
+            },
+            "suggest": {
+                "ext-intl": "For best performance"
+            },
+            "time": "2026-09-23T22:02:09+00:00",
+            "type": "library",
+            "extra": {
+                "thanks": {
+                    "url": "https://github.com/symfony/polyfill",
+                    "name": "symfony/polyfill"
+                }
+            },
+            "installation-source": "dist",
+            "autoload": {
+                "files": [
+                    "bootstrap.php"
+                ],
+                "psr-4": {
+                    "Zero\\Vendor\\Symfony\\Polyfill\\Intl\\Normalizer\\": ""
+                },
+                "classmap": [
+                    "Resources/stubs"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Nicolas Grekas",
+                    "email": "p@tchwork.com"
+                },
+                {
+                    "name": "Symfony Community",
+                    "homepage": "https://symfony.com/contributors"
+                }
+            ],
+            "description": "Symfony polyfill for intl's Normalizer class and related functions",
+            "homepage": "https://symfony.com",
+            "keywords": [
+                "compatibility",
+                "intl",
+                "normalizer",
+                "polyfill",
+                "portable",
+                "shim"
+            ],
+            "support": {
+                "source": "https://github.com/symfony/polyfill-intl-normalizer/tree/v1.43.0"
+            },
+            "funding": [
+                {
+                    "url": "https://symfony.com/sponsor",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/fabpot",
+                    "type": "github"
+                },
+                {
+                    "url": "https://github.com/nicolas-grekas",
+                    "type": "github"
+                },
+                {
+                    "url": "https://tidelift.com/funding/github/packagist/symfony/symfony",
+                    "type": "tidelift"
+                }
+            ],
+            "install-path": "../symfony/polyfill-intl-normalizer"
+        },
+        {
             "name": "symfony/polyfill-php83",
             "version": "v1.43.0",
             "version_normalized": "1.43.0.0",
@@ -741,124 +1080,6 @@
             "install-path": "../symfony/service-contracts"
         },
         {
-            "name": "wp-php-toolkit/blockparser",
-            "version": "v0.10.1",
-            "version_normalized": "0.10.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/wp-php-toolkit/blockparser",
-                "reference": "58c22c8a61ba4bbed07cd289bfac30528ec5b052"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/wp-php-toolkit/blockparser/zipball/58c22c8a61ba4bbed07cd289bfac30528ec5b052",
-                "reference": "58c22c8a61ba4bbed07cd289bfac30528ec5b052",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.2"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^9.5"
-            },
-            "time": "2026-05-14T13:12:03+00:00",
-            "type": "library",
-            "installation-source": "dist",
-            "autoload": {
-                "classmap": [
-                    "."
-                ],
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "GPL-2.0-or-later"
-            ],
-            "authors": [
-                {
-                    "name": "Adam Zielinski",
-                    "email": "adam@adamziel.com"
-                },
-                {
-                    "name": "WordPress Team",
-                    "email": "wordpress@wordpress.org"
-                }
-            ],
-            "description": "BlockParser component for WordPress.",
-            "homepage": "https://wordpress.github.io/php-toolkit/reference/blockparser.html",
-            "keywords": [
-                "php-toolkit",
-                "wordpress"
-            ],
-            "support": {
-                "docs": "https://wordpress.github.io/php-toolkit/reference/blockparser.html",
-                "issues": "https://github.com/WordPress/php-toolkit/issues",
-                "source": "https://github.com/WordPress/php-toolkit"
-            },
-            "install-path": "../wp-php-toolkit/blockparser"
-        },
-        {
-            "name": "wp-php-toolkit/bytestream",
-            "version": "v0.10.1",
-            "version_normalized": "0.10.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/wp-php-toolkit/bytestream",
-                "reference": "38617382ea9cecd057202bed34739c53e804173b"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/wp-php-toolkit/bytestream/zipball/38617382ea9cecd057202bed34739c53e804173b",
-                "reference": "38617382ea9cecd057202bed34739c53e804173b",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.2"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^9.5"
-            },
-            "time": "2026-05-14T14:42:57+00:00",
-            "type": "library",
-            "installation-source": "dist",
-            "autoload": {
-                "classmap": [
-                    "./"
-                ],
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "GPL-2.0-or-later"
-            ],
-            "authors": [
-                {
-                    "name": "Adam Zielinski",
-                    "email": "adam@adamziel.com"
-                },
-                {
-                    "name": "WordPress Team",
-                    "email": "wordpress@wordpress.org"
-                }
-            ],
-            "description": "ByteStream component for WordPress.",
-            "homepage": "https://wordpress.github.io/php-toolkit/reference/bytestream.html",
-            "keywords": [
-                "php-toolkit",
-                "wordpress"
-            ],
-            "support": {
-                "docs": "https://wordpress.github.io/php-toolkit/reference/bytestream.html",
-                "issues": "https://github.com/WordPress/php-toolkit/issues",
-                "source": "https://github.com/WordPress/php-toolkit"
-            },
-            "install-path": "../wp-php-toolkit/bytestream"
-        },
-        {
             "name": "wp-php-toolkit/data-liberation",
             "version": "v0.10.1",
             "version_normalized": "0.10.1.0",
@@ -885,12 +1106,8 @@
             "type": "library",
             "installation-source": "dist",
             "autoload": {
-                "files": [
-                    "URL/functions.php"
-                ],
                 "classmap": [
-                    "./",
-                    "vendor-patched/"
+                    "./"
                 ],
                 "exclude-from-classmap": [
                     "/Tests/",
@@ -923,249 +1140,6 @@
                 "source": "https://github.com/WordPress/php-toolkit"
             },
             "install-path": "../wp-php-toolkit/data-liberation"
-        },
-        {
-            "name": "wp-php-toolkit/encoding",
-            "version": "v0.10.1",
-            "version_normalized": "0.10.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/wp-php-toolkit/encoding",
-                "reference": "e83be4cb01fcfff0b4cc87d23504f5b52ef2da35"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/wp-php-toolkit/encoding/zipball/e83be4cb01fcfff0b4cc87d23504f5b52ef2da35",
-                "reference": "e83be4cb01fcfff0b4cc87d23504f5b52ef2da35",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.2"
-            },
-            "time": "2026-09-10T10:51:37+00:00",
-            "type": "library",
-            "installation-source": "dist",
-            "autoload": {
-                "files": [
-                    "utf8.php",
-                    "compat-utf8.php",
-                    "utf8-encoder.php"
-                ],
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "GPL-2.0-or-later"
-            ],
-            "authors": [
-                {
-                    "name": "Adam Zielinski",
-                    "email": "adam@adamziel.com"
-                },
-                {
-                    "name": "WordPress Team",
-                    "email": "wordpress@wordpress.org"
-                }
-            ],
-            "description": "Encoding component for WordPress.",
-            "homepage": "https://wordpress.github.io/php-toolkit/reference/encoding.html",
-            "keywords": [
-                "php-toolkit",
-                "wordpress"
-            ],
-            "support": {
-                "docs": "https://wordpress.github.io/php-toolkit/reference/encoding.html",
-                "issues": "https://github.com/WordPress/php-toolkit/issues",
-                "source": "https://github.com/WordPress/php-toolkit"
-            },
-            "install-path": "../wp-php-toolkit/encoding"
-        },
-        {
-            "name": "wp-php-toolkit/filesystem",
-            "version": "v0.10.1",
-            "version_normalized": "0.10.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/wp-php-toolkit/filesystem",
-                "reference": "13f58934c03d502418ea2caf1ccb76bbfb93b026"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/wp-php-toolkit/filesystem/zipball/13f58934c03d502418ea2caf1ccb76bbfb93b026",
-                "reference": "13f58934c03d502418ea2caf1ccb76bbfb93b026",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.2",
-                "wp-php-toolkit/bytestream": "^0.10.1"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^9.5"
-            },
-            "time": "2026-09-10T10:52:12+00:00",
-            "type": "library",
-            "installation-source": "dist",
-            "autoload": {
-                "files": [
-                    "functions.php"
-                ],
-                "classmap": [
-                    "./"
-                ],
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "GPL-2.0-or-later"
-            ],
-            "authors": [
-                {
-                    "name": "Adam Zielinski",
-                    "email": "adam@adamziel.com"
-                },
-                {
-                    "name": "WordPress Team",
-                    "email": "wordpress@wordpress.org"
-                }
-            ],
-            "description": "Filesystem component for WordPress.",
-            "homepage": "https://wordpress.github.io/php-toolkit/reference/filesystem.html",
-            "keywords": [
-                "php-toolkit",
-                "wordpress"
-            ],
-            "support": {
-                "docs": "https://wordpress.github.io/php-toolkit/reference/filesystem.html",
-                "issues": "https://github.com/WordPress/php-toolkit/issues",
-                "source": "https://github.com/WordPress/php-toolkit"
-            },
-            "install-path": "../wp-php-toolkit/filesystem"
-        },
-        {
-            "name": "wp-php-toolkit/html",
-            "version": "v0.10.1",
-            "version_normalized": "0.10.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/wp-php-toolkit/html",
-                "reference": "c2e27a3df1cd715143f097e6b9ab782d39ae6505"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/wp-php-toolkit/html/zipball/c2e27a3df1cd715143f097e6b9ab782d39ae6505",
-                "reference": "c2e27a3df1cd715143f097e6b9ab782d39ae6505",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.2"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^9.5"
-            },
-            "time": "2026-08-07T17:21:47+00:00",
-            "type": "library",
-            "installation-source": "dist",
-            "autoload": {
-                "classmap": [
-                    "./"
-                ],
-                "exclude-from-classmap": [
-                    "/Tests/",
-                    "/html5-named-character-references.php"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "GPL-2.0-or-later"
-            ],
-            "authors": [
-                {
-                    "name": "Adam Zielinski",
-                    "email": "adam@adamziel.com"
-                },
-                {
-                    "name": "WordPress Team",
-                    "email": "wordpress@wordpress.org"
-                }
-            ],
-            "description": "HTML component for WordPress.",
-            "homepage": "https://wordpress.github.io/php-toolkit/reference/html.html",
-            "keywords": [
-                "php-toolkit",
-                "wordpress"
-            ],
-            "support": {
-                "docs": "https://wordpress.github.io/php-toolkit/reference/html.html",
-                "issues": "https://github.com/WordPress/php-toolkit/issues",
-                "source": "https://github.com/WordPress/php-toolkit"
-            },
-            "install-path": "../wp-php-toolkit/html"
-        },
-        {
-            "name": "wp-php-toolkit/http-client",
-            "version": "v0.10.1",
-            "version_normalized": "0.10.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/wp-php-toolkit/http-client",
-                "reference": "2a1f1b0ced5c2c3bf3b1313f48f4fcddfe8607dd"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/wp-php-toolkit/http-client/zipball/2a1f1b0ced5c2c3bf3b1313f48f4fcddfe8607dd",
-                "reference": "2a1f1b0ced5c2c3bf3b1313f48f4fcddfe8607dd",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.2",
-                "wp-php-toolkit/bytestream": "^0.10.1",
-                "wp-php-toolkit/data-liberation": "^0.10.1",
-                "wp-php-toolkit/filesystem": "^0.10.1"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^9.5"
-            },
-            "time": "2026-09-10T10:52:12+00:00",
-            "type": "library",
-            "installation-source": "dist",
-            "autoload": {
-                "classmap": [
-                    "./"
-                ],
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "GPL-2.0-or-later"
-            ],
-            "authors": [
-                {
-                    "name": "Adam Zielinski",
-                    "email": "adam@adamziel.com"
-                },
-                {
-                    "name": "WordPress Team",
-                    "email": "wordpress@wordpress.org"
-                }
-            ],
-            "description": "HttpClient component for WordPress.",
-            "homepage": "https://wordpress.github.io/php-toolkit/reference/httpclient.html",
-            "keywords": [
-                "php-toolkit",
-                "wordpress"
-            ],
-            "support": {
-                "docs": "https://wordpress.github.io/php-toolkit/reference/httpclient.html",
-                "issues": "https://github.com/WordPress/php-toolkit/issues",
-                "source": "https://github.com/WordPress/php-toolkit"
-            },
-            "install-path": "../wp-php-toolkit/http-client"
         },
         {
             "name": "wp-php-toolkit/markdown",
@@ -1286,66 +1260,6 @@
                 "source": "https://github.com/WordPress/php-toolkit"
             },
             "install-path": "../wp-php-toolkit/merge"
-        },
-        {
-            "name": "wp-php-toolkit/xml",
-            "version": "v0.10.1",
-            "version_normalized": "0.10.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/wp-php-toolkit/xml",
-                "reference": "d998bf68e4ac2b68c8bca892d5f841afafd9f539"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/wp-php-toolkit/xml/zipball/d998bf68e4ac2b68c8bca892d5f841afafd9f539",
-                "reference": "d998bf68e4ac2b68c8bca892d5f841afafd9f539",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.2",
-                "wp-php-toolkit/encoding": "^0.10.1"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^9.5"
-            },
-            "time": "2026-09-10T10:52:12+00:00",
-            "type": "library",
-            "installation-source": "dist",
-            "autoload": {
-                "classmap": [
-                    "./"
-                ],
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "GPL-2.0-or-later"
-            ],
-            "authors": [
-                {
-                    "name": "Adam Zielinski",
-                    "email": "adam@adamziel.com"
-                },
-                {
-                    "name": "WordPress Team",
-                    "email": "wordpress@wordpress.org"
-                }
-            ],
-            "description": "XML component for WordPress.",
-            "homepage": "https://wordpress.github.io/php-toolkit/reference/xml.html",
-            "keywords": [
-                "php-toolkit",
-                "wordpress"
-            ],
-            "support": {
-                "docs": "https://wordpress.github.io/php-toolkit/reference/xml.html",
-                "issues": "https://github.com/WordPress/php-toolkit/issues",
-                "source": "https://github.com/WordPress/php-toolkit"
-            },
-            "install-path": "../wp-php-toolkit/xml"
         }
     ],
     "dev": false,

@@ -25,10 +25,11 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
 1. **Parse.** [oxc](https://oxc.rs) parses `zero.config.ts` and the local `.ts`
    and supported installed source packages it imports.
 2. **Lower.** The syntax tree becomes Zero's own IR. Anything outside the
-   supported subset (abstract/generic classes, dynamic `require`, named CommonJS
-   exports, Node host APIs, ...) fails the build with `file:line:col` and a suggested fix.
+   supported subset (abstract/generic classes, dynamic `require`, Node host APIs,
+   ...) fails the build with `file:line:col` and a suggested fix.
    Installed JavaScript uses checked PHP operations; authored TypeScript keeps
-   static checking. CommonJS is limited to one static top-level function export.
+   static checking. CommonJS is limited to static top-level `require` and
+   `module.exports`/`exports.name` assignments, which run once at build time.
 3. **Evaluate.** The config runs in a small, pure Rust evaluator: no I/O, no
    clock, a step budget. So composition works: helpers, factories, spreads, and
    shared field sets. The result is the schema as plain data.
@@ -56,26 +57,23 @@ files under `runtime/` are picked up without code changes.
 
 ## The commands
 
-```
-zero build [dir] [--out <dir>] [--quiet]               write the plugins to .zero/wp-content
-zero check [dir] [--json]                               compile; write nothing
-zero dev [dir] [--port <n>] [--no-watch] [--allow-destructive]  start WordPress Studio and watch sources
-zero dev stop [dir]                                    stop the local site, preserving data
-zero dev status [dir]                                  report the local site
-zero dev wp [dir] -- <args>                             run WP-CLI on the local site
-zero doctor [dir] [--out <dir>] [--site <url> --token <t>]   check a build, and a running site
-zero sync [status|resolve <uid>] [dir] --site <url> <credential>
-zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <id>] [--dry-run] [--json]
-zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>
-zero migrate site <content-model.php> [--dry-run]
-zero deploy inspect --artifact <dir> [--baseline <dir>]  inspect bytes, environment and migrations
-zero deploy <init|status|wp> <options>                   manage an offline recovery workspace
-zero backup --workspace <dir> --output <new.zip>         archive a managed offline site
-zero restore --archive <file> --workspace <new-dir> --wp-cli <phar>
-```
+`zero help` prints every command, grouped. **Build** commands (`dev`, `build`,
+`check`, `doctor`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `zero`
+binary against the project's files (`abilities pull` reads a site's abilities
+into the committed `zero/abilities.json`). **Site** commands (`migrate`, `seed`,
+`jobs`, `run`, `identity`, …) are implemented once, as `wp zero <command>` in
+the `zero-runtime` plugin; `zero <command>` forwards to it unchanged, and
+`zero wp <args>` forwards any WP-CLI command. `--site` picks the site: absent,
+the project's dev site; a project directory; an offline deployment workspace;
+or a WP-CLI `@alias`. Credentials come only from `ZERO_APP_PASSWORD` or
+`ZERO_TOKEN`. The single command table is `runtime/Zero/Cli/commands.json`
+(see `docs/decisions/2026-11-07-one-cli.md`); add a site command with one row
+there and one PHP handler.
 
 `zero build` writes new migrations to `zero/migrations/`, the typed client to
-`zero/client/`, `zero.gen.ts` and `zero/wp-plugins.lock.json` (all committed),
+`zero/client/`, `zero.gen.ts`, `zero/wp-plugins.lock.json` and, with plugin
+packages, `zero/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
+plugin grants the lock doesn't hold),
 and the artifact to `.zero/wp-content`: plugin folders, ZIPs, pinned
 dependencies and one `zero-manifest.json`. `zero dev` installs that artifact
 into a persistent Studio site at `<project>/.zero/dev/wordpress`, activates
@@ -91,7 +89,7 @@ startup. Different project directories have independent sites. Create API
 credentials explicitly with WP-CLI:
 
 ```sh
-zero dev wp [dir] -- user application-password create admin zero-local --porcelain
+zero wp user application-password create admin zero-local --porcelain
 ```
 
 ## The blog tour
@@ -208,6 +206,7 @@ checks remain available. They are not dependencies of `spacefast`.
 | `src/client.rs` | `zero/client/types.ts` and `schema.ts` |
 | `src/wp_plugins/` | plugin acquisition, checksums and the lock |
 | `src/sync/` | the `zero sync` CLI |
+| `src/cli.rs`, `src/commands/site.rs` | the command table, and forwarding to WP-CLI |
 | `src/config_migrate/` | `zero migrate config` importers |
 | `runtime/Zero/` | the PHP runtime (`Wp/` is the WordPress binding) |
 | `runtime/identity/` | the `zero-identity` plugin and its screens |

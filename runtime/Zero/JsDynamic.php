@@ -17,8 +17,16 @@ trait JsDynamic
 
     private static function dynamicMethodValue(mixed $receiver, string $name): mixed
     {
+        if ($receiver instanceof JsPromise || $receiver instanceof JsGenerator || $receiver instanceof JsAsyncGenerator) {
+            $methods = $receiver instanceof JsPromise ? ['then', 'catch', 'finally'] : ['next', 'return', 'throw'];
+            if (!in_array($name, $methods, true)) { return JsUndefined::Value; }
+            return static fn (...$args) => $receiver->call($name, $args);
+        }
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
-            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+            return $receiver->class->methodValue($name, false);
+        }
+        if ($receiver instanceof JsClass && $receiver->hasStaticMethod($name)) {
+            return $receiver->methodValue($name, true);
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) { return JsUndefined::Value; }
         $owner = match (true) {
@@ -29,14 +37,17 @@ trait JsDynamic
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map', $receiver instanceof JsIterator => 'Iterator',
             $receiver instanceof JsAbortSignal => 'AbortSignal', $receiver instanceof JsAbortController => 'AbortController',
             $receiver instanceof JsUrl => 'URL', $receiver instanceof JsUrlSearchParams => 'URLSearchParams',
+            $receiver instanceof JsWeakMap => 'WeakMap', $receiver instanceof JsWeakSet => 'WeakSet',
+            $receiver instanceof JsSymbol => 'Symbol',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
-            is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
+            is_int($receiver), is_float($receiver) => 'Number', $receiver instanceof JsBigInt => 'BigInt',
+            default => 'Object',
         };
         if ($receiver instanceof \Closure && in_array($name, ['bind', 'length', 'name', 'prototype', 'arguments', 'caller'], true)) {
             throw new JsError('Function metadata and binding are not supported', 'TypeError');
         }
-        if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date'], true)
-            || $name === 'toString' && in_array($owner, ['Math', 'AbortSignal', 'Set', 'Map'], true)) { $owner = 'Object'; }
+        if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date', 'BigInt'], true)
+            || $name === 'toString' && in_array($owner, ['Math', 'AbortSignal', 'Set', 'Map', 'WeakMap', 'WeakSet'], true)) { $owner = 'Object'; }
         // Namespaces (Math, AbortSignal) expose static functions; inherited Object methods stay shared.
         $static = $receiver instanceof JsNamespace && $owner !== 'Object';
         $surface = $static ? $owner : match ($owner) { 'RegExp' => 'regex', default => strtolower($owner) };
@@ -70,11 +81,14 @@ trait JsDynamic
         $compatible = match ($owner) {
             'Array' => $receiver instanceof JsArray, 'String' => is_string($receiver),
             'Number' => is_int($receiver) || is_float($receiver), 'Boolean' => is_bool($receiver),
+            'BigInt' => $receiver instanceof JsBigInt,
             'RegExp' => $receiver instanceof RegExp, 'Date' => $receiver instanceof JsDate,
             'Error' => $receiver instanceof JsError,
             'Set' => $receiver instanceof JsSet, 'Map' => $receiver instanceof JsMap,
             'AbortSignal' => $receiver instanceof JsAbortSignal, 'AbortController' => $receiver instanceof JsAbortController,
             'URL' => $receiver instanceof JsUrl, 'URLSearchParams' => $receiver instanceof JsUrlSearchParams,
+            'WeakMap' => $receiver instanceof JsWeakMap, 'WeakSet' => $receiver instanceof JsWeakSet,
+            'Symbol' => $receiver instanceof JsSymbol,
             'Function' => $receiver instanceof \Closure, 'Object' => $receiver instanceof JsObject,
             default => false,
         };
@@ -117,12 +131,19 @@ trait JsDynamic
     public static function dynamicGet(mixed $value, mixed $key): mixed
     {
         if (self::isNullish($value)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
+        if ($key instanceof JsSymbol) { return self::symbolGet($value, $key); }
         $key = self::key($key);
+        if ($value instanceof JsSymbol) {
+            return $key === 'description' ? $value->description : self::dynamicMethodValue($value, $key);
+        }
         if ($value instanceof JsObject) {
             if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
-            return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
+            if (array_key_exists($key, $value->p)) { return $value->p[$key]; }
+            if (array_key_exists($key, $value->hidden)) { return self::hiddenValue($value, $key); }
+            if ($value->class !== null && ($inherited = $value->class->readInherited($value, $key, false)) !== JsClass::absent()) { return $inherited; }
+            return self::dynamicMethodValue($value, $key);
         }
-        if ($value instanceof JsClass) { return $value->get($key); }
+        if ($value instanceof JsClass) { return $value->has($key) || !$value->hasStaticMethod($key) ? $value->get($key) ?? JsUndefined::Value : self::dynamicMethodValue($value, $key); }
         if ($value instanceof JsNamespace && $value->name === 'AbortSignal') {
             return in_array($key, ['abort', 'any', 'timeout'], true) ? self::dynamicMethodValue($value, $key) : JsUndefined::Value;
         }
@@ -130,6 +151,7 @@ trait JsDynamic
             return match ($key) { 'aborted' => $value->aborted, 'reason' => $value->reason, 'onabort' => $value->onabort() ?? null, default => self::dynamicMethodValue($value, $key) };
         }
         if ($value instanceof JsAbortController && $key === 'signal') { return $value->signal; }
+        if ($value instanceof JsReadableStream || $value instanceof JsWritableStream || $value instanceof JsTransformStream) { return $value->get($key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -138,7 +160,7 @@ trait JsDynamic
                     : throw new JsError('Unsupported Math property ' . $key, 'TypeError'),
             };
         }
-        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'stack' => throw new JsError('Error stack metadata is not supported', 'TypeError'), default => self::dynamicMethodValue($value, $key) }; }
+        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str($value), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue($value, $key) }; }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             if ($value instanceof JsArguments && $key === 'callee') { throw new JsError('Restricted arguments property', 'TypeError'); }
             if ($key === 'length') { return $value instanceof JsArguments ? $value->length : count($value->a); }
@@ -166,11 +188,23 @@ trait JsDynamic
         return self::dynamicMethodValue($value, $key);
     }
 
+    /** A hidden own property; a lazy stack is formatted from the error's current name and message. */
+    private static function hiddenValue(JsObject $value, string $key): mixed
+    {
+        $hidden = $value->hidden[$key];
+        if ($key === 'stack' && $hidden === JsClass::lazyStack()) {
+            // V8 formats the header from the error at the first read; Zero records no frames.
+            $hidden = $value->hidden['stack'] = self::str($value);
+        }
+        return $hidden;
+    }
+
     public static function dataGet(mixed $value, mixed $key): mixed
     {
         self::requirePresent($value);
         $key = self::key($key);
-        if ($value instanceof JsObject && !$value->nullPrototype && !array_key_exists($key, $value->p) && Builtins::has('object', $key)) {
+        if ($value instanceof JsObject && !$value->nullPrototype && !array_key_exists($key, $value->p) && Builtins::has('object', $key)
+            && ($value->class === null || $value->class->accessor($key, false) === null)) {
             throw new JsError('Inherited properties are not supported by typed data reads', 'TypeError');
         }
         return self::dynamicGet($value, $key);
@@ -179,7 +213,15 @@ trait JsDynamic
     public static function dynamicSet(mixed $target, mixed $key, mixed $value): mixed
     {
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
+        if ($key instanceof JsSymbol) {
+            if (!$target instanceof JsObject) { throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError'); }
+            return $target->setSymbol($key, $value);
+        }
         $key = self::key($key);
+        if ($target instanceof JsObject && array_key_exists($key, $target->hidden)) {
+            $target->hidden[$key] = $value;
+            return $value;
+        }
         if ($target instanceof JsObject || $target instanceof JsClass) {
             return self::set($target, $key, $value);
         }
@@ -187,12 +229,13 @@ trait JsDynamic
         if ($target instanceof JsAbortSignal && $key === 'onabort') { $target->setOnabort($value); return $value; }
         if ($target instanceof JsAbortSignal || $target instanceof JsAbortController) { throw new JsError('Cannot assign to ' . $key . ' on an abort object', 'TypeError'); }
         if ($target instanceof JsUrl) { $target->set($key, $value); return $value; }
+        if ($target instanceof JsArray) { self::writable($target); }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
             if ($key === '__proto__' && !array_key_exists($key, $target->p)) {
                 throw new JsError('Prototype mutation is not supported', 'TypeError');
             }
             if ($key === 'length') {
-                if ($target instanceof JsArguments) { $target->length = $value; return $value; }
+                if ($target instanceof JsArguments) { $target->length = $value; $target->lengthDeleted = false; return $value; }
                 $length = self::toUint32(self::toNumber($value));
                 if ((float) $length !== (float) self::toNumber($value)) { throw new JsError('Invalid array length', 'RangeError'); }
                 if ($length > count($target->a)) { throw new JsError('Zero arrays are dense: length cannot create holes', 'RangeError'); }
@@ -209,17 +252,117 @@ trait JsDynamic
         throw new JsError('Cannot create property on a primitive value', 'TypeError');
     }
 
+    /** Reading a symbol key: undefined when absent, unless an unmodeled inherited symbol could answer. */
+    private static function symbolGet(mixed $value, JsSymbol $key): mixed
+    {
+        if (!self::symbolAbsentInherited($value, $key)) {
+            throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
+        }
+        return $value instanceof JsObject ? $value->getSymbol($key) : JsUndefined::Value;
+    }
+
+    /**
+     * Object literals with runtime keys or spreads: ['k', key, value] and ['s', source] in
+     * source order. Both define own data properties, so a '__proto__' key is ordinary data.
+     */
+    public static function dynamicObject(array ...$parts): JsObject
+    {
+        $out = new JsObject();
+        foreach ($parts as $part) {
+            if ($part[0] === 'k') {
+                if ($part[1] instanceof JsSymbol) { self::defineSymbol($out, $part[1], $part[2]); }
+                else { $out->p[self::key($part[1])] = $part[2]; }
+                continue;
+            }
+            $source = $part[1];
+            if (self::isNullish($source) || is_bool($source) || is_int($source) || is_float($source) || $source instanceof JsSymbol) { continue; }
+            if (is_string($source)) {
+                for ($index = 0, $length = self::length($source); $index < $length; $index++) { $out->p[$index] = self::strAt($source, $index); }
+                continue;
+            }
+            if ($source instanceof JsObject) {
+                foreach (self::ownKeys($source->p) as $key) { $out->p[$key] = $source->p[$key]; }
+                foreach ($source->symbols as [$symbol, $value, $enumerable]) {
+                    if ($enumerable) { self::defineSymbol($out, $symbol, $value); }
+                }
+                continue;
+            }
+            if ($source instanceof JsArray) {
+                foreach ($source->a as $index => $item) { $out->p[$index] = $item; }
+                foreach (self::ownKeys($source->p) as $key) { $out->p[$key] = $source->p[$key]; }
+                continue;
+            }
+            if ($source instanceof JsArguments) {
+                foreach (self::dynamicKeys($source)->a as $key) { $out->p[$key] = self::dynamicGet($source, $key); }
+                continue;
+            }
+            if ($source instanceof JsSet || $source instanceof JsMap || $source instanceof JsWeakMap || $source instanceof JsWeakSet
+                || $source instanceof JsDate || $source instanceof RegExp || $source instanceof JsError || $source instanceof \Closure) { continue; }
+            throw new JsError('Unsupported object spread source', 'TypeError');
+        }
+        return $out;
+    }
+
+    /** `{ a, ...rest } = value` in imported JavaScript: the value's own enumerable keys except those named. */
+    public static function dynamicRest(mixed $value, array $keys): JsObject
+    {
+        self::requirePresent($value);
+        $skip = array_fill_keys($keys, true);
+        $out = new JsObject();
+        foreach (self::dynamicKeys($value)->a as $key) {
+            if (!isset($skip[$key])) { $out->p[$key] = self::dynamicGet($value, $key); }
+        }
+        return $out;
+    }
+
+    /** CreateDataProperty for a symbol key: an ordinary writable, enumerable, configurable slot. */
+    private static function defineSymbol(JsObject $target, JsSymbol $key, mixed $value): void
+    {
+        $target->symbols[spl_object_id($key)] = [$key, $value, true, true, true];
+    }
+
+    /**
+     * Object.defineProperty with a data descriptor. Symbol keys keep their attributes;
+     * string keys have no attribute model, so only an ordinary assignment-equivalent
+     * descriptor (writable, enumerable and configurable) is accepted for them.
+     */
+    private static function dynamicDefineProperty(mixed $target, mixed $key, mixed $descriptor): mixed
+    {
+        if (!is_object($target) || $target instanceof JsUndefined || $target instanceof JsSymbol) { throw new JsError('Object.defineProperty called on non-object', 'TypeError'); }
+        if (!$descriptor instanceof JsObject) { throw new JsError('Property description must be an object', 'TypeError'); }
+        foreach (['get', 'set'] as $accessor) {
+            if (array_key_exists($accessor, $descriptor->p)) { throw new JsError('Accessor property descriptors are not supported', 'TypeError'); }
+        }
+        if (!$target instanceof JsObject) { throw new JsError('Object.defineProperty is only supported on plain objects', 'TypeError'); }
+        $flag = static fn (string $name): bool => array_key_exists($name, $descriptor->p) && self::truthy($descriptor->p[$name]);
+        $value = array_key_exists('value', $descriptor->p) ? $descriptor->p['value'] : JsUndefined::Value;
+        if ($key instanceof JsSymbol) {
+            $id = spl_object_id($key);
+            $existing = $target->symbols[$id] ?? null;
+            if ($existing !== null && !$existing[4]) { throw new JsError('Cannot redefine property: ' . $key->descriptiveString(), 'TypeError'); }
+            $target->symbols[$id] = [$key, $value, $flag('enumerable'), $flag('writable'), $flag('configurable')];
+            return $target;
+        }
+        if (!$flag('writable') || !$flag('enumerable') || !$flag('configurable')) {
+            throw new JsError('Non-writable, non-enumerable or non-configurable string-keyed properties are not supported', 'TypeError');
+        }
+        self::set($target, self::key($key), $value);
+        return $target;
+    }
+
     public static function dynamicKeys(mixed $value): JsArray
     {
         if (self::isNullish($value)) { return new JsArray(); }
         if ($value instanceof JsObject) { return new JsArray(array_map('strval', self::ownKeys($value->p))); }
+        // A class's enumerable own properties are its static fields (methods are non-enumerable).
+        if ($value instanceof JsClass) { return new JsArray(array_map('strval', self::ownKeys($value->statics->p))); }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             $properties = $value->a;
             foreach ($value->p as $key => $item) { $properties[$key] = $item; }
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
-        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsAbortSignal || $value instanceof JsAbortController || $value instanceof JsTimeout || $value instanceof JsUrl || $value instanceof JsUrlSearchParams || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
+        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsAbortSignal || $value instanceof JsAbortController || $value instanceof JsTimeout || $value instanceof JsUrl || $value instanceof JsUrlSearchParams || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
 
@@ -231,6 +374,18 @@ trait JsDynamic
             if ($value instanceof JsObject && !array_key_exists($key, $value->p)) { continue; }
             yield $key;
         }
+    }
+
+    /** An array itself (read live by destructuring assignment), or any other iterable's values. */
+    public static function dynamicIterableLive(mixed $value): JsArray
+    {
+        return $value instanceof JsArray ? $value : self::dynamicIterable($value);
+    }
+
+    /** The rest element of an array pattern: the elements from `$start`, read now. */
+    public static function restFrom(JsArray $list, int $start): JsArray
+    {
+        return new JsArray(array_slice($list->a, $start));
     }
 
     public static function dynamicIterable(mixed $value): JsArray
@@ -267,6 +422,15 @@ trait JsDynamic
             yield from $value->rest();
         } elseif ($value instanceof JsUrlSearchParams) {
             yield from $value->entriesIterator();
+        } elseif ($value instanceof JsGenerator || $value instanceof JsObject && JsIter::wellKnownMethod($value, 'iterator') !== null) {
+            // Spread, Array.from and the combinators follow the iterator protocol, closing on a throw.
+            $iter = JsIter::open($value);
+            try {
+                while ($iter->step()) { yield $iter->value; }
+            } catch (\Throwable $error) {
+                $iter->abrupt();
+                throw $error;
+            }
         } else {
             throw new JsError('Value is not iterable', 'TypeError');
         }
@@ -283,11 +447,38 @@ trait JsDynamic
             $value instanceof JsAbortSignal => 'AbortSignal', $value instanceof JsAbortController => 'AbortController',
             $value instanceof JsTimeout => 'Timeout',
             $value instanceof JsUrl => 'URL', $value instanceof JsUrlSearchParams => 'URLSearchParams',
+            $value instanceof JsWeakMap => 'WeakMap', $value instanceof JsWeakSet => 'WeakSet', $value instanceof JsSymbol => 'Symbol',
             $value instanceof JsNamespace => $value->name,
-            $value instanceof JsError => 'Error',
+            $value instanceof JsError, $value instanceof JsObject && $value->class?->builtinRoot() !== null => 'Error',
             $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
         };
         return '[object ' . $tag . ']';
+    }
+
+    /** Registers a function value whose receiver comes from call/apply or a method call. */
+    public static function dynamicMethodFunction(\Closure $function, \Closure $invoke): \Closure
+    {
+        self::$dynamicMethodReceivers ??= new \WeakMap();
+        self::$dynamicMethodReceivers[$function] = $invoke;
+        return $function;
+    }
+
+    /** `value instanceof constructor` where the constructor is only known at run time. */
+    public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
+    {
+        if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
+        if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) { return self::isError($value, $constructor); }
+        if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
+        throw new JsError("Right-hand side of 'instanceof' is not callable", 'TypeError');
+    }
+
+    /** `value instanceof Error` (or TypeError/RangeError) for built-in errors and Error subclasses. */
+    public static function isError(mixed $value, string $name = 'Error'): bool
+    {
+        if ($value instanceof JsError) {
+            return $name === 'Error' || $value->jsName === $name;
+        }
+        return $value instanceof JsObject && ($value->class?->extendsBuiltin($name) ?? false);
     }
 
     public static function dynamicCall(mixed $function, JsArray $args): mixed
@@ -314,6 +505,10 @@ trait JsDynamic
     public static function dynamicMethod(mixed $receiver, mixed $name): \Closure
     {
         self::requirePresent($receiver);
+        if ($name instanceof JsSymbol) {
+            $method = self::symbolGet($receiver, $name);
+            return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+        }
         $name = self::key($name);
         $properties = match (true) {
             $receiver instanceof JsObject, $receiver instanceof JsArray, $receiver instanceof JsArguments => $receiver->p,
@@ -324,7 +519,17 @@ trait JsDynamic
             return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
         }
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
-            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+            $class = $receiver->class;
+            return static fn (...$args) => $class->invokeOn($receiver, $name, $args, false);
+        }
+        if ($receiver instanceof JsClass) {
+            if ($receiver->has($name)) {
+                $method = $receiver->get($name);
+                return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+            }
+            if ($receiver->hasStaticMethod($name)) {
+                return static fn (...$args) => $receiver->invokeOn($receiver, $name, $args, true);
+            }
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) {
             return static fn (...$args) => self::dynamicCall(JsUndefined::Value, new JsArray($args));
@@ -340,12 +545,24 @@ trait JsDynamic
         if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         if (!$builtin && $receiver instanceof JsObject && $receiver->nullPrototype) { return self::dynamicCall(JsUndefined::Value, $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
+        if ($receiver instanceof JsBigInt) {
+            Builtins::check('bigint', $name, count($a));
+            return match ($name) {
+                'toString' => $receiver->toRadixArg($get(0)),
+                'valueOf' => $receiver,
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
+        }
+        if ($receiver instanceof JsPromise) { Builtins::check('promise', $name, count($a)); return $receiver->call($name, $a); }
+        if ($receiver instanceof JsReadableStream || $receiver instanceof JsWritableStream) { return $receiver->call($name, $a); }
+        if ($receiver instanceof JsGenerator || $receiver instanceof JsAsyncGenerator) { Builtins::check('generator', $name, count($a)); return $receiver->call($name, $a); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
             $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map', $receiver instanceof JsIterator => 'iterator',
             $receiver instanceof JsAbortSignal => 'abortsignal', $receiver instanceof JsAbortController => 'abortcontroller',
             $receiver instanceof JsUrl => 'url', $receiver instanceof JsUrlSearchParams => 'urlsearchparams',
+            $receiver instanceof JsWeakMap => 'weakmap', $receiver instanceof JsWeakSet => 'weakset', $receiver instanceof JsSymbol => 'symbol',
             is_bool($receiver) => 'boolean', $receiver instanceof \Closure => 'function',
             default => 'object',
         };
@@ -358,7 +575,8 @@ trait JsDynamic
                 if (array_key_exists('join', $receiver->p) && !$receiver->p['join'] instanceof \Closure) { return self::dynamicObjectTag($receiver); }
                 return self::dynamicCallMethod($receiver, 'join', new JsArray());
             }
-            if ($receiver instanceof JsArguments || $receiver instanceof JsObject || $receiver instanceof JsSet || $receiver instanceof JsMap || $receiver instanceof JsNamespace) { return self::dynamicObjectTag($receiver); }
+            if ($receiver instanceof JsSymbol) { return $receiver->descriptiveString(); }
+            if ($receiver instanceof JsArguments || $receiver instanceof JsObject || $receiver instanceof JsSet || $receiver instanceof JsMap || $receiver instanceof JsWeakMap || $receiver instanceof JsWeakSet || $receiver instanceof JsNamespace) { return self::dynamicObjectTag($receiver); }
             if ($receiver instanceof JsUrl || $receiver instanceof JsUrlSearchParams) { return $receiver->toString(); }
             return self::str($receiver);
         }
@@ -427,6 +645,12 @@ trait JsDynamic
         }
         if ($receiver instanceof JsArray && in_array($name, ['keys', 'values', 'entries'], true)) {
             return new JsIterator(self::arrayIterator($receiver, $name), 'Array Iterator');
+        }
+        if ($receiver instanceof JsWeakMap) {
+            return match ($name) { 'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+        }
+        if ($receiver instanceof JsWeakSet) {
+            return match ($name) { 'add' => $receiver->add($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
         }
         if ($receiver instanceof RegExp) {
             return match ($name) { 'exec' => self::dynamicRegExpExec($receiver, self::str($get(0))), 'test' => self::dynamicRegExpExec($receiver, self::str($get(0))) !== null, default => throw new JsError($name . ' is not a function', 'TypeError') };
@@ -507,6 +731,7 @@ trait JsDynamic
 
     private static function dynamicFill(JsArray $source, mixed $value, mixed $start, mixed $end): JsArray
     {
+        self::writable($source);
         $length = count($source->a);
         $from = self::relIndex(self::toNumber($start), $length);
         $to = $end === JsUndefined::Value ? $length : self::relIndex(self::toNumber($end), $length);
@@ -517,6 +742,7 @@ trait JsDynamic
 
     private static function dynamicSplice(JsArray $source, JsArray $args): JsArray
     {
+        self::writable($source);
         $length = count($source->a);
         if ($args->a === []) { return new JsArray(); }
         $start = self::relIndex(self::toNumber($args->a[0]), $length);
@@ -643,6 +869,7 @@ trait JsDynamic
             }
             if ($method === 'of') { return new JsArray($a); }
         }
+        if ($owner === 'String' && $method === 'raw') { return self::stringRaw(...$a); }
         if ($owner === 'Object') {
             $source = $get(0);
             if (in_array($method, ['keys', 'values', 'entries'], true)) {
@@ -650,6 +877,12 @@ trait JsDynamic
                 $keys = self::dynamicKeys($source);
                 if ($method === 'keys') { return $keys; }
                 return new JsArray(array_map(static fn ($key) => $method === 'values' ? self::dynamicGet($source, $key) : new JsArray([$key, self::dynamicGet($source, $key)]), $keys->a));
+            }
+            if ($method === 'defineProperty') { return self::dynamicDefineProperty($source, $get(1), $get(2)); }
+            if ($method === 'hasOwn' && $get(1) instanceof JsSymbol) {
+                self::requirePresent($source);
+                if ($source instanceof JsObject) { return $source->hasSymbol($get(1)); }
+                throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
             }
             if ($method === 'hasOwn') {
                 self::requirePresent($source); $key = self::key($get(1));
@@ -660,10 +893,10 @@ trait JsDynamic
                     throw new JsError('Unsupported Math property ' . $key, 'TypeError');
                 }
                 if ($source instanceof JsError) {
-                    if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
-                    return $key === 'message' && $source->hasMessage;
+                    return $key === 'stack' || $key === 'message' && $source->hasMessage;
                 }
-                if ($key === 'length' && ($source instanceof JsArray || $source instanceof JsArguments || is_string($source))) { return true; }
+                if ($source instanceof JsObject && array_key_exists($key, $source->hidden)) { return true; }
+                if ($key === 'length' && ($source instanceof JsArray || is_string($source) || $source instanceof JsArguments && !$source->lengthDeleted)) { return true; }
                 if ($key === 'callee' && $source instanceof JsArguments || $key === 'lastIndex' && $source instanceof RegExp) { return true; }
                 return in_array($key, self::dynamicKeys($source)->a, true);
             }
@@ -723,6 +956,10 @@ trait JsDynamic
         $a = $args->a;
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
+        if ($constructor === 'Promise') { return JsPromise::construct($a[0] ?? JsUndefined::Value); }
+        if ($constructor === 'ReadableStream') { return new JsReadableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
+        if ($constructor === 'WritableStream') { return new JsWritableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
+        if ($constructor === 'TransformStream') { return new JsTransformStream($a[0] ?? JsUndefined::Value); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             $text = $message === JsUndefined::Value ? '' : self::str($message);
@@ -744,6 +981,17 @@ trait JsDynamic
             return new JsDate($a === [] ? self::now() : ($value instanceof JsDate ? $value->milliseconds : self::date($value)));
         }
         if ($constructor === 'AbortController') { return new JsAbortController(); }
+        if ($constructor === 'WeakMap' || $constructor === 'WeakSet') {
+            $result = $constructor === 'WeakSet' ? new JsWeakSet() : new JsWeakMap();
+            if (!self::isNullish($a[0] ?? JsUndefined::Value)) {
+                foreach (self::dynamicIterable($a[0])->a as $value) {
+                    if ($result instanceof JsWeakSet) { $result->add($value); }
+                    elseif ($value instanceof JsArray || $value instanceof JsArguments || $value instanceof JsObject) { $result->set(self::dynamicGet($value, '0'), self::dynamicGet($value, '1')); }
+                    else { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
+                }
+            }
+            return $result;
+        }
         if ($constructor === 'Set' || $constructor === 'Map') {
             $result = $constructor === 'Set' ? new JsSet() : new JsMap();
             if (!self::isNullish($a[0] ?? JsUndefined::Value)) {
@@ -767,6 +1015,12 @@ trait JsDynamic
         return self::dynamicConstruct('RegExp', $args);
     }
 
+    /** ToPrimitive for callers outside this trait (BigInt conversion). */
+    public static function primitive(mixed $value, string $hint = 'default'): mixed
+    {
+        return self::dynamicPrimitive($value, $hint);
+    }
+
     private static function dynamicPrimitive(mixed $value, string $hint = 'default'): mixed
     {
         if ($value instanceof JsDate) {
@@ -779,12 +1033,18 @@ trait JsDynamic
                     if (!$value->p[$method] instanceof \Closure) { continue; }
                     $result = self::dynamicInvoke($value->p[$method], $value, new JsArray());
                 } elseif ($value instanceof JsObject && $value->nullPrototype) { continue; }
+                elseif ($value instanceof JsObject && $value->class !== null
+                    && ($inherited = $value->class->readInherited($value, $method, false)) !== JsClass::absent()) {
+                    // Class methods and Error.prototype.toString come before Object.prototype's.
+                    if (!$inherited instanceof \Closure) { continue; }
+                    $result = self::dynamicInvoke($inherited, $value, new JsArray());
+                }
                 else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
-                if ($result === JsUndefined::Value || !is_object($result)) { return $result; }
+                if ($result === JsUndefined::Value || !is_object($result) || $result instanceof JsBigInt) { return $result; }
             }
             throw new JsError('Cannot convert object to primitive value', 'TypeError');
         }
-        if (is_object($value) && !$value instanceof JsUndefined) { return self::str($value); }
+        if (is_object($value) && !$value instanceof JsUndefined && !$value instanceof JsSymbol && !$value instanceof JsBigInt) { return self::str($value); }
         return $value;
     }
 
@@ -793,6 +1053,8 @@ trait JsDynamic
         if ($operator === '===' || $operator === '!==') { $equal = self::strictEq($left, $right); return $operator === '===' ? $equal : !$equal; }
         if ($operator === '==' || $operator === '!=') { $equal = self::looseEq($left, $right); return $operator === '==' ? $equal : !$equal; }
         $left = self::dynamicPrimitive($left); $right = self::dynamicPrimitive($right);
+        if ($left instanceof JsBigInt || $right instanceof JsBigInt) { return self::bigintBinary($operator, $left, $right); }
+        if (in_array($operator, ['&', '|', '^', '<<', '>>', '>>>'], true)) { return self::bitwise($operator, $left, $right); }
         if ($operator === '+') {
             return is_string($left) || is_string($right) ? self::str($left) . self::str($right) : self::add(self::toNumber($left), self::toNumber($right));
         }
@@ -808,11 +1070,70 @@ trait JsDynamic
         };
     }
 
+    /**
+     * An operator on primitives where one is a BigInt (ECMAScript 13.15.3 ApplyStringOrNumericBinaryOperator).
+     * `+` with a string concatenates; relational and equality operators compare mathematically
+     * across BigInt, number and numeric strings; everything else needs two BigInts.
+     */
+    private static function bigintBinary(string $operator, mixed $left, mixed $right): mixed
+    {
+        if ($operator === '+' && (is_string($left) || is_string($right))) { return self::str($left) . self::str($right); }
+        if (in_array($operator, ['<', '<=', '>', '>=', '==', '!='], true)) {
+            $c = self::bigintCompare($left, $right);
+            if ($operator === '==' || $operator === '!=') { return ($c === 0) === ($operator === '=='); }
+            if ($c === null) { return false; }
+            return match ($operator) { '<' => $c < 0, '<=' => $c <= 0, '>' => $c > 0, '>=' => $c >= 0 };
+        }
+        if (!$left instanceof JsBigInt || !$right instanceof JsBigInt) {
+            throw new JsError('Cannot mix BigInt and other types, use explicit conversions', 'TypeError');
+        }
+        return match ($operator) {
+            '+' => $left->add($right), '-' => $left->sub($right), '*' => $left->mul($right),
+            '/' => $left->divRem($right)[0], '%' => $left->divRem($right)[1], '**' => $left->pow($right),
+            '&', '|', '^' => $left->bitwise($operator, $right),
+            '<<' => $left->shift($right, true), '>>' => $left->shift($right, false),
+            '>>>' => throw new JsError('BigInts have no unsigned right shift, use >> instead', 'TypeError'),
+            default => throw new JsError('Unsupported JavaScript operator ' . $operator, 'TypeError'),
+        };
+    }
+
+    /** Mathematical comparison of a BigInt with a BigInt, number, string or boolean; null when unordered. */
+    private static function bigintCompare(mixed $a, mixed $b): ?int
+    {
+        $side = static function (mixed $v): JsBigInt|int|float|null {
+            if ($v instanceof JsBigInt) { return $v; }
+            if (is_string($v)) { return JsBigInt::parse($v); }
+            if (is_bool($v) || $v === null) { return $v ? 1 : 0; }
+            if (is_int($v) || is_float($v)) { return $v; }
+            return null;
+        };
+        [$x, $y] = [$side($a), $side($b)];
+        if ($x === null || $y === null) { return null; }
+        if (is_float($x) && is_nan($x) || is_float($y) && is_nan($y)) { return null; }
+        if (!$x instanceof JsBigInt && !$y instanceof JsBigInt) { return $x <=> $y; }
+        $flip = !$x instanceof JsBigInt;
+        if ($flip) { [$x, $y] = [$y, $x]; }
+        if ($y instanceof JsBigInt) { $c = $x->compare($y); }
+        elseif (is_infinite((float) $y)) { $c = $y > 0 ? -1 : 1; }
+        else {
+            // Compare with the number's integer part, then its fraction.
+            $whole = $y < 0 ? ceil((float) $y) : floor((float) $y);
+            $c = $x->compare(JsBigInt::fromNumber($whole));
+            if ($c === 0 && (float) $y !== $whole) { $c = $y > $whole ? -1 : 1; }
+        }
+        return $flip ? -$c : $c;
+    }
+
     public static function looseEq(mixed $a, mixed $b): bool
     {
         if (self::isNullish($a) || self::isNullish($b)) { return self::isNullish($a) && self::isNullish($b); }
         $ta = self::typeOf($a); $tb = self::typeOf($b);
         if ($ta === $tb) { return self::strictEq($a, $b); }
+        if ($ta === 'bigint' || $tb === 'bigint') {
+            $other = $ta === 'bigint' ? $b : $a;
+            if (is_object($other) && !$other instanceof JsBigInt) { return self::looseEq($ta === 'bigint' ? $a : self::dynamicPrimitive($a), $ta === 'bigint' ? self::dynamicPrimitive($b) : $b); }
+            return self::bigintCompare($a, $b) === 0;
+        }
         if (is_bool($a)) { return self::looseEq((int) $a, $b); }
         if (is_bool($b)) { return self::looseEq($a, (int) $b); }
         if ($ta === 'function' && ($tb === 'number' || $tb === 'string')) { return self::looseEq(self::dynamicPrimitive($a), $b); }

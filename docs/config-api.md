@@ -259,10 +259,87 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
-jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
+jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, use?, admin? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `zero-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `zero-admin`; by default the build emits none.
+
+## Plugin packages
+
+A plugin is an npm package that adds hooks, actions, jobs and routes. It runs
+in the app's PHP process. The compiler records everything its code can do,
+and the app grants that in a committed lock file.
+
+```ts
+// node_modules/zero-plugin-seo/src/index.ts
+import { definePlugin } from "zero";
+import { summarize } from "./summarize";
+
+export default (options: { suffix: string }) =>
+  definePlugin({
+    name: "seo",
+    hooks: { posts: { beforeCreate(data) { data.summary = summarize(data.title) + options.suffix; } } },
+  });
+```
+
+```ts
+// zero.config.ts, after `npm install zero-plugin-seo`
+import seo from "zero-plugin-seo";
+export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Site" })] });
+```
+
+- `use` lists plugins in order. `plugins` stays the WordPress.org pin map.
+- Plugin hooks run before the app's hook for the same collection and kind,
+  in `use` order. A before-hook's returned replacement becomes the next
+  hook's `data`. A throw aborts the request, as in app hooks.
+- A plugin's actions, jobs and routes are registered as `<name>_<key>`.
+  Inside the plugin, `jobs.<key>` names its own jobs.
+- A plugin package can import its own modules, `"zero"` and ordinary npm
+  packages. Importing the app's modules or another plugin's package fails
+  with `Z1201`. Each plugin's compiled helpers, captured data, class state
+  and `once()` keys are its own.
+
+There is no capability list to write. `zero build` infers each plugin's
+grant and writes `zero/plugins.lock.json`:
+
+```json
+{ "version": 1, "plugins": { "seo": {
+  "package": "zero-plugin-seo", "version": "1.2.0", "integrity": "sha256-…",
+  "grant": { "read": ["posts"], "write": ["posts.summary"], "hooks": ["posts.beforeCreate"],
+             "http": [], "env": [], "mail": [], "jobs": [], "...": [] } } } }
+```
+
+| Kind | Values |
+|---|---|
+| `read` | collection keys and `globals.<name>`: queries, relation loads, hooked collections |
+| `write` | `<collection>.<field>` (or `.*`), `globals.<name>`: inserts, updates, before-hook changes, including through helpers |
+| `delete` | collection keys |
+| `hooks`, `actions`, `routes` | what the plugin registers |
+| `http` | hosts with a written `https://host/` prefix; `*` for a URL built at runtime |
+| `env` | variable names, including `crypto.hmacSha256` keys and signature secrets |
+| `mail` | `send` |
+| `jobs` | the plugin's own jobs it enqueues |
+| `abilities` | `vendor/name` of each `abilities.call` from `"php/wordpress"` |
+| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `wp-hooks/` directory |
+| `php` | reserved for PHP functions imported from `"php/wordpress"`, `"php/<slug>"` or `"php"` (`wordpress:get_option`); always empty today |
+
+Commit the lock: it is the grant.
+
+- **New plugin or new package source:** `zero build` updates the entry and
+  prints the diff. Review it, then commit.
+- **CI:** when `CI` is set, or with `zero build --frozen`, any capability
+  beyond the committed entry, or a plugin without one, fails the build with
+  `Z4201` at the call that needs it.
+- **Narrowing:** edit the entry. With the package source unchanged, code that
+  needs more than the entry fails with `Z4201`. Replace `*` in `http` with
+  hosts to limit runtime-built URLs. The generated PHP then checks every
+  request and redirect hop and refuses others with `502 zero_fetch_host_denied`.
+
+`zero check --json` adds a `plugins` list: package, version, integrity, the
+locked and inferred grants, and `flows`, the handlers that both read data
+(rows or environment values) and send it out (`fetch`, `mail.send`). It's a
+report, not a refusal. A granted read plus a granted host can send data out.
+There are no CPU or memory limits.
 
 ## Relations
 
@@ -289,6 +366,30 @@ filters cannot probe them. Media and private file references work on both kinds.
 | `beforeDelete` / `afterDelete` | `(row: Row, ctx)` | throw to abort |
 
 `ctx` is `{ user: { id, name, role } | null }`.
+
+`ctx` is an ordinary value. Pass it to helpers, return it, and read its keys,
+including `ctx["user"]` and keys typed `keyof HookCtx`. Type a helper's
+parameters with the types `"zero"` exports:
+
+- `HookCtx` for the context of an action, hook or route;
+- `JobCtx` for a job's context, which adds `attempt` and `jobId`;
+- `User` and `Role` for `ctx.user` and its role;
+- `RouteRequest` and `RouteResponse` for a route's request and result.
+
+```ts
+import { db, type HookCtx, type User } from "zero";
+
+function author(ctx: HookCtx): string {
+  return ctx.user === null ? "guest" : ctx.user.name;
+}
+async function addNote(ctx: HookCtx, body: string) {
+  await db.insert(notes).values({ body, author: author(ctx) });
+}
+```
+
+A key read whose value no type bounds, such as `ctx[name]` with
+`name: string`, is refused. Use a `keyof` type, a `switch` or a
+`Record<string, T>` instead.
 
 Throwing anything aborts the request and rolls back every write in it.
 `throw new HttpError(status, code, message)` picks the HTTP response.
@@ -391,11 +492,11 @@ for them, and they need no rewrite rules or permalink flush.
 
 ## Outbound HTTP
 
-`fetch(url, init?)` from `"zero"` calls another service from a hook, action,
-route or job, through the WordPress HTTP API:
+Handlers call other services with the standard global `fetch`. Nothing is
+imported; the types come from `@types/node`, which new projects install:
 
 ```ts
-import { action, defineConfig, env, fetch, HttpError, text } from "zero";
+import { action, defineConfig, HttpError, text } from "zero";
 
 export default defineConfig({
   actions: {
@@ -403,8 +504,9 @@ export default defineConfig({
       input: { city: text().notNull() },
       access: "anyone",
       async handler({ city }) {
-        const response = await fetch("https://api.example.com/v1/weather?q=" + encodeURIComponent(city), {
-          headers: { authorization: "Bearer " + (env("WEATHER_KEY") ?? "") },
+        const query = new URLSearchParams({ q: city });
+        const response = await fetch("https://api.example.com/v1/weather?" + query.toString(), {
+          headers: { authorization: "Bearer " + (process.env.WEATHER_KEY ?? "") },
         });
         if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
         return (await response.json()) as { temperature: number };
@@ -414,18 +516,35 @@ export default defineConfig({
 });
 ```
 
-- `init` takes `method`, `headers` (an object of strings) and `body` (a string;
-  use `JSON.stringify`). The response has `status`, `ok`, `url`, `redirected`,
-  `headers.get/has` and `text()`/`json()`.
+The compiler lowers each call to the WordPress HTTP API in PHP. What it
+compiles, and what it refuses with a fix:
+
+| | Supported | Refused |
+| --- | --- | --- |
+| `input` | a URL string or a `URL` | `Request` objects |
+| `method` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` | other methods (`zero_fetch_method_denied`) |
+| `headers` | an object of strings, an array of `[name, value]` pairs, or `new Headers(...)` | |
+| `body` | a string (`JSON.stringify(value)` for JSON) or `URLSearchParams` | `Blob`, `FormData`, `ArrayBuffer`, streams |
+| `redirect` | `"follow"` (default), `"manual"`, `"error"` | |
+| other options | | `signal`, `credentials`, `mode`, `cache`, `keepalive` and the rest |
+| `Response` | `status`, `statusText`, `ok`, `url`, `redirected`, `bodyUsed`, `headers.get/has/forEach`, `text()`, `json()` | `body`, `arrayBuffer()`, `blob()`, `formData()`, `clone()` |
+| `Headers` | `new Headers(init)`, `get`, `has`, `set`, `append`, `delete`, `forEach` | iterators, `getSetCookie` |
+| `URL`, `URLSearchParams` | the WHATWG URL Standard (see [language support](language-support.md#whatwg-url)): parsing, components, `searchParams`, and every `URLSearchParams` method, iterator and `sort` | `URL.createObjectURL` |
+
+A string body is sent as `text/plain;charset=UTF-8` and `URLSearchParams` as
+`application/x-www-form-urlencoded;charset=UTF-8` unless `headers` sets
+`content-type`. As in fetch, a body can be read once.
+
 - Only `https:` URLs without credentials are fetched. The host must not be
   `localhost` or a platform host, and every address it resolves to must be
   public: private, loopback, link-local (including `169.254.169.254`), CGNAT,
   documentation, multicast and other special-purpose IPv4 and IPv6 ranges are
   refused, as are IPv4-mapped and 6to4 forms of them. The connection is pinned
   to the checked address.
-- Redirects are followed up to three times, and each hop is checked again. 303,
-  and 301/302 after a POST, become a GET without a body; `authorization` and
-  `cookie` headers are dropped when the origin changes.
+- `redirect: "follow"` follows up to three redirects and checks each hop again.
+  303, and 301/302 after a POST, become a GET without a body; `authorization`
+  and `cookie` headers are dropped when the origin changes. `"manual"` returns
+  the 3xx response; `"error"` throws `zero_fetch_redirect_denied`.
 - Each call has 10 s and 1 MiB for the request body and the response.
   `connection`, `host` and other hop-by-hop request headers are ignored, and
   `set-cookie` is never returned.
@@ -433,16 +552,291 @@ export default defineConfig({
   `zero_fetch_scheme_denied`, `zero_fetch_credentials_denied`,
   `zero_fetch_host_denied`, `zero_fetch_address_denied`,
   `zero_fetch_method_denied`, `zero_fetch_payload_too_large`,
-  `zero_fetch_response_too_large`, `zero_fetch_too_many_redirects`,
-  `zero_fetch_timeout` or `zero_fetch_upstream_unavailable`. A non-2xx answer
-  is a response, not an error.
+  `zero_fetch_response_too_large`, `zero_fetch_redirect_denied`,
+  `zero_fetch_too_many_redirects`, `zero_fetch_timeout` or
+  `zero_fetch_upstream_unavailable`. A non-2xx answer is a response, not an
+  error.
 - A handler that fetches holds its transaction open while it waits. Keep calls
-  in actions short, or enqueue a job for slow ones.
+  in actions short, or enqueue a job for slow ones. Access rules can't fetch.
 
 A site plugin can open one internal target with the
 `zero_fetch_allow_address` filter (`$open, $address, $host, $port`), and
 answer for a privately resolved name with `zero_fetch_resolve`
 (`$answer, $host`). Request input never reaches either.
+
+## Runtime variables
+
+Handlers read the process environment with `process.env.NAME` or
+`process.env["NAME"]`. The value is a `string`, or `undefined` when the
+variable is unset; the process environment is read first, then a
+`wp-config.php` constant of that name.
+
+The name must be written out. A computed name (`process.env[key]`), iterating
+or spreading `process.env`, writing to it, and every other `process` member are
+compile errors, so request input can never choose a server variable. Reading
+`process.env` while the config is evaluated is an error too: settings that
+WordPress resolves later (webhook URLs and secrets, action signatures, upload
+credentials) take `env("NAME")` from `"zero"`, which is a reference, not a
+value, and is refused inside handlers.
+
+## Hashing and random values
+
+Hash, sign and compare with `"node:crypto"` (or `"crypto"`), imported in
+TypeScript or required from static CommonJS. Random UUIDs also come from the
+global `crypto`. Every call is synchronous:
+
+```ts
+import { action, defineConfig, text } from "zero";
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export default defineConfig({
+  actions: {
+    verify: action({
+      input: { body: text().notNull(), signature: text().notNull() },
+      access: "anyone",
+      handler({ body, signature }) {
+        const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
+        return Buffer.byteLength(expected) === Buffer.byteLength(signature)
+          && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+      },
+    }),
+  },
+});
+```
+
+| Form | Result |
+| --- | --- |
+| `createHash(alg).update(text)....digest(enc)` | Digest of the UTF-8 bytes. `alg` is `md5`, `sha1`, `sha256`, `sha384` or `sha512`; `enc` is `hex`, `base64` or `base64url` |
+| `createHmac(alg, key).update(text)....digest(enc)` | HMAC with the same algorithms and encodings |
+| `randomBytes(n).toString(enc)` | `n` (0 to 1024) random bytes from `random_bytes` |
+| `randomUUID()`, `crypto.randomUUID()` | A random version 4 UUID |
+| `timingSafeEqual(Buffer.from(a), Buffer.from(b))` | Constant-time comparison of the UTF-8 bytes; different byte lengths throw `RangeError`, as in Node |
+| `Buffer.byteLength(text)` | The UTF-8 byte length, for the check before `timingSafeEqual` |
+
+A hash or HMAC is compiled as one expression ending in `digest(enc)`; storing
+the hash object, `digest()` without an encoding, and other Buffer values are
+compile errors. A `createHmac` key written as `process.env.NAME` (with or
+without `!`) is read trimmed, and an unset or blank variable throws
+`500 crypto_key_unavailable`, so a missing secret never signs with an empty key.
+Any other key is used as given. Inputs are capped at 1 MiB
+(`413 crypto_input_too_large`).
+
+Other `node:crypto` functions (ciphers, keys, KDFs, streams), other Node
+built-ins, `crypto.getRandomValues` (typed arrays are not compiled) and
+`crypto.subtle` are refused with a fix. For inbound webhooks, prefer an
+action's or route's `signature` option, which also checks timestamps.
+
+## Email
+
+`mail.send(message)` from `"zero"` sends email from a hook, action, route or
+job:
+
+```ts
+import { action, defineConfig, email, mail, text } from "zero";
+
+export default defineConfig({
+  actions: {
+    invite: action({
+      input: { to: email().notNull(), name: text() },
+      access: "editor",
+      async handler({ to, name }) {
+        const queued = await mail.send({
+          to: { email: to, name: name ?? undefined },
+          subject: "You're invited",
+          text: "Open the link to join.",
+          html: "<p>Open the link to join.</p>",
+        });
+        return queued.id;
+      },
+    }),
+  },
+});
+```
+
+- The message has `to`, `subject` and `text` and/or `html`, plus optional
+  `from`, `cc`, `bcc`, `replyTo` and `headers`. Addresses are strings or
+  `{ email, name? }`; `to`, `cc` and `bcc` may be lists, 50 recipients in all.
+  `from` defaults to `noreply@` the site's host.
+- `send` validates the message, then queues it inside the handler's
+  transaction. It is handed off after the request commits, so a rolled-back
+  write sends nothing. A refused hand-off is retried by the job runner (5
+  attempts, with backoff) and shows in `wp zero jobs list`.
+- Delivery goes to `wp_mail`, so the site's mail plugin or SMTP configuration
+  applies. Display names are RFC 2047-encoded, and line breaks, commas inside
+  an address and reserved headers (`From`, `To`, `Content-Type`, ...) are
+  refused at `send`.
+- A managed host supplies its own transport through the
+  `zero_mail_transport` filter (`null, $message` → `true` when accepted). On
+  Spacefast that is the Space's sender, which requires `from` on the Space's
+  primary sending domain and counts recipients against the Space's daily
+  allowance. A managed host without a transport refuses rather than falling
+  back to `wp_mail`.
+
+## WordPress abilities
+
+A handler can call any ability registered on the site with the WordPress
+Abilities API: the app's own, core's, or another plugin's (WooCommerce,
+Jetpack, ...). Import `abilities` from `"php/wordpress"`:
+
+```ts
+import { action, defineConfig, text } from "zero";
+import { abilities } from "php/wordpress";
+
+export default defineConfig({
+  actions: {
+    count: action({
+      input: { text: text().notNull() },
+      access: "authenticated",
+      async handler(input) {
+        const result = await abilities.call("acme/word-count", { text: input.text });
+        return result.count;
+      },
+    }),
+  },
+});
+```
+
+- The name is a string literal. The input is checked against the ability's
+  input schema and the result is typed from its output schema, by the
+  compiler and by tsc.
+- The app's own abilities (`<app>/<collection>-list`, `<app>/<action>`, ...)
+  are typed from the schema with nothing else to do. An action's result is
+  `unknown`: its ability publishes no output schema.
+- Other abilities come from `zero/abilities.json`, which you commit.
+  `zero abilities pull [dir] --site <url>` writes it from a running site;
+  `--only acme/*` (repeatable) keeps matching names. The pull signs in only
+  with `ZERO_APP_PASSWORD=user:application-password` from the environment.
+  `zero build` and `zero check` read the lock and never contact the site.
+- Map `"php/wordpress"` in tsconfig.json next to `"zero"`
+  (`types/wordpress.d.ts` in the CLI package); `zero build` writes the ability
+  types into `zero.gen.ts` when the app imports the module.
+- The call runs core's `WP_Ability::execute()` for the current WordPress user:
+  core validates the input, runs the ability's permission check and validates
+  the output. It runs inside the handler's transaction, so the ability's
+  database writes roll back with the handler's.
+- Errors are `HttpError`s. A site without the ability answers
+  `503 ability_unavailable` (the build's lock no longer matches the site). A
+  `WP_Error` with a `status` keeps it and its code; otherwise a permission
+  failure is `401 unauthenticated` or `403 forbidden`, invalid input is
+  `422 invalid_input`, and anything else is 500 with the ability's code.
+- JSON Schema maps to TypeScript for `type` (with `"null"`), `properties` and
+  `required`, arrays, `enum`, `const`, `oneOf`/`anyOf` and
+  `additionalProperties`. `allOf`, `$ref`, `not`, `patternProperties` and
+  tuple `items` become `unknown`, and the pull prints a warning for each.
+- `zero doctor --site <url>` (with `ZERO_APP_PASSWORD`) reports every locked
+  ability the site no longer has or whose schema changed since the pull.
+
+## WordPress functions
+
+A short, curated set of WordPress core functions is importable from
+`"php/wordpress"` and callable from hooks, actions, routes and jobs:
+
+```ts
+import { current_user_can, esc_html, get_post, update_option, wp_insert_post } from "php/wordpress";
+
+if (!current_user_can("edit_posts")) throw new HttpError(403, "forbidden", "Editors only");
+const id = wp_insert_post({ post_title: input.title, post_status: "draft" });
+const post = get_post(id);                       // WP_Post | null
+return post === null ? "" : esc_html(post.post_title);
+```
+
+| Function | TypeScript |
+|---|---|
+| `get_option(option)` | `unknown` (a missing option is `false`) |
+| `update_option(option, value)`, `delete_option(option)` | `boolean` |
+| `get_post(post_id)` | `WP_Post \| null` |
+| `wp_insert_post({ post_title?, post_content?, post_excerpt?, post_status?, post_type?, post_name?, post_author?, post_parent?, menu_order? })` | `number`; throws on failure |
+| `current_user_can(capability)`, `is_user_logged_in()` | `boolean` |
+| `get_current_user_id()` | `number` |
+| `get_userdata(user_id)` | `WP_User \| false` |
+| `get_permalink(post_id)` | `string \| false` |
+| `home_url(path)` | `string` |
+| `sanitize_text_field`, `sanitize_title`, `esc_html`, `esc_attr`, `esc_url`, `wp_strip_all_tags` | `string` → `string` |
+
+- Types come from `php-stubs/wordpress-stubs` 7.1.2 (WordPress's own
+  signatures and phpdoc) through the same pinned generator as the hook
+  catalog, narrowed where a PHP parameter accepts several shapes. Each call
+  passes exactly the listed arguments; later PHP parameters keep their
+  defaults (`wp_insert_post` always asks for a `WP_Error` instead of `0`).
+- A function is admitted only when it maps soundly: no by-reference
+  parameters, no echoing template tags (`the_title`), no reliance on request
+  globals (`the_post`). Anything else is a build error at the import that
+  lists what is available.
+- `WP_Post` and `WP_User` results are the same read-only views hook arguments
+  are.
+- A `WP_Error` result throws an `HttpError` with the error's code and its
+  `status` when it carries one, otherwise 422.
+- The call runs as the current WordPress user, inside the handler's
+  transaction. A rolled-back handler undoes the function's database writes,
+  and Zero clears WordPress's cache of every option and post the call wrote.
+- A call is a direct PHP function call through Zero's value conversions,
+  never a PHP string or `eval`.
+
+## WordPress hooks
+
+`wp-hooks/` beside `zero.config.ts` adds WordPress actions and filters. Name a
+file after the hook, or make a directory of that name for several handlers.
+Each file default-exports its handler:
+
+```text
+wp-hooks/
+├── save_post.ts
+└── the_content/
+    ├── 10-reading-time.ts
+    └── 20-frame.ts
+```
+
+```ts
+// wp-hooks/the_content/20-frame.ts
+import type { Handler } from "php/wordpress";
+
+const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
+export default frame;
+```
+
+```ts
+// wp-hooks/save_post.ts
+import type { WP_Post } from "php/wordpress";
+
+export const priority = 20;
+export default function (postId: number, post: WP_Post, update: boolean) {
+  if (!update && post.post_type === "post") { /* ... */ }
+}
+```
+
+- The files compile to PHP like hooks and actions, and the app plugin
+  registers them with `add_filter`/`add_action`. No JavaScript reaches the site.
+- Hooks come from a curated catalog generated from core's docblocks
+  (`@wp-hooks/wordpress-core` 1.13.0) and `php-stubs/wordpress-stubs` 7.1.2:
+  `init`, `wp_head`, `wp_footer`, `wp_body_open`, `wp_enqueue_scripts`,
+  `template_redirect`, `the_content`, `the_title`, `the_excerpt`,
+  `excerpt_length`, `excerpt_more`, `body_class`, `post_class`, `save_post`,
+  `wp_insert_post`, `deleted_post`, `transition_post_status`, `user_register`,
+  `wp_login`, `wp_logout`, `rest_api_init`, `wp_mail`, `pre_get_posts` and
+  `login_message`. Any other name is a build error with the closest one.
+  There is no untyped escape hatch.
+- Arguments are typed from the catalog. A filter must return its first
+  argument's type. Handlers are synchronous: WordPress doesn't wait.
+- `WP_Post` and `WP_User` arguments are read-only copies of their documented
+  public properties (`post_title`, `post_status`, `user_login`, `roles`, ...).
+  `WP_Query` (`pre_get_posts`) offers `get(var)`, `set(var, value)` and
+  `is_main_query()` on the query WordPress runs. Nothing else of these
+  objects is reachable.
+- Files of one hook register in file-name order, all at priority 10, so they
+  run in that order after core's own callbacks at 10. `export const priority =
+  <integer>` moves a file; lower runs first. A file exports only `default` and
+  `priority`; share code through an ordinary imported module.
+- `wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
+  file without a default export, another file type, or the same hook as both a
+  file and a directory is a build error at that path.
+- Handlers run in WordPress's own request, whichever it is: a page view, an
+  editor save, cron, REST, WP-CLI. They are not in a Zero transaction. `db`
+  works and each write commits on its own; `ctx` and `HttpError` responses
+  don't apply, since there is no Zero request.
+- A handler that throws is logged to the PHP error log as
+  `[zero] wp-hooks/<hook>: ...`. A filter then returns the value it was given,
+  so one broken handler leaves the page as WordPress rendered it. An action's
+  throw stops only that handler.
 
 ## Jobs and webhooks
 
@@ -463,8 +857,9 @@ is. Each job is handed to Action Scheduler (cron, or `wp action-scheduler run`);
 A webhook POSTs `{ id, event, collection, at, data: { row, previous? } }` for
 each matching write (`<collection>.created|updated|deleted`, or `"*"`), signed
 in the `zero-signature` header as `t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body"))`.
-Deliveries are jobs, so a failing endpoint is retried. `env(name)` reads the
-process environment first, then a `wp-config.php` constant of that name.
+Deliveries are jobs, so a failing endpoint is retried. `env(name)` is resolved
+when the webhook is sent: the process environment first, then a
+`wp-config.php` constant of that name.
 
 ## Media and files
 
@@ -542,7 +937,7 @@ authentication; it creates no second user table or post type. It needs
 admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
 through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
 through the zero-identity screens (register the frontend once with
-`wp zero-identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
+`zero identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
 `GET /me` returns the user with their `member` row.
 
 Anonymous visitors can write as guests (`createClient({ auth: { guests: true } })`):
@@ -559,7 +954,7 @@ For `editor: false` collections the file wins; files without a `uid` use a stabl
 { sync: "content/posts/*.md" }
 ```
 
-`zero sync --site <url> --app-password user:pass` (or `--bearer <jwt>`) keeps
+`zero sync [--site <url>]`, with `ZERO_APP_PASSWORD=user:pass` (or `ZERO_TOKEN=<jwt>`) in the environment, keeps
 `content/posts/<slug>.md` and the site in step: front matter for fields, the
 body as Markdown for the `content` column. Both sides may change; it merges
 per field, and writes `.zero/conflicts/<uid>.md` when the same field changed on
@@ -648,7 +1043,7 @@ Fixed-length callback walks (`map`, `filter`, `forEach`, `some`, `every`,
 `reduce`, `flatMap`, `find*`) throw `RangeError` if they reach an index their
 callback removed. Shrinkage after the final visit or an early return is fine;
 growth is ignored by these walks. `for…of` and `Array.from(array, mapper)`
-read live length. Elisions, `new Array(n)`, `delete a[i]`, `a.length = n` and
+read live length. Elisions, `new Array(n)`, `delete a[i]` (use `splice`), `a.length = n` and
 non-numeric index types are compile errors.
 
 Explicit `undefined` has its own runtime value: `typeof undefined` gives
@@ -659,10 +1054,33 @@ existing contracts. Optional typed parameters include null in body reads.
 Imported JavaScript distinguishes missing values from explicit null throughout
 its checked operations.
 
+Bitwise operators (`& | ^ ~ << >> >>>` and their compound assignments) follow
+JavaScript's 32-bit semantics: ToInt32 operands, shift counts masked to five
+bits, and an unsigned result for `>>>`. `key in object` checks own properties,
+then the value's built-in prototype chain (class methods, array, function and
+error prototypes, `Object.prototype`), and narrows object unions like
+TypeScript. `delete obj.key` and `delete obj?.key` remove optional properties
+and map entries with strict-mode results: true for absent keys, a `TypeError`
+for non-configurable ones such as `length`. `do…while` and labeled loops,
+switches and blocks (`break label`, `continue label`) follow JavaScript.
+Destructuring assignment (`[a, b] = [b, a]`, `({ x, y: o.y = 0 } = value)`)
+assigns existing variables and fields in JavaScript order. Tagged templates
+call the tag with the call site's strings array (with `raw`) and the
+substitutions; `String.raw` is supported. BigInt (`10n`, `bigint`, `BigInt(x)`)
+is exact; mixing it with numbers in arithmetic is a TypeError, as in JavaScript.
+
+Host globals: `fetch`, `Headers`, `URLSearchParams`, `process.env.NAME`,
+`crypto.randomUUID()`, `Buffer.from`/`Buffer.byteLength` in the forms above, and
+`"node:crypto"`; see [Outbound HTTP](#outbound-http),
+[Runtime variables](#runtime-variables) and
+[Hashing](#hashing-and-random-values). They run in handlers only.
+
 Rejected with a located error and a fix: `this` outside class methods or their
-arrows, `enum`, `in`, `delete`, generators,
-labels, getters/setters, BigInt, dynamic `import()`, `any`,
-`eval`/`Function`, assigning to module-level state from a hook,
+arrows, `enum`, generators,
+getters/setters, dynamic `import()`, `any`,
+`eval`/`Function`, `setTimeout`, `globalThis`, `Promise`, `URL`, `Request`,
+`Response`, `FormData`, `Blob`, `AbortController`, `require` outside static
+CommonJS sources, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal
 (use a literal position or omit it; typed missing values use the nullable boundary), `await` on
@@ -672,14 +1090,21 @@ call without `await`.
 Build-time evaluation forbids I/O, `Date.now()`, `new Date()`, `Math.random()`,
 and `db`, and stops runaway loops with a step budget.
 
-Imports: `"zero"`, relative TypeScript/ESM JavaScript sources, and locally installed
-source packages. Package imports search the nearest `node_modules`, support scoped
+Imports: `"zero"`, `"node:crypto"` (or `"crypto"`), relative TypeScript/ESM
+JavaScript sources, and locally installed source packages. Package imports search the nearest `node_modules`, support scoped
 names and exact subpath exports, and select `import`/`default` export conditions,
 an explicit `module` entry, or a supported `main`/index entry. `.mjs`, `.ts` and `.mts` identify
-source directly. A narrow CommonJS subset supports one top-level
-`module.exports = function` or assignment of a local function. `require`, named
-CommonJS exports, mixed ESM/CommonJS and implicit sloppy-mode `arguments` are
-refused. Export patterns, Node built-ins,
+source directly. A `.cjs` source, or a `.js` source with no ESM syntax outside a
+`"type": "module"` package, is static CommonJS. It runs once at build time, like
+Node's module cache: top-level `require("<literal>")` of relative files and
+CommonJS packages (resolved with the `require`/`default` conditions), and
+`module.exports = …` or `exports.name = …` outside functions. ESM importers get
+`module.exports` as the default export, plus the statically assigned names as
+named exports. Dynamic `require`, `require` inside a function, `require` of an ES
+module, `require` cycles, writes to `module` or `exports` inside a function,
+other `module` properties, mixed ESM/CommonJS and implicit sloppy-mode
+`arguments` are refused. `require("node:crypto")` gives the supported
+`node:crypto` functions. Export patterns, Node built-ins other than `node:crypto`,
 package aliases and declaration-only targets are refused. Package entry targets
 must name existing files inside the package; the compiler does not install them.
 Relative `.js` imports can resolve to their TypeScript source counterparts.
@@ -757,12 +1182,46 @@ include methods or class metadata. Object spread copies own fields shallowly.
 produce plain data without class identity. Use object types in `json().$type<T>()`;
 class types and assertions that would pretend to hydrate a class are refused.
 
+Private names (`#field`, `#method()`, `static #x` and `#x in value`) belong to
+the class that declares them, as in JavaScript. A subclass declaring the same
+`#x` gets a separate slot, and only code inside the declaring class body can
+name it. Private state is invisible to `Object.keys`, JSON, spread and
+`structuredClone`; a clone does not carry the brand. Reading a private member
+from an object the class did not initialize throws `TypeError`.
+
+Classes in imported JavaScript (`.js`, `.mjs`, `.cjs`) need no annotations:
+fields, parameters and returns use checked JavaScript values, and method values
+such as `instance.method` keep one identity per class, so `call` supplies the
+receiver.
+
+Class `get`/`set` accessors, including `static` ones, live on the class like
+prototype members: they are not own fields, so `Object.keys` and JSON skip them.
+Own data wins over an accessor, and an accessor wins over a method. Assigning a
+getter without a setter is a compile error in typed code and a `TypeError` in
+imported JavaScript. Redefining either half in a subclass replaces the inherited
+pair, and `super.name` reads the parent getter with the current receiver. A
+getter's type comes from its return annotation, its setter's parameter, or its
+body. A class `toJSON()` method is called by `JSON.stringify` with the property
+key; actions that return such an instance directly are refused, because the
+generated client describes own fields.
+
+Classes can extend `Error`, `TypeError` and `RangeError`. `super(message,
+options)` sets non-enumerable `message`, `cause` (from `options.cause`) and
+`stack`, so `Object.keys` and JSON show only fields and an assigned `name`.
+`name` and `message` otherwise come from the prototype, and `String(error)`
+follows `Error.prototype.toString`. `instanceof` sees the whole chain, including
+`Error`. Any such instance can be thrown and caught with its identity and fields
+intact. `stack` is the `Name: message` header without frames; Zero does not
+expose PHP frames. `Error.captureStackTrace(target)` gives `target` that same
+header-only stack. In typed code, `catch (e)` narrows with
+`e instanceof AppError`.
+
 These class features remain outside the supported surface, with located errors:
 class expressions, default-export class declarations and
 anonymous/local/abstract/ambient/generic classes;
-decorators; private/protected/`#` members; accessors; static blocks; computed names;
-generic/rest methods; dynamic or built-in inheritance; constructor return values;
-prototype/reflection machinery and custom coercion/serialization protocol members.
+decorators; private/protected members; private accessors; static blocks; computed names;
+generic/rest methods; dynamic inheritance and built-in bases other than the Error family; constructor return values;
+prototype/reflection machinery and custom coercion members (`toString`, `valueOf`).
 Indexed class members and recursive class field types are also refused.
 Uninitialized optional fields follow the same missing-to-null boundary. Class
 values are limited to construction, `instanceof`, `typeof` and static access.

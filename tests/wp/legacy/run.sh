@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The legacy migration lane, run by ../run.sh after the main suites on the same stack: build the app
 # `zero migrate config --from zero` makes from capsule.ts, boot WordPress with it, seed the site the
-# way ORIGINAL Zero stored it, then run legacy.test.ts (which drives `zero migrate site`).
+# way ORIGINAL Zero stored it, then run legacy.test.ts (which drives `wp zero migrate-legacy`).
 #
 # Seeding: with ZERO_ORIGINAL (a checkout of the original monorepo) the original kernel itself runs
 # in the stack and writes the content (stage.sh); ZERO_UPDATE_FIXTURES=1 then refreshes site.json.

@@ -30,6 +30,8 @@ const WP_CORE_VERSION = '7.1.4';
 const WP_CORE_SHA256 = 'a147146c159362778ecbbbfb07bb20ddf4e85b130f971c824e656a8f938c5f87';
 const WP_SQLITE_VERSION = '3.1.2';
 const WP_SQLITE_SHA256 = '04c43be5e200a1633499f7577f3fdc25345d389e1a8ffa64dbd6a4eacfbaaaf6';
+const WP_CLI_PHAR_VERSION = '2.12.0';
+const WP_CLI_PHAR_SHA256 = 'ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c';
 
 final class WpCliHalt extends \RuntimeException
 {
@@ -133,6 +135,10 @@ final class WpSite
                 return $port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:$port", $url) : $url;
             });
             PHP);
+        // A suite's own must-use plugins (name => PHP source), loaded before anything else boots.
+        foreach ($fixture['muPlugins'] ?? [] as $file => $code) {
+            file_put_contents("$dir/content/mu-plugins/$file.php", $code);
+        }
         $users = ['editor' => 'editor', 'author' => 'author', 'subscriber' => 'subscriber'] + ($fixture['users'] ?? []);
         // The site's URL is where its php -S would listen, so WordPress never redirects a client elsewhere.
         $site->port = wpFreePort();
@@ -642,9 +648,75 @@ function wpArchive(string $file, string $url, string $sha256, string $root): str
     return "$dir/$root";
 }
 
+/** The pinned WP-CLI phar, downloaded once into the cache. */
+function wpCliPhar(): string
+{
+    $phar = wpCache() . '/wp-cli-' . WP_CLI_PHAR_VERSION . '.phar';
+    if (!is_file($phar) || hash_file('sha256', $phar) !== WP_CLI_PHAR_SHA256) {
+        $tmp = "$phar." . getmypid();
+        $ch = curl_init('https://github.com/wp-cli/wp-cli/releases/download/v' . WP_CLI_PHAR_VERSION . '/wp-cli-' . WP_CLI_PHAR_VERSION . '.phar');
+        $fh = fopen($tmp, 'wb') ?: throw new RuntimeException("cannot write $tmp");
+        curl_setopt_array($ch, [CURLOPT_FILE => $fh, CURLOPT_FOLLOWLOCATION => true, CURLOPT_FAILONERROR => true, CURLOPT_TIMEOUT => 600]);
+        $ok = curl_exec($ch);
+        fclose($fh);
+        if ($ok !== true || hash_file('sha256', $tmp) !== WP_CLI_PHAR_SHA256) {
+            @unlink($tmp);
+            throw new RuntimeException('WP-CLI ' . WP_CLI_PHAR_VERSION . ' download failed or does not match its pinned SHA-256');
+        }
+        rename($tmp, $phar);
+    }
+
+    return $phar;
+}
+
+/**
+ * A directory WP-CLI can boot this site from (`wp --path=<dir>`): core linked in, plus a
+ * wp-config.php that defines the site as wpDefine() does.
+ */
+function wpCliRoot(string $dir): string
+{
+    $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+    $root = "$dir/wp-cli-root";
+    if (!is_dir($root)) {
+        mkdir($root);
+        foreach (scandir($site['core']) as $entry) {
+            if ($entry !== '.' && $entry !== '..' && $entry !== 'wp-config.php' && $entry !== 'wp-content') {
+                symlink($site['core'] . "/$entry", "$root/$entry");
+            }
+        }
+        file_put_contents("$root/wp-config.php", '<?php' . "\n"
+            . 'require_once ' . var_export(__FILE__, true) . ";\n"
+            . 'wpDefine(' . var_export($dir, true) . ', ' . var_export($site['url'], true) . ");\n"
+            . "require_once ABSPATH . 'wp-settings.php';\n");
+    }
+
+    return $root;
+}
+
 function wpCore(): string
 {
     return wpArchive('wordpress-' . WP_CORE_VERSION . '.zip', 'https://wordpress.org/wordpress-' . WP_CORE_VERSION . '.zip', WP_CORE_SHA256, 'wordpress');
+}
+
+/**
+ * Only the pinned core's HTML API and the formatting functions it calls, without a site or database:
+ * for suites that exercise the bundled toolkit on core's classes and need nothing else of WordPress.
+ */
+function wpCoreHtmlApi(): void
+{
+    $core = wpCore();
+    defined('ABSPATH') || define('ABSPATH', "$core/");
+    defined('WPINC') || define('WPINC', 'wp-includes');
+    foreach (['load', 'plugin', 'compat', 'compat-utf8', 'utf8', 'functions', 'l10n', 'formatting', 'kses', 'class-wp-token-map'] as $file) {
+        require_once "$core/wp-includes/$file.php";
+    }
+    foreach (['html5-named-character-references', 'class-wp-html-attribute-token', 'class-wp-html-span', 'class-wp-html-doctype-info',
+        'class-wp-html-text-replacement', 'class-wp-html-decoder', 'class-wp-html-tag-processor', 'class-wp-html-unsupported-exception',
+        'class-wp-html-active-formatting-elements', 'class-wp-html-open-elements', 'class-wp-html-token', 'class-wp-html-stack-event',
+        'class-wp-html-processor-state', 'class-wp-html-processor'] as $file) {
+        require_once "$core/wp-includes/html-api/$file.php";
+    }
+    add_filter('pre_option_blog_charset', static fn (): string => 'UTF-8');
 }
 
 function wpPlugin(string $slug, string $version, string $sha256): string
@@ -707,7 +779,7 @@ function wpLoad(string $dir): void
 function wpDefine(string $dir, string $url): void
 {
     $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
-    define('ABSPATH', $site['core'] . '/');
+    defined('ABSPATH') || define('ABSPATH', $site['core'] . '/'); // WP-CLI defines it from --path
     define('WP_CONTENT_DIR', "$dir/content");
     define('WP_CONTENT_URL', "$url/wp-content");
     define('WP_PLUGIN_DIR', "$dir/content/plugins");
@@ -801,6 +873,7 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
 //
 // Installs a site from a `zero build` artifact, starts its web server, prints one JSON
 // line ({url, dir, users: {name: {id, appPassword}}}) and serves until killed (tests/sync.rs).
+// ZERO_WP_IDENTITY=1 activates zero-identity too; ZERO_WP_CLI=1 adds {wpCli: {phar, path}} (tests/cli.rs).
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'serve') {
     $users = [];
@@ -808,8 +881,13 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
         [$name, $role] = explode('=', $pair, 2);
         $users[$name] = $role;
     }
-    $site = WpSite::create('serve', ['wpContent' => $argv[2], 'users' => $users, 'server' => true]);
-    echo json_encode(['url' => $site->url(), 'dir' => $site->dir, 'users' => $site->credentials()]), "\n";
+    $site = WpSite::create('serve', ['wpContent' => $argv[2], 'users' => $users, 'server' => true, 'identity' => getenv('ZERO_WP_IDENTITY') === '1']);
+    $out = ['url' => $site->url(), 'dir' => $site->dir, 'users' => $site->credentials()];
+    // ZERO_WP_CLI=1: also the pinned WP-CLI phar and a --path it can boot this site from.
+    if (getenv('ZERO_WP_CLI') === '1') {
+        $out['wpCli'] = ['phar' => wpCliPhar(), 'path' => wpCliRoot($site->dir)];
+    }
+    echo json_encode($out), "\n";
     fclose(STDOUT);
     pcntl_signal(SIGTERM, static function () use ($site): void {
         $site->destroy();

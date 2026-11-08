@@ -15,7 +15,8 @@ const site = JSON.parse(readFileSync(process.env.ZERO_LEGACY_SITE!, "utf8"));
 const ids: Record<string, any> = site.ids;
 const release = join(here, "content-model.php");
 const migrate = (...flags: string[]) => {
-  const r = spawnSync(process.env.ZERO_BIN!, ["migrate", "site", release, "--wp", `${here}/../harness.sh wp`, ...flags], { encoding: "utf8" });
+  // `zero migrate-legacy - < release` forwards exactly this: the release on stdin to the site's WP-CLI.
+  const r = spawnSync(`${here}/../harness.sh`, ["wp", "zero", "migrate-legacy", "-", ...flags], { input: readFileSync(release), encoding: "utf8" });
   return { code: r.status, out: r.stdout.trim() === "" ? null : JSON.parse(r.stdout) };
 };
 // Everything the migration may touch: posts with their meta, term relationships and term counts.

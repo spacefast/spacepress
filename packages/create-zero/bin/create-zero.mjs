@@ -35,9 +35,9 @@ async function main() {
       scripts: {
         dev: 'zero dev', build: 'zero build', check: 'zero check',
         typecheck: 'zero build --quiet && tsc --noEmit',
-        stop: 'zero dev stop', status: 'zero dev status', wp: 'zero dev wp . --',
+        stop: 'zero dev stop', status: 'zero dev status', wp: 'zero wp',
       },
-      devDependencies: { '@spacefast/zero-cli': process.env.ZERO_CLI_PACKAGE || metadata.version, typescript: '5.9.3' },
+      devDependencies: { '@spacefast/zero-cli': process.env.ZERO_CLI_PACKAGE || metadata.version, '@types/node': '22.19.17', typescript: '5.9.3' },
     }, null, 2) + '\n', { flag: 'wx' });
   } catch (error) {
     await rm(destination, { recursive: true });

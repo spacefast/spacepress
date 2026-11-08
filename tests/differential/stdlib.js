@@ -56,3 +56,20 @@ export function jsPendingTimer() {
   setTimeout(() => {}, 5);
   return "returned";
 }
+
+// Timers drain while the request waits (agent 4's JsJobs calls Timers::runNext when microtasks
+// are empty): backoff sleeps, microtask/timer interleaving and AbortSignal.timeout.
+export async function jsTimers() {
+  const order = [];
+  const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+  setTimeout(() => order.push("t20"), 20);
+  setTimeout(() => order.push("t5"), 5);
+  Promise.resolve().then(() => order.push("micro"));
+  await sleep(10);
+  order.push("woke");
+  await sleep(15);
+  const timeout = AbortSignal.timeout(5);
+  const before = timeout.aborted;
+  await sleep(6);
+  return [order, before, timeout.aborted, timeout.reason.name];
+}

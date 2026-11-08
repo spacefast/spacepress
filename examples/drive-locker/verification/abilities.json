@@ -1,0 +1,101 @@
+[
+  {
+    "name": "drive-locker/drives-list"
+  },
+  {
+    "name": "drive-locker/drives-get"
+  },
+  {
+    "name": "drive-locker/drives-create"
+  },
+  {
+    "name": "drive-locker/drives-update"
+  },
+  {
+    "name": "drive-locker/drives-delete"
+  },
+  {
+    "name": "drive-locker/places-list"
+  },
+  {
+    "name": "drive-locker/places-get"
+  },
+  {
+    "name": "drive-locker/places-create"
+  },
+  {
+    "name": "drive-locker/places-update"
+  },
+  {
+    "name": "drive-locker/places-delete"
+  },
+  {
+    "name": "drive-locker/health-readings-list"
+  },
+  {
+    "name": "drive-locker/health-readings-get"
+  },
+  {
+    "name": "drive-locker/health-readings-create"
+  },
+  {
+    "name": "drive-locker/health-readings-update"
+  },
+  {
+    "name": "drive-locker/health-readings-delete"
+  },
+  {
+    "name": "drive-locker/contents-list"
+  },
+  {
+    "name": "drive-locker/contents-get"
+  },
+  {
+    "name": "drive-locker/contents-create"
+  },
+  {
+    "name": "drive-locker/contents-update"
+  },
+  {
+    "name": "drive-locker/contents-delete"
+  },
+  {
+    "name": "drive-locker/members-list"
+  },
+  {
+    "name": "drive-locker/members-get"
+  },
+  {
+    "name": "drive-locker/members-create"
+  },
+  {
+    "name": "drive-locker/members-update"
+  },
+  {
+    "name": "drive-locker/members-delete"
+  },
+  {
+    "name": "drive-locker/log-health"
+  },
+  {
+    "name": "drive-locker/where-is"
+  },
+  {
+    "name": "drive-locker/capacity-report"
+  },
+  {
+    "name": "drive-locker/warranty-expiring"
+  },
+  {
+    "name": "drive-locker/retire"
+  },
+  {
+    "name": "drive-locker/media-list"
+  },
+  {
+    "name": "drive-locker/media-get"
+  },
+  {
+    "name": "drive-locker/media-delete"
+  }
+]

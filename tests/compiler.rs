@@ -58,27 +58,6 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
-fn fetch_is_an_explicit_zero_import_with_string_bodies() {
-    // The ambient global stays refused, so every outbound call is visible in the imports.
-    rejects(
-        "reject-global-fetch",
-        "`fetch` isn't available in Zero code",
-        "zero.config.ts:3:",
-    );
-    rejects(
-        "reject-fetch-init",
-        "fetch() init must be { method?, headers?, body? } with strings",
-        "zero.config.ts:3:",
-    );
-    let out = zero()
-        .args(["check"])
-        .arg(root().join("tests/fixtures/fetch-import"))
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-}
-
-#[test]
 fn a_catch_all_route_segment_comes_last() {
     rejects(
         "reject-route-catchall-middle",
@@ -88,6 +67,36 @@ fn a_catch_all_route_segment_comes_last() {
     let out = zero()
         .args(["check"])
         .arg(root().join("tests/fixtures/route-catchall"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn destructured_defaults_may_read_earlier_siblings_only() {
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/sibling-parameter-defaults"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    rejects(
+        "reject-later-sibling-default",
+        "parameter defaults can't reference the current or a later parameter",
+        "zero.config.ts:3:",
+    );
+}
+
+#[test]
+fn mail_send_needs_recipients_a_subject_and_a_body() {
+    rejects(
+        "reject-mail-message",
+        "mail.send() needs { to, subject, text or html }",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/mail-import"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -323,6 +332,69 @@ fn db_globals_read_defaults_and_write_typed_fields() {
             { "data": ["{}"] },
         ])
     );
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// A handler's `ctx` and a route's `req` are values: helpers typed with the `"zero"` context types
+/// take them, return them and read static keys, in compiled PHP as a signed-in user and a guest.
+#[test]
+fn context_values_pass_through_typed_helpers() {
+    let tmp = std::env::temp_dir().join(format!("zero-context-helpers-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/context-helpers"), &tmp);
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(tmp.join(".zero/wp-content"))
+        .arg(
+            r#"$route = $app->matchRoute("POST", "/echo");
+               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"));
+               echo json_encode([
+                 "id" => $wp->userId("ada"),
+                 "signedIn" => $wp->call("POST", "/actions/whoami", "{}", "ada")[1],
+                 "guest" => $wp->call("POST", "/actions/whoami", "{}")[1],
+                 "note" => $wp->call("POST", "/actions/note", ["body" => "x"], "ada")[1],
+                 "echo" => json_decode($echo, true),
+               ]);"#,
+        )
+        .arg("null")
+        .arg("ada=editor")
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{text}{}", String::from_utf8_lossy(&out.stderr));
+    let got: serde_json::Value = serde_json::from_str(text.lines().next_back().unwrap_or("")).unwrap();
+    let ada = format!("ada#{}", got["id"]);
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "id": got["id"],
+            "signedIn": { "label": ada, "role": "editor", "anonymous": false, "viaIndex": false },
+            "guest": { "label": "guest", "role": "guest", "anonymous": true, "viaIndex": true },
+            "note": [ada],
+            "echo": { "method": "POST", "path": "/echo", "body": "raw body", "role": "editor" },
+        })
+    );
+    // Only a key no type can bound is refused, with the fix.
+    std::fs::write(
+        tmp.join("zero.config.ts"),
+        std::fs::read_to_string(tmp.join("zero.config.ts")).unwrap().replace(
+            r#"viaIndex: ctx["user"] === null"#,
+            "viaIndex: ctx[String(_input)] === null",
+        ),
+    )
+    .unwrap();
+    let refused = zero().arg("check").arg(&tmp).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("dynamic keys on an object need a finite key union"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("help: use `keyof` on a finite object"), "{stderr}");
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -766,6 +838,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
+    std::fs::copy(dir.join("namespace.mjs"), tmp.join("namespace.mjs")).unwrap();
     // Plain JavaScript modules the cases import run through checked dynamic dispatch.
     std::fs::copy(dir.join("stdlib.js"), tmp.join("stdlib.js")).unwrap();
     let built = zero().arg("build").arg(&tmp).output().unwrap();
@@ -999,7 +1072,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         zero()
             .arg("sync")
             .arg(&project)
-            .args(["--site", &site, "--app-password", &credential, "--no-commit", "--json"])
+            .env("ZERO_APP_PASSWORD", &credential)
+            .args(["--site", &site, "--no-commit", "--json"])
             .args(extra)
             .output()
             .unwrap()
@@ -1687,7 +1761,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     let refused = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("unknown flag --target"), "{stderr}");
+    assert!(stderr.contains("unknown option --target for zero build"), "{stderr}");
     let config = std::fs::read_to_string(tmp.join("zero.config.ts")).unwrap();
     std::fs::write(
         tmp.join("zero.config.ts"),
@@ -1817,4 +1891,50 @@ fn auth_fixture_matches_the_compiler() {
         String::from_utf8_lossy(&out.stderr)
     );
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// A plugin package from a fixture `node_modules`, registered from the app and run as generated
+/// PHP: its hook transforms the row before the app's hook sees it, a write the lock doesn't grant
+/// is refused at build, and a runtime-built fetch URL outside the locked hosts is refused at run.
+#[test]
+fn a_plugin_package_runs_under_its_locked_grant() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("plugins");
+    copy(&root().join("tests/fixtures/plugin-seo"), &project);
+    let index = project.join("node_modules/zero-plugin-seo/src/index.ts");
+    let source = std::fs::read_to_string(&index).unwrap();
+
+    // The owner's lock grants posts.summary only; the same package writing posts.body is refused.
+    std::fs::write(
+        &index,
+        source.replace("data.summary = ", "data.body = \"x\";\n          data.summary = "),
+    )
+    .unwrap();
+    let refused = zero().args(["build", "--frozen"]).arg(&project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("plugin \"seo\" writes posts.body; zero/plugins.lock.json grants it only posts.summary"),
+        "{stderr}"
+    );
+    assert!(!project.join(".zero").exists(), "a refused plugin generates nothing");
+
+    std::fs::write(&index, source).unwrap();
+    let out = zero().args(["build", "--frozen"]).arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let got = wp_eval_json(
+        &project.join(".zero/wp-content"),
+        r#"$row = json_decode($app->cli(['insert', 'posts', '{"title":"Hello plugins"}'])[1], true)['data'][0];
+           $denied = json_decode($app->cli(['action', 'seo_lookup', '{"url":"https://elsewhere.example/x"}'])[1], true);
+           echo json_encode(['summary' => $row['summary'], 'body' => $row['body'], 'denied' => $denied['error']['code'] ?? $denied]);"#,
+        &serde_json::Value::Null,
+    );
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "summary": "HELLO PLUGIN | Site",
+            "body": "seen: HELLO PLUGIN | Site",
+            "denied": "zero_fetch_host_denied",
+        })
+    );
 }

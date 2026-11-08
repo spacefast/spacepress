@@ -1,4 +1,4 @@
-import { action, defineConfig, fetch, text } from "zero";
+import { action, defineConfig, text } from "zero";
 
 // Each action calls fetch() and reports what a handler sees, or the refusal code.
 export default defineConfig({
@@ -11,6 +11,7 @@ export default defineConfig({
         const response = await fetch(input.url);
         return {
           status: response.status,
+          statusText: response.statusText,
           ok: response.ok,
           url: response.url,
           redirected: response.redirected,
@@ -19,6 +20,22 @@ export default defineConfig({
           cookie: response.headers.has("set-cookie"),
           body: await response.text(),
         };
+      },
+    }),
+    manual: action({
+      input: { url: text().notNull(), mode: text().notNull() },
+      access: "anyone",
+      async handler(input) {
+        const response = await fetch(input.url, { redirect: input.mode === "manual" ? "manual" : "error" });
+        return { status: response.status, location: response.headers.get("location") };
+      },
+    }),
+    form: action({
+      input: { url: text().notNull() },
+      access: "anyone",
+      async handler(input) {
+        const response = await fetch(input.url, { method: "POST", headers: [["x-pair", "1"]], body: new URLSearchParams({ q: "a b" }) });
+        return (await response.json()) as { received: string };
       },
     }),
     post: action({

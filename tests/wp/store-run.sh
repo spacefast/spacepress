@@ -48,13 +48,10 @@ echo "compile: first $(( (mid - start) / 1000000 )) ms, second $(( (end - mid) /
 ok "two builds, one runtime tree, two app trees"
 runtime=$(ls "$store/runtime")
 
-"$here/harness.sh" up --wp-content "$work/content" --bare > "$work/harness.json"
+# Only the platform plugins are installed and activated; the runtime and app come from the store
+# through the must-use loader, not as WordPress plugins.
+"$here/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
-# Platform plugins only; the runtime and app are not WordPress plugins here.
-for slug in secure-custom-fields action-scheduler mcp-adapter; do
-  zip=$(ls "$here/cache/$slug".*.zip | head -1)
-  wp plugin install "/zero-cache/$(basename "$zip")" --activate >/dev/null
-done
 wp config set ZERO_BUILD_STORE /var/www/html/wp-content/plugins/zero-store --type=constant >/dev/null
 wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR);' >/dev/null
 "$here/harness.sh" compose exec -T wordpress sh -c "cp /var/www/html/wp-content/plugins/zero-store/runtime/$runtime/zero-loader.php /var/www/html/wp-content/mu-plugins/zero-loader.php"
@@ -100,7 +97,7 @@ rollback=$(wp zero rollback)
 ok "rollback serves build one without migrating"
 
 dry=$(wp zero gc --history=0 --dry-run)
-[[ $(json data.removed <<< "$dry" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))') == 2 ]] || fail "dry gc lists build two's manifest, ready marker and app: $dry"
+[[ $(json data.removed <<< "$dry" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))') == 3 ]] || fail "dry gc lists build two's manifest, ready marker and app: $dry"
 [[ $(ls "$store/app" | wc -l) -eq 2 ]] || fail "dry gc removes nothing"
 gc=$(wp zero gc --history=0)
 removed=$(json data.removed <<< "$gc")

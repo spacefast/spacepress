@@ -125,6 +125,14 @@ pub static RULES: &[Rule] = &[
         example: ("/latest.txt", "the symbolic link is not carried over: x"),
     },
     Rule {
+        code: "Z08_DENIED_SOURCE_FILE",
+        feature: "credential file in the project (keys, .env files, .npmrc, .ssh/, .aws/)",
+        v2: "Space variables",
+        fix: "Remove it from the Space source; put secret values in Space variables.",
+        test: |_, r| r.starts_with(omitted::DENIED),
+        example: ("/id_rsa", "the credential file is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_SYNC",
         feature: "content sync of native posts",
         v2: "sync on a v2 collection",

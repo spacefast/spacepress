@@ -9,8 +9,10 @@
 //! the same URLs. The rest are refused here with what replaces them.
 use super::super::{Failure, fail, pointer};
 use crate::loader::Fs;
+use regex::{Regex, RegexBuilder};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 pub(super) const CLIENT: &str = "the 0.8 client app is not carried over";
 pub(super) const PAGES: &str = "the 0.8 page is not carried over";
@@ -22,6 +24,26 @@ pub(super) const CONNECTORS: &str = "the connector role is not carried over";
 pub(super) const SYNC: &str = "content sync is not carried over";
 pub(super) const PUBLIC: &str = "public/ is not carried over";
 pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
+pub(super) const DENIED: &str = "the credential file is not carried over";
+
+/// The monorepo's one source deny list, verbatim: `DENIED_SOURCE_PATH_PATTERN` in
+/// packages/common/src/utils/source-archive-policy.ts, compiled case-insensitively as there.
+/// A directory with one of these names is denied with its whole subtree.
+const DENIED_SOURCE_PATH_PATTERN: &str = r"(?:^|/)(?:\.git|\.hg|\.svn|node_modules|\.spacefast|\.stattic|\.ssh|\.aws|\.npmrc|\.netrc|\.pypirc|credentials\.json|\.env(?:rc)?(?:\.[^/]*)?|\.dev\.vars(?:\.[^/]*)?|(?:[^/]*[._-])?id_(?:rsa|dsa|ecdsa|ed25519)(?:[._-][^/]*)?|(?:[^/]*[.-])?private[.-]?key|[^/]*\.(?:pem|key|p12|pfx|crt|jks|keystore))(?:/|$)";
+/// `OS_METADATA_PATH_PATTERN` in the same file, case-sensitive.
+const OS_METADATA_PATH_PATTERN: &str = r"(?:^|/)(?:\.DS_Store|__MACOSX|\._[^/]*)(?:/|$)";
+static DENIED_SOURCE_PATH: LazyLock<Regex> = LazyLock::new(|| {
+    RegexBuilder::new(DENIED_SOURCE_PATH_PATTERN)
+        .case_insensitive(true)
+        .build()
+        .expect("deny list")
+});
+static OS_METADATA_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(OS_METADATA_PATH_PATTERN).expect("OS metadata"));
+/// Denied directories that hold checkouts and dependencies, not credentials: never source or
+/// content, and nearly every local checkout has one, so they are skipped without an error.
+const SKIPPED_DIRECTORIES: &[&str] = &[".git", ".hg", ".svn", "node_modules", ".spacefast", ".stattic"];
+/// Directories 0.8 never published beyond the deny list (publish-policy's `IGNORED_SEGMENTS`).
+const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".zero", ".sf"];
 
 /// Roots that hold the capsule's source, never served as content.
 const SOURCE_ROOTS: &[&str] = &["client", "server", "shared", "pages"];
@@ -38,31 +60,9 @@ const REPOSITORY_FILES: &[&str] = &[
     "yarn.lock",
     "package.json",
     ".gitignore",
-    ".npmrc",
-    ".netrc",
     "_routes.json",
 ];
 const REPOSITORY_ROOTS: &[&str] = &[".github", "test", "tests", "tools"];
-/// Segments the platform never publishes, at any depth.
-const IGNORED_SEGMENTS: &[&str] = &[
-    ".aws",
-    ".git",
-    ".hg",
-    ".ssh",
-    ".svn",
-    ".wrangler",
-    ".vercel",
-    ".netlify",
-    ".turbo",
-    ".cache",
-    ".zero",
-    "node_modules",
-    ".spacefast",
-    ".stattic",
-    ".sf",
-    ".DS_Store",
-    "__MACOSX",
-];
 const CODE: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
 /// The rule files 0.8 compiled into routing instead of serving.
 const RULE_FILES: &[&str] = &["_redirects", "_headers"];
@@ -87,15 +87,35 @@ pub(super) struct Omitted {
     pub carried: Vec<String>,
 }
 
-fn ignored(relative: &str) -> bool {
-    let segments: Vec<&str> = relative.split('/').collect();
-    segments.iter().any(|s| {
-        IGNORED_SEGMENTS.contains(s)
-            || s.starts_with("._")
-            || s.starts_with(".env")
-            || s.starts_with(".dev.vars")
-            || [".pem", ".key", ".p12", ".pfx"].iter().any(|e| s.ends_with(e))
-    })
+/// What the sweep does with a capsule-relative path before deciding whether 0.8 served it.
+#[derive(PartialEq)]
+enum Policy {
+    /// Never source or content (OS metadata, checkouts, dependencies, unpublished tool state).
+    Skip,
+    /// On the source deny list as a credential: an error, never carried and never dropped.
+    Denied,
+    Keep,
+}
+
+fn policy(relative: &str) -> Policy {
+    if OS_METADATA_PATH.is_match(relative) {
+        return Policy::Skip;
+    }
+    // The first denied segment decides: `.git/.env` is checkout state, `.env/x` a credential.
+    for segment in relative.split('/') {
+        if DENIED_SOURCE_PATH.is_match(segment) {
+            let lower = segment.to_ascii_lowercase();
+            return if SKIPPED_DIRECTORIES.contains(&lower.as_str()) {
+                Policy::Skip
+            } else {
+                Policy::Denied
+            };
+        }
+        if UNPUBLISHED_DIRECTORIES.contains(&segment) {
+            return Policy::Skip;
+        }
+    }
+    Policy::Keep
 }
 
 /// Whether 0.8 served `relative` as static content (zero-compile's `isZeroPublicStaticPath`).
@@ -107,31 +127,41 @@ fn served(relative: &str) -> bool {
         || REPOSITORY_FILES.contains(&relative)
         || super::CONFIG_FILES.contains(&relative)
         || relative == "spacefast.config.ts"
-        || relative == ".env.server"
-        || relative == ".env.lakebed.server"
         || relative == "theme.json"
         || (root == "content" && CODE.contains(&extension))
         || (relative.starts_with("tsconfig") && relative.ends_with(".json"))
         || CODE.contains(&extension)
-        || ignored(relative))
+        || policy(relative) != Policy::Keep)
 }
 
-/// Every file under `dir`, capsule-relative, and every symbolic link (never followed: a link can
-/// point outside the project or at a secret the ignore list would have kept out).
-fn walk(fs: &dyn Fs, root: &Path, dir: &Path, out: &mut Vec<PathBuf>, links: &mut Vec<PathBuf>) {
+/// A capsule's files, capsule-relative, sorted.
+#[derive(Default)]
+struct Tree {
+    files: Vec<PathBuf>,
+    /// Symbolic links, never followed: one can point outside the project or at a credential.
+    links: Vec<PathBuf>,
+    /// Files on the source deny list as credentials, each file of a denied directory included.
+    denied: Vec<PathBuf>,
+}
+
+fn walk(fs: &dyn Fs, root: &Path, dir: &Path, tree: &mut Tree, denied: bool) {
     let mut entries = fs.read_dir(dir).unwrap_or_default();
     entries.sort();
     for path in entries {
         let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-        if ignored(&relative.to_string_lossy().replace('\\', "/")) {
-            continue;
-        }
+        let inside = match policy(&relative.to_string_lossy().replace('\\', "/")) {
+            Policy::Skip if !denied => continue,
+            Policy::Denied => true,
+            _ => denied,
+        };
         if fs.is_symlink(&path) {
-            links.push(relative);
+            if inside { &mut tree.denied } else { &mut tree.links }.push(relative);
         } else if fs.is_dir(&path) {
-            walk(fs, root, &path, out, links);
+            walk(fs, root, &path, tree, inside);
+        } else if inside {
+            tree.denied.push(relative);
         } else {
-            out.push(relative);
+            tree.files.push(relative);
         }
     }
 }
@@ -154,9 +184,19 @@ pub(super) fn sweep(
         files: BTreeMap::new(),
         carried: vec![],
     };
-    let mut files = vec![];
-    let mut links = vec![];
-    walk(fs, root, root, &mut files, &mut links);
+    let mut tree = Tree::default();
+    walk(fs, root, root, &mut tree, false);
+    let Tree { files, links, denied } = tree;
+    for path in &denied {
+        let name = path.to_string_lossy().replace('\\', "/");
+        errors.push(
+            fail(
+                &format!("/{}", name.replace('~', "~0")),
+                format!("{DENIED}: {name} is on the source deny list, so the candidate leaves it out"),
+            )
+            .located(name.clone(), 1, 1),
+        );
+    }
     // A link inside a source root is the converters' to refuse; anywhere else it would be served.
     for link in &links {
         let name = link.to_string_lossy().replace('\\', "/");

@@ -379,12 +379,72 @@ fn omissions_are_errors_and_static_files_carry_over() {
     assert_eq!(
         refused,
         [
+            ("Z08_DENIED_SOURCE_FILE", ".env.server"),
             ("Z08_OMITTED_SYMLINK", "docs/outside"),
             ("Z08_OMITTED_SYMLINK", "public-secret.txt")
         ],
         "{report:#}"
     );
     assert!(!out.exists());
+
+    // The monorepo's source deny list (source-archive-policy.ts), one case per alternative: a
+    // credential is an error at its file, never carried and never dropped. Checkout state,
+    // dependencies and OS metadata are skipped without one.
+    let secrets = temp.path().join("secrets");
+    copy_tree(&fixture("server-only"), &secrets);
+    let denied = [
+        "deploy_id_rsa",
+        "backup.id_rsa",
+        "id_ed25519.pub",
+        "cert.PEM",
+        "docs/.npmrc",
+        "docs/.netrc",
+        ".pypirc",
+        ".env.production",
+        ".dev.vars",
+        "credentials.json",
+        "x-private-key",
+        ".ssh/config",
+        ".aws/credentials",
+        ".env/secret",
+    ];
+    let skipped = [
+        ".git/config",
+        "node_modules/left-pad/index.js",
+        ".DS_Store",
+        "docs/._guide.txt",
+    ];
+    for path in denied.iter().chain(&skipped).chain(&["invalid_rsa_key.json"]) {
+        let file = secrets.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, "{\"secret\":1}\n").unwrap();
+    }
+    let out = temp.path().join("secrets-out");
+    let (ok, report) = migrate(&secrets, &out, &["--space", "spc_migrate_test", "--dry-run"]);
+    assert!(!ok);
+    let mut refused: Vec<(&str, &str)> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
+        .collect();
+    refused.sort();
+    let mut expected: Vec<(&str, &str)> = denied.iter().map(|p| ("Z08_DENIED_SOURCE_FILE", *p)).collect();
+    expected.sort();
+    assert_eq!(refused, expected, "{report:#}");
+    let carried: Vec<&str> = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["reason"].as_str().unwrap().starts_with("static file carried over"))
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    // A fixture that only contains the letters is content.
+    assert_eq!(
+        carried,
+        ["/humans.txt", "/index.html", "/invalid_rsa_key.json"],
+        "{report:#}"
+    );
 
     // A server-only project: no errors, and its static files land in public/ at the same URLs.
     let out = temp.path().join("server-only");

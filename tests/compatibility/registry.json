@@ -729,6 +729,10 @@
       "feature": "symbolic link in the project"
     },
     {
+      "code": "Z08_DENIED_SOURCE_FILE",
+      "feature": "credential file in the project (keys, .env files, .npmrc, .ssh/, .aws/)"
+    },
+    {
       "code": "Z08_OMITTED_SYNC",
       "feature": "content sync of native posts"
     },

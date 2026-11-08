@@ -8,20 +8,20 @@ generators (`listAll`, `search`), `for await`, `ReadableStream` bodies and
 plain blocking model would diverge silently as soon as two promises are alive
 at once. This record fixes the model before the code lands.
 
-## Two compilation modes per program
+## Two domains, one queue
 
-- **Blocking mode** (unchanged): the program never creates a promise value. No
-  imported async JavaScript is reachable, and there is no `new Promise`, no
-  promise statics or `then`, no generator, and no unawaited async call. No job
-  can ever be queued, so no ordering is observable, and blocking calls are
-  exact. Generated PHP for these programs does not change.
-- **Promise mode**: the program reaches any promise value. Every async function
-  call returns a `\Zero\JsPromise`, and every `await` compiles to
-  `\Zero\Js::await($value)`. The handler is the root async body. The runtime
-  drives the job queue until the handler's promise settles.
+- **Authored TypeScript** is unchanged. `await` on Zero database calls and on
+  Zero's own async functions compiles to a plain blocking call. No job can be
+  queued, so ordering cannot be observed, and the blocking call is exact.
+- **Imported JavaScript** (`.js`/`.mjs`/`.cjs` modules) holds promises as
+  values. An `async` function call returns a `\Zero\JsPromise`, and `await`
+  compiles to `\Zero\JsJobs::await($value, 'file:line:col')`. When TypeScript
+  awaits a value returned from JavaScript, it drives the same queue.
 
-The compiler picks the mode per program from the reachable code. The choice is
-not per function, because the mode only matters once a job exists.
+A program's generated PHP changes only when it can queue a job. Each root (an
+action, route, hook or job handler) is then wrapped in `\Zero\JsJobs::run`. The
+root starts on an empty queue and drains it at its end. A root called from
+inside another root (a hook during an action) shares its caller's queue.
 
 ## The job queue (ECMA-262 §27.2, after QuickJS and Boa)
 
@@ -49,10 +49,10 @@ whole call stack. That is exactly what `await` needs, and it composes with PHP
 
 - Calling an async function starts a Fiber and runs its body synchronously until
   its first `await`, then returns the pending `JsPromise`, as JavaScript does.
-- `Js::await($v)` inside a Fiber registers a reaction on `PromiseResolve($v)`
+- `JsJobs::await($v)` inside a Fiber registers a reaction on `PromiseResolve($v)`
   that resumes the Fiber as a job, then calls `Fiber::suspend()`. A rejection
   resumes the Fiber with `throw`, so `try`/`catch`/`finally` work unchanged.
-- `Js::await` at the root (the handler, outside any Fiber) runs the queue until
+- `JsJobs::await` at the root (the handler, outside any Fiber) runs the queue until
   that promise settles.
 - **Settling without a timer or I/O.** If the queue empties and the promise is
   still pending, the loop asks `\Zero\Timers::runNext()` (agent 6,
@@ -137,12 +137,29 @@ goes the other way, so large bodies never buffer whole. Chunks are agent 3's
 
 ## p-map
 
-p-map 7 compiles under this model without changes, and is not a divergence.
-Its runners are real async functions on Fibers and interleave in exact
-microtask order. Only I/O completion order is fixed, as above. The documented
-divergence is narrower than "concurrency becomes sequential": the mapper calls
-start in the same order and interleave at the same `await` points as in
-JavaScript, but each piece of real I/O blocks the request while it runs.
+p-map 7 needs no special handling under this model, and its concurrency is not a
+divergence. Its runners are ordinary async functions on Fibers, and they
+interleave in exact microtask order. Mapper calls start in the same order, and
+suspend at the same `await` points, as in JavaScript. What differs is wall-clock
+time: each piece of real I/O blocks the request while it runs, so I/O completes
+in issue order (a legal JavaScript schedule, per "The job queue" above). That is
+documented, not refused. Refusing would block every library that uses
+`Promise.all` for fan-out, when the result is still exact.
+
+As measured on this branch, p-map's `index.js` still stops before the async
+layer, on two diagnostics from the language-gaps lane: `index in errors` (the `in`
+operator) and a destructured parameter default that reads an earlier binding
+(`backpressure = concurrency`). Neither is async. Once both land, p-map has no
+async construct left that this model refuses.
+
+## TypeScript stays explicit
+
+Authored TypeScript keeps the typed blocking model: `await` on Zero database calls
+and Zero's own async functions. Awaiting a value from imported JavaScript drives
+the job queue. `for await` and generators in authored TypeScript are located
+refusals ("only work in imported JavaScript"). A program pays for the job queue
+only when its generated code queues jobs. Otherwise its PHP does not change, and
+each root is wrapped in `Zero\JsJobs::run` only when needed.
 
 ## Refusals that remain
 

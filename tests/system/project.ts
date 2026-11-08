@@ -35,8 +35,8 @@ export function upgrade(project: string): void {
 }
 
 /** `zero sync <dir> --only posts --no-commit --json` with the given site credentials; the result's data. */
-export function sync(dir: string, credentials: string[]): { applied: number; conflicts: unknown[]; refused: string[] } {
-  const r = spawnSync(zeroBin, ["sync", dir, "--only", "posts", "--no-commit", "--json", ...credentials], { encoding: "utf8" });
+export function sync(dir: string, site: string, appPassword: string): { applied: number; conflicts: unknown[]; refused: string[] } {
+  const r = spawnSync(zeroBin, ["sync", dir, "--only", "posts", "--no-commit", "--json", "--site", site], { encoding: "utf8", env: { ...process.env, ZERO_APP_PASSWORD: appPassword } });
   assert.equal(r.status, 0, r.stdout + r.stderr);
   return JSON.parse(r.stdout).data;
 }

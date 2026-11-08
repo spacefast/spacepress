@@ -15,6 +15,9 @@ pub struct Module {
     pub file: u32,
     pub path: std::path::PathBuf,
     pub body: Vec<Stmt>,
+    /// Set for CommonJS sources: the evaluator binds `module`, `exports` and `require`, and
+    /// exports the final `module.exports` as `default` plus these statically assigned names.
+    pub commonjs: Option<Vec<String>>,
     /// Compiled in the checked-dynamic domain: raw JavaScript, and installed
     /// package TypeScript, whose annotations are erased while lowering.
     pub dynamic: bool,

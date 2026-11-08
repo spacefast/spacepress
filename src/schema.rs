@@ -463,6 +463,8 @@ pub struct Schema {
     pub routes: IndexMap<String, Route>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
+    /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
+    pub wp_views: bool,
     pub files: IndexMap<String, FileBucket>,
     pub webhooks: Vec<Json>,
     pub media: Json,
@@ -482,6 +484,7 @@ impl Default for Schema {
             jobs: IndexMap::new(),
             routes: IndexMap::new(),
             wp_hooks: Vec::new(),
+            wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
             media: serde_json::json!({"sizes": {}}),

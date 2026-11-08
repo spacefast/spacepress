@@ -108,8 +108,23 @@ there is no inline form in `defineConfig`.
 only when its PHP signature maps soundly: no by-reference parameters, no
 echoing, no reliance on globals a handler cannot see. Types come from
 `php-stubs/wordpress-stubs` at the version matching the booted WordPress,
-through the same generator and pin file as the hook catalog. A `WP_Error`
-result throws an `HttpError` the same way an ability's does.
+through the same generator and pin file as the hook catalog. The generator
+refuses a by-reference parameter and checks that each allowlisted parameter
+list is a prefix of the real signature with only optional parameters after
+it.
+
+- **Errors are thrown, not returned.** A `WP_Error` result throws an
+  `HttpError` with its code, and its `status` or 422. We rejected a `Result`
+  shape: every call site would have to unwrap, and the handler's transaction
+  already rolls back on a throw. A function whose result is ambiguous,
+  `wp_insert_post` returning `0`, is called with `wp_error: true` so failure
+  is always an error.
+- **Caches follow the transaction.** WordPress caches options and posts in
+  memory, and a rollback can't undo that. Each call records the options and
+  posts it writes with the connection, which already cleans them on rollback.
+- **Calls lower to `Zero\Wp\Functions::call('<name>', [args])`.** The name
+  comes from the allowlist at compile time, so the runtime never calls a name
+  that came from data.
 
 ## Capability records
 

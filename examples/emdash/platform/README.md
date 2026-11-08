@@ -78,9 +78,9 @@ The config's optional webhook integration expects `PLATFORM_HOOK_URL` and
 tasks, point these at a real receiver you control:
 
 ```sh
-./target/debug/zero dev wp "$platform_project" -- config set PLATFORM_HOOK_URL https://your-receiver.example/events
-./target/debug/zero dev wp "$platform_project" -- config set PLATFORM_HOOK_SECRET your-disposable-test-secret
-./target/debug/zero dev wp "$platform_project" -- action-scheduler run --hooks=zero_job
+./target/debug/zero wp --site "$platform_project" config set PLATFORM_HOOK_URL https://your-receiver.example/events
+./target/debug/zero wp --site "$platform_project" config set PLATFORM_HOOK_SECRET your-disposable-test-secret
+./target/debug/zero wp --site "$platform_project" action-scheduler run --hooks=zero_job
 ```
 
 The automated command configures its own receiver. Its inbound `receive` action

@@ -1,6 +1,6 @@
 <?php
 // Test stack only: keep outgoing mail in the uploads dir instead of sending it, so suites can read
-// sign-in codes (wp zero-identity, §6.2) without an SMTP server.
+// sign-in codes (zero-identity, §6.2) without an SMTP server.
 add_filter('pre_wp_mail', static function ($short, array $atts) {
     $dir = WP_CONTENT_DIR . '/zero-test-mail';
     wp_mkdir_p($dir);

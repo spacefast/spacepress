@@ -46,6 +46,10 @@ pub struct Func {
     pub is_async: bool,
     /// `function*`: the body compiles to a PHP Generator behind the JavaScript iterator protocol.
     pub is_generator: bool,
+    /// An ordinary function whose first parameter is its call receiver (`this`), added because
+    /// the body reads `this`. Calls supply it; it is not an argument. Class methods also take
+    /// `this` first but their callers pass it explicitly, so this is false for them.
+    pub receives_this: bool,
     pub ret: Option<TyAnn>,
     pub type_params: Vec<String>,
     pub span: Span,
@@ -120,6 +124,7 @@ impl ClassField {
             body: FnBody::Expr(self.init.as_ref()?.clone()),
             is_async: false,
             is_generator: false,
+            receives_this: false,
             ret: self.ann.clone(),
             type_params: vec![],
             span: self.span,

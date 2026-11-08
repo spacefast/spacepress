@@ -385,7 +385,13 @@ pub struct Action {
     pub access: Access,
     pub agents: bool,
     pub idempotent: bool,
+    /// Reads only: the Ability runs over GET, and the facade serves `GET /actions/<name>`.
+    pub readonly: bool,
+    /// Removes or overwrites data an agent should confirm first (the Ability's `destructive`).
+    pub destructive: bool,
     pub signature: Option<Json>,
+    /// The handler's result as a JSON Schema, from its TypeScript return type (filled after compile).
+    pub output: Option<Json>,
 }
 
 /// One `wp-hooks/` handler, registered with `add_filter`/`add_action`.

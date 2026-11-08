@@ -12,6 +12,27 @@ export const relations = (r: unknown) => ({});
 function refsHelper() { return 1; }
 const refsSaved: { f?: () => number } = {};
 export const actions = {
+  /** Annotated from its options (spec §3a): reads only, so core runs it over GET. */
+  refsCount: action({
+    input: { body: text().notNull() },
+    access: "anyone",
+    readonly: true,
+    async handler({ body }) {
+      const rows = await db.query.comments.findMany({ where: { body }, columns: { id: true } });
+      return { body, count: rows.length, ids: rows.map((r) => r.id) };
+    },
+  }),
+  /** Destructive and idempotent: core runs it over DELETE. */
+  refsPurge: action({
+    input: { body: text().notNull() },
+    access: "editor",
+    destructive: true,
+    idempotent: true,
+    async handler({ body }) {
+      const gone = await db.delete(comments).where({ body }).returning();
+      return gone.length;
+    },
+  }),
   refsEmpty: action({ input: {}, access: "editor", handler: () => ({}) }),
   refsWire: action({ input: {}, access: "editor", handler: () => ({ f: refsHelper, a: [refsHelper, NaN] }) }),
   refsEcho: action({

@@ -184,6 +184,77 @@ pub fn schema_ty(s: &Value, warnings: &mut Vec<String>, at: &str) -> Ty {
     }))
 }
 
+/// An action result type as the JSON Schema its Ability publishes (`output_schema`), the inverse of
+/// `schema_ty` for what results can be. `None` for a value with no JSON shape the schema could state
+/// (`unknown`, functions, unions of objects): the Ability then publishes no output schema, so core
+/// never refuses a result the type system allowed. Every node keeps the `type` core's validator needs.
+pub fn ty_schema(t: &Ty) -> Option<Value> {
+    use serde_json::json;
+    let t = types::json_wire_type(t);
+    Some(match &t {
+        Ty::Instance(_, fields) => return ty_schema(fields),
+        Ty::Num | Ty::FreshNumLit(_) | Ty::Date => json!({ "type": "number" }),
+        Ty::NumLit(n) if n.fract() == 0.0 && n.is_finite() => json!({ "type": "integer", "enum": [*n as i64] }),
+        Ty::NumLit(n) => json!({ "type": "number", "enum": [n] }),
+        Ty::Str => json!({ "type": "string" }),
+        Ty::StrLit(v) | Ty::FreshStrLit(v) => json!({ "type": "string", "enum": [v] }),
+        Ty::Bool | Ty::FreshBoolLit(_) => json!({ "type": "boolean" }),
+        Ty::BoolLit(b) => json!({ "type": "boolean", "enum": [b] }),
+        Ty::Null => json!({ "type": "null" }),
+        Ty::Array(el) | Ty::NonEmptyArray(el) => json!({ "type": "array", "items": ty_schema(el)? }),
+        Ty::Tuple(items) | Ty::ArrayLiteral(items) => {
+            let items = items.iter().map(ty_schema).collect::<Option<Vec<_>>>()?;
+            json!({ "type": "array", "items": items, "minItems": items.len(), "maxItems": items.len() })
+        }
+        Ty::Obj(fields) => {
+            let mut props = serde_json::Map::new();
+            let mut required = Vec::new();
+            for (k, (ft, optional)) in fields {
+                props.insert(k.clone(), ty_schema(ft)?);
+                if !optional {
+                    required.push(Value::String(k.clone()));
+                }
+            }
+            let mut o = json!({ "type": "object" });
+            if !props.is_empty() {
+                o["properties"] = Value::Object(props);
+            }
+            if !required.is_empty() {
+                o["required"] = Value::Array(required);
+            }
+            o
+        }
+        Ty::Map(v) => json!({ "type": "object", "additionalProperties": ty_schema(v)? }),
+        Ty::Union(items) => {
+            // Scalars (and null) merge into one `type` list; anything structured has no single shape.
+            let mut kinds: Vec<Value> = Vec::new();
+            let mut values: Vec<Value> = Vec::new();
+            let mut literal_only = true;
+            for item in items {
+                let s = ty_schema(item)?;
+                let kind = s.get("type")?.as_str()?.to_string();
+                if matches!(kind.as_str(), "object" | "array") {
+                    return None;
+                }
+                match s.get("enum") {
+                    Some(Value::Array(e)) => values.extend(e.iter().cloned()),
+                    _ if kind == "null" => values.push(Value::Null),
+                    _ => literal_only = false,
+                }
+                if !kinds.contains(&Value::String(kind.clone())) {
+                    kinds.push(Value::String(kind));
+                }
+            }
+            let mut o = json!({ "type": kinds });
+            if literal_only {
+                o["enum"] = Value::Array(values);
+            }
+            o
+        }
+        _ => return None,
+    })
+}
+
 fn object(o: &serde_json::Map<String, Value>, warnings: &mut Vec<String>, at: &str) -> Ty {
     let props = o.get("properties").and_then(Value::as_object);
     if props.is_none_or(|p| p.is_empty()) {
@@ -469,6 +540,44 @@ pub fn gen_ts(catalog: &Catalog) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn action_results_become_output_schemas_core_can_validate() {
+        let obj = |fields: &[(&str, Ty, bool)]| {
+            Ty::Obj(
+                fields
+                    .iter()
+                    .map(|(k, t, o)| (k.to_string(), (t.clone(), *o)))
+                    .collect(),
+            )
+        };
+        let row = obj(&[("id", Ty::Num, false), ("note", Ty::Str.nullable(), true)]);
+        assert_eq!(
+            ty_schema(&Ty::Promise(Box::new(row.clone()))).or_else(|| ty_schema(&row)),
+            Some(json!({
+                "type": "object",
+                "properties": { "id": { "type": "number" }, "note": { "type": ["string", "null"] } },
+                "required": ["id"],
+            }))
+        );
+        assert_eq!(
+            ty_schema(&Ty::Array(Box::new(Ty::Bool))),
+            Some(json!({ "type": "array", "items": { "type": "boolean" } }))
+        );
+        assert_eq!(
+            ty_schema(&Ty::union([Ty::StrLit("a".into()), Ty::StrLit("b".into())])),
+            Some(json!({ "type": ["string"], "enum": ["a", "b"] }))
+        );
+        assert_eq!(
+            ty_schema(&Ty::Map(Box::new(Ty::Num))),
+            Some(json!({ "type": "object", "additionalProperties": { "type": "number" } }))
+        );
+        // Undefined and void results are null on the wire.
+        assert_eq!(ty_schema(&Ty::Void), Some(json!({ "type": "null" })));
+        // No single JSON shape: no output schema, so core never refuses what the types allow.
+        assert_eq!(ty_schema(&Ty::Unknown), None);
+        assert_eq!(ty_schema(&Ty::union([row, Ty::Num])), None);
+    }
 
     #[test]
     fn json_schema_maps_what_abilities_use_and_warns_on_the_rest() {

@@ -279,3 +279,42 @@ class McpClient {
     return body.result;
   }
 }
+
+// Actions as Abilities (spec §3a): annotations from the action's options, the output schema from the
+// handler's TypeScript return type, run through core's own /run route.
+test("an action's options annotate its Ability, and its return type is the output schema", async () => {
+  const byName: Record<string, any> = {};
+  for (const name of ["blog/refs-count", "blog/refs-purge", "blog/approve-comment"]) {
+    byName[name] = (await http("GET", `${abilities}/abilities/${name}`, { as: "admin" })).json;
+  }
+  const count = byName["blog/refs-count"];
+  // Core lists all three annotations, null when unset.
+  assert.deepEqual(count.meta.annotations, { readonly: true, destructive: null, idempotent: true });
+  assert.deepEqual(count.output_schema, {
+    type: "object",
+    properties: { body: { type: "string" }, count: { type: "number" }, ids: { type: "array", items: { type: "number" } } },
+    required: ["body", "count", "ids"],
+  });
+  assert.deepEqual(byName["blog/refs-purge"].meta.annotations, { readonly: null, destructive: true, idempotent: true });
+  assert.deepEqual(byName["blog/refs-purge"].output_schema, { type: "number" });
+  assert.deepEqual(byName["blog/approve-comment"].meta.annotations, { readonly: null, destructive: null, idempotent: null });
+});
+
+test("core's run route serves actions by their annotations: GET for readonly, DELETE for destructive", async () => {
+  const body = `Purge me ${run}`;
+  const post = await ok("POST", "/posts", { as: "editor", body: { title: `Abilities ${run}` } });
+  const comment = await ok("POST", "/comments", { as: "editor", body: { postId: post.id, name: "A", body } });
+  // A readonly action runs anonymously over GET (its own permission callback; `anyone`).
+  const counted = await runAbility("blog/refs-count", { body }, "anonymous", "GET");
+  assert.deepEqual([counted.status, counted.json], [200, { body, count: 1, ids: [comment.id] }]);
+  const posted = await runAbility("blog/refs-count", { body }, "anonymous", "POST");
+  assert.equal(posted.status, 405, "core refuses a readonly ability over POST");
+  // Destructive + idempotent: DELETE, with the action's own access rule.
+  assert.equal((await runAbility("blog/refs-purge", { body }, "subscriber", "DELETE")).status, 403);
+  const purged = await runAbility("blog/refs-purge", { body }, "editor", "DELETE");
+  assert.deepEqual([purged.status, purged.json], [200, 1]);
+  assert.deepEqual((await runAbility("blog/refs-count", { body }, "anonymous", "GET")).json.count, 0);
+  // Errors are core's WP_Error JSON with Zero's code, status and pointer.
+  const bad = await runAbility("blog/refs-count", {}, "anonymous", "GET");
+  assert.deepEqual([bad.status, bad.json.code, bad.json.data?.pointer], [422, "zero_invalid_input", "/body"]);
+});

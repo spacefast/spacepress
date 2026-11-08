@@ -431,6 +431,18 @@ Throwing anything aborts the request and rolls back every write in it.
   `zero` also checks a timestamp so old deliveries are refused.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
+- `readonly: true` marks an action that only reads; `destructive: true` one
+  that deletes or overwrites data, so agents confirm before running it.
+
+Each action is also the Ability `<app>/<kebab-name>`. Its annotations come from
+these options, its input schema from `input`, and its output schema from the
+handler's TypeScript return type (left out when the type has no single JSON
+shape). Core's run route, `/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`,
+serves it with the action's own access rule, so an `access: "anyone"` action
+runs anonymously. Core picks the method from the annotations: `GET` for
+`readonly`, `DELETE` for `destructive` with `idempotent`, `POST` otherwise.
+Errors are core's `WP_Error` JSON, with Zero's code (`zero_<code>`), status
+and `data.pointer`.
 
 ## HTTP routes
 

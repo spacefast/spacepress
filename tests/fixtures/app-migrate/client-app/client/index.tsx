@@ -1,4 +1,5 @@
 import { Link, Route, Router, Routes, useAuth, useParams } from "@spacefast/zero/client";
+import { Feed } from "./Feed";
 import { Shelf } from "./Shelf";
 import "./styles.css";
 
@@ -18,6 +19,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Shelf name="inbox" />} />
           <Route path="/shelves/:shelf" element={<ShelfPage />} />
+          <Route path="/feed" element={<Feed shelf="inbox" />} />
         </Routes>
       </main>
     </Router>

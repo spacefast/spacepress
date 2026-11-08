@@ -7,8 +7,9 @@
 // handler's input names in 0.8's positional order.
 //
 // What differs from 0.8: reads refresh after this browser's own writes and when the tab regains
-// focus, not when another visitor writes; a visitor gets a v2 guest session on the first write that
-// needs one, kept in sessionStorage.
+// focus, not when another visitor writes. A visitor gets a v2 guest session on the first request
+// that needs one, kept in sessionStorage with its refresh token: an expired access token is
+// refreshed, so the guest keeps its identity and the rows it owns.
 import { h, createContext, toChildArray } from "./preact/preact.js";
 import { useContext, useEffect, useMemo, useState } from "./preact/hooks.js";
 import HANDLERS from "./handlers.js";
@@ -45,17 +46,47 @@ function failure(res, parsed, fallback) {
 }
 
 let guesting = null;
+/** Starts a guest session; only for a visitor who holds none. */
 function startGuest() {
   guesting ??= send("POST", "/auth/guest", {})
     .then(({ res, parsed }) => {
-      if (!res.ok || typeof parsed?.data?.accessToken !== "string") throw failure(res, parsed, "Could not start a guest session.");
-      hold({ accessToken: parsed.data.accessToken });
+      const out = parsed?.data;
+      if (!res.ok || typeof out?.accessToken !== "string") throw failure(res, parsed, "Could not start a guest session.");
+      hold({ accessToken: out.accessToken, refreshToken: out.refreshToken, clientId: out.clientId });
       emitAuth();
     })
     .finally(() => {
       guesting = null;
     });
   return guesting;
+}
+
+let renewing = null;
+/**
+ * Renews the held session with its refresh token: same user, new access token. Resolves true when
+ * the session was renewed (or another call already renewed it), false when the issuer refused it.
+ */
+function renew(sent) {
+  renewing ??= (async () => {
+    const current = held();
+    if (current?.accessToken !== sent.accessToken) return current !== null;
+    if (typeof current.refreshToken !== "string") return false;
+    const config = await send("GET", "/auth/config");
+    const issuer = config.parsed?.data?.issuer;
+    if (!config.res.ok || typeof issuer !== "string") return false;
+    const res = await fetch(`${issuer.replace(/\/+$/, "")}/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: current.clientId ?? "" }).toString(),
+    });
+    const out = await res.json().catch(() => null);
+    if (!res.ok || typeof out?.access_token !== "string") return false;
+    hold({ ...current, accessToken: out.access_token, refreshToken: out.refresh_token ?? current.refreshToken });
+    return true;
+  })().finally(() => {
+    renewing = null;
+  });
+  return renewing;
 }
 
 /** The v2 input for a 0.8 call: positional arguments become the handler's named inputs. */
@@ -70,16 +101,38 @@ export function input(name, args) {
   return out;
 }
 
+/**
+ * `usePaginatedQuery(name, args)` as the handler's positional arguments: the `PaginationOptions`
+ * parameter gets `{ numItems, cursor }`, and every other parameter the `args` entry of its name.
+ */
+export function paginatedArgs(name, args, pagination) {
+  const handler = HANDLERS[name];
+  if (!handler) throw new Error(`Zero has no query, mutation or action named ${name}.`);
+  if (!handler.pagination) throw new Error(`${name} takes no PaginationOptions, so usePaginatedQuery cannot call it.`);
+  return handler.inputs.map((key) => (key === handler.pagination ? pagination : args?.[key]));
+}
+
 /** Runs one 0.8 query, mutation or action as its v2 action and returns the result. */
 export async function run(name, args = []) {
   const body = input(name, args);
   const path = `/actions/${encodeURIComponent(name)}`;
   let { res, parsed, session } = await send("POST", path, body);
-  // 0.8 gave every visitor a guest identity; v2 starts one on the first write that needs it.
   if (res.status === 401) {
-    if (session) hold(null);
-    await startGuest();
-    ({ res, parsed } = await send("POST", path, body));
+    if (!session) {
+      // 0.8 gave every visitor a guest identity; v2 starts one when a request needs it.
+      await startGuest();
+      ({ res, parsed } = await send("POST", path, body));
+    } else if (parsed?.code === "unauthenticated") {
+      // The held token was rejected (expired or revoked): renew it and keep the same user. A
+      // refused renewal ends the session; the next request starts a new guest.
+      if (await renew(session)) ({ res, parsed } = await send("POST", path, body));
+      else {
+        hold(null);
+        emitAuth();
+      }
+    }
+    // Any other 401 is the handler refusing this user (a guest where sign-in is required): the
+    // session stays as it is.
   }
   if (!res.ok) throw failure(res, parsed, `Zero ${name} request failed.`);
   return parsed?.data ?? null;
@@ -165,7 +218,7 @@ export function usePaginatedQuery(name, args, { initialNumItems = 20 } = {}) {
     setCursor(null);
     setPages([]);
   }, [scope, scopeKey]);
-  const current = useQuery(name, { ...args, pagination: { cursor, numItems: initialNumItems } });
+  const current = useQuery(name, ...paginatedArgs(name, args, { numItems: initialNumItems, cursor }));
   useEffect(() => {
     if (!current || !Array.isArray(current.page)) return;
     setPages((existing) => {

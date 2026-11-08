@@ -1,4 +1,4 @@
-import { action, boolean, capsule, mutation, query, string, table } from "@spacefast/zero/server";
+import { action, boolean, capsule, mutation, query, string, table, type PaginationOptions } from "@spacefast/zero/server";
 
 export default capsule({
   name: "Shelf Notes",
@@ -12,6 +12,9 @@ export default capsule({
   queries: {
     onShelf: query(async (ctx, shelf: string) =>
       ctx.db.notes.withIndex("by_shelf", (r) => r.eq("shelf", shelf)).collect()),
+    // The shelf first, then the page: usePaginatedQuery's options go to the second input.
+    page: query(async (ctx, shelf: string, options: PaginationOptions) =>
+      ctx.db.notes.withIndex("by_shelf", (r) => r.eq("shelf", shelf)).paginate(options)),
   },
   mutations: {
     add: mutation(async (ctx, shelf: string, title: string) =>

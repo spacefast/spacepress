@@ -357,13 +357,12 @@ pub(super) struct Transformed {
     pub config: String,
     pub content_config: Option<String>,
     pub connector_roles: Value,
-    /// Each converted query, mutation and action: its name, its v2 input names in 0.8's positional
-    /// order, and whether the last one collects the rest arguments. The client bridge reads this.
-    pub handlers: Vec<(String, Vec<String>, bool)>,
+    /// Each converted query, mutation and action, as the client bridge calls it.
+    pub handlers: Vec<ClientHandler>,
 }
 
 /// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
-fn input_names(f: &Func) -> (Vec<String>, bool) {
+fn input_names(f: &Func, aliases: &BTreeMap<String, String>) -> ClientHandler {
     let mut names = vec![];
     for (position, p) in f.params.iter().skip(1).enumerate() {
         names.push(match &p.pat {
@@ -375,7 +374,28 @@ fn input_names(f: &Func) -> (Vec<String>, bool) {
             Pat::Obj { .. } | Pat::Arr { .. } => format!("arg{}", position + 1),
         });
     }
-    (names, f.params.last().is_some_and(|p| p.rest) && f.params.len() > 1)
+    // The parameter typed with 0.8's `PaginationOptions` (under any local alias) receives
+    // `usePaginatedQuery`'s `{ numItems, cursor }`.
+    let paginated = f.params.iter().skip(1).position(|p| {
+        matches!(&p.ann, Some(TyAnn::Ref(n, _, _)) if aliases.get(n).map(String::as_str) == Some("PaginationOptions"))
+    });
+    ClientHandler {
+        name: String::new(),
+        rest: f.params.last().is_some_and(|p| p.rest) && f.params.len() > 1,
+        pagination: paginated.map(|i| names[i].clone()),
+        inputs: names,
+    }
+}
+
+/// What the client bridge needs to call one converted handler.
+pub(super) struct ClientHandler {
+    pub name: String,
+    /// The v2 input names, in 0.8's positional order.
+    pub inputs: Vec<String>,
+    /// The last input collects the rest arguments.
+    pub rest: bool,
+    /// The input `usePaginatedQuery`'s `{ numItems, cursor }` goes to.
+    pub pagination: Option<String>,
 }
 
 pub(super) fn app(
@@ -729,8 +749,10 @@ pub(super) fn app(
                             functions: &functions,
                         },
                     )?;
-                    let (inputs, rest) = input_names(f);
-                    client_handlers.push((name.clone(), inputs, rest));
+                    client_handlers.push(ClientHandler {
+                        name: name.clone(),
+                        ..input_names(f, &aliases)
+                    });
                     Ok(converted)
                 })();
                 match result {

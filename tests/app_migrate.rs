@@ -1592,3 +1592,111 @@ fn copy_dir(from: &Path, to: &Path) {
         std::fs::copy(&path, target).unwrap();
     }
 }
+
+/// Runs `script` as an ES module in Node with the converted bridge's path as `process.argv[1]`.
+fn bridge(out: &Path, script: &str) -> Value {
+    let node = Command::new("node")
+        .args(["--input-type=module", "-e", script])
+        .arg(out.join("public/zero/client.js"))
+        .output()
+        .expect("node is required");
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    serde_json::from_slice(&node.stdout).unwrap()
+}
+
+/// `usePaginatedQuery("page", { shelf })` reaches `page(ctx, shelf, options: PaginationOptions)` with
+/// the shelf as the first input and `{ numItems, cursor }` as the second, as the action declares.
+#[test]
+fn the_client_bridge_maps_paginated_queries_onto_the_handler_inputs() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    let ran = bridge(
+        &out,
+        r#"
+const sent = [];
+globalThis.fetch = async (url, init) => {
+  sent.push(JSON.parse(init.body));
+  return new Response(JSON.stringify({ data: { page: [], isDone: true, continueCursor: null } }), { status: 200 });
+};
+const bridge = await import(process.argv[1]);
+await bridge.run("page", bridge.paginatedArgs("page", { shelf: "inbox" }, { numItems: 2, cursor: null }));
+console.log(JSON.stringify(sent[0]));
+"#,
+    );
+    assert_eq!(
+        ran,
+        serde_json::json!({ "shelf": "inbox", "options": { "numItems": 2, "cursor": null } })
+    );
+    // Those are exactly the inputs the generated action takes.
+    build(&out);
+    let plugin = out.join(".zero/wp-content/plugins/zero-app-shelf-notes/zero/app/schema.php");
+    let script = "echo json_encode(array_keys((require $argv[1])['actions']['page']['input']));";
+    let php = Command::new("php").args(["-r", script]).arg(plugin).output().unwrap();
+    assert!(php.status.success(), "{}", String::from_utf8_lossy(&php.stderr));
+    let inputs: Value = serde_json::from_slice(&php.stdout).unwrap();
+    assert_eq!(inputs, serde_json::json!(["shelf", "options"]));
+}
+
+/// A guest whose access token expired is refreshed and stays the same guest; a handler that refuses
+/// guests leaves the session alone; only a visitor with no session gets a new guest.
+#[test]
+fn the_client_bridge_keeps_a_guest_identity_across_token_expiry() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    // A server that issues guest-1 once, expires its first access token, and refreshes it.
+    let ran = bridge(
+        &out,
+        r#"
+const store = new Map();
+globalThis.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+const calls = [];
+let guests = 0;
+const json = (status, body) => new Response(JSON.stringify(body), { status });
+globalThis.fetch = async (url, init) => {
+  const auth = init.headers?.authorization ?? null;
+  calls.push(`${init.method} ${url} ${auth ?? "-"}`);
+  if (url.endsWith("/auth/guest")) return json(201, { data: { accessToken: "a1", refreshToken: "r1", clientId: "guests", user: { id: ++guests } } });
+  if (url.endsWith("/auth/config")) return json(200, { data: { issuer: "https://site.test/identity" } });
+  if (url === "https://site.test/identity/token") {
+    const form = new URLSearchParams(init.body);
+    if (form.get("refresh_token") !== "r1" || form.get("client_id") !== "guests") return json(400, { error: "invalid_grant" });
+    return json(200, { access_token: "a2", refresh_token: "r2", expires_in: 3600 });
+  }
+  if (url.endsWith("/me")) return json(200, { data: null });
+  if (url.endsWith("/actions/banner")) return json(401, { code: "unauthorized", detail: "Sign in to continue." });
+  if (auth === null) return json(401, { code: "unauthorized", detail: "An identity is required." });
+  if (auth === "Bearer a1" && store.has("expired")) return json(401, { code: "unauthenticated", detail: "expired" });
+  return json(200, { data: auth });
+};
+const bridge = await import(process.argv[1]);
+const first = await bridge.run("add", ["inbox", "x"]);
+store.set("expired", "1");
+const second = await bridge.run("add", ["inbox", "y"]);
+const refused = await bridge.run("banner", ["ab", 1]).then(() => "ok", (e) => e.code);
+console.log(JSON.stringify({ first, second, refused, guests, session: JSON.parse(store.get("zero08.session")), calls: calls.filter((c) => !c.includes("/me")) }));
+"#,
+    );
+    assert_eq!(ran["first"], "Bearer a1", "{ran:#}");
+    assert_eq!(
+        ran["second"], "Bearer a2",
+        "the refreshed token, not a new guest: {ran:#}"
+    );
+    assert_eq!(ran["refused"], "unauthorized", "{ran:#}");
+    assert_eq!(ran["guests"], 1, "one guest for the whole visit: {ran:#}");
+    assert_eq!(
+        ran["session"],
+        serde_json::json!({ "accessToken": "a2", "refreshToken": "r2", "clientId": "guests" })
+    );
+}

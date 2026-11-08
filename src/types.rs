@@ -741,6 +741,7 @@ pub fn hook_ctx() -> Ty {
 pub fn route_request() -> Ty {
     obj(&[
         ("method", Ty::Str),
+        ("url", Ty::Str),
         ("path", Ty::Str),
         ("params", Ty::Map(Box::new(Ty::Str))),
         ("query", route_query()),

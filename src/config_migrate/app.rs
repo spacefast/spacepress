@@ -431,6 +431,7 @@ fn convert(
         page_files.contains_key("pages/layout.tsx") || client_app.is_some(),
         client_app.is_some(),
         declares_posts,
+        &client_files.keys().cloned().collect::<Vec<_>>(),
         &mut report.errors,
     );
     // A static file never replaces a generated client file; that would be a silent drop.
@@ -445,6 +446,22 @@ fn convert(
                 )
                 .located(name, 1, 1),
             );
+        }
+    }
+    // The platform keys travel in the candidate's own sf.jsonc, unchanged and in their order;
+    // every other key was refused above, or changes nothing the candidate serves.
+    if let Some((name, _, _)) = &config {
+        let kept = std::mem::take(&mut static_files.kept);
+        if !kept.is_empty() {
+            for key in kept.keys() {
+                report.entries.push(super::entry(
+                    &format!("/{name}/{key}"),
+                    "mapped",
+                    format!("Spacefast applies `{key}` to the Space; it travels unchanged in the candidate's sf.jsonc"),
+                ));
+            }
+            let text = serde_json::to_string_pretty(&serde_json::Value::Object(kept)).expect("config json");
+            static_files.config = Some(format!("{text}\n"));
         }
     }
     for name in &static_files.carried {
@@ -495,6 +512,9 @@ fn convert(
     }
     for (path, text) in static_files.files {
         files.insert(path, text);
+    }
+    if let Some(text) = static_files.config {
+        files.insert("sf.jsonc".into(), text);
     }
     // A Space binding adopts its tables; without one the candidate creates them.
     let first = if matches!(tables, Tables::Adopt(_)) {

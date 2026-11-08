@@ -384,6 +384,14 @@ Status: **supported**.
 
 [Evidence](../tests/compiler_contracts.rs) (`url_vectors_agree_in_node_and_generated_php`)
 
+## abort-signals-and-timers
+
+Status: **supported**.
+
+`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for "abort" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `Zero\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`ZERO_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with ZERO_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node.
+
+[Evidence](../tests/compiler_contracts.rs) (`timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler`)
+
 ## builtin-overloads
 
 Status: **supported**.

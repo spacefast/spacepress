@@ -3669,6 +3669,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Global("NaN") => Ok(Out::atom("NAN", Ty::Num)),
             Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
             Resolved::Global("Math") => Ok(Out::atom("\\Zero\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
+            Resolved::Global("AbortSignal") if self.javascript_module(self.fx.as_ref().expect("fn").module) => {
+                Ok(Out::atom("\\Zero\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic))
+            }
             Resolved::Global(g) => err_help(
                 span,
                 format!("`{g}` can't be used as a value; call one of its functions"),
@@ -5218,6 +5221,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ),
                     Ty::Dynamic,
                 )),
+                ("AbortSignal", method @ ("any" | "abort" | "timeout"))
+                    if self.javascript_module(self.fx.as_ref().expect("fn").module) =>
+                {
+                    if method == "timeout" {
+                        self.uses("timers", "AbortSignal.timeout", span);
+                    }
+                    Ok(Out::atom(
+                        format!(
+                            "\\Zero\\Js::dynamicGet(\\Zero\\Js::dynamicNamespace('AbortSignal'), {})",
+                            php_str(method)
+                        ),
+                        Ty::Dynamic,
+                    ))
+                }
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
         }
@@ -5352,6 +5369,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("({x})->{prop}"));
                 Out::atom(php, suffix_null(Ty::Str))
             }
+            (Ty::AbortController, "signal") => {
+                let php = guarded(self, &|x| format!("({x})->signal"));
+                Out::atom(php, suffix_null(Ty::AbortSignal))
+            }
+            (Ty::AbortSignal, "aborted") => {
+                let php = guarded(self, &|x| format!("({x})->aborted"));
+                Out::atom(php, suffix_null(Ty::Bool))
+            }
+            (Ty::AbortSignal, "reason") => {
+                let php = guarded(self, &|x| format!("({x})->reason"));
+                Out::atom(php, Ty::Unknown)
+            }
             (Ty::Url, "searchParams") => {
                 let php = guarded(self, &|x| format!("({x})->get('searchParams')"));
                 Out::atom(php, suffix_null(Ty::UrlParams))
@@ -5364,7 +5393,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("({x})->size()"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
-            (Ty::Url | Ty::UrlParams, _) => {
+            (Ty::AbortController | Ty::AbortSignal | Ty::Url | Ty::UrlParams, _) => {
                 return err(prop_span, format!("{} has no property `{prop}`", base.describe()));
             }
             (Ty::MapOf(..) | Ty::SetOf(_), "size") => {
@@ -5622,6 +5651,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return self.typed_url(name == "URL", args, span);
         }
         if let ExprKind::Ident(name) = &callee.kind
+            && name == "AbortController"
+            && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
+            && !self.javascript_module(self.fx.as_ref().expect("fn").module)
+        {
+            if !args.is_empty() {
+                return err(span, "`new AbortController()` takes no arguments");
+            }
+            return Ok(Out::atom("(new \\Zero\\JsAbortController())", Ty::AbortController));
+        }
+        if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"
             && matches!(self.resolve(name, callee.span)?, Resolved::Global("RegExp"))
             && !self.javascript_module(self.fx.as_ref().expect("fn").module)
@@ -5651,7 +5690,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if let ExprKind::Ident(name) = &callee.kind
                 && matches!(
                     name.as_str(),
-                    "Set" | "Map" | "WeakMap" | "WeakSet" | "Date" | "RegExp" | "URL" | "URLSearchParams"
+                    "Set"
+                        | "Map"
+                        | "WeakMap"
+                        | "WeakSet"
+                        | "Date"
+                        | "RegExp"
+                        | "URL"
+                        | "URLSearchParams"
+                        | "AbortController"
                 )
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
@@ -5782,6 +5829,42 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (_, "values") => iter("values", value),
             (true, "keys") => iter("values", key),
             (_, "entries") => iter("entries", Ty::Tuple(vec![key, value])),
+            _ => return err(m_span, format!("{} has no method `{m}`", recv.ty.describe())),
+        })
+    }
+
+    fn abort_method(&mut self, recv: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        let r = recv.wrapped();
+        Ok(match (&recv.ty.non_null(), m) {
+            (Ty::AbortController, "abort") => {
+                let reason = match args.first() {
+                    None => "\\Zero\\Js::undefined()".to_string(),
+                    Some(ArrEl::Item(x)) => {
+                        let v = self.expr(x)?;
+                        self.finish_value(v, x.span)?.php
+                    }
+                    Some(ArrEl::Spread(x)) => return err(x.span, "spread arguments aren't supported here"),
+                };
+                Out::atom(format!("{r}->abort({reason})"), Ty::Undefined)
+            }
+            (Ty::AbortSignal, "throwIfAborted") => Out::atom(format!("{r}->throwIfAborted()"), Ty::Undefined),
+            (Ty::AbortSignal, "addEventListener" | "removeEventListener") => {
+                let kind = self.arg(args, 0, span, "an event type")?;
+                if !matches!(&kind.kind, ExprKind::Str(t) if t == "abort") {
+                    return err_help(kind.span, "AbortSignal only dispatches \"abort\"", "pass \"abort\"");
+                }
+                let f = self.arg(args, 1, span, "a listener")?;
+                let cb = self.callback(f, &[Ty::Unknown])?;
+                let options = match args.get(2) {
+                    None => "\\Zero\\Js::undefined()".to_string(),
+                    Some(ArrEl::Item(x)) => {
+                        let v = self.expr(x)?;
+                        self.finish_value(v, x.span)?.php
+                    }
+                    Some(ArrEl::Spread(x)) => return err(x.span, "spread arguments aren't supported here"),
+                };
+                Out::atom(format!("{r}->{m}('abort', {}, {options})", cb.php), Ty::Undefined)
+            }
             _ => return err(m_span, format!("{} has no method `{m}`", recv.ty.describe())),
         })
     }
@@ -6795,6 +6878,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(format!("\\Zero\\Js::dynamicRegExpCall({argv})"), Ty::Dynamic));
         }
+        if matches!(g, "setTimeout" | "clearTimeout") {
+            return self.timer_call(g, args, span);
+        }
         if g == "Symbol" {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(format!("\\Zero\\JsSymbol::create({argv})"), Ty::Dynamic));
@@ -6856,8 +6942,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(span, format!("`{g}` needs `new`"), format!("write `new {g}(...)`"));
             }
             (
-                "eval" | "Function" | "setTimeout" | "globalThis" | "Promise" | "URL" | "Request" | "Response"
-                | "FormData" | "Blob" | "AbortController",
+                "eval" | "Function" | "globalThis" | "Promise" | "URL" | "Request" | "Response" | "FormData" | "Blob",
                 _,
             ) => {
                 return err_help(
@@ -6870,7 +6955,71 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
-    /// `URL.parse` / `URL.canParse` in typed code.
+    /// `setTimeout(callback, delay?, ...args)` / `clearTimeout(id)`: a `Zero\\Timers` entry that runs
+    /// only while the request waits. The site names the call in the handler-end refusal.
+    fn timer_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if g == "clearTimeout" {
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\Zero\\Timers::clear(({argv})->a[0] ?? \\Zero\\Js::undefined())"),
+                Ty::Undefined,
+            ));
+        }
+        self.uses("timers", "setTimeout", span);
+        let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+        let callback = self.arg(args, 0, span, "a callback")?;
+        let cb = if javascript {
+            let v = self.expr(callback)?;
+            format!("\\Zero\\Js::timerCallback({})", v.php)
+        } else {
+            self.callback(callback, &[])?.php
+        };
+        let mut rest = Vec::new();
+        for a in args.iter().skip(1) {
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
+            let v = self.expr(x)?;
+            rest.push(self.finish_value(v, x.span)?);
+        }
+        if !javascript {
+            if let Some(d) = rest.first()
+                && !d.ty.is_num()
+            {
+                return err_help(
+                    span,
+                    "setTimeout's delay must be a number",
+                    "pass the delay in milliseconds",
+                );
+            }
+            if rest.len() > 1 {
+                return err_help(
+                    span,
+                    "extra setTimeout arguments aren't supported in typed code",
+                    "capture them in the callback",
+                );
+            }
+        }
+        let delay = rest.first().map_or_else(|| "0".to_string(), |d| d.php.clone());
+        let extra: Vec<String> = rest.iter().skip(1).map(|v| v.php.clone()).collect();
+        let site = self.site(span);
+        let set = format!(
+            "\\Zero\\Timers::set({cb}, {delay}, [{}], {})",
+            extra.join(", "),
+            php_str(&site)
+        );
+        // Node returns a Timeout object, so typed code gets the same opaque handle: only clearTimeout uses it.
+        Ok(Out::atom(
+            format!("\\Zero\\Timers::handle({set})"),
+            if javascript { Ty::Dynamic } else { Ty::Unknown },
+        ))
+    }
+
+    fn site(&self, span: Span) -> String {
+        crate::diag::site(span)
+    }
+
+    /// `URL.parse`/`URL.canParse` and `AbortSignal.abort`/`any`/`timeout` in typed code.
     fn typed_standard_static(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         let mut argv = Vec::new();
         for a in args {
@@ -6904,6 +7053,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Out::atom(call, Ty::Bool)
                 }
             }
+            ("AbortSignal", "abort") => {
+                let reason = argv
+                    .first()
+                    .map_or_else(|| "\\Zero\\Js::undefined()".into(), |(v, _)| v.php.clone());
+                Out::atom(format!("\\Zero\\JsAbortSignal::aborted({reason})"), Ty::AbortSignal)
+            }
+            ("AbortSignal", "timeout") => {
+                let (ms, at) = &argv[0];
+                need(ms.ty.is_num(), *at, "a number of milliseconds")?;
+                self.uses("timers", "AbortSignal.timeout", span);
+                Out::atom(format!("\\Zero\\JsAbortSignal::timeout({})", ms.php), Ty::AbortSignal)
+            }
+            ("AbortSignal", "any") => {
+                let (signals, at) = &argv[0];
+                let ok = self
+                    .iterable_element(&signals.ty)
+                    .is_some_and(|el| el.all(|t| *t == Ty::AbortSignal));
+                need(ok, *at, "an array of AbortSignals")?;
+                Out::atom(
+                    format!("\\Zero\\JsAbortSignal::any(\\Zero\\Js::iter({}))", signals.php),
+                    Ty::AbortSignal,
+                )
+            }
             _ => return err(span, format!("`{g}.{m}` isn't supported")),
         })
     }
@@ -6932,7 +7104,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.require_javascript_symbols(span)?;
         }
         self.builtin_args(g, m, args, span)?;
-        if !self.javascript_module(self.fx.as_ref().expect("fn").module) && g == "URL" {
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) && matches!(g, "URL" | "AbortSignal") {
             return self.typed_standard_static(g, m, args, span);
         }
         if g == "Symbol" && matches!(m, "for" | "keyFor") {
@@ -6978,8 +7150,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
-            && matches!(g, "Math" | "Array" | "Object" | "Number" | "JSON" | "URL")
+            && matches!(
+                g,
+                "Math" | "Array" | "Object" | "Number" | "JSON" | "URL" | "AbortSignal"
+            )
         {
+            if (g, m) == ("AbortSignal", "timeout") {
+                self.uses("timers", "AbortSignal.timeout", span);
+            }
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
                 format!("\\Zero\\Js::dynamicStaticCall({}, {}, {argv})", php_str(g), php_str(m)),
@@ -7309,6 +7487,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::MapOf(..) => Some("map"),
             Ty::SetOf(_) => Some("set"),
             Ty::Iter(_) => Some("iterator"),
+            Ty::AbortController => Some("abortcontroller"),
+            Ty::AbortSignal => Some("abortsignal"),
             Ty::Url => Some("url"),
             Ty::UrlParams => Some("urlsearchparams"),
             _ => None,
@@ -7409,6 +7589,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(m_span, format!("regular expressions have no method `{m}`")),
             },
             Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) => self.collection_method(&recv, m, args, span, m_span)?,
+            Ty::AbortController | Ty::AbortSignal => self.abort_method(&recv, m, args, span, m_span)?,
             Ty::Url | Ty::UrlParams => self.url_method(&recv, m, args, span, m_span)?,
             Ty::Map(_) | Ty::Obj(_) => {
                 // Calling a function stored in an object field.
@@ -8872,6 +9053,8 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::MapOf(..)
         | Ty::SetOf(_)
         | Ty::Iter(_)
+        | Ty::AbortController
+        | Ty::AbortSignal
         | Ty::Url
         | Ty::UrlParams
         | Ty::Fn(..)
@@ -9068,7 +9251,13 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         ),
         Ty::Map(t) => Ty::Map(Box::new(widen_fresh_literals(t))),
         // Map and Set type arguments are invariant handles; they never carry fresh literals.
-        Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::Url | Ty::UrlParams => t.clone(),
+        Ty::MapOf(..)
+        | Ty::SetOf(_)
+        | Ty::Iter(_)
+        | Ty::AbortController
+        | Ty::AbortSignal
+        | Ty::Url
+        | Ty::UrlParams => t.clone(),
         Ty::Fn(params, ret) => Ty::Fn(
             params.iter().map(widen_fresh_literals).collect(),
             Box::new(widen_fresh_literals(ret)),

@@ -501,6 +501,39 @@ fn omissions_are_errors_and_static_files_carry_over() {
         serde_json::to_string_pretty(&config).unwrap(),
     )
     .unwrap();
+    // Space overlay settings the committed file can't set: refused at the key, not reported carried.
+    let mut overlay = config.clone();
+    overlay["dataSources"] = serde_json::json!({ "blog": { "url": "https://blog.example" } });
+    overlay["network"] = serde_json::json!({ "egress": "allowlist" });
+    std::fs::write(
+        platform.join("sf.jsonc"),
+        serde_json::to_string_pretty(&overlay).unwrap(),
+    )
+    .unwrap();
+    let (ok, refused) = migrate(
+        &platform,
+        &temp.path().join("overlay"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let refused: Vec<(&str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["pointer"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        refused,
+        [
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/dataSources"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/network")
+        ]
+    );
+    std::fs::write(
+        platform.join("sf.jsonc"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
     let out = temp.path().join("server-only");
     let (ok, report) = migrate(&platform, &out, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");

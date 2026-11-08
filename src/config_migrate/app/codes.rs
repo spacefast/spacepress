@@ -110,7 +110,7 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_OMITTED_SERVE",
-        feature: "serving settings (fallback, index, listing, inject, firewall, cache)",
+        feature: "serving settings (fallback, serve, inject)",
         v2: "WordPress serving and the Space's own settings",
         fix: "Drop the setting or set it on the Space; v2 serves the app through WordPress.",
         test: |_, r| r.starts_with(omitted::SERVE),

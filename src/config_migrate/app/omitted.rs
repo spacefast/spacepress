@@ -123,8 +123,10 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// - Engine serving rules that run before an unmatched request falls through to WordPress, where
 ///   v2 renders (monorepo runtime/engine/runtime/serve.php): `redirects`, `rewrites`, `headers`,
 ///   and `cleanUrls`, `index` and `listing` over the static files published from public/.
-/// - Platform settings the control plane applies whatever the runtime: access, crons, analytics,
-///   sell, build, placement, network, data sources, the system manifest, edge cache and firewall.
+/// - Platform settings the control plane applies from the committed file whatever the runtime:
+///   access, crons, analytics, sell, build, placement, the system manifest, edge cache and firewall
+///   (monorepo `spaceConfigFileSchema`). `network`, `dataSources` and `defaultDataSource` are Space
+///   overlay settings that the file can't set, so they are refused, never reported as carried.
 pub(super) const PLATFORM_KEYS: &[&str] = &[
     "redirects",
     "rewrites",
@@ -138,9 +140,6 @@ pub(super) const PLATFORM_KEYS: &[&str] = &[
     "sell",
     "build",
     "placement",
-    "network",
-    "dataSources",
-    "defaultDataSource",
     "system",
     "cache",
     "firewall",

@@ -3782,6 +3782,11 @@ fn language_refusals_carry_a_location_and_a_fix() {
             "ns.nsThis()",
         ),
         (
+            "function with properties in a this receiver",
+            "import { withHelper } from './ns.mjs';",
+            "withHelper.read()",
+        ),
+        (
             "this before super",
             "class A {} class B extends A { constructor(public n: number = (this as unknown as { n: number }).n) { super(); } }",
             "new B()",
@@ -3791,7 +3796,7 @@ fn language_refusals_carry_a_location_and_a_fix() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("ns.mjs"),
-            "export function nsThis() { return typeof this; }\n",
+            "export function nsThis() { return typeof this; }\nfunction helper() { return 1; }\nhelper.x = 42;\nexport const withHelper = { helper, read() { return this.helper.x; } };\n",
         )
         .unwrap();
         std::fs::write(

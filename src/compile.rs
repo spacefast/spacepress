@@ -4256,6 +4256,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // as undefined through `this`.
             let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
                 self.receiver_value(&member_path, &member, binding, span)?
+            } else if matches!(&member, Value::Closure(c) if c.has_props()) {
+                // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
+                return Err(Diag::new(
+                    span,
+                    format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
+                )
+                .code(crate::diag::Code::Unsupported)
+                .help(format!(
+                    "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
+                )));
             } else {
                 self.captured_use(&member_path, member, binding, span, true, true)
                     .map_err(|d| {

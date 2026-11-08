@@ -40,7 +40,7 @@ npm --prefix examples/subscriptions/web ci
 npm --prefix examples/subscriptions/web run build
 ./target/debug/zero build examples/subscriptions
 ./target/debug/zero dev examples/subscriptions --no-watch --port 8794
-./target/debug/zero dev wp examples/subscriptions -- zero-identity app add \
+./target/debug/zero identity --site examples/subscriptions app add \
   --name=Subscriptions --id=app_subscriptions \
   --redirect=http://localhost:8794/wp-content/plugins/zero-app-subscriptions/public/index.html \
   --origin=http://localhost:8794
@@ -55,7 +55,7 @@ The frontend stores no application password.
 For the Vite loop, register its origin and callback, then start Vite:
 
 ```sh
-./target/debug/zero dev wp examples/subscriptions -- zero-identity app add \
+./target/debug/zero identity --site examples/subscriptions app add \
   --name=Subscriptions --id=app_subscriptions_vite \
   --redirect=http://127.0.0.1:5173/ --origin=http://127.0.0.1:5173
 VITE_ZERO_APP_ID=app_subscriptions_vite npm --prefix examples/subscriptions/web run dev
@@ -75,7 +75,7 @@ example before publishing. A successful Zero build must also commit
 `zero/client/`, `zero/migrations/`, `zero.gen.ts`, and `zero/wp-plugins.lock.json`.
 They cannot be generated from this config while the diagnostic remains.
 
-## Known gaps on main (de46201a530e2bf1751abb54bf70cfda2a2caf2b)
+## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
 
 `./target/debug/zero check examples/subscriptions --json` exits 1. The error
 count is `diagnostics.filter(d => d.severity === "error").length = 1` in
@@ -171,7 +171,9 @@ a stub or skip a failing check. Do not use an account holding real data.
 To test the independent paths despite the build failure, a disposable copy of
 this config replaced only `monthlyBurn` with `{ currencies: [] }`, retaining the
 same declared output type. `zero build` generated its types and plugins. Its
-WordPress Studio site ran on `http://localhost:8795`. Nothing from that generated
+WordPress Studio site ran on `http://localhost:8795`, built with compiler/runtime
+`de46201a` before the rebase. The current-main compiler check and pantry MCP proof
+were repeated at `ef0a42e3`. Nothing from that generated
 fixture is committed as this app's client or migrations.
 
 The complete source passes `tsc` with that fixture's generated schema types.
@@ -186,6 +188,19 @@ request replay, `cancel`, reminder stamping, owner isolation, and the currency
 history guard passed. `monthlyBurn` returned the fixture's empty stub result;
 its calculation was not runtime-verified. REST subscription delete returned the
 known `409`; trusted local WP-CLI removed only the probe's fixture rows.
+
+The [browser transcript](verification/contract-ui.json) records the Vite proxy,
+real sign-in and consent, callback, add/edit, search, charge history, charge
+logging, cancellation, and retry after a denied callback. Every measured screen
+has `document === viewport === 390` and `smallTargets.length === 0` for visible
+buttons, links, inputs, and selects tested at a minimum of 44 × 44 CSS pixels.
+`errors.length === 0` records the captured browser errors. The fixture's
+`monthlyBurn` stayed empty throughout that browser proof.
+
+The [MCP transcript](verification/contract-mcp.jsonl) also lists the subscription
+app's named tools and calls `subscriptions-subscriptions-list` on that fixture.
+The action declarations and table schemas match the committed config; the
+aggregation implementation is still a stub in this proof.
 
 Representative responses, with the full rows in the transcript:
 

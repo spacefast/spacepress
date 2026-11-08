@@ -66,7 +66,7 @@ separate account with the role and data access the agent needs.
 For a disposable local Studio site, create one with WP-CLI:
 
 ```sh
-./target/debug/zero dev wp examples/pantry -- user application-password create admin agent-guide --porcelain
+./target/debug/zero wp --site examples/pantry user application-password create admin agent-guide --porcelain
 ```
 
 The local site must be running. For another app, replace `examples/pantry` with
@@ -180,8 +180,8 @@ proof below concerns the shipped MCP integration, not a running subscriptions ap
 Client configuration keys above were checked against each client's linked
 reference. Those interactive client applications were not launched in this proof.
 
-Observed on a local WordPress Studio site built from main `de46201a`, using the
-MCP Adapter bundled by `zero build`:
+Observed on a local WordPress Studio site rebuilt from main `ef0a42e3`, using
+the MCP Adapter bundled by `zero build`:
 
 ```jsonl
 {"endpoint":"http://localhost:8794/wp-json/mcp/zero-pantry"}

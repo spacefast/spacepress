@@ -3,6 +3,7 @@
 //! back to arguments without treating scalar parameter assignment as a write.
 
 use super::*;
+use indexmap::IndexSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Step {
@@ -39,9 +40,18 @@ impl Place {
     }
 }
 
+// Debug builds count path projections, the step every solver rule repeats per pair of places,
+// so a test can bound the solver's work by the size of its result (see `debug_dump`).
+#[cfg(debug_assertions)]
+thread_local! {
+    static PROJECTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 /// An indexed read can select a named object property as well as an array
 /// element. Keep the remainder so container operations preserve nested values.
 fn projected_suffix<'a>(path: &'a [Step], prefix: &[Step]) -> Option<&'a [Step]> {
+    #[cfg(debug_assertions)]
+    PROJECTIONS.with(|count| count.set(count.get() + 1));
     for (i, step) in prefix.iter().enumerate() {
         if matches!(step, Step::Descendants) {
             return Some(&[]);
@@ -74,11 +84,11 @@ pub(super) struct Effects {
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
     incoming: HashMap<Span, HashSet<Vec<Step>>>,
     incoming_writes: HashMap<Span, HashSet<Vec<Step>>>,
-    capture_writes: HashMap<Span, HashSet<Place>>,
-    events: HashMap<Span, HashSet<Place>>,
-    write_events: HashMap<Span, HashSet<Place>>,
-    expression_writes: HashMap<Span, HashSet<Place>>,
-    loop_writes: HashMap<Span, HashSet<Place>>,
+    capture_writes: HashMap<Span, Places>,
+    events: HashMap<Span, Places>,
+    write_events: HashMap<Span, Places>,
+    expression_writes: HashMap<Span, Places>,
+    loop_writes: HashMap<Span, Places>,
     /// Every reachable write, by the binding it starts from.
     binding_writes: HashMap<Span, HashSet<Vec<Step>>>,
 }
@@ -157,7 +167,12 @@ impl Effects {
                 _ => {}
             }
         }
-        graph.solve()
+        #[cfg(debug_assertions)]
+        PROJECTIONS.with(|count| count.set(0));
+        let effects = graph.solve();
+        #[cfg(debug_assertions)]
+        debug_dump(&effects, PROJECTIONS.with(std::cell::Cell::get));
+        effects
     }
 
     pub fn captured_data_type(&self, value: &Value, ty: &Ty) -> Ty {
@@ -242,7 +257,7 @@ impl Effects {
     }
 }
 
-fn invalidate_paths(paths: &HashSet<Place>, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
+fn invalidate_paths(paths: &Places, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
     paths.iter().filter(|p| p.binding == binding).fold(ty.clone(), |ty, p| {
         if let Some(path) = projected_suffix(&p.path, view) {
             restore(&ty, constraint, path)
@@ -420,6 +435,97 @@ pub(super) fn class_static_read(ty: &Ty) -> Ty {
     widen(ty, &[Step::Descendants])
 }
 
+type Places = IndexSet<Place>;
+
+/// Cuts a derived place at the solver's depth bound, keeping whether a dynamic write reached it.
+fn bounded(mut p: Place, max_depth: usize) -> Place {
+    if p.path.len() > max_depth {
+        let terminal = if p
+            .path
+            .iter()
+            .any(|step| matches!(step, Step::DynamicValue | Step::DynamicDescendants))
+        {
+            Step::DynamicDescendants
+        } else {
+            Step::Descendants
+        };
+        p.path.truncate(max_depth);
+        p.path.push(terminal);
+    }
+    p
+}
+
+/// The elements of an insertion-ordered set from position `from` up to `to`.
+fn unread<T>(set: &IndexSet<T>, from: usize, to: usize) -> impl Iterator<Item = &T> {
+    set.get_range(from..to).into_iter().flat_map(|slice| slice.iter())
+}
+
+/// How far each solver rule has read the growing sets, so a pass only reads new facts.
+#[derive(Default)]
+struct Solved {
+    /// Call edges whose argument, `arguments` and result copies exist.
+    linked: HashSet<(usize, Span)>,
+    viewed_incoming: usize,
+    viewed_incoming_writes: usize,
+    numeric_from: HashMap<Span, usize>,
+    writes_from: HashMap<Span, usize>,
+    numeric_incoming: usize,
+    /// Escaped places already turned into `Descendants` writes at unknown calls.
+    invalidated: usize,
+    /// Write events that already received their owner's external `Descendants` places.
+    external_added: HashSet<Span>,
+    /// Places and escapes a write event was checked against without changing an external value.
+    external_checked: HashMap<Span, (usize, usize)>,
+    /// Reachable copies already in `aliases`, by position in `copies`.
+    aliased: HashSet<usize>,
+    aliases: HashMap<Span, Vec<(Place, Place)>>,
+    /// Places of each set already closed under aliases: numeric, writes, events, write events.
+    expanded: [HashMap<Span, usize>; 4],
+    edges: HashMap<(usize, Span), EdgeRead>,
+    /// `events` and `write_events`, each event's places by binding.
+    event_bindings: [HashMap<Span, ByBinding>; 2],
+}
+
+/// Positions in an insertion-ordered places set, by binding.
+#[derive(Default)]
+struct ByBinding {
+    indexed: usize,
+    positions: HashMap<Span, Vec<usize>>,
+}
+
+impl ByBinding {
+    fn extend(&mut self, set: &Places) {
+        for (position, place) in unread(set, self.indexed, set.len()).enumerate() {
+            self.positions
+                .entry(place.binding)
+                .or_default()
+                .push(self.indexed + position);
+        }
+        self.indexed = set.len();
+    }
+
+    /// Positions of `binding`'s places from `from` on, in insertion order.
+    fn unread(&self, binding: Span, from: usize) -> impl Iterator<Item = usize> + '_ {
+        let positions = self.positions.get(&binding).map_or(&[][..], Vec::as_slice);
+        positions[positions.partition_point(|&position| position < from)..]
+            .iter()
+            .copied()
+    }
+}
+
+/// What one call edge has read from each input of its views and summaries.
+#[derive(Default)]
+struct EdgeRead {
+    incoming: usize,
+    incoming_writes: usize,
+    numeric: usize,
+    writes: usize,
+    events: HashMap<Span, usize>,
+    write_events: HashMap<Span, usize>,
+    function_numeric: usize,
+    function_writes: usize,
+}
+
 struct Call {
     receiver: Option<Place>,
     callee: Place,
@@ -456,8 +562,8 @@ struct Graph {
     captured: HashSet<Span>,
     roots: HashSet<Span>,
     reachable: HashSet<Span>,
-    incoming: HashSet<Place>,
-    incoming_writes: HashSet<Place>,
+    incoming: Places,
+    incoming_writes: Places,
     history: HashMap<Span, HashSet<Span>>,
     created_prior: HashMap<Span, HashSet<Span>>,
     created_by: HashMap<Span, Span>,
@@ -467,25 +573,25 @@ struct Graph {
     argument_values: HashMap<Span, Place>,
     argument_reads: HashSet<Span>,
     rest_parameters: HashMap<Span, usize>,
-    values: HashSet<(Place, Span)>,
-    slice_methods: HashSet<Place>,
+    values: IndexSet<(Place, Span)>,
+    slice_methods: Places,
     borrowed_slices: Vec<(Place, Place, Place, Span)>,
-    copies: HashSet<(Place, Place, Span)>,
+    copies: IndexSet<(Place, Place, Span)>,
     captured_data: HashMap<(u8, usize), Place>,
     external: HashSet<Span>,
-    escaped: HashSet<Place>,
+    escaped: Places,
     call_events: HashMap<Span, Span>,
     event_owners: HashMap<Span, Span>,
     calls: Vec<Call>,
-    numeric: HashSet<Place>,
-    writes: HashSet<Place>,
+    numeric: Places,
+    writes: Places,
     max_depth: usize,
     bindings: HashMap<Span, Span>,
     parameter_views: HashMap<Span, Place>,
-    function_numeric: HashMap<Span, HashSet<Place>>,
-    function_writes: HashMap<Span, HashSet<Place>>,
-    events: HashMap<Span, HashSet<Place>>,
-    write_events: HashMap<Span, HashSet<Place>>,
+    function_numeric: HashMap<Span, Places>,
+    function_writes: HashMap<Span, Places>,
+    events: HashMap<Span, Places>,
+    write_events: HashMap<Span, Places>,
 }
 
 type Names = Vec<HashMap<String, Place>>;
@@ -1660,21 +1766,8 @@ impl Graph {
         }
     }
 
-    fn bounded(&self, mut p: Place) -> Place {
-        if p.path.len() > self.max_depth {
-            let terminal = if p
-                .path
-                .iter()
-                .any(|step| matches!(step, Step::DynamicValue | Step::DynamicDescendants))
-            {
-                Step::DynamicDescendants
-            } else {
-                Step::Descendants
-            };
-            p.path.truncate(self.max_depth);
-            p.path.push(terminal);
-        }
-        p
+    fn bounded(&self, p: Place) -> Place {
+        bounded(p, self.max_depth)
     }
 
     fn call_bindings(&self, call: &Call, function: Span) -> Vec<(Option<Place>, Place)> {
@@ -1751,10 +1844,14 @@ impl Graph {
         }
     }
 
-    fn expand_aliases(paths: &mut HashSet<Place>, copies: &HashMap<Span, Vec<(Place, Place)>>, max_depth: usize) {
-        let mut pending: Vec<_> = paths.iter().cloned().collect();
+    fn expand_aliases(
+        paths: &mut Places,
+        mut pending: Vec<Place>,
+        aliases: &HashMap<Span, Vec<(Place, Place)>>,
+        max_depth: usize,
+    ) {
         while let Some(place) = pending.pop() {
-            for (source, target) in copies.get(&place.binding).into_iter().flatten() {
+            for (source, target) in aliases.get(&place.binding).into_iter().flatten() {
                 let Some(suffix) = projected_suffix(&place.path, &source.path) else {
                     continue;
                 };
@@ -1764,19 +1861,7 @@ impl Graph {
                 }
                 let mut alias = target.clone();
                 alias.path.extend_from_slice(suffix);
-                if alias.path.len() > max_depth {
-                    let terminal = if alias
-                        .path
-                        .iter()
-                        .any(|step| matches!(step, Step::DynamicValue | Step::DynamicDescendants))
-                    {
-                        Step::DynamicDescendants
-                    } else {
-                        Step::Descendants
-                    };
-                    alias.path.truncate(max_depth);
-                    alias.path.push(terminal);
-                }
+                let alias = bounded(alias, max_depth);
                 if paths.insert(alias.clone()) {
                     pending.push(alias);
                 }
@@ -1784,6 +1869,150 @@ impl Graph {
         }
     }
 
+    /// Every (call, callee) pair: a call in reachable code and a function value at its callee.
+    fn call_edges(&self) -> Vec<(usize, Span)> {
+        let mut values: HashMap<Span, Vec<&(Place, Span)>> = HashMap::new();
+        for value in &self.values {
+            values.entry(value.0.binding).or_default().push(value);
+        }
+        let mut edges = Vec::new();
+        let mut linked = HashSet::new();
+        for (index, call) in self.calls.iter().enumerate() {
+            if !self.reachable.contains(&call.owner) {
+                continue;
+            }
+            for (value, function) in values.get(&call.callee.binding).into_iter().flatten() {
+                if callable_at(value, &call.callee) && linked.insert((index, *function)) {
+                    edges.push((index, *function));
+                }
+            }
+        }
+        edges
+    }
+
+    /// Carries each callee's entry views and summaries across its call edges, reading only what
+    /// each edge hasn't read yet. Every output is a function of the edge and one input place.
+    fn call_summaries(&mut self, solved: &mut Solved) {
+        let max_depth = self.max_depth;
+        for edge in self.call_edges() {
+            let (index, function) = edge;
+            let call = &self.calls[index];
+            let bindings = self.call_bindings(call, function);
+            let read = solved.edges.entry(edge).or_default();
+            // Use writes that can precede this call, rather than later writes elsewhere in the
+            // caller. Captures keep their stable view because closures can run later.
+            let arguments: Vec<_> = bindings
+                .iter()
+                .filter_map(|(arg, param)| {
+                    let arg = arg.as_ref()?;
+                    Some((arg, param, self.bindings.get(&arg.binding) != Some(&call.owner)))
+                })
+                .collect();
+            let project = |inputs: &mut dyn Iterator<Item = &Place>, captured_only: bool, out: &mut Vec<Place>| {
+                for p in inputs {
+                    for (arg, param, captures) in &arguments {
+                        if (*captures || !captured_only)
+                            && p.binding == arg.binding
+                            && let Some(path) = projected_suffix(&p.path, &arg.path)
+                        {
+                            let mut target = (*param).clone();
+                            target.path.extend_from_slice(path);
+                            out.push(bounded(target, max_depth));
+                        }
+                    }
+                }
+            };
+            // Entry views: [numeric, writes].
+            let mut views = [Vec::new(), Vec::new()];
+            if !arguments.is_empty() {
+                for (set, cursor, captured_only, view) in [
+                    (&self.incoming, &mut read.incoming, false, 0),
+                    (&self.numeric, &mut read.numeric, true, 0),
+                    (&self.incoming_writes, &mut read.incoming_writes, false, 1),
+                    (&self.writes, &mut read.writes, true, 1),
+                ] {
+                    project(&mut unread(set, *cursor, set.len()), captured_only, &mut views[view]);
+                    *cursor = set.len();
+                }
+                // Prior events are large and shared by many calls; read only the places of
+                // this edge's argument bindings, through a per-event index by binding.
+                let [event_index, write_index] = &mut solved.event_bindings;
+                for event in &call.prior {
+                    for (sets, indexes, cursors, view) in [
+                        (&self.events, &mut *event_index, &mut read.events, 0),
+                        (&self.write_events, &mut *write_index, &mut read.write_events, 1),
+                    ] {
+                        let Some(set) = sets.get(event) else {
+                            continue;
+                        };
+                        let index = indexes.entry(*event).or_default();
+                        index.extend(set);
+                        let cursor = cursors.entry(*event).or_default();
+                        let mut inputs = arguments
+                            .iter()
+                            .map(|(arg, _, _)| arg.binding)
+                            .collect::<HashSet<_>>()
+                            .into_iter()
+                            .flat_map(|binding| index.unread(binding, *cursor))
+                            .map(|position| &set[position]);
+                        project(&mut inputs, false, &mut views[view]);
+                        *cursor = set.len();
+                    }
+                }
+            }
+            let [incoming, incoming_writes] = views;
+            let mut numeric = Vec::new();
+            let mut writes = Vec::new();
+            for (summaries, cursor, out) in [
+                (&self.function_numeric, &mut read.function_numeric, &mut numeric),
+                (&self.function_writes, &mut read.function_writes, &mut writes),
+            ] {
+                if let Some(summary) = summaries.get(&function) {
+                    for p in unread(summary, *cursor, summary.len()) {
+                        out.extend(self.caller_effects(function, &bindings, p.clone()));
+                    }
+                    *cursor = summary.len();
+                }
+            }
+            let (span, owner) = (call.span, call.owner);
+            self.incoming.extend(incoming);
+            self.incoming_writes.extend(incoming_writes);
+            for target in numeric {
+                self.events.entry(span).or_default().insert(target.clone());
+                self.function_numeric.entry(owner).or_default().insert(target.clone());
+                self.numeric.insert(target);
+            }
+            for target in writes {
+                self.write_events.entry(span).or_default().insert(target.clone());
+                self.function_writes.entry(owner).or_default().insert(target);
+            }
+        }
+    }
+
+    fn sizes(&self) -> [usize; 13] {
+        let total = |sets: &HashMap<Span, Places>| sets.values().map(IndexSet::len).sum::<usize>();
+        [
+            self.reachable.len(),
+            self.incoming.len(),
+            self.incoming_writes.len(),
+            self.values.len(),
+            self.slice_methods.len(),
+            self.copies.len(),
+            self.numeric.len(),
+            self.writes.len(),
+            total(&self.function_numeric),
+            total(&self.function_writes),
+            total(&self.events),
+            total(&self.write_events),
+            self.escaped.len(),
+        ]
+    }
+
+    /// Applies every rule until none adds a fact. Each rule only adds facts, and adds more when
+    /// its inputs grow, so the result is the least fixpoint whatever the order and grouping of
+    /// rule applications. That lets each pass skip work an earlier pass already did: places
+    /// sets are insertion-ordered, and `Solved` records how much of each set a rule has read.
+    /// See docs/decisions/2026-11-08-effects-solver-scale.md.
     fn solve(mut self) -> Effects {
         self.max_depth = self
             .copies
@@ -1794,68 +2023,71 @@ impl Graph {
             .max()
             .unwrap_or(0)
             + 1;
+        let max_depth = self.max_depth;
+        // `numeric` is the reachable functions' numeric places plus the incoming views, rebuilt
+        // below. Construction also put every place it holds in its function's `function_numeric`.
+        self.numeric.clear();
+        let mut views: HashMap<Span, Vec<(Span, Place)>> = HashMap::new();
+        for (binding, view) in &self.parameter_views {
+            views.entry(view.binding).or_default().push((*binding, view.clone()));
+        }
+        let mut solved = Solved::default();
         loop {
-            let before = (
-                self.reachable.len(),
-                self.incoming.len(),
-                self.incoming_writes.len(),
-                (self.values.len(), self.slice_methods.len()),
-                self.copies.len(),
-                self.numeric.len(),
-                self.writes.len(),
-                self.function_numeric.values().map(HashSet::len).sum::<usize>(),
-                self.function_writes.values().map(HashSet::len).sum::<usize>(),
-                self.events.values().map(HashSet::len).sum::<usize>(),
-                self.write_events.values().map(HashSet::len).sum::<usize>(),
-                self.escaped.len(),
-            );
-            for call in &self.calls {
-                if !self.reachable.contains(&call.owner) {
+            let before = self.sizes();
+            let mut linked = Vec::new();
+            for (index, function) in self.call_edges() {
+                if !solved.linked.insert((index, function)) {
                     continue;
                 }
-                for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
-                    self.reachable.insert(*function);
-                    for (arg, param) in self.call_bindings(call, *function) {
-                        if let Some(arg) = arg {
-                            self.copies.insert((arg, param, call.owner));
-                        }
+                let call = &self.calls[index];
+                for (arg, param) in self.call_bindings(call, function) {
+                    if let Some(arg) = arg {
+                        linked.push((arg, param, call.owner));
                     }
-                    if let Some(arguments) = self
-                        .argument_values
-                        .get(function)
-                        .filter(|arguments| self.argument_reads.contains(&arguments.binding))
-                    {
-                        for argument in call.args.iter().flatten() {
-                            self.copies
-                                .insert((argument.clone(), arguments.at(Step::Index), call.owner));
-                        }
+                }
+                if let Some(arguments) = self
+                    .argument_values
+                    .get(&function)
+                    .filter(|arguments| self.argument_reads.contains(&arguments.binding))
+                {
+                    for argument in call.args.iter().flatten() {
+                        linked.push((argument.clone(), arguments.at(Step::Index), call.owner));
                     }
-                    self.copies
-                        .insert((Place::new(*function).at(Step::Result), call.result.clone(), call.owner));
+                }
+                linked.push((Place::new(function).at(Step::Result), call.result.clone(), call.owner));
+                self.reachable.insert(function);
+            }
+            self.copies.extend(linked);
+            // Function values and slice methods flow along every reachable copy.
+            let mut sources: HashMap<Span, Vec<(&Place, &Place)>> = HashMap::new();
+            for (src, dest, owner) in &self.copies {
+                if self.reachable.contains(owner) {
+                    sources.entry(src.binding).or_default().push((src, dest));
                 }
             }
-            let values: Vec<_> = self.values.iter().cloned().collect();
-            let slice_methods: Vec<_> = self.slice_methods.iter().cloned().collect();
-            for (src, dest, owner) in &self.copies {
-                if !self.reachable.contains(owner) {
-                    continue;
-                }
-                for (value, function) in &values {
-                    if value.binding == src.binding
-                        && let Some(suffix) = projected_suffix(&value.path, &src.path)
-                    {
-                        let mut target = dest.clone();
+            let mut pending: Vec<_> = self.values.iter().cloned().collect();
+            while let Some((value, function)) = pending.pop() {
+                for (src, dest) in sources.get(&value.binding).into_iter().flatten() {
+                    if let Some(suffix) = projected_suffix(&value.path, &src.path) {
+                        let mut target = (*dest).clone();
                         target.path.extend_from_slice(suffix);
-                        self.values.insert((self.bounded(target), *function));
+                        let value = (bounded(target, max_depth), function);
+                        if self.values.insert(value.clone()) {
+                            pending.push(value);
+                        }
                     }
                 }
-                for method in &slice_methods {
-                    if method.binding == src.binding
-                        && let Some(suffix) = projected_suffix(&method.path, &src.path)
-                    {
-                        let mut target = dest.clone();
+            }
+            let mut pending: Vec<_> = self.slice_methods.iter().cloned().collect();
+            while let Some(method) = pending.pop() {
+                for (src, dest) in sources.get(&method.binding).into_iter().flatten() {
+                    if let Some(suffix) = projected_suffix(&method.path, &src.path) {
+                        let mut target = (*dest).clone();
                         target.path.extend_from_slice(suffix);
-                        self.slice_methods.insert(self.bounded(target));
+                        let target = bounded(target, max_depth);
+                        if self.slice_methods.insert(target.clone()) {
+                            pending.push(target);
+                        }
                     }
                 }
             }
@@ -1865,108 +2097,39 @@ impl Graph {
                         .insert((receiver.at(Step::Index), result.at(Step::Index), *owner));
                 }
             }
-            for incoming in [&mut self.incoming, &mut self.incoming_writes] {
-                let mut projected = Vec::new();
-                for (binding, view) in &self.parameter_views {
-                    for p in incoming.iter() {
-                        if p.binding == view.binding
-                            && let Some(path) = projected_suffix(&p.path, &view.path)
-                        {
-                            projected.push(Place {
+            for (incoming, read) in [
+                (&mut self.incoming, &mut solved.viewed_incoming),
+                (&mut self.incoming_writes, &mut solved.viewed_incoming_writes),
+            ] {
+                while let Some(p) = incoming.get_index(*read).cloned() {
+                    *read += 1;
+                    for (binding, view) in views.get(&p.binding).into_iter().flatten() {
+                        if let Some(path) = projected_suffix(&p.path, &view.path) {
+                            incoming.insert(Place {
                                 binding: *binding,
                                 path: path.to_vec(),
                             });
                         }
                     }
                 }
-                incoming.extend(projected);
             }
-            self.numeric = self
-                .function_numeric
-                .iter()
-                .filter(|(owner, _)| self.reachable.contains(owner))
-                .flat_map(|(_, paths)| paths.iter().cloned())
-                .chain(self.incoming.iter().cloned())
-                .collect();
-            self.writes = self
-                .function_writes
-                .iter()
-                .filter(|(owner, _)| self.reachable.contains(owner))
-                .flat_map(|(_, paths)| paths.iter().cloned())
-                .collect();
-            for call in &self.calls {
-                if !self.reachable.contains(&call.owner) {
-                    continue;
-                }
-                for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
-                    let bindings = self.call_bindings(call, *function);
-                    for (arg, param) in &bindings {
-                        let Some(arg) = arg else {
-                            continue;
-                        };
-                        // Use writes that can precede this call, rather than
-                        // later writes elsewhere in the caller. Captures keep
-                        // their stable view because closures can run later.
-                        let captures = self.bindings.get(&arg.binding) != Some(&call.owner);
-                        let prior = call.prior.iter().filter_map(|event| self.events.get(event)).flatten();
-                        let inputs = self
-                            .incoming
-                            .iter()
-                            .chain(prior)
-                            .chain(self.numeric.iter().filter(|_| captures));
-                        let mut incoming = Vec::new();
-                        for p in inputs {
-                            if p.binding == arg.binding
-                                && let Some(path) = projected_suffix(&p.path, &arg.path)
-                            {
-                                let mut target = param.clone();
-                                target.path.extend_from_slice(path);
-                                incoming.push(self.bounded(target));
-                            }
-                        }
-                        self.incoming.extend(incoming);
-                        let prior = call
-                            .prior
-                            .iter()
-                            .filter_map(|event| self.write_events.get(event))
-                            .flatten();
-                        let inputs = self
-                            .incoming_writes
-                            .iter()
-                            .chain(prior)
-                            .chain(self.writes.iter().filter(|_| captures));
-                        let mut incoming = Vec::new();
-                        for p in inputs {
-                            if p.binding == arg.binding
-                                && let Some(path) = projected_suffix(&p.path, &arg.path)
-                            {
-                                let mut target = param.clone();
-                                target.path.extend_from_slice(path);
-                                incoming.push(self.bounded(target));
-                            }
-                        }
-                        self.incoming_writes.extend(incoming);
-                    }
-                    let summary = self.function_numeric.get(function).cloned().unwrap_or_default();
-                    for p in summary {
-                        for target in self.caller_effects(*function, &bindings, p) {
-                            self.events.entry(call.span).or_default().insert(target.clone());
-                            self.function_numeric
-                                .entry(call.owner)
-                                .or_default()
-                                .insert(target.clone());
-                            self.numeric.insert(target);
-                        }
-                    }
-                    let summary = self.function_writes.get(function).cloned().unwrap_or_default();
-                    for p in summary {
-                        for target in self.caller_effects(*function, &bindings, p) {
-                            self.write_events.entry(call.span).or_default().insert(target.clone());
-                            self.function_writes.entry(call.owner).or_default().insert(target);
-                        }
+            for (sets, union, read) in [
+                (&self.function_numeric, &mut self.numeric, &mut solved.numeric_from),
+                (&self.function_writes, &mut self.writes, &mut solved.writes_from),
+            ] {
+                for (owner, paths) in sets {
+                    if self.reachable.contains(owner) {
+                        let read = read.entry(*owner).or_default();
+                        union.extend(unread(paths, *read, paths.len()).cloned());
+                        *read = paths.len();
                     }
                 }
             }
+            let end = self.incoming.len();
+            self.numeric
+                .extend(unread(&self.incoming, solved.numeric_incoming, end).cloned());
+            solved.numeric_incoming = end;
+            self.call_summaries(&mut solved);
             let mut escaped = Vec::new();
             for (src, dest, owner) in &self.copies {
                 if self.reachable.contains(owner)
@@ -1979,10 +2142,9 @@ impl Graph {
                 }
             }
             self.escaped.extend(escaped);
+            let end = self.escaped.len();
             for (event, owner) in &self.call_events {
-                let invalidated = self
-                    .escaped
-                    .iter()
+                let invalidated = unread(&self.escaped, solved.invalidated, end)
                     .filter(|p| {
                         self.bindings
                             .get(&p.binding)
@@ -1991,60 +2153,80 @@ impl Graph {
                     .map(|p| p.at(Step::Descendants));
                 self.write_events.entry(*event).or_default().extend(invalidated);
             }
+            solved.invalidated = end;
+            let mut by_binding: HashMap<Span, Vec<(usize, &Place)>> = HashMap::new();
+            for (index, e) in self.escaped.iter().enumerate() {
+                by_binding.entry(e.binding).or_default().push((index, e));
+            }
+            let escaped = |p: &Place, from: usize| {
+                by_binding.get(&p.binding).is_some_and(|escapes| {
+                    escapes
+                        .iter()
+                        .any(|(index, e)| *index >= from && projected_suffix(&p.path, &e.path).is_some())
+                })
+            };
             for (event, paths) in &mut self.write_events {
-                let owner = self.event_owners.get(event);
-                if paths.iter().any(|p| {
-                    !p.path.is_empty()
-                        && (self.external.contains(&p.binding)
-                            || self
-                                .escaped
-                                .iter()
-                                .any(|e| e.binding == p.binding && projected_suffix(&p.path, &e.path).is_some()))
-                }) {
+                if solved.external_added.contains(event) {
+                    continue;
+                }
+                // Earlier passes checked the places they saw against the escapes they saw.
+                let (places_seen, escapes_seen) = solved.external_checked.get(event).copied().unwrap_or_default();
+                let changes_external = unread(paths, places_seen, paths.len())
+                    .any(|p| !p.path.is_empty() && (self.external.contains(&p.binding) || escaped(p, 0)))
+                    || unread(paths, 0, places_seen).any(|p| !p.path.is_empty() && escaped(p, escapes_seen));
+                if changes_external {
+                    let owner = self.event_owners.get(event);
                     let external = self
                         .external
                         .iter()
                         .filter(|binding| owner.is_some() && self.bindings.get(binding) == owner)
                         .map(|binding| Place::new(*binding).at(Step::Descendants));
                     paths.extend(external);
+                    solved.external_added.insert(*event);
+                } else {
+                    solved.external_checked.insert(*event, (paths.len(), end));
                 }
             }
-            let mut aliases: HashMap<Span, Vec<(Place, Place)>> = HashMap::new();
-            for (a, b, owner) in &self.copies {
-                if self.reachable.contains(owner) {
-                    aliases.entry(a.binding).or_default().push((a.clone(), b.clone()));
-                    aliases.entry(b.binding).or_default().push((b.clone(), a.clone()));
+            let mut aliased = HashSet::new();
+            for (index, (a, b, owner)) in self.copies.iter().enumerate() {
+                if self.reachable.contains(owner) && solved.aliased.insert(index) {
+                    solved
+                        .aliases
+                        .entry(a.binding)
+                        .or_default()
+                        .push((a.clone(), b.clone()));
+                    solved
+                        .aliases
+                        .entry(b.binding)
+                        .or_default()
+                        .push((b.clone(), a.clone()));
+                    aliased.extend([a.binding, b.binding]);
                 }
             }
-            for map in [
+            for (sets, expanded) in [
                 &mut self.function_numeric,
                 &mut self.function_writes,
                 &mut self.events,
                 &mut self.write_events,
-            ] {
-                for paths in map.values_mut() {
-                    Self::expand_aliases(paths, &aliases, self.max_depth);
+            ]
+            .into_iter()
+            .zip(&mut solved.expanded)
+            {
+                for (key, paths) in sets.iter_mut() {
+                    // Places seen before are closed under the aliases seen before.
+                    let seen = expanded.get(key).copied().unwrap_or_default();
+                    let pending = unread(paths, seen, paths.len())
+                        .chain(unread(paths, 0, seen).filter(|p| aliased.contains(&p.binding)))
+                        .cloned()
+                        .collect();
+                    Self::expand_aliases(paths, pending, &solved.aliases, max_depth);
+                    expanded.insert(*key, paths.len());
                 }
             }
             // Entry views only flow from a caller's prior events into that
             // invocation. Expanding them back through callback aliases would
             // move writes performed inside a function before its own entry.
-            if before
-                == (
-                    self.reachable.len(),
-                    self.incoming.len(),
-                    self.incoming_writes.len(),
-                    (self.values.len(), self.slice_methods.len()),
-                    self.copies.len(),
-                    self.numeric.len(),
-                    self.writes.len(),
-                    self.function_numeric.values().map(HashSet::len).sum::<usize>(),
-                    self.function_writes.values().map(HashSet::len).sum::<usize>(),
-                    self.events.values().map(HashSet::len).sum::<usize>(),
-                    self.write_events.values().map(HashSet::len).sum::<usize>(),
-                    self.escaped.len(),
-                )
-            {
+            if before == self.sizes() {
                 break;
             }
         }
@@ -2097,6 +2279,23 @@ impl Graph {
             }
             creation_entries = next;
         }
+        // Event histories share most of their events, so union them by place number.
+        let mut known: IndexSet<&Place> = IndexSet::new();
+        let numbered: HashMap<Span, Vec<usize>> = self
+            .write_events
+            .iter()
+            .map(|(event, places)| (*event, places.iter().map(|p| known.insert_full(p).0).collect()))
+            .collect();
+        let union = |events: &mut dyn Iterator<Item = &Span>, out: &mut Places| {
+            let mut seen = HashSet::new();
+            for event in events {
+                for &id in numbered.get(event).into_iter().flatten() {
+                    if seen.insert(id) && !out.contains(known[id]) {
+                        out.insert(known[id].clone());
+                    }
+                }
+            }
+        };
         let mut capture_writes = self.function_writes.clone();
         for (function, prior) in &entry_history {
             let mut created = self.created_prior.get(function).cloned().unwrap_or_default();
@@ -2104,24 +2303,18 @@ impl Graph {
             if let Some(owner) = self.created_by.get(function) {
                 created.extend(creation_entries.get(owner).into_iter().flatten());
             }
-            for event in prior.difference(&created) {
-                capture_writes
-                    .entry(*function)
-                    .or_default()
-                    .extend(self.write_events.get(event).into_iter().flatten().cloned());
+            let mut events = prior.difference(&created).peekable();
+            if events.peek().is_some() {
+                union(&mut events, capture_writes.entry(*function).or_default());
             }
         }
         let summaries = |histories: &HashMap<Span, HashSet<Span>>| {
             histories
                 .iter()
                 .map(|(span, events)| {
-                    (
-                        *span,
-                        events
-                            .iter()
-                            .flat_map(|event| self.write_events.get(event).into_iter().flatten().cloned())
-                            .collect(),
-                    )
+                    let mut places = Places::default();
+                    union(&mut events.iter(), &mut places);
+                    (*span, places)
                 })
                 .collect()
         };
@@ -2165,6 +2358,90 @@ impl Graph {
             effects.incoming_writes.entry(p.binding).or_default().insert(p.path);
         }
         effects
+    }
+}
+
+/// Debug builds only: `ZERO_DEBUG_EFFECTS=<file>` appends every solved [`Effects`] to `<file>`
+/// in a stable sorted text form, so a change to the solver can be checked against the old
+/// result program by program. `ZERO_DEBUG_EFFECTS_WORK=<file>` appends one
+/// `projections=<n> facts=<n>` line per solve instead. Release builds never read either.
+#[cfg(debug_assertions)]
+fn debug_dump(effects: &Effects, projections: u64) {
+    use std::collections::BTreeSet;
+    use std::io::Write as _;
+    let append = |path: &std::ffi::OsStr| {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("the effects debug file is writable")
+    };
+    if let Some(path) = std::env::var_os("ZERO_DEBUG_EFFECTS_WORK") {
+        let places = |map: &HashMap<Span, Places>| map.values().map(IndexSet::len).sum::<usize>();
+        let paths = |map: &HashMap<Span, HashSet<Vec<Step>>>| map.values().map(HashSet::len).sum::<usize>();
+        let facts = places(&effects.capture_writes)
+            + places(&effects.events)
+            + places(&effects.write_events)
+            + places(&effects.expression_writes)
+            + places(&effects.loop_writes)
+            + paths(&effects.numeric)
+            + paths(&effects.incoming)
+            + paths(&effects.incoming_writes)
+            + paths(&effects.binding_writes);
+        writeln!(append(&path), "projections={projections} facts={facts}").unwrap();
+    }
+    let Some(path) = std::env::var_os("ZERO_DEBUG_EFFECTS") else {
+        return;
+    };
+    let span = |s: &Span| format!("{}:{}-{}", s.file, s.start, s.end);
+    let place = |p: &Place| format!("{}{:?}", span(&p.binding), p.path);
+    let mut lines = BTreeSet::new();
+    for s in &effects.reassigned {
+        lines.insert(format!("reassigned {}", span(s)));
+    }
+    for s in &effects.captured {
+        lines.insert(format!("captured {}", span(s)));
+    }
+    // Keyed by value identity (an address), so only the places are stable across runs.
+    let captured_data: Vec<_> = effects
+        .captured_data
+        .values()
+        .map(place)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let counted = effects.captured_data.len();
+    lines.insert(format!("captured_data {counted} {captured_data:?}"));
+    for (name, map) in [
+        ("numeric", &effects.numeric),
+        ("incoming", &effects.incoming),
+        ("incoming_writes", &effects.incoming_writes),
+        ("binding_writes", &effects.binding_writes),
+    ] {
+        for (s, paths) in map {
+            for p in paths {
+                lines.insert(format!("{name} {} {p:?}", span(s)));
+            }
+        }
+    }
+    for (name, map) in [
+        ("capture_writes", &effects.capture_writes),
+        ("events", &effects.events),
+        ("write_events", &effects.write_events),
+        ("expression_writes", &effects.expression_writes),
+        ("loop_writes", &effects.loop_writes),
+    ] {
+        for (s, places) in map {
+            lines.insert(format!("{name} {} {}", span(s), places.len()));
+            for p in places {
+                lines.insert(format!("{name} {} {}", span(s), place(p)));
+            }
+        }
+    }
+    let mut file = append(&path);
+    writeln!(file, "== effects ({} facts)", lines.len()).unwrap();
+    for line in lines {
+        writeln!(file, "{line}").unwrap();
     }
 }
 

@@ -68,7 +68,7 @@ Read routes: `people`, `organizations`, `applications`, `sessions`, `authenticat
 
 Mutation routes: `people/suspend`, `people/erase`, `sessions/revoke`, `keys/rotate`, `webhooks`, `webhooks/remove`, and `applications`. Application registration takes `name`, `redirect_uri`, `origin` and `idempotency_key`. It permits no wildcards, fragments or callback-origin mismatches. Webhook registration returns its signing secret once.
 
-CLI: `wp zero-identity account <id>`, `suspend`, `restore`, `revoke`, `erase`, `rotate-keys`, `webhook-add`, `webhook-remove`, `webhooks`, `maintenance`, and `wp zero-identity app add --name=<n> --redirect=<uri> --origin=<origin> [--id=<app_id>]` (an `--id` rerun with the same values returns the same app). The Abilities API gets `zero-identity/account`, a capability-checked account read.
+CLI: `wp zero identity account <id>`, `suspend`, `restore`, `revoke`, `erase`, `rotate-keys`, `webhook-add`, `webhook-remove`, `webhooks`, `maintenance`, and `wp zero identity app add --name=<n> --redirect=<uri> --origin=<origin> [--id=<app_id>]` (an `--id` rerun with the same values returns the same app). Each prints `{"data": …}` or `{"error": {"code", "detail"}}`; from a project, `zero identity …` runs the same command. The Abilities API gets `zero-identity/account`, a capability-checked account read.
 
 Webhook deliveries carry `Zero-Event-Id` and `Zero-Signature: t=<unix>,v1=<hex hmac_sha256(secret, t + "." + body)>`.
 

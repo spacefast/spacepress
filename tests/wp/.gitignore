@@ -12,3 +12,4 @@ cache/*/
 .wp-content-admin/
 .harness-admin.json
 .app-build.*/
+cache/*.phar

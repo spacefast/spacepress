@@ -96,6 +96,40 @@ export interface WP_Query {
   set(query_var: string, value: string | number | boolean | string[] | number[]): void;
   is_main_query(): boolean;
 }
+/** WordPress `get_option()`. */
+export declare function get_option(option: string): unknown;
+/** WordPress `update_option()`. */
+export declare function update_option(option: string, value: unknown): boolean;
+/** WordPress `delete_option()`. */
+export declare function delete_option(option: string): boolean;
+/** WordPress `get_post()`. */
+export declare function get_post(post: number): WP_Post | null;
+/** WordPress `wp_insert_post()`. Throws an HttpError when WordPress returns a WP_Error. */
+export declare function wp_insert_post(postarr: { post_title?: string; post_content?: string; post_excerpt?: string; post_status?: string; post_type?: string; post_name?: string; post_author?: number; post_parent?: number; menu_order?: number }): number;
+/** WordPress `current_user_can()`. */
+export declare function current_user_can(capability: string): boolean;
+/** WordPress `is_user_logged_in()`. */
+export declare function is_user_logged_in(): boolean;
+/** WordPress `get_current_user_id()`. */
+export declare function get_current_user_id(): number;
+/** WordPress `get_userdata()`. */
+export declare function get_userdata(user_id: number): WP_User | false;
+/** WordPress `get_permalink()`. */
+export declare function get_permalink(post: number): string | false;
+/** WordPress `home_url()`. */
+export declare function home_url(path: string): string;
+/** WordPress `sanitize_text_field()`. */
+export declare function sanitize_text_field(str: string): string;
+/** WordPress `sanitize_title()`. */
+export declare function sanitize_title(title: string): string;
+/** WordPress `esc_html()`. */
+export declare function esc_html(text: string): string;
+/** WordPress `esc_attr()`. */
+export declare function esc_attr(text: string): string;
+/** WordPress `esc_url()`. */
+export declare function esc_url(url: string): string;
+/** WordPress `wp_strip_all_tags()`. */
+export declare function wp_strip_all_tags(text: string): string;
 /** The WordPress hooks `wp-hooks/` accepts: kind and arguments, from core's docblocks. */
 export interface Hooks {
   /** Fires after WordPress has finished loading but before any headers are sent. (wp-settings.php) */

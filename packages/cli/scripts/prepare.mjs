@@ -12,3 +12,4 @@ for (const entry of await readdir(sourceTypes, { withFileTypes: true })) {
   }
 }
 await copyFile(new URL('../../../LICENSE-MIT', import.meta.url), new URL('../LICENSE', import.meta.url));
+await copyFile(new URL('../../../runtime/Zero/Cli/commands.json', import.meta.url), new URL('../lib/commands.json', import.meta.url));

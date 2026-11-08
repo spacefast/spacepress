@@ -2,3 +2,4 @@
 /LICENSE
 /*.tgz
 /node_modules/
+/lib/commands.json

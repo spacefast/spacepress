@@ -154,11 +154,11 @@ ACTIVATE
   wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); foreach (glob("/zero-mu-plugins/*.php") as $f) { copy($f, WPMU_PLUGIN_DIR . "/zero-harness-" . basename($f)); }' >/dev/null
 
   local identity=null
-  if wp cli has-command 'zero-identity app add' >/dev/null 2>&1; then
+  if wp plugin is-active zero-identity >/dev/null 2>&1; then
     local application client_id
     origin="${url%%/[^/]*}"; [[ $url == */* ]] && origin="$(printf %s "$url" | sed -E 's#^(https?://[^/]+).*#\1#')"
-    application=$(wp zero-identity app add --name='Zero development' --redirect="$url/auth/callback" --origin="$origin" --id=app_zero_dev)
-    client_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$application")
+    application=$(wp zero identity app add --name='Zero development' --redirect="$url/auth/callback" --origin="$origin" --id=app_zero_dev)
+    client_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["id"])' <<< "$application")
     identity=$(python3 -c 'import json,sys; print(json.dumps({"clientId":sys.argv[1]}))' "$client_id")
     [[ $env == 0 ]] || printf 'export ZERO_IDENTITY_CLIENT_ID=%q\n' "$client_id"
   fi

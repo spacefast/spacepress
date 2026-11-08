@@ -39,6 +39,7 @@ final class MarkdownTwins
     {
         // After HttpRoutes (0): an app route at a `.md` path or `/llms.txt` is the app's.
         add_filter('do_parse_request', [self::class, 'parseRequest'], 1);
+        add_action('parse_request', [self::class, 'parsed'], PHP_INT_MAX);
         add_action('wp', [self::class, 'answer'], PHP_INT_MIN);
         add_action('wp_head', [self::class, 'linkTag'], 1);
         add_filter('robots_txt', [self::class, 'robots'], PHP_INT_MAX);
@@ -107,11 +108,21 @@ final class MarkdownTwins
         $path = (string) (wp_parse_url($uri, PHP_URL_PATH) ?? '/');
         $query = (string) (wp_parse_url($uri, PHP_URL_QUERY) ?? '');
         $html = (self::htmlPath($path) ?? $path) . ($query !== '' ? '?' . $query : '');
-        $_SERVER['REQUEST_URI'] = $html;
+        self::rewrite($html);
         $_SERVER['QUERY_STRING'] = $query;
         parse_str($query, $get);
-        $_GET = $get;
-        self::$twin = self::twin(home_url(self::relative($html)));
+        // After bootstrap WordPress reads $_GET slashed (wp_magic_quotes).
+        $_GET = wp_slash($get);
+        $twin = self::twin(home_url(self::relative($html)));
+        $private = ['Cache-Control' => 'private, no-store', 'Vary' => 'Accept', 'Content-Location' => $twin];
+        // First, so that whatever a hook does from here (an exit included) leaves no shared copy.
+        if (!headers_sent()) {
+            foreach ($private as $name => $value) {
+                header("$name: $value");
+            }
+        }
+        self::anonymous();
+        self::$twin = $twin;
         self::$negotiated = null;
         // WordPress's own headers are for the HTML page; the returned headers are the whole answer.
         $none = static fn (): array => [];
@@ -119,14 +130,14 @@ final class MarkdownTwins
         add_filter('nocache_headers', $none, PHP_INT_MAX);
         try {
             wp();
+            $answer = self::$negotiated ?? throw new \LogicException('the main query ran without Zero answering it');
         } finally {
             remove_filter('wp_headers', $none, PHP_INT_MAX);
             remove_filter('nocache_headers', $none, PHP_INT_MAX);
+            self::$twin = null;
+            self::$negotiated = false;
         }
-        $answer = self::$negotiated ?? throw new \LogicException('the main query ran without Zero answering it');
-        $answer['headers'] += ['Cache-Control' => 'private, no-store', 'Vary' => 'Accept', 'Content-Location' => self::$twin];
-        self::$twin = null;
-        self::$negotiated = false;
+        $answer['headers'] = $private + $answer['headers'];
 
         return $answer;
     }
@@ -134,6 +145,7 @@ final class MarkdownTwins
     /** `/llms.txt` (llmstxt.org): the site, then each public kind's newest entries and terms, linking twins. */
     public static function llms(): string
     {
+        self::anonymous();
         $lines = ['# ' . self::plain((string) get_bloginfo('name')), ''];
         $tagline = self::plain((string) get_bloginfo('description'));
         if ($tagline !== '') {
@@ -149,7 +161,7 @@ final class MarkdownTwins
                 'post_type' => $type->name, 'post_status' => 'publish', 'numberposts' => self::LLMS_LIMIT,
                 'orderby' => $type->hierarchical ? ['menu_order' => 'ASC', 'title' => 'ASC'] : ['date' => 'DESC', 'ID' => 'DESC'],
             ]) as $post) {
-                if (is_post_publicly_viewable($post)) {
+                if (self::hasTwin($post)) {
                     $entries[] = self::entry($post);
                 }
             }
@@ -201,13 +213,30 @@ final class MarkdownTwins
         if ($html !== null && !str_starts_with($path . '/', self::base() . '/' . rest_get_url_prefix() . '/')) {
             self::$twin = $uri;
             $query = (string) (wp_parse_url($uri, PHP_URL_QUERY) ?? '');
-            $_SERVER['REQUEST_URI'] = $html . ($query !== '' ? '?' . $query : '');
-            if (isset($_SERVER['PATH_INFO']) && is_string($_SERVER['PATH_INFO']) && str_ends_with($_SERVER['PATH_INFO'], '.md')) {
-                $_SERVER['PATH_INFO'] = substr($_SERVER['PATH_INFO'], 0, -3);
-            }
+            self::rewrite($html . ($query !== '' ? '?' . $query : ''));
+            self::anonymous();
         }
 
         return $parse;
+    }
+
+    /**
+     * parse_request: a twin of a feed, embed, preview, trackback or error page is a 404. Turning the
+     * query into one here, before WP::send_headers(), also keeps WordPress from answering it itself
+     * (a feed's 304, an `?error=403` exit) with the HTML page's headers.
+     */
+    public static function parsed(\WP $wp): void
+    {
+        if (self::$twin === null) {
+            return;
+        }
+        foreach (['feed', 'embed', 'preview', 'tb', 'robots', 'favicon', 'error'] as $var) {
+            if (($wp->query_vars[$var] ?? '') !== '') {
+                $wp->query_vars = ['error' => '404'];
+
+                return;
+            }
+        }
     }
 
     /** wp: a `.md` request gets its twin; an HTML page with one advertises it. */
@@ -260,25 +289,8 @@ final class MarkdownTwins
 
     // ================================================================ documents
 
-    /**
-     * The status and twin of the main query. Dynamic blocks render as an anonymous visitor: a twin is
-     * the same for every visitor, so shared caches may keep it.
-     *
-     * @return array{int, string}
-     */
+    /** @return array{int, string} the status and twin of the main query */
     private static function document(): array
-    {
-        $user = get_current_user_id();
-        wp_set_current_user(0);
-        try {
-            return self::documentFor();
-        } finally {
-            wp_set_current_user($user);
-        }
-    }
-
-    /** @return array{int, string} */
-    private static function documentFor(): array
     {
         $kind = self::kind();
         if ($kind === null) {
@@ -303,9 +315,7 @@ final class MarkdownTwins
         if (is_singular()) {
             $post = get_queried_object();
 
-            // `zero_markdown_twin` lets a plugin that renders this URL itself (the pages add-on's code
-            // Pages) say the stored post is not what the URL shows.
-            return $post instanceof \WP_Post && is_post_publicly_viewable($post) && apply_filters('zero_markdown_twin', true, $post) ? 'singular' : null;
+            return $post instanceof \WP_Post && self::hasTwin($post) ? 'singular' : null;
         }
 
         return is_home() || is_archive() || is_search() ? 'listing' : null;
@@ -323,7 +333,7 @@ final class MarkdownTwins
         }
         $entries = [];
         foreach ($wp_query instanceof \WP_Query ? $wp_query->posts : [] as $post) {
-            if ($post instanceof \WP_Post && is_post_publicly_viewable($post)) {
+            if ($post instanceof \WP_Post && self::hasTwin($post)) {
                 $entries[] = self::entry($post);
             }
         }
@@ -419,6 +429,44 @@ final class MarkdownTwins
         }
 
         return $headers;
+    }
+
+    /**
+     * Whether a post has a twin, so whether anything may link one: publicly viewable, and not refused
+     * by `zero_markdown_twin`, which lets a plugin that renders the URL itself (the pages add-on's code
+     * Pages) say the stored post is not what the URL shows.
+     */
+    private static function hasTwin(\WP_Post $post): bool
+    {
+        return is_post_publicly_viewable($post) && apply_filters('zero_markdown_twin', true, $post);
+    }
+
+    /**
+     * The rest of this request is an anonymous visitor's, whatever cookies it carries: a twin is the
+     * same for everyone, so shared caches may keep it. The main query, listings and every dynamic
+     * block then see what a signed-out visitor sees, and every password-protected post stays locked,
+     * a `wp-postpass_*` cookie notwithstanding (a Query Loop's post content included).
+     */
+    private static function anonymous(): void
+    {
+        wp_set_current_user(0);
+        add_filter('determine_current_user', static fn (): int => 0, PHP_INT_MAX);
+        add_filter('post_password_required', static function (bool $required, mixed $post): bool {
+            $post = get_post($post);
+
+            return $required || ($post instanceof \WP_Post && $post->post_password !== '');
+        }, PHP_INT_MAX, 2);
+    }
+
+    /** REQUEST_URI and, when the server sets it, PATH_INFO for the HTML URI WordPress should parse. */
+    private static function rewrite(string $uri): void
+    {
+        $_SERVER['REQUEST_URI'] = $uri;
+        $info = $_SERVER['PATH_INFO'] ?? null;
+        if (is_string($info) && str_ends_with($info, '.md')) {
+            $stem = substr($info, 0, -3);
+            $_SERVER['PATH_INFO'] = $stem === '/index' || $stem === '' ? '/' : $stem;
+        }
     }
 
     /** The HTML path a twin path stands for (`/x.md` → `/x`, `/index.md` → `/`), or null for any other path. */

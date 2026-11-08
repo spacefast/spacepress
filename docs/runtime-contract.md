@@ -529,6 +529,14 @@ The v2 app plugin registers these. A WordPress without a Zero app is unchanged.
   public content (404, draft, preview, private post, feed, Zero collection,
   pages-add-on code Page) gets a 404. Nothing varies on `Accept`. Batcache and
   the edge key on the URL, so the twin is a separate cache entry.
+- **Twin requests are anonymous.** From `do_parse_request` on, the request
+  runs as a signed-out visitor, whatever cookies it carries. The main query,
+  pagination and every dynamic block see what a signed-out visitor sees.
+  Every password-protected post stays locked, even with a `wp-postpass_*`
+  cookie, including a protected post's body inside a Query Loop. A feed,
+  embed, preview or trackback query becomes a 404 before
+  `WP::send_headers()`, so WordPress never answers a twin URL itself (a
+  feed's 304, for example).
 - **HTML pages** with a twin send
   `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
   `<link>` in `wp_head`.
@@ -545,7 +553,7 @@ PHP API (all static):
 |---|---|
 | `MarkdownTwins::twin(string $url): string` | the twin URL: `/x/` → `/x.md`, home → `/index.md`; scheme, host and query kept. Purges use it to add each URL's `.md` twin. |
 | `MarkdownTwins::post(WP_Post $post): string` | `# Title` plus the stored content as Markdown. A password-protected post gives only its title and a note. It checks no visibility; the caller does. `?format=md` on item routes returns this. |
-| `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses: when `fromBlocks()` succeeds, the result is its output exactly; otherwise each block is written as Markdown or as the text of its rendered HTML. |
+| `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses: when `fromBlocks()` succeeds, the result is its output exactly. Otherwise each block is written as Markdown, layout blocks (group, columns) by their inner blocks, and any other block as the text of what its own renderer prints, so a block that hides its content hides it here too. A block whose rendering throws shows nothing. A `<` that would start a tag outside code is escaped, so no HTML reaches the output. |
 | `MarkdownTwins::llms(): string` | the `/llms.txt` body |
 | `MarkdownTwins::negotiate(string $uri): ?array` | the engine's `Accept: text/markdown` answer, below |
 
@@ -567,9 +575,12 @@ by the engine instead, never from a page cache:
    `Vary: Accept` and `Content-Location: <twin URL>`. An app `route.ts` at that
    path answers and exits as on any request.
 
-`negotiate()` calls `batcache_cancel()` itself and prints nothing. It runs
-WordPress's own request parsing and main query for the URI, and suppresses the
-headers WordPress would send for the HTML page. Call it at most once per
+`negotiate()` calls `batcache_cancel()` itself and prints nothing. It sends
+`Cache-Control: private, no-store`, `Vary: Accept` and `Content-Location`
+before running any hook, so nothing that exits early can leave a shared copy.
+It runs WordPress's own request parsing and main query for the URI (query
+values slashed as WordPress expects), as a signed-out visitor, and suppresses
+the headers WordPress would send for the HTML page. Call it at most once per
 request.
 
 ## CLI (`wp zero`)

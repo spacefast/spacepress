@@ -173,11 +173,12 @@ Markdown version at the same address plus `.md`:
   text, links and images of its rendered HTML. Raw HTML never comes through.
 - **Archives, the blog index and search results** list each entry with a link
   to its own `.md` URL, plus links to the previous and next pages.
-- **Only public content gets a Markdown URL.** Drafts, previews, private posts
-  and Zero collections get a 404. A password-protected post shows only its
-  title.
-- **The `.md` URL is its own URL, the same for every visitor.** Page caches
-  store it apart from the HTML.
+- **Only public content gets a Markdown URL.** Drafts, previews, private posts,
+  feeds and Zero collections get a 404. A password-protected post shows only
+  its title, even to a visitor who entered the password.
+- **The `.md` URL is its own URL, the same for every visitor.** It is rendered
+  as a signed-out visitor, even for a signed-in request. Page caches store it
+  apart from the HTML.
 
 Each HTML page links its Markdown version, so agents can find it:
 

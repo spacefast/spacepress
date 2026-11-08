@@ -27,6 +27,9 @@ use WP_HTML_Tag_Processor as Tags;
  */
 final class Markdown
 {
+    /** Layout blocks with no content of their own: render() writes their inner blocks. */
+    private const LAYOUT_BLOCKS = ['core/group', 'core/columns', 'core/column'];
+
     /** Blocks MarkdownProducer writes as Markdown syntax (table included; the round trip then judges it). */
     private const MARKDOWN_BLOCKS = ['core/paragraph', 'core/heading', 'core/list', 'core/list-item', 'core/quote',
         'core/code', 'core/image', 'core/table', 'core/separator'];
@@ -69,12 +72,20 @@ final class Markdown
      *
      * When the document can be written as Markdown, the result is exactly fromBlocks(). Otherwise
      * each top-level block is written on its own: a block Markdown has syntax for through the
-     * toolkit's producer (whatever the round trip would lose, such as an alignment), a container
-     * (group, columns, cover) by its inner blocks, and any other block (buttons, embeds, dynamic
-     * blocks, classic content) as the text, links, emphasis and images of its rendered HTML. Raw
-     * HTML never reaches the output, so a script in a custom HTML block stays out of it.
+     * toolkit's producer (whatever the round trip would lose, such as an alignment), a layout block
+     * (group, columns) by its inner blocks, and any other block (buttons, embeds, dynamic blocks,
+     * classic content) as the text, links, emphasis and images of what it renders, so its own render
+     * callback still decides what it shows. A block whose rendering fails shows nothing.
+     *
+     * No HTML reaches the output: a `<` that would start a tag outside code is escaped, whether it
+     * came from markup (a custom HTML block) or from text (`&lt;script&gt;`).
      */
     public static function render(string $blocks): string
+    {
+        return self::escapeTags(self::renderBlocks($blocks));
+    }
+
+    private static function renderBlocks(string $blocks): string
     {
         try {
             return self::fromBlocks($blocks);
@@ -82,7 +93,11 @@ final class Markdown
         }
         $parts = [];
         foreach (Blocks::parse($blocks) as $block) {
-            $part = self::renderBlock($block);
+            try {
+                $part = self::renderBlock($block);
+            } catch (\Throwable) {
+                $part = '';
+            }
             if ($part !== '') {
                 $parts[] = $part;
             }
@@ -105,15 +120,51 @@ final class Markdown
             } catch (HttpError) {
             }
         }
-        $inner = $block['innerBlocks'] ?? [];
-        if ($inner !== [] && trim(wp_strip_all_tags(implode('', array_filter($block['innerContent'] ?? [], 'is_string')))) === '') {
-            return self::render(Blocks::serialize($inner));
+        if (in_array($block['blockName'] ?? null, self::LAYOUT_BLOCKS, true)) {
+            return self::renderBlocks(Blocks::serialize($block['innerBlocks'] ?? []));
         }
         $html = ($block['blockName'] ?? null) === null
             ? wpautop(do_shortcode((string) ($block['innerHTML'] ?? '')))
             : render_block($block);
 
         return self::text($html);
+    }
+
+    /**
+     * `\<` for every `<` that a Markdown renderer could read as the start of raw HTML (a tag, a
+     * comment, a declaration), outside fenced code and code spans, where it is shown as written.
+     */
+    private static function escapeTags(string $markdown): string
+    {
+        $out = [];
+        $fence = null;
+        foreach (explode("\n", $markdown) as $line) {
+            if (preg_match('/^ {0,3}(`{3,}|~{3,})/', $line, $m) === 1) {
+                if ($fence === null) {
+                    $fence = $m[1];
+                } elseif (str_starts_with(ltrim($line), $fence) && trim(ltrim($line), $fence[0]) === '') {
+                    $fence = null;
+                }
+                $out[] = $line;
+                continue;
+            }
+            if ($fence !== null) {
+                $out[] = $line;
+                continue;
+            }
+            $parts = preg_split('/((`+).+?\2)/', $line, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $escaped = '';
+            for ($i = 0, $n = count($parts); $i < $n; $i++) {
+                if ($i % 3 === 0) {
+                    $escaped .= (string) preg_replace('/(?<!\\\\)<(?=[A-Za-z\/!?])/', '\\<', $parts[$i]);
+                } elseif ($i % 3 === 1) {
+                    $escaped .= $parts[$i];
+                }
+            }
+            $out[] = $escaped;
+        }
+
+        return implode("\n", $out);
     }
 
     /**

@@ -68,6 +68,17 @@ eq('a block Markdown has syntax for renders even when sync would refuse it', [Ma
     ["| a | b |\n|---|---|\n", "Centered\n"]);
 eq('classic content renders by paragraph', Markdown::render("First line.\n\nSecond <em>line</em>."), "First line.\n\nSecond *line*.\n");
 eq('an empty body renders as nothing', Markdown::render(''), '');
+// What the review found: no layer of the renderer may reveal more than WordPress renders.
+register_block_type('zero-test/members', ['render_callback' => static fn (): string => '']);
+$hidden = "<!-- wp:zero-test/members --><div><!-- wp:paragraph --><p>Members only.</p><!-- /wp:paragraph --></div><!-- /wp:zero-test/members -->";
+eq('a dynamic block that renders nothing hides its inner blocks too', [do_blocks($hidden), Markdown::render($hidden)], ['', '']);
+eq('text that spells a tag stays text, never markup', Markdown::render('<!-- wp:html --><p>&lt;script&gt;alert(1)&lt;/script&gt; and <b>&lt;b&gt;</b></p><!-- /wp:html -->'),
+    "\\<script>alert(1)\\</script> and **\\<b>**\n");
+eq('code keeps its angle brackets', Markdown::render(Markdown::toBlocks("Use `<div>` here.\n\n```html\n<p>x</p>\n```\n")), "Use `<div>` here.\n\n```html\n<p>x</p>\n```\n");
+eq('a comparison is not a tag', Markdown::render('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
+register_block_type('zero-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
+eq('a block whose rendering fails shows nothing; its neighbours still render', Markdown::render('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:zero-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'),
+    "Before.\n\nAfter.\n");
 
 // ================================================================ content
 
@@ -228,6 +239,7 @@ file_put_contents("$site->content/mu-plugins/engine-accept-lane.php", <<<'PHP'
 // A plugin that renders a URL itself (the pages add-on's code Pages) takes the twin away.
 file_put_contents("$site->content/mu-plugins/own-about.php", '<?php add_filter("zero_markdown_twin", static fn (bool $twin, WP_Post $post): bool => $twin && $post->post_name !== "about", 10, 2);');
 eq('zero_markdown_twin false: no twin and no link', [fetch("$url/about.md")['status'], fetch("$url/about/")['headers']['link'] ?? []], [404, []]);
+check('…and llms.txt links no twin for it', !str_contains(fetch("$url/llms.txt")['body'], '/about.md'), fetch("$url/llms.txt")['body']);
 unlink("$site->content/mu-plugins/own-about.php");
 // A dynamic block renders as an anonymous visitor, even for a signed-in request.
 wp_set_current_user(1);
@@ -244,6 +256,41 @@ eq('negotiate() keeps the answer out of shared caches and names the twin', [
 ], [['text/markdown; charset=UTF-8'], ['private, no-store'], ['Accept'], ["$url/hello-world.md"]]);
 eq('negotiate() keeps the query string', fetch("$url/?s=second", headers: ['Accept: text/markdown', 'X-Test-Engine: 1'])['body'], fetch("$url/index.md?s=second")['body']);
 eq('negotiate() on a missing page is the twin 404', fetch("$url/no-such-post/", headers: ['Accept: text/markdown', 'X-Test-Engine: 1'])['status'], 404);
+
+// A password cookie, a signed-in visitor or a conditional request never changes what a twin says.
+require_once ABSPATH . WPINC . '/class-phpass.php';
+$passCookie = 'Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode((new PasswordHash(8, true))->HashPassword('pw'));
+eq('a password cookie leaves a protected post locked in its twin', fetch("$url/locked-post.md", headers: [$passCookie])['body'], $protected['body']);
+wp_set_current_user(1);
+$loop = $insert(['post_title' => 'Loop page', 'post_name' => 'loop-page', 'post_type' => 'page', 'post_content' => '<!-- wp:query {"query":{"perPage":10,"postType":"post","inherit":false}} --><div class="wp-block-query"><!-- wp:post-template --><!-- wp:post-content /--><!-- /wp:post-template --></div><!-- /wp:query -->']);
+wp_set_current_user(0);
+$loopTwin = fetch("$url/loop-page.md");
+check('a Query Loop in a twin shows public bodies, not protected ones', str_contains($loopTwin['body'], 'Third body.') && !str_contains($loopTwin['body'], 'Locked body.'), $loopTwin['body']);
+check('…not even with the password cookie', !str_contains(fetch("$url/loop-page.md", headers: [$passCookie])['body'], 'Locked body.'));
+wp_set_current_user(1);
+$insert(['post_title' => 'Private second', 'post_name' => 'private-second', 'post_status' => 'private', 'post_content' => 'second private', 'post_date' => '2026-11-04 10:00:00']);
+wp_set_current_user(0);
+eq('a signed-in admin gets the anonymous listing and pagination', [fetch("$url/index.md", headers: [$cookie])['body'], fetch("$url/index.md?s=second", headers: [$cookie])['body']],
+    [fetch("$url/index.md")['body'], fetch("$url/index.md?s=second")['body']]);
+eq('a feed has no twin, even conditionally', [fetch("$url/feed.md")['status'], fetch("$url/feed.md", headers: ['If-Modified-Since: ' . gmdate('D, d M Y H:i:s', time() + 86400) . ' GMT'])['status'],
+    fetch("$url/feed.md", headers: ['If-Modified-Since: ' . gmdate('D, d M Y H:i:s', time() + 86400) . ' GMT'])['headers']['content-type'] ?? null], [404, 404, ['text/markdown; charset=UTF-8']]);
+$conditional = fetch("$url/feed/", headers: ['Accept: text/markdown', 'X-Test-Engine: 1', 'If-Modified-Since: ' . gmdate('D, d M Y H:i:s', time() + 86400) . ' GMT']);
+eq('negotiate() on a feed is the private twin 404', [$conditional['status'], $conditional['headers']['cache-control'] ?? null, $conditional['headers']['vary'] ?? null], [404, ['private, no-store'], ['Accept']]);
+eq('negotiate() is anonymous too', fetch("$url/locked-post/", headers: ['Accept: text/markdown', 'X-Test-Engine: 1', $passCookie, $cookie])['body'], $protected['body']);
+wp_set_current_user(1);
+$slashed = $insert(['post_title' => 'Back\\\\slash term', 'post_name' => 'backslash', 'post_content' => 'Has back\\\\slash.']);
+wp_set_current_user(0);
+eq('negotiate() keeps backslashes in query values', fetch("$url/?s=back%5Cslash", headers: ['Accept: text/markdown', 'X-Test-Engine: 1'])['body'], fetch("$url/index.md?s=back%5Cslash")['body']);
+check('…and finds the post', str_contains(fetch("$url/index.md?s=back%5Cslash")['body'], '/backslash.md'), fetch("$url/index.md?s=back%5Cslash")['body']);
+// Servers that set PATH_INFO (index.php/…-style front controllers) are rewritten the same way.
+$reflection = new ReflectionMethod(MarkdownTwins::class, 'rewrite');
+$_SERVER['PATH_INFO'] = '/index.md';
+$reflection->invoke(null, '/');
+$rootInfo = $_SERVER['PATH_INFO'];
+$_SERVER['PATH_INFO'] = '/hello-world.md';
+$reflection->invoke(null, '/hello-world');
+eq('PATH_INFO follows REQUEST_URI, /index.md included', [$rootInfo, $_SERVER['PATH_INFO']], ['/', '/hello-world']);
+unset($_SERVER['PATH_INFO']);
 eq('the next browser request still gets HTML', str_starts_with(fetch("$url/hello-world/")['headers']['content-type'][0] ?? '', 'text/html'), true);
 
 // ================================================================ WordPress without a Zero app is unchanged

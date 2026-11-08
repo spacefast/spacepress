@@ -14,8 +14,8 @@ use crate::types::HostTy;
 /// What a host lowering reaches outside the handler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostUse<'n> {
-    /// An outbound HTTP request (`fetch`).
-    Fetch,
+    /// An outbound HTTP request (`fetch`), to the URL's static host when the source names one.
+    Fetch(Option<&'n str>),
     /// A `node:crypto` or Web Crypto function, by its standard name.
     Crypto(&'static str),
     /// A runtime variable read (`process.env.NAME`, or a `createHmac` key read from it).
@@ -26,16 +26,35 @@ const ALGORITHMS: &[&str] = &["md5", "sha1", "sha256", "sha384", "sha512"];
 const ENCODINGS: &[&str] = &["hex", "base64", "base64url"];
 
 impl Compiler<'_, '_> {
-    /// The one place every host effect passes through, before its PHP is emitted.
+    /// The one place every host effect passes through, before its PHP is emitted. A plugin's
+    /// effects are recorded here as capabilities (`plugins::KINDS`): `http` with the static host
+    /// (`*` when the URL is built at runtime) and `env` with the variable name.
     pub(super) fn host_use(&mut self, what: HostUse<'_>, span: Span) -> Result<()> {
-        if what == HostUse::Fetch && self.fx().no_db {
-            return err_help(
-                span,
-                "access rules can't use fetch()",
-                "move it into a hook, action or route",
-            );
+        match what {
+            HostUse::Fetch(host) => {
+                if self.fx().no_db {
+                    return err_help(
+                        span,
+                        "access rules can't use fetch()",
+                        "move it into a hook, action or route",
+                    );
+                }
+                self.uses("http", host.unwrap_or("*"), span);
+            }
+            HostUse::EnvRead(name) => self.uses("env", name, span),
+            // Hashing and random values reach nothing outside the handler; no capability.
+            HostUse::Crypto(_) => {}
         }
         Ok(())
+    }
+
+    /// A plugin's fetches are checked against its locked hosts on every hop, so a runtime-built
+    /// URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
+    fn fetch_hosts(&self) -> String {
+        match &self.plugin {
+            Some((i, _)) => format!(", \\ZeroApp\\{}()", self.host_functions[*i]),
+            None => String::new(),
+        }
     }
 
     fn is_global(&mut self, e: &Expr, g: &str) -> bool {
@@ -324,7 +343,6 @@ impl Compiler<'_, '_> {
 
     /// `fetch(url, init?)`, the standard signature, → `Promise<Response>`.
     fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
-        self.host_use(HostUse::Fetch, span)?;
         if args.is_empty() || args.len() > 2 {
             return err_help(
                 span,
@@ -333,6 +351,8 @@ impl Compiler<'_, '_> {
             );
         }
         let url_expr = self.arg(args, 0, span, "a URL")?;
+        let host = static_host(url_expr);
+        self.host_use(HostUse::Fetch(host.as_deref()), url_expr.span)?;
         let url = self.expr(url_expr)?;
         let url = self.finish_value(url, url_expr.span)?;
         if !url.ty.is_str() || url.ty.is_nullable() {
@@ -379,7 +399,7 @@ impl Compiler<'_, '_> {
             }
         };
         Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({}, {init})", url.php),
+            format!("\\Zero\\Fetch::call({}, {init}{})", url.php, self.fetch_hosts()),
             Ty::Promise(Box::new(Ty::Host(HostTy::Response))),
         ))
     }

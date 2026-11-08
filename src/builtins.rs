@@ -118,6 +118,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("Array", &["isArray"], overload("value?: unknown", arity(0, 1), arity(1, 1), arity(0, 1))),
     ("Array", &["from"], overload("source: iterable | {length: number}, mapper?: function", arity(1, 2), arity(1, 2), arity(1, 2))),
     ("Array", &["of"], overload("...values: unknown[]", None, None, arity(0, VARIADIC))),
+    ("String", &["raw"], overload("template: { raw: string[] }, ...substitutions: unknown[]", arity(1, VARIADIC), arity(1, VARIADIC), arity(1, VARIADIC))),
     ("Number", &["isInteger", "isFinite"], overload("value?: unknown", arity(0, 1), arity(0, 1), arity(0, 1))),
     ("Number", &["isNaN"], overload("value?: unknown", None, None, arity(0, 1))),
     ("Number", &["parseInt"], overload("text: string, radix?: number; other than base 10/powers of two: safe integers only", None, arity(1, 2), arity(0, 2))),

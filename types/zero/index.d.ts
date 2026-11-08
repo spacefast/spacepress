@@ -1109,6 +1109,11 @@ export interface ConfigInput<
   plugins?: Readonly<Record<string, WordPressPlugin>>;
   /** Ship the optional admin screens (`zero-admin`) with the build. Default `false`. */
   admin?: boolean;
+  /**
+   * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
+   * inferred from its compiled code and granted by the committed `zero/plugins.lock.json`.
+   */
+  use?: readonly Plugin[];
 }
 
 export interface ZeroConfig<
@@ -1128,6 +1133,24 @@ export declare function defineConfig<
   TJobs extends Record<string, AnyJob> = {},
   const TLocales extends LocalesConfig = LocalesConfig,
 >(config: ConfigInput<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers>): ZeroConfig<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales>;
+
+declare const pluginBrand: unique symbol;
+/** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
+export interface Plugin { readonly [pluginBrand]: true }
+/**
+ * Defines a plugin in an installed package. Its hooks keep app-hook semantics; its actions, jobs
+ * and routes are registered as `<name>_<key>`, and `jobs.<key>` inside the plugin names its own.
+ * There is no capability list: the compiler infers it, and the app's lock grants it.
+ */
+export declare function definePlugin<TSchema extends Schema = Schema>(definition: {
+  /** A lowercase identifier, unique in the app: `"seo"`. */
+  name: string;
+  /** Keyed by the app's collection keys; the build checks them against the app's schema. */
+  hooks?: Hooks<TSchema>;
+  actions?: Record<string, AnyAction>;
+  jobs?: Record<string, AnyJob>;
+  routes?: Record<string, Route>;
+}): Plugin;
 
 // ---------------------------------------------------------------------------
 // 11. Errors

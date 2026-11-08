@@ -1,0 +1,22 @@
+// Untyped JavaScript for tests/differential/language/tagged-templates.ts: these run through
+// Zero's checked JavaScript dispatch rather than typed TypeScript compilation.
+
+function sql(strings, ...values) {
+  return { text: strings.reduce((out, part, i) => out + "$" + i + part), values };
+}
+
+function cooked(strings) {
+  return [strings[0], strings.raw[0], strings.length];
+}
+
+export function taggedUntyped() {
+  const id = 7;
+  const name = "x";
+  return {
+    sql: sql`select * from t where id = ${id} and name = ${name}`,
+    cooked: cooked`\u{1F600} tab\t`,
+    invalid: cooked`\unicode and \xZZ`,
+    raw: String.raw`a\tb${1}c`,
+    rawCall: String.raw({ raw: ["x", "y", "z"] }, 1, 2, 3, 4),
+  };
+}

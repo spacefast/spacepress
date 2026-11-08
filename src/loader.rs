@@ -602,10 +602,11 @@ impl CommonJsScope {
                 scope.expression(iter)?;
                 scope.block(body)?;
             }
-            Stmt::While(test, body) => {
+            Stmt::While(test, body) | Stmt::DoWhile(body, test) => {
                 self.expression(test)?;
                 self.block(body)?;
             }
+            Stmt::Labeled(_, body, _) => self.block(std::slice::from_ref(body))?,
             Stmt::Try {
                 block,
                 param,
@@ -648,8 +649,8 @@ impl CommonJsScope {
             | Stmt::ExportNames { .. }
             | Stmt::ExportAll { .. }
             | Stmt::TypeAlias { .. }
-            | Stmt::Break(_)
-            | Stmt::Continue(_) => {}
+            | Stmt::Break(..)
+            | Stmt::Continue(..) => {}
         }
         Ok(())
     }
@@ -737,6 +738,12 @@ impl CommonJsScope {
                     self.expression(expression)?;
                 }
             }
+            ExprKind::AssignPattern(pattern, value) => {
+                for expression in pattern.exprs() {
+                    self.expression(expression)?;
+                }
+                self.expression(value)?;
+            }
             ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
                 self.expression(callee)?;
                 for ArrEl::Item(value) | ArrEl::Spread(value) in args {
@@ -748,7 +755,8 @@ impl CommonJsScope {
             | ExprKind::Bool(_)
             | ExprKind::Null
             | ExprKind::Undefined
-            | ExprKind::Regex { .. } => {}
+            | ExprKind::Regex { .. }
+            | ExprKind::TemplateStrings { .. } => {}
         }
         Ok(())
     }

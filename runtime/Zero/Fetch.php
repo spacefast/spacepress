@@ -44,8 +44,9 @@ final class Fetch
 
     /**
      * @param JsObject|array{method?: mixed, headers?: mixed, body?: mixed, redirect?: mixed}|JsUndefined|null $init
+     * @param list<string>|null $hosts a plugin's locked hosts: every hop must reach one of them
      */
-    public static function call(mixed $url, mixed $init = null): FetchResponse
+    public static function call(mixed $url, mixed $init = null, ?array $hosts = null): FetchResponse
     {
         if (!is_string($url)) {
             throw new JsError('fetch() needs a URL string', 'TypeError');
@@ -78,7 +79,7 @@ final class Fetch
         }
         $deadline = microtime(true) + self::TIMEOUT;
         for ($hop = 0; ; $hop++) {
-            [$host, $port, $address] = self::target($url);
+            [$host, $port, $address] = self::target($url, $hosts);
             $remaining = $deadline - microtime(true);
             if ($remaining <= 0) {
                 throw self::refuse('zero_fetch_timeout', 'The fetch target did not answer in time.');
@@ -131,7 +132,7 @@ final class Fetch
     }
 
     /** @return array{string, int, string} host, port and the checked address to connect to */
-    public static function target(string $url): array
+    public static function target(string $url, ?array $hosts = null): array
     {
         $parts = parse_url($url);
         if (!is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || !isset($parts['host'])) {
@@ -143,6 +144,9 @@ final class Fetch
         $host = strtolower(trim($parts['host'], "[]. \t\n\r\0\x0B"));
         if ($host === '' || $host === 'localhost' || str_ends_with($host, '.localhost')) {
             throw self::refuse('zero_fetch_host_denied', 'The fetch host is not permitted.');
+        }
+        if ($hosts !== null && !in_array($host, $hosts, true)) {
+            throw self::refuse('zero_fetch_host_denied', 'The fetch host is outside this plugin\'s grant.');
         }
         foreach (self::INTERNAL as $internal) {
             if ($host === $internal || str_ends_with($host, '.' . $internal)) {

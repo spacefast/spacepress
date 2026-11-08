@@ -60,6 +60,11 @@ source routes preserve the original bytes. CommonJS source routes replace only
 the export assignment; typed routes add the explicitly recorded parameter
 annotations. Temporary `@zero-npm-compat/*` packages are typed adapters, not
 unchanged upstream packages. Declaration files are not automatically hydrated.
+Package TypeScript sources compile through the same checked JavaScript domain
+as `.js`: Zero erases their types instead of modelling them, so a package's
+generic signatures, assertion functions, `this` types and symbol-keyed types no
+longer block compilation. Authored code receives JavaScript values from them and
+refines with `typeof`/`instanceof`.
 
 Imported JavaScript can read the first-class array `slice` method. Borrowed
 `Array.prototype.slice` supports dense arrays and ordinary `arguments`, including

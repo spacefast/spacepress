@@ -1,7 +1,7 @@
 // The committed examples, compiled at site build time with the same browser build of the compiler
 // visitors run (public/zero.wasm). The tour shows pieces of a config beside pieces of what the compiler
 // made of it, and both come from here, so a page can never show an output the compiler would not emit.
-import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { Compiler, type Output, type Request } from "./compiler.ts";
@@ -21,10 +21,15 @@ export interface Example {
   output: Output;
 }
 
-/** Every file of an example a config can import (build output and the blog's web page left out). */
+/**
+ * Every file of an example a config can import (build output and the blog's web page left out),
+ * plus the committed abilities lock, the one compiler input under `zero/`.
+ */
 export function sources(dir: string): Request["files"] {
   const skip = new Set(["zero", ".zero", "node_modules", "zero.gen.ts", "public", "client-tests", "content"]);
   const files: Request["files"] = {};
+  const lock = path.join(dir, "zero/abilities.json");
+  if (existsSync(lock)) files["zero/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
       if (skip.has(name)) continue;

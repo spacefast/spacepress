@@ -328,6 +328,31 @@ pub fn render(schema: &Schema) -> String {
             route.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into())
         );
     }
+    if !schema.wp_hooks.is_empty() {
+        // The fields each class view exposes: the catalog's, so runtime and types agree.
+        out.push_str("    ],\n    'wpViews' => [\n");
+        for class in ["WP_Post", "WP_User"] {
+            let fields = crate::wordpress::class_fields(class);
+            let _ = writeln!(
+                out,
+                "        {} => [{}],",
+                php_str(class),
+                fields.iter().map(|f| php_str(f)).collect::<Vec<_>>().join(", ")
+            );
+        }
+        out.push_str("    ],\n    'wpHooks' => [\n");
+        for h in &schema.wp_hooks {
+            let _ = writeln!(
+                out,
+                "        ['hook' => {}, 'filter' => {}, 'priority' => {}, 'args' => {}, 'handler' => {}],",
+                php_str(&h.hook),
+                h.filter,
+                h.priority,
+                h.args,
+                php_str(&h.handler)
+            );
+        }
+    }
     out.push_str("    ],\n    'jobs' => [\n");
     for (name, job) in &schema.jobs {
         let _ = writeln!(

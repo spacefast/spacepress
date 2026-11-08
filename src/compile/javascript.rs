@@ -35,11 +35,7 @@ impl Compiler<'_, '_> {
         Ok(())
     }
     pub(super) fn javascript_module(&self, module: usize) -> bool {
-        self.ev_program().modules[module]
-            .path
-            .extension()
-            .and_then(|s| s.to_str())
-            .is_some_and(|s| matches!(s, "js" | "mjs" | "cjs"))
+        self.ev_program().modules[module].dynamic
     }
 
     pub(super) fn javascript_binary(&self, op: BinOp, a: Out, b: Out, _span: Span) -> Result<Out> {
@@ -58,6 +54,7 @@ impl Compiler<'_, '_> {
             BinOp::Ne => ("!==", Ty::Bool),
             BinOp::LooseEq => ("==", Ty::Bool),
             BinOp::LooseNe => ("!=", Ty::Bool),
+            bitwise => (bitwise.bitwise_symbol().expect("bitwise operator"), Ty::Num),
         };
         Ok(Out::atom(
             format!("\\Zero\\Js::dynamicBinary({}, {}, {})", php_str(operator), a.php, b.php),
@@ -287,7 +284,8 @@ pub(super) fn collect_var_declarations<'a>(stmts: &'a [Stmt], out: &mut Vec<VarB
                 ann,
                 ..
             } => var_pattern(pat, if matches!(pat, Pat::Id(..)) { ann.as_ref() } else { None }, out),
-            Stmt::Block(body) | Stmt::While(_, body) => collect_var_declarations(body, out),
+            Stmt::Block(body) | Stmt::While(_, body) | Stmt::DoWhile(body, _) => collect_var_declarations(body, out),
+            Stmt::Labeled(_, body, _) => collect_var_declarations(std::slice::from_ref(body), out),
             Stmt::If(_, yes, no) => {
                 collect_var_declarations(yes, out);
                 if let Some(no) = no {

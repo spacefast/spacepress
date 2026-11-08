@@ -1,4 +1,4 @@
-import { action, collection, defineConfig, definePlugin, fetch, id, text, type Plugin } from "zero";
+import { action, collection, defineConfig, definePlugin, id, text, type Plugin } from "zero";
 
 const posts = collection({ id: id(), title: text().notNull(), summary: text() }, { title: "title" });
 
@@ -8,7 +8,7 @@ function seo(options: { suffix: string }): Plugin {
     name: "seo",
     hooks: { posts: { beforeCreate(data) { data.summary = data.title + options.suffix; } } },
     actions: {
-      ping: action({ input: {}, access: "anyone", async handler() { return (await fetch("https://api.example.com/")).status; } }),
+      ping: action({ input: {}, access: "anyone", handler() { return "pong"; } }),
     },
   });
 }

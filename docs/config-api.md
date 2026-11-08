@@ -468,11 +468,11 @@ for them, and they need no rewrite rules or permalink flush.
 
 ## Outbound HTTP
 
-`fetch(url, init?)` from `"zero"` calls another service from a hook, action,
-route or job, through the WordPress HTTP API:
+Handlers call other services with the standard global `fetch`. Nothing is
+imported; the types come from `@types/node`, which new projects install:
 
 ```ts
-import { action, defineConfig, env, fetch, HttpError, text } from "zero";
+import { action, defineConfig, HttpError, text } from "zero";
 
 export default defineConfig({
   actions: {
@@ -480,8 +480,9 @@ export default defineConfig({
       input: { city: text().notNull() },
       access: "anyone",
       async handler({ city }) {
-        const response = await fetch("https://api.example.com/v1/weather?q=" + encodeURIComponent(city), {
-          headers: { authorization: "Bearer " + (env("WEATHER_KEY") ?? "") },
+        const query = new URLSearchParams({ q: city });
+        const response = await fetch("https://api.example.com/v1/weather?" + query.toString(), {
+          headers: { authorization: "Bearer " + (process.env.WEATHER_KEY ?? "") },
         });
         if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
         return (await response.json()) as { temperature: number };
@@ -491,18 +492,35 @@ export default defineConfig({
 });
 ```
 
-- `init` takes `method`, `headers` (an object of strings) and `body` (a string;
-  use `JSON.stringify`). The response has `status`, `ok`, `url`, `redirected`,
-  `headers.get/has` and `text()`/`json()`.
+The compiler lowers each call to the WordPress HTTP API in PHP. What it
+compiles, and what it refuses with a fix:
+
+| | Supported | Refused |
+| --- | --- | --- |
+| `input` | a URL string | `URL` and `Request` objects |
+| `method` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` | other methods (`zero_fetch_method_denied`) |
+| `headers` | an object of strings, an array of `[name, value]` pairs, or `new Headers(...)` | |
+| `body` | a string (`JSON.stringify(value)` for JSON) or `URLSearchParams` | `Blob`, `FormData`, `ArrayBuffer`, streams |
+| `redirect` | `"follow"` (default), `"manual"`, `"error"` | |
+| other options | | `signal`, `credentials`, `mode`, `cache`, `keepalive` and the rest |
+| `Response` | `status`, `statusText`, `ok`, `url`, `redirected`, `bodyUsed`, `headers.get/has/forEach`, `text()`, `json()` | `body`, `arrayBuffer()`, `blob()`, `formData()`, `clone()` |
+| `Headers` | `new Headers(init)`, `get`, `has`, `set`, `append`, `delete`, `forEach` | iterators, `getSetCookie` |
+| `URLSearchParams` | `new URLSearchParams(init)` from a string, object or pairs; `get`, `getAll`, `has`, `set`, `append`, `delete`, `toString()` | iterators, `sort` |
+
+A string body is sent as `text/plain;charset=UTF-8` and `URLSearchParams` as
+`application/x-www-form-urlencoded;charset=UTF-8` unless `headers` sets
+`content-type`. As in fetch, a body can be read once.
+
 - Only `https:` URLs without credentials are fetched. The host must not be
   `localhost` or a platform host, and every address it resolves to must be
   public: private, loopback, link-local (including `169.254.169.254`), CGNAT,
   documentation, multicast and other special-purpose IPv4 and IPv6 ranges are
   refused, as are IPv4-mapped and 6to4 forms of them. The connection is pinned
   to the checked address.
-- Redirects are followed up to three times, and each hop is checked again. 303,
-  and 301/302 after a POST, become a GET without a body; `authorization` and
-  `cookie` headers are dropped when the origin changes.
+- `redirect: "follow"` follows up to three redirects and checks each hop again.
+  303, and 301/302 after a POST, become a GET without a body; `authorization`
+  and `cookie` headers are dropped when the origin changes. `"manual"` returns
+  the 3xx response; `"error"` throws `zero_fetch_redirect_denied`.
 - Each call has 10 s and 1 MiB for the request body and the response.
   `connection`, `host` and other hop-by-hop request headers are ignored, and
   `set-cookie` is never returned.
@@ -510,24 +528,42 @@ export default defineConfig({
   `zero_fetch_scheme_denied`, `zero_fetch_credentials_denied`,
   `zero_fetch_host_denied`, `zero_fetch_address_denied`,
   `zero_fetch_method_denied`, `zero_fetch_payload_too_large`,
-  `zero_fetch_response_too_large`, `zero_fetch_too_many_redirects`,
-  `zero_fetch_timeout` or `zero_fetch_upstream_unavailable`. A non-2xx answer
-  is a response, not an error.
+  `zero_fetch_response_too_large`, `zero_fetch_redirect_denied`,
+  `zero_fetch_too_many_redirects`, `zero_fetch_timeout` or
+  `zero_fetch_upstream_unavailable`. A non-2xx answer is a response, not an
+  error.
 - A handler that fetches holds its transaction open while it waits. Keep calls
-  in actions short, or enqueue a job for slow ones.
+  in actions short, or enqueue a job for slow ones. Access rules can't fetch.
 
 A site plugin can open one internal target with the
 `zero_fetch_allow_address` filter (`$open, $address, $host, $port`), and
 answer for a privately resolved name with `zero_fetch_resolve`
 (`$answer, $host`). Request input never reaches either.
 
+## Runtime variables
+
+Handlers read the process environment with `process.env.NAME` or
+`process.env["NAME"]`. The value is a `string`, or `undefined` when the
+variable is unset; the process environment is read first, then a
+`wp-config.php` constant of that name.
+
+The name must be written out. A computed name (`process.env[key]`), iterating
+or spreading `process.env`, writing to it, and every other `process` member are
+compile errors, so request input can never choose a server variable. Reading
+`process.env` while the config is evaluated is an error too: settings that
+WordPress resolves later (webhook URLs and secrets, action signatures, upload
+credentials) take `env("NAME")` from `"zero"`, which is a reference, not a
+value, and is refused inside handlers.
+
 ## Hashing and random values
 
-`crypto` from `"zero"` hashes, signs and compares in hooks, actions, routes and
-jobs. Every call is synchronous:
+Hash, sign and compare with `"node:crypto"` (or `"crypto"`), imported in
+TypeScript or required from static CommonJS. Random UUIDs also come from the
+global `crypto`. Every call is synchronous:
 
 ```ts
-import { action, crypto, defineConfig, text } from "zero";
+import { action, defineConfig, text } from "zero";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 export default defineConfig({
   actions: {
@@ -535,26 +571,36 @@ export default defineConfig({
       input: { body: text().notNull(), signature: text().notNull() },
       access: "anyone",
       handler({ body, signature }) {
-        const expected = crypto.hmacSha256({ key: "WEBHOOK_SECRET", data: body });
-        return crypto.timingSafeEqual(expected, signature);
+        const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
+        return Buffer.byteLength(expected) === Buffer.byteLength(signature)
+          && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
       },
     }),
   },
 });
 ```
 
-| Function | Result |
+| Form | Result |
 | --- | --- |
-| `sha256(data)`, `sha512(data)`, `sha1(data)`, `md5(data)` | Lowercase hex digest of the UTF-8 bytes |
-| `hmacSha256({ key, data })` | Lowercase hex HMAC-SHA-256. `key` is an environment variable name, read like `env()` and trimmed, or `{ value }` for a key that is not a secret |
-| `timingSafeEqual(a, b)` | `true` when equal, compared in constant time; different lengths are unequal |
-| `randomHex(bytes)` | `bytes` (1 to 1024) random bytes from `random_bytes`, as hex |
-| `randomUUID()` | A random version 4 UUID |
+| `createHash(alg).update(text)....digest(enc)` | Digest of the UTF-8 bytes. `alg` is `md5`, `sha1`, `sha256`, `sha384` or `sha512`; `enc` is `hex`, `base64` or `base64url` |
+| `createHmac(alg, key).update(text)....digest(enc)` | HMAC with the same algorithms and encodings |
+| `randomBytes(n).toString(enc)` | `n` (0 to 1024) random bytes from `random_bytes` |
+| `randomUUID()`, `crypto.randomUUID()` | A random version 4 UUID |
+| `timingSafeEqual(Buffer.from(a), Buffer.from(b))` | Constant-time comparison of the UTF-8 bytes; different byte lengths throw `RangeError`, as in Node |
+| `Buffer.byteLength(text)` | The UTF-8 byte length, for the check before `timingSafeEqual` |
 
-Inputs are capped at 1 MiB (`413 crypto_input_too_large`). A named key that is
-unset or blank throws `500 crypto_key_unavailable`, so a missing secret never
-signs with an empty key. For inbound webhooks, prefer an action's or route's
-`signature` option, which also checks timestamps.
+A hash or HMAC is compiled as one expression ending in `digest(enc)`; storing
+the hash object, `digest()` without an encoding, and other Buffer values are
+compile errors. A `createHmac` key written as `process.env.NAME` (with or
+without `!`) is read trimmed, and an unset or blank variable throws
+`500 crypto_key_unavailable`, so a missing secret never signs with an empty key.
+Any other key is used as given. Inputs are capped at 1 MiB
+(`413 crypto_input_too_large`).
+
+Other `node:crypto` functions (ciphers, keys, KDFs, streams), other Node
+built-ins, `crypto.getRandomValues` (typed arrays are not compiled) and
+`crypto.subtle` are refused with a fix. For inbound webhooks, prefer an
+action's or route's `signature` option, which also checks timestamps.
 
 ## Email
 
@@ -787,8 +833,9 @@ is. Each job is handed to Action Scheduler (cron, or `wp action-scheduler run`);
 A webhook POSTs `{ id, event, collection, at, data: { row, previous? } }` for
 each matching write (`<collection>.created|updated|deleted`, or `"*"`), signed
 in the `zero-signature` header as `t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body"))`.
-Deliveries are jobs, so a failing endpoint is retried. `env(name)` reads the
-process environment first, then a `wp-config.php` constant of that name.
+Deliveries are jobs, so a failing endpoint is retried. `env(name)` is resolved
+when the webhook is sent: the process environment first, then a
+`wp-config.php` constant of that name.
 
 ## Media and files
 
@@ -998,10 +1045,18 @@ call the tag with the call site's strings array (with `raw`) and the
 substitutions; `String.raw` is supported. BigInt (`10n`, `bigint`, `BigInt(x)`)
 is exact; mixing it with numbers in arithmetic is a TypeError, as in JavaScript.
 
+Host globals: `fetch`, `Headers`, `URLSearchParams`, `process.env.NAME`,
+`crypto.randomUUID()`, `Buffer.from`/`Buffer.byteLength` in the forms above, and
+`"node:crypto"`; see [Outbound HTTP](#outbound-http),
+[Runtime variables](#runtime-variables) and
+[Hashing](#hashing-and-random-values). They run in handlers only.
+
 Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,
 getters/setters, dynamic `import()`, `any`,
-`eval`/`Function`, assigning to module-level state from a hook,
+`eval`/`Function`, `setTimeout`, `globalThis`, `Promise`, `URL`, `Request`,
+`Response`, `FormData`, `Blob`, `AbortController`, `require` outside static
+CommonJS sources, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal
 (use a literal position or omit it; typed missing values use the nullable boundary), `await` on
@@ -1011,8 +1066,8 @@ call without `await`.
 Build-time evaluation forbids I/O, `Date.now()`, `new Date()`, `Math.random()`,
 and `db`, and stops runaway loops with a step budget.
 
-Imports: `"zero"`, relative TypeScript/ESM JavaScript sources, and locally installed
-source packages. Package imports search the nearest `node_modules`, support scoped
+Imports: `"zero"`, `"node:crypto"` (or `"crypto"`), relative TypeScript/ESM
+JavaScript sources, and locally installed source packages. Package imports search the nearest `node_modules`, support scoped
 names and exact subpath exports, and select `import`/`default` export conditions,
 an explicit `module` entry, or a supported `main`/index entry. `.mjs`, `.ts` and `.mts` identify
 source directly. A `.cjs` source, or a `.js` source with no ESM syntax outside a
@@ -1024,7 +1079,8 @@ CommonJS packages (resolved with the `require`/`default` conditions), and
 named exports. Dynamic `require`, `require` inside a function, `require` of an ES
 module, `require` cycles, writes to `module` or `exports` inside a function,
 other `module` properties, mixed ESM/CommonJS and implicit sloppy-mode
-`arguments` are refused. Export patterns, Node built-ins,
+`arguments` are refused. `require("node:crypto")` gives the supported
+`node:crypto` functions. Export patterns, Node built-ins other than `node:crypto`,
 package aliases and declaration-only targets are refused. Package entry targets
 must name existing files inside the package; the compiler does not install them.
 Relative `.js` imports can resolve to their TypeScript source counterparts.

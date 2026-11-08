@@ -63,7 +63,6 @@ export const jobs = new Proxy({}, {
     },
   }),
 });
-export const env = (name) => process.env[name] ?? null;
 export const db = new Proxy({}, { get() { throw new Error("db isn't available in differential tests"); } });
 export class HttpError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }

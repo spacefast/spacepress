@@ -385,7 +385,8 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   await wp('option', 'update', 'zero_pages_test_interrupt', 'post');
   await wp('post', 'delete', String(contactId), '--force');
   await wp('--skip-plugins=zero-pages-fullsite', 'option', 'update', 'zero_pages_test_interrupt', 'exit');
-  await assert.rejects(wp('eval', 'echo "unexpected completion";'), /Failed/, 'an actual PHP exit interrupts publication');
+  // `zero wp` passes WP-CLI's own exit status through (#149); a PHP exit mid-publication fails the command.
+  await assert.rejects(wp('eval', 'echo "unexpected completion";'), (error) => error.code !== 0 && !String(error.stdout).includes('unexpected completion'), 'an actual PHP exit interrupts publication');
   const aborted = JSON.parse(await wp('--skip-plugins=zero-pages-fullsite', 'eval', `global $wpdb;
     echo wp_json_encode([
       'state' => get_option('zero_pages_fullsite'),

@@ -36,6 +36,12 @@ The seeded showcase has a separate Docker-based launcher. Start it with
 site and admin URLs. Run `node examples/showcase/run.mjs check` for its HTTP
 smoke check, or `node examples/showcase/run.mjs down` to remove the demo stack.
 
+## Personal apps
+
+| Example | What it demonstrates |
+|---|---|
+| [Subscriptions](../examples/subscriptions/README.md) | Owner-scoped tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA. Includes current compiler and hosting gaps. [Use it from an agent](agents.md). |
+
 ## The blog
 
 `examples/blog` has authors, posts and moderated comments, and on top of

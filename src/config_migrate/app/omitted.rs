@@ -45,7 +45,7 @@ static OS_METADATA_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(OS_METADA
 /// content, and nearly every local checkout has one, so they are skipped without an error.
 const SKIPPED_DIRECTORIES: &[&str] = &[".git", ".hg", ".svn", "node_modules", ".spacefast", ".stattic"];
 /// Directories 0.8 never published beyond the deny list (publish-policy's `IGNORED_SEGMENTS`).
-const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".zero", ".sf"];
+const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".zero"];
 /// publish-policy's `publishPathIgnored` beyond its segment lists: Next's build cache and the
 /// CLI's own temporary and lock files, at any depth (matched on the lowercased path).
 const IGNORED_PATH_PATTERN: &str = r"(?:^|/)\.next/cache(?:/|$)|(?:^|/)\.spacefast-(?:[0-9a-f-]{36}\.(?:tmp(?:\.mjs)?|rollback|retired)|[0-9a-f]{24}\.lock)$";

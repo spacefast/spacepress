@@ -21,8 +21,8 @@ or a static Space built by Spacefast's build pipeline).
 ## One spec, one tag vocabulary
 
 - The deployed site serves its spec (collections, fields, actions, access summary)
-  through core's REST index (`/wp-json`) plus the Abilities list; there is no
-  Zero-specific route. `zero pull` turns it into `zero/api.d.ts`,
+  at `GET /__zero/api/v1` (mapped from core's REST index and the Abilities
+  list). `zero pull` turns it into `zero/api.d.ts`,
   `openapi.json` and Zod schemas.
 - Every read result carries cache tags `<kind>` and `<kind>:<id>`. The same
   strings are used for Astro cache hints, Next `cacheTag`, CDN surrogate keys

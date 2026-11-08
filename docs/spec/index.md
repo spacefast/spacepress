@@ -25,7 +25,7 @@ front, with a typed client and cache purges that just work.
 | [rendering.md](rendering.md) | routing compared with Next/TanStack/Vite frameworks, pages, everything interactive on the Interactivity API, forms, navigation, live data over Cast, markdown, caching on Batcache + edge with URL purges | rendering |
 | [external-frontends.md](external-frontends.md) | Astro, Next.js, TanStack Start, preview, cache tags, webhooks, agents and MCP | frontends |
 | [tsx-to-php.md](tsx-to-php.md) | compiler spike: JSX → component IR → PHP renderer and Interactivity store, with parity tests | compiler |
-| [build-plan.md](build-plan.md) | the twelve workstreams from today's `main` to this spec: what exists, what to build and delete, order, sizes | all |
+| [build-plan.md](build-plan.md) | the twelve workstreams from today's `main` to this spec: what exists, what to build and delete, order | all |
 
 ## Decisions, 2026-11-08
 
@@ -79,14 +79,15 @@ front, with a typed client and cache purges that just work.
 | Zero | Compiles to |
 |---|---|
 | `collection()` | `register_post_type` + SCF field group + `register_post_meta` |
-| `table()` | SQL table + a `wp/v2/<table>` controller shaped like core's post routes (the only new REST route) |
+| `table()` | SQL table + a `wp/v2/<table>` controller shaped like core's post routes |
 | `taxonomy()` / `terms()` | `register_taxonomy` + `register_term_meta` |
 | `global()` | `register_setting` with `show_in_rest` |
 | `users()` | `wp_users` + usermeta projection |
 | `menu()` | `register_nav_menu` + `wp_navigation` |
 | `url` patterns | rewrite rules + `post_type_link` / `term_link` + automatic 301s |
 | `job()`, `every`, `cron` | Action Scheduler async / recurring / cron actions |
-| `action()` | `wp_register_ability`, run through core's Abilities REST route and the MCP Adapter |
+| `action()` | `wp_register_ability`, served by core's Abilities route, the MCP Adapter and the facade |
+| HTTP API | core `/wp/v2` routes enforce Zero's rules; `/__zero/api/v1` maps them to clean shapes for clients and agents |
 | `app/**/page.tsx` | compiled PHP renderer behind one `template_redirect` gate |
 | `"use client"` | Interactivity API store module + `data-wp-*` directives |
 | live updates | `zero_realtime_changes` → control plane → Cast room |

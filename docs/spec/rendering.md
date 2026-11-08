@@ -225,7 +225,7 @@ TSX subset, so they are examples as well as product.
   Code pages render from their compiled output, and static pages are prebuilt.
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
 - In WordPress-rendered mode, Zero serves markdown for every kind URL.
-- Backend-only sites use the core route: `GET /wp-json/wp/v2/posts/<id>?format=md`.
+- Backend-only sites: `GET /__zero/api/v1/posts/<id>?format=md` (or the core route with `?format=md`).
 
 ## 6. Caching
 

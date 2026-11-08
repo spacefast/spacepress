@@ -2,9 +2,9 @@
 
 What it takes to get from spacefast/zero `main` (de46201a, 2026-11-08) to the
 spec in this folder. Each workstream lists what already exists, what gets
-built, what gets deleted, and how we'll know it's done. Sizes: **S** is days,
-**M** about a week, **L** two to three weeks, **XL** over a month, all with
-agents doing the writing.
+built, what gets deleted, and how we'll know it's done. There are no time
+estimates. Agents write the code, so the limits are ordering, review and how
+many workstreams run at once.
 
 ## Order
 
@@ -34,7 +34,7 @@ agents doing the writing.
 Start in parallel now: 1, 5 and 11. Then 2, 3 and 4 after 1. Then 6, 9 and 10.
 Then 7 and 8.
 
-## 1. Authoring surface cutover (L)
+## 1. Authoring surface cutover
 
 **Exists:** `collection()`/`table()`, Drizzle builders, `defineConfig`
 registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
@@ -67,10 +67,11 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
 - The authoring rewrite produces no data migration.
 - The two-collection hook type test is in the TS suite.
 
-## 2. Core REST and Abilities instead of `/zero/v1` (L)
+## 2. Core REST underneath, `/__zero/api/v1` facade on top
 
 **Exists:**
-- `runtime/Zero/Wp/Rest.php` serves `/wp-json/zero/v1/*` through a catch-all route.
+- `runtime/Zero/Wp/Rest.php` serves `/wp-json/zero/v1/*` through a catch-all
+  route, as a second implementation with its own queries and writes.
 - `CoreAccess.php` already applies Zero's rules to core `/wp/v2/zero_*`:
   - capabilities through `map_meta_cap`;
   - read filtering and field stripping;
@@ -92,24 +93,24 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
   annotations from options), with input and output schemas from the TS
   signature, through core's run route.
 - **Errors:** move to core's `WP_Error` JSON.
-- **Typed client:** rebuilt over `/wp/v2` and `/wp-abilities/v1`.
-- **`zero pull`:** reads the REST index.
+- **Facade:** `/__zero/api/v1/<kind>`, `/me`, `/actions/<name>` and `/` (the
+  schema). Each request is dispatched to the core route with `rest_do_request`,
+  and the facade only maps input and output: Zero row shapes, `{ data, cursor }`,
+  problem documents, and `?format=md`.
+- **Typed client and adapters** on the facade; `zero pull` reads `GET /__zero/api/v1`.
 
 **Delete:**
-- `Rest.php`'s `/zero/v1` catch-all and its problem-document envelope;
-- `/_schema`;
-- the revisions routes (core `/wp/v2/<type>/<id>/revisions` covers them);
-- `/globals/*`;
-- the `/media` routes;
-- `/actions/*`.
+- `Rest.php`'s own query and write path under `/zero/v1`, replaced by the
+  facade, which only maps and dispatches;
+- the revisions, `/media` and `/globals/*` implementations (core routes cover them).
 
-**Done when:** every route test in `tests/` runs against the core route and the
-access suite proves the same denials there:
+**Done when:** every route test in `tests/` passes against both the facade and
+the core route. The access suite proves the same denials on both:
 - field masks;
 - draft visibility;
 - filters that can't probe hidden fields.
 
-## 3. Built-in WordPress kinds (L)
+## 3. Built-in WordPress kinds
 
 **Exists:**
 - `WpUserStore` and `WpPostStore`;
@@ -128,7 +129,7 @@ access suite proves the same denials there:
 **Done when:** EmDash `blog` runs on `wp.posts` instead of a `zero_posts`
 type, with comments, categories, tags and menus all core.
 
-## 4. Deploy-time schema check (M)
+## 4. Deploy-time schema check
 
 **Exists:** the migration snapshot and numbered SQL, `-- zero-adopt`, and the migrator ledger.
 
@@ -142,7 +143,7 @@ type, with comments, categories, tags and menus all core.
 
 **Done when:** each refusal is covered by a test against real MySQL, and an additive change applies with no prompt.
 
-## 5. TSX → PHP compiler spike (XL, the main risk)
+## 5. TSX → PHP compiler spike
 
 **Exists:**
 - OXC parsing, the TS subset lowered to PHP with JS semantics, the classes and stdlib work;
@@ -168,7 +169,7 @@ type, with comments, categories, tags and menus all core.
 - `examples/full-site` pages, including one `"use client"` counter, compile and pass parity.
 - The decision file `docs/decisions/2026-11-08-tsx-to-php.md` is written first.
 
-## 6. `app/` routing, URL patterns, front-end modes (L)
+## 6. `app/` routing, URL patterns, front-end modes
 
 **Exists:**
 - Page routing for `pages/` (hidden Page records, route IDs);
@@ -189,7 +190,7 @@ type, with comments, categories, tags and menus all core.
 
 **Done when:** the browser suite covers every mode's URLs, admin, login and REST staying up, and a slug change redirecting.
 
-## 7. Interactivity (L, after 5)
+## 7. Interactivity
 
 **Build:**
 - **Built-in components:** `useState`, derived values, `sharedState`,
@@ -201,7 +202,7 @@ type, with comments, categories, tags and menus all core.
 
 **Done when:** the browser tests in rendering.md §8 pass.
 
-## 8. Caching and URL purges (M, plus a check first)
+## 8. Caching and URL purges
 
 **Exists (monorepo runtime):**
 - durable per-host purge records in `runtime/engine/shared/purge.php`, delivered to the edge-cache gateway;
@@ -225,13 +226,13 @@ type, with comments, categories, tags and menus all core.
 - an edit purges exactly the affected URLs plus their `.md` versions;
 - a lost delivery is retried by housekeeping.
 
-## 9. Markdown and llms.txt (S, after 6)
+## 9. Markdown and llms.txt
 
 **Exists:** `Markdown::fromBlocks`.
 
 **Build:** `.md` suffix and `Accept: text/markdown`, `Vary`, `<link rel="alternate">`, `?format=md` on core item routes, `/llms.txt`, and a `Content-Signal` header.
 
-## 10. Framework adapters (L, after 2)
+## 10. Framework adapters
 
 **Build:**
 - **Packages:** `@zero/astro` (build-time and live loaders), `@zero/next`
@@ -244,7 +245,7 @@ type, with comments, categories, tags and menus all core.
 bridge code, a Next.js 16 example picks up a wp-admin edit with no redeploy,
 and a TanStack list updates live.
 
-## 11. Opinionated WordPress (M)
+## 11. Opinionated WordPress
 
 **Exists:** plugin pinning (`plugins.lock.json`), the SCF and Action Scheduler bundles, `zero-identity`.
 
@@ -258,7 +259,7 @@ It also hardens WordPress:
 
 On Spacefast, the box image and Spacefast Access do the parts that belong to the host.
 
-## 12. Docs, examples, 0.8 migration (continuous, finishes last)
+## 12. Docs, examples, 0.8 migration
 
 **Build:**
 - **Docs:** rewrite `docs/config-api.md`, `docs/pages.md`, the README and the site to match the spec.
@@ -268,10 +269,18 @@ On Spacefast, the box image and Spacefast Access do the parts that belong to the
   rewriting it on v2).
 - **Monorepo:** `sf zero`, MCP and the Spacefast publish path follow the new layout.
 
-## Rough total
+## How fast
 
-Twelve workstreams. With 3–4 agent workstreams in parallel, the critical path
-is 1 → 2/3 → 6 → 8, plus 5 → 7 for interactivity. That's about 6–8 weeks to
-the whole spec. A first useful cut, about 3 weeks, is 1 + 2 + 3 + 4 + 11: the
-new authoring surface on core REST with WordPress rendering, which is already a
-complete backend with admin, API and agent tools.
+Nothing here is gated by typing speed. What sets the pace:
+
+- **Order.** 1 comes before 2, 3 and 4. 5 comes before 7. 6 comes before 8 and 9.
+- **The edge purge check** (8) and the compiler spike (5) are the two unknowns.
+  Both can start today.
+- **Review.** Each workstream lands as stacked PRs with behavior tests. Every
+  agent PR is reviewed before merge, because reviews have found blocking bugs in
+  "verified" green agent PRs before.
+- **Parallelism.** One agent per workstream, never two on the same files or tests.
+
+First useful cut: 1 + 2 + 3 + 4 + 11. That gives the new authoring surface on
+core REST with the facade and WordPress rendering: a complete backend with
+admin, API and agent tools. Pages (5, 6, 7) and caching (8) follow.

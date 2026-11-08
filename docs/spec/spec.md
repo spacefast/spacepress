@@ -304,57 +304,59 @@ await users.me();  await settings.get();  await menus.get("primary");
 - `posts.system.*` is the explicit trusted escape hatch.
 - `"php/wordpress"` gives raw WordPress functions.
 
-## 3a. HTTP: WordPress's own endpoints, no Zero namespace
+## 3a. HTTP: core routes underneath, one clean facade on top
 
-Zero adds no `/wp-json/zero/v1` API. Each kind is served by the core REST
-route WordPress already has for it. Zero's job is to make those routes enforce
-Zero's rules, as `runtime/Zero/Wp/CoreAccess.php` already does for collections:
+**One implementation.** Each kind is served by the core REST route WordPress
+already has (`/wp/v2/posts`, `/wp/v2/comments`, `/wp/v2/users`, ...). Zero
+makes those routes enforce Zero's rules, as `runtime/Zero/Wp/CoreAccess.php`
+already does for collections:
 - access rules and field masks;
-- required fields and validation;
+- validation;
 - hooks.
 
-The typed client, external frontends, agents, the block editor and other
-plugins then all use one API.
+The block editor, wp-admin and other plugins keep working against them unchanged.
 
-| Kind | Endpoint | What Zero adds |
+**One clean shape: `/__zero/api/v1`.** It's a thin facade: every request is
+dispatched internally to the core route with `rest_do_request()`, and only the
+input and output are mapped. There is no second permission check, no second
+query path and no second write path, so the facade can't disagree with core.
+It exists because core's shapes are awkward for clients and agents:
+`title.rendered`, fields under `meta`, `hold` for pending, `POST` for updates,
+pagination in headers.
+
+| Facade | Dispatched to | Mapping |
 |---|---|---|
-| `posts`, `pages`, your collections | `/wp/v2/posts`, `/wp/v2/pages`, `/wp/v2/<type>` (`show_in_rest`) | fields as `meta` (registered with `register_post_meta`, `show_in_rest`); access through `map_meta_cap` plus read filtering; `where`/`with`/`search` as query params |
-| `media` | `/wp/v2/media` | access on private media |
-| your taxonomies, `categories`, `tags` | `/wp/v2/<taxonomy>` | term meta |
-| `comments`, comment types | `/wp/v2/comments` (`?type=review`) | the kind's `comments` options decide who may post. Anonymous posting goes through core's `rest_allow_anonymous_comments` filter, only for kinds with `guests: true`. Akismet runs on every create |
-| `users` | `/wp/v2/users`, `/wp/v2/users/me` | extended fields as user meta; `email` stays hidden from everyone except the user and admins |
-| `menus` | `/wp/v2/menu-items`, `/wp/v2/menu-locations` | public read for public locations (`rest_menu_read_access`) |
-| `settings`, `global()` | `/wp/v2/settings` for admins | public fields readable through the read-only Ability below, since core gates the settings route on `manage_options` |
-| `table()` | `/wp/v2/<table>` | **the one new controller**: core has no route for custom tables, so Zero registers a `WP_REST_Controller` under `wp/v2`, shaped like the post routes (`GET`/`POST` collection, `GET`/`POST`/`DELETE` item, `_links`, `X-WP-Total`) |
-| `action()` | `/wp-abilities/v1/abilities/<app>/<name>/run` | Abilities API, core since 6.9 (below) |
-| `app/**/route.ts` | your own path, outside `/wp-json` | front-controller route (rendering.md) |
-| sign-in | `/wp-json/zero-identity/v1/*` (existing) and OIDC | |
+| `GET /__zero/api/v1/posts?where=…&with=…&limit=…&cursor=…` | `GET /wp/v2/posts` | Zero rows (`title`, `body`, fields flat, `status: "pending"`), `{ data, cursor }` |
+| `GET /__zero/api/v1/posts/42` (`/posts/slug:hello`) | `GET /wp/v2/posts/42` | one row; `?format=md` gives markdown |
+| `POST /__zero/api/v1/posts`, `PATCH …/42`, `DELETE …/42` | `POST /wp/v2/posts[/42]`, `DELETE` | Zero input → core input (`meta`, `status`) |
+| `/__zero/api/v1/<kind>` for every kind (comments, users, media, your collections, taxonomies, tables) | the matching core route; tables use the one new `wp/v2/<table>` controller | same |
+| `GET /__zero/api/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
+| `GET/PATCH /__zero/api/v1/settings`, `/__zero/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
+| `POST /__zero/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
+| `GET /__zero/api/v1` | `/wp-json` index + Abilities list | the app's schema: kinds, fields, actions (what `zero pull` reads) |
+
+- **Errors:** RFC 9457 problem documents (`code`, `detail`, `pointer`), mapped
+  from core's `WP_Error`.
+- **Auth:** what core accepts: the cookie with `X-WP-Nonce`, application
+  passwords, and Zero Identity bearer tokens.
+- **Location:** the facade sits outside `/wp-json`, like `/__spacefast/`. It's
+  served by Zero's front-controller route, before the theme loads, so it costs
+  one internal REST dispatch.
+- **Who uses which:**
+  - the typed client, the framework adapters, `curl` and agents use the facade;
+  - WordPress, plugins and the block editor use core routes.
+  - Both are always on and always agree.
+- `table()` still needs the one new core-shaped controller (`wp/v2/<table>`),
+  because the facade only maps; it never stores.
 
 **Actions are Abilities.** `export const like = action(...)` registers the
-Ability `<app>/like`. Core's run route serves it: `GET` for actions marked
-`readonly`, `POST` for writes, and `DELETE` for destructive, idempotent ones.
-Input and output schemas come from the TypeScript signature. Access is the
-Ability's `permission_callback`. MCP gets the same Ability through the MCP
-Adapter. One mismatch to note: core's abilities list route needs a signed-in
-user (`current_user_can('read')`), and the run route defers to the ability's
-own permission check. A public action (`access: "anyone"`) can therefore run
-anonymously, while discovering abilities still needs a sign-in. That's
-acceptable, because the typed client knows the names at build time.
+Ability `<app>/like`. Its input and output schemas come from the TypeScript
+signature, and access is the Ability's `permission_callback`. Core's run route
+and the MCP Adapter serve it as-is; the facade's `/actions/<name>` maps it.
+Core's abilities list needs a sign-in. The run route uses the ability's own
+check, so a public action runs anonymously.
 
-**The query vocabulary over HTTP:**
-- `where`, `orderBy`, `with` and `search` are added as query parameters on the
-  core list routes. Core's own parameters (`per_page`, `page`, `search`,
-  `orderby`, `_embed`, `_fields`) keep working.
-- Responses keep core's shape: `X-WP-Total` and `X-WP-TotalPages` headers, and `_links`.
-- Errors are core's `WP_Error` JSON (`code`, `message`, `data.status`), not
-  Zero's own problem documents.
-- One shape for everything clients and plugins see.
-
-**Markdown:** `?format=md` on any core item route returns the markdown twin.
-
-**Spec for clients:** `zero pull` reads the core REST index (`/wp-json`, which
-already describes every route's arguments and schema) plus the Abilities list.
-No `/zero/v1/spec` route.
+**Markdown:** `?format=md` works on facade item routes and core item routes.
 
 ## 4. Server code
 
@@ -370,9 +372,9 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 
 - **`action`** takes its types from the handler signature. Options: `access`
   (default `editor`), `idempotent`, `readonly`, `signature`, `abilities`,
-  `name`. Each action is an Ability `<app>/<name>`, run through core's
-  `/wp-abilities/v1/abilities/<app>/<name>/run` (§3a), and a typed client method
-  `zero.<name>()`. The name is the export name (§1.1). A `signature` action
+  `name`. Each action is an Ability `<app>/<name>` (core's run route and MCP),
+  `POST /__zero/api/v1/actions/<name>` on the facade (§3a), and a typed client
+  method `zero.<name>()`. The name is the export name (§1.1). A `signature` action
   (an inbound webhook) is an `app/**/route.ts` instead, since its caller signs
   the raw body.
   It can also be called from a form (rendering.md).

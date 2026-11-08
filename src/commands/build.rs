@@ -210,9 +210,10 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     }
     let lock = project.join(layout::WP_PLUGINS_LOCK);
     std::fs::create_dir_all(lock.parent().unwrap())?;
-    // Serialize the project lockfile and publication to a shared output root.
-    std::fs::create_dir_all(project.join(layout::DIST))?;
-    let _project_guard = guard(project.join(layout::DIST).join(".wp-plugins.build.lock"))?;
+    // Serialize the project lockfile and publication to a shared output root. The guard lives in
+    // the Zero root, which no output may contain (checked above), so publication never renames it
+    // away while a build holds it.
+    let _project_guard = guard(project.join(layout::ROOT).join(".wp-plugins.build.lock"))?;
     let _output_guard = guard(parent.join(format!(
         ".{}.zero-build.lock",
         root.file_name().unwrap().to_string_lossy()

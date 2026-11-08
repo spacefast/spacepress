@@ -1,0 +1,54 @@
+{
+  "kind": "disposable contract fixture; monthlyBurn is a typed empty stub",
+  "checks": [
+    {
+      "screen": "overview",
+      "viewport": 390,
+      "document": 390,
+      "smallTargets": []
+    },
+    {
+      "screen": "add sheet",
+      "viewport": 390,
+      "document": 390,
+      "smallTargets": []
+    },
+    {
+      "screen": "list",
+      "viewport": 390,
+      "document": 390,
+      "smallTargets": []
+    },
+    {
+      "screen": "detail with charge",
+      "viewport": 390,
+      "document": 390,
+      "smallTargets": []
+    },
+    {
+      "screen": "cancelled detail",
+      "viewport": 390,
+      "document": 390,
+      "smallTargets": []
+    },
+    {
+      "screen": "auth error retry",
+      "viewport": 390,
+      "document": 390,
+      "smallTargets": []
+    }
+  ],
+  "errors": [],
+  "verified": [
+    "Vite proxy",
+    "auth.signIn",
+    "auth.handleCallback",
+    "create subscription",
+    "create category",
+    "list and search",
+    "logCharge and charge history",
+    "edit amount and paused status",
+    "cancel and vendor link",
+    "failed callback query cleanup and successful sign-in retry"
+  ]
+}

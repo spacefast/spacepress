@@ -76,7 +76,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-`delete obj.key`, `delete obj[key]` and `delete obj?.key` compile in typed code, imported JavaScript and configuration evaluation with strict-mode semantics. They return true, also for absent and inherited properties, and remove own object keys without reordering the rest. Non-configurable properties (array and string length, string indexes, regex lastIndex, class and function prototype, arguments callee, Math constants) throw JavaScript's TypeError; null and undefined receivers throw TypeError. Typed code may delete only optional properties and map entries, as TypeScript requires, so later reads stay sound.
+`delete obj.key`, `delete obj[key]` and `delete obj?.key` compile in typed code, imported JavaScript and configuration evaluation with strict-mode semantics. They return true, also for absent and inherited properties, and remove own object keys without reordering the rest. Non-configurable properties (array and string length, string indexes, regex lastIndex, class and function prototype, arguments callee, Math constants) throw JavaScript's TypeError; null and undefined receivers throw TypeError. Typed code may delete only optional properties and map entries, as TypeScript requires, so later reads stay sound; a property the closed type lacks is a missing-field error.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
@@ -116,7 +116,7 @@ Array and object patterns on the left of `=` assign existing variables, object f
 
 Status: **supported**.
 
-tag`…${x}…` calls the tag with the call site's strings array, then the substitutions, in typed code and imported JavaScript. The strings array has a `raw` property with the source text, cooked strings are undefined where an escape is invalid, and each call site keeps one array across calls. String.raw is supported, including its object form in imported JavaScript. Configuration evaluation refuses tagged templates; call the tag inside a handler.
+tag`…${x}…` calls the tag with the call site's strings array, then the substitutions, in typed code and imported JavaScript. The strings array has a `raw` property with the source text, cooked strings are undefined where an escape is invalid, each call site keeps one array across calls, and both arrays are frozen. String.raw is supported, including its object form in imported JavaScript. Configuration evaluation refuses tagged templates; call the tag inside a handler.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 

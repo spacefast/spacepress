@@ -170,12 +170,13 @@ trait JsDynamic
             return self::set($target, $key, $value);
         }
         if ($target instanceof RegExp && $key === 'lastIndex') { $target->lastIndex = $value; return $value; }
+        if ($target instanceof JsArray) { self::writable($target); }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
             if ($key === '__proto__' && !array_key_exists($key, $target->p)) {
                 throw new JsError('Prototype mutation is not supported', 'TypeError');
             }
             if ($key === 'length') {
-                if ($target instanceof JsArguments) { $target->length = $value; return $value; }
+                if ($target instanceof JsArguments) { $target->length = $value; $target->lengthDeleted = false; return $value; }
                 $length = self::toUint32(self::toNumber($value));
                 if ((float) $length !== (float) self::toNumber($value)) { throw new JsError('Invalid array length', 'RangeError'); }
                 if ($length > count($target->a)) { throw new JsError('Zero arrays are dense: length cannot create holes', 'RangeError'); }
@@ -214,6 +215,18 @@ trait JsDynamic
             if ($value instanceof JsObject && !array_key_exists($key, $value->p)) { continue; }
             yield $key;
         }
+    }
+
+    /** An array itself (read live by destructuring assignment), or any other iterable's values. */
+    public static function dynamicIterableLive(mixed $value): JsArray
+    {
+        return $value instanceof JsArray ? $value : self::dynamicIterable($value);
+    }
+
+    /** The rest element of an array pattern: the elements from `$start`, read now. */
+    public static function restFrom(JsArray $list, int $start): JsArray
+    {
+        return new JsArray(array_slice($list->a, $start));
     }
 
     public static function dynamicIterable(mixed $value): JsArray
@@ -418,6 +431,7 @@ trait JsDynamic
 
     private static function dynamicFill(JsArray $source, mixed $value, mixed $start, mixed $end): JsArray
     {
+        self::writable($source);
         $length = count($source->a);
         $from = self::relIndex(self::toNumber($start), $length);
         $to = $end === JsUndefined::Value ? $length : self::relIndex(self::toNumber($end), $length);
@@ -428,6 +442,7 @@ trait JsDynamic
 
     private static function dynamicSplice(JsArray $source, JsArray $args): JsArray
     {
+        self::writable($source);
         $length = count($source->a);
         if ($args->a === []) { return new JsArray(); }
         $start = self::relIndex(self::toNumber($args->a[0]), $length);
@@ -543,7 +558,7 @@ trait JsDynamic
                     if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
                     return $key === 'message' && $source->hasMessage;
                 }
-                if ($key === 'length' && ($source instanceof JsArray || $source instanceof JsArguments || is_string($source))) { return true; }
+                if ($key === 'length' && ($source instanceof JsArray || is_string($source) || $source instanceof JsArguments && !$source->lengthDeleted)) { return true; }
                 if ($key === 'callee' && $source instanceof JsArguments || $key === 'lastIndex' && $source instanceof RegExp) { return true; }
                 return in_array($key, self::dynamicKeys($source)->a, true);
             }

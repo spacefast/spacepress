@@ -56,6 +56,19 @@ function objects(profile: Profile): unknown[] {
   return [name, town, tags, others, target, picked];
 }
 
+/** Array patterns read the array live, so an earlier target write is seen by later reads. */
+function live(): unknown[] {
+  const a: (number | undefined)[] = [1, 2];
+  [a[1], a[0]] = a;
+  const b: (number | undefined)[] = [1, 2, 3];
+  let rest: (number | undefined)[] = [];
+  [b[2], ...rest] = b;
+  let picked = 0;
+  let others: { b: number } = { b: 0 };
+  ({ ["a"]: picked, ...others } = { a: 1, b: 2 });
+  return [a, b, rest, picked, others];
+}
+
 /** The assignment's value is the right side, whatever the pattern takes from it. */
 function result(): unknown[] {
   let a = 0;
@@ -98,6 +111,7 @@ export default defineConfig({
     destructuringArrays: run(() => arrays()),
     destructuringObjects: run(() => [objects({ name: "Ada", tags: ["a"], extra: 1 }), objects({ name: "Bo", city: "Oslo", tags: [], extra: 2 })]),
     destructuringResult: run(() => result()),
+    destructuringLive: run(() => live()),
     destructuringOrder: run(() => order()),
     destructuringThrows: run(() => throws()),
     destructuringBuildTime: run(() => BUILD_TIME_DESTRUCTURING),

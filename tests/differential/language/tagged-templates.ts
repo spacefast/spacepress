@@ -53,6 +53,15 @@ function identity(): boolean[] {
   return [again() === again(), site`x` === site`x`, again().raw === again().raw];
 }
 
+/** Template strings arrays are frozen; an invalid escape still fits TemplateStringsArray. */
+function frozen(): string[] {
+  const attempt = (label: string, f: () => unknown) => { try { f(); return `${label}: ok`; } catch (error) { return `${label}: ${(error as Error).name}`; } };
+  const write = (strings: TemplateStringsArray) => (strings as unknown as string[]).push("x");
+  const raw = (strings: TemplateStringsArray) => (strings.raw as unknown as string[]).pop();
+  const cooked = (strings: TemplateStringsArray) => [strings[0] === undefined, strings.raw[0]];
+  return [attempt("push", () => write`ab`), attempt("raw pop", () => raw`a`), JSON.stringify(cooked`\unicode`)];
+}
+
 /** The tag runs after its substitutions, which run left to right. */
 function order(): string[] {
   const log: string[] = [];
@@ -69,6 +78,7 @@ export default defineConfig({
     taggedRaw: run(() => raws()),
     taggedIdentity: run(() => identity()),
     taggedOrder: run(() => order()),
+    taggedFrozen: run(() => frozen()),
     taggedUntyped: run(() => taggedUntyped()),
   },
 });

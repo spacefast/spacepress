@@ -157,6 +157,14 @@ pub static RULES: &[Rule] = &[
         example: ("/id_rsa", "the credential file is not carried over: x"),
     },
     Rule {
+        code: "Z08_OMITTED_POSTS",
+        feature: "0.8 native posts content (content/posts/)",
+        v2: "a posts collection with sync over the content files",
+        fix: "Declare a posts collection in zero.config.ts with `sync` over content/posts/, or keep the Space on 0.8.",
+        test: |_, r| r.starts_with(omitted::POSTS),
+        example: ("/content/posts", "the posts content is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_SYNC",
         feature: "content sync of native posts",
         v2: "sync on a v2 collection",

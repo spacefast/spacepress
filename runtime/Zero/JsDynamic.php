@@ -122,6 +122,7 @@ trait JsDynamic
             return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
         }
         if ($value instanceof JsClass) { return $value->get($key); }
+        if ($value instanceof JsReadableStream || $value instanceof JsWritableStream || $value instanceof JsTransformStream) { return $value->get($key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -238,6 +239,15 @@ trait JsDynamic
             for ($i = 0; $i < count($value->values); $i++) { yield $value->values[$i]; }
         } elseif ($value instanceof JsMap) {
             for ($i = 0; $i < count($value->entries); $i++) { yield new JsArray($value->entries[$i]); }
+        } elseif ($value instanceof JsGenerator || $value instanceof JsObject && JsIter::wellKnownMethod($value, 'iterator') !== null) {
+            // Spread, Array.from and the combinators follow the iterator protocol, closing on a throw.
+            $iter = JsIter::open($value);
+            try {
+                while ($iter->step()) { yield $iter->value; }
+            } catch (\Throwable $error) {
+                $iter->abrupt();
+                throw $error;
+            }
         } else {
             throw new JsError('Value is not iterable', 'TypeError');
         }
@@ -308,6 +318,7 @@ trait JsDynamic
         if (!$builtin && $receiver instanceof JsObject && $receiver->nullPrototype) { return self::dynamicCall(JsUndefined::Value, $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         if ($receiver instanceof JsPromise) { Builtins::check('promise', $name, count($a)); return $receiver->call($name, $a); }
+        if ($receiver instanceof JsReadableStream || $receiver instanceof JsWritableStream) { return $receiver->call($name, $a); }
         if ($receiver instanceof JsGenerator || $receiver instanceof JsAsyncGenerator) { Builtins::check('generator', $name, count($a)); return $receiver->call($name, $a); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
@@ -610,6 +621,9 @@ trait JsDynamic
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
         if ($constructor === 'Promise') { return JsPromise::construct($a[0] ?? JsUndefined::Value); }
+        if ($constructor === 'ReadableStream') { return new JsReadableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
+        if ($constructor === 'WritableStream') { return new JsWritableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
+        if ($constructor === 'TransformStream') { return new JsTransformStream($a[0] ?? JsUndefined::Value); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             $text = $message === JsUndefined::Value ? '' : self::str($message);

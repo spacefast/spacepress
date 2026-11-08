@@ -1445,13 +1445,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "check it first, or use `?? []`",
                     );
                 }
-                let el = widen_fresh_literals(&el);
+                // Each `for await` value is awaited, so its type is the awaited one.
+                let el = if *is_await { Ty::Dynamic } else { widen_fresh_literals(&el) };
                 let mutable = *kind != DeclKind::Const;
                 let source = self.tmp_var();
                 let index = self.tmp_var();
                 let value = self.tmp_var();
                 // Checked JavaScript iterates by protocol and closes the iterator on any early exit.
-                let protocol = it.ty == Ty::Dynamic && self.javascript_module(module);
+                let protocol = (it.ty == Ty::Dynamic || *is_await) && self.javascript_module(module);
                 if protocol {
                     let open = if *is_await { "openAsync" } else { "open" };
                     if *is_await {

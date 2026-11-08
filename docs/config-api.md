@@ -820,7 +820,7 @@ authentication; it creates no second user table or post type. It needs
 admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
 through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
 through the zero-identity screens (register the frontend once with
-`wp zero-identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
+`zero identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
 `GET /me` returns the user with their `member` row.
 
 Anonymous visitors can write as guests (`createClient({ auth: { guests: true } })`):
@@ -837,7 +837,7 @@ For `editor: false` collections the file wins; files without a `uid` use a stabl
 { sync: "content/posts/*.md" }
 ```
 
-`zero sync --site <url> --app-password user:pass` (or `--bearer <jwt>`) keeps
+`zero sync [--site <url>]`, with `ZERO_APP_PASSWORD=user:pass` (or `ZERO_TOKEN=<jwt>`) in the environment, keeps
 `content/posts/<slug>.md` and the site in step: front matter for fields, the
 body as Markdown for the `content` column. Both sides may change; it merges
 per field, and writes `.zero/conflicts/<uid>.md` when the same field changed on

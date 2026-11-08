@@ -41,6 +41,9 @@ What grows:
   edge. It also rescans every prior event set for every argument. Measured
   per phase: alias expansion took 4 to 14 s per pass and the call loop 3 to
   9 s.
+- **After the loop**, `capture_writes`, `expression_writes` and
+  `loop_writes` union the place sets of their events: 256M insert attempts for
+  59k distinct places on this repro (11,456 function/event pairs).
 
 So the problem is iterations × full-pass cost, not unbounded growth.
 
@@ -69,12 +72,17 @@ The rules stay the same. Only the schedule changes:
    - alias expansion expands only new places, plus old places whose binding
      gained an alias edge;
    - callee summaries go to a call edge only for summary places that are new
-     to that edge (a new edge starts at 0).
-3. Index the inputs of the incoming-view rule by binding once per pass,
-   instead of scanning every prior event set for each argument.
+     to that edge (a new edge starts at 0);
+   - entry views read only the new places of `incoming`, `numeric`, `writes`
+     and each prior event, and prior events are indexed by binding, so an
+     edge reads only the places of its own argument bindings.
+3. Call edges come from `values` indexed by binding instead of a scan of every
+   value per call.
 4. An event that already received its owner's external `Descendants` places
    is not scanned again: the condition only becomes true once, and the places
-   it adds never change.
+   it adds never change. Escaped places are indexed by binding for that check.
+5. After the loop, places are numbered once, and each event history is unioned
+   by number before cloning a place into its result set.
 
 ## Proof
 
@@ -84,3 +92,34 @@ sorted text form. Release builds don't compile the hook. Every program in
 `examples/*/zero.config.ts`, `tests/fixtures/*/zero.config.ts` and the
 files-sdk probe is dumped with main and with this change. The dumps must be
 byte-identical. The picomatch repro is compared the same way.
+
+## Result
+
+| program | main | this change |
+| --- | --- | --- |
+| `parse.js` repro, release | 618 s, 8.4 GB | 13 to 17 s, 4.2 to 5.0 GB |
+| synthetic, 60 branches, release | 20 s | 1.3 s |
+| synthetic, 240 branches, release | 738 s | 12 to 24 s |
+
+Ranges are runs under different machine load. The result itself holds about
+23M places on the `parse.js` repro, so its memory is now mostly the output.
+
+The regression test
+(`effects_solver_work_stays_proportional_to_its_result_on_a_large_function`
+in `tests/compiler.rs`) bounds path projections per produced fact. Debug
+builds count them through `ZERO_DEBUG_EFFECTS_WORK`. On its program, main
+makes 51M projections for 1.36M facts (37.7 per fact); this change makes 3.5M
+(2.6 per fact). The test fails above 5 per fact.
+
+## Not solved here
+
+`picomatch(glob)` and `picomatch.makeRe(glob)` reach `parse()` from more call
+sites. With this change, `zero check` on that app still does not finish: a
+signal stopped it after 784 s at 9.9 GB RSS. There the solved event sets reach
+millions of places each (one has 5.2M
+places over 411 bindings and 50 field names, every path at most `max_depth` +
+1 = 5 steps long), about 350M places across 103 events. That is the analysis's
+true result size, not repeated work. Making it smaller means a coarser
+abstraction, for example widening a place set to `binding.Descendants` past a
+size, and that changes results. It needs its own soundness argument and its
+own PR.

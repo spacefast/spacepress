@@ -47,6 +47,16 @@ eq('URL policy: HTTPS only, no credentials, no local or platform hosts, every re
         'zero_fetch_host_denied', 'zero_fetch_host_denied', 'zero_fetch_host_denied', 'zero_fetch_address_denied',
         'zero_fetch_address_denied', 'zero_fetch_address_denied', 'zero_fetch_address_denied', 'zero_fetch_address_denied',
         'zero_fetch_upstream_unavailable', 'zero_fetch_address_denied']);
+eq('a plugin\'s locked hosts are checked before resolution, on every hop',
+    array_map(static function (string $url): string {
+        try {
+            Fetch::target($url, ['public.example']);
+            return 'allowed';
+        } catch (HttpError $e) {
+            return $e->errorCode;
+        }
+    }, ['https://public.example/x', 'https://PUBLIC.example./y', 'https://other.example/', 'https://internal.example/']),
+    ['allowed', 'allowed', 'zero_fetch_host_denied', 'zero_fetch_host_denied']);
 eq('the checked address is the one the connection is pinned to',
     Fetch::target('https://public.example:8443/a'), ['public.example', 8443, '93.184.216.34']);
 Fetch::$resolver = null;

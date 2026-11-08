@@ -25,10 +25,11 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
 1. **Parse.** [oxc](https://oxc.rs) parses `zero.config.ts` and the local `.ts`
    and supported installed source packages it imports.
 2. **Lower.** The syntax tree becomes Zero's own IR. Anything outside the
-   supported subset (abstract/generic classes, dynamic `require`, named CommonJS
-   exports, Node host APIs, ...) fails the build with `file:line:col` and a suggested fix.
+   supported subset (abstract/generic classes, dynamic `require`, Node host APIs,
+   ...) fails the build with `file:line:col` and a suggested fix.
    Installed JavaScript uses checked PHP operations; authored TypeScript keeps
-   static checking. CommonJS is limited to one static top-level function export.
+   static checking. CommonJS is limited to static top-level `require` and
+   `module.exports`/`exports.name` assignments, which run once at build time.
 3. **Evaluate.** The config runs in a small, pure Rust evaluator: no I/O, no
    clock, a step budget. So composition works: helpers, factories, spreads, and
    shared field sets. The result is the schema as plain data.
@@ -57,8 +58,8 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 ```
-zero build [dir] [--out <dir>] [--quiet]               write the plugins to .zero/wp-content
-zero check [dir] [--json]                               compile; write nothing
+zero build [dir] [--out <dir>] [--quiet] [--frozen]    write the plugins to .zero/wp-content
+zero check [dir] [--json] [--frozen]                    compile; write nothing
 zero dev [dir] [--port <n>] [--no-watch] [--allow-destructive]  start WordPress Studio and watch sources
 zero dev stop [dir]                                    stop the local site, preserving data
 zero dev status [dir]                                  report the local site
@@ -76,7 +77,9 @@ zero restore --archive <file> --workspace <new-dir> --wp-cli <phar>
 ```
 
 `zero build` writes new migrations to `zero/migrations/`, the typed client to
-`zero/client/`, `zero.gen.ts` and `zero/wp-plugins.lock.json` (all committed),
+`zero/client/`, `zero.gen.ts`, `zero/wp-plugins.lock.json` and, with plugin
+packages, `zero/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
+plugin grants the lock doesn't hold),
 and the artifact to `.zero/wp-content`: plugin folders, ZIPs, pinned
 dependencies and one `zero-manifest.json`. `zero dev` installs that artifact
 into a persistent Studio site at `<project>/.zero/dev/wordpress`, activates

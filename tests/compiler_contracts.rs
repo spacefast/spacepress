@@ -671,6 +671,86 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
 }
 
 #[test]
+fn static_commonjs_packages_match_node_through_generated_php() {
+    // picomatch's shapes: relative and package `require`, destructured `require`,
+    // `exports.x =` read back through `exports`, `module.exports = { … }`, a
+    // function export with named exports for ESM importers, and evaluation order.
+    let tmp = tempfile::tempdir().unwrap();
+    let files: &[(&str, &str)] = &[
+        (
+            "node_modules/glob-lite/package.json",
+            r#"{"name":"glob-lite","main":"index.js"}"#,
+        ),
+        (
+            "node_modules/glob-lite/index.js",
+            "'use strict';\nconst { log } = require('./lib/log');\nlog.push('index');\nconst escape = require('./lib/escape');\nconst { STAR } = require('./lib/constants');\nlog.push('after');\nfunction toSource(glob) { return glob.split(STAR).map(escape).join('[^/]*'); }\nmodule.exports = toSource;\n",
+        ),
+        ("node_modules/glob-lite/lib/log.js", "exports.log = [];\n"),
+        (
+            "node_modules/glob-lite/lib/constants.js",
+            "require('./log').log.push('constants');\nmodule.exports = { STAR: '*', SPECIAL: /[.+?^${}()|[\\]\\\\]/g };\n",
+        ),
+        (
+            "node_modules/glob-lite/lib/escape.js",
+            "const { SPECIAL } = require('./constants');\nrequire('./log').log.push('escape');\nexports.escape = (part) => part.replace(SPECIAL, '\\\\$&');\nmodule.exports = exports.escape;\n",
+        ),
+        (
+            "node_modules/counts/package.json",
+            r#"{"name":"counts","exports":{".":{"require":"./counts.cjs","import":"./missing.mjs"}}}"#,
+        ),
+        (
+            "node_modules/counts/counts.cjs",
+            "exports.limit = 3;\nexports.label = 'items';\n",
+        ),
+        (
+            "probe.cjs",
+            "const toSource = require('glob-lite');\nconst { log } = require('glob-lite/lib/log');\nconst { limit, label } = require('counts');\nfunction run(glob) { return { source: toSource(glob), order: log.join(','), limit, label }; }\nmodule.exports = run;\n",
+        ),
+    ];
+    for (path, source) in files {
+        let path = tmp.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    std::fs::write(
+        tmp.path().join("node.cjs"),
+        "process.stdout.write(JSON.stringify(require('./probe.cjs')('src/*.test.js')));",
+    )
+    .unwrap();
+    let node = Command::new("node").arg(tmp.path().join("node.cjs")).output().unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(
+        expected,
+        json!({"source": "src/[^/]*\\.test\\.js", "order": "index,constants,escape,after", "limit": 3, "label": "items"})
+    );
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"
+import { action, defineConfig, text } from "zero";
+import run from "./probe.cjs";
+export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text().notNull() }, handler: (input) => run(input.glob) }) } });
+"#,
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+        echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(['glob' => 'src/*.test.js']), \Zero\Seam::ctx(['user' => null])));
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-commonjs/zero/app"),
+        ],
+    );
+    assert_eq!(result, expected);
+}
+
+#[test]
 fn classes_match_node_through_generated_php_and_wire_client_types() {
     let tmp = tempfile::tempdir().unwrap();
     let config = root().join("tests/differential/classes.ts");
@@ -895,6 +975,99 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         assert_eq!(diagnostic["location"]["file"], "zero.config.ts", "{report}");
         assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
     }
+}
+
+/// `zero check --json` reports each plugin's package, integrity, locked and inferred grant, and
+/// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
+#[test]
+fn check_reports_plugin_grants_and_read_to_send_flows() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("node_modules/zero-plugin-sync/src")).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { collection, defineConfig, id, text } from "zero";
+import sync from "zero-plugin-sync";
+const posts = collection({ id: id(), title: text().notNull() }, { title: "title" });
+export default defineConfig({ name: "flows", collections: { posts }, use: [sync()] });"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("node_modules/zero-plugin-sync/package.json"),
+        r#"{ "name": "zero-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
+        r#"import { action, db, definePlugin, env, fetch } from "zero";
+import { abilities } from "php/wordpress";
+// The send happens in a helper the handler calls with what it read. Package TypeScript compiles
+// as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
+async function push(body: string) {
+  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: env("SYNC_KEY") ?? "" } });
+  return response.status;
+}
+export default () => definePlugin({
+  name: "sync",
+  actions: {
+    export: action({ input: {}, async handler() { const rows = await db.query.posts.findMany(); push(JSON.stringify(rows)); return true; } }),
+    count: action({ input: {}, async handler() { return (await db.query.posts.findMany()).length; } }),
+    // A WordPress ability is a capability like any other: here the app's own `posts` list.
+    list: action({ input: {}, async handler() { const rows = await abilities.call("flows/posts-list", {}); return rows; } }),
+  },
+});"#,
+    )
+    .unwrap();
+    // A first local check, before any lock exists. Under CI the same plugin is refused until a
+    // lock is committed, which is its own assertion below.
+    let out = zero()
+        .env_remove("CI")
+        .args(["check", "--json"])
+        .arg(tmp.path())
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(out.status.success(), "{report}");
+    let plugin = &report["plugins"][0];
+    assert_eq!(plugin["package"], "zero-plugin-sync");
+    assert_eq!(plugin["version"], "3.1.0");
+    assert!(plugin["integrity"].as_str().unwrap().starts_with("sha256-"));
+    assert_eq!(plugin["status"], "added");
+    assert_eq!(plugin["inferred"]["read"], json!(["posts"]));
+    assert_eq!(plugin["inferred"]["http"], json!(["hooks.example.com"]));
+    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
+    assert_eq!(
+        plugin["inferred"]["actions"],
+        json!(["sync_count", "sync_export", "sync_list"])
+    );
+    assert_eq!(plugin["inferred"]["abilities"], json!(["flows/posts-list"]));
+    for empty in ["wpHooks", "php"] {
+        assert_eq!(plugin["inferred"][empty], json!([]));
+    }
+    // Only the handler that reads and then sends, through its helper, is flagged.
+    assert_eq!(
+        plugin["flows"],
+        json!([{
+            "handler": "plugin_sync__action__sync_export",
+            "reads": ["env: SYNC_KEY", "read: posts"],
+            "sends": ["http: hooks.example.com"],
+        }])
+    );
+    assert!(!tmp.path().join("zero").exists(), "check writes no lock");
+    let frozen = zero()
+        .args(["check", "--json", "--frozen"])
+        .arg(tmp.path())
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&frozen.stdout).unwrap();
+    assert_eq!(frozen.status.code(), Some(1), "{report}");
+    assert_eq!(report["diagnostics"][0]["code"], "Z4201");
+    assert!(
+        report["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/plugins.lock.json"),
+        "{report}"
+    );
 }
 
 #[test]
@@ -1308,7 +1481,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
             "const helper = (value: any) => value; return helper('x');",
             "`any` isn't allowed",
         ),
-        ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
+        ("function* numbers() { yield 1; } return [...numbers()];", "generators"),
         ("return fetch('https://example.com');", "fetch"),
         ("return new Map<string, number>();", "new Map"),
         (

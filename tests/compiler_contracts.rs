@@ -3814,6 +3814,11 @@ fn language_refusals_carry_a_location_and_a_fix() {
             "withHelper.read()",
         ),
         (
+            "receiver-typed callback",
+            "",
+            "[1].map(function (this: { x: number }, value) { return this.x + value; })",
+        ),
+        (
             "this before super",
             "class A {} class B extends A { constructor(public n: number = (this as unknown as { n: number }).n) { super(); } }",
             "new B()",

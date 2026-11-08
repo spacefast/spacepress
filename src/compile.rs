@@ -4559,6 +4559,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 (None, None) if is_this && params.is_some() => Ty::Unknown,
                 (Some(a), _) => {
                     let declared = self.resolve_runtime_ann(a, module)?;
+                    // A callback is called without a receiver, so its `this` is undefined.
+                    if is_this
+                        && params.is_some()
+                        && check_parameter_argument(&Ty::Undefined, &declared, p.span).is_err()
+                    {
+                        return err_help(
+                            p.span,
+                            format!(
+                                "this callback is called without a receiver, so `this` is undefined, not {}",
+                                declared.describe()
+                            ),
+                            "capture the object in a variable or use an arrow function, and read it instead of `this`",
+                        );
+                    }
                     if let Some(given) = &given {
                         check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
                     } else if params.is_some() && !is_this && !p.optional && p.default.is_none() {

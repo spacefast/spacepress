@@ -3415,35 +3415,81 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
-/// Methods that read `this` compile once each, in the order of the siblings they read, so a
-/// refusal inside a helper or class they call is reported, never retried past into a build that
-/// calls a function PHP never got.
+/// A helper, class, namespace receiver or captured collection that Zero refuses is reported
+/// wherever it is first compiled: in a sibling method that reads `this`, in an `if`, a ternary or
+/// a `for await` array, or behind an `instanceof` check. The checks that type a branch never leave
+/// it registered without code, so the build never calls a function PHP never got.
 #[test]
-fn a_refusal_inside_a_this_method_helper_is_reported() {
-    for (declarations, call) in [
+fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled() {
+    let first =
+        "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }";
+    let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }";
+    let sort = "sorting requires a numeric key-difference comparator";
+    for (declarations, handler, message) in [
         (
-            "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }",
-            "first([1, 3, 2])",
+            first,
+            "() => ({ a() { return first([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
+            sort,
         ),
         (
-            "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }",
-            "new Box(1).top([1, 3, 2])",
+            boxed,
+            "() => ({ a() { return new Box(1).top([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
+            sort,
+        ),
+        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }", sort),
+        (
+            first,
+            "async () => { let n = 0; for await (const v of [first([1, 3, 2])]) n += v; return n; }",
+            sort,
+        ),
+        (first, "() => (first([1, 3, 2]) ? 1 : 0)", sort),
+        (
+            first,
+            "() => ({ a() { if (first([1, 3, 2])) return this.n; return 0; }, n: 1 }).a()",
+            sort,
+        ),
+        (
+            boxed,
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box) return 1; return 0; }",
+            sort,
+        ),
+        (
+            format!("{boxed} function h(): number {{ return new Box(1).v; }}").as_str(),
+            "() => { if (h()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "function bad(): number { return [1].sort(function (a, b) { return b > a ? 1 : -1; })[0]; } const ns = { n: 1, get(this: { n: number }): number { return this.n; }, bad };",
+            "() => { if (ns.get()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "const m = new Map([[\"a\", () => 1]]);",
+            "() => { if (m.get(\"a\")) return 1; return 0; }",
+            "captured data contains a function, which can't be used in PHP",
+        ),
+        (
+            "class Box { constructor(public v: number) {} m(): number { return h().v; } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } function h(): Box { return new Box(1); }",
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && h().ok()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "class Box { constructor(public v: number) {} m(): number { return new Tag().of(this); } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } class Tag { of(b: Box): number { return b.v; } box(): Box | null { return null; } } function t(): Tag { return new Tag(); }",
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && t().box()!.ok()) return 1; return 0; }",
+            sort,
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => ({{ a() {{ return {call} + this.b(); }}, b() {{ return this.n; }}, n: 1 }}).a() }}) }} }});\n"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: {handler} }}) }} }});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{call}: {report}");
+        assert_eq!(out.status.code(), Some(1), "{handler}: {report}");
         assert!(
-            report["diagnostics"][0]["message"]
-                .as_str()
-                .unwrap()
-                .contains("sorting requires a numeric key-difference comparator"),
-            "{call}: {report}"
+            report["diagnostics"][0]["message"].as_str().unwrap().contains(message),
+            "{handler}: {report}"
         );
     }
 }

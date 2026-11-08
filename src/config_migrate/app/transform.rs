@@ -555,6 +555,7 @@ pub(super) fn app(
             "auth",
             "realtime",
             "endpoints",
+            "favicon",
         ]
         .contains(&key.as_str())
         {
@@ -573,6 +574,15 @@ pub(super) fn app(
                 )),
             }
         }
+    }
+    // 0.8 type-checked `favicon` and nothing else: no 0.8 compiler, engine or runner revision read
+    // it, so a 0.8 Space's browser icon was always its published `/favicon.ico` (or the shell's).
+    if root.contains_key("favicon") {
+        entries.push(entry(
+            "/favicon",
+            "review",
+            "0.8 never served the favicon option, so dropping it changes nothing; the icon a visitor sees is still the published /favicon.ico. To keep shipping one, put it in the candidate's public/ directory",
+        ));
     }
     if root.contains_key("realtime") {
         entries.push(entry("/realtime", "mapped", "v2 announces every committed write as a change notice, so the declaration is no longer needed; Spacefast delivers notices over Cast. Replace client useQuery subscriptions with watch(client, [\"<table>\"], read, onResult) from the generated client."));

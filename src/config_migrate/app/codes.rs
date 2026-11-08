@@ -117,6 +117,14 @@ pub static RULES: &[Rule] = &[
         example: ("/sf.jsonc/fallback", "the serving settings are not carried over: x"),
     },
     Rule {
+        code: "Z08_OMITTED_CONFIG",
+        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, access or crons, or theme.json)",
+        v2: "zero.config.ts, the pages themselves or the Space's own settings",
+        fix: "Recreate what the setting did in v2, or remove it if the Space doesn't need it.",
+        test: |_, r| r.starts_with(omitted::CONFIG),
+        example: ("/sf.jsonc/theme", "the setting is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_CONNECTORS",
         feature: "connector role and its credentials",
         v2: "nothing yet: connectors are not in v2",

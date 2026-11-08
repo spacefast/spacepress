@@ -172,7 +172,10 @@ To start from what a 0.8 publish stored instead, pass its finalize payload:
 `--manifest finalize.json ./old-app` checks that every source file matches the
 published SHA-256 before converting, and `--manifest finalize.json` alone
 reports the manifest's own refusals and then refuses at `/source`, because the
-stored bundles are compiled JavaScript, not source.
+stored bundles are compiled JavaScript, not source. The manifest records only
+the capsule source, never the static files 0.8 served beside it, so each of
+those in `./old-app` is refused with `Z08_OMITTED_UNVERIFIED`: the candidate
+can't check it is the published file.
 
 The input may be a Spacefast 0.8 project root with `sf.jsonc`, a server entry
 and `content/`. The server entry is `sf.jsonc`'s `runtime.server`, or
@@ -195,9 +198,11 @@ served that the candidate doesn't reproduce is an error, not a note. A
 candidate with no errors can be published in place of the 0.8 version.
 
 Static files that 0.8 served from the project root, such as `index.html`,
-`assets/*.css` and `docs/guide.html`, are carried into the candidate's
+`assets/*.css`, `assets/*.js` and `docs/guide.html`, are carried into the candidate's
 `public/`. v2 serves that directory at the same URLs. Files that are carried
-are UTF-8 text, aren't 0.8 source, repository files or config, and don't sit
+are UTF-8 text, aren't 0.8 source (TypeScript anywhere, or code under
+`client/`, `server/`, `shared/`, `pages/` or `content/`), repository files
+or config, and don't sit
 under a path WordPress or Zero owns. Each one gets a `mapped` entry. A client
 app without pages had an `index.html` that 0.8 generated, so the author's own
 `index.html` was never served there and isn't carried.
@@ -211,8 +216,11 @@ Everything else gets a `Z08_OMITTED_*` error:
 | `Z08_OMITTED_STATIC` | A static file that isn't UTF-8 text (images, fonts), or one under a path WordPress or Zero owns. |
 | `Z08_OMITTED_PUBLIC` | A file in the 0.8 project's `public/`, which 0.8 served at `/public/...`; v2 serves `public/` at the site root. |
 | `Z08_OMITTED_REDIRECTS` | `_redirects`, `_headers`, and `redirects`, `rewrites` or `headers` in `sf.jsonc`. |
-| `Z08_OMITTED_CLEAN_URLS` | `cleanUrls`, or carried `<name>.html` files that 0.8 served at `/<name>` by default. |
+| `Z08_OMITTED_CLEAN_URLS` | `cleanUrls`, or carried `<name>.html` or `<name>.htm` files that 0.8 served at `/<name>` by default. |
 | `Z08_OMITTED_SERVE` | `fallback`, `index`, `listing`, `serve`, `inject`, `firewall` and `cache` in `sf.jsonc`. |
+| `Z08_OMITTED_CONFIG` | Any other `sf.jsonc` key except `$schema`, `runtime`, `name` and `space`, and `theme.json`, which 0.8 turned into the pages' `theme.css`. |
+| `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
+| `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/` and OS metadata are skipped without an error. |
 | `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |
 | `Z08_OMITTED_SYNC` | Content sync of native posts. |
 

@@ -25,6 +25,7 @@ pub(super) const SYNC: &str = "content sync is not carried over";
 pub(super) const PUBLIC: &str = "public/ is not carried over";
 pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
 pub(super) const DENIED: &str = "the credential file is not carried over";
+pub(super) const CONFIG: &str = "the setting is not carried over";
 pub(super) const UNVERIFIED: &str = "the unverified static file is not carried over";
 
 /// The monorepo's one source deny list, verbatim: `DENIED_SOURCE_PATH_PATTERN` in
@@ -70,7 +71,12 @@ const CODE: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
 const TYPESCRIPT: &[&str] = &["ts", "tsx", "mts", "cts"];
 /// The rule files 0.8 compiled into routing instead of serving.
 const RULE_FILES: &[&str] = &["_redirects", "_headers"];
-/// The config keys 0.8 applied when serving the version, by the error each one raises.
+/// Config keys the candidate reproduces or that change nothing it serves: the converted runtime,
+/// the Space's display name (and the old CLI's `space` key) and the editor's schema pointer.
+const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
+/// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
+const THEME_JSON: &str = "theme.json";
+/// The serving keys with their own error; any other key raises `CONFIG`.
 const SERVING_KEYS: &[(&str, &str)] = &[
     ("redirects", REDIRECTS),
     ("rewrites", REDIRECTS),
@@ -131,7 +137,7 @@ fn served(relative: &str) -> bool {
         || REPOSITORY_FILES.contains(&relative)
         || super::CONFIG_FILES.contains(&relative)
         || relative == "spacefast.config.ts"
-        || relative == "theme.json"
+        || relative == THEME_JSON
         // isZeroCapsuleOwnedPath: code inside a source root, and package.json at any depth.
         || (root == "content" && CODE.contains(&extension))
         || relative.rsplit('/').next() == Some("package.json")
@@ -356,6 +362,12 @@ pub(super) fn sweep(
             ))),
         }
     }
+    // 0.8 served `<name>.html` (or `.htm`) at `/<name>` unless cleanUrls was false; v2 serves files
+    // as named.
+    let clean_page = out.carried.iter().find(|f| {
+        let base = f.rsplit('/').next().unwrap_or(f);
+        (base.ends_with(".html") || base.ends_with(".htm")) && !base.starts_with("index.")
+    });
     if let Some((config_file, config, text)) = config {
         // The key's line in the config file, where the fix goes.
         let line_of = |key: &str| -> (usize, usize) {
@@ -365,47 +377,53 @@ pub(super) fn sweep(
                 .find_map(|(i, l)| l.find(&needle).map(|c| (i + 1, l[..c].encode_utf16().count() + 1)))
                 .unwrap_or((1, 1))
         };
-        for (key, reason) in SERVING_KEYS {
-            if config.get(key).is_some() {
-                let (line, column) = line_of(key);
-                errors.push(
-                    fail(
-                        &pointer(&format!("/{config_file}"), key),
-                        format!("{reason}: 0.8 applied {config_file} `{key}` when serving the Space"),
-                    )
-                    .located(config_file.to_string(), line, column),
-                );
+        // Fail closed: every key 0.8 applied is refused unless it is known to change nothing.
+        for key in config.as_object().into_iter().flat_map(|o| o.keys()) {
+            if NO_OP_KEYS.contains(&key.as_str()) {
+                continue;
             }
-        }
-        // 0.8 served `<name>.html` at `/<name>` unless cleanUrls was false; v2 serves files as named.
-        let clean = config
-            .get("cleanUrls")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(true);
-        if clean
-            && config.get("cleanUrls").is_none()
-            && out
-                .carried
+            let reason = SERVING_KEYS
                 .iter()
-                .any(|f| f.ends_with(".html") && !f.ends_with("index.html"))
+                .find(|(k, _)| k == key)
+                .map_or(CONFIG, |(_, reason)| reason);
+            let (line, column) = line_of(key);
+            errors.push(
+                fail(
+                    &pointer(&format!("/{config_file}"), key),
+                    format!("{reason}: 0.8 applied {config_file} `{key}` to the Space"),
+                )
+                .located(config_file.to_string(), line, column),
+            );
+        }
+        if let Some(page) = clean_page
+            && config.get("cleanUrls").is_none()
         {
             errors.push(
                 fail(
                     &pointer(&format!("/{config_file}"), "cleanUrls"),
-                    format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default"),
+                    format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default, {page} included"),
                 )
                 .located(config_file.to_string(), 1, 1),
             );
         }
-    } else if out
-        .carried
-        .iter()
-        .any(|f| f.ends_with(".html") && !f.ends_with("index.html"))
-    {
-        errors.push(fail(
-            "/cleanUrls",
-            format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default"),
-        ));
+    } else if let Some(page) = clean_page {
+        errors.push(
+            fail(
+                "/cleanUrls",
+                format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default, {page} included"),
+            )
+            .located(page.clone(), 1, 1),
+        );
+    }
+    // 0.8 inferred the pages' theme tokens from theme.json and linked the generated theme.css.
+    if fs.is_file(&root.join(THEME_JSON)) {
+        errors.push(
+            fail(
+                &format!("/{THEME_JSON}"),
+                format!("{CONFIG}: 0.8 turned {THEME_JSON} into the Space's generated theme.css"),
+            )
+            .located(THEME_JSON.to_string(), 1, 1),
+        );
     }
     out
 }

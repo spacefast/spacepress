@@ -729,6 +729,10 @@
       "feature": "symbolic link in the project"
     },
     {
+      "code": "Z08_OMITTED_CONFIG",
+      "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, access or crons, or theme.json)"
+    },
+    {
       "code": "Z08_OMITTED_UNVERIFIED",
       "feature": "static file the finalize manifest doesn't record"
     },

@@ -290,7 +290,10 @@ fn omissions_are_errors_and_static_files_carry_over() {
             ("Z08_OMITTED_PUBLIC", "/public/site.css", "public/site.css", 1),
             ("Z08_OMITTED_REDIRECTS", "/sf.jsonc/redirects", "sf.jsonc", 4),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/fallback", "sf.jsonc", 5),
+            // A key the converter doesn't know to be a no-op is refused, not passed through.
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/theme", "sf.jsonc", 6),
             ("Z08_OMITTED_CLEAN_URLS", "/sf.jsonc/cleanUrls", "sf.jsonc", 1),
+            ("Z08_OMITTED_CONFIG", "/theme.json", "theme.json", 1),
         ],
         "{report:#}"
     );
@@ -466,6 +469,21 @@ fn omissions_are_errors_and_static_files_carry_over() {
         assert!(!out.join(absent).exists(), "{absent}");
     }
     build(&out);
+
+    // With no config file, 0.8 still served `<name>.htm` at `/<name>`; the error is at the page.
+    let bare = temp.path().join("bare");
+    copy_tree(&fixture("server-only"), &bare);
+    std::fs::remove_file(bare.join("sf.jsonc")).unwrap();
+    std::fs::write(bare.join("about.htm"), "<p>About</p>\n").unwrap();
+    let (ok, report) = migrate(&bare, &temp.path().join("bare-out"), &["--space", "spc_migrate_test"]);
+    assert!(!ok);
+    let refused: Vec<(&str, &str)> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
+        .collect();
+    assert_eq!(refused, [("Z08_OMITTED_CLEAN_URLS", "about.htm")], "{report:#}");
 }
 
 #[test]

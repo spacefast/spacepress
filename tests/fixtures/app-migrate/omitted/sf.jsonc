@@ -3,4 +3,5 @@
   "runtime": { "kind": "zero", "server": "server/index.ts", "client": "client/index.tsx" },
   "redirects": [{ "source": "/old", "destination": "/new", "status": 301 }],
   "fallback": "/index.html",
+  "theme": { "accent": "#0a7" },
 }

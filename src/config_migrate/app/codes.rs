@@ -4,6 +4,7 @@
 //! app, so codes never change meaning; a new refusal kind gets a new code. Every code is listed in
 //! `tests/compatibility/registry.json` under `zero08`.
 use super::super::Failure;
+use super::omitted;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -34,6 +35,83 @@ const LANGUAGE: &str = "error: Zero code doesn't support ";
 
 /// First match wins, so specific rules come before the general ones they overlap.
 pub static RULES: &[Rule] = &[
+    // Whatever 0.8 served that the candidate does not reproduce (app/omitted.rs). Each is removed
+    // by the change that carries the thing over, with no change for callers.
+    Rule {
+        code: "Z08_OMITTED_CLIENT",
+        feature: "0.8 client app (client/)",
+        v2: "a browser app in public/ calling the generated v2 client",
+        fix: "Port the client to public/ with the generated v2 client before publishing, or keep the Space on 0.8.",
+        test: |_, r| r.starts_with(omitted::CLIENT),
+        example: ("/client", "the 0.8 client app is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_PAGES",
+        feature: "0.8 page",
+        v2: "a TSX page (docs/pages.md)",
+        fix: "Port the page to a v2 TSX page or a static file in public/ before publishing.",
+        test: |_, r| r.starts_with(omitted::PAGES),
+        example: ("/pages/about.tsx", "the 0.8 page is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_STATIC",
+        feature: "static file the candidate can't carry",
+        v2: "a file in public/, served at the same URL",
+        fix: "Copy the file into the candidate's public/ yourself, or move it off a WordPress-owned path.",
+        test: |_, r| r.starts_with(omitted::STATIC),
+        example: ("/logo.png", "the static file is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_PUBLIC",
+        feature: "0.8 public/ directory",
+        v2: "public/, served at the site root",
+        fix: "Move the files to where their /public/... URLs land in v2 (public/public/...), or update the links.",
+        test: |_, r| r.starts_with(omitted::PUBLIC),
+        example: ("/public/a.css", "public/ is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_REDIRECTS",
+        feature: "redirect, rewrite and header rules (_redirects, _headers, sf.jsonc)",
+        v2: "routes in zero.config.ts or the Space's own rules",
+        fix: "Recreate each rule as a v2 route or a Space rule before publishing.",
+        test: |_, r| r.starts_with(omitted::REDIRECTS),
+        example: (
+            "/_redirects",
+            "the redirect, rewrite and header rules are not carried over: x",
+        ),
+    },
+    Rule {
+        code: "Z08_OMITTED_CLEAN_URLS",
+        feature: "clean URLs (/<name> serving <name>.html)",
+        v2: "<name>/index.html in public/",
+        fix: "Move each <name>.html to <name>/index.html in public/ so /<name> keeps working.",
+        test: |_, r| r.starts_with(omitted::CLEAN_URLS),
+        example: ("/cleanUrls", "clean URLs are not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_SERVE",
+        feature: "serving settings (fallback, index, listing, inject, firewall, cache)",
+        v2: "WordPress serving and the Space's own settings",
+        fix: "Drop the setting or set it on the Space; v2 serves the app through WordPress.",
+        test: |_, r| r.starts_with(omitted::SERVE),
+        example: ("/sf.jsonc/fallback", "the serving settings are not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_CONNECTORS",
+        feature: "connector role and its credentials",
+        v2: "nothing yet: connectors are not in v2",
+        fix: "Remove the connector, or keep the Space on 0.8 until v2 has connectors.",
+        test: |_, r| r.starts_with(omitted::CONNECTORS),
+        example: ("/connectors/calendar", "the connector role is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_SYNC",
+        feature: "content sync of native posts",
+        v2: "sync on a v2 collection",
+        fix: "Declare the collection in zero.config.ts with `sync` over the content files.",
+        test: |_, r| r.starts_with(omitted::SYNC),
+        example: ("/collections/posts/sync", "content sync is not carried over: x"),
+    },
     Rule {
         code: "Z08_SOURCE_NOT_RECOVERABLE",
         feature: "a published 0.8 version without its authored source",

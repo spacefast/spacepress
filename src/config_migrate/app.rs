@@ -2,6 +2,7 @@
 pub(super) mod codes;
 mod endpoints;
 mod manifest;
+mod omitted;
 mod pages;
 mod spacefast;
 mod transform;
@@ -283,7 +284,7 @@ fn convert(
             refuse_pages(&*fs, &root.join(dir), &format!("/{dir}"), &mut report.errors)?;
         }
     }
-    let converted = convert_pages(&*fs, &root, report, &mut sources)?;
+    let (converted, page_sources) = convert_pages(&*fs, &root, report, &mut sources)?;
     let transformed = transform::app(
         &entry,
         sources
@@ -318,6 +319,36 @@ fn convert(
         "export { default } from \"./server/index\";\n".into(),
     );
     let page_files = converted;
+    // Fail closed: whatever 0.8 served that the candidate does not reproduce is an error, so a
+    // candidate without errors can replace the published version. Static files v2 serves
+    // unchanged travel in public/.
+    let config = CONFIG_FILES
+        .iter()
+        .find(|f| fs.is_file(&root.join(f)))
+        .and_then(|name| {
+            let text = fs.read_to_string(&root.join(name)).ok()?;
+            let value = serde_json::from_str::<serde_json::Value>(&strip_jsonc(&text)).ok()?;
+            Some((*name, value, text))
+        });
+    // A page or client file already refused with its own reason isn't reported twice.
+    let reported: BTreeSet<String> = report.errors.iter().map(|e| e.pointer_file()).collect();
+    let mut handled: Vec<String> = page_sources.clone();
+    handled.extend(reported.iter().cloned());
+    let static_files = omitted::sweep(
+        &*fs,
+        &root,
+        config.as_ref().map(|(name, value, text)| (*name, value, text.as_str())),
+        &handled,
+        page_files.contains_key("pages/layout.tsx"),
+        &mut report.errors,
+    );
+    for name in &static_files.carried {
+        report.entries.push(super::entry(
+            &format!("/{name}"),
+            "mapped",
+            format!("static file carried over as public/{name}, served at the same URL"),
+        ));
+    }
     // Both dry runs and writes compile the same candidate, before creating a destination.
     if !report.errors.is_empty() {
         return Ok(());
@@ -352,6 +383,9 @@ fn convert(
         files.insert(path.to_string_lossy().replace('\\', "/"), text);
     }
     for (path, text) in page_files {
+        files.insert(path, text);
+    }
+    for (path, text) in static_files.files {
         files.insert(path, text);
     }
     files.insert("zero/migrations/0001_adopt.sql".into(), sql);
@@ -539,11 +573,13 @@ fn convert_pages(
     root: &Path,
     report: &mut Report,
     sources: &mut BTreeMap<PathBuf, String>,
-) -> Result<BTreeMap<String, String>, Failure> {
+) -> Result<(BTreeMap<String, String>, Vec<String>), Failure> {
     let mut out = BTreeMap::new();
+    // The 0.8 page files that became v2 pages, capsule-relative.
+    let mut converted = vec![];
     let pages_dir = root.join("pages");
     if !fs.exists(&pages_dir) {
-        return Ok(out);
+        return Ok((out, converted));
     }
     let mut stack = vec![pages_dir];
     let mut files = vec![];
@@ -622,6 +658,7 @@ fn convert_pages(
                         page.file
                     ),
                 ));
+                converted.push(relative.to_string_lossy().replace('\\', "/"));
                 if out.insert(page.file.clone(), page.source).is_some() {
                     report
                         .errors
@@ -647,7 +684,7 @@ fn convert_pages(
             Err(e) => report.errors.push(e),
         }
     }
-    Ok(out)
+    Ok((out, converted))
 }
 
 fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -> Result<(), Failure> {

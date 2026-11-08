@@ -108,12 +108,150 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
 #[test]
 fn reuses_content_importer_and_normalizes_roles_without_claiming_grants() {
     let temp = tempfile::tempdir().unwrap();
-    let out = temp.path().join("content");
-    let (ok, report) = migrate(&fixture("content"), &out, &[]);
+    // Connector roles normalize, but their credentials and grants stay behind, so each one is an
+    // omission: publishing the candidate would break calls through it.
+    let (ok, refused) = migrate(&fixture("content"), &temp.path().join("refused"), &["--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["connector_roles"]["calendar"]["as"], "personal");
+    assert_eq!(refused["connector_roles"]["shared"]["as"], "team");
+    assert_eq!(refused["connector_roles"]["visitor"]["as"], "visitor");
+    let omitted: Vec<(&str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["pointer"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        omitted,
+        [
+            ("Z08_OMITTED_CONNECTORS", "/connectors/calendar"),
+            ("Z08_OMITTED_CONNECTORS", "/connectors/shared"),
+            ("Z08_OMITTED_CONNECTORS", "/connectors/visitor"),
+        ]
+    );
+    // Without them the content importer still converts and builds.
+    let root = temp.path().join("content");
+    copy_tree(&fixture("content"), &root);
+    let index = root.join("server/index.ts");
+    let source = std::fs::read_to_string(&index).unwrap();
+    let start = source.find("  connectors: {").unwrap();
+    let end = start + source[start..].find("  },\n").unwrap() + "  },\n".len();
+    std::fs::write(&index, format!("{}{}", &source[..start], &source[end..])).unwrap();
+    let out = temp.path().join("out");
+    let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    assert_eq!(report["connector_roles"]["calendar"]["as"], "personal");
-    assert_eq!(report["connector_roles"]["shared"]["as"], "team");
-    assert_eq!(report["connector_roles"]["visitor"]["as"], "visitor");
+    build(&out);
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &to.join(entry.file_name()));
+        } else {
+            std::fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
+}
+
+/// Fail closed: everything a 0.8 publish served that the candidate does not reproduce is an
+/// error with its own code, and static files v2 serves unchanged are carried into public/.
+#[test]
+fn omissions_are_errors_and_static_files_carry_over() {
+    let temp = tempfile::tempdir().unwrap();
+    let (ok, report) = migrate(
+        &fixture("omitted"),
+        &temp.path().join("omitted"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors: Vec<(&str, &str, &str, u64)> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["pointer"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+                e["line"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        errors,
+        [
+            ("Z08_PAGE_DOCUMENT", "/pages/about.md", "pages/about.md", 1),
+            ("Z08_OMITTED_CONNECTORS", "/connectors/calendar", "server/index.ts", 5),
+            ("Z08_OMITTED_REDIRECTS", "/_redirects", "_redirects", 1),
+            ("Z08_OMITTED_STATIC", "/assets/logo.png", "assets/logo.png", 1),
+            ("Z08_OMITTED_CLIENT", "/client", "client/index.tsx", 1),
+            ("Z08_OMITTED_PUBLIC", "/public/site.css", "public/site.css", 1),
+            ("Z08_OMITTED_REDIRECTS", "/sf.jsonc/redirects", "sf.jsonc", 4),
+            ("Z08_OMITTED_SERVE", "/sf.jsonc/fallback", "sf.jsonc", 5),
+            ("Z08_OMITTED_CLEAN_URLS", "/sf.jsonc/cleanUrls", "sf.jsonc", 1),
+        ],
+        "{report:#}"
+    );
+    let registry: Value = serde_json::from_str(include_str!("compatibility/registry.json")).unwrap();
+    for (code, ..) in &errors {
+        assert!(
+            registry["zero08"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["code"] == *code),
+            "{code}"
+        );
+    }
+    // With pages, 0.8 served the author's index.html, so it travels with the other text files.
+    let carried: Vec<&str> = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["reason"].as_str().unwrap().starts_with("static file carried over"))
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    assert_eq!(carried, ["/assets/app.css", "/docs/guide.html", "/index.html"]);
+    // A client app with no pages: 0.8 generated index.html, so the author's never served.
+    let standalone = temp.path().join("standalone");
+    copy_tree(&fixture("omitted"), &standalone);
+    std::fs::remove_dir_all(standalone.join("pages")).unwrap();
+    let (_, report) = migrate(
+        &standalone,
+        &temp.path().join("standalone-out"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(
+        !report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/index.html")
+    );
+    assert!(
+        report["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["code"] == "Z08_OMITTED_CLIENT")
+    );
+
+    // A server-only project: no errors, and its static files land in public/ at the same URLs.
+    let out = temp.path().join("server-only");
+    let (ok, report) = migrate(&fixture("server-only"), &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    assert_eq!(report["errors"], serde_json::json!([]));
+    assert_eq!(
+        std::fs::read_to_string(out.join("public/index.html")).unwrap(),
+        std::fs::read_to_string(fixture("server-only").join("index.html")).unwrap()
+    );
+    assert!(out.join("public/humans.txt").is_file());
+    // Repository files and source are not content.
+    for absent in ["public/package.json", "public/sf.jsonc", "public/server/index.ts"] {
+        assert!(!out.join(absent).exists(), "{absent}");
+    }
     build(&out);
 }
 
@@ -461,6 +599,16 @@ fn native_post_declarations_and_space_users_compile_together() {
         &root,
         r#"{collections:{posts:{publicRead:true,fields:{title:{kind:"text",required:true},content:{kind:"blocks"}},sync:{directory:"content/posts"}},notes:{fields:{title:{kind:"text",required:true}}}}}"#,
     );
+    // 0.8 rebuilt synced posts on every publish; the candidate doesn't, so sync is an omission.
+    let (ok, refused) = migrate(&root, &temp.path().join("synced"), &["--users", "--dry-run"]);
+    assert!(!ok);
+    assert_eq!(refused["errors"][0]["code"], "Z08_OMITTED_SYNC", "{refused:#}");
+    assert_eq!(refused["errors"][0]["pointer"], "/collections/posts/sync");
+    let index = root.join("server/index.ts");
+    let text = std::fs::read_to_string(&index)
+        .unwrap()
+        .replace(r#",sync:{directory:"content/posts"}"#, "");
+    std::fs::write(&index, text).unwrap();
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &["--users"]);
     assert!(ok, "{report:#}");
@@ -816,7 +964,12 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     );
     assert!(!ok);
     let errors = refused["errors"].as_array().unwrap();
-    assert_eq!(errors.len(), 2);
+    // Two interactive pages, and the client/ app 0.8 built alongside them, which nothing carries.
+    let codes: Vec<&str> = errors.iter().map(|e| e["code"].as_str().unwrap()).collect();
+    assert_eq!(
+        codes,
+        ["Z08_PAGE_INTERACTIVE", "Z08_PAGE_INTERACTIVE", "Z08_OMITTED_CLIENT"]
+    );
     assert_eq!(errors[0]["pointer"], "/pages/index.tsx");
     let reason = errors[0]["reason"].as_str().unwrap();
     assert!(
@@ -1185,9 +1338,18 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         "export default function App() { return null; }\n",
     )
     .unwrap();
+    // The publish built client/main.tsx into the Space's browser app, which the candidate does
+    // not carry over: the server converts, and the client is the one omission.
     let (ok, report) = migrate_manifest(&manifest, Some(&source), &temp.path().join("b"));
-    assert!(ok, "{report:#}");
-    assert_eq!(report["status"], "dry-run");
+    assert!(!ok);
+    let codes: Vec<&str> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["Z08_OMITTED_CLIENT"], "{report:#}");
+    assert_eq!(report["errors"][0]["file"], "client/main.tsx");
 
     // Files the publish did not record are not part of the published version: a page added later
     // and an sf.jsonc naming another entry are both ignored, so the candidate is the publish's.
@@ -1209,7 +1371,13 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         .output()
         .unwrap();
     let written: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert!(output.status.success(), "{written:#}");
+    let codes: Vec<&str> = written["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["Z08_OMITTED_CLIENT"], "only the client is omitted: {written:#}");
     assert!(
         !out.join("pages/added/page.tsx").exists(),
         "an unrecorded page reached the candidate"
@@ -1233,7 +1401,15 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     let image_path = temp.path().join("with-image.json");
     std::fs::write(&image_path, with_image.to_string()).unwrap();
     let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b4"));
-    assert!(ok, "{report:#}");
+    assert!(!ok);
+    let codes: Vec<&str> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["code"].as_str().unwrap())
+        .collect();
+    // The image matches its hash; 0.8 served it at /public/logo.png, which v2's public/ moves.
+    assert_eq!(codes, ["Z08_OMITTED_CLIENT", "Z08_OMITTED_PUBLIC"], "{report:#}");
     std::fs::write(source.join("public/logo.png"), b"\xff\xfe changed").unwrap();
     let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b5"));
     assert!(!ok);

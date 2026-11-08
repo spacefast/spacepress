@@ -12,6 +12,10 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+/// Stands in for a verified binary file in the in-memory source tree: the converter reads only
+/// text, and the omission sweep reports the file instead of carrying it.
+pub(super) const BINARY: &str = "\0zero-binary-file\0";
+
 /// The reason every manifest-only check ends with; censuses match on this prefix.
 pub(super) const NOT_RECOVERABLE: &str = "source not recoverable";
 
@@ -210,7 +214,10 @@ impl Manifest {
                 // A recorded binary asset (an image under public/) is not text, and the converter
                 // never reads it: compare its bytes and leave it out of the converted files.
                 Err(e) if e.kind() == std::io::ErrorKind::InvalidData => match std::fs::read(root.join(relative)) {
-                    Ok(bytes) if hex(&Sha256::digest(&bytes)) == *expected => {}
+                    // Recorded so the omission sweep sees it; the marker is never text it carries.
+                    Ok(bytes) if hex(&Sha256::digest(&bytes)) == *expected => {
+                        verified.insert(path.clone(), BINARY.into());
+                    }
                     Ok(_) => differing.push(format!("{path} (changed)")),
                     Err(e) => differing.push(format!("{path} (unreadable: {e})")),
                 },

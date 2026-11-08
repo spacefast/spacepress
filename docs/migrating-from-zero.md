@@ -174,6 +174,37 @@ list with RFC 6901 pointers, `adoption_sql`, and `connector_roles`. Pointers nam
 capsule declarations; `/pages/...`, `/layouts/...`, and `/islands/...` name project
 files. All independently unsupported handlers and features are reported together.
 
+### Nothing is dropped silently
+
+A candidate replaces the published version, so whatever the 0.8 publish
+served that the candidate doesn't reproduce is an error, not a note. A
+candidate with no errors can be published in place of the 0.8 version.
+
+Static files that 0.8 served from the project root, such as `index.html`,
+`assets/*.css` and `docs/guide.html`, are carried into the candidate's
+`public/`. v2 serves that directory at the same URLs. Files that are carried
+are UTF-8 text, aren't 0.8 source, repository files or config, and don't sit
+under a path WordPress or Zero owns. Each one gets a `mapped` entry. A client
+app without pages had an `index.html` that 0.8 generated, so the author's own
+`index.html` was never served there and isn't carried.
+
+Everything else gets a `Z08_OMITTED_*` error:
+
+| Code | What the candidate doesn't reproduce |
+| --- | --- |
+| `Z08_OMITTED_CLIENT` | The `client/` app 0.8 built into the Space's browser bundle. |
+| `Z08_OMITTED_PAGES` | A 0.8 page that has no other refusal and no v2 counterpart. |
+| `Z08_OMITTED_STATIC` | A static file that isn't UTF-8 text (images, fonts), or one under a path WordPress or Zero owns. |
+| `Z08_OMITTED_PUBLIC` | A file in the 0.8 project's `public/`, which 0.8 served at `/public/...`; v2 serves `public/` at the site root. |
+| `Z08_OMITTED_REDIRECTS` | `_redirects`, `_headers`, and `redirects`, `rewrites` or `headers` in `sf.jsonc`. |
+| `Z08_OMITTED_CLEAN_URLS` | `cleanUrls`, or carried `<name>.html` files that 0.8 served at `/<name>` by default. |
+| `Z08_OMITTED_SERVE` | `fallback`, `index`, `listing`, `serve`, `inject`, `firewall` and `cache` in `sf.jsonc`. |
+| `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |
+| `Z08_OMITTED_SYNC` | Content sync of native posts. |
+
+When a later release carries one of these over, its error goes away and
+nothing changes for callers.
+
 Each error has this shape:
 
 ```json

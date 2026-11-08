@@ -534,7 +534,14 @@ pub(super) fn app(
             match parsed {
                 Ok(v) => {
                     connector_roles.insert(name, v);
-                    entries.push(entry(&at,"review","connector role normalized for the optional host overlay; credentials and grants are not migrated; ctx connector calls require a port"));
+                    // The role's credentials and grants stay behind, so the connector stops working.
+                    errors.push(
+                        fail(
+                            &at,
+                            format!("{}: its credentials and grants are not migrated, so calls through it would stop working", super::omitted::CONNECTORS),
+                        )
+                        .spanned(e.span, Path::new("")),
+                    );
                 }
                 Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
             }

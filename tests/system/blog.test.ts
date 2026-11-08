@@ -23,7 +23,7 @@ test("the blog's committed posts sync into a fresh WordPress, once", async () =>
   zero("build", project, "--quiet");
   const built = join(project, ".zero/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
-  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "akismet", "two-factor", "polylang", "zero-runtime", "zero-identity", "zero-app-blog");
+  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "zero-runtime", "zero-identity", "zero-app-blog");
 
   const check = sync("--check");
   assert.equal(check.status, 2, check.stdout + check.stderr);

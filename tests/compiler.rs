@@ -351,7 +351,7 @@ fn context_values_pass_through_typed_helpers() {
         .arg(tmp.join(".zero/wp-content"))
         .arg(
             r#"$route = $app->matchRoute("POST", "/echo");
-               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"));
+               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"), "https://site.example/echo?x=1");
                echo json_encode([
                  "id" => $wp->userId("ada"),
                  "signedIn" => $wp->call("POST", "/actions/whoami", "{}", "ada")[1],
@@ -375,7 +375,7 @@ fn context_values_pass_through_typed_helpers() {
             "signedIn": { "label": ada, "role": "editor", "anonymous": false, "viaIndex": false },
             "guest": { "label": "guest", "role": "guest", "anonymous": true, "viaIndex": true },
             "note": [ada],
-            "echo": { "method": "POST", "path": "/echo", "body": "raw body", "role": "editor" },
+            "echo": { "method": "POST", "url": "https://site.example/echo?x=1", "path": "/echo", "body": "raw body", "role": "editor" },
         })
     );
     // Only a key no type can bound is refused, with the fix.

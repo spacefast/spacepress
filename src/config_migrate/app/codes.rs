@@ -298,9 +298,9 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_ENDPOINT_REQUEST_API",
-        feature: "endpoint request API (url, bytes, headers.entries)",
-        v2: "RouteRequest: method, path, params, query, headers and body",
-        fix: "Read the request through req.path, req.query, req.headers and req.body.",
+        feature: "endpoint request API (bytes, entries, path, the request as a value)",
+        v2: "RouteRequest: method, url, path, params, query, headers and body",
+        fix: "Read the request through req.url, req.query, req.headers and req.body, or pass it to a function in the same module.",
         test: |_, r| r.contains("request API has no v2 route equivalent"),
         example: (
             "/endpoints/up/request",

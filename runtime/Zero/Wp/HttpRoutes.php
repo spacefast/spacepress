@@ -80,7 +80,7 @@ final class HttpRoutes
         // The raw query, not $_GET: PHP's parse_str renames `a.b` to `a_b`, drops `x[]` into arrays
         // and keeps the last of a repeated name.
         $query = (string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? ''));
-        [$status, $out, $body] = $app->serveRoute($match, $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user);
+        [$status, $out, $body] = $app->serveRoute($match, $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user, self::url());
         self::emit($status, $out, $body);
     }
 
@@ -126,6 +126,18 @@ final class HttpRoutes
         }
 
         return $path;
+    }
+
+    /**
+     * The absolute request URL, as Fetch's `Request.url`: the scheme and host the visitor reached
+     * (`is_ssl()` and `Host`, as WordPress builds its own redirects), then the raw request URI.
+     */
+    private static function url(): string
+    {
+        $host = (string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? ''));
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+
+        return (is_ssl() ? 'https' : 'http') . '://' . $host . (str_starts_with($uri, '/') ? $uri : '/' . $uri);
     }
 
     /** @param array<string, string> $headers */

@@ -198,11 +198,11 @@ final class App
      *
      * @return array{int, array<string, string>, string}
      */
-    public function serveRoute(array $match, string $method, string $path, string $query, string $body, array $headers, ?array $user): array
+    public function serveRoute(array $match, string $method, string $path, string $query, string $body, array $headers, ?array $user, string $url): array
     {
         $headers = array_change_key_case($headers, CASE_LOWER);
         try {
-            $response = $this->db->transaction(function () use ($match, $method, $path, $query, $body, $headers, $user): array {
+            $response = $this->db->transaction(function () use ($match, $method, $path, $query, $body, $headers, $user, $url): array {
                 $route = $match['route'];
                 $name = $match['name'];
                 $viewer = new Viewer($user);
@@ -219,6 +219,7 @@ final class App
                     $string = static fn (array $values): JsObject => new JsObject(array_map('strval', $values));
                     $request = new JsObject([
                         'method' => $method,
+                        'url' => $url,
                         'path' => $path,
                         'params' => $string($match['params']),
                         'query' => QueryString::toJs(QueryString::parse($query)),

@@ -1184,6 +1184,8 @@ export interface Route { readonly [routeBrand]: true }
 /** The request a route handler receives. Header names are lowercase; the body is the raw text. */
 export interface RouteRequest {
   method: string;
+  /** The absolute URL the visitor requested, as Fetch's `Request.url`: scheme, host, path and query. */
+  url: string;
   path: string;
   /** `:name` segments of the route path, decoded. */
   params: Record<string, string>;

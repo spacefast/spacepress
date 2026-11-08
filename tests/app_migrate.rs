@@ -349,6 +349,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
             "/helpers/authed",
             "/helpers/getHeader",
             "/helpers/listAll",
+            "/helpers/originOf",
             "/helpers/owner",
             "/helpers/prefix",
             "/helpers/readBody",
@@ -382,11 +383,14 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
                $r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as)[1];
                // The endpoint hands its request to helpers: a header check through two of them, then
                // the JSON body through a third.
-               $post = fn ($auth) => $app->serveRoute($app->matchRoute("POST", "/api/notes"), "POST", "/api/notes", "", "{\"body\":\"three\"}", ["Authorization" => $auth], null)[0];
+               $post = fn ($auth) => $app->serveRoute($app->matchRoute("POST", "/api/notes"), "POST", "/api/notes", "", "{\"body\":\"three\"}", ["Authorization" => $auth], null, "https://notes.example/api/notes")[0];
                $denied = $post("Bearer nope");
+               // 0.8's request.url: https, the host as served, share-link secrets redacted.
+               $parse = fn ($body) => json_decode($app->serveRoute($app->matchRoute("POST", "/api/parse"), "POST", "/api/parse", "", $body, [], null, "https://notes.example/api/parse")[2], true);
+               $where = json_decode($app->serveRoute($app->matchRoute("GET", "/api/where"), "GET", "/api/where", "__=s&t=1", "", [], null, "http://Notes.Example:8080/api/where?__=s&t=1")[2], true);
                $saved = $post("Bearer k1");
                echo json_encode([
-                 "denied" => $denied, "saved" => $saved,
+                 "denied" => $denied, "saved" => $saved, "where" => $where, "parsed" => $parse("{\"a\":1}"), "unparsed" => $parse("{"),
                  "add" => $r("add", ["body" => "one"], "ada"),
                  "addGuest" => $r("add", ["body" => "two"], null),
                  "list" => array_map(fn ($n) => [$n["body"], $n["owner"]], $r("list", [], null)),
@@ -408,6 +412,8 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         serde_json::json!({
             "add": true, "addGuest": false,
             "denied": 403, "saved": 201,
+            "parsed": { "a": 1 }, "unparsed": { "invalid": true },
+            "where": { "origin": "https://notes.example", "url": "https://notes.example/api/where?__=[redacted]&t=1" },
             "list": [["two", "anonymous"], ["one", "ada"], ["three", "anonymous"]],
             "greeting": "hi ada", "greetingGuest": "hi anonymous",
             // A member without a copied 0.8 subject answers wp:<id>, as in a handler.
@@ -518,6 +524,22 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
             "request-destructured",
             "function auth({ headers }: any) { return headers.get(\"authorization\"); }",
             "endpoints: { e: endpoint({ method: \"GET\", path: \"/e\" }, (_ctx, req) => text(auth(req) ?? \"\")) }",
+            "Z08_ENDPOINT_REQUEST_API",
+            "request API has no v2 route equivalent",
+        ),
+        // A nested binding with the request's name is not the request; it is refused, not rewritten.
+        (
+            "request-shadowed",
+            "function first(req: any, list: any[]) { return list.map((req: any) => req.headers.get(\"x\")).join(); }",
+            "endpoints: { e: endpoint({ method: \"GET\", path: \"/e\" }, (_ctx, req) => text(first(req, []))) }",
+            "Z08_CTX_DYNAMIC",
+            "shadowed context",
+        ),
+        // Zero awaits every async call, so a body read held as a promise has no v2 form.
+        (
+            "request-held",
+            "",
+            "endpoints: { e: endpoint({ method: \"POST\", path: \"/e\" }, async (_ctx, req) => { const p = req.text(); return text(await p); }) }",
             "Z08_ENDPOINT_REQUEST_API",
             "request API has no v2 route equivalent",
         ),
@@ -858,7 +880,6 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
           admin:endpoint({method:"GET",path:"/wp-admin/x"},()=>text("")),
           root:endpoint({method:"GET",path:"/"},()=>text("")),
           hit:endpoint({method:"GET",path:"/hit",readOnly:false},()=>text("")),
-          url:endpoint({method:"GET",path:"/url"},(_ctx, req)=>text(req.url)),
           bytes:endpoint({method:"POST",path:"/bytes"},async (_ctx, req)=>text(String((await req.bytes()).length))),
           one:endpoint({method:"GET",path:"/a/:x"},()=>text("")),
           two:endpoint({method:"GET",path:"/a/:y"},()=>text(""))
@@ -886,7 +907,6 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "/endpoints/admin/path",
             "/endpoints/root/path",
             "/endpoints/hit",
-            "/endpoints/url/request/url",
             "/endpoints/bytes/request/bytes",
             "/endpoints/two"
         ]

@@ -458,7 +458,10 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path; v2 prefers literal segments over `:params`, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
 | `json()`, `text()`, `empty()`, `redirect()`, plain values, `undefined` → 204 | The same status, headers and body | Auto, **WP** | — |
 | `request.text()`, `json()`, `headers.get/has`, `query.get/getAll/has`, `params`, `method` | `req.body`, `req.headers`, `req.query` (URLSearchParams semantics: first value, byte-exact names), `req.params` | Auto, **WP** | — |
-| `request.url`, `bytes()`, `arrayBuffer()`, `headers.entries` | **missing** on `RouteRequest` | Refused with pointer | Port |
+| `request.json().catch(fn)`, `text().catch(fn)`, and a returned `json()`/`text()` | The same read; invalid JSON calls `fn` as 0.8's rejection did | Auto | — |
+| The request passed to a function in the same module (`readBody(req)`, `authed(ctx, req)`) | The function takes a `RouteRequest`; its request reads convert under the same rules | Auto | — |
+| `request.url` | `req.url` (#203), rebuilt as 0.8 served it: `https://`, the host without its port, share-link secrets redacted | Auto, **WP** | — |
+| `bytes()`, `arrayBuffer()`, `headers.entries`, `query.entries`, `path`, the request or its `headers`/`query`/`params` as a value, a body read held as a promise | **missing** on `RouteRequest` or not yet mapped | Refused with pointer | Port |
 | `HEAD`, `OPTIONS` endpoints | GET answers HEAD; **missing** OPTIONS | Refused | Port |
 | `:param` segments | `:param` | Auto, **WP** | — |
 | A final `:splat` (0.8's only catch-all; `*` is refused at publish) | `*splat` (#134), one or more decoded segments joined with `/`, plus a second route at the bare prefix, which 0.8's `:splat` also answered with an empty `params.splat` | Auto, **WP** | — |
@@ -510,8 +513,8 @@ PR stacked on #118, implemented in PHP:
    Spacefast engine still has to connect its sender (see #133).
 4. **Catch-all route segments**: done in #134 as v2's `*rest`. The converter
    maps 0.8's final `:splat` onto it.
-5. **`RouteRequest.url` and raw bytes**. Small, but the route request belongs to
-   #129, so it is left to that PR.
+5. **Raw request bytes**. `RouteRequest.url` landed in #203; `bytes()` and
+   `arrayBuffer()` still need the raw body on the route request.
 6. **Gravatar, spam and JWT services**. Each is small to medium. Spam needs a
    provider decision first.
 7. **Connector calls**. Large: the broker, tokens and approval states.

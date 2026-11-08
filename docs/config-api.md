@@ -461,7 +461,8 @@ export default defineConfig({
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
-- `req` is `{ method, path, params, query, headers, body }`. Header names are
+- `req` is `{ method, url, path, params, query, headers, body }`. `url` is the
+  absolute URL as received (scheme, host, path and query). Header names are
   lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
 - `req.query` reads the raw query string the way `URLSearchParams` does:
   `get(name)` (the first value, or `null`), `getAll(name)`, `has(name)` and

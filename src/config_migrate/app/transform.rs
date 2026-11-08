@@ -912,7 +912,10 @@ pub(super) fn app(
             }
             // One function has one signature: a helper reached with the context or request at
             // different argument positions would need two rewrites of one source.
-            if converted_helpers.keys().any(|(f, args)| f == function && args != position) {
+            if converted_helpers
+                .keys()
+                .any(|(f, args)| f == function && args != position)
+            {
                 if converted_helpers.insert(key, (*writes, *sends)).is_none() {
                     ctx_helper_errors.push(
                         fail(
@@ -1145,8 +1148,15 @@ pub(super) fn app(
 
 /// `x.json()` / `x.text()` with no arguments: a fetch body read, which returns a promise.
 fn returns_body_read(e: &Expr) -> bool {
-    matches!(&e.kind, E::Call { callee, args, .. }
-        if args.is_empty() && matches!(&callee.kind, E::Member { prop, .. } if prop == "json" || prop == "text"))
+    match &e.kind {
+        E::Call { callee, args, .. } => match &callee.kind {
+            E::Member { prop, .. } if args.is_empty() => prop == "json" || prop == "text",
+            // `return request.json().catch(() => null)`: the same promise, with a fallback.
+            E::Member { obj, prop, .. } if prop == "catch" => returns_body_read(obj),
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 /// ctx.crypto's three functions over node:crypto, with 0.8's results: SHA-256 and HMAC-SHA-256 as
@@ -1891,6 +1901,62 @@ fn endpoint(
     Ok((code, r.helpers, r.calls))
 }
 
+/// 0.8's `request.url`: `https://` and the host as served (lowercase, no port), then the request
+/// URI with share-link secrets (`__=`, `token=`, `purchaseToken=`, `/__/<token>`) redacted. v2's
+/// `req.url` is the URL as received, so the scheme, host and secrets are put back in 0.8's form.
+const REQUEST_URL: &str = r#"function __z08Url(url: string): string {
+  return url
+    .replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]*)/, (_match: string, host: string | undefined) => "https://" + (host ?? "").replace(/:[0-9]+$/, "").toLowerCase())
+    .replace(/([?&](?:purchaseToken|token)=)[^&#]*/g, "$1[redacted]")
+    .replace(/([?&])__=[^&#]*/g, "$1__=[redacted]")
+    .replace(/^(https:\/\/[^/?#]*\/__\/)(?!collab(?:[/?#]|$))[^/?#]+/, "$1[redacted]");
+}
+"#;
+
+/// 0.8's `request.json()` and `request.text()` as promises, for reads a handler doesn't await on
+/// the spot: an empty body is null, invalid JSON rejects.
+const READ_JSON: &str = r#"async function __z08ReadJson(body: string): Promise<unknown> {
+  return JSON.parse(body === "" ? "null" : body) as unknown;
+}
+"#;
+const READ_TEXT: &str = r#"async function __z08ReadText(body: string): Promise<string> {
+  return body;
+}
+"#;
+/// `request.json().catch(onRejected)`: the parse error goes to `onRejected`, as 0.8's rejection did.
+const JSON_OR: &str = r#"async function __z08JsonOr(body: string, onRejected: (error: unknown) => unknown): Promise<unknown> {
+  try {
+    return JSON.parse(body === "" ? "null" : body) as unknown;
+  } catch (error) {
+    return onRejected(error);
+  }
+}
+"#;
+
+/// `req.json()` or `req.text()` with no arguments: which of the two.
+fn body_read<'e>(e: &'e Expr, req: &str) -> Option<&'e str> {
+    let E::Call {
+        callee,
+        args,
+        optional: false,
+        ..
+    } = &e.kind
+    else {
+        return None;
+    };
+    let E::Member {
+        obj,
+        prop,
+        optional: false,
+        ..
+    } = &callee.kind
+    else {
+        return None;
+    };
+    (args.is_empty() && matches!(&obj.kind, E::Ident(n) if n == req) && (prop == "json" || prop == "text"))
+        .then_some(prop.as_str())
+}
+
 /// The refusal for a request use with no faithful v2 route form (`Z08_ENDPOINT_REQUEST_API`).
 const REQUEST_API: &str = "this request API has no v2 route equivalent; port it explicitly";
 
@@ -2018,11 +2084,16 @@ impl Rewrite<'_> {
 
     /// A binding a nested function or declaration would shadow.
     fn is_bound(&self, name: &str) -> bool {
-        self.is_ctx(name) || self.services.contains_key(name)
+        self.is_ctx(name) || self.services.contains_key(name) || Some(name) == self.request
     }
 
     fn is_ctx_expr(&self, e: &Expr) -> bool {
         matches!(&e.kind, E::Ident(n) if self.is_ctx(n))
+    }
+
+    /// A value this function returns directly, which a return of a promise awaits.
+    fn returned_here(&self, span: Span) -> bool {
+        self.returned.contains(&span) || self.returns.contains(&span)
     }
 
     /// The route request parameter itself.
@@ -2772,6 +2843,43 @@ impl Rewrite<'_> {
             E::Await(inner) => (inner.as_ref(), true),
             _ => (e, false),
         };
+        // `req.json().catch(fn)`: 0.8's json() rejected on invalid JSON and `fn` answered instead;
+        // text() never rejected, so its catch never ran.
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &inner.kind
+            && let E::Member {
+                obj: read,
+                prop,
+                optional: false,
+                ..
+            } = &callee.kind
+            && prop == "catch"
+            && let Some(body) = body_read(read, req)
+        {
+            let [ArrEl::Item(handler @ Expr { kind: E::Func(f), .. })] = args.as_slice() else {
+                return refuse(&format!("{body}.catch"));
+            };
+            if f.is_async || f.params.len() > 1 || !awaited && !self.returned_here(e.span) {
+                return refuse(&format!("{body}.catch"));
+            }
+            let text = if body == "json" {
+                let handler = self.render(handler)?;
+                self.helpers.push(JSON_OR.into());
+                format!("__z08JsonOr({req}.body, {handler})")
+            } else {
+                format!("__z08ReadText({req}.body)")
+            };
+            if body == "text" {
+                self.helpers.push(READ_TEXT.into());
+            }
+            self.edits
+                .push((e.span, if awaited { format!("(await {text})") } else { text }));
+            return Ok(true);
+        }
         if let E::Call {
             callee,
             args,
@@ -2790,6 +2898,17 @@ impl Rewrite<'_> {
                     ("text", true, true) => format!("{req}.body"),
                     ("json", true, true) => {
                         format!("(JSON.parse({req}.body === \"\" ? \"null\" : {req}.body) as unknown)")
+                    }
+                    // Returned unawaited: the promise 0.8 awaited, which the return now awaits. A
+                    // promise held anywhere else has no v2 form (Zero awaits every async call).
+                    ("text" | "json", true, false) if !self.returned_here(e.span) => return refuse(prop),
+                    ("text", true, false) => {
+                        self.helpers.push(READ_TEXT.into());
+                        format!("__z08ReadText({req}.body)")
+                    }
+                    ("json", true, false) => {
+                        self.helpers.push(READ_JSON.into());
+                        format!("__z08ReadJson({req}.body)")
                     }
                     _ => return refuse(prop),
                 };
@@ -2846,6 +2965,12 @@ impl Rewrite<'_> {
             return match prop.as_str() {
                 // Uppercase on both sides.
                 "method" => Ok(true),
+                // The URL as 0.8 built it from the v2 request URL (see REQUEST_URL).
+                "url" => {
+                    self.helpers.push(REQUEST_URL.into());
+                    self.edits.push((e.span, format!("__z08Url({req}.url)")));
+                    Ok(true)
+                }
                 other => refuse(other),
             };
         }

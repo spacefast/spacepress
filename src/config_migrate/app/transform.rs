@@ -1905,18 +1905,6 @@ fn endpoint(
     Ok((code, r.helpers, r.calls))
 }
 
-/// 0.8's `request.url`: `https://` and the host as served (lowercase, no port), then the request
-/// URI with share-link secrets (`__=`, `token=`, `purchaseToken=`, `/__/<token>`) redacted. v2's
-/// `req.url` is the URL as received, so the scheme, host and secrets are put back in 0.8's form.
-const REQUEST_URL: &str = r#"function __z08Url(url: string): string {
-  return url
-    .replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]*)/, (_match: string, host: string | undefined) => "https://" + (host ?? "").replace(/:[0-9]+$/, "").toLowerCase())
-    .replace(/([?&](?:purchaseToken|token)=)[^&#]*/g, "$1[redacted]")
-    .replace(/([?&])__=[^&#]*/g, "$1__=[redacted]")
-    .replace(/^(https:\/\/[^/?#]*\/__\/)(?!collab(?:[/?#]|$))[^/?#]+/, "$1[redacted]");
-}
-"#;
-
 /// 0.8's `request.json()` and `request.text()` as promises, for reads a handler doesn't await on
 /// the spot: an empty body is null, invalid JSON rejects.
 const READ_JSON: &str = r#"async function __z08ReadJson(body: string): Promise<unknown> {
@@ -2989,12 +2977,9 @@ impl Rewrite<'_> {
             return match prop.as_str() {
                 // Uppercase on both sides.
                 "method" => Ok(true),
-                // The URL as 0.8 built it from the v2 request URL (see REQUEST_URL).
-                "url" => {
-                    self.helpers.push(REQUEST_URL.into());
-                    self.edits.push((e.span, format!("__z08Url({req}.url)")));
-                    Ok(true)
-                }
+                // 0.8's URL: https, the normalized host and the URI with share-link secrets
+                // redacted, which v2 builds the same way (Zero\Wp\HttpRoutes::url).
+                "url" => Ok(true),
                 other => refuse(other),
             };
         }

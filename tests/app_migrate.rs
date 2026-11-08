@@ -387,7 +387,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
                $denied = $post("Bearer nope");
                // 0.8's request.url: https, the host as served, share-link secrets redacted.
                $parse = fn ($body) => json_decode($app->serveRoute($app->matchRoute("POST", "/api/parse"), "POST", "/api/parse", "", $body, [], null, "https://notes.example/api/parse")[2], true);
-               $where = json_decode($app->serveRoute($app->matchRoute("GET", "/api/where"), "GET", "/api/where", "__=s&t=1", "", [], null, "http://Notes.Example:8080/api/where?__=s&t=1")[2], true);
+               $where = json_decode($app->serveRoute($app->matchRoute("GET", "/api/where"), "GET", "/api/where", "t=1", "", [], null, \Zero\Wp\HttpRoutes::url("Notes.Example:8080", "/api/where?__=s&t=1"))[2], true);
                $saved = $post("Bearer k1");
                echo json_encode([
                  "denied" => $denied, "saved" => $saved, "where" => $where, "parsed" => $parse("{\"a\":1}"), "unparsed" => $parse("{"),

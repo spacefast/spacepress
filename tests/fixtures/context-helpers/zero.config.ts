@@ -23,7 +23,7 @@ async function write(ctx: HookCtx, body: string) {
   return (await db.query.notes.findMany({ where: { body } })).map((n) => n.author);
 }
 function echo(req: RouteRequest, ctx: HookCtx): RouteResponse {
-  return { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({ method: req.method, url: req.url, path: req.path, body: req.body, role: role(ctx) }) };
+  return { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({ method: req.method, url: req.url, share: req.query.has("__"), path: req.path, body: req.body, role: role(ctx) }) };
 }
 
 export default defineConfig({

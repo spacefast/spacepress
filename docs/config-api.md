@@ -462,8 +462,10 @@ export default defineConfig({
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
 - `req` is `{ method, url, path, params, query, headers, body }`. `url` is the
-  absolute URL as received (scheme, host, path and query). Header names are
-  lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
+  absolute URL: `https://`, the hostname (lowercase, no port), then the path and
+  query. A share-link secret never reaches the handler: `__`, `token` and
+  `purchaseToken` values and a `/__/<token>` segment read `[redacted]` in `url`,
+  and `__` is left out of `query`. Header names are lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
 - `req.query` reads the raw query string the way `URLSearchParams` does:
   `get(name)` (the first value, or `null`), `getAll(name)`, `has(name)` and
   `entries()`. Names are kept exactly (`a.b`, `x[]`), `+` is a space, and a

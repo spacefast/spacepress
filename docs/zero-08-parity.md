@@ -460,7 +460,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `request.text()`, `json()`, `headers.get/has`, `query.get/getAll/has`, `params`, `method` | `req.body`, `req.headers`, `req.query` (URLSearchParams semantics: first value, byte-exact names), `req.params` | Auto, **WP** | — |
 | `request.json().catch(fn)`, `text().catch(fn)`, and a returned `json()`/`text()` | The same read; invalid JSON calls `fn` as 0.8's rejection did | Auto | — |
 | The request passed to a function in the same module (`readBody(req)`, `authed(ctx, req)`) | The function takes a `RouteRequest`; its request reads convert under the same rules | Auto | — |
-| `request.url` | `req.url` (#203), rebuilt as 0.8 served it: `https://`, the host without its port, share-link secrets redacted | Auto, **WP** | — |
+| `request.url` | `req.url` (#203), which v2 builds as 0.8 did: `https://`, the host without its port, share-link secrets redacted | Auto, **WP** | — |
 | `bytes()`, `arrayBuffer()`, `headers.entries`, `query.entries`, `path`, the request or its `headers`/`query`/`params` as a value, a body read held as a promise | **missing** on `RouteRequest` or not yet mapped | Refused with pointer | Port |
 | `HEAD`, `OPTIONS` endpoints | GET answers HEAD; **missing** OPTIONS | Refused | Port |
 | `:param` segments | `:param` | Auto, **WP** | — |

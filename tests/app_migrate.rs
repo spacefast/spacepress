@@ -151,6 +151,82 @@ fn reports_all_unsupported_features_and_never_writes_a_refused_app() {
     );
 }
 
+/// Every refusal carries the diagnostic contract a publish response shows: a registered stable code,
+/// the 0.8 file, line and column, the feature, its v2 equivalent and a one-line fix.
+#[test]
+fn every_refusal_carries_the_diagnostic_contract() {
+    let registry: Value = serde_json::from_str(include_str!("compatibility/registry.json")).unwrap();
+    let codes: Vec<&str> = registry["zero08"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["code"].as_str().unwrap())
+        .collect();
+    let temp = tempfile::tempdir().unwrap();
+    let (ok, report) = migrate(
+        &fixture("refused"),
+        &temp.path().join("out"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = report["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 5, "{report}");
+    for e in errors {
+        for key in ["feature", "v2", "fix"] {
+            let text = e[key].as_str().unwrap_or_else(|| panic!("{key} in {e}"));
+            assert!(!text.is_empty() && !text.contains('\n'), "{e}");
+        }
+        assert!(codes.contains(&e["code"].as_str().unwrap()), "{e}");
+        let file = e["file"].as_str().unwrap();
+        assert!(fixture("refused").join(file).is_file(), "{e}");
+        assert!(
+            e["line"].as_u64().unwrap() >= 1 && e["column"].as_u64().unwrap() >= 1,
+            "{e}"
+        );
+    }
+    let at = |pointer: &str| errors.iter().find(|e| e["pointer"] == pointer).unwrap();
+    // `ctx.auth.userId` on line 9 of the capsule, at the expression itself.
+    let source = std::fs::read_to_string(fixture("refused").join("server/index.ts")).unwrap();
+    let line = source.lines().nth(8).unwrap();
+    let identity = at("/queries/identity/ctx/auth/userId");
+    assert_eq!(
+        (
+            identity["code"].as_str(),
+            identity["file"].as_str(),
+            identity["line"].as_u64()
+        ),
+        (Some("Z08_CTX_AUTH_USERS"), Some("server/index.ts"), Some(9))
+    );
+    assert_eq!(
+        identity["column"].as_u64().unwrap() as usize,
+        line.find("ctx.auth.userId").unwrap() + 1
+    );
+    assert_eq!(at("/auth/onGuestUpgrade")["code"], "Z08_AUTH_CALLBACK");
+    assert_eq!(at("/pages/live.tsx")["file"], "pages/live.tsx");
+    // A construct the v2 compiler refuses names itself in `feature`, located in the converted entry.
+    let capsule = temp.path().join("with");
+    project(&capsule, "{}");
+    std::fs::write(
+        capsule.join("server/index.ts"),
+        "import { capsule, query, string, table } from \"@spacefast/zero/server\";\nfunction f(o: { a: number }) { with (o) { return a; } }\nexport default capsule({ name: \"g\", schema: { notes: table({ body: string() }) }, queries: { n: query(async (ctx) => f({ a: 1 })) } });\n",
+    )
+    .unwrap();
+    let (ok, report) = migrate(
+        &capsule,
+        &temp.path().join("out-with"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let e = &report["errors"][0];
+    assert_eq!(e["code"], "Z08_LANGUAGE", "{report}");
+    assert_eq!(e["feature"], "JavaScript construct: `with`", "{e}");
+    assert_eq!(
+        (e["file"].as_str(), e["line"].as_u64(), e["column"].as_u64()),
+        (Some("server/index.ts"), Some(2), Some(32)),
+        "{e}"
+    );
+}
+
 fn project(root: &Path, capsule: &str) {
     std::fs::create_dir_all(root.join("server")).unwrap();
     std::fs::write(root.join("sf.jsonc"), r#"{"runtime":{"kind":"zero"}}"#).unwrap();
@@ -1182,5 +1258,148 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
         std::fs::write(&index, text).unwrap();
         let (ok, report) = migrate(&root, &temp.path().join(format!("{case}-out")), &["--dry-run"]);
         assert!(ok, "{capsule}: {report:#}");
+    }
+}
+
+/// A 0.8 client app without pages converts: actions and tables into zero.config.ts, the client
+/// into public/, and the candidate checks with no diagnostics.
+#[test]
+fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    for file in [
+        "zero.config.ts",
+        "public/index.html",
+        "public/zero/main.js",
+        "public/zero/client.js",
+        "public/zero/handlers.js",
+        "public/app/client/index.js",
+        "public/app/client/Shelf.js",
+        "public/app/shared/format.js",
+        "public/client/styles.css",
+    ] {
+        assert!(out.join(file).is_file(), "{file}");
+    }
+    let review = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["pointer"] == "/client/index.tsx" && e["outcome"] == "review");
+    assert!(review, "{report:#}");
+    let checked = Command::new(env!("CARGO_BIN_EXE_zero"))
+        .args(["check", "--json"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    let checked: Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(checked["ok"], true, "{checked}");
+    assert_eq!(checked["diagnostics"].as_array().unwrap().len(), 0, "{checked}");
+}
+
+/// The bridge posts a 0.8 positional call as the input the generated v2 action declares, and the
+/// action answers it: the browser modules run in Node, the action in the built PHP plugin.
+#[test]
+fn the_client_bridge_calls_the_generated_v2_action() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("client-app");
+    let (ok, report) = migrate(
+        &fixture("client-app"),
+        &out,
+        &["--space", "spc_migrate_test", "--users"],
+    );
+    assert!(ok, "{report:#}");
+    // 0.8's `useAction("banner")("ab", 3)`, through the converted module, against a recording fetch.
+    let script = r#"
+const sent = [];
+globalThis.fetch = async (url, init) => {
+  sent.push({ url, method: init.method, body: JSON.parse(init.body) });
+  return new Response(JSON.stringify({ data: "ABABAB" }), { status: 200 });
+};
+const bridge = await import(process.argv[1]);
+const result = await bridge.run("banner", ["ab", 3]);
+console.log(JSON.stringify({ sent, result }));
+"#;
+    let node = Command::new("node")
+        .args(["--input-type=module", "-e", script])
+        .arg(out.join("public/zero/client.js"))
+        .output()
+        .expect("node is required");
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let ran: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(ran["sent"][0]["url"], "/wp-json/zero/v1/actions/banner", "{ran}");
+    assert_eq!(ran["sent"][0]["method"], "POST");
+    assert_eq!(ran["result"], "ABABAB");
+    // The body the bridge sent is exactly what the generated action takes.
+    build(&out);
+    let results = run_actions(
+        &out,
+        &[],
+        &serde_json::json!([["banner", ran["sent"][0]["body"].clone()]]),
+    );
+    assert_eq!(results, serde_json::json!([{ "data": "ABABAB" }]));
+}
+
+/// What the bridge can't carry is refused with a registered Z08_CLIENT_* code at the import.
+#[test]
+fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    copy_dir(&fixture("client-app"), &root);
+    let shelf = root.join("client/Shelf.tsx");
+    let text = std::fs::read_to_string(&shelf).unwrap();
+    std::fs::write(
+        &shelf,
+        text.replace(
+            "import { useMutation, useQuery } from \"@spacefast/zero/client\";",
+            "import { storage, useMutation, useQuery } from \"@spacefast/zero/client\";\nimport { Card } from \"@spacefast/zero/kit\";",
+        ),
+    )
+    .unwrap();
+    let (ok, report) = migrate(
+        &root,
+        &temp.path().join("out"),
+        &["--space", "s", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = report["errors"].as_array().unwrap();
+    let codes: Vec<(&str, &str, u64, u64)> = errors
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+                e["line"].as_u64().unwrap(),
+                e["column"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    // Each refusal points at its import's module specifier.
+    let edited = std::fs::read_to_string(&shelf).unwrap();
+    let column = |line: usize| edited.lines().nth(line - 1).unwrap().find('"').unwrap() as u64 + 1;
+    assert_eq!(
+        codes,
+        [
+            ("Z08_CLIENT_STORAGE", "client/Shelf.tsx", 2, column(2)),
+            ("Z08_CLIENT_KIT", "client/Shelf.tsx", 3, column(3))
+        ],
+        "{report:#}"
+    );
+    for e in errors {
+        assert_eq!(e["pointer"], "/client/Shelf.tsx");
+        assert!(!e["fix"].as_str().unwrap().is_empty());
+    }
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    for path in walk(from) {
+        let target = to.join(path.strip_prefix(from).unwrap());
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::copy(&path, target).unwrap();
     }
 }

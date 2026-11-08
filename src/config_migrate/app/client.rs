@@ -15,7 +15,7 @@
 //!
 //! Nothing here changes a deployed 0.8 Space: only the converted v2 candidate carries the bridge.
 //! Anything the client needs that has no v2 counterpart is refused with a coded diagnostic.
-use super::super::{Diagnostic, Entry, Failure, entry, refuse};
+use super::super::{Entry, Failure, entry, fail};
 use crate::loader::Fs;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ImportDeclarationSpecifier, ModuleExportName, Statement, Str};
@@ -76,29 +76,29 @@ const BRIDGED: &[&str] = &[
     "useParams",
 ];
 
-/// A refused 0.8 client name: its code, what it was, what v2 has, and the fix.
-fn unbridged(name: &str) -> (&'static str, &'static str, &'static str) {
+// Fixed reason prefixes; each is claimed by one `Z08_CLIENT_*` rule in `codes.rs`, which supplies
+// the code, feature, v2 equivalent and fix. Changing one changes the rule it matches.
+pub(super) const TAG_STORAGE: &str = "0.8 client storage uploads";
+pub(super) const TAG_FETCH: &str = "0.8 authenticatedFetch";
+pub(super) const TAG_CONNECTORS: &str = "0.8 client connector state";
+pub(super) const TAG_CONTENT: &str = "0.8 client content reads";
+pub(super) const TAG_SIGN_IN: &str = "0.8 client sign-in";
+pub(super) const TAG_API: &str = "0.8 client API without a v2 bridge";
+pub(super) const TAG_KIT: &str = "0.8 kit components in the client";
+pub(super) const TAG_CHARTS: &str = "0.8 charts in the client";
+pub(super) const TAG_PACKAGE: &str = "npm package in the client";
+pub(super) const TAG_IMPORT: &str = "client import outside the capsule";
+pub(super) const TAG_DYNAMIC: &str = "dynamic import in the client";
+pub(super) const TAG_ASSET: &str = "client import of a non-script file";
+pub(super) const TAG_SYNTAX: &str = "client source the browser build cannot compile";
+
+/// The refusal tag for a 0.8 client name the bridge does not provide.
+fn unbridged(name: &str) -> &'static str {
     match name {
-        "storage" => (
-            "Z08_CLIENT_STORAGE",
-            "the client storage uploads",
-            "v2 file buckets (`files` in zero.config.ts, `client.files.<bucket>.upload`)",
-        ),
-        "authenticatedFetch" => (
-            "Z08_CLIENT_FETCH",
-            "authenticatedFetch",
-            "a v2 action or route called with the session's bearer token",
-        ),
-        "useConnectorState" | "useConnectorRoleState" | "retryConnectorQueries" => (
-            "Z08_CLIENT_CONNECTORS",
-            "connector state",
-            "nothing yet: connector calls are not in v2",
-        ),
-        "contentQueryOptions" => (
-            "Z08_CLIENT_CONTENT",
-            "content reads from the client",
-            "a v2 collection read (`client.<collection>.list`)",
-        ),
+        "storage" => TAG_STORAGE,
+        "authenticatedFetch" => TAG_FETCH,
+        "useConnectorState" | "useConnectorRoleState" | "retryConnectorQueries" => TAG_CONNECTORS,
+        "contentQueryOptions" => TAG_CONTENT,
         "SignInWithGoogle"
         | "SignInWithGravatar"
         | "SignInWithSpacefast"
@@ -108,16 +108,8 @@ fn unbridged(name: &str) -> (&'static str, &'static str, &'static str) {
         | "getIdentity"
         | "getCurrentUser"
         | "retryAuth"
-        | "canAccessApp" => (
-            "Z08_CLIENT_SIGN_IN",
-            "0.8 sign-in",
-            "zero-identity sign-in (`client.auth.signIn()` from the generated v2 client)",
-        ),
-        _ => (
-            "Z08_CLIENT_API",
-            "a 0.8 client API with no v2 counterpart",
-            "the generated v2 client in zero/client/",
-        ),
+        | "canAccessApp" => TAG_SIGN_IN,
+        _ => TAG_API,
     }
 }
 
@@ -127,11 +119,11 @@ pub(super) struct Converted {
 }
 
 /// `(line, column)`, both 1-based, of byte `offset` in `text`; columns count UTF-16 units.
-fn position(text: &str, offset: u32) -> (u32, u32) {
+fn position(text: &str, offset: u32) -> (usize, usize) {
     let before = &text[..(offset as usize).min(text.len())];
-    let line = before.matches('\n').count() as u32 + 1;
+    let line = before.matches('\n').count() + 1;
     let start = before.rfind('\n').map_or(0, |i| i + 1);
-    (line, before[start..].encode_utf16().count() as u32 + 1)
+    (line, before[start..].encode_utf16().count() + 1)
 }
 
 struct Walk<'f> {
@@ -143,31 +135,14 @@ struct Walk<'f> {
 }
 
 impl Walk<'_> {
-    fn refuse(
-        &mut self,
-        file: &Path,
-        text: &str,
-        offset: u32,
-        code: &'static str,
-        feature: String,
-        v2: &str,
-        fix: String,
-    ) {
-        let file = file.to_string_lossy().replace('\\', "/");
+    /// A coded client refusal: `reason` starts with the tag its `Z08_CLIENT_*` rule in `codes.rs`
+    /// matches, and the refusal is located at `offset` in `file`.
+    fn refuse(&mut self, file: &Path, text: &str, offset: u32, tag: &str, detail: String) {
+        let name = file.to_string_lossy().replace('\\', "/");
         let (line, column) = position(text, offset);
-        let at = super::pages::at(Path::new(&file));
-        self.errors.push(refuse(
-            &at,
-            Diagnostic {
-                code,
-                file,
-                line,
-                column,
-                feature,
-                v2: v2.into(),
-                fix,
-            },
-        ));
+        let at = super::pages::at(Path::new(&name));
+        self.errors
+            .push(fail(&at, format!("{tag}: {detail}")).located(name, line, column));
     }
 
     /// The capsule file a relative import names, trying 0.8's resolution order.
@@ -216,44 +191,20 @@ impl Walk<'_> {
             "jsx" => SourceType::jsx(),
             "js" | "mjs" => SourceType::mjs(),
             _ => {
-                self.refuse(
-                    relative,
-                    &text,
-                    0,
-                    "Z08_CLIENT_ASSET",
-                    format!("a client import of a .{ext} file"),
-                    "static files in public/",
-                    "move the file into public/ and reference it by URL".into(),
-                );
+                self.refuse(relative, &text, 0, TAG_ASSET, format!("a .{ext} module"));
                 return target;
             }
         };
         let arena = Allocator::default();
         let parsed = Parser::new(&arena, &text, source_type).parse();
         if let Some(e) = parsed.diagnostics.errors().next() {
-            let offset = e.labels.first().map_or(0, |l| l.offset() as u32);
-            self.refuse(
-                relative,
-                &text,
-                offset,
-                "Z08_CLIENT_SYNTAX",
-                format!("client source that does not parse ({e})"),
-                "a browser module",
-                "fix the syntax error in the 0.8 source and convert again".into(),
-            );
+            let offset = e.labels.first().map_or(0, |l| l.offset());
+            self.refuse(relative, &text, offset, TAG_SYNTAX, e.to_string());
             return target;
         }
         let mut program = parsed.program;
         for import in &parsed.module_record.dynamic_imports {
-            self.refuse(
-                relative,
-                &text,
-                import.span.start,
-                "Z08_CLIENT_DYNAMIC_IMPORT",
-                "a dynamic import() in the client".into(),
-                "static imports",
-                "import the module statically".into(),
-            );
+            self.refuse(relative, &text, import.span.start, TAG_DYNAMIC, "import()".into());
         }
         // Resolve every specifier first, then rewrite the AST with the answers.
         let depth = target.matches('/').count();
@@ -298,15 +249,12 @@ impl Walk<'_> {
                 if path == "zero/client.js" {
                     for name in &names {
                         if name == "*" || !BRIDGED.contains(&name.as_str()) {
-                            let (code, feature, v2) = unbridged(name);
                             self.refuse(
                                 relative,
                                 &text,
                                 offset,
-                                code,
-                                format!("{feature} (`{name}` from {source})"),
-                                v2,
-                                format!("replace `{name}` with {v2} in a hand port"),
+                                unbridged(name),
+                                format!("`{name}` from {source}"),
                             );
                         }
                     }
@@ -319,52 +267,16 @@ impl Walk<'_> {
                         rewrites.insert(source, relative_url(&target, &module));
                         follow.push(file);
                     }
-                    None => self.refuse(
-                        relative,
-                        &text,
-                        offset,
-                        "Z08_CLIENT_IMPORT",
-                        format!("an import of {source}, which is not in the capsule"),
-                        "modules inside the capsule",
-                        "add the module to the capsule or remove the import".into(),
-                    ),
+                    None => self.refuse(relative, &text, offset, TAG_IMPORT, source.clone()),
                 }
             } else {
-                let (code, feature, v2, fix) = match source.as_str() {
-                    s if s.starts_with("@spacefast/zero/kit") => (
-                        "Z08_CLIENT_KIT",
-                        "the 0.8 kit components",
-                        "plain markup and CSS",
-                        "replace the kit components with your own markup and styles",
-                    ),
-                    s if s.starts_with("@spacefast/zero/charts") || s == "recharts" => (
-                        "Z08_CLIENT_CHARTS",
-                        "0.8 charts",
-                        "nothing yet: charts are not in v2",
-                        "draw the chart with your own SVG or a library you vendor into public/",
-                    ),
-                    s if s.starts_with("@spacefast/zero/") => (
-                        "Z08_CLIENT_API",
-                        "a 0.8 client module",
-                        "the generated v2 client in zero/client/",
-                        "port the calls to the generated v2 client",
-                    ),
-                    _ => (
-                        "Z08_CLIENT_PACKAGE",
-                        "an npm package in the client",
-                        "a prebuilt browser bundle in public/",
-                        "build the client with its packages (for example with Vite into public/) and publish that",
-                    ),
+                let tag = match source.as_str() {
+                    s if s.starts_with("@spacefast/zero/kit") => TAG_KIT,
+                    s if s.starts_with("@spacefast/zero/charts") || s == "recharts" => TAG_CHARTS,
+                    s if s.starts_with("@spacefast/zero/") => TAG_API,
+                    _ => TAG_PACKAGE,
                 };
-                self.refuse(
-                    relative,
-                    &text,
-                    offset,
-                    code,
-                    format!("{feature} ({source})"),
-                    v2,
-                    fix.into(),
-                );
+                self.refuse(relative, &text, offset, tag, source.clone());
             }
         }
         // A stylesheet import was the 0.8 bundler's to inject; the shell links the file instead.
@@ -398,16 +310,8 @@ impl Walk<'_> {
         let transformed = Transformer::new(&arena, relative, &options)
             .build_with_scoping(semantic.semantic.into_scoping(), &mut program);
         if let Some(e) = transformed.diagnostics.first() {
-            let offset = e.labels.first().map_or(0, |l| l.offset() as u32);
-            self.refuse(
-                relative,
-                &text,
-                offset,
-                "Z08_CLIENT_SYNTAX",
-                format!("client source the browser build cannot compile ({e})"),
-                "a browser module",
-                "rewrite the construct in plain TypeScript".into(),
-            );
+            let offset = e.labels.first().map_or(0, |l| l.offset());
+            self.refuse(relative, &text, offset, TAG_SYNTAX, e.to_string());
             return target;
         }
         // The JSX transform's own import, added after the rewrite above.

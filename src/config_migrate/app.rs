@@ -1,5 +1,6 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
 mod client;
+pub(super) mod codes;
 mod endpoints;
 mod manifest;
 mod pages;
@@ -126,6 +127,7 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
     if !candidate.report.errors.is_empty() {
         candidate.report.status = "refused";
     }
+    candidate.finish();
     println!(
         "{}",
         serde_json::to_string_pretty(&candidate.report).expect("report JSON")
@@ -144,6 +146,11 @@ pub struct Candidate {
 }
 
 impl Candidate {
+    /// Gives every refusal the diagnostic contract (`codes`); call once, before reporting.
+    pub fn finish(&mut self) {
+        codes::finish(&mut self.report.errors, "server/index.ts");
+    }
+
     fn refused(error: Failure) -> Candidate {
         let mut candidate = Candidate {
             report: Report::new(),
@@ -351,7 +358,7 @@ fn convert(
             .collect(),
     );
     let program = loader::load_from(Rc::new(memory), &checked_root.join("zero.config.ts"))
-        .map_err(|d| fail("", diag::render(&d[0], &checked_root)))?;
+        .map_err(|d| fail("", diag::render(&d[0], &checked_root)).spanned(d[0].span, &checked_root))?;
     let built = pipeline::build(&checked_root, &program, || Ok(pipeline::Previous::none()), |_| None).map_err(|d| {
         fail(
             "",
@@ -360,6 +367,7 @@ fn convert(
                 diag::render(&d, &checked_root)
             ),
         )
+        .spanned(d.span, &checked_root)
     })?;
     let sql = built
         .migrations

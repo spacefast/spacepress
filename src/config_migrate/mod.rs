@@ -36,37 +36,36 @@ impl Source {
 pub struct Failure {
     pointer: String,
     reason: String,
-    /// A coded refusal (`Z08_*`): a stable code, where it is, and what replaces it on v2.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    diagnostic: Option<Diagnostic>,
-}
-
-/// The contract a coded refusal carries; codes are registered in tests/compatibility/registry.json.
-#[derive(Debug, Serialize)]
-pub struct Diagnostic {
-    pub code: &'static str,
-    pub file: String,
-    pub line: u32,
-    pub column: u32,
-    pub feature: String,
-    pub v2: String,
-    pub fix: String,
+    /// `zero migrate app` adds the diagnostic contract (`app::codes`) before it reports.
+    #[serde(flatten)]
+    contract: Option<Box<app::codes::Contract>>,
+    /// Where in the 0.8 source the refusal is: capsule-relative file, 1-based line and UTF-16 column.
+    #[serde(skip)]
+    location: Option<Box<(String, usize, usize)>>,
 }
 
 pub(super) fn fail(at: &str, reason: impl Into<String>) -> Failure {
     Failure {
         pointer: at.into(),
         reason: reason.into(),
-        diagnostic: None,
+        contract: None,
+        location: None,
     }
 }
 
-/// A coded refusal: the reason reads `<feature>: <fix>`.
-pub(super) fn refuse(at: &str, diagnostic: Diagnostic) -> Failure {
-    Failure {
-        pointer: at.into(),
-        reason: format!("{}: {}", diagnostic.feature, diagnostic.fix),
-        diagnostic: Some(diagnostic),
+impl Failure {
+    /// Locates the refusal at a capsule-relative file, 1-based line and UTF-16 column.
+    pub(super) fn located(mut self, file: String, line: usize, column: usize) -> Failure {
+        self.location = Some(Box::new((file, line, column)));
+        self
+    }
+
+    /// Locates the refusal at `span` unless something more precise already did.
+    pub(super) fn spanned(mut self, span: crate::diag::Span, root: &Path) -> Failure {
+        if self.location.is_none() {
+            self.location = crate::diag::position(span, root).map(Box::new);
+        }
+        self
     }
 }
 

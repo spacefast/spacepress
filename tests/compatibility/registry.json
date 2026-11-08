@@ -345,6 +345,13 @@
       "guidance": "Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\\JsMap`/`Zero\\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused."
     },
     {
+      "id": "whatwg-url",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "url_vectors_agree_in_node_and_generated_php",
+      "guidance": "`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named Zero classes."
+    },
+    {
       "id": "builtin-overloads",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
@@ -521,14 +528,6 @@
       "guidance": "Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormData, ArrayBuffer and stream bodies are not available."
     },
     {
-      "id": "url-objects",
-      "status": "refused",
-      "code": "Z4001",
-      "fixture": "tests/fixtures/reject-fetch-url-object",
-      "message": "`new URL` isn't available in Zero code",
-      "guidance": "fetch() takes a URL string. Build it with encodeURIComponent and URLSearchParams.toString(). URL and Request objects are not compiled."
-    },
-    {
       "id": "response-streams",
       "status": "refused",
       "code": "Z4001",
@@ -646,6 +645,224 @@
       "fixture": "tests/fixtures/reject-function-properties-value",
       "message": "is a function with properties, which can't be used as a value in PHP",
       "guidance": "A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value."
+    }
+  ],
+  "zero08": [
+    {
+      "code": "Z08_CLIENT_STORAGE",
+      "feature": "0.8 client storage uploads"
+    },
+    {
+      "code": "Z08_CLIENT_FETCH",
+      "feature": "0.8 authenticatedFetch"
+    },
+    {
+      "code": "Z08_CLIENT_CONNECTORS",
+      "feature": "0.8 client connector state"
+    },
+    {
+      "code": "Z08_CLIENT_CONTENT",
+      "feature": "0.8 content reads from the client"
+    },
+    {
+      "code": "Z08_CLIENT_SIGN_IN",
+      "feature": "0.8 client sign-in"
+    },
+    {
+      "code": "Z08_CLIENT_API",
+      "feature": "0.8 client API without a v2 bridge"
+    },
+    {
+      "code": "Z08_CLIENT_KIT",
+      "feature": "0.8 kit components in a client app"
+    },
+    {
+      "code": "Z08_CLIENT_CHARTS",
+      "feature": "0.8 charts in a client app"
+    },
+    {
+      "code": "Z08_CLIENT_PACKAGE",
+      "feature": "npm package in a client app"
+    },
+    {
+      "code": "Z08_CLIENT_IMPORT",
+      "feature": "client import outside the capsule"
+    },
+    {
+      "code": "Z08_CLIENT_DYNAMIC_IMPORT",
+      "feature": "dynamic import() in a client app"
+    },
+    {
+      "code": "Z08_CLIENT_ASSET",
+      "feature": "client import of a non-script file"
+    },
+    {
+      "code": "Z08_CLIENT_SYNTAX",
+      "feature": "client source the browser build cannot compile"
+    },
+    {
+      "code": "Z08_SOURCE_NOT_RECOVERABLE",
+      "feature": "a published 0.8 version without its authored source"
+    },
+    {
+      "code": "Z08_SOURCE_CHANGED",
+      "feature": "source edited after the publish"
+    },
+    {
+      "code": "Z08_PAGE_DOCUMENT",
+      "feature": "Markdown or HTML document page"
+    },
+    {
+      "code": "Z08_PAGE_ROUTE_PARAM",
+      "feature": "parameterized 0.8 page route"
+    },
+    {
+      "code": "Z08_PAGE_INTERACTIVE",
+      "feature": "interactive 0.8 page, layout or island"
+    },
+    {
+      "code": "Z08_ENDPOINT_METHOD",
+      "feature": "endpoint method without a v2 route (OPTIONS and others)"
+    },
+    {
+      "code": "Z08_ENDPOINT_WRITING_GET",
+      "feature": "writing GET endpoint"
+    },
+    {
+      "code": "Z08_ENDPOINT_RESERVED_PATH",
+      "feature": "endpoint path owned by WordPress or Zero"
+    },
+    {
+      "code": "Z08_ENDPOINT_PATH",
+      "feature": "endpoint path without a v2 route form"
+    },
+    {
+      "code": "Z08_ENDPOINT_REQUEST_API",
+      "feature": "endpoint request API (url, bytes, headers.entries)"
+    },
+    {
+      "code": "Z08_ENDPOINT_NAME",
+      "feature": "endpoint named like a query, mutation or action"
+    },
+    {
+      "code": "Z08_ENDPOINT_SHAPE",
+      "feature": "endpoint declaration or handler shape"
+    },
+    {
+      "code": "Z08_CTX_AUTH_PROFILE",
+      "feature": "ctx.auth profile fields and methods"
+    },
+    {
+      "code": "Z08_CTX_AUTH_USERS",
+      "feature": "ctx.auth.userId without Space Users"
+    },
+    {
+      "code": "Z08_CTX_EMAIL_READ",
+      "feature": "ctx.email in a query or read-only endpoint"
+    },
+    {
+      "code": "Z08_CTX_DYNAMIC",
+      "feature": "ctx passed on or read dynamically"
+    },
+    {
+      "code": "Z08_CTX_DB",
+      "feature": "ctx.db handle use"
+    },
+    {
+      "code": "Z08_CTX_SERVICE",
+      "feature": "ctx.{service}"
+    },
+    {
+      "code": "Z08_CTX_INVALIDATE_READ",
+      "feature": "ctx.invalidate in a read"
+    },
+    {
+      "code": "Z08_DB_WRITE_IN_READ",
+      "feature": "database write outside a mutation"
+    },
+    {
+      "code": "Z08_DB_OPTIONAL_RANGE",
+      "feature": "index range or pagination over an optional field"
+    },
+    {
+      "code": "Z08_DB_SPREAD",
+      "feature": "spread database arguments"
+    },
+    {
+      "code": "Z08_DB_ESCAPE",
+      "feature": "database handle stored or returned"
+    },
+    {
+      "code": "Z08_DB_OPERATION",
+      "feature": "database operation without a v2 mapping"
+    },
+    {
+      "code": "Z08_HANDLER_SIGNATURE",
+      "feature": "handler signature (rest, default or destructured parameters)"
+    },
+    {
+      "code": "Z08_HANDLER_TYPES",
+      "feature": "handler parameter without a concrete type"
+    },
+    {
+      "code": "Z08_HANDLER_SHAPE",
+      "feature": "query, mutation or action declaration"
+    },
+    {
+      "code": "Z08_NAME",
+      "feature": "handler, table or field name"
+    },
+    {
+      "code": "Z08_BUILD_GLOBAL",
+      "feature": "build-time global (declare const)"
+    },
+    {
+      "code": "Z08_AUTH_CALLBACK",
+      "feature": "auth callbacks and providers (onGuestUpgrade)"
+    },
+    {
+      "code": "Z08_SOCKETS",
+      "feature": "sockets"
+    },
+    {
+      "code": "Z08_COLLECTIONS",
+      "feature": "collections or sync"
+    },
+    {
+      "code": "Z08_SCHEMA",
+      "feature": "schema table or field"
+    },
+    {
+      "code": "Z08_IMAGE_RESPONSE",
+      "feature": "ImageResponse (JSX on the server)"
+    },
+    {
+      "code": "Z08_PACKAGE",
+      "feature": "imported package"
+    },
+    {
+      "code": "Z08_LANGUAGE",
+      "feature": "JavaScript construct: {construct}"
+    },
+    {
+      "code": "Z08_HOST_API",
+      "feature": "host API without a v2 counterpart"
+    },
+    {
+      "code": "Z08_V2_COMPILE",
+      "feature": "converted code the v2 compiler refuses"
+    },
+    {
+      "code": "Z08_CAPSULE_FEATURE",
+      "feature": "capsule option without a v2 mapping"
+    },
+    {
+      "code": "Z08_OUTPUT_EXISTS",
+      "feature": "existing output directory"
+    },
+    {
+      "code": "Z08_SOURCE_SHAPE",
+      "feature": "capsule source layout"
     }
   ]
 }

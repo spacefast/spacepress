@@ -173,6 +173,33 @@ The report contains `entries` with `mapped` or `review` outcomes, an `errors`
 list with RFC 6901 pointers, `adoption_sql`, and `connector_roles`. Pointers name
 capsule declarations; `/pages/...`, `/layouts/...`, and `/islands/...` name project
 files. All independently unsupported handlers and features are reported together.
+
+Each error has this shape:
+
+```json
+{
+  "pointer": "/queries/identity/ctx/auth/userId",
+  "reason": "ctx.auth.userId maps only for Space Users (pass --users): ...",
+  "code": "Z08_CTX_AUTH_USERS",
+  "file": "server/index.ts",
+  "line": 9,
+  "column": 36,
+  "feature": "ctx.auth.userId without Space Users",
+  "v2": "ctx.user.id",
+  "fix": "Migrate with --users when the Space uses Space Users; otherwise key rows by ctx.user.id."
+}
+```
+
+- `code` is stable. A new kind of refusal gets a new code, and a code never
+  changes meaning. Every code is listed under `zero08` in
+  `tests/compatibility/registry.json`.
+- `file`, `line` and `column` locate the refusal in the 0.8 source. The file is
+  relative to the capsule, the line is 1-based, and the column counts UTF-16
+  code units, as `zero check --json` does. A refusal with no narrower location
+  points at the start of its file.
+- `feature` names the 0.8 feature, `v2` its v2 equivalent, and `fix` is one line
+  on what to change.
+- `pointer` and `reason` are unchanged; `reason` keeps the full message.
 Compiler failures point to the generated source and refuse the whole candidate.
 A `written` candidate can still contain review entries. It is not a live deployment.
 
@@ -493,6 +520,7 @@ before activating an app.
 | REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | HEAD/OPTIONS, a `:splat` that is not last, writing GETs, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
+| Client app without pages | The 0.8 SPA (`client/index.tsx` exporting `App`, no `pages/`) becomes static files in `public/`, served by v2 as they are. Each module is compiled to a browser module; `@spacefast/zero/client` resolves to a generated bridge, `public/zero/client.js`, that keeps the 0.8 hooks (`useQuery`, `useMutation`, `useAction`, `usePaginatedQuery`, `createClient`, `useAuth`, `signOut`, `Router`, `Routes`, `Route`, `Link`, `navigate`) and runs each call as the converted v2 action at `/wp-json/zero/v1/actions/<name>`; Preact and the React names resolve to a vendored Preact | Reads refresh after this browser's own writes and on focus, not on other visitors' writes. Kit, charts, client storage, 0.8 sign-in, connector state and npm packages are refused with `Z08_CLIENT_*` codes at the import |
 | Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `zero-pages build` and commit `zero/pages.json`. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over |
 | Content sync | Local `zero sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |

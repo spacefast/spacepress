@@ -950,6 +950,27 @@ function stdlibActions() {
       return [byObj.get(k) ?? "none", byObj.has({ n: 9 }), nums.get(NaN) ?? "", nums.get(-0) ?? "", nums.size, 1 / ([...nums.keys()][1] ?? 1), mixed.get("1"), mixed.get(1), mixed.get(null), mixed.size];
     }),
     jsCollections: run(() => jsCollections()),
+    typedUrls: run(() => {
+      const disposition = 'attachment; filename="a b.txt"';
+      const query = `memory://k?${new URLSearchParams({ "response-content-disposition": disposition }).toString()}`;
+      const u = new URL("../x?y=1#z", "https://Example.com/a/b");
+      const params: URLSearchParams = u.searchParams;
+      params.append("w", "1 2");
+      const names: string[] = [];
+      for (const [n, v] of params) names.push(n + v);
+      params.forEach((v, n) => { names.push(`${n}:${v}`); });
+      const pairs = new URLSearchParams([["a", "1"], ["b", "2"], ["a", "3"]]);
+      pairs.delete("a", "1");
+      // Component setters and static parsing from typed code; iteration sees mutations live.
+      u.pathname = "/a b";
+      u.port = "8443";
+      u.hash = "";
+      const live: string[] = [];
+      const mutating = new URLSearchParams("a=1&b=2");
+      mutating.forEach((v, n) => { live.push(n); if (n === "a") { mutating.delete("b"); mutating.append("c", "3"); } });
+      const parsed = URL.parse("https://example.com/p?q=1");
+      return [query, u.href, u.origin, u.host, u.pathname, params.get("y"), params.get("nope"), params.getAll("w"), params.has("y"), names, pairs.toString(), pairs.size, [...pairs.keys()], String(u), u.toJSON(), live, parsed?.search ?? "none", URL.parse("nope") === null, URL.canParse("/x", "http://h")];
+    }),
     moduleCollections: run(() => [NOT_FOUND.has(404), NOT_FOUND.has(500), NOT_FOUND.size, OPS.get("put") ?? "none", [...OPS.keys()]]),
     setOps: run(() => {
       const s = new Set([3, 1, 3, 2]);

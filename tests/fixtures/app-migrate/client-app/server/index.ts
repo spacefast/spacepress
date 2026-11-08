@@ -1,4 +1,4 @@
-import { boolean, capsule, mutation, query, string, table } from "@spacefast/zero/server";
+import { action, boolean, capsule, mutation, query, string, table } from "@spacefast/zero/server";
 
 export default capsule({
   name: "Shelf Notes",
@@ -17,5 +17,8 @@ export default capsule({
     add: mutation(async (ctx, shelf: string, title: string) =>
       ctx.db.notes.insert({ title, shelf })),
     setDone: mutation(async (ctx, id: string, done: boolean) => ctx.db.notes.update(id, { done })),
+  },
+  actions: {
+    banner: action(async (_ctx, text: string, times: number) => text.toUpperCase().repeat(times)),
   },
 });

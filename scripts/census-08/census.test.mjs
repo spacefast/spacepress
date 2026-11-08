@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { classify } from "./classify.mjs";
-import { converterReport, outcome, payloadRefusals, RULES, verifySource } from "./census.mjs";
+import { converterReport, outcome, payloadCensus, verifySource } from "./census.mjs";
 import { ERASED, pageStub, PAGE_MARKER, serverSource, writeCapsule } from "./reconstruct.mjs";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
@@ -73,9 +73,22 @@ test("pages become stubs that only the source can fill", () => {
   assert.equal(pageStub({ file: "../escape.tsx", render: "client" }, 0), null);
 });
 
-test("a client app without pages is a census refusal", () => {
-  assert.deepEqual(payloadRefusals(fixture.artifact), [RULES.standaloneClient]);
-  assert.deepEqual(payloadRefusals({ ...fixture.artifact, pages: [{ file: "pages/index.tsx", render: "client" }] }), []);
+test("a client app without pages is refused only for what its client.js shows", () => {
+  const clientJs = (text) => ({ ...fixture, staticFiles: [{ path: "client.js", contentBase64: Buffer.from(text).toString("base64") }] });
+  // Without client.js, only the source can decide; with one using bridged hooks, nothing is refused.
+  assert.deepEqual(payloadCensus(ts, fixture), { refusals: [], missing: ["client app body"] });
+  assert.deepEqual(payloadCensus(ts, clientJs('import{useQuery,useMutation,Router}from"@spacefast/zero/client";')).refusals, []);
+  assert.deepEqual(
+    payloadCensus(ts, clientJs('import{storage}from"@spacefast/zero/client";import{Card}from"@spacefast/zero/kit";')).refusals,
+    ["client: kit components", "client: storage uploads"],
+  );
+  // A capsule with pages is not a client app.
+  assert.deepEqual(payloadCensus(ts, { ...fixture, artifact: { ...fixture.artifact, pages: [{ file: "pages/index.tsx", render: "client" }] } }), { refusals: [], missing: [] });
+  assert.deepEqual(outcome({ verified: false, report: { status: "dry-run", errors: [] }, census: [], missing: ["client app body"] }), {
+    outcome: "not recoverable",
+    refusals: [],
+    missing: ["client app body"],
+  });
 });
 
 test("only verified source can be accepted", () => {

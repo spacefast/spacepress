@@ -1683,8 +1683,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if *kind != DeclKind::Var {
                     self.predeclare_lexical(pat, *kind == DeclKind::Let);
                 }
-                let it = self.expr(iter)?;
-                let it = self.finish_value(it, iter.span)?;
+                // `for await (const v of [a(), b()])`: under the blocking model each Zero call in the
+                // literal has already run, so the array holds its settled values.
+                let it = match &iter.kind {
+                    ExprKind::Array(items)
+                        if typed_await && items.iter().all(|item| matches!(item, ArrEl::Item(_))) =>
+                    {
+                        let mut values = Vec::new();
+                        let mut types = Vec::new();
+                        for item in items {
+                            let ArrEl::Item(e) = item else { unreachable!() };
+                            let v = self.expr(e)?;
+                            let v = match v.ty {
+                                Ty::Promise(t) => Out { ty: *t, ..v },
+                                _ => self.finish_value(v, e.span)?,
+                            };
+                            values.push(v.php);
+                            types.push(v.ty);
+                        }
+                        Out::atom(
+                            format!("(new \\Zero\\JsArray([{}]))", values.join(", ")),
+                            Ty::Array(Box::new(Ty::union(types))),
+                        )
+                    }
+                    _ => {
+                        let it = self.expr(iter)?;
+                        self.finish_value(it, iter.span)?
+                    }
+                };
                 let (el, src) = match &it.ty.non_null() {
                     Ty::Dynamic => (Ty::Dynamic, format!("\\Zero\\Js::dynamicIterator({})", it.php)),
                     Ty::Array(t) | Ty::NonEmptyArray(t) => ((**t).clone(), it.php.clone()),

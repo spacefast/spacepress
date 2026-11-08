@@ -6,6 +6,10 @@ import { action, defineConfig } from "zero";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
+async function double(n: number): Promise<number> {
+  return n * 2;
+}
+
 async function rows(): Promise<{ n: number; label: string }[]> {
   return [{ n: 1, label: "a" }, { n: 2, label: "b" }];
 }
@@ -16,6 +20,12 @@ export default defineConfig({
     forAwaitArray: run(async () => {
       const out: number[] = [];
       for await (const row of await rows()) out.push(row.n * 10);
+      return out;
+    }),
+    forAwaitPromises: run(async () => {
+      const out: number[] = [];
+      for await (const v of [double(1), double(2), 7]) out.push(v);
+      for await (const row of [rows()]) out.push(row.length);
       return out;
     }),
     forAwaitString: run(async () => {

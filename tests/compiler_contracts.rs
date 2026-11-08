@@ -3136,6 +3136,10 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
             "const out: unknown[] = []; for await (const v of [{ n: 1 }, null]) out.push(v); return out;",
             true,
         ),
+        (
+            "const t: { then: (resolve: (v: number) => void) => void } = { then: (resolve: (v: number) => void) => resolve(1) }; const out: unknown[] = []; for await (const v of [t]) out.push(v); return out;",
+            false,
+        ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(

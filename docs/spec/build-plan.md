@@ -145,15 +145,31 @@ type, with comments, categories, tags and menus all core.
 
 ## 5. TSX → PHP compiler spike
 
-**Exists:**
-- OXC parsing, the TS subset lowered to PHP with JS semantics, the classes and stdlib work;
-- `packages/pages` (a build-time Node renderer with placeholders);
-- the "one component source, two compilers" design in `docs/design-pages-and-agents.md` §4.2–4.3.
-- Missing: JSX (refused in `src/lower.rs`).
+**Exists (inventory of c3c85dcd, 2026-11-08):** about half of the target is built.
+
+| Capability | Status |
+|---|---|
+| Expressions → PHP with JS semantics | **done**: `src/lower.rs`, `src/compile.rs`, `runtime/Zero/Js*.php` (29 files) |
+| Node-vs-PHP parity harness | **done for values** (`tests/differential/`, `tests/compiler.rs:800`); no HTML cases yet |
+| Request-time escaping, island SSR (`wp_interactivity_process_directives`), routes, assets, `the_content` | **done**: `runtime/pages/Renderer.php`, `Plugin.php`, `Routes.php` |
+| Block serialization | **done**: `packages/blocks` (152 tests) |
+| esbuild bundling of browser modules | **done**: `packages/pages/build.ts` |
+| JSX parsing | OXC parses TSX already (`config_migrate/app/pages.rs:64`); the compiler refuses it at `src/lower.rs:1441` and `src/loader.rs:292` |
+| `&&`, `?:`, `.length`, method calls on request data | **missing**: the placeholder proxy (`packages/pages/symbolic.ts`) can't express them by design |
+| Component IR, `"use client"` → store + directives, derived values in JS and PHP | **missing** |
+
+**Approach:** JSX → IR → PHP in the Rust compiler, because expression lowering
+needs the types it already has, and boxes have no JavaScript. Node at build time
+does only what it's already good at: esbuild for `"use client"` store modules,
+the Node half of the HTML parity tests (`renderToStaticMarkup`), and block
+serialization if a page wants block output.
 
 **Build:**
-- JSX lowering to a component IR.
-- A PHP renderer that writes an escaping HTML buffer.
+- Replace the JSX refusal with IR nodes for elements, fragments, expression
+  containers and component calls.
+- A PHP renderer that writes an escaping HTML buffer, with a `Zero\Html` child
+  helper on React rules: `null`/`false` render nothing, `0` renders `"0"`,
+  arrays concatenate.
 - Async server components (blocking calls).
 - The Interactivity output:
   - context, getters, directives and actions;
@@ -161,9 +177,13 @@ type, with comments, categories, tags and menus all core.
 - Node-vs-PHP HTML parity tests.
 
 **Delete after it lands:**
-- `packages/pages`'s placeholder renderer and `zero-pages build`;
-- `zero/pages.json`;
-- `load()`, `<Show>`, `orElse()`, `count()` and `<Island>`.
+- `packages/pages`'s `symbolic.ts`, the request-data refusals in `check.ts`, and `zero-pages build`;
+- Renderer.php's token and region machinery (keep its escaping policy, island SSR call and routes);
+- `zero/pages.json` and the capture checks in `src/pages.rs`;
+- `load()`, `<Show>`, `orElse()`, `count()` and `<Island>`;
+- `docs/design-pages-and-agents.md` §4.3's block-region output model, which this replaces.
+
+Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces move; nothing is reused from it.
 
 **Done when:**
 - `examples/full-site` pages, including one `"use client"` counter, compile and pass parity.
@@ -206,9 +226,19 @@ type, with comments, categories, tags and menus all core.
 
 **Exists (monorepo runtime):**
 - durable per-host purge records in `runtime/engine/shared/purge.php`, delivered to the edge-cache gateway;
-- static files served before WordPress.
+- static files served before WordPress;
+- `batcache_cancel()` on WordPress lanes (`runtime/engine/runtime/content-page.php`).
 
-**First:** read the platform's Edge_Cache adapter (`class-edge-cache-atomic.php`) for its path-purge parameters and limits, and check Batcache's key and bypass cookies.
+**Checked 2026-11-08 (wpcom source a1adf0d2f93, no WP Cloud calls):**
+- URL purges exist: the purge action takes a `purge_uris` array, checks each
+  URL's host belongs to the site, keeps query strings, and purges the whole
+  domain only when none is given (`atomic.api/includes/edge-cache.php:261-362`,
+  `wp-content/lib/edge-cache.php:851`). No URL-count limit is enforced; manual
+  wp-admin purges are rate-limited, ours are not.
+- Batcache stores a URL on its second hit within two minutes, reads only
+  `max-age` from `Cache-Control`, and drops tracking params (`utm_*`, `fbclid`, …)
+  from its key (`.config/batcache-config.php`).
+- So per-URL purge needs no WP Cloud change: send `purge_uris` from the existing records.
 
 **Build:**
 - **Per-route cache policy:**

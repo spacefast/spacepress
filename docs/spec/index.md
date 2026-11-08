@@ -95,9 +95,7 @@ front, with a typed client and cache purges that just work.
 
 ## Open questions
 
-1. **Edge path purge.** The runtime's purge sends only `wp_domain` today (whole
-   host). URL purges need the gateway's path purge; verify its parameters and
-   limits from the platform's Edge_Cache adapter (`class-edge-cache-atomic.php`)
-   before building [rendering.md](rendering.md) §6.
+1. **Edge path purge: answered.** The edge-cache purge action already takes
+   `purge_uris`; see [rendering.md](rendering.md) §6.4.
 2. **Order.** See [build-plan.md](build-plan.md): the authoring cutover, the
    compiler spike and the opinionated WordPress setup start in parallel.

@@ -284,15 +284,17 @@ Already on main in the runtime:
 
 **Budget:** p50 server time on a cache miss under 30 ms on a box; on a hit, Batcache or edge time only.
 
-### 6.4 Verify before building
+### 6.4 What the platform supports (checked 2026-11-08)
 
-These must be checked before building, from our own runtime and the existing WP Cloud notes, not by calling WP Cloud directly:
-- whether the edge-cache gateway accepts a path purge, and its limits (the
-  current code sends only `wp_domain`);
-- whether Batcache's key includes the query string and our bypass cookies;
-- the edge's TTL ceiling.
-
-The design holds either way; only the batch threshold changes.
+- **URL purge:** the edge-cache purge action accepts `purge_uris` (query strings
+  kept, each host checked against the site) and purges the whole domain only
+  when none is given. Our runtime sends only `wp_domain` today; URL purges add
+  `purge_uris` to the same durable records. No URL-count limit is enforced.
+- **Batcache:** stores a URL on its second hit within two minutes, reads only
+  `max-age`, ignores tracking params in its key. Public Zero pages stay in
+  Batcache; viewer-dependent ones call `batcache_cancel()`, as the WordPress
+  lanes already do.
+- Still open: the edge TTL ceiling, which only sets the fallback window.
 
 ## 7. Kept from today
 

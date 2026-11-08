@@ -341,6 +341,9 @@ pub const GLOBALS: &[&str] = &[
     "TransformStream",
     "setTimeout",
     "crypto",
+    "Symbol",
+    "WeakMap",
+    "WeakSet",
     "Buffer",
     "Headers",
     "URLSearchParams",
@@ -351,6 +354,89 @@ pub const GLOBALS: &[&str] = &[
     "Blob",
     "AbortController",
 ];
+
+/// `globalThis` members that host-globals work owns. Detecting them stays refused
+/// until that work defines what Zero provides.
+const HOST_GLOBALS: &[&str] = &[
+    "fetch",
+    "process",
+    "require",
+    "crypto",
+    "Buffer",
+    "atob",
+    "btoa",
+    "setTimeout",
+    "setInterval",
+    "clearTimeout",
+    "clearInterval",
+    "queueMicrotask",
+    "setImmediate",
+    "Promise",
+    "eval",
+    "Function",
+];
+
+/// Browser, worker and other server-runtime globals that neither the PHP runtime
+/// nor Node provides, so `undefined` matches the Node oracle. `navigator` is not
+/// here: Node 21+ defines it.
+pub const ABSENT_GLOBALS: &[&str] = &[
+    "window",
+    "document",
+    "self",
+    "location",
+    "Bun",
+    "Deno",
+    "EdgeRuntime",
+    "DOMParser",
+    "WebSocketPair",
+    "XMLHttpRequest",
+    "importScripts",
+    "WorkerGlobalScope",
+];
+
+/// What `globalThis.<name>` is in the PHP runtime, decided at compile time.
+pub enum GlobalMember {
+    /// One of Zero's globals, read as that global.
+    Provided(&'static str),
+    /// A host Zero never provides: `undefined`.
+    Absent,
+    /// Unknown or owned by host-global work: refused.
+    Refused,
+}
+
+pub fn global_member(name: &str) -> GlobalMember {
+    if HOST_GLOBALS.contains(&name) {
+        return GlobalMember::Refused;
+    }
+    if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
+        return GlobalMember::Provided(g);
+    }
+    if ABSENT_GLOBALS.contains(&name) {
+        return GlobalMember::Absent;
+    }
+    GlobalMember::Refused
+}
+
+/// `typeof` of a provided global, matching JavaScript.
+pub fn global_type_of(g: &str) -> &'static str {
+    match g {
+        "Math" | "JSON" | "console" | "globalThis" => "object",
+        "Infinity" | "NaN" => "number",
+        _ => "function",
+    }
+}
+
+pub fn refused_global_member(name: &str, span: Span) -> Diag {
+    Diag::new(
+        span,
+        format!("`globalThis.{name}` depends on the host and can't be resolved at compile time"),
+    )
+    .help(if HOST_GLOBALS.contains(&name) {
+        format!("remove the `{name}` detection and use a capability Zero supports in the handler")
+    } else {
+        "only Zero's own globals and absent browser or server runtimes (window, document, Bun, Deno, ...) can be detected; remove the detection".into()
+    })
+}
 
 pub struct Evaluator<'p> {
     program: &'p Program,
@@ -1456,6 +1542,13 @@ impl<'p> Evaluator<'p> {
                                 PropKey::Computed(x) => match self.eval_static_data(x, scope)? {
                                     Value::Str(s) => s.to_string(),
                                     Value::Num(n) => js_number_to_string(n),
+                                    Value::Symbol(_) => {
+                                        return err_help(
+                                            x.span,
+                                            "symbol-keyed properties can't be created while the config is evaluated",
+                                            "create the object inside a function that runs in PHP, or use a string key",
+                                        );
+                                    }
                                     other => return err(x.span, format!("can't use {} as a key", other.describe())),
                                 },
                             };
@@ -1519,10 +1612,7 @@ impl<'p> Evaluator<'p> {
                     UnOp::Plus => Value::Num(to_number(&v)),
                     UnOp::BitNot => Value::Num(f64::from(!crate::num::to_int32(to_number(&v)))),
                     UnOp::TypeOf => {
-                        if let Value::Builtin(Builtin::Global(
-                            name @ ("process" | "require" | "globalThis" | "crypto"),
-                        )) = &v
-                        {
+                        if let Value::Builtin(Builtin::Global(name @ ("process" | "require" | "crypto"))) = &v {
                             return err_help(
                                 x.span,
                                 format!("typeof `{name}` depends on the host and isn't supported"),
@@ -1704,6 +1794,9 @@ impl<'p> Evaluator<'p> {
                             e.span,
                             "class instances are only constructed inside compiled callbacks; configuration stays plain data",
                         );
+                    }
+                    Value::Builtin(Builtin::Global(kind @ ("WeakMap" | "WeakSet"))) => {
+                        Value::Weak(Rc::new(WeakVal { set: kind == "WeakSet" }))
                     }
                     Value::Builtin(Builtin::Global("Date")) => {
                         return err_help(
@@ -1940,6 +2033,23 @@ impl<'p> Evaluator<'p> {
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
             ),
+            Value::Builtin(Builtin::Global("globalThis")) => match global_member(prop) {
+                GlobalMember::Provided("Infinity") => Ok(Value::Num(f64::INFINITY)),
+                GlobalMember::Provided("NaN") => Ok(Value::Num(f64::NAN)),
+                GlobalMember::Provided(g) => Ok(Value::Builtin(Builtin::Global(g))),
+                GlobalMember::Absent => Ok(Value::Undef),
+                GlobalMember::Refused => Err(Ctl::Err(refused_global_member(prop, span))),
+            },
+            Value::Builtin(Builtin::Global("Symbol")) if crate::value::WELL_KNOWN_SYMBOLS.contains(&prop) => {
+                let name = crate::value::WELL_KNOWN_SYMBOLS
+                    .iter()
+                    .find(|n| **n == prop)
+                    .expect("well-known");
+                Ok(Value::Symbol(Rc::new(SymbolVal::WellKnown(name))))
+            }
+            Value::Symbol(symbol) if prop == "description" => {
+                Ok(symbol.description().map_or(Value::Undef, |d| Value::str(&d)))
+            }
             Value::Builtin(Builtin::Global(g @ ("process" | "fetch" | "crypto" | "Buffer"))) => err_help(
                 span,
                 format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),
@@ -2480,6 +2590,29 @@ impl<'p> Evaluator<'p> {
             }
         }
         // hasOwn reads an object's keys only; env() tokens among its values are carried, not consumed.
+        if g == "Symbol" {
+            crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
+            return match (m, args.first()) {
+                ("for", Some(key)) => {
+                    require_static_coercion(key, span)?;
+                    let Some(key) = key.to_js_string() else {
+                        return err(span, format!("`Symbol.for` needs a string key, not {}", key.describe()));
+                    };
+                    Ok(Value::Symbol(Rc::new(SymbolVal::Registered(Rc::from(key.as_str())))))
+                }
+                ("keyFor", Some(Value::Symbol(symbol))) => Ok(match &**symbol {
+                    SymbolVal::Registered(key) => Value::Str(key.clone()),
+                    _ => Value::Undef,
+                }),
+                (_, other) => err(
+                    span,
+                    format!(
+                        "`Symbol.keyFor` needs a symbol, not {}",
+                        other.map_or("nothing".into(), Value::describe)
+                    ),
+                ),
+            };
+        }
         if (g, m) == ("Object", "hasOwn") {
             if let Some(receiver @ Value::Env(_)) = args.first() {
                 require_static_data(receiver, span)?;
@@ -3143,6 +3276,28 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
     crate::builtins::check("global", g, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     for value in args {
         require_static_data(value, span)?;
+    }
+    if g == "Symbol" {
+        let description = match args.first() {
+            None | Some(Value::Undef) => None,
+            Some(value) => {
+                require_static_coercion(value, span)?;
+                let Some(text) = value.to_js_string() else {
+                    return err(
+                        span,
+                        format!("can't convert {} to a symbol description", value.describe()),
+                    );
+                };
+                Some(Rc::from(text.as_str()))
+            }
+        };
+        return Ok(Value::Symbol(Rc::new(SymbolVal::Unique(description))));
+    }
+    if let ("String", Some(Value::Symbol(symbol))) = (g, args.first()) {
+        return Ok(Value::str(&format!(
+            "Symbol({})",
+            symbol.description().unwrap_or_default()
+        )));
     }
     if matches!(
         g,

@@ -335,6 +335,69 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
+/// A handler's `ctx` and a route's `req` are values: helpers typed with the `"zero"` context types
+/// take them, return them and read static keys, in compiled PHP as a signed-in user and a guest.
+#[test]
+fn context_values_pass_through_typed_helpers() {
+    let tmp = std::env::temp_dir().join(format!("zero-context-helpers-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/context-helpers"), &tmp);
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(tmp.join(".zero/wp-content"))
+        .arg(
+            r#"$route = $app->matchRoute("POST", "/echo");
+               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"));
+               echo json_encode([
+                 "id" => $wp->userId("ada"),
+                 "signedIn" => $wp->call("POST", "/actions/whoami", "{}", "ada")[1],
+                 "guest" => $wp->call("POST", "/actions/whoami", "{}")[1],
+                 "note" => $wp->call("POST", "/actions/note", ["body" => "x"], "ada")[1],
+                 "echo" => json_decode($echo, true),
+               ]);"#,
+        )
+        .arg("null")
+        .arg("ada=editor")
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{text}{}", String::from_utf8_lossy(&out.stderr));
+    let got: serde_json::Value = serde_json::from_str(text.lines().next_back().unwrap_or("")).unwrap();
+    let ada = format!("ada#{}", got["id"]);
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "id": got["id"],
+            "signedIn": { "label": ada, "role": "editor", "anonymous": false, "viaIndex": false },
+            "guest": { "label": "guest", "role": "guest", "anonymous": true, "viaIndex": true },
+            "note": [ada],
+            "echo": { "method": "POST", "path": "/echo", "body": "raw body", "role": "editor" },
+        })
+    );
+    // Only a key no type can bound is refused, with the fix.
+    std::fs::write(
+        tmp.join("zero.config.ts"),
+        std::fs::read_to_string(tmp.join("zero.config.ts")).unwrap().replace(
+            r#"viaIndex: ctx["user"] === null"#,
+            "viaIndex: ctx[String(_input)] === null",
+        ),
+    )
+    .unwrap();
+    let refused = zero().arg("check").arg(&tmp).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("dynamic keys on an object need a finite key union"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("help: use `keyof` on a finite object"), "{stderr}");
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
 /// §1.6: access rules are compiled like hooks, but return a boolean or a filter on the collection.
 #[test]
 fn rejects_access_rules_that_cant_hold() {

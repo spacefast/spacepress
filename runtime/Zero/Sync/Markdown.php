@@ -65,6 +65,78 @@ final class Markdown
     }
 
     /**
+     * Stored blocks as Markdown for reading: the page's `.md` twin and `?format=md`. Never refuses.
+     *
+     * When the document can be written as Markdown, the result is exactly fromBlocks(). Otherwise
+     * each top-level block is written on its own: a block Markdown has syntax for through the
+     * toolkit's producer (whatever the round trip would lose, such as an alignment), a container
+     * (group, columns, cover) by its inner blocks, and any other block (buttons, embeds, dynamic
+     * blocks, classic content) as the text, links, emphasis and images of its rendered HTML. Raw
+     * HTML never reaches the output, so a script in a custom HTML block stays out of it.
+     */
+    public static function render(string $blocks): string
+    {
+        try {
+            return self::fromBlocks($blocks);
+        } catch (HttpError) {
+        }
+        $parts = [];
+        foreach (Blocks::parse($blocks) as $block) {
+            $part = self::renderBlock($block);
+            if ($part !== '') {
+                $parts[] = $part;
+            }
+        }
+
+        return $parts === [] ? '' : implode("\n", $parts);
+    }
+
+    /** One block for render(): Markdown ending in one newline, or '' when it shows nothing. */
+    private static function renderBlock(array $block): string
+    {
+        if (($block['blockName'] ?? null) !== null && self::unsupported([$block]) === null) {
+            // Markdown has syntax for every block here; for reading, what the round trip would lose
+            // (an alignment, a table's caption) needn't refuse it.
+            try {
+                $markdown = rtrim(self::produce(Blocks::serialize([$block])), "\n");
+                if (trim($markdown) !== '') {
+                    return $markdown . "\n";
+                }
+            } catch (HttpError) {
+            }
+        }
+        $inner = $block['innerBlocks'] ?? [];
+        if ($inner !== [] && trim(wp_strip_all_tags(implode('', array_filter($block['innerContent'] ?? [], 'is_string')))) === '') {
+            return self::render(Blocks::serialize($inner));
+        }
+        $html = ($block['blockName'] ?? null) === null
+            ? wpautop(do_shortcode((string) ($block['innerHTML'] ?? '')))
+            : render_block($block);
+
+        return self::text($html);
+    }
+
+    /**
+     * Rendered HTML as Markdown paragraphs: the producer's inline conversion (links, emphasis, code,
+     * images) of the HTML read as one paragraph, every other tag dropped, one paragraph per line.
+     */
+    private static function text(string $html): string
+    {
+        $html = (string) preg_replace('/<!--.*?-->/s', '', $html);
+        if (trim(wp_strip_all_tags($html)) === '' && !str_contains(strtolower($html), '<img')) {
+            return '';
+        }
+        try {
+            $markdown = self::produce("<!-- wp:paragraph -->\n" . $html . "\n<!-- /wp:paragraph -->");
+        } catch (HttpError) {
+            $markdown = wp_strip_all_tags($html);
+        }
+        $lines = array_values(array_filter(array_map('trim', explode("\n", $markdown)), static fn (string $line): bool => $line !== ''));
+
+        return $lines === [] ? '' : implode("\n\n", $lines) . "\n";
+    }
+
+    /**
      * The first block Markdown has no syntax for. The producer would fence such a block's raw markup
      * (```block), which reads back but is not Markdown anyone can edit.
      */

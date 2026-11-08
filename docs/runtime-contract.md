@@ -517,6 +517,61 @@ always logged to `error_log`).
 JSON responses are encoded with `Js::jsonStringify` (so integral floats
 print without `.0`).
 
+## Markdown twins (`Wp\MarkdownTwins`)
+
+The v2 app plugin registers these. A WordPress without a Zero app is unchanged.
+
+- **`/x.md`** answers for every public URL WordPress renders. On
+  `do_parse_request` (priority 1, after app routes), it is parsed as `/x`. On
+  `wp`, after the main query and before any template or redirect, Zero answers
+  it. The answer is `text/markdown; charset=UTF-8` with
+  `Link: <html>; rel="canonical"`, the same for every visitor. A page with no
+  public content (404, draft, preview, private post, feed, Zero collection,
+  pages-add-on code Page) gets a 404. Nothing varies on `Accept`. Batcache and
+  the edge key on the URL, so the twin is a separate cache entry.
+- **HTML pages** with a twin send
+  `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
+  `<link>` in `wp_head`.
+- **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
+  `/llms.txt`, and a `robots.txt` line). The `zero_content_signal` filter
+  changes the value; `''` sends none.
+- **`zero_markdown_twin` filter** (`bool $twin, WP_Post $post`): return false
+  when a URL shows something other than the post's stored content. The pages
+  add-on uses it for code Pages.
+
+PHP API (all static):
+
+| Call | Returns |
+|---|---|
+| `MarkdownTwins::twin(string $url): string` | the twin URL: `/x/` → `/x.md`, home → `/index.md`; scheme, host and query kept. Purges use it to add each URL's `.md` twin. |
+| `MarkdownTwins::post(WP_Post $post): string` | `# Title` plus the stored content as Markdown. A password-protected post gives only its title and a note. It checks no visibility; the caller does. `?format=md` on item routes returns this. |
+| `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses: when `fromBlocks()` succeeds, the result is its output exactly; otherwise each block is written as Markdown or as the text of its rendered HTML. |
+| `MarkdownTwins::llms(): string` | the `/llms.txt` body |
+| `MarkdownTwins::negotiate(string $uri): ?array` | the engine's `Accept: text/markdown` answer, below |
+
+**`negotiate()`, for the engine's Accept lane.** Batcache keys on the URL and
+answers inside WordPress's boot, so `Accept: text/markdown` on `/x` is answered
+by the engine instead, never from a page cache:
+
+1. The engine sees `Accept: text/markdown` on a v2 Space's HTML URL. If the
+   build has a prebuilt `/x.md` file, it serves that.
+2. Otherwise it loads `wp-load.php` (which calls `batcache_cancel()`), then
+   calls `\Zero\Wp\MarkdownTwins::negotiate($requestUri)` before anything
+   runs the main query or prints.
+3. `null` means no Zero app is active: the engine serves the request as it
+   would have.
+4. Otherwise the engine sends `['status' => int, 'headers' => array, 'body' => string]`.
+   It sends the status with `status_header()`, because WordPress may already
+   have set one, and each header replacing any of the same name. The answer is
+   exactly what `/x.md` answers, plus `Cache-Control: private, no-store`,
+   `Vary: Accept` and `Content-Location: <twin URL>`. An app `route.ts` at that
+   path answers and exits as on any request.
+
+`negotiate()` calls `batcache_cancel()` itself and prints nothing. It runs
+WordPress's own request parsing and main query for the URI, and suppresses the
+headers WordPress would send for the HTML page. Call it at most once per
+request.
+
 ## CLI (`wp zero`)
 
 ```

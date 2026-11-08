@@ -157,6 +157,50 @@ complete Basic header. `bearer_token_env_var` is for Bearer tokens and does not
 encode an application password. See the official
 [Codex MCP documentation](https://developers.openai.com/codex/mcp).
 
+## Read pages as Markdown
+
+While a Zero app is active, every public URL WordPress renders also has a
+Markdown version at the same address plus `.md`:
+
+| HTML URL | Markdown URL |
+|---|---|
+| `/hello-world/` | `/hello-world.md` |
+| `/` | `/index.md` |
+| `/category/news/?page=2` | `/category/news.md?page=2` |
+
+- **Single posts and pages** show the title, then the stored content. Blocks
+  Markdown can write come out as Markdown. Any other block comes out as the
+  text, links and images of its rendered HTML. Raw HTML never comes through.
+- **Archives, the blog index and search results** list each entry with a link
+  to its own `.md` URL, plus links to the previous and next pages.
+- **Only public content gets a Markdown URL.** Drafts, previews, private posts
+  and Zero collections get a 404. A password-protected post shows only its
+  title.
+- **The `.md` URL is its own URL, the same for every visitor.** Page caches
+  store it apart from the HTML.
+
+Each HTML page links its Markdown version, so agents can find it:
+
+```text
+Link: <https://your-site.example/hello-world.md>; rel="alternate"; type="text/markdown"
+<link rel="alternate" type="text/markdown" href="https://your-site.example/hello-world.md" />
+```
+
+On Spacefast, `Accept: text/markdown` on the HTML URL returns the same
+Markdown. That response is never cached. Elsewhere, request the `.md` URL.
+
+`/llms.txt` lists the site, then the newest 100 entries of each public post
+type, and each public taxonomy's terms. Every entry links to its Markdown URL.
+
+HTML pages, Markdown pages, `/llms.txt` and `robots.txt` send a
+[Content-Signal](https://contentsignals.org/) of
+`search=yes, ai-input=yes, ai-train=no`. To change it, filter
+`zero_content_signal` in a plugin; return `''` to send none:
+
+```php
+add_filter('zero_content_signal', fn () => 'search=yes, ai-input=no, ai-train=no');
+```
+
 ## Verify with a real site
 
 The repository includes a protocol probe that initializes an MCP session, lists

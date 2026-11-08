@@ -33,7 +33,8 @@ final class JsBigInt implements \Stringable
         return match (true) {
             $value instanceof self => $value,
             is_bool($value) => self::fromInt((int) $value),
-            is_int($value), is_float($value) => self::fromNumber($value),
+            // A PHP int is a JS number: past ±2^53 it is the nearest double first, as JS sees it.
+            is_int($value), is_float($value) => self::fromNumber(Js::n($value)),
             is_string($value) => self::parse($value) ?? throw new JsError('Cannot convert ' . $value . ' to a BigInt', 'SyntaxError'),
             default => throw new JsError('Cannot convert ' . Js::str($value) . ' to a BigInt', 'TypeError'),
         };
@@ -143,6 +144,15 @@ final class JsBigInt implements \Stringable
             $out .= str_pad((string) $this->limbs[$i], self::DIGITS, '0', STR_PAD_LEFT);
         }
         return ($this->negative ? '-' : '') . $out;
+    }
+
+    /** `b.toString(radix)`: an undefined radix is 10; others go through ToIntegerOrInfinity. */
+    public function toRadixArg(mixed $radix): string
+    {
+        if ($radix === JsUndefined::Value) { return (string) $this; }
+        $n = Js::toInteger(Js::toNumber($radix));
+        if ($n < 2 || $n > 36) { throw new JsError('toString() radix must be between 2 and 36', 'RangeError'); }
+        return $this->toRadix((int) $n);
     }
 
     /** `toString(radix)` for radix 2..36. */

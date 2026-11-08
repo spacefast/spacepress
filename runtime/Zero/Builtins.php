@@ -71,7 +71,7 @@ final class Builtins
         'BigInt.asIntN' => [2, 2],
         'BigInt.asUintN' => [2, 2],
         'bigint.toString' => [0, 1],
-        'bigint.valueOf' => null,
+        'bigint.valueOf' => [0, 0],
         'bigint.toLocaleString' => null,
         'global.parseInt' => [0, 2],
         'global.parseFloat' => [0, 1],

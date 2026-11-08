@@ -56,6 +56,14 @@ function errors(): string[] {
   ];
 }
 
+/** `0n` is falsy, so `b || fallback` keeps both types; a stored big integer converts as its double. */
+function edges(): string[] {
+  const zero = 0n as bigint;
+  const fallback = zero || "fallback";
+  const big = 9007199254740993 as number;
+  return [String(fallback), typeof fallback, String(BigInt(big)), (255n).toString(undefined)];
+}
+
 /** 0.8 apps keep exact ids and cents as BigInt and send them as strings. */
 function money(): string[] {
   const prices = [1999n, 25000n, 7n];
@@ -74,6 +82,7 @@ export default defineConfig({
     bigintConvert: run(() => convert()),
     bigintErrors: run(() => errors()),
     bigintMoney: run(() => money()),
+    bigintEdges: run(() => edges()),
     bigintUntyped: run(() => bigintUntyped()),
   },
 });

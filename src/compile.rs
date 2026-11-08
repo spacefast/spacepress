@@ -6331,10 +6331,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return match m {
                 "toString" => Ok(Out::atom(
                     match argv.first() {
-                        Some(radix) => format!(
-                            "({})->toRadix((int) \\Zero\\Js::toInteger(\\Zero\\Js::toNumber({})))",
-                            recv.php, radix.php
-                        ),
+                        Some(radix) => format!("({})->toRadixArg({})", recv.php, radix.php),
                         None => format!("(string) ({})", recv.php),
                     },
                     Ty::Str,
@@ -7890,7 +7887,10 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::Null | Ty::Undefined | Ty::Void => t.clone(),
         Ty::Str if !truthy => Ty::StrLit(String::new()),
         Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
-        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Dynamic | Ty::Never => t.clone(),
+        // `0n` is falsy, so a bigint stays on both branches, like a number.
+        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::BigInt | Ty::Unknown | Ty::Dynamic | Ty::Never => {
+            t.clone()
+        }
         Ty::Arguments
         | Ty::Array(_)
         | Ty::NonEmptyArray(_)
@@ -7903,7 +7903,6 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Fn(..)
         | Ty::Rest(_)
         | Ty::Promise(_)
-        | Ty::BigInt
         | Ty::Date
         | Ty::Regex
         | Ty::Error

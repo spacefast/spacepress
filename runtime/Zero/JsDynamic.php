@@ -28,12 +28,13 @@ trait JsDynamic
             $receiver instanceof JsError => 'Error',
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
-            is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
+            is_int($receiver), is_float($receiver) => 'Number', $receiver instanceof JsBigInt => 'BigInt',
+            default => 'Object',
         };
         if ($receiver instanceof \Closure && in_array($name, ['bind', 'length', 'name', 'prototype', 'arguments', 'caller'], true)) {
             throw new JsError('Function metadata and binding are not supported', 'TypeError');
         }
-        if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date'], true)
+        if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date', 'BigInt'], true)
             || $name === 'toString' && in_array($owner, ['Math', 'Set', 'Map'], true)) { $owner = 'Object'; }
         $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
@@ -66,6 +67,7 @@ trait JsDynamic
         $compatible = match ($owner) {
             'Array' => $receiver instanceof JsArray, 'String' => is_string($receiver),
             'Number' => is_int($receiver) || is_float($receiver), 'Boolean' => is_bool($receiver),
+            'BigInt' => $receiver instanceof JsBigInt,
             'RegExp' => $receiver instanceof RegExp, 'Date' => $receiver instanceof JsDate,
             'Error' => $receiver instanceof JsError,
             'Set' => $receiver instanceof JsSet, 'Map' => $receiver instanceof JsMap,
@@ -315,6 +317,14 @@ trait JsDynamic
         if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         if (!$builtin && $receiver instanceof JsObject && $receiver->nullPrototype) { return self::dynamicCall(JsUndefined::Value, $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
+        if ($receiver instanceof JsBigInt) {
+            Builtins::check('bigint', $name, count($a));
+            return match ($name) {
+                'toString' => $receiver->toRadixArg($get(0)),
+                'valueOf' => $receiver,
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
+        }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',

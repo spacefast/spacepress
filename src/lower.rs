@@ -20,6 +20,8 @@ pub struct Lowerer {
     pub reads_this: std::cell::Cell<bool>,
     /// Inside a derived constructor's parameters, before `super()`: `this` doesn't exist yet.
     pub before_super: std::cell::Cell<bool>,
+    /// A CommonJS source: module-level `this` is the module's initial `module.exports`.
+    pub commonjs_this: bool,
     pub super_call: std::cell::Cell<bool>,
     /// Installed package TypeScript compiles like JavaScript: types are erased,
     /// not modelled. Syntax with runtime semantics is still lowered or refused.
@@ -27,6 +29,10 @@ pub struct Lowerer {
     /// Names of the type declarations erased so far.
     pub erased_types: std::cell::RefCell<std::collections::HashSet<String>>,
 }
+
+/// The binding the evaluator gives a CommonJS module's top-level `this`. Not a valid JS
+/// identifier, so source code can't name it.
+pub const COMMONJS_THIS: &str = "%commonjs-this";
 
 impl Lowerer {
     fn sp(&self, s: oxc_span::Span) -> Span {
@@ -1557,6 +1563,8 @@ impl Lowerer {
                     "a derived constructor has no `this` until `super()` runs; compute the value from the parameters, or assign the field after `super()`",
                 );
             }
+            // Node runs a CommonJS module with `this` bound to its initial `module.exports`.
+            E::ThisExpression(t) if self.commonjs_this => self.mk(t.span, ExprKind::Ident(COMMONJS_THIS.into())),
             E::ThisExpression(t) => {
                 return self.unsupported(
                     t.span,

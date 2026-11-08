@@ -325,6 +325,9 @@ fn parse(
         function_this: std::cell::Cell::new(false),
         reads_this: std::cell::Cell::new(false),
         before_super: std::cell::Cell::new(false),
+        // Only a source the module-syntax scan sees as a script can be CommonJS; the CommonJS
+        // check after lowering decides, and an ESM module never reaches the evaluator binding.
+        commonjs_this: commonjs_candidate(fs, path, ret.module_record.has_module_syntax)?,
         super_call: std::cell::Cell::new(false),
         erase_types: source_type.is_typescript() && crate::ir::dynamic_source(path),
         erased_types: Default::default(),
@@ -339,6 +342,16 @@ fn parse(
         body,
         commonjs,
         type_names: lowerer.erased_types.into_inner(),
+    })
+}
+
+/// Whether a source can be CommonJS before it's lowered: `.cjs`, or `.js` with no import/export
+/// syntax outside an ESM package. The same rule `commonjs_module` applies after lowering.
+fn commonjs_candidate(fs: &dyn Fs, path: &Path, has_module_syntax: bool) -> Result<bool> {
+    Ok(match path.extension().and_then(|extension| extension.to_str()) {
+        Some("cjs") => !has_module_syntax,
+        Some("js") => !has_module_syntax && !esm_package_source(fs, path, Span::NONE)?,
+        _ => false,
     })
 }
 
@@ -378,6 +391,8 @@ fn wrapper_root(expression: &Expr) -> Option<&'static str> {
     match &expression.kind {
         ExprKind::Ident(name) if name == "module" => Some("module"),
         ExprKind::Ident(name) if name == "exports" => Some("exports"),
+        // Module-level `this` is the same object as `exports`.
+        ExprKind::Ident(name) if name == crate::lower::COMMONJS_THIS => Some("this"),
         ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } => wrapper_root(obj),
         _ => None,
     }
@@ -1453,6 +1468,64 @@ mod tests {
     }
 
     #[test]
+    fn commonjs_module_this_is_the_initial_module_exports_like_node() {
+        // ret's TypeScript helpers: `var __createBinding = (this && this.__createBinding) || …`.
+        // Node binds a CommonJS module's `this` to its initial `module.exports`, including in
+        // module-level arrows; replacing `module.exports` later doesn't change it.
+        let result = evaluate(&[
+            (
+                "/p/zero.config.ts",
+                "import helpers from './helpers.cjs'; import replaced from './replaced.cjs'; export default [helpers.picked, helpers.same, helpers.fromArrow, replaced.thisKeys, replaced.isOriginal];",
+            ),
+            (
+                "/p/helpers.cjs",
+                "'use strict'; var pick = (this && this.__pick) || function (v) { return v + 1; }; exports.picked = pick(1); exports.same = this === module.exports; const arrow = () => this; exports.fromArrow = arrow() === exports;",
+            ),
+            (
+                "/p/replaced.cjs",
+                "this.marker = 'kept'; const original = this; module.exports = { thisKeys: Object.keys(original).join(','), isOriginal: this === original };",
+            ),
+        ]);
+        assert_eq!(json(&result), r#"[2,true,true,"marker",true]"#);
+    }
+
+    #[test]
+    fn module_level_this_stays_refused_outside_commonjs() {
+        for (path, source, manifest) in [
+            (
+                "/p/node_modules/pkg/index.mjs",
+                "export const t = this;",
+                r#"{"exports":"./index.mjs"}"#,
+            ),
+            (
+                "/p/node_modules/pkg/index.js",
+                "export const t = this;",
+                r#"{"exports":"./index.js"}"#,
+            ),
+            (
+                "/p/node_modules/pkg/index.js",
+                "module.exports = this;",
+                r#"{"type":"module","exports":"./index.js"}"#,
+            ),
+        ] {
+            let fs = memory(&[
+                ("/p/zero.config.ts", "import * as m from 'pkg'; export default m;"),
+                ("/p/node_modules/pkg/package.json", manifest),
+                (path, source),
+            ]);
+            let diagnostics = load_from(Rc::new(fs), Path::new("/p/zero.config.ts"))
+                .err()
+                .unwrap_or_else(|| panic!("accepted {path}: {source}"));
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|d| d.message.contains("`this` at module level") || d.message.contains("ESM package")),
+                "{source}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
     fn commonjs_refuses_dynamic_exports_wrapper_access_and_esm_mixing() {
         for (source, target, manifest, reason) in [
             (
@@ -1496,6 +1569,12 @@ mod tests {
                 "source.js",
                 r#"{"main":"./source.js"}"#,
                 "inside a function",
+            ),
+            (
+                "const bump = () => { this.count = 1; }; module.exports = bump;",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "writing to `this` inside a function",
             ),
             (
                 "exports = { value: 1 };",

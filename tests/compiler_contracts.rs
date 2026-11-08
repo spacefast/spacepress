@@ -3682,3 +3682,60 @@ echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), new \Zero\JsObject()));
         assert!(d["help"].as_str().unwrap_or("").contains(help), "{help}: {report}");
     }
 }
+
+/// Authored TypeScript runs `for await` only over sync iterables of settled values (Zero's own
+/// promises or plain values). Values from imported JavaScript and async generators need the job
+/// queue, which only imported JavaScript has, so they keep a located refusal.
+#[test]
+fn typed_for_await_accepts_only_settled_sync_iterables() {
+    for (source, ok) in [
+        (
+            "const out: number[] = []; for await (const v of [1, 2]) out.push(v); return out;",
+            true,
+        ),
+        (
+            "const out: number[] = []; for await (const v of untyped()) out.push(v as number); return out;",
+            false,
+        ),
+        (
+            "async function* gen() { yield 1; } const out: number[] = []; for await (const v of gen()) out.push(v); return out;",
+            false,
+        ),
+        // PromiseResolve adopts a thenable, so its element is not settled.
+        (
+            "const t = { then(resolve: (v: number) => void) { resolve(1); } }; const out: unknown[] = []; for await (const v of [t]) out.push(v); return out;",
+            false,
+        ),
+        (
+            "const out: unknown[] = []; for await (const v of [{ n: 1 }, null]) out.push(v); return out;",
+            true,
+        ),
+        (
+            "const t: { then: (resolve: (v: number) => void) => void } = { then: (resolve: (v: number) => void) => resolve(1) }; const out: unknown[] = []; for await (const v of [t]) out.push(v); return out;",
+            false,
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("h.mjs"),
+            "export function untyped() { return [1, 2]; }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\nimport {{ untyped }} from './h.mjs';\nexport default defineConfig({{ name: 'awaits', actions: {{ probe: action({{ input: {{}}, handler: async () => {{ {source} }} }}) }} }});"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(if ok { 0 } else { 1 }), "{source}: {report}");
+        if !ok {
+            assert!(
+                report["diagnostics"][0]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("only work"),
+                "{source}: {report}"
+            );
+        }
+    }
+}

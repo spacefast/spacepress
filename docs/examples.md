@@ -9,6 +9,11 @@ builds its disposable app under `.zero/showcase/`, leaving its sources unchanged
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
 | `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
+| [`examples/subscriptions/`](../examples/subscriptions/README.md) | Owner-scoped subscription tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA, with current gaps documented. [Connect an agent](agents.md). |
+| [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and Zero Admin; owner-scoped actions and an Action Scheduler shopping list, with current build and hosting blockers documented |
+| [`examples/home-maintenance/`](../examples/home-maintenance/README.md) | Private home systems, recurring tasks, work costs, and overdue jobs using wp-admin, SCF, and Zero Admin |
+| [`examples/stuff-drawer/`](../examples/stuff-drawer/README.md) | Personal inventory and lending log in wp-admin, SCF and Zero Admin; owner filters, agent abilities and overdue stamps, with main's current gaps documented |
+| [`examples/drive-locker/`](../examples/drive-locker/README.md) | Owner-scoped drive inventory, health trends, Action Scheduler, typed React SPA and capacity reports; main runtime and publication gaps are documented |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
 | `examples/wp-plugins/` | Extra pinned WordPress plugins (see [plugin dependencies](wp-plugins.md)) |
@@ -60,9 +65,9 @@ register the page with zero-identity:
 node examples/blog/build-client.mjs
 ./target/release/zero build examples/blog        # ships public/client/ with the plugin
 ./target/release/zero dev examples/blog --no-watch
-./target/release/zero dev wp examples/blog -- zero-identity app add --name=Blog --id=app_blog \
+./target/release/zero wp --site examples/blog zero identity app add --name=Blog --id=app_blog \
   --redirect=http://localhost:8787/wp-content/plugins/zero-app-blog/public/ --origin=http://localhost:8787
-./target/release/zero dev wp examples/blog -- user application-password create admin zero-sync --porcelain
+./target/release/zero wp --site examples/blog user application-password create admin zero-sync --porcelain
 ```
 
 These commands assume Studio printed `http://localhost:8787`; substitute its
@@ -70,7 +75,7 @@ actual URL in the registration and sync commands if different. The page is at
 `http://localhost:8787/wp-content/plugins/zero-app-blog/public/`.
 Its Sign in button goes through the zero-identity screens; it switches between
 English and German and takes comments. Send its committed posts to the site with
-`zero sync examples/blog --site http://localhost:8787 --app-password admin:<application password>`,
+`ZERO_APP_PASSWORD=admin:<application password> zero sync examples/blog`,
 using the password created above. Stop it with `zero dev stop examples/blog`;
 the next start retains its content and uploads. Omit `--no-watch` to keep
 Zero watching and rebuilding sources in the foreground.

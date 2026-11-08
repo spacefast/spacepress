@@ -44,7 +44,7 @@ for suite in "${suites[@]}"; do
   compose exec -T wordpress php "/opt/identity-tests/$suite.php"
 done
 # Over real HTTP from the host: the PKCE flow, refresh rotation, Bearer on the REST API, CORS.
-wp zero-identity app add --name='Identity flow' --redirect="http://127.0.0.1:18181/callback" \
+wp zero identity app add --name='Identity flow' --redirect="http://127.0.0.1:18181/callback" \
   --origin="http://127.0.0.1:18181" --id=app_identity_flow >/dev/null
 IDENTITY_MAIL="http://127.0.0.1:$IDENTITY_MAIL_PORT" node --test "$here/flow.test.ts"
 # Reactivation keeps data and reruns the idempotent migration.

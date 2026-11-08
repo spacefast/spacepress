@@ -4,6 +4,37 @@
 use crate::diag::Diag;
 use crate::diag::Span;
 
+/// A Node built-in module the compiler supplies itself. Nothing is loaded for it; its functions
+/// lower in compile/host.rs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinModule {
+    /// `"node:crypto"` / `"crypto"`, lowered onto `Zero\Crypto`.
+    NodeCrypto,
+}
+
+impl BuiltinModule {
+    /// The functions the module exports in Zero code.
+    pub const fn exports(self) -> &'static [&'static str] {
+        match self {
+            BuiltinModule::NodeCrypto => &[
+                "createHash",
+                "createHmac",
+                "randomBytes",
+                "randomUUID",
+                "timingSafeEqual",
+            ],
+        }
+    }
+}
+
+/// The one lookup for Node built-in modules, shared by `import ... from` and `require(...)`.
+pub fn module(spec: &str) -> Option<BuiltinModule> {
+    match spec {
+        "node:crypto" | "crypto" => Some(BuiltinModule::NodeCrypto),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum Phase {
     Evaluator,
@@ -67,6 +98,11 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("db.builder", &["where"], overload("one filter object; updates require set(...) first", None, arity(1, 1), None)),
     ("db.builder", &["returning"], overload("no arguments", None, arity(0, 0), None)),
     ("global", &["String", "Number", "Boolean"], overload("value?: unknown", arity(0, 1), arity(0, 1), arity(0, 1))),
+    ("global", &["BigInt"], overload("value: bigint|number|string|boolean (runtime only)", None, arity(1, 1), arity(1, 1))),
+    ("BigInt", &["asIntN", "asUintN"], overload("bits: number, value: bigint (runtime only)", None, arity(2, 2), arity(2, 2))),
+    ("bigint", &["toString"], overload("radix?: number (2..36)", None, arity(0, 1), arity(0, 1))),
+    ("bigint", &["valueOf"], overload("no arguments", None, arity(0, 0), arity(0, 0))),
+    ("bigint", &["toLocaleString"], overload("refused: locale formatting depends on the host", None, None, None)),
     ("global", &["parseInt"], overload("text: string, radix?: number; other than base 10/powers of two: safe integers only", arity(1, 2), arity(1, 2), arity(0, 2))),
     ("global", &["parseFloat"], overload("text: string", arity(1, 1), arity(1, 1), arity(0, 1))),
     ("global", &["isFinite", "isNaN"], overload("value?: unknown", arity(0, 1), arity(0, 1), arity(0, 1))),

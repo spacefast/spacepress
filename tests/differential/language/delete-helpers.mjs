@@ -28,6 +28,8 @@ export function deleteUntyped() {
       attempt("regex", () => delete /x/.lastIndex),
       attempt("Math", () => delete Math.E),
       attempt("map method", () => delete new Map().get),
+      attempt("arguments length", () => { function f(a, b) { const r = delete arguments.length; return [r, arguments.length, "length" in arguments].join(","); } return f(1, 2); }),
+      attempt("error message", () => { const e = new Error("gone"); const r = delete e.message; return [r, JSON.stringify(e.message), "message" in e, Object.hasOwn(e, "message")].join(","); }),
     ],
   };
 }

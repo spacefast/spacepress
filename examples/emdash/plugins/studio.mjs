@@ -31,7 +31,7 @@ export async function install(directory) {
   const plugin = join(site, 'wp-content/plugins/zero-official-plugins');
   await cp(join(example, 'wordpress/zero-official-plugins'), plugin, { recursive: true, errorOnExist: true, force: false });
   await cp(join(example, 'LICENSE.upstream'), join(plugin, 'LICENSE.upstream'));
-  const wp = (...args) => command(['dev', 'wp', directory, '--', ...args]);
+  const wp = (...args) => command(['wp', '--site', directory, ...args]);
   await wp('plugin', 'activate', 'zero-official-plugins');
   return { site, base: status.siteUrl.replace(/\/$/, ''), wp };
 }

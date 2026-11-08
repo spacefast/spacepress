@@ -145,7 +145,7 @@ To leave the site running without watching, use `--no-watch`:
 ```sh
 ./target/release/zero dev examples/pantry --no-watch
 ./target/release/zero dev status examples/pantry
-./target/release/zero dev wp examples/pantry -- user application-password create admin zero-local --porcelain
+./target/release/zero wp --site examples/pantry user application-password create admin zero-local --porcelain
 ```
 
 Use the returned application password for API writes. Public reads need no
@@ -182,6 +182,9 @@ includes structured fields, collection/table relations, image delivery, a
 compiled class/action and a repeatable HTTP smoke check. Its separate
 `node examples/showcase/run.mjs` launcher still uses Docker; `zero dev` does not.
 
+Use your collections and actions from Claude Code, Claude Desktop, or Codex with
+the [agent connection guide](docs/agents.md).
+
 ## Use it from a frontend
 
 The generated client is dependency-free, erasable TypeScript over `fetch`.
@@ -191,7 +194,7 @@ config as `journal/zero.config.ts`, then
 
 ```sh
 ./target/release/zero dev journal --no-watch      # builds the client and starts WordPress
-./target/release/zero dev wp journal -- user application-password create admin zero-client --porcelain
+./target/release/zero wp --site journal user application-password create admin zero-client --porcelain
 ```
 
 Node 22.18+ runs this as-is from the `journal` directory, with the admin
@@ -263,7 +266,7 @@ boot on a site that misses any of them and names each one;
 - **Localization** with Polylang: one row per locale, shared fields kept equal,
   a generated `wpml-config.xml`.
 - **Migrations in**: `zero migrate config` imports EmDash, Payload or Sanity
-  schemas, and `zero migrate site` moves a site built with the
+  schemas, and `zero migrate-legacy` moves a site built with the
   [original Zero](docs/migrating-from-zero.md).
 
 ## Alongside WordPress

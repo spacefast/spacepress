@@ -230,7 +230,7 @@ test("a suspension zero-identity holds is never lifted by the move, even one com
 test("an account zero-identity erased stays erased", () => {
   const gus = appUser("gus");
   sql(`INSERT INTO wp_zero_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${gus}, NULL, 'deletion_requested', 0)`);
-  wp("zero-identity", "erase", String(gus));
+  wp("zero", "identity", "erase", String(gus));
   const user = () => sql(`SELECT user_email, display_name FROM wp_users WHERE ID = ${gus}`);
   const erased = user();
   assert.deepEqual(erased, [{ user_email: "", display_name: "Deleted account" }]);

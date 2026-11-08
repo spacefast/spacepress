@@ -19,6 +19,8 @@ pub enum Ty {
     Num,
     NumLit(f64),
     FreshNumLit(f64),
+    /// A JavaScript BigInt (`Zero\JsBigInt` at runtime).
+    BigInt,
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
     StrLit(String),
@@ -70,6 +72,8 @@ pub enum Ty {
     /// Epoch milliseconds (a PHP number) that remembers it came from `Date`.
     Date,
     Regex,
+    /// A standard host object the compiler lowers itself (compile/host.rs).
+    Host(HostTy),
     /// A caught exception.
     Error,
     // Zero runtime values
@@ -81,6 +85,26 @@ pub enum Ty {
     DbGlobals,
     DbGlobal(String),
     Builder(Box<Builder>),
+}
+
+/// Host objects with a nominal type: `Response` from `fetch`, `Headers`, `URLSearchParams`, and
+/// the `node:crypto` hash/HMAC chains and `randomBytes` buffers, which only exist inside one
+/// recognized expression.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HostTy {
+    Response,
+    Headers,
+    SearchParams,
+}
+
+impl HostTy {
+    pub fn name(&self) -> &'static str {
+        match self {
+            HostTy::Response => "Response",
+            HostTy::Headers => "Headers",
+            HostTy::SearchParams => "URLSearchParams",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -282,7 +306,9 @@ impl Ty {
             Ty::Predicate(_, target) => format!("a type predicate for {}", target.describe()),
             Ty::Promise(t) => format!("Promise<{}>", t.describe()),
             Ty::Date => "Date".into(),
+            Ty::BigInt => "bigint".into(),
             Ty::Regex => "RegExp".into(),
+            Ty::Host(h) => h.name().into(),
             Ty::Error => "Error".into(),
             Ty::Collection(t) => format!("collection \"{t}\""),
             Ty::Db => "db".into(),
@@ -688,26 +714,6 @@ pub fn user() -> Ty {
 }
 
 /// `ctx` for hooks and actions (§1.7).
-/// What `await fetch(...)` returns: the parts of a WHATWG Response a handler reads.
-pub fn fetch_response() -> Ty {
-    obj(&[
-        ("status", Ty::Num),
-        ("ok", Ty::Bool),
-        ("url", Ty::Str),
-        ("redirected", Ty::Bool),
-        (
-            "headers",
-            obj(&[
-                ("get", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str.nullable()))),
-                ("has", Ty::Fn(vec![Ty::Str], Box::new(Ty::Bool))),
-            ]),
-        ),
-        // Promises, as in JavaScript; PHP reads the body before the call returns.
-        ("text", Ty::Fn(vec![], Box::new(Ty::Promise(Box::new(Ty::Str))))),
-        ("json", Ty::Fn(vec![], Box::new(Ty::Promise(Box::new(Ty::Unknown))))),
-    ])
-}
-
 pub fn hook_ctx() -> Ty {
     obj(&[("user", user().nullable())])
 }

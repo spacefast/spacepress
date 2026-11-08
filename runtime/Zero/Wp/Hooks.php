@@ -44,7 +44,7 @@ final class Hooks
      *
      * @param array<string, list<string>> $views
      */
-    private static function toJs(mixed $value, array $views): mixed
+    public static function toJs(mixed $value, array $views): mixed
     {
         $class = is_object($value) ? $value::class : null;
         return match (true) {

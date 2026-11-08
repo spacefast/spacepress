@@ -1,7 +1,7 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
-import { job, jobs, once, env } from "zero"; // lane D
+import { job, jobs, once } from "zero"; // lane D
 import { jsCollections } from "./stdlib.js";
 
 const n = table({ id: id() });
@@ -826,7 +826,7 @@ export default defineConfig({
   jobs: laneDJobs(),
 });
 
-// ---- lane D: jobs, once(), env() (phase 2 §6.1). The Node shim keeps once() receipts and pending
+// ---- lane D: jobs, once(), process.env (phase 2 §6.1). The Node shim keeps once() receipts and pending
 // enqueue keys in memory; PHP keeps them in __zero_receipts and the outbox. Keys are unique per case.
 function laneDJobs() {
   return { ping: job({ input: { note: text() }, handler: async () => {} }) };
@@ -853,7 +853,7 @@ function laneDActions() {
       const same = await jobs.ping.enqueue({ note: "y" }, { key: "lane-d" });
       return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
     } }),
-    envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
+    envRead: action({ input: {}, handler: () => [process.env.ZERO_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.ZERO_LANE_D_UNSET === undefined] }),
   };
 }
 

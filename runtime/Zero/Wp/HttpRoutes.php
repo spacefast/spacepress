@@ -79,7 +79,7 @@ final class HttpRoutes
         }
         // The raw query, not $_GET: PHP's parse_str renames `a.b` to `a_b`, drops `x[]` into arrays
         // and keeps the last of a repeated name.
-        $query = (string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url($uri, PHP_URL_QUERY) ?? ''));
+        $query = (string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? ''));
         [$status, $out, $body] = $app->serveRoute($match, $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user);
         self::emit($status, $out, $body);
     }

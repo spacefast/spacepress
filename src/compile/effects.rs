@@ -636,6 +636,14 @@ impl Graph {
                     self.write_events.entry(event).or_default().insert(p.clone());
                     self.function_writes.entry(owner).or_default().insert(p.clone());
                     self.events.entry(event).or_default().insert(p.clone());
+                    // As for `=`: a JavaScript function may store any value into a member.
+                    if self.javascript_functions.contains(&owner) && !p.path.is_empty() {
+                        let dynamic = p.at(Step::DynamicValue);
+                        self.write_events.entry(event).or_default().insert(dynamic.clone());
+                        self.function_writes.entry(owner).or_default().insert(dynamic.clone());
+                        self.events.entry(event).or_default().insert(dynamic.clone());
+                        self.function_numeric.entry(owner).or_default().insert(dynamic);
+                    }
                     self.copy(src, Some(p), owner);
                 }
             }
@@ -1397,7 +1405,12 @@ impl Graph {
                 }
                 return None;
             }
-            ExprKind::Num(_) | ExprKind::Str(_) | ExprKind::Bool(_) | ExprKind::Null | ExprKind::Undefined => {
+            ExprKind::Num(_)
+            | ExprKind::BigInt(_)
+            | ExprKind::Str(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Null
+            | ExprKind::Undefined => {
                 return None;
             }
             ExprKind::Class(_) | ExprKind::Regex { .. } | ExprKind::TemplateStrings { .. } => {}

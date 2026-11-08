@@ -128,10 +128,7 @@ pub fn build(
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
     let wordpress_uses;
-    let catalog = crate::wordpress::abilities::Catalog::new(
-        &schema,
-        &read_lock(program, &project.join(crate::wordpress::abilities::LOCK))?,
-    );
+    let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program)?);
     // Each collection hook kind: its compiled functions, by owning plugin (None: the app).
     let mut hooks: HookFunctions = indexmap::IndexMap::new();
     let plugin_lock = read_plugin_lock(program, &project.join(crate::plugins::LOCK_PATH))?;
@@ -240,6 +237,8 @@ pub fn build(
             }
         }
     }
+    schema.wp_views =
+        !wordpress_uses.is_empty() && wordpress_uses.iter().any(|u| u.kind != compile::WordPressKind::Ability);
     // Hooks run in a fixed order per collection; sort for stable output.
     for c in schema.collections.values_mut() {
         c.hooks
@@ -407,9 +406,16 @@ fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<ser
     serde_json::from_str(&text).map(Some).map_err(|e| bad(e.to_string()))
 }
 
-/// `zero/abilities.json` through the program's file system (so a hosted source bundle captures it);
-/// absent means no locked abilities.
-fn read_lock(program: &loader::Program, path: &Path) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
+/// `zero/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
+/// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
+/// browser read the same lock the command line does. Absent means no locked abilities.
+fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
+    let entry = &program.modules[program.entry].path;
+    let path = entry
+        .parent()
+        .expect("the entry has a directory")
+        .join(crate::wordpress::abilities::LOCK);
+    let path = path.as_path();
     if !program.fs.exists(path) {
         return Ok(Vec::new());
     }

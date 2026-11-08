@@ -645,6 +645,13 @@ test("core meta and Zero's query args keep every denial: masks, hidden filters, 
   // Meta writes are authorized like `acf` ones: a hidden field can't be written, even unchanged.
   const write = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { meta: { salary: "70k" } } });
   assert.deepEqual([write.status, write.json.data?.pointer], [403, "/salary"]);
+  // A data-dependent update rule sees each meta value as it will be saved, so the check before
+  // the save and the one after agree (events: a non-editor may only reset `extra` to {}).
+  const event = zero("insert", "events", JSON.stringify({ title: `Rule ${run}`, extra: { k: 1 } }))[0].id;
+  const reset = await http("POST", `${core}/zero_events/${event}`, { as: "author", body: { meta: { extra: {}, startsAt: "2026-01-01T10:00:00+02:00" } } });
+  assert.deepEqual([reset.status, reset.json.meta?.extra, reset.json.meta?.startsAt], [200, {}, "2026-01-01T08:00:00.000Z"], JSON.stringify(reset.json));
+  const refused = await http("POST", `${core}/zero_events/${event}`, { as: "author", body: { meta: { extra: { k: 2 } } } });
+  assert.equal(refused.status, 403);
   const twice = await http("POST", `${core}/zero_payroll/${id}`, { as: "admin", body: { meta: { salary: "1" }, acf: { zero_salary: "2" } } });
   assert.deepEqual([twice.status, twice.json.data?.pointer], [403, "/salary"], "one field, one selector");
 });

@@ -307,6 +307,8 @@ struct FnCtx {
     function: Span,
     scopes: Vec<HashMap<String, Local>>,
     is_async: bool,
+    /// `function*`: `yield` is legal and the body compiles to a PHP Generator.
+    is_generator: bool,
     ret: Option<Ty>,
     /// Inferred return types (when no annotation).
     returns: Vec<Ty>,
@@ -354,6 +356,10 @@ pub struct Compiler<'a, 'p> {
     helper_values: HashMap<(usize, usize), String>,
     helper_closures: HashMap<usize, Rc<Closure>>,
     helper_types: HashMap<usize, Ty>,
+    /// Emitted helpers for captured values: (plugin owner, kind, allocation). Kinds in use:
+    /// 0 array, 1 object, 2 regex, 5 unregistered symbol, 6 WeakMap/WeakSet. Other branches
+    /// claim 3 (Value::Coll, feat/stdlib-objects) and 4 (Value::Native, feat/binary-data); a
+    /// new value kind takes the next unused number so addresses of different kinds never collide.
     data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
     used_names: HashSet<String>,
@@ -364,6 +370,8 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// Generated code queues promise jobs, so each root drains them and checks rejections at its end.
+    uses_jobs: bool,
     /// Every ability `abilities.call` may name, typed (src/abilities.rs).
     pub abilities: crate::wordpress::abilities::Catalog,
     /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
@@ -432,6 +440,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             annotation_steps: 0,
             resolving_json_types: HashSet::new(),
             async_callback: false,
+            uses_jobs: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
             helper_closures: HashMap::new(),
@@ -797,6 +806,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     t => t.clone(),
                 };
                 crate::builtins::check_json_serialization_type(&ret, root.closure.func.span)?;
+                self.check_class_wire_type(&ret, root.closure.func.span)?;
                 self.action_results.insert(action.clone(), ret);
             }
             if let Slot::WpHook { index } = &root.slot {
@@ -852,6 +862,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.plugin = None;
         while let Some((closure, name, params)) = self.pending.pop() {
             self.compile_function(&closure, &name, params, None, false)?;
+        }
+        if self.uses_jobs {
+            self.wrap_roots_with_job_queue(&out);
         }
         Ok(out)
     }
@@ -932,6 +945,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .entry(closure_key(closure))
             .or_insert_with(|| closure.clone());
         let f = closure.func.clone();
+        if f.is_generator && !self.javascript_module(f.module) {
+            return err_help(
+                f.span,
+                "generators only work in imported JavaScript",
+                "return an array, or move the generator into a .js module",
+            );
+        }
         if matches!(slot, Some(Slot::FieldAccess { .. })) && f.is_async {
             return err_help(
                 f.span,
@@ -943,6 +963,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
+            is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
             diverging: HashSet::new(),
@@ -1071,7 +1092,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }),
             ),
         );
-        let _ = writeln!(self.output, "function {name}({params_php})\n{{\n{body}}}\n");
+        if self.suspends(&f) {
+            let wrapper = self.suspending_wrapper(&f, &format!("\\ZeroApp\\{name}__body"));
+            let _ = writeln!(
+                self.output,
+                "function {name}__body({params_php})\n{{\n{body}}}\n\nfunction {name}(mixed ...$args)\n{{\n    return {wrapper};\n}}\n"
+            );
+        } else {
+            let _ = writeln!(self.output, "function {name}({params_php})\n{{\n{body}}}\n");
+        }
         Ok(())
     }
 
@@ -1189,6 +1218,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let mut body = arguments + &self.javascript_prologue(f, 1)?;
         body.push_str(&prologue);
+        body.push_str(&self.generator_prologue(f, 1));
         match &f.body {
             FnBody::Expr(e) => {
                 let v = self.return_value(e)?;
@@ -1691,12 +1721,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.pop();
             }
             Stmt::ForOf {
+                is_await,
                 kind,
                 pat,
                 iter,
                 body,
                 span,
             } => {
+                let module = self.fx().module;
+                if *is_await && !self.javascript_module(module) {
+                    return err_help(
+                        *span,
+                        "`for await` only works in imported JavaScript",
+                        "await each value inside a `for ... of` loop",
+                    );
+                }
+                if *is_await && !self.fx().is_async {
+                    return err_help(
+                        *span,
+                        "`for await` only works in async functions",
+                        "mark the function `async`",
+                    );
+                }
                 self.fx().scopes.push(HashMap::new());
                 if *kind != DeclKind::Var {
                     self.predeclare_lexical(pat, *kind == DeclKind::Let);
@@ -1717,12 +1763,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "check it first, or use `?? []`",
                     );
                 }
-                let el = widen_fresh_literals(&el);
+                // Each `for await` value is awaited, so its type is the awaited one.
+                let el = if *is_await {
+                    Ty::Dynamic
+                } else {
+                    widen_fresh_literals(&el)
+                };
                 let mutable = *kind != DeclKind::Const;
                 let source = self.tmp_var();
                 let index = self.tmp_var();
                 let value = self.tmp_var();
-                if it.ty == Ty::Dynamic {
+                // Checked JavaScript iterates by protocol and closes the iterator on any early exit.
+                let protocol = (it.ty == Ty::Dynamic || *is_await) && self.javascript_module(module);
+                if protocol {
+                    let open = if *is_await { "openAsync" } else { "open" };
+                    if *is_await {
+                        self.uses_jobs = true;
+                    }
+                    let _ = writeln!(
+                        out,
+                        "{p}{source} = \\Zero\\JsIter::{open}({});\n{p}try {{\n{p}while ({source}->step()) {{",
+                        it.php
+                    );
+                    let _ = writeln!(out, "{}{value} = {source}->value;", pad(indent + 1));
+                } else if it.ty == Ty::Dynamic {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
                     let _ = writeln!(
@@ -1748,6 +1812,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.invalidate_loop(*span);
                 out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
+                if protocol {
+                    // A throw closes quietly; break/return/normal completion close and may throw.
+                    let _ = writeln!(
+                        out,
+                        "{p}}} catch (\\Throwable {value}) {{\n{p}    {source}->abrupt();\n{p}    throw {value};\n{p}}} finally {{\n{p}    {source}->close();\n{p}}}"
+                    );
+                }
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
                     && let Resolved::Local(local) = self.resolve(&name, *span)?
@@ -1915,12 +1986,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 out.push_str(&inner?);
                 if let Some(h) = handler {
                     self.fx().scopes.push(HashMap::new());
+                    let module = self.fx().module;
+                    let javascript = self.javascript_module(module);
                     let var = match param {
-                        Some((n, span)) => self.declare_local(n, Ty::Error, false, *span),
+                        Some((n, span)) => {
+                            self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span)
+                        }
                         None => self.tmp_var(),
                     };
                     // Database and validation errors propagate: they must roll back the request.
                     let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {var}) {{");
+                    if javascript && param.is_some() {
+                        // Checked JavaScript catches any thrown value, not only Errors.
+                        let _ = writeln!(out, "{}{var} = \\Zero\\Js::thrownValue({var});", pad(indent + 1));
+                    } else if param.is_some() {
+                        let _ = writeln!(out, "{}{var} = \\Zero\\Js::caughtError({var});", pad(indent + 1));
+                    }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
                 }
@@ -2150,6 +2231,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let v = self.expr(e)?;
         if v.ty == Ty::Error {
             return Ok(v.php);
+        }
+        let module = self.fx().module;
+        if self.javascript_module(module) {
+            let v = self.finish_value(v, e.span)?;
+            return Ok(format!("\\Zero\\Js::throwable({})", v.php));
         }
         err_help(
             e.span,
@@ -2787,6 +2873,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
+                // Host classes Zero implements answer `instanceof` from imported JavaScript.
+                if let ExprKind::Ident(name) = &right.kind
+                    && matches!(
+                        name.as_str(),
+                        "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
+                    )
+                    && self.javascript_module(self.fx.as_ref().expect("fn").module)
+                    && matches!(self.resolve(name, right.span)?, Resolved::Global(_))
+                {
+                    let left = self.expr(left)?;
+                    let class = match name.as_str() {
+                        "Promise" => "JsPromise",
+                        "ReadableStream" => "JsReadableStream",
+                        "WritableStream" => "JsWritableStream",
+                        _ => "JsTransformStream",
+                    };
+                    return Ok(Out::atom(
+                        format!("({} instanceof \\Zero\\{class})", left.php),
+                        Ty::Bool,
+                    ));
+                }
                 let left = self.expr(left)?;
                 let right = self.expr(right)?;
                 if right.ty == Ty::Dynamic {
@@ -2928,6 +3035,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 Out::atom(format!("(new \\Zero\\JsArray([{}]))", parts.join(", ")), ty)
             }
+            ExprKind::Object(props)
+                if self.javascript_module(self.fx.as_ref().expect("fn").module)
+                    && props.iter().any(|p| !matches!(p, Prop::KV(PropKey::Static(_), _))) =>
+            {
+                self.javascript_object(props)?
+            }
             ExprKind::Object(props) => {
                 let mut parts = Vec::new();
                 let mut fields: IndexMap<String, (Ty, bool)> = IndexMap::new();
@@ -3002,6 +3115,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Func(f) => self.closure_expr(f)?,
             ExprKind::Unary(op, x) => {
+                if *op == UnOp::TypeOf
+                    && let Some(kind) = self.global_type_of(x)?
+                {
+                    return Ok(Out::atom(php_str(kind), Ty::StrLit(kind.into())));
+                }
                 let v = self.expr(x)?;
                 let v = if matches!(op, UnOp::TypeOf) && matches!(v.ty, Ty::Class(_)) {
                     v
@@ -3191,6 +3309,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.expr(inner)?
             }
             ExprKind::Await(x) => self.await_expr(x, span)?,
+            ExprKind::Yield { arg, delegate } => self.yield_expr(arg.as_deref(), *delegate, span)?,
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
                 let module = self.fx().module;
@@ -3641,6 +3760,55 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
             ),
+            Value::Symbol(symbol) => {
+                self.require_javascript_symbols(span)?;
+                let php = match &**symbol {
+                    SymbolVal::Registered(key) => format!("\\Zero\\JsSymbol::for({})", php_str(key)),
+                    SymbolVal::WellKnown(name) => format!("\\Zero\\JsSymbol::wellKnown({})", php_str(name)),
+                    SymbolVal::Unique(description) => {
+                        let key = (self.owner(), 5, Rc::as_ptr(symbol) as usize);
+                        let name = match self.data_helpers.get(&key) {
+                            Some(name) => name.clone(),
+                            None => {
+                                let name = self.unique_name("captured_symbol");
+                                self.data_helpers.insert(key, name.clone());
+                                let description = description.as_deref().map(php_str).unwrap_or_default();
+                                let _ = writeln!(
+                                    self.output,
+                                    "function {name}(): \\Zero\\JsSymbol {{ static $value; return $value ??= \\Zero\\JsSymbol::create(new \\Zero\\JsArray([{description}])); }}\n"
+                                );
+                                name
+                            }
+                        };
+                        format!("\\ZeroApp\\{name}()")
+                    }
+                };
+                Ok(Out::atom(php, Ty::Dynamic))
+            }
+            Value::Weak(weak) => {
+                let kind = if weak.set { "WeakSet" } else { "WeakMap" };
+                if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                    return err_help(
+                        span,
+                        format!("`{n}` is a {kind}, which TypeScript code here can't use"),
+                        format!("use the {kind} from imported JavaScript, or key a Record<string, T> by a string id"),
+                    );
+                }
+                let key = (self.owner(), 6, Rc::as_ptr(weak) as usize);
+                let name = match self.data_helpers.get(&key) {
+                    Some(name) => name.clone(),
+                    None => {
+                        let name = self.unique_name("captured_weak");
+                        self.data_helpers.insert(key, name.clone());
+                        let _ = writeln!(
+                            self.output,
+                            "function {name}(): \\Zero\\Js{kind} {{ static $value; return $value ??= new \\Zero\\Js{kind}(); }}\n"
+                        );
+                        name
+                    }
+                };
+                Ok(Out::atom(format!("\\ZeroApp\\{name}()"), Ty::Dynamic))
+            }
             Value::Regex(p, f) => {
                 let key = (self.owner(), 2, Rc::as_ptr(p) as *const () as usize);
                 let name = if let Some(name) = self.data_helpers.get(&key) {
@@ -3915,7 +4083,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         }
-        body = arguments + &self.javascript_prologue(f, 2)? + &body;
+        body = arguments + &self.javascript_prologue(f, 2)? + &body + &self.generator_prologue(f, 2);
         match &f.body {
             FnBody::Expr(e) => {
                 let v = self.expr(e)?;
@@ -4001,6 +4169,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
+            is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
             diverging: HashSet::new(),
@@ -4018,7 +4187,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             no_db: self.fx().no_db,
             access: None,
         };
-        if f.is_async && !std::mem::take(&mut self.async_callback) {
+        if f.is_generator && !self.javascript_module(module) {
+            return err_help(
+                f.span,
+                "generators only work in imported JavaScript",
+                "return an array, or move the generator into a .js module",
+            );
+        }
+        if f.is_async && !self.javascript_module(module) && !std::mem::take(&mut self.async_callback) {
             return err_help(
                 f.span,
                 "async callbacks aren't supported",
@@ -4068,6 +4244,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             _ => format!("function ({params_php}){use_clause} {{\n{body}{}}}", pad(1)),
+        };
+        let php = if self.suspends(f) {
+            self.suspending_closure(f, php)
+        } else {
+            php
         };
         let php = if let Some((keys, descending)) = crate::builtins::sort_key(f) {
             let keys = keys.iter().map(|key| php_str(key)).collect::<Vec<_>>().join(", ");
@@ -4612,6 +4793,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
+                if let Some(ty) = self.class_accessor_write(&o.ty, prop, *prop_span)? {
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(
+                            format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
+                            ty.clone(),
+                        ),
+                        constraint: ty,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Dynamic,
+                        }),
+                    });
+                }
                 if let Ty::Class(id) = o.ty {
                     o.ty = self.class_shape(id);
                 }
@@ -4848,6 +5043,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if matches!(&obj.kind, ExprKind::Ident(n) if n == "super") {
+            return self.super_member(prop, prop_span);
+        }
         if prop.starts_with('#') {
             return self.private_read(obj, prop, optional, prop_span);
         }
@@ -4865,6 +5063,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ("Number", "MAX_SAFE_INTEGER") => Ok(Out::atom("9007199254740991", Ty::Num)),
                 ("Number", "MIN_SAFE_INTEGER") => Ok(Out::atom("-9007199254740991", Ty::Num)),
                 ("Number", "isFinite") => Ok(number_is_finite_function()),
+                ("globalThis", _) => match crate::eval::global_member(prop) {
+                    crate::eval::GlobalMember::Absent => Ok(Out::atom("\\Zero\\Js::undefined()", Ty::Undefined)),
+                    crate::eval::GlobalMember::Provided("NaN") => Ok(Out::atom("NAN", Ty::Num)),
+                    crate::eval::GlobalMember::Provided("Infinity") => Ok(Out::atom("INF", Ty::Num)),
+                    crate::eval::GlobalMember::Provided(g) => err_help(
+                        span,
+                        format!("`globalThis.{g}` can't be used as a value"),
+                        format!("use `{g}` directly; `typeof globalThis.{g}` is resolved at compile time"),
+                    ),
+                    crate::eval::GlobalMember::Refused => Err(crate::eval::refused_global_member(prop, prop_span)),
+                },
+                ("Symbol", name) if WELL_KNOWN_SYMBOLS.contains(&name) => {
+                    self.require_javascript_symbols(span)?;
+                    Ok(Out::atom(
+                        format!("\\Zero\\JsSymbol::wellKnown({})", php_str(name)),
+                        Ty::Dynamic,
+                    ))
+                }
                 (
                     "Math",
                     method @ ("abs" | "floor" | "ceil" | "trunc" | "round" | "min" | "max" | "pow" | "sqrt" | "sign"),
@@ -5190,9 +5406,36 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let v = self.expr(x)?;
+        let module = self.fx().module;
+        // Zero's own typed async calls (fetch, database builders, typed helpers) block, as in
+        // TypeScript; any other awaited value from checked JavaScript goes through the job queue.
+        if self.javascript_module(module) && !matches!(v.ty, Ty::Promise(_) | Ty::Builder(_)) {
+            let v = self.finish_value(v, x.span)?;
+            self.uses_jobs = true;
+            return Ok(Out::atom(
+                format!(
+                    "\\Zero\\JsJobs::await({}, {})",
+                    v.php,
+                    php_str(&crate::diag::site(span))
+                ),
+                Ty::Dynamic,
+            ));
+        }
         Ok(match v.ty {
             Ty::Promise(t) => Out { ty: *t, ..v },
             Ty::Builder(b) => Out::new(b.php(), b.result(self.schema)),
+            // A call into imported JavaScript may return a promise; awaiting it drives the job queue.
+            Ty::Dynamic => {
+                self.uses_jobs = true;
+                Out::atom(
+                    format!(
+                        "\\Zero\\JsJobs::await({}, {})",
+                        v.php,
+                        php_str(&crate::diag::site(span))
+                    ),
+                    Ty::Dynamic,
+                )
+            }
             other => {
                 return err_help(
                     span,
@@ -5209,7 +5452,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if let ExprKind::Ident(name) = &callee.kind
             && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
-            && (name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module))
+            && (!matches!(name.as_str(), "Map" | "Set" | "WeakMap" | "WeakSet")
+                || self.javascript_module(self.fx.as_ref().expect("fn").module))
         {
             self.builtin_args("constructor", name, args, span)?;
         }
@@ -5224,9 +5468,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Regex,
             ));
         }
+        if self.javascript_module(self.fx.as_ref().expect("fn").module)
+            && let ExprKind::Ident(name) = &callee.kind
+            && matches!(
+                name.as_str(),
+                "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
+            )
+            && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
+        {
+            let argv = self.javascript_args(args)?;
+            self.uses_jobs = true;
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicConstruct({}, {argv})", php_str(name)),
+                Ty::Dynamic,
+            ));
+        }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
             if let ExprKind::Ident(name) = &callee.kind
-                && matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp")
+                && matches!(name.as_str(), "Set" | "Map" | "WeakMap" | "WeakSet" | "Date" | "RegExp")
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
                 if name == "Date" {
@@ -5282,6 +5541,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("`new {n}` isn't supported"),
                 if n == "Map" {
                     "use Record<string, T> for string keys, or an array for simple membership; these do not provide Map key identity"
+                } else if matches!(n.as_str(), "WeakMap" | "WeakSet") {
+                    "use it from imported JavaScript, or key a Record<string, T> by a string id"
                 } else {
                     "use plain objects and arrays, or a supported named class"
                 },
@@ -6007,7 +6268,58 @@ impl<'a, 'p> Compiler<'a, 'p> {
         crate::builtins::check(surface, name, args.len(), phase, span)
     }
 
+    /// `typeof Symbol`, `typeof globalThis.X`: decided at compile time for globals.
+    /// None when `x` is not a global name or `globalThis` member.
+    fn global_type_of(&mut self, x: &Expr) -> Result<Option<&'static str>> {
+        let global = |this: &mut Self, e: &Expr| match &e.kind {
+            ExprKind::Ident(n) => match this.resolve(n, e.span) {
+                Ok(Resolved::Global(g)) => Some(g),
+                _ => None,
+            },
+            _ => None,
+        };
+        let name = match &x.kind {
+            ExprKind::Member {
+                obj, prop, prop_span, ..
+            } if global(self, obj) == Some("globalThis") => match crate::eval::global_member(prop) {
+                crate::eval::GlobalMember::Provided(g) => g,
+                crate::eval::GlobalMember::Absent => return Ok(Some("undefined")),
+                crate::eval::GlobalMember::Refused => return Err(crate::eval::refused_global_member(prop, *prop_span)),
+            },
+            _ => match global(self, x) {
+                Some(g) => g,
+                None => return Ok(None),
+            },
+        };
+        if matches!(
+            name,
+            "process" | "require" | "crypto" | "fetch" | "setTimeout" | "Promise" | "eval" | "Function"
+        ) {
+            return err_help(
+                x.span,
+                format!("typeof `{name}` depends on the host and isn't supported"),
+                "use supported JavaScript values instead of host-global detection",
+            );
+        }
+        Ok(Some(crate::eval::global_type_of(name)))
+    }
+
+    /// Symbols are values of imported JavaScript. Authored TypeScript has no symbol type yet.
+    fn require_javascript_symbols(&self, span: Span) -> Result<()> {
+        if self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            return Ok(());
+        }
+        err_help(
+            span,
+            "symbols aren't supported in TypeScript code yet",
+            "use a string key, or keep the symbol in imported JavaScript",
+        )
+    }
+
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if g == "Symbol" {
+            self.require_javascript_symbols(span)?;
+        }
         self.builtin_args("global", g, args, span)?;
         if g == "parseInt" {
             crate::builtins::check_parse_int_literals(args, span)?;
@@ -6026,6 +6338,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(format!("\\Zero\\Js::dynamicRegExpCall({argv})"), Ty::Dynamic));
         }
+        if g == "Symbol" {
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(format!("\\Zero\\JsSymbol::create({argv})"), Ty::Dynamic));
+        }
+        if g == "globalThis" {
+            return err_help(span, "`globalThis` isn't a function", "remove the call");
+        }
         let argv = self.plain_args(args)?;
         let a0 = argv.first();
         Ok(match (g, a0) {
@@ -6033,6 +6352,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Number", None) => Out::atom("0", Ty::Num),
             ("Boolean", None) | ("isFinite", None) => Out::atom("false", Ty::Bool),
             ("isNaN", None) => Out::atom("true", Ty::Bool),
+            ("String", Some(v)) if v.ty == Ty::Dynamic => {
+                Out::atom(format!("\\Zero\\Js::stringOf({})", v.php), Ty::Str)
+            }
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
             ("structuredClone", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::clone({})", v.php), classes::wire_type(&v.ty))
@@ -6092,7 +6414,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if g == "globalThis" {
+            return match crate::eval::global_member(m) {
+                crate::eval::GlobalMember::Provided(g) => self.global_call(g, args, span),
+                crate::eval::GlobalMember::Absent => err_help(
+                    span,
+                    format!("`globalThis.{m}` is undefined in Zero, so this call always throws"),
+                    format!("check `typeof globalThis.{m}` first, or remove the call"),
+                ),
+                crate::eval::GlobalMember::Refused => Err(crate::eval::refused_global_member(m, span)),
+            };
+        }
+        if g == "Symbol" {
+            self.require_javascript_symbols(span)?;
+        }
         self.builtin_args(g, m, args, span)?;
+        if g == "Symbol" && matches!(m, "for" | "keyFor") {
+            let argv = self.javascript_args(args)?;
+            let method = if m == "for" { "for" } else { "keyFor" };
+            return Ok(Out::atom(
+                format!("\\Zero\\JsSymbol::{method}(...({argv})->a)"),
+                Ty::Dynamic,
+            ));
+        }
+        if g == "Promise" && self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            let argv = self.javascript_args(args)?;
+            self.uses_jobs = true;
+            return Ok(Out::atom(
+                format!("\\Zero\\JsPromise::staticCall({}, ({argv})->a)", php_str(m)),
+                Ty::Dynamic,
+            ));
+        }
         if (g, m) == ("Math", "pow") {
             crate::builtins::check_power_literals(args, span)?;
         }

@@ -274,6 +274,8 @@ class LanguageDraftView extends LanguageView {
 }
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
+// Feature detection on globalThis is resolved at compile time in both phases.
+const GLOBAL_DETECTION = [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.Math, typeof globalThis.window, typeof globalThis.location, globalThis.Deno === undefined];
 
 // Build-time namespaces: objects holding functions, and functions with own properties,
 // are resolved member by member at compile time; they never exist in PHP.
@@ -477,6 +479,10 @@ export default defineConfig({
     functionProperties: run(() => [tagged("x"), tagged.prefix, tagged.upper("y"), tagged.count, tagged.nested.flag]),
     functionAssign: run(() => [picoish.matcher.version, picoish.matcher.test("a", "a"), picoish.matcher.test("a", "b").isMatch,
       picoish.matcher.makeRe("a.b").source, picoish.matcher.makeRe("a..b").test("a.b"), picoish.matcher.scan("src/*.ts"), picoish.matcher.constants.SEP]),
+    globalDetection: run(() => ({
+      buildTime: GLOBAL_DETECTION,
+      runtime: [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.WeakMap, typeof globalThis.JSON, typeof globalThis.window, typeof globalThis.Bun, typeof globalThis.Deno, typeof globalThis.document, globalThis.window === undefined, globalThis.Bun !== undefined, typeof Symbol, typeof WeakSet],
+    })),
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
     argumentSerialization: run(() => argumentSerialization("original", "tail")),

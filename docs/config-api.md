@@ -367,6 +367,30 @@ filters cannot probe them. Media and private file references work on both kinds.
 
 `ctx` is `{ user: { id, name, role } | null }`.
 
+`ctx` is an ordinary value. Pass it to helpers, return it, and read its keys,
+including `ctx["user"]` and keys typed `keyof HookCtx`. Type a helper's
+parameters with the types `"zero"` exports:
+
+- `HookCtx` for the context of an action, hook or route;
+- `JobCtx` for a job's context, which adds `attempt` and `jobId`;
+- `User` and `Role` for `ctx.user` and its role;
+- `RouteRequest` and `RouteResponse` for a route's request and result.
+
+```ts
+import { db, type HookCtx, type User } from "zero";
+
+function author(ctx: HookCtx): string {
+  return ctx.user === null ? "guest" : ctx.user.name;
+}
+async function addNote(ctx: HookCtx, body: string) {
+  await db.insert(notes).values({ body, author: author(ctx) });
+}
+```
+
+A key read whose value no type bounds, such as `ctx[name]` with
+`name: string`, is refused. Use a `keyof` type, a `switch` or a
+`Record<string, T>` instead.
+
 Throwing anything aborts the request and rolls back every write in it.
 `throw new HttpError(status, code, message)` picks the HTTP response.
 
@@ -1170,12 +1194,23 @@ fields, parameters and returns use checked JavaScript values, and method values
 such as `instance.method` keep one identity per class, so `call` supplies the
 receiver.
 
+Class `get`/`set` accessors, including `static` ones, live on the class like
+prototype members: they are not own fields, so `Object.keys` and JSON skip them.
+Own data wins over an accessor, and an accessor wins over a method. Assigning a
+getter without a setter is a compile error in typed code and a `TypeError` in
+imported JavaScript. Redefining either half in a subclass replaces the inherited
+pair, and `super.name` reads the parent getter with the current receiver. A
+getter's type comes from its return annotation, its setter's parameter, or its
+body. A class `toJSON()` method is called by `JSON.stringify` with the property
+key; actions that return such an instance directly are refused, because the
+generated client describes own fields.
+
 These class features remain outside the supported surface, with located errors:
 class expressions, default-export class declarations and
 anonymous/local/abstract/ambient/generic classes;
-decorators; private/protected members; accessors; static blocks; computed names;
+decorators; private/protected members; private accessors; static blocks; computed names;
 generic/rest methods; dynamic or built-in inheritance; constructor return values;
-prototype/reflection machinery and custom coercion/serialization protocol members.
+prototype/reflection machinery and custom coercion members (`toString`, `valueOf`).
 Indexed class members and recursive class field types are also refused.
 Uninitialized optional fields follow the same missing-to-null boundary. Class
 values are limited to construction, `instanceof`, `typeof` and static access.

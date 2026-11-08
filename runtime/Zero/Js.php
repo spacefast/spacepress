@@ -13,6 +13,7 @@ namespace Zero;
 final class Js
 {
     use JsDynamic;
+    use JsAsync;
     /** JS WhiteSpace + LineTerminator, as a PCRE class body. */
     public const WS = '\x{9}-\x{D}\x{20}\x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}';
 
@@ -33,7 +34,8 @@ final class Js
             is_int($v), is_float($v) => self::numStr($v),
             $v instanceof JsBigInt => (string) $v,
             $v instanceof JsArray, $v instanceof JsArguments, $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
-            $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace, $v instanceof JsWeakMap, $v instanceof JsWeakSet => self::dynamicObjectTag($v),
+            $v instanceof JsSymbol => throw new JsError('Cannot convert a Symbol value to a string', 'TypeError'),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
@@ -128,6 +130,7 @@ final class Js
     public static function toNumber(mixed $v): int|float
     {
         if ($v instanceof JsDate) { return $v->milliseconds; }
+        if ($v instanceof JsSymbol) { throw new JsError('Cannot convert a Symbol value to a number', 'TypeError'); }
         if ($v instanceof JsBigInt) { throw new JsError('Cannot convert a BigInt value to a number', 'TypeError'); }
         if ($v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
         if (is_int($v)) {
@@ -518,8 +521,15 @@ final class Js
             is_bool($v) => 'boolean',
             $v instanceof JsBigInt => 'bigint',
             $v instanceof \Closure, $v instanceof JsClass => 'function',
+            $v instanceof JsSymbol => 'symbol',
             default => 'object',
         };
+    }
+
+    /** Explicit `String(value)`: unlike implicit conversion, a symbol has a string form. */
+    public static function stringOf(mixed $v): string
+    {
+        return $v instanceof JsSymbol ? $v->descriptiveString() : self::str($v);
     }
 
     public static function strictEq(mixed $a, mixed $b): bool
@@ -1183,6 +1193,9 @@ final class Js
         if ($key === '__proto__' && !$o->nullPrototype && !array_key_exists($key, $o->p)) {
             throw new JsError('Prototype mutation is not supported', 'TypeError');
         }
+        if ($o->class !== null && !array_key_exists($key, $o->p) && $o->class->writeInherited($o, $key, $value, false)) {
+            return $value;
+        }
         $o->p[$key] = $value;
         return $value;
     }
@@ -1224,12 +1237,29 @@ final class Js
      * null-prototype object has only its own properties. Arrays are dense, so an index is present
      * exactly when it is below the length.
      */
+    /**
+     * Whether an own-slot lookup decides a symbol key on $object exactly. Plain objects inherit
+     * no symbol keys, and built-in prototypes carry only well-known symbols
+     * (Array.prototype[Symbol.iterator], Function.prototype[Symbol.hasInstance], ...), which
+     * Zero doesn't model. A class instance without that own symbol is undecided: its
+     * prototype could define the symbol method.
+     */
+    public static function symbolAbsentInherited(mixed $object, JsSymbol $key): bool
+    {
+        if ($object instanceof JsObject) { return $object->class === null || $object->hasSymbol($key); }
+        return !$key->isWellKnown && !$object instanceof JsClass;
+    }
+
     public static function hasProperty(mixed $key, mixed $object): bool
     {
         if (!is_object($object) || $object instanceof JsUndefined) {
             $search = is_object($key) ? '[object Object]' : self::str($key);
             $in = is_string($object) ? $object : self::str($object);
             throw new JsError("Cannot use 'in' operator to search for '$search' in $in", 'TypeError');
+        }
+        if ($key instanceof JsSymbol) {
+            if (self::symbolAbsentInherited($object, $key)) { return $object instanceof JsObject && $object->hasSymbol($key); }
+            throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
         }
         $key = self::key($key);
         $index = static fn (int $length): bool => preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && (float) $key < 4294967295 && (int) $key < $length;
@@ -1280,6 +1310,13 @@ final class Js
     public static function delete(mixed $object, mixed $key): bool
     {
         if (self::isNullish($object)) { throw new JsError('Cannot convert undefined or null to object', 'TypeError'); }
+        if ($key instanceof JsSymbol) {
+            if (!$object instanceof JsObject) { throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError'); }
+            $slot = $object->symbols[spl_object_id($key)] ?? null;
+            if ($slot !== null && !$slot[4]) { throw new JsError('Cannot delete property ' . $key->descriptiveString() . ' of #<Object>', 'TypeError'); }
+            unset($object->symbols[spl_object_id($key)]);
+            return true;
+        }
         $key = self::key($key);
         $refuse = static function (string $where) use ($key): never {
             throw new JsError("Cannot delete property '$key' of $where", 'TypeError');
@@ -1850,6 +1887,10 @@ final class Js
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
+        if ($value instanceof JsSymbol || $value instanceof JsWeakMap || $value instanceof JsWeakSet) {
+            if ($structured) { throw new JsError(($value instanceof JsSymbol ? $value->descriptiveString() : self::dynamicObjectTag($value)) . ' could not be cloned', 'DataCloneError'); }
+            return $value;
+        }
         if ($value instanceof JsNamespace) {
             if (!$structured) { return $value; }
             if ($seen->offsetExists($value)) { return $seen[$value]; }
@@ -1908,21 +1949,30 @@ final class Js
     /** The JSON value tree shared by Zero's encoder and foreign encoders. */
     public static function jsonTree(mixed $value): mixed
     {
-        return self::jsonValueTree($value, new \SplObjectStorage());
+        return self::jsonValueTree(self::jsonClassValue($value, ''), new \SplObjectStorage());
+    }
+
+    /** SerializeJSONProperty step 2: a class `toJSON` method replaces the value, receiving the key. */
+    private static function jsonClassValue(mixed $value, string $key): mixed
+    {
+        if ($value instanceof JsObject && !array_key_exists('toJSON', $value->p) && $value->class !== null
+            && ($method = $value->class->readInherited($value, 'toJSON', false)) instanceof \Closure) {
+            return self::dynamicMethod($value, 'toJSON')($key);
+        }
+        return $value;
     }
 
     private static function jsonValueTree(mixed $value, \SplObjectStorage $stack): mixed
     {
-        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments) {
-            $custom = array_key_exists('toJSON', $value->p)
-                ? $value->p['toJSON'] instanceof \Closure
-                : $value instanceof JsObject && ($value->class?->hasMethod('toJSON') ?? false);
-            if ($custom) { throw new JsError('Custom toJSON callbacks are not supported', 'TypeError'); }
+        if (($value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments)
+            && array_key_exists('toJSON', $value->p) && $value->p['toJSON'] instanceof \Closure) {
+            throw new JsError('Custom toJSON callbacks are not supported', 'TypeError');
         }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsBigInt) { throw new JsError('Do not know how to serialize a BigInt', 'TypeError'); }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
-        if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError) { return new \stdClass(); }
+        if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError || $value instanceof JsWeakMap || $value instanceof JsWeakSet) { return new \stdClass(); }
+        if ($value instanceof JsSymbol) { return null; }
         if (is_float($value)) { return !is_finite($value) ? null : ($value == 0.0 ? 0 : $value); }
         if ($value instanceof \Closure) { return null; }
         if ($value instanceof RegExp) { return new \stdClass(); }
@@ -1944,15 +1994,16 @@ final class Js
             };
             if ($list) {
                 $out = [];
-                foreach ($items as $item) { $out[] = self::jsonValueTree($item, $stack); }
+                foreach ($items as $index => $item) { $out[] = self::jsonValueTree(self::jsonClassValue($item, (string) $index), $stack); }
                 return $out;
             }
             $out = [];
             $nulKey = false;
             foreach (self::ownKeys($items) as $key) {
-                if ($items[$key] instanceof \Closure || $items[$key] === JsUndefined::Value) { continue; }
+                $item = self::jsonClassValue($items[$key], (string) $key);
+                if ($item instanceof \Closure || $item === JsUndefined::Value || $item instanceof JsSymbol) { continue; }
                 $nulKey = $nulKey || str_starts_with((string) $key, "\0");
-                $out[$key] = self::jsonValueTree($items[$key], $stack);
+                $out[$key] = self::jsonValueTree($item, $stack);
             }
             if ($nulKey) { return $out; }
             $result = new \stdClass();
@@ -2009,10 +2060,11 @@ final class Js
 
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
-        if ($v instanceof \Closure || $v === JsUndefined::Value) {
+        $v = self::jsonClassValue($v, '');
+        if ($v instanceof \Closure || $v === JsUndefined::Value || $v instanceof JsSymbol) {
             return null;
         }
-        $v = self::jsonTree($v);
+        $v = self::jsonValueTree($v, new \SplObjectStorage());
         if (is_string($indent)) {
             // The first 10 units. Cutting a surrogate pair there only matters if the gap is
             // written (a non-empty array or object): a scalar or empty result never uses it.

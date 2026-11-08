@@ -4,7 +4,7 @@
     "seo": {
       "package": "zero-plugin-seo",
       "version": "1.2.0",
-      "integrity": "sha256-036bd8704942f897cb74d25d6f6a3a4a09490c2eb32b5ce03e2cb19cf583c2dc",
+      "integrity": "sha256-57710de56c20802e31af1903ef6fcc3c273ed9e08cb737314261c63ed0d1166a",
       "grant": {
         "read": [
           "posts"

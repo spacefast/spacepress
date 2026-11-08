@@ -803,15 +803,16 @@ pub(super) fn app(
             "ctx.auth.userId reads each member's copied Space Users subject (usr_...); users created after migration answer wp:<id>. Rows owned by 0.8 guest:<id> identities keep their stored owner but no v2 user maps to them, and anonymous writes answer 401 so the v2 client can start a guest session.",
         ));
     }
-    if handlers
-        .iter()
-        .chain(routes.iter().map(|(_, c)| c))
-        .any(|h| h.contains("__z08Crypto."))
-    {
+    let uses_crypto = handlers.iter().chain(routes.iter().map(|(_, c)| c)).any(|h| {
+        ["__z08Sha256(", "__z08Hmac(", "__z08TimingSafeEqual("]
+            .iter()
+            .any(|f| h.contains(f))
+    });
+    if uses_crypto {
         entries.push(entry(
             "",
             "mapped",
-            "ctx.crypto becomes crypto from \"zero\": the same lowercase-hex SHA-256 and HMAC-SHA-256 over UTF-8, and constant-time comparison; calls are synchronous",
+            "ctx.crypto becomes node:crypto: createHash and createHmac give the same lowercase-hex SHA-256 and HMAC-SHA-256 over UTF-8, a key named by a variable is read from process.env (trimmed, refused when unset), and timingSafeEqual compares in constant time; calls are synchronous",
         ));
     }
     if handlers
@@ -826,20 +827,14 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, env as __z08Env, crypto as __z08Crypto, mail as __z08Mail, type InferSelectModel } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel } from \"zero\";\n",
     );
+    if uses_crypto {
+        config.push_str(CRYPTO_PRELUDE);
+    }
     if !routes.is_empty() || !responses.is_empty() {
         config.push_str(super::endpoints::PRELUDE);
         config.push_str(&responses);
-    }
-    // 0.8 gave every handler the global fetch(); v2 imports it from "zero" with the same egress rules.
-    if uses_global_fetch(&body, source) {
-        config.push_str("import { fetch } from \"zero\";\n");
-        entries.push(entry(
-            "",
-            "mapped",
-            "fetch() comes from \"zero\": HTTPS only, private and special-purpose addresses refused after every redirect, 10 s and 1 MiB each way, as in 0.8",
-        ));
     }
     config.push_str(&prelude);
     if content_config.is_some() {
@@ -922,28 +917,23 @@ fn returns_body_read(e: &Expr) -> bool {
         if args.is_empty() && matches!(&callee.kind, E::Member { prop, .. } if prop == "json" || prop == "text"))
 }
 
-/// True when the module calls a global `fetch(` it does not bind itself. Lexical: a mention inside
-/// a string or comment only adds an import the module does not use, which compiles.
-fn uses_global_fetch(body: &[&Stmt], source: &str) -> bool {
-    let binds = body.iter().any(|s| match s {
-        Stmt::Import { specs, .. } => specs.iter().any(|s| s.local == "fetch"),
-        Stmt::Func(f) => f.name.as_deref() == Some("fetch"),
-        Stmt::Decl { pat, .. } => {
-            let mut names = vec![];
-            pat.bindings(&mut names);
-            names.iter().any(|(n, _)| *n == "fetch")
-        }
-        _ => false,
-    });
-    let bytes = source.as_bytes();
-    let calls = source.match_indices("fetch").any(|(at, _)| {
-        let before = at.checked_sub(1).map(|i| bytes[i]);
-        let after = source[at + 5..].trim_start();
-        !before.is_some_and(|b| b == b'.' || b == b'_' || b == b'$' || b.is_ascii_alphanumeric())
-            && after.starts_with('(')
-    });
-    calls && !binds
+/// ctx.crypto's three functions over node:crypto, with 0.8's results: SHA-256 and HMAC-SHA-256 as
+/// lowercase hex over UTF-8, a named key read from the environment (trimmed, refused when unset;
+/// the compiler lowers `createHmac(alg, process.env.NAME)` that way) or `{ value }` used as given
+/// (also when the value is `ctx.env.X`),
+/// and a comparison that answers false for inputs of different byte lengths, where Node throws.
+const CRYPTO_PRELUDE: &str = r#"import { createHash as __z08Hash, createHmac as __z08Hmac, timingSafeEqual as __z08Equal } from "node:crypto";
+function __z08Sha256(data: string): string {
+  return __z08Hash("sha256").update(data).digest("hex");
 }
+function __z08InlineKey(key: string | undefined): string {
+  if (key === undefined) throw new TypeError("crypto.hmacSha256 key must be a variable name or { value }");
+  return key;
+}
+function __z08TimingSafeEqual(a: string, b: string): boolean {
+  return Buffer.byteLength(a) === Buffer.byteLength(b) && __z08Equal(Buffer.from(a), Buffer.from(b));
+}
+"#;
 
 /// A route path with parameter names erased, so two routes v2 would refuse as ambiguous compare equal.
 fn route_shape(path: &str) -> String {
@@ -1574,6 +1564,58 @@ impl Rewrite<'_> {
         }
         out
     }
+    /// `ctx.crypto.hmacSha256({ key, data })`: a literal variable name becomes
+    /// `process.env["NAME"]`, so the compiler applies 0.8's trimmed, required key; `{ value }`
+    /// is the key as given.
+    fn hmac(&mut self, args: &[ArrEl]) -> Result<String, Failure> {
+        let at = pointer(&pointer(self.at, "ctx"), "crypto");
+        let manual = || {
+            fail(
+                &at,
+                "hmacSha256 needs a literal { key, data } object for the automatic port",
+            )
+        };
+        let [
+            ArrEl::Item(Expr {
+                kind: E::Object(props), ..
+            }),
+        ] = args
+        else {
+            return Err(manual());
+        };
+        let (mut key, mut data) = (None, None);
+        for p in props {
+            match p {
+                Prop::KV(PropKey::Static(k), v) if k == "key" => key = Some(v),
+                Prop::KV(PropKey::Static(k), v) if k == "data" => data = Some(v),
+                _ => return Err(manual()),
+            }
+        }
+        let (Some(key), Some(data)) = (key, data) else {
+            return Err(manual());
+        };
+        let key = match &key.kind {
+            E::Str(name)
+                if !name.is_empty()
+                    && name.chars().all(|c| c == '_' || c.is_ascii_alphanumeric())
+                    && !name.starts_with(|c: char| c.is_ascii_digit()) =>
+            {
+                format!("process.env[{}]!", q(name))
+            }
+            E::Object(kv) => match kv.as_slice() {
+                // Used exactly as given, as 0.8 did: the helper keeps a `ctx.env.X` value off the
+                // compiler's trimmed, required `createHmac(alg, process.env.X)` path.
+                [Prop::KV(PropKey::Static(k), value)] if k == "value" => {
+                    format!("__z08InlineKey({})", self.render(value)?)
+                }
+                _ => return Err(manual()),
+            },
+            _ => return Err(manual()),
+        };
+        let data = self.render(data)?;
+        Ok(format!("__z08Hmac(\"sha256\", {key}).update({data}).digest(\"hex\")"))
+    }
+
     fn render(&mut self, e: &Expr) -> Result<String, Failure> {
         let old = std::mem::take(&mut self.edits);
         self.expr(e)?;
@@ -1639,7 +1681,11 @@ impl Rewrite<'_> {
                     ArrEl::Spread(_) => Err(fail(self.at, "spread crypto arguments need a manual port")),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let text = format!("__z08Crypto.{prop}({})", rendered.join(", "));
+            let text = match prop.as_str() {
+                "hmacSha256" => self.hmac(args)?,
+                "sha256" => format!("__z08Sha256({})", rendered.join(", ")),
+                _ => format!("__z08TimingSafeEqual({})", rendered.join(", ")),
+            };
             // An unawaited call is returned or awaited later in 0.8 code; the value stands in for
             // its promise either way. Storing it unawaited (`const p = ctx.crypto...`) and then
             // awaiting it is refused by the v2 compiler's await check, which is the port pointer.
@@ -2233,7 +2279,7 @@ impl Rewrite<'_> {
     }
 
     /// Context services with a direct v2 counterpart:
-    /// - `ctx.env.NAME` / `ctx.env["NAME"]` → `env("NAME")`, the same process or wp-config value
+    /// - `ctx.env.NAME` / `ctx.env["NAME"]` → `process.env["NAME"]`, the same process or wp-config value
     ///   (0.8 withheld secret variables named as signing keys; v2 has no such keys to withhold);
     /// - `ctx.log.info|warn|error|debug(...)` → `console.*`, written to the PHP error log.
     ///
@@ -2244,7 +2290,7 @@ impl Rewrite<'_> {
         match &e.kind {
             E::Member { obj, prop, .. } if is(obj, "env") => {
                 ident(prop, &pointer(&pointer(self.at, "ctx"), "env"))?;
-                Ok(Some(format!("(__z08Env({}) ?? undefined)", q(prop))))
+                Ok(Some(format!("process.env[{}]", q(prop))))
             }
             E::Index { obj, index, .. } if is(obj, "env") => {
                 let E::Str(name) = &index.kind else {
@@ -2253,7 +2299,7 @@ impl Rewrite<'_> {
                         "env names must be literal",
                     ));
                 };
-                Ok(Some(format!("(__z08Env({}) ?? undefined)", q(name))))
+                Ok(Some(format!("process.env[{}]", q(name))))
             }
             E::Call {
                 callee,

@@ -4,7 +4,7 @@
     "ping": {
       "package": "zero-plugin-ping",
       "version": "2.0.0",
-      "integrity": "sha256-2eaa0c5ef23eaa3311ccffe15a73b98520e684d964462b609e180c997f6194c5",
+      "integrity": "sha256-368c3c917849a951172ba09a05f7aff15b7d4fe31b541121f899452acb6b37ce",
       "grant": {
         "read": [],
         "write": [],

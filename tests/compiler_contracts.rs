@@ -977,6 +977,106 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     }
 }
 
+/// The standard host forms (global fetch, Headers, URLSearchParams, process.env, crypto and
+/// node:crypto) give Node's results through the generated PHP, against one shared HTTP origin.
+#[test]
+fn host_globals_match_node_through_generated_php() {
+    let dir = root().join("tests/differential");
+    let mut origin = Command::new("node")
+        .arg(dir.join("host-origin.mjs"))
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let port = {
+        use std::io::BufRead as _;
+        let mut line = String::new();
+        std::io::BufReader::new(origin.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        line.trim().to_string()
+    };
+    struct Kill(std::process::Child);
+    impl Drop for Kill {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+        }
+    }
+    let _origin = Kill(origin);
+    let secret = " lane secret \n";
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(dir.join("host-crypto.cjs"), tmp.path().join("host-crypto.cjs")).unwrap();
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(tmp.path().join("zero.config.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&transpiled.stdout)
+    );
+    // The config imports its CommonJS helper, which Node loads with its own require.
+    let module = std::fs::read_to_string(js.join("zero.config.js")).unwrap();
+    std::fs::write(js.join("zero.config.mjs"), module).unwrap();
+    std::fs::copy(dir.join("host-crypto.cjs"), js.join("host-crypto.cjs")).unwrap();
+    // Node reads the origin directly; the PHP side sees the same answers through the stub.
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(js.join("zero.config.mjs"))
+        .env("HOST_URL", format!("http://127.0.0.1:{port}"))
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    let mut expected = expected["cases"].clone();
+    assert_eq!(expected.as_object().unwrap().len(), 10, "{expected}");
+    assert!(
+        expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
+        "{expected}"
+    );
+    // Zero trims a process.env HMAC key (0.8's keyring rule); Node uses it as given.
+    assert_eq!(expected["secrets"]["data"][0], false);
+    expected["secrets"]["data"][0] = json!(true);
+    let content = build_wp(tmp.path());
+    let out = Command::new("php")
+        .args([
+            "-r",
+            r#"
+require $argv[1];
+require $argv[3];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$out = [];
+foreach ($schema['actions'] as $name => $action) {
+    $fn = '\\ZeroApp\\' . $action['handler'];
+    try { $out[$name] = ['data' => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]; }
+    catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+}
+echo \Zero\Js::jsonStringify($out);
+"#,
+        ])
+        .arg(content.join("plugins/zero-runtime/zero/bootstrap.php"))
+        .arg(content.join("plugins/zero-app-host-globals/zero/app"))
+        .arg(dir.join("host-wp-http.php"))
+        // The PHP side fetches the public name; the policy checks it, the stub connects locally.
+        .env("HOST_URL", format!("https://origin.example:{port}"))
+        .env("HOST_ORIGIN", &port)
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+    let actual: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(actual, expected, "generated PHP differs from Node");
+}
+
 /// `zero check --json` reports each plugin's package, integrity, locked and inferred grant, and
 /// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
 #[test]
@@ -998,12 +1098,13 @@ export default defineConfig({ name: "flows", collections: { posts }, use: [sync(
     .unwrap();
     std::fs::write(
         tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
-        r#"import { action, db, definePlugin, env, fetch } from "zero";
+        r#"import { action, db, definePlugin } from "zero";
 import { abilities, esc_html } from "php/wordpress";
+import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
 // as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
 async function push(body: string) {
-  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: env("SYNC_KEY") ?? "" } });
+  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: process.env.SYNC_KEY ?? "", "x-signature": createHmac("sha256", process.env.SYNC_SIGNING!).update(body).digest("hex") } });
   return response.status;
 }
 export default () => definePlugin({
@@ -1036,7 +1137,9 @@ export default () => definePlugin({
     assert_eq!(plugin["status"], "added");
     assert_eq!(plugin["inferred"]["read"], json!(["posts"]));
     assert_eq!(plugin["inferred"]["http"], json!(["hooks.example.com"]));
-    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
+    // The global forms are capabilities like the old imports were: process.env reads, including a
+    // createHmac key read from process.env, and the global fetch's static host.
+    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY", "SYNC_SIGNING"]));
     assert_eq!(
         plugin["inferred"]["actions"],
         json!(["sync_count", "sync_export", "sync_list", "sync_title"])
@@ -1049,7 +1152,7 @@ export default () => definePlugin({
         plugin["flows"],
         json!([{
             "handler": "plugin_sync__action__sync_export",
-            "reads": ["env: SYNC_KEY", "read: posts"],
+            "reads": ["env: SYNC_KEY", "env: SYNC_SIGNING", "read: posts"],
             "sends": ["http: hooks.example.com"],
         }])
     );
@@ -1483,7 +1586,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
             "`any` isn't allowed",
         ),
         ("function* numbers() { yield 1; } return [...numbers()];", "generators"),
-        ("return fetch('https://example.com');", "fetch"),
+        ("return process.cwd();", "isn't available on `process`"),
         ("return new Map<string, number>();", "new Map"),
         (
             "const f=(value:string)=>typeof value; return f();",

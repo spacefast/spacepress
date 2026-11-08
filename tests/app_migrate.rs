@@ -823,13 +823,39 @@ fn project(root: &Path, capsule: &str) {
     .unwrap();
 }
 
+/// 0.8 rebuilt `content/posts/` into the Space's posts on every publish. The candidate adopts the
+/// post rows but doesn't rebuild them from the files, so the files are refused rather than served
+/// raw; without them, the posts are adopted.
 #[test]
 fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("source");
     project(&root, r#"{name:"spacefast-posts", realtime:{enabled:true}}"#);
-    std::fs::create_dir_all(root.join("content/posts")).unwrap();
+    std::fs::create_dir_all(root.join("content/posts/2026")).unwrap();
     std::fs::write(root.join("content/posts/hello.md"), "---\ntitle: Hello\n---\nBody").unwrap();
+    std::fs::write(root.join("content/posts/2026/later.html"), "<p>Later</p>").unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("refused"), &["--dry-run"]);
+    assert!(!ok);
+    let errors: Vec<(&str, &str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["pointer"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    // One error for the directory, located at its first file; nothing is carried as static.
+    assert_eq!(
+        errors,
+        [("Z08_OMITTED_POSTS", "/content/posts", "content/posts/2026/later.html")],
+        "{refused:#}"
+    );
+    std::fs::remove_dir_all(root.join("content/posts")).unwrap();
+    std::fs::create_dir_all(root.join("content/posts")).unwrap();
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");

@@ -22,6 +22,7 @@ pub(super) const CLEAN_URLS: &str = "clean URLs are not carried over";
 pub(super) const SERVE: &str = "the serving settings are not carried over";
 pub(super) const CONNECTORS: &str = "the connector role is not carried over";
 pub(super) const SYNC: &str = "content sync is not carried over";
+pub(super) const POSTS: &str = "the posts content is not carried over";
 pub(super) const PUBLIC: &str = "public/ is not carried over";
 pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
 pub(super) const DENIED: &str = "the credential file is not carried over";
@@ -423,6 +424,7 @@ pub(super) fn sweep(
         );
     }
     let mut client_reported = false;
+    let mut posts_reported = false;
     // 0.8 built a client with no pages as the whole site and generated its index.html, shadowing
     // the author's (zero-compile's `standaloneClient`). The client is `runtime.client` wherever it
     // lives, as the client conversion resolves it.
@@ -449,6 +451,19 @@ pub(super) fn sweep(
             if !client_carried && !client_reported {
                 client_reported = true;
                 errors.push(fail("/client", format!("{CLIENT}: 0.8 built client/ into the Space's browser app beside its pages; only a client app without pages is converted, so publishing would remove this interface")).located(name.clone(), 1, 1));
+            }
+            continue;
+        }
+        // zero-compile's ZERO_STRUCTURAL_COLLECTIONS: 0.8 built content/posts/ into the Space's
+        // native posts on every publish. The candidate adopts the existing post rows but doesn't
+        // rebuild them from these files, so publishing it would serve them as raw files instead.
+        if name.starts_with("content/posts/") {
+            if !posts_reported {
+                posts_reported = true;
+                errors.push(file(fail(
+                    "/content/posts",
+                    format!("{POSTS}: 0.8 published content/posts/ as the Space's posts; the candidate keeps the existing posts but doesn't rebuild them from these files"),
+                )));
             }
             continue;
         }

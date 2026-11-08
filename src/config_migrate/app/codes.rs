@@ -5,6 +5,7 @@
 //! `tests/compatibility/registry.json` under `zero08`.
 use super::super::Failure;
 use super::client;
+use super::omitted;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -46,6 +47,123 @@ pub static SCHEMA_FRESH: Rule = Rule {
 
 /// First match wins, so specific rules come before the general ones they overlap.
 pub static RULES: &[Rule] = &[
+    // Whatever 0.8 served that the candidate does not reproduce (app/omitted.rs). Each is removed
+    // by the change that carries the thing over, with no change for callers.
+    Rule {
+        code: "Z08_OMITTED_CLIENT",
+        feature: "0.8 client app (client/)",
+        v2: "a browser app in public/ calling the generated v2 client",
+        fix: "Port the client into the pages (a TSX layout and Islands) or into public/ with the generated v2 client, or keep the Space on 0.8.",
+        test: |_, r| r.starts_with(omitted::CLIENT),
+        example: ("/client", "the 0.8 client app is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_PAGES",
+        feature: "0.8 page",
+        v2: "a TSX page (docs/pages.md)",
+        fix: "Port the page to a v2 TSX page or a static file in public/ before publishing.",
+        test: |_, r| r.starts_with(omitted::PAGES),
+        example: ("/pages/about.tsx", "the 0.8 page is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_STATIC",
+        feature: "static file the candidate can't carry",
+        v2: "a file in public/, served at the same URL",
+        fix: "Copy the file into the candidate's public/ yourself, or move it off a WordPress-owned path.",
+        test: |_, r| r.starts_with(omitted::STATIC),
+        example: ("/logo.png", "the static file is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_UNVERIFIED_CONFIG",
+        feature: "Space config or theme.json the finalize manifest doesn't record",
+        v2: "the candidate's own config, theme and routes",
+        fix: "Convert from the source tree without --manifest, so the config is read and ported or refused key by key.",
+        test: |_, r| r.starts_with(omitted::UNVERIFIED_CONFIG),
+        example: ("/sf.jsonc", "the unverified config is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_UNVERIFIED",
+        feature: "static file the finalize manifest doesn't record",
+        v2: "a file in public/, served at the same URL",
+        fix: "Check the file is the published one and copy it into the candidate's public/, or convert from the source tree without --manifest.",
+        test: |_, r| r.starts_with(omitted::UNVERIFIED),
+        example: ("/index.html", "the unverified static file is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_PUBLIC",
+        feature: "0.8 public/ directory",
+        v2: "public/, served at the site root",
+        fix: "Move the files to where their /public/... URLs land in v2 (public/public/...), or update the links.",
+        test: |_, r| r.starts_with(omitted::PUBLIC),
+        example: ("/public/a.css", "public/ is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_REDIRECTS",
+        feature: "redirect, rewrite and header rules (_redirects, _headers, sf.jsonc)",
+        v2: "routes in zero.config.ts or the Space's own rules",
+        fix: "Recreate each rule as a v2 route or a Space rule before publishing.",
+        test: |_, r| r.starts_with(omitted::REDIRECTS),
+        example: (
+            "/_redirects",
+            "the redirect, rewrite and header rules are not carried over: x",
+        ),
+    },
+    Rule {
+        code: "Z08_OMITTED_CLEAN_URLS",
+        feature: "clean URLs (/<name> serving <name>.html)",
+        v2: "<name>/index.html in public/",
+        fix: "Move each <name>.html to <name>/index.html in public/ so /<name> keeps working.",
+        test: |_, r| r.starts_with(omitted::CLEAN_URLS),
+        example: ("/cleanUrls", "clean URLs are not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_SERVE",
+        feature: "serving settings (fallback, index, listing, inject, firewall, cache)",
+        v2: "WordPress serving and the Space's own settings",
+        fix: "Drop the setting or set it on the Space; v2 serves the app through WordPress.",
+        test: |_, r| r.starts_with(omitted::SERVE),
+        example: ("/sf.jsonc/fallback", "the serving settings are not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_CONFIG",
+        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, access or crons, or theme.json)",
+        v2: "zero.config.ts, the pages themselves or the Space's own settings",
+        fix: "Recreate what the setting did in v2, or remove it if the Space doesn't need it.",
+        test: |_, r| r.starts_with(omitted::CONFIG),
+        example: ("/sf.jsonc/theme", "the setting is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_CONNECTORS",
+        feature: "connector role and its credentials",
+        v2: "nothing yet: connectors are not in v2",
+        fix: "Remove the connector, or keep the Space on 0.8 until v2 has connectors.",
+        test: |_, r| r.starts_with(omitted::CONNECTORS),
+        example: ("/connectors/calendar", "the connector role is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_SYMLINK",
+        feature: "symbolic link in the project",
+        v2: "a regular file in public/",
+        fix: "Replace the link with the file it points to, inside the project, or remove it.",
+        test: |_, r| r.starts_with(omitted::SYMLINK),
+        example: ("/latest.txt", "the symbolic link is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_DENIED_SOURCE_FILE",
+        feature: "credential file in the project (keys, .env files, .npmrc, .ssh/, .aws/)",
+        v2: "Space variables",
+        fix: "Remove it from the Space source; put secret values in Space variables.",
+        test: |_, r| r.starts_with(omitted::DENIED),
+        example: ("/id_rsa", "the credential file is not carried over: x"),
+    },
+    Rule {
+        code: "Z08_OMITTED_SYNC",
+        feature: "content sync of native posts",
+        v2: "sync on a v2 collection",
+        fix: "Declare the collection in zero.config.ts with `sync` over the content files.",
+        test: |_, r| r.starts_with(omitted::SYNC),
+        example: ("/collections/posts/sync", "content sync is not carried over: x"),
+    },
     // A client app without pages (app/client.rs): each tag is a fixed reason prefix.
     Rule {
         code: "Z08_CLIENT_STORAGE",

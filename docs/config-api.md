@@ -267,6 +267,11 @@ Core `/wp/v2/<post type>` speaks Zero's fields and queries too:
   covers the member. A `meta` write runs Zero's update as the viewer (rules,
   validation, hooks) in one transaction with core's own user save, so a
   refusal keeps nothing. The list takes `where` and `orderBy`.
+- A `table()` kind gets core-shaped `/wp/v2/<storage name>` (for example
+  `/wp/v2/zero_signups`): list, get, create, update (`POST`/`PUT`/`PATCH`) and
+  delete, with `per_page`/`page`, `X-WP-Total`, `_fields`, a JSON Schema on
+  `OPTIONS`, and `where`/`orderBy`/`with`. Every call is Zero's pipeline as
+  the viewer, so it answers what Zero's API answers.
 
 ## Globals
 

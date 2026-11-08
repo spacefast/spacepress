@@ -36,6 +36,8 @@ final class Plugin
     private array $promoting = [];
     /** @var array<int, list<string>> post id → columns fillEditorDefaults generated in this save */
     private array $filled = [];
+    /** @var array<string, int> `--drop` confirmations for this process's migration (SchemaCheck) */
+    private array $drops = [];
 
     public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
@@ -132,6 +134,9 @@ final class Plugin
         // (Runtime's `wp zero` dispatcher already refused everything but `migrate` while storage is behind.)
         if (($args[0] ?? '') === 'migrate') {
             try {
+                // `--drop likes=1204,likes.note=12`: WP-CLI keeps the last of repeated flags, so values are comma-separated.
+                $drop = $assocArgs['drop'] ?? null;
+                $this->drops = SchemaCheck::drops(is_string($drop) ? [$drop] : []);
                 $mark = $assocArgs['mark-applied'] ?? null;
                 if (is_string($mark)) {
                     Migrator::locked($this->connection(), $this->schemaOption(), fn () => $this->migrator()->markApplied($mark));
@@ -285,9 +290,16 @@ final class Plugin
         $this->unavailable = Migrator::upgrade($this->connection(), $this->schemaOption(), fn () => $this->current(true), fn () => $this->migrateNow());
     }
 
-    /** Explicit host initialization; failures propagate without wp-admin or activation hooks. */
-    public function initialize(): array
+    /**
+     * Explicit host initialization; failures propagate without wp-admin or activation hooks.
+     * `$drops` are the deploy's `--drop` confirmations (SchemaCheck::drops); a SchemaRefused carries
+     * the refusals to report.
+     *
+     * @param array<string, int> $drops
+     */
+    public function initialize(array $drops = []): array
     {
+        $this->drops = $drops;
         $bad = $this->storageProblems();
         if ($bad !== []) {
             throw new \RuntimeException('Zero requires InnoDB and utf8mb4: ' . implode(', ', $bad));
@@ -331,7 +343,7 @@ final class Plugin
 
     private function migrator(): Migrator
     {
-        return new Migrator($this->connection(), $this->dir . '/zero/app/migrations', $this->schema);
+        return new Migrator($this->connection(), $this->dir . '/zero/app/migrations', $this->schema, $this->drops);
     }
 
     public function pendingMigrations(): array

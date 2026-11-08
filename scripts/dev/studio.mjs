@@ -53,7 +53,7 @@ function execute(file, args, { capture = false, timeout = 180000, env = process.
     child.once('close', (code, signal) => {
       clearTimeout(timer);
       if (code === 0) resolveResult(stdout);
-      else reject(new Error(`${timedOut ? 'Timed out' : `Failed (${code ?? signal})`}: ${args[0]}\n${stderr || stdout}`));
+      else reject(Object.assign(new Error(`${timedOut ? 'Timed out' : `Failed (${code ?? signal})`}: ${args[0]}\n${stderr || stdout}`), { stdout }));
     });
   });
 }
@@ -352,7 +352,20 @@ async function main() {
     };
     await atomicJson(managed.marker, managed.owner);
   };
-  const configure = async () => {
+  // `wp zero migrate`, checked against live rows (spec §2.9). With --allow-destructive, a refused
+  // drop is confirmed at the counts the refusal reports; anything else (a required field rows lack)
+  // stays an error to fix in the schema.
+  const migrate = async (allowDestructive) => {
+    try {
+      await runStudio(['wp', 'zero', 'migrate'], { capture: true });
+    } catch (error) {
+      const refusal = /\{"error":.*\}/.exec(error.stdout ?? '')?.[0];
+      const problem = refusal ? JSON.parse(refusal).error : null;
+      if (!allowDestructive || problem?.code !== 'schema_refused' || problem.drop.length !== problem.refusals.length) throw error;
+      await runStudio(['wp', 'zero', 'migrate', `--drop=${problem.drop.join(',')}`]);
+    }
+  };
+  const configure = async (allowDestructive = false) => {
     const snapshot = await json(join(project, 'zero/_generated/migrations/snapshot.json'));
     const manifest = await json(join(content, 'zero-manifest.json'));
     const retired = managed.owner.generated.filter((slug) => !(slug in manifest.plugins));
@@ -365,7 +378,7 @@ async function main() {
       if (!active.includes(slug)) await runStudio(['wp', 'plugin', 'activate', slug]);
     }
     await runStudio(['wp', 'eval-file', join(here, 'setup.php'), join(managed.state, 'setup.json'), '--use-include']);
-    await runStudio(['wp', 'zero', 'migrate']);
+    await migrate(allowDestructive);
     await runStudio(['wp', 'zero', 'identity', 'app', 'add', '--name=Zero development', '--id=app_zero_dev',
       `--redirect=${siteUrl}/auth/callback`, `--origin=${siteUrl}`]);
     for (const slug of retired) await rm(join(managed.owner.site, 'wp-content/plugins', slug), { recursive: true });
@@ -402,7 +415,7 @@ async function main() {
     await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('ZERO_IDENTITY_DEV_HTTP')) define('ZERO_IDENTITY_DEV_HTTP', true);\n");
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
-    await configure();
+    await configure(flags.includes('--allow-destructive'));
     const response = await fetch(`${url}/wp-json/zero/v1/_schema`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`Zero application is not ready: HTTP ${response.status}. Run zero doctor --site ${url}`);
     console.log(`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`);

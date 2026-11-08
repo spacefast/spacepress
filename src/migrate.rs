@@ -16,6 +16,9 @@ use crate::schema::{Collection, Column, DefaultKind, Schema};
 use serde_json::{Value as Json, json};
 
 pub const BREAKPOINT: &str = "--> statement-breakpoint";
+/// First line of a statement the deploy checks against live rows before running any of the
+/// migration (`Wp\Migrator::check`): `-- zero-check {json}`. Spec §2.9.
+pub const CHECK: &str = "-- zero-check ";
 /// Snapshot key of the revisions system table.
 const REVISIONS: &str = "zero__revisions";
 
@@ -32,6 +35,21 @@ fn table(t: &str, tables: &Map) -> String {
     } else {
         format!("`{{prefix}}zero_{t}`")
     }
+}
+
+/// The physical table name, unquoted, as the deploy check counts it.
+fn physical(t: &str, tables: &Map) -> String {
+    table(t, tables).trim_matches('`').replace("``", "`")
+}
+
+/// Whether Zero created this table. A table it adopted (`existingTable`) is never dropped, and
+/// never loses or renames a column, without an explicit `--drop` naming it, even when empty.
+fn adopted(def: &Json) -> bool {
+    def["existingTable"].is_string()
+}
+
+fn checked(check: Json, sql: String) -> String {
+    format!("{CHECK}{check}\n{sql}")
 }
 
 fn string(s: &str) -> String {
@@ -60,6 +78,9 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     let mut table = json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols });
     if let Some(name) = &c.existing_table {
         table["existingTable"] = name.clone().into();
+    }
+    if let Some(old) = &c.was {
+        table["was"] = old.clone().into();
     }
     if c.auth {
         // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
@@ -90,7 +111,7 @@ fn column_snapshot(col: &Column, schema: &Schema) -> Json {
             "unsigned": unsigned,
         })
     });
-    json!({
+    let mut snap = json!({
         "type": col.ty.name(),
         "notNull": col.not_null,
         "primaryKey": col.primary_key,
@@ -100,7 +121,11 @@ fn column_snapshot(col: &Column, schema: &Schema) -> Json {
         "enum": col.enum_values.as_ref().filter(|_| col.ty == crate::schema::ColType::Text),
         "default": sql_default(col),
         "references": references,
-    })
+    });
+    if let Some(old) = &col.was {
+        snap["was"] = old.clone().into();
+    }
+    snap
 }
 
 /// Constant defaults are mirrored in SQL so rows written outside the runtime (and
@@ -186,13 +211,7 @@ fn column_sql(name: &str, c: &Json) -> String {
         sql.push_str(if auto { " NOT NULL AUTO_INCREMENT" } else { " NOT NULL" });
     }
     if !c["default"].is_null() {
-        let v = &c["default"];
-        let lit = match (ty, v) {
-            ("boolean", Json::Bool(b)) => (if *b { "1" } else { "0" }).to_string(),
-            (_, Json::Number(n)) => n.to_string(),
-            (_, Json::String(s)) => string(s),
-            (_, v) => string(&v.to_string()),
-        };
+        let lit = default_literal(ty, &c["default"]);
         // MySQL only accepts literal defaults on TEXT columns as expressions.
         sql.push_str(&if sql_ty == "LONGTEXT" {
             format!(" DEFAULT ({lit})")
@@ -347,12 +366,123 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
     )
 }
 
+/// Renames `next` declares against `prev` (`was` on a table, `.was()` on a field). A rename applies
+/// when the old name is stored, the new one isn't, and `next` doesn't keep the old name too.
+#[derive(Default)]
+struct Renames {
+    /// (new, old) table names.
+    tables: Vec<(String, String)>,
+    /// (table as named in `next`, new column, old column).
+    columns: Vec<(String, String, String)>,
+}
+
+impl Renames {
+    fn of(prev: &Json, next: &Json) -> Renames {
+        let empty = Map::new();
+        let prev_t = prev["tables"].as_object().unwrap_or(&empty);
+        let next_t = next["tables"].as_object().unwrap_or(&empty);
+        let mut out = Renames::default();
+        for (t, def) in next_t {
+            let stored = match def["was"].as_str() {
+                Some(old) if !prev_t.contains_key(t) && prev_t.contains_key(old) && !next_t.contains_key(old) => {
+                    out.tables.push((t.clone(), old.to_string()));
+                    old
+                }
+                _ => t.as_str(),
+            };
+            let Some(prev_cols) = prev_t.get(stored).and_then(|d| d["columns"].as_object()) else {
+                continue;
+            };
+            let cols = def["columns"].as_object().unwrap_or(&empty);
+            for (c, col) in cols {
+                if let Some(old) = col["was"].as_str()
+                    && !prev_cols.contains_key(c)
+                    && prev_cols.contains_key(old)
+                    && !cols.contains_key(old)
+                {
+                    out.columns.push((t.clone(), c.clone(), old.to_string()));
+                }
+            }
+        }
+        out
+    }
+
+    /// `prev` with every rename applied, so the rest of the diff sees one name per table and column.
+    fn apply(&self, prev: &Json) -> Json {
+        let mut out = prev.clone();
+        let Some(tables) = out["tables"].as_object_mut() else {
+            return out;
+        };
+        for (new, old) in &self.tables {
+            if let Some(def) = tables.shift_remove(old) {
+                tables.insert(new.clone(), def);
+            }
+        }
+        for (t, new, old) in &self.columns {
+            if let Some(cols) = tables.get_mut(t).and_then(|d| d["columns"].as_object_mut())
+                && let Some(col) = cols.shift_remove(old)
+            {
+                cols.insert(new.clone(), col);
+            }
+        }
+        out
+    }
+
+    fn stored_table<'a>(&'a self, t: &'a str) -> &'a str {
+        self.tables.iter().find(|(new, _)| new == t).map_or(t, |(_, old)| old)
+    }
+
+    fn stored_column<'a>(&'a self, t: &str, c: &'a str) -> &'a str {
+        self.columns
+            .iter()
+            .find(|(table, new, _)| table == t && new == c)
+            .map_or(c, |(_, _, old)| old)
+    }
+}
+
+/// The SQL literal of a column's constant default.
+fn default_literal(ty: &str, v: &Json) -> String {
+    match (ty, v) {
+        ("boolean", Json::Bool(b)) => (if *b { "1" } else { "0" }).to_string(),
+        (_, Json::Number(n)) => n.to_string(),
+        (_, Json::String(s)) => string(s),
+        (_, v) => string(&v.to_string()),
+    }
+}
+
 /// Statements that turn `prev` into `next`. Empty when nothing changed.
+///
+/// Statements that can lose data or leave rows without a required value carry a
+/// `-- zero-check` line ([`CHECK`]): before the migration runs, `Wp\Migrator` counts the live
+/// rows each one affects and refuses unless the counts allow it (spec §2.9).
 pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
-    let prev_t = tables(prev);
+    let renames = Renames::of(prev, next);
+    let stored_t = tables(prev);
+    let prev_t = tables(&renames.apply(prev));
     let next_t = tables(next);
     let empty = Map::new();
     let mut out = Vec::new();
+    // Renamed tables move first, so everything after sees the new names. A table bound with
+    // `existingTable` keeps its physical name; only its key (and its revisions) move.
+    for (new, old) in &renames.tables {
+        let (Some(before), Some(after)) = (stored_t.get(old), next_t.get(new)) else {
+            continue;
+        };
+        if before["existingTable"].is_null() && after["existingTable"].is_null() {
+            out.push(format!(
+                "RENAME TABLE {} TO {};",
+                table(old, &stored_t),
+                table(new, &next_t)
+            ));
+        }
+        if stored_t.contains_key(REVISIONS) {
+            out.push(format!(
+                "UPDATE `{{prefix}}{REVISIONS}` SET `collection` = {} WHERE `collection` = {};",
+                string(new),
+                string(old)
+            ));
+        }
+    }
     // New tables, in dependency order (referenced tables first).
     let mut created: Vec<&String> = Vec::new();
     let mut pending: Vec<&String> = next_t.keys().filter(|t| !prev_t.contains_key(*t)).collect();
@@ -382,21 +512,35 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
     }
     for (t, next_def) in &next_t {
         let Some(prev_def) = prev_t.get(t) else { continue };
+        let stored = renames.stored_table(t);
+        let stored_def = &stored_t[stored];
+        let sc = stored_def["columns"].as_object().unwrap_or(&empty);
         let pc = prev_def["columns"].as_object().unwrap_or(&empty);
         let nc = next_def["columns"].as_object().unwrap_or(&empty);
         let render =
             |m: &Map| -> Vec<(String, String)> { m.iter().map(|(k, c)| (k.clone(), column_sql(k, c))).collect() };
         let pr = render(pc);
         let nr = render(nc);
-        let p_ix = indexes(t, prev_def);
+        let p_ix = indexes(stored, stored_def);
         let n_ix = indexes(t, next_def);
         let table = table(t, &next_t);
-        // Constraints that go away (or change) are dropped before columns change.
-        for (k, c) in pc {
-            let before = fk_sql(t, k, c, &prev_t);
-            let after = nc.get(k).and_then(|nc| fk_sql(t, k, nc, &next_t));
+        // Checks run before any statement of the migration, so they name the table as stored now.
+        let physical = physical(stored, &stored_t);
+        let adopted = adopted(next_def);
+        // Constraints that go away (or change, or follow a rename) are dropped before columns change.
+        for (k, c) in sc {
+            let before = fk_sql(stored, k, c, &stored_t);
+            let renamed = renames
+                .columns
+                .iter()
+                .find(|(table, _, old)| table == t && old == k)
+                .map_or(k.as_str(), |(_, new, _)| new.as_str());
+            let after = nc.get(renamed).and_then(|nc| fk_sql(t, renamed, nc, &next_t));
             if before.is_some() && before != after {
-                out.push(format!("ALTER TABLE {table} DROP FOREIGN KEY `{}`;", fk_name(t, k)));
+                out.push(format!(
+                    "ALTER TABLE {table} DROP FOREIGN KEY `{}`;",
+                    fk_name(stored, k)
+                ));
             }
         }
         for ix in &p_ix {
@@ -404,16 +548,62 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
                 out.push(drop_index(t, &ix.0, &next_t));
             }
         }
+        for (rt, new, old) in &renames.columns {
+            if rt == t {
+                out.push(format!("ALTER TABLE {table} RENAME COLUMN {} TO {};", q(old), q(new)));
+            }
+        }
         for (k, sql) in &nr {
+            let c = &nc[k];
+            let required = c["notNull"] == true && c["primaryKey"] != true;
+            let name = format!("{t}.{k}");
             match pr.iter().find(|(pk, _)| pk == k) {
-                None => out.push(format!("ALTER TABLE {table} ADD COLUMN {sql};")),
-                Some((_, psql)) if psql != sql => out.push(format!("ALTER TABLE {table} MODIFY COLUMN {sql};")),
+                None => {
+                    let add = format!("ALTER TABLE {table} ADD COLUMN {sql};");
+                    if required && c["default"].is_null() {
+                        // Existing rows would get MySQL's implicit empty value: refuse unless there are none.
+                        out.push(checked(
+                            json!({ "check": "required", "name": name, "table": physical }),
+                            add,
+                        ));
+                    } else {
+                        out.push(add);
+                    }
+                }
+                Some((_, psql)) if psql != sql => {
+                    let modify = format!("ALTER TABLE {table} MODIFY COLUMN {sql};");
+                    if required && pc[k]["notNull"] != true {
+                        if c["default"].is_null() {
+                            let column = renames.stored_column(t, k);
+                            out.push(checked(
+                                json!({ "check": "required", "name": name, "table": physical, "column": column }),
+                                modify,
+                            ));
+                        } else {
+                            // Empty rows get the declared default, then the column becomes required.
+                            let ty = c["type"].as_str().unwrap_or("text");
+                            out.push(format!(
+                                "UPDATE {table} SET {} = {} WHERE {} IS NULL;",
+                                q(k),
+                                default_literal(ty, &c["default"]),
+                                q(k)
+                            ));
+                            out.push(modify);
+                        }
+                    } else {
+                        out.push(modify);
+                    }
+                }
                 _ => {}
             }
         }
         for (k, _) in &pr {
             if !nc.contains_key(k) {
-                out.push(format!("ALTER TABLE {table} DROP COLUMN {};", q(k)));
+                out.push(checked(
+                    json!({ "check": "drop", "name": format!("{t}.{k}"), "table": physical,
+                        "column": renames.stored_column(t, k), "adopted": adopted }),
+                    format!("ALTER TABLE {table} DROP COLUMN {};", q(k)),
+                ));
             }
         }
         for ix in &n_ix {
@@ -422,7 +612,8 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
             }
         }
         for (k, c) in nc {
-            let before = pc.get(k).and_then(|pc| fk_sql(t, k, pc, &prev_t));
+            let stored_k = renames.stored_column(t, k);
+            let before = sc.get(stored_k).and_then(|sc| fk_sql(stored, stored_k, sc, &stored_t));
             if let Some(after) = fk_sql(t, k, c, &next_t)
                 && before.as_ref() != Some(&after)
             {
@@ -431,13 +622,17 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
     }
     for t in prev_t.keys().filter(|t| !next_t.contains_key(*t)) {
-        out.push(format!("DROP TABLE {};", table(t, &prev_t)));
+        out.push(checked(
+            json!({ "check": "drop", "name": t, "table": physical(t, &prev_t), "adopted": adopted(&prev_t[t]) }),
+            format!("DROP TABLE {};", table(t, &prev_t)),
+        ));
     }
     out
 }
 
 /// Human-readable warnings for changes that can lose data.
 pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
+    let prev = &Renames::of(prev, next).apply(prev);
     let empty = Map::new();
     let prev_t = prev["tables"].as_object().unwrap_or(&empty);
     let next_t = next["tables"].as_object().unwrap_or(&empty);
@@ -480,6 +675,7 @@ pub fn preservation_problems(prev: &Json, next: &Json) -> Vec<String> {
         return vec!["invalid preservation snapshot".into()];
     }
     let mut problems = destructive(prev, next);
+    let prev = &Renames::of(prev, next).apply(prev);
     for (name, table) in prev["tables"].as_object().expect("validated snapshot") {
         let candidate = &next["tables"][name];
         if candidate.is_null() {
@@ -582,9 +778,12 @@ mod tests {
         assert!(preservation_problems(&v1, &v2).is_empty());
         let mut v3 = v2.clone();
         v3["tables"]["items"]["columns"]["note"]["notNull"] = json!(true);
+        // Making it required is checked against live rows first: rows without a value refuse.
         assert_eq!(
             plan(&v2, &v3),
-            vec!["ALTER TABLE `{prefix}zero_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()]
+            vec![
+                "-- zero-check {\"check\":\"required\",\"name\":\"items.note\",\"table\":\"{prefix}zero_items\",\"column\":\"note\"}\nALTER TABLE `{prefix}zero_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()
+            ]
         );
         assert_eq!(preservation_problems(&v2, &v3), vec!["changes field items.note"]);
         assert_eq!(
@@ -627,8 +826,8 @@ mod tests {
             plan(&v3, &v4),
             vec![
                 "ALTER TABLE `{prefix}zero_items` DROP FOREIGN KEY `zero_items_locationId_fk`;".to_string(),
-                "ALTER TABLE `{prefix}zero_items` DROP COLUMN `note`;".to_string(),
-                "DROP TABLE `{prefix}zero_locations`;".to_string(),
+                "-- zero-check {\"check\":\"drop\",\"name\":\"items.note\",\"table\":\"{prefix}zero_items\",\"column\":\"note\",\"adopted\":false}\nALTER TABLE `{prefix}zero_items` DROP COLUMN `note`;".to_string(),
+                "-- zero-check {\"check\":\"drop\",\"name\":\"locations\",\"table\":\"{prefix}zero_locations\",\"adopted\":false}\nDROP TABLE `{prefix}zero_locations`;".to_string(),
             ]
         );
         assert_eq!(
@@ -700,6 +899,94 @@ mod tests {
         assert_eq!(
             plan(&previous, &next),
             ["ALTER TABLE `sf_space_tasks_hash` ADD COLUMN `note` LONGTEXT;"]
+        );
+    }
+
+    fn id() -> Json {
+        json!({ "type": "integer", "notNull": true, "primaryKey": true, "autoIncrement": true, "unique": false, "max": null, "default": null, "references": null })
+    }
+
+    fn check_of(statement: &str) -> Option<Json> {
+        let line = statement.lines().next()?.strip_prefix(CHECK)?;
+        Some(serde_json::from_str(line).unwrap())
+    }
+
+    #[test]
+    fn additive_changes_carry_no_check() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(json!({ "likes": table(json!({ "id": id() })) }));
+        let mut v2 = v1.clone();
+        v2["tables"]["likes"]["columns"]["note"] = col("text");
+        let mut required = col("text");
+        required["notNull"] = json!(true);
+        required["default"] = json!("ok");
+        v2["tables"]["likes"]["columns"]["state"] = required;
+        v2["tables"]["tags"] = table(json!({ "id": id() }));
+        let statements = plan(&v1, &v2);
+        assert!(statements.iter().all(|s| check_of(s).is_none()), "{statements:?}");
+    }
+
+    #[test]
+    fn a_required_field_with_a_default_backfills_instead_of_refusing() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(json!({ "likes": table(json!({ "id": id(), "state": col("text") })) }));
+        let mut v2 = v1.clone();
+        v2["tables"]["likes"]["columns"]["state"]["notNull"] = json!(true);
+        v2["tables"]["likes"]["columns"]["state"]["default"] = json!("open");
+        assert_eq!(
+            plan(&v1, &v2),
+            [
+                "UPDATE `{prefix}zero_likes` SET `state` = 'open' WHERE `state` IS NULL;",
+                "ALTER TABLE `{prefix}zero_likes` MODIFY COLUMN `state` LONGTEXT DEFAULT ('open') NOT NULL;",
+            ]
+        );
+    }
+
+    #[test]
+    fn was_renames_tables_and_columns_instead_of_dropping_them() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(json!({ "likes": table(json!({ "id": id(), "body": col("text") })) }));
+        let mut v2 = snap(json!({ "reactions": table(json!({ "id": id(), "text": col("text") })) }));
+        // Undeclared, this is a drop and a create.
+        assert!(plan(&v1, &v2).iter().any(|s| s.contains("DROP TABLE")));
+        v2["tables"]["reactions"]["was"] = json!("likes");
+        v2["tables"]["reactions"]["columns"]["text"]["was"] = json!("body");
+        assert_eq!(
+            plan(&v1, &v2),
+            [
+                "RENAME TABLE `{prefix}zero_likes` TO `{prefix}zero_reactions`;",
+                "UPDATE `{prefix}zero__revisions` SET `collection` = 'reactions' WHERE `collection` = 'likes';",
+                "ALTER TABLE `{prefix}zero_reactions` RENAME COLUMN `body` TO `text`;",
+            ]
+        );
+        assert!(destructive(&v1, &v2).is_empty());
+        assert!(preservation_problems(&v1, &v2).is_empty());
+        // Once applied, the declaration is inert: the next build plans nothing.
+        assert!(plan(&v2, &v2).is_empty());
+    }
+
+    #[test]
+    fn checks_name_the_stored_table_and_mark_adopted_tables() {
+        let adopted = json!({ "editor": false, "drafts": false, "existingTable": "sf_space_tasks_hash",
+            "columns": { "id": id(), "note": col("text") } });
+        let v1 = snap(json!({ "tasks": adopted }));
+        let mut v2 = v1.clone();
+        v2["tables"]["tasks"]["columns"].as_object_mut().unwrap().remove("note");
+        let checks: Vec<Json> = plan(&v1, &v2).iter().filter_map(|s| check_of(s)).collect();
+        assert_eq!(
+            checks,
+            [
+                json!({ "check": "drop", "name": "tasks.note", "table": "sf_space_tasks_hash", "column": "note", "adopted": true })
+            ]
+        );
+        let removed = plan(
+            &v1,
+            &snap(json!({ "other": { "editor": false, "drafts": false, "columns": { "id": id() } } })),
+        );
+        let checks: Vec<Json> = removed.iter().filter_map(|s| check_of(s)).collect();
+        assert_eq!(
+            checks,
+            [json!({ "check": "drop", "name": "tasks", "table": "sf_space_tasks_hash", "adopted": true })]
         );
     }
 }

@@ -23,8 +23,13 @@ namespace Zero\Wp;
 final class Migrator
 {
 
-    public function __construct(private readonly Connection $db, private readonly string $dir, private readonly \Zero\Schema $schema)
-    {
+    /** @param array<string, int> $drops `--drop` confirmations for the schema check (SchemaCheck::drops) */
+    public function __construct(
+        private readonly Connection $db,
+        private readonly string $dir,
+        private readonly \Zero\Schema $schema,
+        private readonly array $drops = [],
+    ) {
     }
 
     /** The statements of a migration file: split on the compiler's `--> statement-breakpoint` lines. */
@@ -80,8 +85,20 @@ final class Migrator
             $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
             $migrations[$id] = self::statements($sql);
         }
-        // Check every pending adoption before any DDL or ledger writes, even across tables/files.
         $done = $this->keyed() ? array_flip($this->done()) : [];
+        // The deploy-time schema check (spec §2.9): every pending statement that could lose rows or
+        // leave them without a required value is measured first, across all pending files, so a
+        // refusal leaves the tables and the ledger untouched.
+        $pending = [];
+        foreach ($migrations as $id => $statements) {
+            foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
+                if (!isset($done[$id . ':' . ($i + 1)])) {
+                    $pending[$id][] = $statement;
+                }
+            }
+        }
+        (new SchemaCheck($this->db, $this->drops))->check($pending);
+        // Check every pending adoption before any DDL or ledger writes, even across tables/files.
         foreach ($migrations as $id => $statements) {
             if (isset($done[$id])) {
                 continue;
@@ -111,7 +128,7 @@ final class Migrator
                     continue;
                 }
                 try {
-                    $this->db->run($statement);
+                    $this->db->run(SchemaCheck::sql($statement));
                 } catch (DbError $e) {
                     throw new \RuntimeException("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0, $e);
                 }

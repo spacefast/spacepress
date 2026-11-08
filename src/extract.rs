@@ -97,6 +97,7 @@ const CONFIG_KEYS: &[&str] = &[
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
     "existingTable",
+    "was",
     "label",
     "drafts",
     "revisions",
@@ -306,6 +307,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     key: key.clone(),
                     table: c.table().to_string(),
                     existing_table: None,
+                    was: None,
                     label: title_case(c.table()),
                     editor: true,
                     drafts: true,
@@ -357,6 +359,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         let coll = out.schema.collections.get_mut(c.table()).expect("collection");
         coll.columns = columns;
         coll.existing_table = opts.existing_table;
+        coll.was = opts.was;
         coll.label = opts.label;
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
@@ -732,6 +735,7 @@ pub fn slugify_name(s: &str) -> String {
 
 struct CollOpts {
     existing_table: Option<String>,
+    was: Option<String>,
     label: String,
     editor: bool,
     drafts: bool,
@@ -814,6 +818,17 @@ fn collection_options(
                 span("existingTable"),
                 "existingTable requires table() and an exact SQL identifier of at most 64 ASCII characters",
             ));
+        }
+    };
+    let was = match o.get("was") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) => Some(name.to_string()),
+        _ => {
+            return Err(Diag::new(
+                span("was"),
+                "`was` takes the table's old storage name, and only on table()",
+            )
+            .help("write `was: \"old_name\"`: the name in zero/_generated/migrations/snapshot.json"));
         }
     };
     if let Some(name) = &existing_table
@@ -1065,6 +1080,7 @@ fn collection_options(
     }
     Ok(CollOpts {
         existing_table,
+        was,
         label,
         editor,
         drafts,
@@ -1618,6 +1634,7 @@ fn column(
         derived: false,
         hidden: false,
         ts_type: b.ts_type.clone(),
+        was: b.was.clone(),
     })
 }
 

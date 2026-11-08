@@ -272,12 +272,17 @@ pub fn build(
             // Old snapshots record physical names only. A removed and a new resource
             // could be an authored alias becoming its storage name, even when both
             // names are already snake_case. Never guess a destructive replacement.
+            // A table that declares `was: "<stored>"` renames it (spec §2.6); the planner moves it.
+            let renamed = snapshot["tables"]
+                .as_object()
+                .is_some_and(|next| next.values().any(|t| t["was"].as_str() == Some(stored.as_str())));
             if !schema.collections.contains_key(stored)
+                && !renamed
                 && let Some(added) = schema.collections.keys().find(|name| !tables.contains_key(*name))
             {
                 return Err(Diag::new(config_span, format!(
                     "stored resource `{stored}` disappears while new resource `{added}` is added; an authoring change cannot rename persisted storage"
-                )).help("keep existing physical names registered; resolve intentional storage removals separately after reviewing the data migration")
+                )).help(format!("to rename it, declare `was: \"{stored}\"` on the table; to drop it, remove it in one deploy and add the new one in the next"))
                     .phase(diag::Code::Schema));
             }
         }

@@ -784,6 +784,43 @@ impl Graph {
         Some(place)
     }
 
+    fn value_place(&mut self, value: &Value) -> Option<Place> {
+        match value {
+            Value::Class(c) => Some(self.class_place(c)),
+            Value::Closure(c) => Some(self.function(&c.func, &[], &c.env)),
+            Value::Array(_) | Value::Object(_) => self.data_place(value),
+            _ => None,
+        }
+    }
+
+    /// The build-time value a static member chain (`ns.a.b`) reads, as the compiler resolves it:
+    /// the root is a captured binding and every step is an object holding code or a function
+    /// with own properties. Such namespaces never exist in PHP, so their members are constant.
+    fn static_member(&self, e: &Expr, names: &Names, env: &Rc<Scope>) -> Option<Value> {
+        fn walk(e: &Expr, names: &Names, env: &Rc<Scope>) -> Option<Value> {
+            match &e.kind {
+                ExprKind::Ident(name) if names.iter().all(|s| !s.contains_key(name)) => {
+                    env.lookup(name).map(|b| b.value)
+                }
+                ExprKind::Member { obj, prop, .. } => {
+                    let receiver = walk(obj, names, env)?;
+                    if !super::is_static_namespace(&receiver) {
+                        return None;
+                    }
+                    match &receiver {
+                        Value::Object(o) => o.borrow().get(prop).cloned(),
+                        Value::Closure(c) => c.props.borrow().get(prop).cloned(),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        matches!(e.kind, ExprKind::Member { .. })
+            .then(|| walk(e, names, env))
+            .flatten()
+    }
+
     fn ident(&mut self, name: &str, names: &Names, env: &Rc<Scope>) -> Option<Place> {
         if let Some(p) = names.iter().rev().find_map(|s| s.get(name)) {
             if name == "arguments" {
@@ -791,12 +828,7 @@ impl Graph {
             }
             return Some(p.clone());
         }
-        match env.lookup(name)?.value {
-            Value::Class(c) => Some(self.class_place(&c)),
-            Value::Closure(c) => Some(self.function(&c.func, &[], &c.env)),
-            value @ (Value::Array(_) | Value::Object(_)) => self.data_place(&value),
-            _ => None,
-        }
+        self.value_place(&env.lookup(name)?.value)
     }
 
     fn class_place(&mut self, class: &Rc<ClassValue>) -> Place {
@@ -923,6 +955,9 @@ impl Graph {
                 return Some(self.function(f, names, env));
             }
             ExprKind::Member { obj, prop, .. } => {
+                if let Some(value) = self.static_member(e, names, env) {
+                    return self.value_place(&value);
+                }
                 if matches!(&obj.kind, ExprKind::Ident(n) if n == "super")
                     && let Some(Value::Class(class)) = env.lookup(":class").map(|b| b.value)
                     && let Some(base) = &class.base

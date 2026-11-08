@@ -1,4 +1,3 @@
-use crate::cli::USAGE;
 use crate::diag::{Diag, Span};
 use crate::emit::{emit_generated, plugin_vars, runtime_file, write};
 use crate::pipeline::{self, Built};
@@ -244,7 +243,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
             std::fs::remove_file(archive)?;
         }
     }
-    emit_generated(project, &migrations_dir(project), &plugins, built)?;
+    emit_generated(project, &migrations_dir(project), &plugins, built, true)?;
     let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);
@@ -351,7 +350,7 @@ fn check_json(project: &Path, frozen: bool) -> ExitCode {
 pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
     if !matches!(args.command.as_str(), "build" | "check") {
-        eprintln!("unknown command {}\n{USAGE}", args.command);
+        eprintln!("no command {}\n{}", args.command, crate::cli::help());
         return ExitCode::from(2);
     }
     // CI never approves a grant: the committed lock is the only one.

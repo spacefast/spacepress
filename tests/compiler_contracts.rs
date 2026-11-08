@@ -1081,6 +1081,106 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     }
 }
 
+/// The standard host forms (global fetch, Headers, URLSearchParams, process.env, crypto and
+/// node:crypto) give Node's results through the generated PHP, against one shared HTTP origin.
+#[test]
+fn host_globals_match_node_through_generated_php() {
+    let dir = root().join("tests/differential");
+    let mut origin = Command::new("node")
+        .arg(dir.join("host-origin.mjs"))
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let port = {
+        use std::io::BufRead as _;
+        let mut line = String::new();
+        std::io::BufReader::new(origin.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        line.trim().to_string()
+    };
+    struct Kill(std::process::Child);
+    impl Drop for Kill {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+        }
+    }
+    let _origin = Kill(origin);
+    let secret = " lane secret \n";
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(dir.join("host-crypto.cjs"), tmp.path().join("host-crypto.cjs")).unwrap();
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(tmp.path().join("zero.config.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&transpiled.stdout)
+    );
+    // The config imports its CommonJS helper, which Node loads with its own require.
+    let module = std::fs::read_to_string(js.join("zero.config.js")).unwrap();
+    std::fs::write(js.join("zero.config.mjs"), module).unwrap();
+    std::fs::copy(dir.join("host-crypto.cjs"), js.join("host-crypto.cjs")).unwrap();
+    // Node reads the origin directly; the PHP side sees the same answers through the stub.
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(js.join("zero.config.mjs"))
+        .env("HOST_URL", format!("http://127.0.0.1:{port}"))
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    let mut expected = expected["cases"].clone();
+    assert_eq!(expected.as_object().unwrap().len(), 10, "{expected}");
+    assert!(
+        expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
+        "{expected}"
+    );
+    // Zero trims a process.env HMAC key (0.8's keyring rule); Node uses it as given.
+    assert_eq!(expected["secrets"]["data"][0], false);
+    expected["secrets"]["data"][0] = json!(true);
+    let content = build_wp(tmp.path());
+    let out = Command::new("php")
+        .args([
+            "-r",
+            r#"
+require $argv[1];
+require $argv[3];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$out = [];
+foreach ($schema['actions'] as $name => $action) {
+    $fn = '\\ZeroApp\\' . $action['handler'];
+    try { $out[$name] = ['data' => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]; }
+    catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+}
+echo \Zero\Js::jsonStringify($out);
+"#,
+        ])
+        .arg(content.join("plugins/zero-runtime/zero/bootstrap.php"))
+        .arg(content.join("plugins/zero-app-host-globals/zero/app"))
+        .arg(dir.join("host-wp-http.php"))
+        // The PHP side fetches the public name; the policy checks it, the stub connects locally.
+        .env("HOST_URL", format!("https://origin.example:{port}"))
+        .env("HOST_ORIGIN", &port)
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+    let actual: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(actual, expected, "generated PHP differs from Node");
+}
+
 /// `zero check --json` reports each plugin's package, integrity, locked and inferred grant, and
 /// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
 #[test]
@@ -1102,12 +1202,13 @@ export default defineConfig({ name: "flows", collections: { posts }, use: [sync(
     .unwrap();
     std::fs::write(
         tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
-        r#"import { action, db, definePlugin, env, fetch } from "zero";
-import { abilities } from "php/wordpress";
+        r#"import { action, db, definePlugin } from "zero";
+import { abilities, esc_html } from "php/wordpress";
+import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
 // as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
 async function push(body: string) {
-  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: env("SYNC_KEY") ?? "" } });
+  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: process.env.SYNC_KEY ?? "", "x-signature": createHmac("sha256", process.env.SYNC_SIGNING!).update(body).digest("hex") } });
   return response.status;
 }
 export default () => definePlugin({
@@ -1117,6 +1218,8 @@ export default () => definePlugin({
     count: action({ input: {}, async handler() { return (await db.query.posts.findMany()).length; } }),
     // A WordPress ability is a capability like any other: here the app's own `posts` list.
     list: action({ input: {}, async handler() { const rows = await abilities.call("flows/posts-list", {}); return rows; } }),
+    // So is a WordPress function, recorded with the module it comes from.
+    title: action({ input: {}, handler() { return esc_html("<b>"); } }),
   },
 });"#,
     )
@@ -1138,21 +1241,22 @@ export default () => definePlugin({
     assert_eq!(plugin["status"], "added");
     assert_eq!(plugin["inferred"]["read"], json!(["posts"]));
     assert_eq!(plugin["inferred"]["http"], json!(["hooks.example.com"]));
-    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
+    // The global forms are capabilities like the old imports were: process.env reads, including a
+    // createHmac key read from process.env, and the global fetch's static host.
+    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY", "SYNC_SIGNING"]));
     assert_eq!(
         plugin["inferred"]["actions"],
-        json!(["sync_count", "sync_export", "sync_list"])
+        json!(["sync_count", "sync_export", "sync_list", "sync_title"])
     );
     assert_eq!(plugin["inferred"]["abilities"], json!(["flows/posts-list"]));
-    for empty in ["wpHooks", "php"] {
-        assert_eq!(plugin["inferred"][empty], json!([]));
-    }
+    assert_eq!(plugin["inferred"]["php"], json!(["php/wordpress:esc_html"]));
+    assert_eq!(plugin["inferred"]["wpHooks"], json!([]));
     // Only the handler that reads and then sends, through its helper, is flagged.
     assert_eq!(
         plugin["flows"],
         json!([{
             "handler": "plugin_sync__action__sync_export",
-            "reads": ["env: SYNC_KEY", "read: posts"],
+            "reads": ["env: SYNC_KEY", "env: SYNC_SIGNING", "read: posts"],
             "sends": ["http: hooks.example.com"],
         }])
     );
@@ -1586,7 +1690,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
             "`any` isn't allowed",
         ),
         ("function* numbers() { yield 1; } return [...numbers()];", "generators"),
-        ("return fetch('https://example.com');", "fetch"),
+        ("return process.cwd();", "isn't available on `process`"),
         ("return new Map<string, number>();", "new Map"),
         (
             "const f=(value:string)=>typeof value; return f();",
@@ -2767,6 +2871,108 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
         })
     );
 }
+
+/// WordPress functions from "php/wordpress" on an in-process WordPress, through the built plugin:
+/// the action runs as the signed-in user, writes an option and a post, reads the post back as a
+/// typed view, and a WP_Error from wp_insert_post is a thrown HttpError.
+#[test]
+fn wordpress_functions_run_as_the_signed_in_user() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("fns");
+    copy_dir(&root().join("tests/fixtures/wp-functions"), &project);
+    let content = build_wp(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $run = function (string $title, ?string $as) use ($wp) {
+                [$status, $data] = $wp->call('POST', '/actions/note', ['title' => $title], $as);
+                return [$status, $data];
+            };
+            echo json_encode([
+                'editor' => $run('Fish & <chips>', 'editor'),
+                'subscriber' => $run('Nope', 'subscriber'),
+                'empty' => $run('', 'editor'),
+                'option' => get_option('zero_last_note'),
+            ]), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let got: Value = serde_json::from_str(text.lines().next_back().unwrap()).unwrap();
+    let editor = &got["editor"][1];
+    assert_eq!(got["editor"][0], 200, "{got}");
+    assert_eq!(editor["allowed"], true);
+    assert!(editor["id"].as_i64().unwrap() > 0);
+    assert_eq!(editor["title"], "Fish &amp; &lt;chips&gt;");
+    assert_eq!(editor["last"], "Fish & <chips>");
+    assert_eq!(got["subscriber"], json!([200, {"allowed": false}]));
+    // An empty post is WordPress's `empty_content` WP_Error: 422 with its code; the option written
+    // before it rolled back with the action's transaction.
+    assert_eq!(got["empty"][0], 422);
+    assert_eq!(got["empty"][1]["code"], "empty_content");
+    assert_eq!(got["option"], "Fish & <chips>");
+}
+
+/// The compiler's own-app ability types and the runtime's registered abilities come from the same
+/// schema; this runs both and compares names, input properties and required inputs, so a new
+/// operation in runtime/Zero/Wp/Abilities/Register.php can't go untyped.
+#[test]
+fn wordpress_own_abilities_match_the_registered_ones() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("own");
+    copy_dir(&root().join("tests/fixtures/abilities-own"), &project);
+    let content = build_wp(&project);
+    let program = zero::loader::load(&project.join("zero.config.ts")).unwrap();
+    let built = zero::pipeline::build(&project, &program, || Ok(zero::pipeline::Previous::none()), |_| None).unwrap();
+    let compiled: Value = serde_json::to_value(zero::wordpress::abilities::own_inputs(&built.schema)).unwrap();
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $out = [];
+            foreach (\Zero\Wp\Abilities\Register::operations() as $op) {
+                $keys = array_map('strval', array_keys($op['input']['properties'] ?? []));
+                $required = array_map('strval', $op['input']['required'] ?? []);
+                sort($keys);
+                sort($required);
+                $out[$op['name']] = [$keys, $required];
+            }
+            ksort($out);
+            echo json_encode($out), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let registered: Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next_back().unwrap()).unwrap();
+    // Both include `-revisions`, the sync trio, the auth create's `password` and the agent job.
+    assert!(
+        registered["own/notes-revisions"].is_array()
+            && registered["own/members-create"][0].to_string().contains("password")
+    );
+    assert_eq!(compiled, registered);
+}
+
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
@@ -2844,5 +3050,61 @@ fn language_constructs_match_node_through_generated_php() {
             );
         }
         assert_eq!(php, node, "{name}: the PHP envelope is not byte-identical to Node's");
+    }
+}
+
+/// Type-level rules of the language constructs added for 0.8 apps (zero#138): each source either
+/// checks cleanly or is refused with the named diagnostic, matching TypeScript or JavaScript.
+#[test]
+fn language_construct_type_rules() {
+    let cases: &[(&str, &str, Option<&str>)] = &[
+        // A typo in `delete` is a missing field, as for any typed read.
+        (
+            "type D = { title: string; secret?: string }; function g(d: D) { delete d.secert; return d; }",
+            "g({ title: 't' })",
+            Some("has no field `secert`"),
+        ),
+        (
+            "type D = { title: string; secret?: string }; function g(d: D) { delete d.secret; return d; }",
+            "g({ title: 't' })",
+            None,
+        ),
+        // A constructor return value stays refused when a label wraps it.
+        (
+            "class C { n = 1; constructor() { result: { if (this.n) return { n: 2 } as unknown as C; } } }",
+            "new C().n",
+            Some("constructor return values"),
+        ),
+        // A `never` do-while test ends the function; no fall-through return is needed.
+        (
+            "function fail(): never { throw new Error('x'); } function f(): number { do {} while (fail()); }",
+            "f()",
+            None,
+        ),
+        // An invalid escape still passes a TemplateStringsArray, whose element is undefined at runtime.
+        (
+            "function tag(s: TemplateStringsArray) { return s.length; }",
+            "tag`\\unicode`",
+            None,
+        ),
+    ];
+    for (declarations, handler, refusal) in cases {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ name: 'rules', actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        match refusal {
+            None => assert_eq!(out.status.code(), Some(0), "{declarations}: {report}"),
+            Some(message) => {
+                assert_eq!(out.status.code(), Some(1), "{declarations}: {report}");
+                assert!(
+                    report["diagnostics"][0]["message"].as_str().unwrap().contains(message),
+                    "{declarations}: {report}"
+                );
+            }
+        }
     }
 }

@@ -1,12 +1,24 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { compiler, metadata } from '../lib/release.mjs';
+
+// The compiler's command table (runtime/Zero/Cli/commands.json), so help works before a download.
+function help() {
+  const packaged = new URL('../lib/commands.json', import.meta.url);
+  const checkout = new URL('../../../runtime/Zero/Cli/commands.json', import.meta.url);
+  let table;
+  try { table = JSON.parse(readFileSync(packaged, 'utf8')); } catch { table = JSON.parse(readFileSync(checkout, 'utf8')); }
+  const width = Math.max(...[...table.build, ...table.site].map((row) => row.name.length));
+  const group = (title, rows) => `${title}:\n${rows.map((row) => `  ${row.name.padEnd(width)}  ${row.summary}`).join('\n')}\n`;
+  return `usage: zero <command> [options]\n\n${group('Build', table.build)}\n${group('Site (wp zero <command>; --site <dir | workspace | @alias>)', table.site)}`;
+}
 
 const args = process.argv.slice(2);
 if (args.length === 1 && ['--version', '-v'].includes(args[0])) {
   process.stdout.write(`zero ${metadata.version} (npm launcher)\n`);
-} else if (args.length === 0 || (args.length === 1 && ['--help', '-h'].includes(args[0]))) {
-  process.stdout.write(`Zero ${metadata.version}\n\nUsage: zero <command> [project-dir] [options]\n\n  dev       Start WordPress and watch backend and public files\n  build     Compile the backend and generated TypeScript client\n  check     Check the supported TypeScript backend without writing files\n  doctor    Inspect a built app or a running site\n\n  zero dev stop [project-dir]\n  zero dev status [project-dir]\n  zero dev wp [project-dir] -- <WP-CLI arguments>\n\nCreate an app: npm create @spacefast/zero@${metadata.version} my-app\nLocal compiler: ZERO_BIN=/absolute/path/to/zero\n`);
+} else if (args.length === 0 || (args.length === 1 && ['--help', '-h', 'help'].includes(args[0]))) {
+  process.stdout.write(`Zero ${metadata.version}\n\n${help()}\nCreate an app: npm create @spacefast/zero@${metadata.version} my-app\nLocal compiler: ZERO_BIN=/absolute/path/to/zero\n`);
 } else {
   try {
     const child = spawn(await compiler(), args, { stdio: 'inherit' });

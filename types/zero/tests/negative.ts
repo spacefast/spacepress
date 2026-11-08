@@ -244,3 +244,9 @@ blocks({ layouts: { hero: { heading: text().notNull() } } }).default([{ layout: 
 select({ options: ["a", "b"], multiple: true }).default(["c"]);
 
 void v1Queries; void authors; void comments; void settings;
+
+// fetch and crypto are the standard globals, not "zero" exports.
+// @ts-expect-error "zero" has no fetch
+export { fetch } from "zero";
+// @ts-expect-error "zero" has no crypto
+export { crypto } from "zero";

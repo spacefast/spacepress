@@ -27,7 +27,7 @@ reviewed; it does not generate prose, invoke AI, or certify editorial quality.
 For deterministic local execution, run the real queue after enqueueing:
 
 ```sh
-target/debug/zero dev wp /absolute/path/to/notebook -- action-scheduler run --hooks=zero_job
+target/debug/zero wp --site /absolute/path/to/notebook action-scheduler run --hooks=zero_job
 ```
 
 Editors and administrators can edit all articles. Subscribers can echo and read

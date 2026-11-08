@@ -250,8 +250,6 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "env",
     "once",
     "jobs",
-    "fetch",
-    "crypto",
     "mail",
     "definePlugin",
 ];
@@ -342,6 +340,15 @@ pub const GLOBALS: &[&str] = &[
     "TransformStream",
     "setTimeout",
     "crypto",
+    "Buffer",
+    "Headers",
+    "URLSearchParams",
+    "URL",
+    "Request",
+    "Response",
+    "FormData",
+    "Blob",
+    "AbortController",
 ];
 
 pub struct Evaluator<'p> {
@@ -604,6 +611,10 @@ impl<'p> Evaluator<'p> {
         let [Value::Str(spec)] = args else {
             return err(span, "require() needs one string literal");
         };
+        // Node built-ins resolve through the same lookup as `import` (`builtins::module`).
+        if crate::builtins::module(spec).is_some() {
+            return Ok(Value::Builtin(Builtin::NodeCrypto(None)));
+        }
         let Some(&target) = self.program.resolved.get(&(from, spec.to_string())) else {
             return err(
                 span,
@@ -667,6 +678,9 @@ impl<'p> Evaluator<'p> {
         if source == ZERO_MODULE {
             return zero_export(name, span);
         }
+        if let Some(module) = crate::builtins::module(source) {
+            return node_crypto_export(module, source, name, span);
+        }
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
         }
@@ -703,6 +717,9 @@ impl<'p> Evaluator<'p> {
             }
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
+                ImportName::Default if crate::builtins::module(source).is_some() => {
+                    Value::Builtin(Builtin::NodeCrypto(None))
+                }
                 ImportName::Default => {
                     if crate::loader::builtin_module(source) {
                         return err_help(
@@ -712,6 +729,9 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                     self.import_value(id, source, "default", spec.span)?
+                }
+                ImportName::Namespace if crate::builtins::module(source).is_some() => {
+                    Value::Builtin(Builtin::NodeCrypto(None))
                 }
                 ImportName::Namespace => {
                     if source == WORDPRESS_MODULE {
@@ -772,6 +792,21 @@ impl<'p> Evaluator<'p> {
                 self.initialize_pattern(inner, v, scope, declaration)
             }
             Pat::Obj { props, rest, span } => {
+                if let Value::Builtin(Builtin::NodeCrypto(None)) = &value {
+                    // `const { createHash } = require("node:crypto")`: each name is that function.
+                    if rest.is_some() {
+                        return err(
+                            *span,
+                            "list the node:crypto functions you use; a rest binding isn't supported",
+                        );
+                    }
+                    for (key, p) in props {
+                        let f =
+                            node_crypto_export(crate::builtins::BuiltinModule::NodeCrypto, "node:crypto", key, *span)?;
+                        self.initialize_pattern(p, f, scope, declaration)?;
+                    }
+                    return Ok(());
+                }
                 let Value::Object(obj) = &value else {
                     return err(*span, format!("can't destructure {} as an object", value.describe()));
                 };
@@ -1890,9 +1925,21 @@ impl<'p> Evaluator<'p> {
                     Err(Ctl::Err(d))
                 }
             }
+            Value::Builtin(Builtin::NodeCrypto(None)) => {
+                node_crypto_export(crate::builtins::BuiltinModule::NodeCrypto, "node:crypto", prop, span)
+            }
             Value::Builtin(Builtin::Db) => err(
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
+            ),
+            Value::Builtin(Builtin::Global(g @ ("process" | "fetch" | "crypto" | "Buffer"))) => err_help(
+                span,
+                format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),
+                if *g == "process" {
+                    "read `process.env.NAME` inside the handler; for webhook and upload settings use env(\"NAME\") from \"zero\""
+                } else {
+                    "move the call into a handler"
+                },
             ),
             Value::Builtin(Builtin::Global(g)) => match (*g, prop) {
                 ("Math", "PI") => Ok(Value::Num(std::f64::consts::PI)),
@@ -1979,6 +2026,20 @@ impl<'p> Evaluator<'p> {
                 }
             }
         }
+    }
+
+    /// An array method's callback: a global builtin (`.filter(Boolean)`, `Array.from(xs, Number)`)
+    /// receives only the arguments its contract takes, as JavaScript ignores the extra index and
+    /// array; `parseInt` keeps the index as its radix, as in JavaScript.
+    fn callback(&mut self, f: &Value, mut args: Vec<Value>, span: Span) -> R<Value> {
+        if let Value::Builtin(Builtin::Global(g)) = f
+            && let Some(max) = crate::builtins::contract("global", g)
+                .and_then(|c| c.evaluator)
+                .map(|a| a.max)
+        {
+            args.truncate(max);
+        }
+        self.call(f, args, span)
     }
 
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {
@@ -2169,13 +2230,16 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail | Builtin::Abilities => {
-                err_help(
-                    span,
-                    "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
-                    "move the call into a handler",
-                )
-            }
+            Builtin::Once
+            | Builtin::Jobs
+            | Builtin::Mail
+            | Builtin::Abilities
+            | Builtin::WpFunction(_)
+            | Builtin::NodeCrypto(_) => err_help(
+                span,
+                "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "move the call into a handler",
+            ),
             Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
@@ -2564,7 +2628,7 @@ impl<'p> Evaluator<'p> {
                     out.push(if matches!(f, Value::Undef) {
                         value
                     } else {
-                        self.call(&f, vec![value, Value::Num(i as f64)], span)?
+                        self.callback(&f, vec![value, Value::Num(i as f64)], span)?
                     });
                     i += 1;
                 }
@@ -2650,7 +2714,7 @@ impl<'p> Evaluator<'p> {
                         }
                         continue;
                     };
-                    let r = self.call(&f, vec![x.clone(), Value::Num(i as f64), Value::Array(a.clone())], span)?;
+                    let r = self.callback(&f, vec![x.clone(), Value::Num(i as f64), Value::Array(a.clone())], span)?;
                     if matches!(m, "filter" | "find" | "findIndex" | "some" | "every") {
                         require_static_data(&r, span)?;
                     }
@@ -2689,7 +2753,7 @@ impl<'p> Evaluator<'p> {
                 for (i, _) in iter {
                     let x = a.borrow().get(i).cloned();
                     if let Some(x) = x {
-                        acc = self.call(&f, vec![acc, x, Value::Num(i as f64), Value::Array(a.clone())], span)?;
+                        acc = self.callback(&f, vec![acc, x, Value::Num(i as f64), Value::Array(a.clone())], span)?;
                     }
                 }
                 acc
@@ -2781,8 +2845,6 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "route" => Builtin::Route,
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
-        "fetch" => Builtin::Fetch,
-        "crypto" => Builtin::Crypto,
         "mail" => Builtin::Mail,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
@@ -2797,6 +2859,20 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
         n if ZERO_TYPES.contains(&n) => return Ok(Value::Undef),
+        "fetch" | "crypto" => {
+            return err_help(
+                span,
+                format!("\"zero\" has no export named `{name}`"),
+                format!(
+                    "`{name}` is the standard global: remove it from this import{}",
+                    if name == "crypto" {
+                        ", or import { createHash, createHmac, randomBytes } from \"node:crypto\""
+                    } else {
+                        ""
+                    }
+                ),
+            );
+        }
         _ => {
             let mut d = Diag::new(span, format!("\"zero\" has no export named `{name}`"));
             if let Some(s) = suggest(name, ZERO_EXPORTS.iter().copied()) {
@@ -2805,6 +2881,22 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
             return Err(Ctl::Err(d));
         }
     }))
+}
+
+fn node_crypto_export(module: crate::builtins::BuiltinModule, source: &str, name: &str, span: Span) -> R<Value> {
+    let exports = module.exports();
+    if let Some(f) = exports.iter().find(|f| **f == name) {
+        return Ok(Value::Builtin(Builtin::NodeCrypto(Some(f))));
+    }
+    let mut d = Diag::new(span, format!("\"{source}\" has no `{name}` in Zero code"));
+    d = match suggest(name, exports.iter().copied()) {
+        Some(s) => d.help(format!("did you mean `{s}`?")),
+        None => d.help(format!(
+            "Zero compiles {} from node:crypto to PHP; other functions, keys, ciphers and streams aren't available",
+            exports.join(", ")
+        )),
+    };
+    Err(Ctl::Err(d))
 }
 
 /// Names exported by `"php/wordpress"`.
@@ -2826,12 +2918,23 @@ const WORDPRESS_TYPES: &[&str] = &[
 fn wordpress_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
         "abilities" => Builtin::Abilities,
+        n if crate::wordpress::function(n).is_some() => Builtin::WpFunction(n.into()),
         n if WORDPRESS_TYPES.contains(&n) => return Ok(Value::Undef),
         _ => {
             let mut d = Diag::new(span, format!("\"php/wordpress\" has no export named `{name}`"));
-            if let Some(s) = suggest(name, WORDPRESS_EXPORTS.iter().copied()) {
-                d = d.help(format!("did you mean `{s}`?"));
-            }
+            d = match suggest(
+                name,
+                WORDPRESS_EXPORTS
+                    .iter()
+                    .copied()
+                    .chain(crate::wordpress::function_names()),
+            ) {
+                Some(s) => d.help(format!("did you mean `{s}`?")),
+                None => d.help(format!(
+                    "WordPress functions are admitted one by one when they map soundly to TypeScript; available: {}",
+                    crate::wordpress::function_names().collect::<Vec<_>>().join(", ")
+                )),
+            };
             return Err(Ctl::Err(d));
         }
     }))
@@ -3923,6 +4026,24 @@ mod tests {
         let program = crate::loader::load(&entry).unwrap();
         let error = super::Evaluator::new(&program).run().unwrap_err();
         assert!(error.message.contains("lone UTF-16 surrogate"), "{error:?}");
+    }
+
+    #[test]
+    fn global_builtins_work_as_array_callbacks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("zero.config.ts");
+        std::fs::write(
+            &entry,
+            r#"export default [[1, 0, 2, "", null].filter(Boolean), Array.from(["1", "2.5"], Number), ["10", "10", "10"].map(parseInt), ["a", ""].map(String), [0, 1].every(Boolean), ["1", "x"].map(Number)];"#,
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let result = super::Evaluator::new(&program).run().unwrap();
+        // Node prints the same for these expressions; parseInt keeps the index as its radix.
+        assert_eq!(
+            super::to_json(&result).unwrap(),
+            serde_json::json!([[1, 2], [1, 2.5], [10, null, 2], ["a", ""], false, [1, null]])
+        );
     }
 
     #[test]

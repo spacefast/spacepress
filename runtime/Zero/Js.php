@@ -1126,6 +1126,7 @@ final class Js
         if (self::isNullish($a)) {
             throw new JsError('Cannot set properties of null or undefined', 'TypeError');
         }
+        self::writable($a);
         $index = self::index($i);
         if ($index === null || $index > count($a->a)) {
             throw new JsError('Zero arrays are dense: index ' . self::numStr($i) . ' is past length ' . count($a->a), 'RangeError');
@@ -1221,16 +1222,15 @@ final class Js
         if ($object instanceof JsArguments) {
             // Arguments indexes can be deleted, so presence is the slot itself, not the length.
             $own = preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && array_key_exists((int) $key, $object->a);
-            return array_key_exists($key, $object->p) || $own || in_array($key, ['length', 'callee'], true) || self::prototypeHas('Object', $key);
+            return array_key_exists($key, $object->p) || $own || $key === 'callee' || ($key === 'length' && !$object->lengthDeleted) || self::prototypeHas('Object', $key);
         }
         if ($object instanceof JsClass) {
             if ($object->has($key) || $object->hasStaticMethod($key) || in_array($key, ['length', 'name', 'prototype'], true)) { return true; }
             return self::prototypeHas('Function', $key);
         }
         if ($object instanceof \Closure) {
-            if (in_array($key, ['prototype', 'arguments', 'caller'], true)) {
-                throw new JsError('Function metadata is not supported', 'TypeError');
-            }
+            // Ordinary functions own `prototype`, arrows don't; a PHP closure doesn't record which.
+            if ($key === 'prototype') { throw new JsError('Function prototype presence is not supported', 'TypeError'); }
             return self::prototypeHas('Function', $key);
         }
         if ($object instanceof JsError) {
@@ -1270,6 +1270,7 @@ final class Js
         }
         if ($object instanceof JsArray) {
             if ($key === 'length') { $refuse('[object Array]'); }
+            if ($object->frozen && (array_key_exists($key, $object->p) || $canonicalIndex && (int) $key < count($object->a))) { $refuse('[object Array]'); }
             if ($canonicalIndex) {
                 if ((int) $key < count($object->a)) {
                     throw new JsError('Zero arrays are dense: delete cannot leave a hole; use splice to remove elements', 'RangeError');
@@ -1281,7 +1282,7 @@ final class Js
         }
         if ($object instanceof JsArguments) {
             if ($key === 'callee') { $refuse('#<Object>'); }
-            if ($key === 'length') { throw new JsError('Deleting arguments.length is not supported', 'TypeError'); }
+            if ($key === 'length') { $object->length = JsUndefined::Value; $object->lengthDeleted = true; return true; }
             if ($canonicalIndex) { unset($object->a[(int) $key]); return true; }
             unset($object->p[$key]);
             return true;
@@ -1299,8 +1300,9 @@ final class Js
         if ($object instanceof RegExp && $key === 'lastIndex') { $refuse('[object RegExp]'); }
         if ($object instanceof JsNamespace && in_array($key, ['E', 'LN10', 'LN2', 'LOG10E', 'LOG2E', 'PI', 'SQRT1_2', 'SQRT2'], true)) { $refuse('#<Object>'); }
         if ($object instanceof \Closure && $key === 'prototype') { $refuse('function'); }
-        if ($object instanceof JsError && $key === 'message' && $object->hasMessage) {
-            throw new JsError('Deleting an Error message is not supported', 'TypeError');
+        if ($object instanceof JsError && $key === 'message') {
+            $object->deleteMessage();
+            return true;
         }
         // Other own properties of built-in values are not modeled as deletable; inherited ones are
         // absent, so deleting them is a successful no-op as in JavaScript.
@@ -1329,8 +1331,11 @@ final class Js
     {
         static $sites = [];
         if (!isset($sites[$site])) {
+            // ECMAScript freezes both arrays; the cache depends on it.
             $strings = new JsArray($cooked);
             $strings->p['raw'] = new JsArray($raw);
+            $strings->p['raw']->frozen = true;
+            $strings->frozen = true;
             $sites[$site] = $strings;
         }
         return $sites[$site];
@@ -1508,20 +1513,29 @@ final class Js
         return $i >= 0 && $i < $len && array_key_exists((int) $i, $a->a) ? $a->a[(int) $i] : JsUndefined::Value;
     }
 
+    /** Strict-mode writes to a frozen array throw. */
+    public static function writable(JsArray $a): JsArray
+    {
+        if ($a->frozen) { throw new JsError('Cannot assign to read only property of a frozen array', 'TypeError'); }
+        return $a;
+    }
+
     public static function push(JsArray $a, mixed ...$values): int
     {
+        self::writable($a);
         foreach ($values as $value) { $a->a[] = $value; }
         return count($a->a);
     }
 
     public static function unshift(JsArray $a, mixed ...$values): int
     {
+        self::writable($a);
         $a->a = [...$values, ...$a->a];
         return count($a->a);
     }
 
-    public static function pop(JsArray $a): mixed { return $a->a === [] ? JsUndefined::Value : array_pop($a->a); }
-    public static function shift(JsArray $a): mixed { return $a->a === [] ? JsUndefined::Value : array_shift($a->a); }
+    public static function pop(JsArray $a): mixed { self::writable($a); return $a->a === [] ? JsUndefined::Value : array_pop($a->a); }
+    public static function shift(JsArray $a): mixed { self::writable($a); return $a->a === [] ? JsUndefined::Value : array_shift($a->a); }
 
     public static function concat(JsArray $a, mixed ...$items): JsArray
     {
@@ -1554,6 +1568,7 @@ final class Js
 
     public static function splice(JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): JsArray
     {
+        self::writable($a);
         $len = count($a->a);
         $start = self::relIndex($start, $len);
         $count = $deleteCount === null ? $len - $start : self::clampIndex($deleteCount, $len - $start);
@@ -1562,6 +1577,8 @@ final class Js
 
     public static function reverse(JsArray $a): JsArray
     {
+        // Reversing or sorting fewer than two elements sets nothing, so it succeeds on a frozen array.
+        if (count($a->a) > 1) { self::writable($a); }
         $a->a = array_reverse($a->a);
         return $a;
     }
@@ -1570,6 +1587,7 @@ final class Js
 
     public static function sort(JsArray $a, ?callable $cmp = null): JsArray
     {
+        if (count($a->a) > 1) { self::writable($a); }
         $len = count($a->a);
         $sorted = self::sorted($a, $cmp);
         $a->a = [...$sorted->a, ...array_slice($a->a, $len)];
@@ -1678,6 +1696,7 @@ final class Js
 
     public static function fill(JsArray $a, mixed $value, int|float $start = 0, int|float|null $end = null): JsArray
     {
+        self::writable($a);
         $len = count($a->a);
         $from = self::relIndex($start, $len);
         $to = $end === null ? $len : self::relIndex($end, $len);
@@ -2043,13 +2062,49 @@ final class Js
     }
 
     /**
+     * `-0` → `-0.0` outside strings, so json_decode keeps the sign. A linear scan: a regex over a long
+     * string literal can exceed PCRE's backtrack limit, and preg_replace then returns null.
+     */
+    private static function markNegativeZero(string $s): string
+    {
+        if (!str_contains($s, '-0')) {
+            return $s;
+        }
+        $out = '';
+        $length = strlen($s);
+        $from = 0;
+        for ($i = 0; $i < $length; $i++) {
+            $c = $s[$i];
+            if ($c === '"') {
+                // Skip the string literal, honoring escapes.
+                for ($i++; $i < $length && $s[$i] !== '"'; $i++) {
+                    if ($s[$i] === '\\') {
+                        $i++;
+                    }
+                }
+                continue;
+            }
+            if ($c === '-' && ($s[$i + 1] ?? '') === '0' && ($i === 0 || ($s[$i - 1] !== 'e' && $s[$i - 1] !== 'E'))) {
+                $next = $s[$i + 2] ?? '';
+                if ($next === '' || str_contains(" \t\r\n,]}", $next)) {
+                    $out .= substr($s, $from, $i - $from) . '-0.0';
+                    $from = $i + 2;
+                    $i++;
+                }
+            }
+        }
+
+        return $from === 0 ? $s : $out . substr($s, $from);
+    }
+
+    /**
      * JSON text → handles, preserving object/list shape at every depth.
      * Integers stay exact: request bodies and stored json() values
      * may carry ids. Throws \JsonException.
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
     {
-        $s = preg_replace('~"(?:[^"\\\\]|\\\\.)*"(*SKIP)(*F)|(?<![eE])-0(?=[\s,\]}]|$)~', '-0.0', $s);
+        $s = self::markNegativeZero($s);
         try {
             return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
         } catch (\JsonException $e) {

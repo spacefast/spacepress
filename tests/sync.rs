@@ -325,7 +325,8 @@ fn sync(project: &Path, site: &Site, extra: &[&str]) -> Output {
         .arg("sync")
         .args(extra)
         .arg(project)
-        .args(["--site", &site.url(), "--app-password", &site.token, "--json"])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--site", &site.url(), "--json"])
         .env("GIT_AUTHOR_NAME", "t")
         .env("GIT_AUTHOR_EMAIL", "t@example.test")
         .env("GIT_COMMITTER_NAME", "t")
@@ -580,7 +581,8 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     let denied = zero()
         .arg("sync")
         .arg(&project)
-        .args(["--site", &site.url(), "--app-password", "nobody:nope"])
+        .env("ZERO_APP_PASSWORD", "nobody:nope")
+        .args(["--site", &site.url()])
         .output()
         .unwrap();
     assert_eq!(
@@ -743,7 +745,8 @@ fn access_refusals_exit_4_and_an_unreadable_directory_deletes_nothing() {
     let denied = zero()
         .arg("sync")
         .arg(&project)
-        .args(["--only", "notes", "--site", &site.url(), "--app-password", &author])
+        .env("ZERO_APP_PASSWORD", &author)
+        .args(["--only", "notes", "--site", &site.url()])
         .output()
         .unwrap();
     assert_eq!(
@@ -1016,16 +1019,8 @@ fn an_edit_made_between_passes_is_not_overwritten() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "teams,players",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(
@@ -1194,16 +1189,8 @@ fn a_file_edited_while_its_push_waits_is_planned_again() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "teams,players",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(
@@ -1336,16 +1323,8 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
         let out = zero()
             .arg("sync")
             .arg(&project)
-            .args([
-                "--only",
-                "teams,players",
-                "--site",
-                &proxy,
-                "--app-password",
-                &site.token,
-                "--json",
-                "--no-commit",
-            ])
+            .env("ZERO_APP_PASSWORD", &site.token)
+            .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
             .output()
             .unwrap();
         assert!(
@@ -1420,16 +1399,8 @@ fn a_file_edited_during_the_push_itself_is_not_overwritten() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "notes",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
@@ -1581,16 +1552,8 @@ fn an_unreadable_file_never_trashes_its_provisional_identity() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "teams,players",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
@@ -1634,16 +1597,8 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "notes",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
@@ -1707,7 +1662,8 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .args(["--site", &proxy, "--app-password", &site.token, "--json"])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--site", &proxy, "--json"])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
@@ -1794,7 +1750,8 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .args(["--site", &proxy, "--app-password", &site.token])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--site", &proxy])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
@@ -1842,16 +1799,8 @@ fn a_file_restored_while_the_site_is_read_is_not_trashed() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "notes",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
@@ -1931,16 +1880,8 @@ fn a_file_restored_during_the_trash_request_comes_back_on_the_next_run() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "notes",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
@@ -1980,16 +1921,8 @@ fn an_unreadable_file_restored_mid_run_blocks_the_trash() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "notes",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
@@ -2059,16 +1992,8 @@ fn a_failure_later_in_the_run_keeps_the_bases_already_moved() {
     let out = zero()
         .arg("sync")
         .arg(&project)
-        .args([
-            "--only",
-            "notes,snippets",
-            "--site",
-            &proxy,
-            "--app-password",
-            &site.token,
-            "--json",
-            "--no-commit",
-        ])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--only", "notes,snippets", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
@@ -2202,7 +2127,8 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .args(["--site", &proxy, "--app-password", &site.token])
+        .env("ZERO_APP_PASSWORD", &site.token)
+        .args(["--site", &proxy])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));

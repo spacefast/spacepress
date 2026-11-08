@@ -103,6 +103,24 @@ export function payloadRefusals(artifact) {
   return out;
 }
 
+/**
+ * A converter run's report, or null when the run is a tool failure: a signal or an exit code other
+ * than 0 (written) and 1 (refused), output that is not one complete JSON report, or a status that
+ * contradicts the exit code. A failure is never a census outcome; it invalidates the run.
+ */
+export function converterReport({ code, signal, stdout }) {
+  if (signal || (code !== 0 && code !== 1)) return null;
+  let report;
+  try {
+    report = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  if (report === null || typeof report !== "object" || !Array.isArray(report.errors)) return null;
+  const ok = code === 0 ? report.status === "dry-run" && report.errors.length === 0 : report.status === "refused" && report.errors.length > 0;
+  return ok ? report : null;
+}
+
 function run(bin, input, out, users) {
   const argv = ["migrate", "app", "--from", "zero-0.8", input, "--out", out, "--space", "spc_census", "--dry-run", "--json"];
   if (users) argv.push("--users");
@@ -111,13 +129,8 @@ function run(bin, input, out, users) {
     let stdout = "";
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.resume();
-    child.on("close", (code) => {
-      try {
-        resolve({ code, report: JSON.parse(stdout) });
-      } catch {
-        resolve({ code, report: { status: "crashed", errors: [{ pointer: "", reason: "converter crashed" }] } });
-      }
-    });
+    child.on("error", () => resolve({ code: null, signal: "spawn", stdout: "" }));
+    child.on("close", (code, signal) => resolve({ code, signal, stdout }));
   });
 }
 
@@ -206,10 +219,20 @@ async function main() {
     const summaries = [];
     const detail = {};
     for (const { label, bin } of opts.zero) {
+      const failures = [];
       const per = await pool(spaces, opts.jobs, async (s, i) => {
-        const { report } = await run(bin, s.input, path.join(scratch, `out-${label}-${i}`), opts.users);
+        const result = await run(bin, s.input, path.join(scratch, `out-${label}-${i}`), opts.users);
+        const report = converterReport(result);
+        if (report === null) {
+          failures.push(`${s.version}: exit ${result.code ?? "none"}${result.signal ? ` signal ${result.signal}` : ""}`);
+          return null;
+        }
         return { version: s.version, verified: s.verified, ...outcome({ verified: s.verified, report, census: s.census }) };
       });
+      // A crashing or truncating binary must not look like an improvement: stop instead of counting.
+      if (failures.length > 0) {
+        throw new Error(`${label}: the converter failed on ${failures.length} space(s); no census was counted\n  ${failures.sort().join("\n  ")}`);
+      }
       summaries.push(summarize(label, per));
       detail[label] = per;
     }

@@ -1,0 +1,321 @@
+# Rendering, interactivity and caching (`zero/app/`)
+
+Owner: one workstream. The TSX → PHP renderer and the TSX →
+Interactivity compiler are gated on the spike in [tsx-to-php.md](tsx-to-php.md).
+Routing, modes, markdown and caching can be built first. Schema, queries and
+modes are in [spec.md](spec.md).
+
+Decisions (2026-11-08):
+- Pages are rendered by PHP on each request, provided caching is excellent.
+- Prebuild everything possible.
+- `app/` with `route.ts`.
+- Go all in on the Interactivity API.
+- Caching uses WP Cloud's existing Batcache and edge cache, with URL purges.
+
+## 1. Routing: what we took from whom
+
+| | Next.js App Router | TanStack Router/Start | Vite ecosystem (vite-plugin-pages, Remix/RR7, SvelteKit, Astro) | **Zero** |
+|---|---|---|---|---|
+| Layout | folders, one name per role (`page`, `layout`, `route`) | flat dot files or folders, `__root.tsx`, `route.tsx` | folders (`+page`, `[slug].astro`) or flat (`posts.$id.tsx`) | **folders, Next names** (`page`, `layout`, `not-found`, `error`, `route`) |
+| Params | `[slug]`, `[...rest]`, `[[...opt]]` | `$postId`, `$` splat, `{-$opt}` | mostly `[slug]` | **`[slug]`, `[...rest]`, `[[...opt]]`**. Brackets are what most frameworks use and what agents write by default |
+| Non-routes | `_private`, `(group)` | `-file` excluded, `(group)`, `_pathless` | `_` prefix | **`_private`, `(group)`** |
+| Page + API in one file | no (`route.ts` is separate) | yes (`server.handlers` on the route) | RR7/SvelteKit: yes (`action` export, `+page.server`) | **yes**: a `page.tsx` may export `POST` etc.; `route.ts` is for files with no page |
+| Typed links | no (string `href`) | **yes**: `<Link to="/posts/$id" params>` is checked | SvelteKit partly | **yes**: `_generated/routes.d.ts` types `href` and `params`, and kind URLs come from `item.url` |
+| Typed search params | `searchParams` is a string map | **`validateSearch` with a schema** | no | **yes**: `export const search = { page: integer().default(1), q: text().optional() }`, parsed and typed |
+| Data loading | async server component | `loader` + `useLoaderData` | `load` functions | **async server component** (it runs in PHP, so there is no separate loader) |
+| Forms | server actions | server functions | RR7/SvelteKit form actions (work without JS) | **form actions that work without JS**, upgraded by the Interactivity API (§4) |
+| Head | `metadata` / `generateMetadata` | `head()` | `<svelte:head>`, frontmatter | **`metadata` object or function** |
+| Middleware | `middleware.ts` | route and handler middleware | hooks | **`layout.tsx` may export `guard`** (§2) |
+
+So Zero uses Next's file names because agents write them most reliably. From
+TanStack it takes typed links, typed search params and page+handler in one
+file. From React Router 7 and SvelteKit it takes forms that work without JavaScript.
+
+## 2. Files
+
+```text
+zero/app/
+├── layout.tsx                    # root layout: <html>, <head>, router region
+├── page.tsx                      # /
+├── not-found.tsx                 # unclaimed URLs when app/ owns the front end
+├── error.tsx                     # render errors (logged; never leaks details)
+├── about/page.md                 # content-owned: a real WordPress Page
+├── blog/page.tsx                 # /blog?page=2
+├── blog/[year]/[slug]/page.tsx   # matches posts' url → `item`
+├── topics/[slug]/page.tsx        # matches topics' url → `item`
+├── account/layout.tsx            # export const guard = "subscriber"
+├── account/page.tsx
+├── (marketing)/pricing/page.tsx
+├── feed.xml/route.ts             # GET only, no page
+└── webhooks/stripe/route.ts      # POST, signed
+```
+
+- A page whose path matches a kind's `url` pattern receives `item` and 404s for
+  missing, unpublished or unreadable items. You don't export anything to bind it.
+- `export const guard = "subscriber" | (ctx) => true | redirect("/login")` on a
+  layout protects everything below it.
+- Static pages (no request data, no guard) are prerendered at build time (§6).
+
+## 3. A page
+
+```tsx
+// zero/app/blog/[year]/[slug]/page.tsx
+import { likes } from "zero:db";
+import { Content, Comments, Link, type PageProps } from "zero/app";
+import LikeButton from "../../../../components/LikeButton";
+
+export const metadata = ({ item }: PageProps<"posts">) => ({ title: item.title, description: item.excerpt });
+
+export default async function Post({ item }: PageProps<"posts">) {
+  const count = await likes.count({ where: { post: item.id } });
+  return (
+    <article>
+      <h1>{item.title}</h1>
+      {item.cover && <img src={item.cover.sizes.card.url} alt={item.cover.alt} />}
+      <Content value={item.body} />
+      {item.categories.map((c) => <Link key={c.id} href={c.url}>{c.name}</Link>)}
+      <LikeButton postId={item.id} count={count} />
+      <Comments for={item} />
+    </article>
+  );
+}
+```
+
+Server components are ordinary async functions that compile to PHP. `&&`,
+`?:`, `??`, `.map`, `.length` and string methods all work.
+
+## 4. Interactivity: all in on the Interactivity API
+
+**Every** interactive behavior in Zero compiles to the WordPress Interactivity API:
+- client components;
+- forms;
+- navigation;
+- live updates;
+- Zero's built-in components (`<Comments>`, sign-in, search).
+
+That gives one runtime, about 11 kB, which WordPress already ships and which
+core blocks and plugins share. There is no React or Preact bundle of our own
+and no second hydration model.
+
+### 4.1 Client components
+
+```tsx
+// zero/components/LikeButton.tsx
+"use client";
+import { useState } from "zero/client";
+import { like } from "../server/posts";
+
+export default function LikeButton({ postId, count: initial }: { postId: number; count: number }) {
+  const [count, setCount] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const label = count === 1 ? "1 like" : `${count} likes`;
+  return (
+    <button disabled={busy} onClick={async () => { setBusy(true); setCount(await like({ postId })); setBusy(false); }}>
+      ♥ {label}
+    </button>
+  );
+}
+```
+
+The compiler produces:
+
+1. **Server HTML (PHP)** with real values and directives, so the page is
+   correct before JavaScript loads:
+   `<button data-wp-interactive="zero/LikeButton" data-wp-context='{"postId":42,"count":7,"busy":false}' data-wp-bind--disabled="context.busy" data-wp-on--click="actions.click">♥ <span data-wp-text="state.label">7 likes</span></button>`
+2. **A store module (JS)**, registered as a script module and loaded only on
+   pages that use the component:
+   `store("zero/LikeButton", { state: { get label() { … } }, actions: { *click() { … } } })`.
+3. **Derived values compiled to PHP too** (`wp_interactivity_state` closures),
+   so step 1 can print "7 likes". Parity between the PHP and JS output is tested ([tsx-to-php.md](tsx-to-php.md)).
+
+How it reacts:
+
+- `useState` values become fields in the instance's `data-wp-context`. Each
+  instance gets its own copy.
+- The context is a proxy over Preact signals. Reading `ctx.count` subscribes to it.
+- Writing `ctx.count = 8` updates only the nodes that read it. Nothing is
+  re-rendered and there is no virtual DOM diff.
+- Derived values are getters, recomputed lazily.
+- Handlers become actions; async ones compile to generators so the runtime
+  can restore scope after each `await`.
+- The browser takes over the server HTML in place rather than rendering it again.
+
+The TSX → directive mapping, which also defines what's supported:
+
+| You write | Compiles to |
+|---|---|
+| `useState(x)` | a `data-wp-context` field |
+| a `const` derived from state or props | a `state` getter (JS) and a closure (PHP) |
+| `{value}` text | `data-wp-text` |
+| `attr={value}` | `data-wp-bind--attr` |
+| `className={{ active: on }}` / `clsx` | `data-wp-class--active` |
+| `style={{ color }}` | `data-wp-style--color` |
+| `onClick`, `onInput`, … | `data-wp-on--click`, … (`withSyncEvent` for `preventDefault`) |
+| window/document listeners via `useEvent("resize", …)` | `data-wp-on-window--resize` |
+| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | `<template>` toggled by a derived boolean, or `data-wp-bind--hidden` for static subtrees |
+| `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">` |
+| `useEffect(fn, [deps])` | `data-wp-watch` (cleanup returned) |
+| `useMount(fn)` | `data-wp-init` |
+| `useRef()` | `getElement().ref` |
+| shared state across components: `export const cart = sharedState({ items: [] })` | the store's global `state` for that namespace |
+| `fetch` / server action calls | `fetch` to the action endpoint with the REST nonce from `getConfig()` |
+
+The build refuses these and names the alternative: React context (use
+`sharedState`), third-party React components, `dangerouslySetInnerHTML` (use
+`<Html value>`, which compiles to `wp-html` with `asDangerousHTML`), and
+components defined inside render.
+
+### 4.2 Forms
+
+```tsx
+<form action={subscribe}>                           {/* server action from server/ */}
+  <input name="email" type="email" required />
+  <button>Subscribe</button>
+</form>
+```
+
+- Without JavaScript, the form POSTs to the action endpoint and redirects back
+  to the page, with errors in a flash.
+- With JavaScript, an Interactivity store submits it with `fetch`, keeps
+  `pending`, `error` and `result` in context, and updates in place.
+- `useFormState()` reads those values.
+
+### 4.3 Navigation
+
+The root layout marks the content region with `data-wp-router-region`. `<Link>`
+uses `actions.navigate()` from `@wordpress/interactivity-router`: it fetches the
+next page's HTML, swaps the region, and re-reads server state
+(`getServerState`/`getServerContext`). This mode is stable since WordPress 6.9.
+Full-page navigation is still experimental in WordPress, so it stays off until
+core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
+
+### 4.4 Live data over Cast
+
+This already exists on main (monorepo #5152, zero #128):
+1. A committed write fires `zero_realtime_changes` with ids only.
+2. The control plane broadcasts `zero.changes` into the Space's Cast room.
+3. `/__spacefast/client.js` holds one socket per page.
+4. The client re-runs its own query through the normal API, so a viewer only
+   ever sees rows its own read returns.
+5. With the socket down, the page polls every 30 seconds; while live, a safety
+   refresh runs about every minute.
+
+This spec adds:
+
+- `<Live>{…}</Live>` around part of a server page. On a notice for any kind the
+  region read, it calls the router to re-fetch the page and swap only that
+  region. No client data code is needed.
+- `useLive(kind, query)` inside client components: the result lives in
+  context, and directives update when it changes.
+
+Both load Cast only on pages that use them, through the engine client.
+Real-time co-editing is out of scope.
+
+### 4.5 Built-in interactive components
+
+`<Comments for>` (thread + form + moderation state), `<SignIn>`,
+`<Search kind>`, `<Pagination>`, `<Menu name>`. They are written in the same
+TSX subset, so they are examples as well as product.
+
+## 5. Markdown and llms.txt
+
+- `GET /blog/2026/hello.md`, or the same URL with `Accept: text/markdown`,
+  returns markdown with `Vary: Accept`. Each HTML page links to its markdown version.
+- Items render to markdown from their stored content (`Markdown::fromBlocks`).
+  Code pages render from their compiled output, and static pages are prebuilt.
+- `/llms.txt` lists kinds with URLs plus pages, with descriptions.
+- In WordPress-rendered mode, Zero serves markdown for every kind URL.
+- Backend-only sites use the API: `GET /wp-json/zero/v1/posts/<id>?format=md`.
+
+## 6. Caching
+
+The plan is to use WP Cloud's existing stack:
+- Batcache, a full-page cache in the object cache;
+- the edge cache;
+- URL purges.
+
+Zero's job is to tell those layers what each page is and to purge the right
+URLs. This covers pages WordPress serves. A frontend hosted elsewhere, such as
+Astro, owns its own cache; Zero only sends it the webhook (04).
+
+Already on main in the runtime:
+- `runtime/engine/shared/purge.php` sends durable, per-host purge records to
+  the site's edge-cache gateway (`/edge-cache/<site>/purge/`), with retries
+  from housekeeping.
+- Static files are served before WordPress (and Batcache) boots.
+- Purges are whole-host today because the provider's URI purge can't address
+  every query variant.
+
+### 6.1 Policy per route (decided by the compiler, never configured)
+
+| The page reads | Policy |
+|---|---|
+| nothing request-dependent | **prebuilt** in `dist/` (HTML + `.md`) and served by the engine before WordPress |
+| only content any visitor can read | **cacheable**: Batcache stores it, and the edge caches with `public, s-maxage=<window>, max-age=0, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
+| anything viewer-dependent | `private, no-store`; still fast, because the shell has no viewer data when the viewer part is a client component |
+
+`zero check --json` prints each route's policy and the reason.
+
+### 6.2 Purges by URL
+
+- At render time, a cacheable page records which kinds and ids it read. The
+  compiler knows the queries, so the runtime only collects ids. These are
+  stored as a URL → reads index in the object cache, with a database copy so
+  eviction can't lose it.
+- On every committed write, Zero computes the affected URLs:
+  - the item's own `url` and its old URL if the slug changed;
+  - every indexed page that read that id, or listed that kind;
+  - the item's term archives, author archive, home, feeds, the sitemap, and each URL's `.md` twin.
+- The URLs go into the existing durable purge records, as one purge obligation
+  in the same transaction as the write. It is retried until the gateway accepts it.
+- Batcache entries for those URLs are deleted in the same step.
+- **Query variants:** Zero purges each URL plus every query variant its index
+  saw (`?page=2`, typed `search` params). Unknown variants fall back to the
+  `s-maxage` window. A purge that touches more than N URLs, or a kind-wide
+  change such as a schema deploy or a settings change, becomes the existing whole-host purge.
+- Publishing a new version purges the whole host, as today.
+
+### 6.3 Inside PHP
+
+- Query results are memoized per request.
+- The route table, kinds, fields and roles are compiled arrays.
+- OPcache holds the compiled pages.
+- No JSON parsing or reflection happens at request time.
+
+**Budget:** p50 server time on a cache miss under 30 ms on a box; on a hit, Batcache or edge time only.
+
+### 6.4 Verify before building
+
+These must be checked before building, from our own runtime and the existing WP Cloud notes, not by calling WP Cloud directly:
+- whether the edge-cache gateway accepts a path purge, and its limits (the
+  current code sends only `wp_domain`);
+- whether Batcache's key includes the query string and our bypass cookies;
+- the edge's TTL ceiling.
+
+The design holds either way; only the batch threshold changes.
+
+## 7. Kept from today
+
+- Hidden code-owned WordPress Page records for static routes.
+- Escaping through the HTML API.
+- Route IDs that survive moving a file.
+
+## 8. Acceptance
+
+`examples/full-site` and an EmDash `blog` counterpart in this layout, with browser tests:
+
+- Published vs draft as an anonymous visitor.
+- Rendering and access:
+  - a client component round trip;
+  - a form with JavaScript disabled and enabled;
+  - `<Comments>` posting as a guest into moderation.
+- Live and navigation:
+  - `<Live>` updating from another browser's write;
+  - region navigation.
+- Agents: markdown twins and `llms.txt`.
+- Modes and fallbacks:
+  - a 404 in Zero-owned mode;
+  - WordPress rendering a kind URL that has no page.
+- Caching:
+  - a cache hit (Batcache, then edge) after the first request;
+  - a URL purge after an edit that leaves unrelated cached pages untouched.

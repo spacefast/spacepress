@@ -131,7 +131,7 @@ trait JsDynamic
                     : throw new JsError('Unsupported Math property ' . $key, 'TypeError'),
             };
         }
-        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'stack' => throw new JsError('Error stack metadata is not supported', 'TypeError'), default => self::dynamicMethodValue($value, $key) }; }
+        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'stack' => self::str($value), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue($value, $key) }; }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             if ($value instanceof JsArguments && $key === 'callee') { throw new JsError('Restricted arguments property', 'TypeError'); }
             if ($key === 'length') { return $value instanceof JsArguments ? $value->length : count($value->a); }
@@ -610,8 +610,7 @@ trait JsDynamic
                     throw new JsError('Unsupported Math property ' . $key, 'TypeError');
                 }
                 if ($source instanceof JsError) {
-                    if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
-                    return $key === 'message' && $source->hasMessage;
+                    return $key === 'stack' || $key === 'message' && $source->hasMessage;
                 }
                 if ($source instanceof JsObject && array_key_exists($key, $source->hidden)) { return true; }
                 if ($key === 'length' && ($source instanceof JsArray || $source instanceof JsArguments || is_string($source))) { return true; }

@@ -654,6 +654,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 accessor.ty.clone(),
             ));
         }
+        if !is_static && let Some(ty) = self.error_member(&receiver.ty, prop) {
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicGet({}, {})", receiver.php, php_str(prop)),
+                ty,
+            ));
+        }
         let shape = if is_static {
             info.statics
         } else {
@@ -1010,6 +1016,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
+    /// Error members inherited from the built-in root: read and written through JavaScript lookup.
+    pub(super) fn error_member(&self, ty: &Ty, prop: &str) -> Option<Ty> {
+        if !self.error_instance(ty) || ty.non_null().field(prop).is_some() {
+            return None;
+        }
+        match prop {
+            "name" | "message" | "stack" => Some(Ty::Str),
+            "cause" => Some(Ty::Unknown),
+            _ => None,
+        }
+    }
+
     /// Instances of classes whose chain reaches `extends Error` (or TypeError/RangeError).
     pub(super) fn error_instance(&self, ty: &Ty) -> bool {
         let Ty::Instance(identity, _) = ty.non_null() else {
@@ -1022,6 +1040,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// An accessor write target: `Some(value type)` for a setter, an error for a getter-only accessor.
     pub(super) fn class_accessor_write(&self, receiver: &Ty, prop: &str, span: Span) -> Result<Option<Ty>> {
+        if let Some(ty) = self.error_member(receiver, prop) {
+            return Ok(Some(ty));
+        }
         let (id, is_static) = match receiver.non_null() {
             Ty::Instance(identity, _) => (identity.id, false),
             Ty::Class(id) => (id, true),

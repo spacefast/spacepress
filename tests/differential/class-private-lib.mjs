@@ -90,3 +90,55 @@ export function untypedAccessors() {
     json: JSON.stringify({ control, list: [control] }), readOnly, missing: control.nothing,
   };
 }
+
+// FilesError's shape: an Error subclass with own data fields, a cause and static helpers.
+class StoreError extends Error {
+  code;
+  permanent;
+  cause;
+  constructor(code, message, cause) {
+    super(message);
+    this.name = "StoreError";
+    this.code = code;
+    this.permanent = code === "Invalid" || code === "ReadOnly";
+    this.cause = cause;
+  }
+  static wrap(cause, fallback = "Provider") {
+    if (cause instanceof StoreError) return cause;
+    const message = cause instanceof Error ? cause.message : String(cause);
+    return new StoreError(fallback, message, cause);
+  }
+}
+class NotFound extends StoreError {
+  constructor(key) { super("NotFound", `missing ${key}`); Error.captureStackTrace(this, NotFound); }
+}
+class Plain extends Error {}
+class Typed extends TypeError {}
+
+export function untypedErrors() {
+  const results = [];
+  for (const run of [
+    () => { throw new NotFound("a"); },
+    () => { throw StoreError.wrap(new RangeError("range")); },
+    () => { throw StoreError.wrap("text"); },
+    () => { throw { code: "raw" }; },
+    () => { throw new Typed("typed"); },
+  ]) {
+    try { run(); } catch (error) {
+      results.push({
+        store: error instanceof StoreError, notFound: error instanceof NotFound,
+        error: error instanceof Error, type: error instanceof TypeError,
+        name: error.name, code: error.code, message: error.message, permanent: error.permanent,
+        text: error instanceof Error ? String(error) : "", stack: error instanceof Error ? error.stack.split("\n")[0] : "",
+        keys: Object.keys(error), json: JSON.stringify(error), cause: typeof error.cause,
+      });
+    }
+  }
+  const plain = new Plain();
+  const caused = new StoreError("Invalid", "outer", "inner");
+  return {
+    results, plain: [String(plain), plain.message, plain.name, Object.hasOwn(plain, "message"), Object.keys(plain).length],
+    caused: [caused.cause, caused.permanent, Object.hasOwn(caused, "cause"), Object.keys(caused).length],
+    text: String(new NotFound("t")),
+  };
+}

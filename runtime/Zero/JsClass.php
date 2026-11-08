@@ -52,7 +52,8 @@ final class JsClass
         $parent = $name === 'Error' ? null : self::builtin('Error');
         $constructor = static function (JsObject $self, mixed $message = JsUndefined::Value, mixed $options = JsUndefined::Value): void {
             if ($message !== JsUndefined::Value) { $self->hidden['message'] = Js::str($message); }
-            if ($options instanceof JsObject && array_key_exists('cause', $options->p)) { $self->hidden['cause'] = $options->p['cause']; }
+            // InstallErrorCause: HasProperty(options, "cause"), so an inherited cause counts too.
+            if ($options instanceof JsObject && Js::hasProperty('cause', $options)) { $self->hidden['cause'] = Js::dynamicGet($options, 'cause'); }
             $self->hidden['stack'] = self::lazyStack();
         };
         $toString = static function (mixed $self): string {

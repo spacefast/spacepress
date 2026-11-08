@@ -1236,7 +1236,7 @@ final class Js
             return self::prototypeHas('Function', $key);
         }
         if ($object instanceof JsError) {
-            if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
+            if ($key === 'stack') { return true; }
             return self::prototypeHas('Error', $key);
         }
         if ($object instanceof RegExp) { return $key === 'lastIndex' || self::prototypeHas('RegExp', $key); }

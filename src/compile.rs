@@ -2347,6 +2347,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
+            // `x instanceof C` narrows an unknown or caught value to C's instance type. Only the
+            // true branch narrows: a failed check says nothing about other classes.
+            ExprKind::Instanceof(value, class) => {
+                if let ExprKind::Ident(name) = &class.kind
+                    && let Ok(Resolved::Value(Value::Class(class), _)) = self.resolve(name, class.span)
+                    && let Some((path, original)) = self.path_ty(value)
+                    && matches!(original, Ty::Unknown | Ty::Error)
+                    && let Ok(id) = self.ensure_class(&class)
+                    && !self.classes[&id].javascript
+                {
+                    let instance = self.classes[&id].instance.clone();
+                    out.push(if negate {
+                        (path, original.clone(), instance)
+                    } else {
+                        (path, instance, original)
+                    });
+                }
+            }
             // `"key" in x` keeps the object-union members that declare `key` (TypeScript's `in`
             // narrowing). A member with an open map or an optional `key` stays on both sides.
             ExprKind::In(key, object) => {
@@ -4724,7 +4742,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("\\Zero\\Js::templateRaw({x})"));
                 Out::atom(php, suffix_null(Ty::Array(Box::new(Ty::Str))))
             }
-            (Ty::Error, "message" | "name") => {
+            (Ty::Error, "cause") => {
+                let php = guarded(self, &|x| format!("\\Zero\\Js::dynamicGet({x}, 'cause')"));
+                Out::atom(php, Ty::Unknown)
+            }
+            (Ty::Error, "message" | "name" | "stack") => {
                 // A caught value may be an Error subclass instance, so read through JavaScript lookup.
                 let php = guarded(self, &|x| {
                     format!("\\Zero\\Js::str(\\Zero\\Js::dynamicGet({x}, {}))", php_str(prop))

@@ -18,7 +18,10 @@ trait JsDynamic
     private static function dynamicMethodValue(mixed $receiver, string $name): mixed
     {
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
-            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+            return $receiver->class->methodValue($name, false);
+        }
+        if ($receiver instanceof JsClass && $receiver->hasStaticMethod($name)) {
+            return $receiver->methodValue($name, true);
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) { return JsUndefined::Value; }
         $owner = match (true) {
@@ -28,12 +31,13 @@ trait JsDynamic
             $receiver instanceof JsError => 'Error',
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
-            is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
+            is_int($receiver), is_float($receiver) => 'Number', $receiver instanceof JsBigInt => 'BigInt',
+            default => 'Object',
         };
         if ($receiver instanceof \Closure && in_array($name, ['bind', 'length', 'name', 'prototype', 'arguments', 'caller'], true)) {
             throw new JsError('Function metadata and binding are not supported', 'TypeError');
         }
-        if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date'], true)
+        if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date', 'BigInt'], true)
             || $name === 'toString' && in_array($owner, ['Math', 'Set', 'Map'], true)) { $owner = 'Object'; }
         $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
@@ -66,6 +70,7 @@ trait JsDynamic
         $compatible = match ($owner) {
             'Array' => $receiver instanceof JsArray, 'String' => is_string($receiver),
             'Number' => is_int($receiver) || is_float($receiver), 'Boolean' => is_bool($receiver),
+            'BigInt' => $receiver instanceof JsBigInt,
             'RegExp' => $receiver instanceof RegExp, 'Date' => $receiver instanceof JsDate,
             'Error' => $receiver instanceof JsError,
             'Set' => $receiver instanceof JsSet, 'Map' => $receiver instanceof JsMap,
@@ -116,7 +121,7 @@ trait JsDynamic
             if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
             return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
         }
-        if ($value instanceof JsClass) { return $value->get($key); }
+        if ($value instanceof JsClass) { return $value->has($key) || !$value->hasStaticMethod($key) ? $value->get($key) ?? JsUndefined::Value : self::dynamicMethodValue($value, $key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) {
                 'PI' => M_PI, 'E' => M_E,
@@ -277,6 +282,22 @@ trait JsDynamic
         return '[object ' . $tag . ']';
     }
 
+    /** Registers a function value whose receiver comes from call/apply or a method call. */
+    public static function dynamicMethodFunction(\Closure $function, \Closure $invoke): \Closure
+    {
+        self::$dynamicMethodReceivers ??= new \WeakMap();
+        self::$dynamicMethodReceivers[$function] = $invoke;
+        return $function;
+    }
+
+    /** `value instanceof constructor` where the constructor is only known at run time. */
+    public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
+    {
+        if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
+        if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
+        throw new JsError("Right-hand side of 'instanceof' is not callable", 'TypeError');
+    }
+
     public static function dynamicCall(mixed $function, JsArray $args): mixed
     {
         if (!$function instanceof \Closure) { throw new JsError('Value is not a function', 'TypeError'); }
@@ -311,7 +332,17 @@ trait JsDynamic
             return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
         }
         if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
-            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+            $class = $receiver->class;
+            return static fn (...$args) => $class->invokeOn($receiver, $name, $args, false);
+        }
+        if ($receiver instanceof JsClass) {
+            if ($receiver->has($name)) {
+                $method = $receiver->get($name);
+                return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+            }
+            if ($receiver->hasStaticMethod($name)) {
+                return static fn (...$args) => $receiver->invokeOn($receiver, $name, $args, true);
+            }
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) {
             return static fn (...$args) => self::dynamicCall(JsUndefined::Value, new JsArray($args));
@@ -327,6 +358,14 @@ trait JsDynamic
         if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         if (!$builtin && $receiver instanceof JsObject && $receiver->nullPrototype) { return self::dynamicCall(JsUndefined::Value, $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
+        if ($receiver instanceof JsBigInt) {
+            Builtins::check('bigint', $name, count($a));
+            return match ($name) {
+                'toString' => $receiver->toRadixArg($get(0)),
+                'valueOf' => $receiver,
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
+        }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
@@ -671,6 +710,12 @@ trait JsDynamic
         return self::dynamicConstruct('RegExp', $args);
     }
 
+    /** ToPrimitive for callers outside this trait (BigInt conversion). */
+    public static function primitive(mixed $value, string $hint = 'default'): mixed
+    {
+        return self::dynamicPrimitive($value, $hint);
+    }
+
     private static function dynamicPrimitive(mixed $value, string $hint = 'default'): mixed
     {
         if ($value instanceof JsDate) {
@@ -684,11 +729,11 @@ trait JsDynamic
                     $result = self::dynamicInvoke($value->p[$method], $value, new JsArray());
                 } elseif ($value instanceof JsObject && $value->nullPrototype) { continue; }
                 else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
-                if ($result === JsUndefined::Value || !is_object($result)) { return $result; }
+                if ($result === JsUndefined::Value || !is_object($result) || $result instanceof JsBigInt) { return $result; }
             }
             throw new JsError('Cannot convert object to primitive value', 'TypeError');
         }
-        if (is_object($value) && !$value instanceof JsUndefined) { return self::str($value); }
+        if (is_object($value) && !$value instanceof JsUndefined && !$value instanceof JsBigInt) { return self::str($value); }
         return $value;
     }
 
@@ -696,8 +741,9 @@ trait JsDynamic
     {
         if ($operator === '===' || $operator === '!==') { $equal = self::strictEq($left, $right); return $operator === '===' ? $equal : !$equal; }
         if ($operator === '==' || $operator === '!=') { $equal = self::looseEq($left, $right); return $operator === '==' ? $equal : !$equal; }
-        if (in_array($operator, ['&', '|', '^', '<<', '>>', '>>>'], true)) { return self::bitwise($operator, $left, $right); }
         $left = self::dynamicPrimitive($left); $right = self::dynamicPrimitive($right);
+        if ($left instanceof JsBigInt || $right instanceof JsBigInt) { return self::bigintBinary($operator, $left, $right); }
+        if (in_array($operator, ['&', '|', '^', '<<', '>>', '>>>'], true)) { return self::bitwise($operator, $left, $right); }
         if ($operator === '+') {
             return is_string($left) || is_string($right) ? self::str($left) . self::str($right) : self::add(self::toNumber($left), self::toNumber($right));
         }
@@ -713,11 +759,70 @@ trait JsDynamic
         };
     }
 
+    /**
+     * An operator on primitives where one is a BigInt (ECMAScript 13.15.3 ApplyStringOrNumericBinaryOperator).
+     * `+` with a string concatenates; relational and equality operators compare mathematically
+     * across BigInt, number and numeric strings; everything else needs two BigInts.
+     */
+    private static function bigintBinary(string $operator, mixed $left, mixed $right): mixed
+    {
+        if ($operator === '+' && (is_string($left) || is_string($right))) { return self::str($left) . self::str($right); }
+        if (in_array($operator, ['<', '<=', '>', '>=', '==', '!='], true)) {
+            $c = self::bigintCompare($left, $right);
+            if ($operator === '==' || $operator === '!=') { return ($c === 0) === ($operator === '=='); }
+            if ($c === null) { return false; }
+            return match ($operator) { '<' => $c < 0, '<=' => $c <= 0, '>' => $c > 0, '>=' => $c >= 0 };
+        }
+        if (!$left instanceof JsBigInt || !$right instanceof JsBigInt) {
+            throw new JsError('Cannot mix BigInt and other types, use explicit conversions', 'TypeError');
+        }
+        return match ($operator) {
+            '+' => $left->add($right), '-' => $left->sub($right), '*' => $left->mul($right),
+            '/' => $left->divRem($right)[0], '%' => $left->divRem($right)[1], '**' => $left->pow($right),
+            '&', '|', '^' => $left->bitwise($operator, $right),
+            '<<' => $left->shift($right, true), '>>' => $left->shift($right, false),
+            '>>>' => throw new JsError('BigInts have no unsigned right shift, use >> instead', 'TypeError'),
+            default => throw new JsError('Unsupported JavaScript operator ' . $operator, 'TypeError'),
+        };
+    }
+
+    /** Mathematical comparison of a BigInt with a BigInt, number, string or boolean; null when unordered. */
+    private static function bigintCompare(mixed $a, mixed $b): ?int
+    {
+        $side = static function (mixed $v): JsBigInt|int|float|null {
+            if ($v instanceof JsBigInt) { return $v; }
+            if (is_string($v)) { return JsBigInt::parse($v); }
+            if (is_bool($v) || $v === null) { return $v ? 1 : 0; }
+            if (is_int($v) || is_float($v)) { return $v; }
+            return null;
+        };
+        [$x, $y] = [$side($a), $side($b)];
+        if ($x === null || $y === null) { return null; }
+        if (is_float($x) && is_nan($x) || is_float($y) && is_nan($y)) { return null; }
+        if (!$x instanceof JsBigInt && !$y instanceof JsBigInt) { return $x <=> $y; }
+        $flip = !$x instanceof JsBigInt;
+        if ($flip) { [$x, $y] = [$y, $x]; }
+        if ($y instanceof JsBigInt) { $c = $x->compare($y); }
+        elseif (is_infinite((float) $y)) { $c = $y > 0 ? -1 : 1; }
+        else {
+            // Compare with the number's integer part, then its fraction.
+            $whole = $y < 0 ? ceil((float) $y) : floor((float) $y);
+            $c = $x->compare(JsBigInt::fromNumber($whole));
+            if ($c === 0 && (float) $y !== $whole) { $c = $y > $whole ? -1 : 1; }
+        }
+        return $flip ? -$c : $c;
+    }
+
     public static function looseEq(mixed $a, mixed $b): bool
     {
         if (self::isNullish($a) || self::isNullish($b)) { return self::isNullish($a) && self::isNullish($b); }
         $ta = self::typeOf($a); $tb = self::typeOf($b);
         if ($ta === $tb) { return self::strictEq($a, $b); }
+        if ($ta === 'bigint' || $tb === 'bigint') {
+            $other = $ta === 'bigint' ? $b : $a;
+            if (is_object($other) && !$other instanceof JsBigInt) { return self::looseEq($ta === 'bigint' ? $a : self::dynamicPrimitive($a), $ta === 'bigint' ? self::dynamicPrimitive($b) : $b); }
+            return self::bigintCompare($a, $b) === 0;
+        }
         if (is_bool($a)) { return self::looseEq((int) $a, $b); }
         if (is_bool($b)) { return self::looseEq($a, (int) $b); }
         if ($ta === 'function' && ($tb === 'number' || $tb === 'string')) { return self::looseEq(self::dynamicPrimitive($a), $b); }

@@ -1,0 +1,7 @@
+{
+  "step": "signed in",
+  "url": "http://127.0.0.1:5196/",
+  "body": "Skip to inventory\nDrive locker\nPERSONAL INVENTORY\nSign out\n\nYOUR LOCKER / ADMIN\n\nFind a drive.\n\nBy label, serial, model, or what's on it.\n\nSearch drives and contents\nAll drives\nIn use\nSpare\nNeeds attention\nDrive inventory\n0\n0 matching drives\nStart with your first drive.\n\nGive it a label, a serial, and a place.\n\nAdd a drive\nFind\nPlaces\nCapacity\nAdd drive",
+  "errors": []
+}
+{"step":"latest-main-layout","width":390,"documentWidth":390,"errors":[]}

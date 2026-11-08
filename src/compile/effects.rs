@@ -1440,7 +1440,12 @@ impl Graph {
                 }
                 return None;
             }
-            ExprKind::Num(_) | ExprKind::Str(_) | ExprKind::Bool(_) | ExprKind::Null | ExprKind::Undefined => {
+            ExprKind::Num(_)
+            | ExprKind::BigInt(_)
+            | ExprKind::Str(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Null
+            | ExprKind::Undefined => {
                 return None;
             }
             ExprKind::Class(_) | ExprKind::Regex { .. } | ExprKind::TemplateStrings { .. } => {}

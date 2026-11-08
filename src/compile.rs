@@ -209,14 +209,33 @@ enum WriteKind {
     NativeObject,
     Array,
     Dynamic,
+    /// A `#name` slot owned by the PHP class descriptor expression.
+    Private(String),
 }
 
 enum CapturedPlace {
     Binding(String),
-    Object { receiver: String, key: String },
-    NativeObject { receiver: String, key: String },
-    Array { receiver: String, key: String },
-    Dynamic { receiver: String, key: String },
+    Object {
+        receiver: String,
+        key: String,
+    },
+    NativeObject {
+        receiver: String,
+        key: String,
+    },
+    Array {
+        receiver: String,
+        key: String,
+    },
+    Dynamic {
+        receiver: String,
+        key: String,
+    },
+    Private {
+        class: String,
+        receiver: String,
+        key: String,
+    },
 }
 
 impl Out {
@@ -2770,6 +2789,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Instanceof(left, right) => {
                 let left = self.expr(left)?;
                 let right = self.expr(right)?;
+                if right.ty == Ty::Dynamic {
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Js::dynamicInstanceof({}, {})", left.php, right.php),
+                        Ty::Bool,
+                    ));
+                }
                 if !matches!(right.ty, Ty::Class(_)) {
                     return err(span, "instanceof requires a named Zero class");
                 }
@@ -2814,6 +2839,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
+            ExprKind::BigInt(digits) => {
+                Out::atom(format!("\\Zero\\JsBigInt::literal({})", php_str(digits)), Ty::BigInt)
+            }
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
             ExprKind::Undefined => Out::atom("\\Zero\\Js::undefined()", Ty::Undefined),
@@ -2990,6 +3018,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         Out::new(format!("!{}", paren(&self.truthy(&v))), ty)
                     }
+                    UnOp::Neg if v.ty == Ty::BigInt => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::BigInt),
+                    UnOp::BitNot if v.ty == Ty::BigInt => {
+                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::BigInt)
+                    }
+                    UnOp::Plus if v.ty == Ty::BigInt => {
+                        return err_help(
+                            x.span,
+                            "unary `+` on a bigint throws a TypeError",
+                            "use Number(b) to convert",
+                        );
+                    }
                     UnOp::Neg => {
                         if v.ty != Ty::Dynamic {
                             self.need_num(&v, x.span, "`-`")?;
@@ -2998,15 +3037,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             Ty::NumLit(n) | Ty::FreshNumLit(n) if matches!(x.kind, ExprKind::Num(_)) => {
                                 Out::atom(php_number(-n), Ty::FreshNumLit(-n))
                             }
-                            // Js::neg: the operand as a JS number, like the binary operators.
-                            _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
+                            // Js::neg: the operand as a JS number, like the binary operators (or a
+                            // BigInt, which checked JavaScript can't rule out).
+                            _ => Out::atom(
+                                format!("\\Zero\\Js::neg({})", v.php),
+                                if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
+                            ),
                         }
                     }
                     UnOp::BitNot => {
                         if v.ty != Ty::Dynamic {
                             self.need_num(&v, x.span, "`~`")?;
                         }
-                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::Num)
+                        Out::atom(
+                            format!("\\Zero\\Js::bitNot({})", v.php),
+                            if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
+                        )
                     }
                     UnOp::Plus => {
                         if v.ty.is_num() {
@@ -3155,8 +3201,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "a class instance must come from new; assertions cannot restore class identity",
                     );
                 }
-                if !(assignable(&v.ty, &t) || assignable(&t, &v.ty) || v.ty == Ty::Unknown) {
+                // `b as unknown` and `x as bigint` are TypeScript's escape hatches; a value asserted
+                // away from bigint is still a BigInt at runtime, so it stays on the checked path.
+                if v.ty == Ty::BigInt && t == Ty::Unknown {
+                    return Ok(Out { ty: Ty::Dynamic, ..v });
+                }
+                if !(assignable(&v.ty, &t) || assignable(&t, &v.ty) || v.ty == Ty::Unknown || v.ty == Ty::Dynamic) {
                     return err(span, format!("can't treat {} as {}", v.ty.describe(), t.describe()));
+                }
+                if v.ty == Ty::Dynamic {
+                    return Ok(v);
                 }
                 Out { ty: t, ..v }
             }
@@ -3225,6 +3279,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
             Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\Zero\\Js::numStr({})", v.php),
+            Ty::BigInt => format!("(string) ({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
         })
@@ -3258,6 +3313,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn binary(&mut self, op: BinOp, a: Out, b: Out, span: Span) -> Result<Out> {
+        let bigint = |t: &Ty| *t == Ty::BigInt;
+        if bigint(&a.ty) || bigint(&b.ty) {
+            return self.bigint_binary(op, a, b, span);
+        }
         if op == BinOp::Add {
             crate::builtins::check_string_coercion_type(&a.ty, span)?;
             crate::builtins::check_string_coercion_type(&b.ty, span)?;
@@ -3352,6 +3411,64 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }
         })
+    }
+
+    /// An operator with a BigInt operand. Arithmetic, shifts and bitwise operators need both sides
+    /// BigInt (JavaScript throws TypeError on a mix); comparisons and equality compare
+    /// mathematically across BigInt and number, as JavaScript does. `+` with a string concatenates.
+    fn bigint_binary(&mut self, op: BinOp, a: Out, b: Out, span: Span) -> Result<Out> {
+        // Checked JavaScript can't rule out a BigInt in a dynamic operand; the runtime decides.
+        let both = matches!(a.ty, Ty::BigInt | Ty::Dynamic) && matches!(b.ty, Ty::BigInt | Ty::Dynamic);
+        let symbol = match op {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
+            BinOp::Exp => "**",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::Eq => "===",
+            BinOp::Ne => "!==",
+            BinOp::LooseEq => "==",
+            BinOp::LooseNe => "!=",
+            BinOp::UShr => {
+                return err_help(
+                    span,
+                    "BigInts have no unsigned right shift",
+                    "use `>>`, as JavaScript requires",
+                );
+            }
+            other => other.bitwise_symbol().expect("bitwise operator"),
+        };
+        let result = match op {
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Eq | BinOp::Ne | BinOp::LooseEq | BinOp::LooseNe => {
+                Ty::Bool
+            }
+            BinOp::Add if a.ty.is_str() || b.ty.is_str() => Ty::Str,
+            _ if !both => {
+                // A static mix is a TypeError in JavaScript, so it is refused at the source.
+                return err_help(
+                    span,
+                    format!(
+                        "can't mix bigint and {} in `{symbol}`",
+                        if a.ty == Ty::BigInt {
+                            b.ty.describe()
+                        } else {
+                            a.ty.describe()
+                        }
+                    ),
+                    "convert explicitly with BigInt(n) or Number(b), as JavaScript requires",
+                );
+            }
+            _ => Ty::BigInt,
+        };
+        Ok(Out::atom(
+            format!("\\Zero\\Js::dynamicBinary({}, {}, {})", php_str(symbol), a.php, b.php),
+            result,
+        ))
     }
 
     fn strict_eq(&self, a: &Out, b: &Out) -> String {
@@ -3998,7 +4115,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if op.is_none()
             && !statement
             && let Some(target) = place.target.as_ref()
-            && !matches!(target.kind, WriteKind::NativeObject)
+            && !matches!(target.kind, WriteKind::NativeObject | WriteKind::Private(_))
         {
             let v = self.expr(value)?;
             let v = self.finish_value(v, value.span)?;
@@ -4019,7 +4136,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         WriteKind::Dynamic => "dynamicSet",
                         WriteKind::Array => "setAt",
                         WriteKind::Object => "set",
-                        WriteKind::NativeObject => unreachable!(),
+                        WriteKind::NativeObject | WriteKind::Private(_) => unreachable!(),
                     },
                     target.receiver,
                     target.key,
@@ -4034,7 +4151,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             steps.push(format!("{old} = {read}"));
             let present = if matches!(op, AssignOp::Bin(_)) {
                 match &write {
-                    CapturedPlace::Binding(_) | CapturedPlace::Dynamic { .. } => None,
+                    CapturedPlace::Binding(_) | CapturedPlace::Dynamic { .. } | CapturedPlace::Private { .. } => None,
                     CapturedPlace::Array { receiver, key }
                     | CapturedPlace::Object { receiver, key }
                     | CapturedPlace::NativeObject { receiver, key } => {
@@ -4374,8 +4491,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("({receiver}->p[{key}] ?? \\Zero\\Js::dataGet({receiver}, {key}))")
                     }
                     WriteKind::Object => format!("\\Zero\\Js::dataGet({receiver}, {key})"),
+                    WriteKind::Private(ref class) => format!("{class}->privateGet({receiver}, {key})"),
                 };
                 let write = match target.kind {
+                    WriteKind::Private(class) => CapturedPlace::Private { class, receiver, key },
                     WriteKind::Dynamic => CapturedPlace::Dynamic { receiver, key },
                     WriteKind::Array => CapturedPlace::Array { receiver, key },
                     WriteKind::NativeObject => CapturedPlace::NativeObject { receiver, key },
@@ -4393,12 +4512,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             CapturedPlace::NativeObject { receiver, key } => format!("({receiver}->p[{key}] = {value})"),
             CapturedPlace::Array { receiver, key } => format!("\\Zero\\Js::setAt({receiver}, {key}, {value})"),
             CapturedPlace::Dynamic { receiver, key } => format!("\\Zero\\Js::dynamicSet({receiver}, {key}, {value})"),
+            CapturedPlace::Private { class, receiver, key } => {
+                format!("{class}->privateSet({receiver}, {key}, {value})")
+            }
         }
     }
 
     fn update(&mut self, target: &Expr, inc: bool, prefix: bool) -> Result<Out> {
         let place = self.place(target)?;
-        let property_number = place.target.is_some() && place.constraint.non_null().is_num();
+        // Private slots always exist once read; the presence check only applies to properties.
+        let property_number = place
+            .target
+            .as_ref()
+            .is_some_and(|t| !matches!(t.kind, WriteKind::Private(_)))
+            && place.constraint.non_null().is_num();
         if !property_number && place.read.ty != Ty::Dynamic {
             self.need_num(&place.read, target.span, if inc { "`++`" } else { "`--`" })?;
         }
@@ -4454,6 +4581,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
+                if prop.starts_with('#') {
+                    let (class, ty) = self.private_member(prop, *prop_span)?;
+                    let o = self.private_receiver(obj)?;
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(format!("{class}->privateGet({}, {})", o.php, php_str(prop)), ty.clone()),
+                        constraint: ty,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Private(class),
+                        }),
+                    });
+                }
                 let mut o = self.expr(obj)?;
                 if o.ty == Ty::Dynamic {
                     return Ok(self.javascript_place(o, Out::atom(php_str(prop), Ty::Str)));
@@ -4708,6 +4848,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if prop.starts_with('#') {
+            return self.private_read(obj, prop, optional, prop_span);
+        }
         if let Some(out) = self.host_member(obj, prop, prop_span)? {
             return Ok(out);
         }
@@ -5290,6 +5433,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } => {
                 if matches!(&obj.kind, ExprKind::Ident(n) if n == "super") {
                     return self.super_method(prop, args, span);
+                }
+                if prop.starts_with('#') {
+                    return self.private_call(obj, prop, *opt, *prop_span, args, span);
                 }
                 // Static functions on globals: Math.max, Object.keys, ...
                 if let ExprKind::Ident(n) = &obj.kind
@@ -5891,11 +6037,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("structuredClone", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::clone({})", v.php), classes::wire_type(&v.ty))
             }
+            ("BigInt", Some(v)) => Out::atom(format!("\\Zero\\JsBigInt::of({})", v.php), Ty::BigInt),
+            ("Number", Some(v)) if v.ty == Ty::BigInt => Out::atom(format!("({})->toNumber()", v.php), Ty::Num),
             ("Number", Some(v)) => {
                 if v.ty.is_num() {
                     v.clone()
                 } else {
-                    Out::atom(format!("\\Zero\\Js::toNumber({})", v.php), Ty::Num)
+                    // Number(value): ToNumeric, then a BigInt becomes its nearest double.
+                    Out::atom(format!("\\Zero\\Js::number({})", v.php), Ty::Num)
                 }
             }
             ("Boolean", Some(v)) => Out::new(self.truthy(v), Ty::Bool),
@@ -5946,6 +6095,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.builtin_args(g, m, args, span)?;
         if (g, m) == ("Math", "pow") {
             crate::builtins::check_power_literals(args, span)?;
+        }
+        if g == "BigInt" {
+            let argv = self.plain_args(args)?;
+            return Ok(Out::atom(
+                format!(
+                    "\\Zero\\JsBigInt::asIntN({}, {}, {})",
+                    argv[0].php,
+                    argv[1].php,
+                    if m == "asIntN" { "true" } else { "false" }
+                ),
+                Ty::BigInt,
+            ));
         }
         if g == "Math" && matches!(m, "log" | "exp") {
             crate::builtins::check_transcendental_literals(m, args, span)?;
@@ -6251,6 +6412,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::DbGlobals => return err(m_span, format!("use `db.globals.<global>.{m}(...)`")),
             Ty::DbGlobal(name) => return self.db_global_call(&name, m, args, m_span),
             _ => {}
+        }
+        if recv.ty == Ty::BigInt {
+            self.builtin_args("bigint", m, args, span)?;
+            let argv = self.plain_args(args)?;
+            return match m {
+                "toString" => Ok(Out::atom(
+                    match argv.first() {
+                        Some(radix) => format!("({})->toRadixArg({})", recv.php, radix.php),
+                        None => format!("(string) ({})", recv.php),
+                    },
+                    Ty::Str,
+                )),
+                _ => err(m_span, format!("bigint has no method `{m}` in Zero code")),
+            };
         }
         let family = match recv.ty.non_null() {
             Ty::Date => Some("date"),
@@ -7801,7 +7976,10 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::Null | Ty::Undefined | Ty::Void => t.clone(),
         Ty::Str if !truthy => Ty::StrLit(String::new()),
         Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
-        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Dynamic | Ty::Never => t.clone(),
+        // `0n` is falsy, so a bigint stays on both branches, like a number.
+        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::BigInt | Ty::Unknown | Ty::Dynamic | Ty::Never => {
+            t.clone()
+        }
         Ty::Arguments
         | Ty::Array(_)
         | Ty::NonEmptyArray(_)
@@ -8009,7 +8187,8 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
             Box::new(widen_fresh_literals(ret)),
         ),
         Ty::Promise(t) => Ty::Promise(Box::new(widen_fresh_literals(t))),
-        Ty::Num
+        Ty::BigInt
+        | Ty::Num
         | Ty::NumLit(_)
         | Ty::Str
         | Ty::StrLit(_)

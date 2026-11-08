@@ -88,14 +88,14 @@ eq('request shape is checked before any network work',
         $type(fn () => Fetch::call('https://a.example/', ['signal' => true])),
         $type(fn () => Fetch::call('https://a.example/', ['method' => 1])),
     ],
-    ['fetch() needs a URL string', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
+    ['fetch() needs a URL string or URL', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
         'Headers: invalid header value', 'zero_fetch_payload_too_large',
         "fetch() redirect must be 'follow', 'manual' or 'error'", 'fetch() body must be a string or URLSearchParams',
         "fetch() init option signal isn't available in Zero code", 'fetch() method must be a string']);
 
 // Headers, URLSearchParams and Response, as the WHATWG classes behave (Node prints the same).
 $h = new \Zero\FetchHeaders(new \Zero\JsArray([new \Zero\JsArray(['X-A', ' 1 ']), new \Zero\JsArray(['x-a', '2'])]));
-$p = new \Zero\SearchParams('a=1&b=two+words&a=%C3%A9&c&%zz=%');
+$p = \Zero\JsUrlSearchParams::construct('a=1&b=two+words&a=%C3%A9&c&%zz=%');
 $r = new \Zero\FetchResponse(200, 'OK', 'https://a.example/', false, \Zero\FetchHeaders::received(['x' => 'y']), '{"a":1}');
 eq('Headers join repeated names; URLSearchParams parse and serialize like the URL Standard; a body reads once',
     [$h->get('x-A'), $h->sorted(), (string) $p, $p->getAll('a')->a, $p->get('%zz'),

@@ -45,7 +45,7 @@ builds() {
 already=()
 # Squash merges leave the branch outside main's history, so a merged PR whose
 # head is the branch's current head also counts as already in main.
-merged_heads=$(gh pr list -R spacefast/zero --state merged --limit 200 --json headRefName,headRefOid \
+merged_heads=$(gh pr list -R spacefast/zero --state merged --base main --limit 200 --json headRefName,headRefOid \
   --jq '.[] | "\(.headRefName) \(.headRefOid)"' 2>/dev/null || true)
 for branch in $branches; do
   sha=$(git -C "$repo" rev-parse --short "origin/$branch")

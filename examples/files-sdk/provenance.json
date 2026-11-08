@@ -1,0 +1,237 @@
+{
+  "fetchedAt": "2026-11-07T22:17:09.309Z",
+  "package": {
+    "name": "files-sdk",
+    "version": "3.1.2"
+  },
+  "source": {
+    "repository": "https://github.com/haydenbleasel/files-sdk",
+    "tag": "files-sdk@3.1.2",
+    "commit": "fd304f1c38e71d184c13a6c317e19f270649fbae",
+    "packageDirectory": "packages/files-sdk",
+    "tarball": "https://codeload.github.com/haydenbleasel/files-sdk/tar.gz/fd304f1c38e71d184c13a6c317e19f270649fbae",
+    "tarballSha256": "4b6b0541b57d19aa5d4c36467e379d953ddc856ab294c56d9412d96fd51ad191"
+  },
+  "packages": [
+    {
+      "name": "files-sdk",
+      "version": "3.1.2",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/haydenbleasel/files-sdk.git",
+        "type": "git",
+        "directory": "packages/files-sdk"
+      },
+      "gitHead": "fd304f1c38e71d184c13a6c317e19f270649fbae",
+      "tarball": "https://registry.npmjs.org/files-sdk/-/files-sdk-3.1.2.tgz",
+      "integrity": "sha512-EuOpdHRhk9YYIvCNIH2rmfuQFFbu2+fpxh8FUnKMDcenz2qUMQ/eemz9hkW6XOmH37mMkd2cjmmPGepuN/O/0g==",
+      "shasum": "1e0af3f2d76262ae115ea6ed7f31d3b33ee062be",
+      "unpackedBytes": 7007080,
+      "files": [
+        {
+          "path": "dist/chunk-2hcch65w.js",
+          "bytes": 14019,
+          "sha256": "3bb249a917838b2fa2e1611ce462ce6fcd96bb46db8c5ae5052af85e08d53fc3"
+        },
+        {
+          "path": "dist/chunk-486bqaq1.js",
+          "bytes": 2872,
+          "sha256": "80f16acda11e02f7c79ff6a1a22c213a9ea75d693f422c6d076ba46bea8d2b91"
+        },
+        {
+          "path": "dist/chunk-5x6mtmfh.js",
+          "bytes": 15674,
+          "sha256": "2f094fe4ad5bba0b8dd9d1299112b6cb56b71b7087282b503c7f01bcde3ff9b7"
+        },
+        {
+          "path": "dist/chunk-8wzs004d.js",
+          "bytes": 2249,
+          "sha256": "e6e06d20ce77ff58aa7b1d63cc95658141736d053ef4d914272c5a2d477f7555"
+        },
+        {
+          "path": "dist/chunk-htk3yfhv.js",
+          "bytes": 50522,
+          "sha256": "3f9ae3ad5f3dbe3e74577b1bf7923450d0416203d1f1ca9bc07db7ddf5603c0b"
+        },
+        {
+          "path": "dist/chunk-k3s1pj0f.js",
+          "bytes": 1390,
+          "sha256": "9bcf6704a2e7aba313e6a743d7b742258e3d7d9813fe8858417cea44252dd1f4"
+        },
+        {
+          "path": "dist/chunk-q05red84.js",
+          "bytes": 4180,
+          "sha256": "6c831d2bd3850c71d72f9e88c7ab2997e3606f988d2911df9e00d85b479db624"
+        },
+        {
+          "path": "dist/chunk-r8t8rv0d.js",
+          "bytes": 5421,
+          "sha256": "09e03cc50c78f171d220ee62d631b69f97a2fe2eb28900ed639836fc474b58ff"
+        },
+        {
+          "path": "dist/chunk-tyfgva58.js",
+          "bytes": 465,
+          "sha256": "6e190bcee60b311e949adbfc8866c3af9300492307b5b16a430fbe1d6962a11a"
+        },
+        {
+          "path": "dist/chunk-v0qsdhvf.js",
+          "bytes": 13650,
+          "sha256": "3c649293ee6a981c25deafd4f0334fb592f234487bb005421116cbb879bb7ed2"
+        },
+        {
+          "path": "dist/chunk-xczk9qxg.js",
+          "bytes": 59926,
+          "sha256": "9fa5f2d5d2a0a2bacdc0de4b026ca69ff1e367d67cdb9819a4a187cccea39030"
+        },
+        {
+          "path": "dist/index.js",
+          "bytes": 877,
+          "sha256": "f2dd0607a31c1f7ce608a380741c6ce50491a8786110cb6c99beb504d65d79a7"
+        },
+        {
+          "path": "dist/memory/index.js",
+          "bytes": 162,
+          "sha256": "cbf5d2504f04e7d4315ac844f343be5d7385f0ab6db4e466f85242ea952de949"
+        }
+      ]
+    },
+    {
+      "name": "picomatch",
+      "version": "4.0.7",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/micromatch/picomatch.git",
+        "type": "git"
+      },
+      "gitHead": "6bb40679c218cefba5d4e9662408c5fdf699a8bb",
+      "tarball": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz",
+      "integrity": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==",
+      "shasum": "6313360034ccb36b3dc61ecbdff78121f90fe21f",
+      "unpackedBytes": 93759,
+      "files": [
+        {
+          "path": "index.js",
+          "bytes": 479,
+          "sha256": "02ae26406508e28f9ba0865be16cf77f0b33de6c4d4d49c212c4176df1d5625a"
+        },
+        {
+          "path": "lib/constants.js",
+          "bytes": 4552,
+          "sha256": "c28f952d2758261fe5428a121add485cc25b03e0193633f649de903dc0e5e222"
+        },
+        {
+          "path": "lib/parse.js",
+          "bytes": 35144,
+          "sha256": "4e1e05447668aa1e94366c5516a2bcd8f5fff800cc92b1d0cd7d77703b8618c4"
+        },
+        {
+          "path": "lib/picomatch.js",
+          "bytes": 10722,
+          "sha256": "fdd249d7ffff853f3bb1c77eafc8baa1a437bea85a94c35877b83c6a40d9ca94"
+        },
+        {
+          "path": "lib/scan.js",
+          "bytes": 9483,
+          "sha256": "6457a1764e5c2e543cc3a0c00ce12ebb3764097628868198370b64d4e642aaae"
+        },
+        {
+          "path": "lib/utils.js",
+          "bytes": 1994,
+          "sha256": "f04604f70cd1a3f6ace80b84766468674ff38b4bb83818d2ef1d81fc6355f935"
+        }
+      ]
+    },
+    {
+      "name": "ret",
+      "version": "0.5.1",
+      "license": "MIT",
+      "repository": {
+        "url": "git://github.com/fent/ret.js.git",
+        "type": "git"
+      },
+      "gitHead": "4b6030342a31c29762b38106c8c810f282179f99",
+      "tarball": "https://registry.npmjs.org/ret/-/ret-0.5.1.tgz",
+      "integrity": "sha512-Z/nyvABwcRnRD2mMP7Kz6G1dFZZqX1mNErOnxF42OCQKE07b9k9hK9SQxHL3LFEZUdzQaLM4dId1E/E6Vm4WhA==",
+      "shasum": "9e12a43baa4ec7417ea62295ad121e16e17d21eb",
+      "unpackedBytes": 72754,
+      "files": [
+        {
+          "path": "dist/index.js",
+          "bytes": 1390,
+          "sha256": "ec4fd2605bf174411b7ad4f3c69d7d9b184d0e6cca4864807b737ee0d09f655c"
+        },
+        {
+          "path": "dist/reconstruct.js",
+          "bytes": 2853,
+          "sha256": "9e7cf95d638f908820bac5036dfabe94ff9358e8c2a86912f4d5cde66f5bc2bf"
+        },
+        {
+          "path": "dist/sets-lookup.js",
+          "bytes": 2515,
+          "sha256": "6d429ef9227e60b8364f863002ade60f6bb0b25b64d31d52fb6c6ee62ca53cb9"
+        },
+        {
+          "path": "dist/sets.js",
+          "bytes": 2326,
+          "sha256": "8773ab623b3cc138e8f7dd2b52de537a3547dc3f943a9f58cf07c54f34b8b3df"
+        },
+        {
+          "path": "dist/tokenizer.js",
+          "bytes": 14953,
+          "sha256": "5a31e0dcb3a0091246d3d143f50073d79efeecf5937226712071e3b1a38445c3"
+        },
+        {
+          "path": "dist/types/index.js",
+          "bytes": 925,
+          "sha256": "44bb33acb80d3dc4424ba254dec8c343e348f4f29dc832076d15309f6cf6e4d2"
+        },
+        {
+          "path": "dist/types/set-lookup.js",
+          "bytes": 115,
+          "sha256": "d53b6cff75416ab9ede414082975bfdae7b875e7bc9ae64c2dd5d055dbe7b743"
+        },
+        {
+          "path": "dist/types/tokens.js",
+          "bytes": 111,
+          "sha256": "d989b15a6f0966091f137f0d4bb30c1fcb159965a2031aca58ca095e6a428527"
+        },
+        {
+          "path": "dist/types/types.js",
+          "bytes": 552,
+          "sha256": "f07622ff03da95cb231c567d9a8466fba5385ca50ca09c954cd33f821a37c872"
+        },
+        {
+          "path": "dist/util.js",
+          "bytes": 4084,
+          "sha256": "4c60e2f61c4f0d45fb1a192eadac7a8f8eab1afca18f43e98c70997cb9fc6700"
+        },
+        {
+          "path": "dist/write-set-tokens.js",
+          "bytes": 4302,
+          "sha256": "6dc05bc3ae67e6fb28b84771a5a7e3295e4e16bb8c8ca3641adb560a4c77d6ff"
+        }
+      ]
+    },
+    {
+      "name": "safe-regex2",
+      "version": "5.1.2",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/fastify/safe-regex2.git",
+        "type": "git"
+      },
+      "gitHead": "d90e4be755f60897eb4f3d99611fd4e58f3574fa",
+      "tarball": "https://registry.npmjs.org/safe-regex2/-/safe-regex2-5.1.2.tgz",
+      "integrity": "sha512-tAtCGFPPP02VroDVzp4daGi6bC7jWG+41D47GKf18FeH/ubvKQHT9VmhAkvtjNOmJwqtApzWeUpEhkyEYULvmw==",
+      "shasum": "23388c1ad8b2e44bacdf764dab0b8f510e9ffe83",
+      "unpackedBytes": 13454,
+      "files": [
+        {
+          "path": "index.js",
+          "bytes": 1856,
+          "sha256": "77dcc11aa175b599357e79ce14513a333265c70cb81ae680a33cfb3b080920ef"
+        }
+      ]
+    }
+  ]
+}

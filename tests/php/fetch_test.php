@@ -68,9 +68,22 @@ eq('request shape is checked before any network work',
         $type(fn () => Fetch::call('https://a.example/', ['method' => 'GET', 'body' => 'x'])),
         $type(fn () => Fetch::call('https://a.example/', ['headers' => ['x-a' => "b\r\nInjected: 1"]])),
         $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => str_repeat('x', Fetch::MAX_BODY + 1)])),
+        $type(fn () => Fetch::call('https://a.example/', ['redirect' => 'never'])),
+        $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => new \Zero\JsArray([])])),
     ],
-    ['fetch() needs a URL string', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
-        'fetch() header names and values must be valid strings', 'zero_fetch_payload_too_large']);
+    ['fetch() needs a URL string or URL', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
+        'Headers: invalid header value', 'zero_fetch_payload_too_large',
+        "fetch() redirect must be 'follow', 'manual' or 'error'", 'fetch() body must be a string or URLSearchParams']);
+
+// Headers, URLSearchParams and Response, as the WHATWG classes behave (Node prints the same).
+$h = new \Zero\FetchHeaders(new \Zero\JsArray([new \Zero\JsArray(['X-A', ' 1 ']), new \Zero\JsArray(['x-a', '2'])]));
+$p = \Zero\JsUrlSearchParams::construct('a=1&b=two+words&a=%C3%A9&c&%zz=%');
+$r = new \Zero\FetchResponse(200, 'OK', 'https://a.example/', false, \Zero\FetchHeaders::received(['x' => 'y']), '{"a":1}');
+eq('Headers join repeated names; URLSearchParams parse and serialize like the URL Standard; a body reads once',
+    [$h->get('x-A'), $h->sorted(), (string) $p, $p->getAll('a')->a, $p->get('%zz'),
+        $r->ok, $r->json()->p, $r->bodyUsed(), $type(fn () => $r->text()), $type(fn () => $r->headers->set('x', 'z'))],
+    ['1, 2', ['x-a' => '1, 2'], 'a=1&b=two+words&a=%C3%A9&c=&%25zz=%25', ['1', 'é'], '%',
+        true, ['a' => 1], true, 'Body is unusable: Body has already been read', 'immutable']);
 
 // Location resolution, RFC 3986 §5.2: query-only and fragment-only references keep the base path.
 foreach ([

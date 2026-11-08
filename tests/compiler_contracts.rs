@@ -977,6 +977,269 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     }
 }
 
+/// The standard host forms (global fetch, Headers, URLSearchParams, process.env, crypto and
+/// node:crypto) give Node's results through the generated PHP, against one shared HTTP origin.
+#[test]
+fn host_globals_match_node_through_generated_php() {
+    let dir = root().join("tests/differential");
+    let mut origin = Command::new("node")
+        .arg(dir.join("host-origin.mjs"))
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let port = {
+        use std::io::BufRead as _;
+        let mut line = String::new();
+        std::io::BufReader::new(origin.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        line.trim().to_string()
+    };
+    struct Kill(std::process::Child);
+    impl Drop for Kill {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+        }
+    }
+    let _origin = Kill(origin);
+    let secret = " lane secret \n";
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(tmp.path().join("zero.config.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&transpiled.stdout)
+    );
+    // The config is an ES module that also uses a static require, as a TypeScript project may.
+    let module = std::fs::read_to_string(js.join("zero.config.js")).unwrap();
+    std::fs::write(
+        js.join("zero.config.mjs"),
+        format!(
+            "import {{ createRequire }} from 'node:module';\nconst require = createRequire(import.meta.url);\n{module}"
+        ),
+    )
+    .unwrap();
+    // Node reads the origin directly; the PHP side sees the same answers through the stub.
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(js.join("zero.config.mjs"))
+        .env("HOST_URL", format!("http://127.0.0.1:{port}"))
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    let mut expected = expected["cases"].clone();
+    assert_eq!(expected.as_object().unwrap().len(), 11, "{expected}");
+    assert!(
+        expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
+        "{expected}"
+    );
+    // Zero trims a process.env HMAC key (0.8's keyring rule); Node uses it as given.
+    assert_eq!(expected["secrets"]["data"][0], false);
+    expected["secrets"]["data"][0] = json!(true);
+    let content = build_wp(tmp.path());
+    let out = Command::new("php")
+        .args([
+            "-r",
+            r#"
+require $argv[1];
+require $argv[3];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$out = [];
+foreach ($schema['actions'] as $name => $action) {
+    $fn = '\\ZeroApp\\' . $action['handler'];
+    try { $out[$name] = ['data' => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]; }
+    catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+}
+echo \Zero\Js::jsonStringify($out);
+"#,
+        ])
+        .arg(content.join("plugins/zero-runtime/zero/bootstrap.php"))
+        .arg(content.join("plugins/zero-app-host-globals/zero/app"))
+        .arg(dir.join("host-wp-http.php"))
+        // The PHP side fetches the public name; the policy checks it, the stub connects locally.
+        .env("HOST_URL", "https://origin.example")
+        .env("HOST_ORIGIN", &port)
+        .env("HOST_SECRET", secret)
+        .env_remove("HOST_UNSET")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+    let actual: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(actual, expected, "generated PHP differs from Node");
+}
+
+#[test]
+fn installed_package_typescript_is_type_erased_like_javascript_and_matches_node() {
+    let tmp = tempfile::tempdir().unwrap();
+    let package = tmp.path().join("node_modules/typed-lib");
+    std::fs::create_dir_all(package.join("src")).unwrap();
+    std::fs::write(
+        package.join("package.json"),
+        r#"{"name":"typed-lib","type":"module","exports":{".":{"types":"./src/index.d.ts","import":"./src/index.ts"}}}"#,
+    )
+    .unwrap();
+    // Every type-level construct here is refused in authored code or exceeds Zero's type subset.
+    std::fs::write(
+        package.join("src/index.ts"),
+        r#"import type { Shape } from "./shape.js";
+import { Named, describe } from "./shape.js";
+
+export type Mapper = <T>(value: T, index?: number, ...rest: unknown[]) => T;
+interface Callable { (input: string): string; new (input: string): object; readonly [key: string]: unknown }
+declare const brand: unique symbol;
+type Branded = { readonly [brand]: true };
+type Keys<T> = { [K in keyof T as `get${string & K}`]: () => T[K] };
+
+export function assertText(value: unknown): asserts value is string {
+  if (typeof value !== "string") throw new TypeError("expected text");
+}
+
+function identity<T>(value: T): T { return value; }
+const map: Mapper = (value) => value;
+
+abstract class Base<T> {
+  abstract label(): string;
+  declare readonly hidden: number;
+  protected readonly unit: string = "item";
+  push(this: Base<T>, item: T | string = ""): string { return `${this.unit}+${item}`; }
+  size(): string { return this.unit; }
+}
+
+export class Box extends Base<string> implements Named {
+  name = "box";
+  label(): string { return `${this.name}:${this.size()}`; }
+  overloaded(value: string): string;
+  overloaded(value: number): string;
+  overloaded(value: string | number = 0): string { return String(value); }
+}
+
+export function run(input: string): Record<string, unknown> {
+  assertText(input);
+  const tools: { shape(this: void, text: string): string; count: (...items: string[]) => number } = {
+    shape(text) { return `[${text}]`; },
+    count: (...items) => items.length,
+  };
+  const box = new Box();
+  const pushed = identity<string>(input) + (map(input) as string);
+  const shape = { kind: "circle", radius: 2 } satisfies Shape;
+  const value = <number>shape.radius!;
+  return { boxed: box instanceof Box, described: describe(shape), value, pushed, shaped: tools.shape(input), counted: tools.count("a", "b") };
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/shape.ts"),
+        r#"export interface Named { name: string }
+export type Shape = { kind: "circle"; radius: number } | { kind: "square"; side: number };
+export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=${shape.radius}` : `s=${shape.side}`);
+"#,
+    )
+    .unwrap();
+    // The oracle is the same source with types stripped by tsc, run under Node.
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(package.join("src/index.ts"))
+        .arg(package.join("src/shape.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&transpiled.stdout)
+    );
+    std::fs::write(js.join("package.json"), r#"{"type":"module"}"#).unwrap();
+    let node = Command::new("node")
+        .current_dir(&js)
+        .args([
+            "--input-type=module",
+            "-e",
+            "import { run } from './index.js'; process.stdout.write(JSON.stringify(run('hi')));",
+        ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"
+import { action, defineConfig, text } from 'zero';
+import { run } from 'typed-lib';
+export default defineConfig({ name: 'typed-lib', actions: {
+  probe: action({ input: { key: text().notNull() }, handler: (input) => run(input.key) }),
+} });
+"#,
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+$input = new \Zero\JsObject();
+$input->p['key'] = 'hi';
+echo \Zero\Js::jsonStringify($fn($input, new \Zero\JsObject()));
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-typed-lib/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+
+    // The app's own code stays statically checked: package values are JavaScript values,
+    // and package types are not silently trusted.
+    for (source, message) in [
+        (
+            "import { run } from 'typed-lib'; const read = (key: string): string => { const value: string = run(key); return value; };",
+            "a JavaScript value isn't assignable to string",
+        ),
+        (
+            "import { run, Mapper } from 'typed-lib'; const read = (key: string) => run(key);",
+            "`Mapper` comes from an installed package or JavaScript module, whose types Zero erases",
+        ),
+        (
+            "import { run, type Mapper } from 'typed-lib'; const read = (key: string) => { const map: Mapper | null = null; return run(key); };",
+            "`Mapper` comes from an installed package or JavaScript module, whose types Zero erases",
+        ),
+    ] {
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!(
+                "import {{ action, defineConfig, text }} from 'zero'; {source} export default defineConfig({{ actions: {{ probe: action({{ input: {{ key: text().notNull() }}, handler: (input) => read(input.key) }}) }} }});"
+            ),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["message"].as_str().unwrap().contains(message)),
+            "{source}: {report}"
+        );
+    }
+}
+
 #[test]
 fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefined() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1230,7 +1493,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
             "`any` isn't allowed",
         ),
         ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
-        ("return fetch('https://example.com');", "fetch"),
+        ("return process.cwd();", "isn't available on `process`"),
         ("return new Map().size;", "an empty `new Map()` needs type arguments"),
         (
             "const m = new Map<string, number>(); m.set('a', 'b'); return m.size;",
@@ -2281,5 +2544,220 @@ fn named_function_expressions_refuse_with_a_source_position() {
             diagnostic["help"], "use an anonymous function expression or a function declaration",
             "{report}"
         );
+    }
+}
+
+/// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
+/// compiler and for tsc (zero.gen.ts), and the compiled handler calls `Call::run` with the input as
+/// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
+#[test]
+fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("calls");
+    copy_dir(&root().join("tests/fixtures/abilities-call"), &project);
+    let content = build_wp(&project);
+    let plugin = content.join("plugins/zero-app-calls/zero/app/functions.php");
+    // Stand in for WordPress: record each call and answer as the ability would.
+    let stub = tmp.path().join("call.php");
+    std::fs::write(
+        &stub,
+        r#"<?php
+        namespace Zero\Wp\Abilities;
+        final class Call {
+            public static array $seen = [];
+            public static function run(string $name, mixed $input): mixed {
+                self::$seen[] = [$name, \Zero\Js::jsonStringify($input)];
+                return $name === 'acme/site-info' ? new \Zero\JsObject(['value' => 'zero site']) : 'hi ada';
+            }
+        }"#,
+    )
+    .unwrap();
+    let got = php(
+        r#"
+        require $argv[1]; require $argv[2]; require $argv[3];
+        $out = \ZeroApp\action__relay(new \Zero\JsObject(['who' => 'ada']), null);
+        echo json_encode(['out' => \Zero\Js::jsonTree($out), 'seen' => \Zero\Wp\Abilities\Call::$seen]);
+    "#,
+        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &stub, &plugin],
+    );
+    assert_eq!(
+        got,
+        json!({"out": {"name": "ZERO SITE", "own": "hi ada"},
+            "seen": [["acme/site-info", "{\"field\":\"name\"}"], ["calls/greet", "{\"who\":\"ada\"}"]]})
+    );
+    std::fs::write(
+        project.join("tsconfig.json"),
+        serde_json::to_vec(&json!({
+            "compilerOptions": {
+                "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
+                "paths": { "zero": [root().join("types/zero/index.d.ts")], "php/wordpress": [root().join("types/zero/wordpress.d.ts")] }
+            },
+            "files": ["zero.config.ts", "zero.gen.ts"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let tsc = || {
+        Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+            .arg("--project")
+            .arg(project.join("tsconfig.json"))
+            .output()
+            .expect("tsc (or TSC) must be installed")
+    };
+    let out = tsc();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    // tsc refuses the same wrong input the compiler refuses.
+    let config = std::fs::read_to_string(project.join("zero.config.ts")).unwrap();
+    std::fs::write(
+        project.join("zero.config.ts"),
+        config.replace("field: \"name\"", "field: \"title\""),
+    )
+    .unwrap();
+    let out = tsc();
+    assert!(
+        String::from_utf8_lossy(&out.stdout)
+            .contains("Type '\"title\"' is not assignable to type '\"name\" | \"url\"'")
+    );
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &to.join(entry.file_name()));
+        } else {
+            std::fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
+}
+
+/// `wp-hooks/` on an in-process WordPress, through the built plugin: one hook's files apply in
+/// file-name order, a `priority` export moves one, a throwing filter hands back its input, and an
+/// action reads the typed WP_Post view (its throw is logged, the save goes on).
+#[test]
+fn wp_hooks_register_in_file_order_with_their_priorities() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("hooks");
+    copy_dir(&root().join("tests/fixtures/wp-hooks"), &project);
+    let content = build_wp(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $log = tempnam(sys_get_temp_dir(), 'zero-hooks');
+            ini_set('error_log', $log);
+            $content = apply_filters('the_content', "  body  ");
+            $title = apply_filters('the_title', 'Kept', 7);
+            $id = wp_insert_post(['post_title' => 'Draft one', 'post_status' => 'draft', 'post_type' => 'post']);
+            $errors = array_values(array_filter(explode("\n", (string) file_get_contents($log)), fn ($l) => str_contains($l, 'wp-hooks/')));
+            echo json_encode(['content' => $content, 'title' => $title, 'saved' => $id > 0,
+                'errors' => array_map(fn ($l) => preg_replace('/^\[[^\]]*\] /', '', $l), $errors)]), "\n";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let got: Value = serde_json::from_str(text.lines().next_back().unwrap()).unwrap();
+    assert_eq!(
+        got,
+        json!({
+            // c-early trims at 5, core's wpautop (also at 10, registered first) wraps, then a, then b.
+            "content": "<div><p>body</p>\n[a]</div>",
+            "title": "Kept",
+            "saved": true,
+            "errors": [
+                "[zero] wp-hooks/the_title: Zero\\JsError: broken title filter",
+                "[zero] wp-hooks/save_post: Zero\\JsError: saw Draft one #true",
+            ],
+        })
+    );
+}
+/// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
+/// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
+/// beside it (untyped `.mjs` helpers) are copied with it.
+#[test]
+fn language_constructs_match_node_through_generated_php() {
+    let dir = root().join("tests/differential/language");
+    let mut apps: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "ts"))
+        .collect();
+    apps.sort();
+    assert!(!apps.is_empty());
+    for config in apps {
+        let name = config.file_stem().unwrap().to_str().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            std::fs::copy(&path, tmp.path().join(path.file_name().unwrap())).unwrap();
+        }
+        std::fs::copy(&config, tmp.path().join("zero.config.ts")).unwrap();
+        let node = Command::new("node")
+            .arg(root().join("tests/differential/run-node.mjs"))
+            .arg(&config)
+            .output()
+            .unwrap();
+        assert!(
+            node.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&node.stderr)
+        );
+        let node = String::from_utf8(node.stdout).unwrap();
+        let expected: Value = serde_json::from_str(&node).unwrap();
+        assert_eq!(expected["complete"], true);
+        let cases = expected["cases"].as_object().unwrap();
+        assert!(
+            cases.values().all(|result| result.get("data").is_some()),
+            "{name}: {expected}"
+        );
+        let content = build_wp(tmp.path());
+        let runtime = content.join("plugins/zero-runtime/zero/bootstrap.php");
+        let app = content.join(format!("plugins/zero-app-language-{name}/zero/app"));
+        let out = Command::new("php")
+            .arg("-r")
+            .arg(
+                r#"
+            require $argv[1];
+            $schema = require $argv[2] . '/schema.php';
+            require $argv[2] . '/functions.php';
+            $out = [];
+            foreach ($schema['actions'] as $name => $action) {
+                $fn = '\\ZeroApp\\' . $action['handler'];
+                try { $out[$name] = ['data' => \Zero\Seam::toWire($fn(new \Zero\JsObject()))]; }
+                catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+            }
+            echo \Zero\Js::jsonStringify(['schema' => 'zero-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
+        "#,
+            )
+            .arg(&runtime)
+            .arg(&app)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{name}: {}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.stderr.is_empty(),
+            "{name}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let php = String::from_utf8(out.stdout).unwrap();
+        let actual: Value = serde_json::from_str(&php).unwrap();
+        for (case, want) in cases {
+            assert_eq!(
+                &actual["cases"][case], want,
+                "{name}/{case}: compiled PHP differs from Node"
+            );
+        }
+        assert_eq!(php, node, "{name}: the PHP envelope is not byte-identical to Node's");
     }
 }

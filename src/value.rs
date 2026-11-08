@@ -87,8 +87,12 @@ pub enum Builtin {
     Env,
     Once,
     Jobs,
-    /// `fetch(url, init?)`: outbound HTTPS, compiled to `Zero\Fetch::call`.
-    Fetch,
+    /// `"node:crypto"`: the module namespace (`None`) or one of its supported functions.
+    NodeCrypto(Option<&'static str>),
+    /// `mail.send(message)` from "zero", compiled to `Zero\Mail::send`.
+    Mail,
+    /// `abilities.call(name, input)` from "php/wordpress", compiled to `Zero\Wp\Abilities\Call::run`.
+    Abilities,
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,

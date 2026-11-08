@@ -40,6 +40,8 @@ pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
         module: 0,
         class_context: std::cell::Cell::new(false),
         super_call: std::cell::Cell::new(false),
+        erase_types: false,
+        erased_types: Default::default(),
     }
     .program(&parsed.program)
     .map_err(|d| fail("", diag::render(&d, Path::new("."))))
@@ -648,6 +650,7 @@ pub(super) fn app(
                             writes: section == "mutations",
                             signed_in,
                             subjects: users,
+                            sends: section != "queries",
                             route: None,
                         },
                     )
@@ -722,6 +725,7 @@ pub(super) fn app(
                         writes: route.writes,
                         signed_in,
                         subjects: users,
+                        sends: route.writes,
                         route: Some(&route),
                     },
                 )
@@ -782,21 +786,38 @@ pub(super) fn app(
             "ctx.auth.userId reads each member's copied Space Users subject (usr_...); users created after migration answer wp:<id>. Rows owned by 0.8 guest:<id> identities keep their stored owner but no v2 user maps to them, and anonymous writes answer 401 so the v2 client can start a guest session.",
         ));
     }
-    let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, env as __z08Env, type InferSelectModel } from \"zero\";\n",
-    );
-    if !routes.is_empty() || !responses.is_empty() {
-        config.push_str(super::endpoints::PRELUDE);
-        config.push_str(&responses);
-    }
-    // 0.8 gave every handler the global fetch(); v2 imports it from "zero" with the same egress rules.
-    if uses_global_fetch(&body, source) {
-        config.push_str("import { fetch } from \"zero\";\n");
+    let uses_crypto = handlers.iter().chain(routes.iter().map(|(_, c)| c)).any(|h| {
+        ["__z08Sha256(", "__z08Hmac(", "__z08TimingSafeEqual("]
+            .iter()
+            .any(|f| h.contains(f))
+    });
+    if uses_crypto {
         entries.push(entry(
             "",
             "mapped",
-            "fetch() comes from \"zero\": HTTPS only, private and special-purpose addresses refused after every redirect, 10 s and 1 MiB each way, as in 0.8",
+            "ctx.crypto becomes node:crypto: createHash and createHmac give the same lowercase-hex SHA-256 and HMAC-SHA-256 over UTF-8, a key named by a variable is read from process.env (trimmed, refused when unset), and timingSafeEqual compares in constant time; calls are synchronous",
         ));
+    }
+    if handlers
+        .iter()
+        .chain(routes.iter().map(|(_, c)| c))
+        .any(|h| h.contains("__z08Mail.send("))
+    {
+        entries.push(entry(
+            "",
+            "review",
+            "ctx.email.send becomes mail.send from \"zero\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
+        ));
+    }
+    let mut config = String::from(
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel } from \"zero\";\n",
+    );
+    if uses_crypto {
+        config.push_str(CRYPTO_PRELUDE);
+    }
+    if !routes.is_empty() || !responses.is_empty() {
+        config.push_str(super::endpoints::PRELUDE);
+        config.push_str(&responses);
     }
     config.push_str(&prelude);
     if content_config.is_some() {
@@ -879,28 +900,23 @@ fn returns_body_read(e: &Expr) -> bool {
         if args.is_empty() && matches!(&callee.kind, E::Member { prop, .. } if prop == "json" || prop == "text"))
 }
 
-/// True when the module calls a global `fetch(` it does not bind itself. Lexical: a mention inside
-/// a string or comment only adds an import the module does not use, which compiles.
-fn uses_global_fetch(body: &[&Stmt], source: &str) -> bool {
-    let binds = body.iter().any(|s| match s {
-        Stmt::Import { specs, .. } => specs.iter().any(|s| s.local == "fetch"),
-        Stmt::Func(f) => f.name.as_deref() == Some("fetch"),
-        Stmt::Decl { pat, .. } => {
-            let mut names = vec![];
-            pat.bindings(&mut names);
-            names.iter().any(|(n, _)| *n == "fetch")
-        }
-        _ => false,
-    });
-    let bytes = source.as_bytes();
-    let calls = source.match_indices("fetch").any(|(at, _)| {
-        let before = at.checked_sub(1).map(|i| bytes[i]);
-        let after = source[at + 5..].trim_start();
-        !before.is_some_and(|b| b == b'.' || b == b'_' || b == b'$' || b.is_ascii_alphanumeric())
-            && after.starts_with('(')
-    });
-    calls && !binds
+/// ctx.crypto's three functions over node:crypto, with 0.8's results: SHA-256 and HMAC-SHA-256 as
+/// lowercase hex over UTF-8, a named key read from the environment (trimmed, refused when unset;
+/// the compiler lowers `createHmac(alg, process.env.NAME)` that way) or `{ value }` used as given
+/// (also when the value is `ctx.env.X`),
+/// and a comparison that answers false for inputs of different byte lengths, where Node throws.
+const CRYPTO_PRELUDE: &str = r#"import { createHash as __z08Hash, createHmac as __z08Hmac, timingSafeEqual as __z08Equal } from "node:crypto";
+function __z08Sha256(data: string): string {
+  return __z08Hash("sha256").update(data).digest("hex");
 }
+function __z08InlineKey(key: string | undefined): string {
+  if (key === undefined) throw new TypeError("crypto.hmacSha256 key must be a variable name or { value }");
+  return key;
+}
+function __z08TimingSafeEqual(a: string, b: string): boolean {
+  return Buffer.byteLength(a) === Buffer.byteLength(b) && __z08Equal(Buffer.from(a), Buffer.from(b));
+}
+"#;
 
 /// A route path with parameter names erased, so two routes v2 would refuse as ambiguous compare equal.
 fn route_shape(path: &str) -> String {
@@ -1113,6 +1129,9 @@ struct Mode<'a> {
     writes: bool,
     signed_in: bool,
     subjects: bool,
+    /// 0.8 gave every handler but a read (`query`, readOnly endpoint) `ctx.email`; reads could be
+    /// replayed, so their send rejected.
+    sends: bool,
     /// Set for a 0.8 endpoint, which becomes a v2 route at the same method and path.
     route: Option<&'a super::endpoints::Route>,
 }
@@ -1129,6 +1148,7 @@ fn handler(
         writes,
         signed_in,
         subjects,
+        sends,
         route,
     } = mode;
     if route.is_some() {
@@ -1179,6 +1199,9 @@ fn handler(
         params: vec![],
         logs: false,
         helpers: vec![],
+        sends,
+        // Every return of the handler itself, through its control flow but not nested functions.
+        returned: super::endpoints::returns(f),
         edits: vec![],
     };
     let body = match &f.body {
@@ -1281,6 +1304,8 @@ fn endpoint(
             .collect(),
         logs: false,
         helpers: vec![],
+        sends: mode.sends,
+        returned: super::endpoints::returns(f),
         edits: vec![],
     };
     for span in super::endpoints::returns(f) {
@@ -1387,6 +1412,10 @@ struct Rewrite<'a> {
     logs: bool,
     /// Module-level helpers generated for this handler (one per paginated call site).
     helpers: Vec<String>,
+    /// Whether 0.8 gave this handler `ctx.email`.
+    sends: bool,
+    /// Spans of values the handler returns directly (an expression body or `return <e>`).
+    returned: Vec<Span>,
     edits: Vec<(Span, String)>,
 }
 impl Rewrite<'_> {
@@ -1403,6 +1432,58 @@ impl Rewrite<'_> {
         }
         out
     }
+    /// `ctx.crypto.hmacSha256({ key, data })`: a literal variable name becomes
+    /// `process.env["NAME"]`, so the compiler applies 0.8's trimmed, required key; `{ value }`
+    /// is the key as given.
+    fn hmac(&mut self, args: &[ArrEl]) -> Result<String, Failure> {
+        let at = pointer(&pointer(self.at, "ctx"), "crypto");
+        let manual = || {
+            fail(
+                &at,
+                "hmacSha256 needs a literal { key, data } object for the automatic port",
+            )
+        };
+        let [
+            ArrEl::Item(Expr {
+                kind: E::Object(props), ..
+            }),
+        ] = args
+        else {
+            return Err(manual());
+        };
+        let (mut key, mut data) = (None, None);
+        for p in props {
+            match p {
+                Prop::KV(PropKey::Static(k), v) if k == "key" => key = Some(v),
+                Prop::KV(PropKey::Static(k), v) if k == "data" => data = Some(v),
+                _ => return Err(manual()),
+            }
+        }
+        let (Some(key), Some(data)) = (key, data) else {
+            return Err(manual());
+        };
+        let key = match &key.kind {
+            E::Str(name)
+                if !name.is_empty()
+                    && name.chars().all(|c| c == '_' || c.is_ascii_alphanumeric())
+                    && !name.starts_with(|c: char| c.is_ascii_digit()) =>
+            {
+                format!("process.env[{}]!", q(name))
+            }
+            E::Object(kv) => match kv.as_slice() {
+                // Used exactly as given, as 0.8 did: the helper keeps a `ctx.env.X` value off the
+                // compiler's trimmed, required `createHmac(alg, process.env.X)` path.
+                [Prop::KV(PropKey::Static(k), value)] if k == "value" => {
+                    format!("__z08InlineKey({})", self.render(value)?)
+                }
+                _ => return Err(manual()),
+            },
+            _ => return Err(manual()),
+        };
+        let data = self.render(data)?;
+        Ok(format!("__z08Hmac(\"sha256\", {key}).update({data}).digest(\"hex\")"))
+    }
+
     fn render(&mut self, e: &Expr) -> Result<String, Failure> {
         let old = std::mem::take(&mut self.edits);
         self.expr(e)?;
@@ -1439,6 +1520,79 @@ impl Rewrite<'_> {
             && let Some(text) = self.db(inner)?
         {
             self.edits.push((e.span, text));
+            return Ok(());
+        }
+        // ctx.crypto returned promises; v2's crypto is synchronous with the same output.
+        let (call, awaited) = match &e.kind {
+            E::Await(inner) => (inner.as_ref(), true),
+            _ => (e, false),
+        };
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &call.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && matches!(&obj.kind, E::Member { obj, prop: c, .. } if c == "crypto" && matches!(&obj.kind, E::Ident(n) if n == self.ctx))
+        {
+            if !["sha256", "hmacSha256", "timingSafeEqual"].contains(&prop.as_str()) {
+                return Err(fail(
+                    &pointer(&pointer(self.at, "ctx"), "crypto"),
+                    format!("ctx.crypto.{prop} has no v2 counterpart"),
+                ));
+            }
+            let rendered = args
+                .iter()
+                .map(|a| match a {
+                    ArrEl::Item(e) => self.render(e),
+                    ArrEl::Spread(_) => Err(fail(self.at, "spread crypto arguments need a manual port")),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let text = match prop.as_str() {
+                "hmacSha256" => self.hmac(args)?,
+                "sha256" => format!("__z08Sha256({})", rendered.join(", ")),
+                _ => format!("__z08TimingSafeEqual({})", rendered.join(", ")),
+            };
+            // An unawaited call is returned or awaited later in 0.8 code; the value stands in for
+            // its promise either way. Storing it unawaited (`const p = ctx.crypto...`) and then
+            // awaiting it is refused by the v2 compiler's await check, which is the port pointer.
+            let _ = awaited;
+            self.edits.push((e.span, format!("({text})")));
+            return Ok(());
+        }
+        // ctx.email.send(message) → mail.send(message): the same EmailMessage, queued in the
+        // handler's transaction and handed to the site's transport after commit, as 0.8's outbox did.
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &call.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && matches!(&obj.kind, E::Member { obj, prop: svc, .. } if svc == "email" && matches!(&obj.kind, E::Ident(n) if n == self.ctx))
+        {
+            let at = pointer(&pointer(self.at, "ctx"), "email");
+            if prop != "send" {
+                return Err(fail(&at, format!("ctx.email.{prop} has no v2 counterpart")));
+            }
+            if !self.sends {
+                return Err(fail(
+                    &at,
+                    "reads (queries, readOnly endpoints) could not send email in 0.8 either; move the send to a mutation, action or writing endpoint",
+                ));
+            }
+            let [ArrEl::Item(message)] = args.as_slice() else {
+                return Err(fail(&at, "ctx.email.send takes one message"));
+            };
+            let message = self.render(message)?;
+            // 0.8 resolved to true on transport acceptance; v2 resolves once the message is queued.
+            let send = format!("(await __z08Mail.send({message}), true)");
+            // A returned promise was awaited by the 0.8 runtime; one left floating raced the response.
+            if !awaited && !self.returned.contains(&e.span) {
+                return Err(fail(&at, "an unawaited ctx.email.send needs a manual port; await it"));
+            }
+            self.edits.push((e.span, format!("({send})")));
             return Ok(());
         }
         if let Some(text) = self.db(e)? {
@@ -1576,6 +1730,7 @@ impl Rewrite<'_> {
             E::Binary(_, a, b)
             | E::Logical(_, a, b)
             | E::Instanceof(a, b)
+            | E::In(a, b)
             | E::Assign {
                 target: a, value: b, ..
             } => {
@@ -1991,7 +2146,7 @@ impl Rewrite<'_> {
     }
 
     /// Context services with a direct v2 counterpart:
-    /// - `ctx.env.NAME` / `ctx.env["NAME"]` → `env("NAME")`, the same process or wp-config value
+    /// - `ctx.env.NAME` / `ctx.env["NAME"]` → `process.env["NAME"]`, the same process or wp-config value
     ///   (0.8 withheld secret variables named as signing keys; v2 has no such keys to withhold);
     /// - `ctx.log.info|warn|error|debug(...)` → `console.*`, written to the PHP error log.
     ///
@@ -2002,7 +2157,7 @@ impl Rewrite<'_> {
         match &e.kind {
             E::Member { obj, prop, .. } if is(obj, "env") => {
                 ident(prop, &pointer(&pointer(self.at, "ctx"), "env"))?;
-                Ok(Some(format!("(__z08Env({}) ?? undefined)", q(prop))))
+                Ok(Some(format!("process.env[{}]", q(prop))))
             }
             E::Index { obj, index, .. } if is(obj, "env") => {
                 let E::Str(name) = &index.kind else {
@@ -2011,7 +2166,7 @@ impl Rewrite<'_> {
                         "env names must be literal",
                     ));
                 };
-                Ok(Some(format!("(__z08Env({}) ?? undefined)", q(name))))
+                Ok(Some(format!("process.env[{}]", q(name))))
             }
             E::Call {
                 callee,

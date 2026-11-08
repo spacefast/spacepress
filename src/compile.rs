@@ -9,6 +9,7 @@
 mod annotations;
 mod classes;
 mod effects;
+mod host;
 mod javascript;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -300,6 +301,31 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// Every ability `abilities.call` may name, typed (src/abilities.rs).
+    pub abilities: crate::wordpress::abilities::Catalog,
+    /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
+    pub wordpress_uses: Vec<WordPressUse>,
+}
+
+/// What kind of WordPress feature a module uses: the capability kinds a plugin gate counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WordPressKind {
+    /// `abilities.call("vendor/name", ...)`.
+    Ability,
+    /// A `wp-hooks/<hook>` handler.
+    Hook,
+}
+
+/// One use of a WordPress feature, located at the source that makes it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct WordPressUse {
+    pub kind: WordPressKind,
+    pub name: String,
+    /// The project-relative or absolute path of the module that makes the use.
+    pub module: String,
+    #[serde(skip)]
+    pub span: Span,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -340,6 +366,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
+            abilities: crate::wordpress::abilities::Catalog::default(),
+            wordpress_uses: Vec::new(),
         }
     }
 
@@ -540,6 +568,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::builtins::check_json_serialization_type(&ret, root.closure.func.span)?;
                 self.action_results.insert(action.clone(), ret);
             }
+            if let Slot::WpHook { index } = &root.slot {
+                let hook = &self.schema.wp_hooks[*index];
+                let returns = crate::wordpress::hook(&hook.hook).expect("catalog hook").returns;
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => (**ret).clone(),
+                    _ => Ty::Unknown,
+                };
+                if matches!(ret, Ty::Promise(_)) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("a `{}` handler can't be async", hook.hook),
+                        "WordPress calls hooks synchronously; remove `async` and `await`",
+                    );
+                }
+                if hook.filter && !assignable(&ret, &returns) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!(
+                            "the `{}` filter must return {}, not {}",
+                            hook.hook,
+                            returns.describe(),
+                            ret.describe()
+                        ),
+                        "return the filtered value, changed or not",
+                    );
+                }
+                self.use_wordpress(WordPressKind::Hook, &hook.hook, root.closure.func.span);
+            }
             if let Slot::RouteHandler { route } = &root.slot {
                 let ret = match self.helper_types.get(&key) {
                     Some(Ty::Fn(_, ret)) => match &**ret {
@@ -588,6 +644,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 types::job_ctx(),
             ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
+            Slot::WpHook { index } => crate::wordpress::hook(&self.schema.wp_hooks[*index].hook)
+                .expect("checked in the pipeline")
+                .params
+                .into_iter()
+                .map(|(_, t)| t)
+                .collect(),
             Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
@@ -2043,6 +2105,54 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
+            // `"key" in x` keeps the object-union members that declare `key` (TypeScript's `in`
+            // narrowing). A member with an open map or an optional `key` stays on both sides.
+            ExprKind::In(key, object) => {
+                if let ExprKind::Str(key) = &key.kind
+                    && let Some((path, original)) = self.path_ty(object)
+                    && original == Ty::Unknown
+                {
+                    // TypeScript narrows `unknown` to `object & Record<key, unknown>`; reads
+                    // through it stay checked (`dataGet`), whatever object the value is.
+                    let yes = Ty::Obj([(key.clone(), (Ty::Unknown, false))].into_iter().collect());
+                    out.push(if negate {
+                        (path, Ty::Unknown, yes)
+                    } else {
+                        (path, yes, Ty::Unknown)
+                    });
+                } else if let ExprKind::Str(key) = &key.kind
+                    && let Some((path, original)) = self.path_ty(object)
+                    && let Ty::Union(items) = &original
+                {
+                    let declares = |item: &Ty| match item {
+                        Ty::Obj(fields) => fields.get(key.as_str()).map(|(_, optional)| !optional),
+                        Ty::Instance(_, fields) => match &**fields {
+                            Ty::Obj(fields) => fields.get(key.as_str()).map(|(_, optional)| !optional),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let (mut hit, mut miss) = (Vec::new(), Vec::new());
+                    for item in items {
+                        match item {
+                            Ty::Obj(_) | Ty::Instance(..) => match declares(item) {
+                                Some(true) => hit.push(item.clone()),
+                                Some(false) => {
+                                    hit.push(item.clone());
+                                    miss.push(item.clone());
+                                }
+                                None => miss.push(item.clone()),
+                            },
+                            other => {
+                                hit.push(other.clone());
+                                miss.push(other.clone());
+                            }
+                        }
+                    }
+                    let (yes, no) = (Ty::union(hit), Ty::union(miss));
+                    out.push(if negate { (path, no, yes) } else { (path, yes, no) });
+                }
+            }
             ExprKind::IsNullish(inner, negated) => {
                 if let Some((n, t)) = self.path_ty(inner) {
                     // `x == null` retains each nullish member, including undefined.
@@ -2362,6 +2472,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Bool,
                 )
             }
+            ExprKind::Delete(target) => self.delete(target, span)?,
+            ExprKind::In(key, object) => {
+                let key = self.expr(key)?;
+                let key = self.finish_value(key, span)?;
+                let object = self.expr(object)?;
+                let object = if matches!(object.ty, Ty::Class(_)) {
+                    object
+                } else {
+                    self.finish_value(object, span)?
+                };
+                // Js::hasProperty: own properties, then the value's fixed prototype chain.
+                Out::atom(
+                    format!("\\Zero\\Js::hasProperty({}, {})", key.php, object.php),
+                    Ty::Bool,
+                )
+            }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
@@ -2561,6 +2687,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             // Js::neg: the operand as a JS number, like the binary operators.
                             _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
                         }
+                    }
+                    UnOp::BitNot => {
+                        if v.ty != Ty::Dynamic {
+                            self.need_num(&v, x.span, "`~`")?;
+                        }
+                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::Num)
                     }
                     UnOp::Plus => {
                         if v.ty.is_num() {
@@ -2899,6 +3031,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             BinOp::LooseEq | BinOp::LooseNe => unreachable!("loose equality uses checked JavaScript dispatch"),
+            BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr | BinOp::UShr => {
+                let sym = op.bitwise_symbol().expect("bitwise operator");
+                self.need_num(&a, span, &format!("`{sym}`"))?;
+                self.need_num(&b, span, &format!("`{sym}`"))?;
+                // Js::bitwise: ToInt32/ToUint32 on JS numbers, a signed or (`>>>`) unsigned 32-bit result.
+                Out::atom(
+                    format!("\\Zero\\Js::bitwise({}, {}, {})", php_str(sym), a.php, b.php),
+                    Ty::Num,
+                )
+            }
         })
     }
 
@@ -3000,10 +3142,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Env::get({})", php_str(name)),
                 Ty::Str.nullable(),
             )),
-            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
+            Value::Builtin(Builtin::Env) => err_help(
+                span,
+                "env() is a config reference for webhooks, signatures and upload credentials",
+                "read runtime variables in handlers with `process.env.NAME`",
+            ),
+            Value::Builtin(Builtin::Once) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
+            ),
+            Value::Builtin(Builtin::NodeCrypto(_)) => err_help(
+                span,
+                format!("`{n}` from \"node:crypto\" can't be used as a value"),
+                "call it where it's used, e.g. `createHash(\"sha256\").update(text).digest(\"hex\")`",
+            ),
+            Value::Builtin(Builtin::Mail) => err_help(
+                span,
+                "`mail` can't be used as a value",
+                "call `mail.send({ to, subject, text })` directly",
+            ),
+            Value::Builtin(Builtin::Abilities) => err_help(
+                span,
+                "`abilities` can't be used as a value",
+                "call `abilities.call(\"vendor/name\", input)` directly",
             ),
             Value::Builtin(Builtin::Jobs) => err_help(
                 span,
@@ -3681,6 +3843,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
+        self.host_place(target)?;
         match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
@@ -3832,6 +3995,110 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// `delete obj.key` / `delete obj[key]` / `delete obj?.key`. As in TypeScript, a typed object
+    /// may lose only an optional property (or a map entry), so later reads stay sound; arrays,
+    /// checked JavaScript and other receivers go through Js::delete's runtime semantics.
+    fn delete(&mut self, target: &Expr, span: Span) -> Result<Out> {
+        let (chain, inner) = match &target.kind {
+            ExprKind::Chain(inner) => {
+                check_optional_chain(inner)?;
+                (true, &**inner)
+            }
+            _ => (false, target),
+        };
+        let (obj, key, optional, prop) = match &inner.kind {
+            ExprKind::Member {
+                obj, prop, optional, ..
+            } => (obj, None, *optional, Some(prop.as_str())),
+            ExprKind::Index { obj, index, optional } => (obj, Some(index), *optional, None),
+            _ => return err(span, "`delete` needs an object property"),
+        };
+        if chain && !optional {
+            return err_help(
+                span,
+                "`delete` through an optional chain is supported only at its last step",
+                "check the earlier steps first",
+            );
+        }
+        let o = self.expr(obj)?;
+        let o = if matches!(o.ty, Ty::Class(_)) {
+            o
+        } else {
+            self.finish_value(o, obj.span)?
+        };
+        let key_php = match (key, prop) {
+            (Some(index), _) => {
+                let k = self.expr(index)?;
+                self.finish_value(k, index.span)?.php
+            }
+            (None, Some(prop)) => php_str(prop),
+            _ => unreachable!(),
+        };
+        let receiver_ty = self.argument_constraint(obj).unwrap_or(o.ty.clone());
+        if key.is_some()
+            && matches!(
+                receiver_ty.non_null(),
+                Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
+            )
+        {
+            return err_help(
+                span,
+                "`delete` on an array element would leave a hole; Zero arrays are dense",
+                "remove it with `splice(index, 1)`, or assign `undefined` to keep the length",
+            );
+        }
+        if let Some(prop) = prop.map(str::to_string).or_else(|| match key.map(|k| &k.kind) {
+            Some(ExprKind::Str(s)) => Some(s.clone()),
+            _ => None,
+        }) {
+            let required = |ty: &Ty| match ty {
+                Ty::Obj(fields) => fields.get(&prop).is_some_and(|(_, optional)| !optional),
+                Ty::Instance(_, fields) => {
+                    matches!(&**fields, Ty::Obj(f) if f.get(&prop).is_some_and(|(_, optional)| !optional))
+                }
+                _ => false,
+            };
+            let mut members = Vec::new();
+            match receiver_ty.non_null() {
+                Ty::Union(items) => members.extend(items),
+                other => members.push(other),
+            }
+            if members.iter().any(required) {
+                return err_help(
+                    span,
+                    format!("can't delete `{prop}`: the type requires it"),
+                    "make the property optional (`key?: T`), as TypeScript requires for `delete`",
+                );
+            }
+        } else if matches!(receiver_ty.non_null(), Ty::Obj(_) | Ty::Instance(..)) {
+            return err_help(
+                span,
+                "`delete` with a computed key needs an open map type",
+                "use Record<string, T>, or delete a named optional property",
+            );
+        }
+        if o.ty.is_nullable() && !optional {
+            return err_help(
+                span,
+                format!("can't delete from this: it might be null ({})", o.ty.describe()),
+                "check it first, or use `delete obj?.key`",
+            );
+        }
+        // Js::delete: strict-mode [[Delete]] on Zero's value model.
+        Ok(if optional {
+            let tmp = self.tmp_var();
+            Out::atom(
+                format!(
+                    "(\\Zero\\Js::isNullish({tmp} = {}) ? true : \\Zero\\Js::delete({tmp}, {key_php}))",
+                    o.php
+                ),
+                Ty::Bool,
+            )
+        } else {
+            Out::atom(format!("\\Zero\\Js::delete({}, {key_php})", o.php), Ty::Bool)
+        })
+    }
+
     fn no_field(&self, t: &Ty, prop: &str, span: Span) -> Diag {
         let mut d = Diag::new(span, format!("{} has no field `{prop}`", t.non_null().describe()));
         if let Ty::Obj(f) = t.non_null()
@@ -3843,6 +4110,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member(&mut self, obj: &Expr, prop: &str, optional: bool, prop_span: Span, span: Span) -> Result<Out> {
+        if let Some(out) = self.host_member(obj, prop, prop_span)? {
+            return Ok(out);
+        }
         let native_object = self.native_object_receiver(obj);
         // Namespaces: Math.PI etc.
         if let ExprKind::Ident(n) = &obj.kind
@@ -4009,6 +4279,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_), _) => {
                 return err(prop_span, format!("{} has no property `{prop}`", base.describe()));
             }
+            (Ty::Host(h), _) => self.host_property(h, &o, prop, prop_span)?,
             (Ty::Obj(_) | Ty::Map(_) | Ty::Union(_), _) => {
                 let Some((ft, opt_field)) = base.field(prop) else {
                     if matches!(base, Ty::Union(_)) {
@@ -4055,6 +4326,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn index(&mut self, obj: &Expr, index: &Expr, optional: bool, span: Span) -> Result<Out> {
+        if let Some(out) = self.host_index(obj, index)? {
+            return Ok(out);
+        }
         let o = self.expr(obj)?;
         let mut o = self.finish_value(o, obj.span)?;
         let i = self.expr(index)?;
@@ -4201,6 +4475,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], type_args: &[TyAnn], span: Span) -> Result<Out> {
+        if let Some(out) = self.host_new(callee, args, span)? {
+            return Ok(out);
+        }
         if let ExprKind::Ident(name) = &callee.kind
             && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             && (name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module))
@@ -4719,6 +4996,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
         }
+        if let Some(out) = self.host_call(callee, args, span)? {
+            return Ok(out);
+        }
         if let Some(out) = self.jobs_call(callee, args, span)? {
             return Ok(out);
         }
@@ -4807,7 +5087,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
                 Resolved::Value(
-                    Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env | Builtin::Fetch)),
+                    Value::Builtin(
+                        b @ (Builtin::Once | Builtin::Jobs | Builtin::Env | Builtin::Mail | Builtin::Abilities),
+                    ),
                     _,
                 ) => Some(b),
                 _ => None,
@@ -4816,23 +5098,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &callee.kind {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
-                Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
-                Some(Builtin::Env) => {
-                    let name = self.arg(args, 0, span, "an environment variable name")?;
-                    match &name.kind {
-                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => Ok(Some(Out::atom(
-                            format!("\\Zero\\Env::get({})", php_str(s)),
-                            Ty::Str.nullable(),
-                        ))),
-                        _ => err_help(
-                            name.span,
-                            "env() needs an environment variable name",
-                            "use env(\"HOOK_SECRET\")",
-                        ),
-                    }
-                }
+                Some(Builtin::Env) => err_help(
+                    callee.span,
+                    "env() is a config reference for webhooks, signatures and upload credentials",
+                    "read runtime variables in handlers with `process.env.NAME`",
+                ),
                 _ => Ok(None),
             },
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
+            {
+                self.mail_call(prop, args, span).map(Some)
+            }
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Abilities) =>
+            {
+                self.abilities_call(prop, args, span).map(Some)
+            }
             ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
                 ExprKind::Member {
                     obj: root, prop: job, ..
@@ -4845,58 +5129,175 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// `fetch(url, { method?, headers?, body? })` → `Promise<FetchResponse>`, see `types::fetch_response`.
-    fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+    fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name != "send" {
+            return err_help(
+                span,
+                format!("`mail` has no function `{name}`"),
+                "use `mail.send(message)`",
+            );
+        }
         if self.fx().no_db {
             return err_help(
                 span,
-                "access rules can't use fetch()",
-                "move it into a hook, action or route",
+                "access rules can't send mail",
+                "move it into a hook, action, route or job",
+            );
+        }
+        if args.len() != 1 {
+            return err_help(
+                span,
+                "mail.send() takes one message",
+                "write mail.send({ to, subject, text })",
+            );
+        }
+        let e = self.arg(args, 0, span, "a message")?;
+        let v = self.expr(e)?;
+        let v = self.finish_value(v, e.span)?;
+        let address = |t: &Ty| {
+            t.is_str() && !t.is_nullable()
+                || matches!(t, Ty::Obj(f) if f.keys().all(|k| k == "email" || k == "name")
+                    && f.get("email").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable()))
+        };
+        let list = |t: &Ty| {
+            address(t)
+                || matches!(t, Ty::Array(x) | Ty::NonEmptyArray(x) if address(x))
+                || matches!(t, Ty::ArrayLiteral(xs) | Ty::Tuple(xs) if xs.iter().all(address))
+        };
+        let optional = |t: &Ty, ok: &dyn Fn(&Ty) -> bool| t.all(|t| matches!(t, Ty::Null | Ty::Undefined) || ok(t));
+        let ok = match &v.ty {
+            Ty::Obj(f) => {
+                f.keys().all(|k| {
+                    [
+                        "from", "to", "subject", "text", "html", "cc", "bcc", "replyTo", "headers",
+                    ]
+                    .contains(&k.as_str())
+                }) && f.get("to").is_some_and(|(t, o)| !o && list(t))
+                    && f.get("subject")
+                        .is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())
+                    && (f.contains_key("text") || f.contains_key("html"))
+                    && f.iter().all(|(k, (t, _))| match k.as_str() {
+                        "to" | "subject" => true,
+                        "text" | "html" => optional(t, &|t| t.is_str()),
+                        "from" | "replyTo" => optional(t, &address),
+                        "cc" | "bcc" => optional(t, &list),
+                        "headers" => optional(t, &|t| matches!(t, Ty::Obj(_) | Ty::Map(_))),
+                        _ => false,
+                    })
+            }
+            _ => false,
+        };
+        if !ok {
+            return err_help(
+                e.span,
+                format!(
+                    "mail.send() needs {{ to, subject, text or html }}, not {}",
+                    v.ty.describe()
+                ),
+                "addresses are strings or { email, name? }; to/cc/bcc may be lists",
+            );
+        }
+        Ok(Out::atom(
+            format!("\\Zero\\Mail::send({})", v.php),
+            Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
+        ))
+    }
+
+    /// Records one use of a WordPress feature. Plugin capability inference reads
+    /// `Built::wordpress_uses`; this is the single place each use is noted.
+    pub fn use_wordpress(&mut self, kind: WordPressKind, name: &str, span: Span) {
+        let module = self
+            .ev_program()
+            .modules
+            .iter()
+            .find(|m| m.file == span.file)
+            .map(|m| m.path.display().to_string())
+            .unwrap_or_default();
+        self.wordpress_uses.push(WordPressUse {
+            kind,
+            name: name.to_string(),
+            module,
+            span,
+        });
+    }
+
+    /// `abilities.call("vendor/name", input?)` from "php/wordpress": core's `WP_Ability::execute()`.
+    fn abilities_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name != "call" {
+            return err_help(
+                span,
+                format!("`abilities` has no function `{name}`"),
+                "use `abilities.call(\"vendor/name\", input)`",
+            );
+        }
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't call abilities",
+                "move the call into a hook, action, route or job",
             );
         }
         if args.is_empty() || args.len() > 2 {
             return err_help(
                 span,
-                "fetch() takes a URL and optional init",
-                "write fetch(url, { method, headers, body })",
+                "abilities.call() takes an ability name and its input",
+                "write abilities.call(\"vendor/name\", { ... })",
             );
         }
-        let url_expr = self.arg(args, 0, span, "a URL")?;
-        let url = self.expr(url_expr)?;
-        let url = self.finish_value(url, url_expr.span)?;
-        if !url.ty.is_str() || url.ty.is_nullable() {
-            return err_help(url_expr.span, "fetch() needs a URL string", "pass the URL as a string");
-        }
-        let init = match args.get(1) {
-            None => "null".to_string(),
+        let name_expr = self.arg(args, 0, span, "an ability name")?;
+        let ExprKind::Str(ability) = &name_expr.kind else {
+            return err_help(
+                name_expr.span,
+                "abilities.call() needs the ability name as a string literal",
+                "write the name in place, e.g. abilities.call(\"woocommerce/create-order\", input), so the build can type it",
+            );
+        };
+        let Some((input_ty, output_ty)) = self.abilities.abilities.get(ability).cloned() else {
+            let mut d = Diag::new(name_expr.span, format!("unknown ability `{ability}`"));
+            d = match suggest(ability, self.abilities.abilities.keys().map(String::as_str)) {
+                Some(s) => d.help(format!("did you mean `{s}`?")),
+                None => d.help(format!(
+                    "abilities outside this app come from {}; run `zero abilities pull --site <url>` and commit it",
+                    crate::wordpress::abilities::LOCK
+                )),
+            };
+            return Err(d);
+        };
+        let input = match args.get(1) {
+            // No schema: core wants no input at all. An object schema gets `{}`, which core's
+            // validation accepts when nothing is required.
+            None if accepts_omission(&input_ty) => "null".to_string(),
+            None if matches!(&input_ty, Ty::Map(_))
+                || matches!(&input_ty, Ty::Obj(f) if f.values().all(|(_, o)| *o)) =>
+            {
+                "new \\Zero\\JsObject()".to_string()
+            }
+            None => {
+                return err_help(
+                    span,
+                    format!("`{ability}` needs input {}", input_ty.describe()),
+                    "pass the input as the second argument",
+                );
+            }
             Some(_) => {
-                let init_expr = self.arg(args, 1, span, "init")?;
-                let init = self.expr(init_expr)?;
-                let init = self.finish_value(init, init_expr.span)?;
-                let ok = match &init.ty {
-                    Ty::Obj(fields) => fields.iter().all(|(k, (t, _))| match k.as_str() {
-                        "method" | "body" => t.all(|t| t.is_str() || matches!(t, Ty::Null | Ty::Undefined)),
-                        "headers" => t.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Null | Ty::Undefined)),
-                        _ => false,
-                    }),
-                    _ => false,
-                };
-                if !ok {
+                let e = self.arg(args, 1, span, "the ability input")?;
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                // An inline literal keeps its literal type, so `{ status: "draft" }` meets an enum.
+                if !assignable(&v.ty, &input_ty) {
                     return err_help(
-                        init_expr.span,
-                        format!(
-                            "fetch() init must be {{ method?, headers?, body? }} with strings, not {}",
-                            init.ty.describe()
-                        ),
-                        "stringify JSON bodies with JSON.stringify(...)",
+                        e.span,
+                        format!("`{ability}` takes {}, not {}", input_ty.describe(), v.ty.describe()),
+                        "the input type comes from the ability's input schema",
                     );
                 }
-                init.php
+                v.php
             }
         };
+        self.use_wordpress(WordPressKind::Ability, ability, name_expr.span);
         Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({}, {init})", url.php),
-            Ty::Promise(Box::new(types::fetch_response())),
+            format!("\\Zero\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
+            Ty::Promise(Box::new(output_ty)),
         ))
     }
 
@@ -5147,19 +5548,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Js::isFinite(\\Zero\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
+            ("process" | "crypto" | "Buffer", _) => {
+                return err_help(
+                    span,
+                    format!("`{g}` can't be called"),
+                    "use `process.env.NAME`, `crypto.randomUUID()` or \"node:crypto\"",
+                );
+            }
+            ("Headers" | "URLSearchParams", _) => {
+                return err_help(span, format!("`{g}` needs `new`"), format!("write `new {g}(...)`"));
+            }
             (
-                "fetch" | "process" | "require" | "eval" | "Function" | "setTimeout" | "crypto" | "globalThis"
-                | "Promise",
+                "eval" | "Function" | "setTimeout" | "globalThis" | "Promise" | "URL" | "Request" | "Response"
+                | "FormData" | "Blob" | "AbortController",
                 _,
             ) => {
                 return err_help(
                     span,
                     format!("`{g}` isn't available in Zero code"),
-                    if g == "fetch" {
-                        "use a job or webhook for network effects; fetch is not a supported HTTP capability"
-                    } else {
-                        "use supported server capabilities in a hook or action"
-                    },
+                    "use supported server capabilities in a hook or action",
                 );
             }
             _ => return err(span, format!("`{g}(...)` isn't supported")),
@@ -5583,6 +5990,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             },
+            Ty::Host(h) => self.host_method(h, &recv, m, args, m_span, span)?,
             Ty::Regex => match m {
                 "test" => {
                     let argv = self.plain_args(args)?;
@@ -6953,6 +7361,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Promise(_)
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db
@@ -7162,6 +7571,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Never
         | Ty::Date
         | Ty::Regex
+        | Ty::Host(_)
         | Ty::Error
         | Ty::Collection(_)
         | Ty::Db

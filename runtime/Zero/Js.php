@@ -403,6 +403,34 @@ final class Js
         return $f < 0 ? ceil($f) : floor($f);
     }
 
+    /**
+     * Compiled `a & b`, `a | b`, `a ^ b`, `a << b`, `a >> b` and `a >>> b` (ECMAScript 13.9, 13.12).
+     * Each operand is ToNumber'd (objects with the number hint), then ToInt32 (`>>>` reads its left
+     * side through ToUint32). Shift counts are ToUint32 masked to 5 bits, so `x << 32` is `x` and a
+     * negative count wraps. Results stay inside 32 bits: signed, except `>>>`, which is unsigned.
+     */
+    public static function bitwise(string $operator, mixed $a, mixed $b): int
+    {
+        $a = self::toNumber($a);
+        $b = self::toNumber($b);
+        if ($operator === '>>>') { return self::toUint32($a) >> (self::toUint32($b) & 31); }
+        $x = self::toInt32($a);
+        return match ($operator) {
+            '&' => $x & self::toInt32($b),
+            '|' => $x | self::toInt32($b),
+            '^' => $x ^ self::toInt32($b),
+            '<<' => self::toInt32($x << (self::toUint32($b) & 31)),
+            '>>' => $x >> (self::toUint32($b) & 31),
+            default => throw new JsError('Unsupported bitwise operator ' . $operator, 'TypeError'),
+        };
+    }
+
+    /** Compiled `~a`: ToInt32, then the complement, a signed 32-bit result. */
+    public static function bitNot(mixed $a): int
+    {
+        return ~self::toInt32(self::toNumber($a));
+    }
+
     private static function toInt32(int|float $n): int
     {
         if (is_float($n)) {
@@ -1145,6 +1173,151 @@ final class Js
         }
         if ($o instanceof JsClass) { return $o->has(self::key($key)); }
         return array_key_exists(self::key($key), $o->p);
+    }
+
+    /** Own string property names of the built-in prototypes (ECMAScript 2025, as Node reports them). */
+    private const PROTOTYPE_NAMES = [
+        'Object' => ['constructor', '__defineGetter__', '__defineSetter__', 'hasOwnProperty', '__lookupGetter__', '__lookupSetter__', 'isPrototypeOf', 'propertyIsEnumerable', 'toString', 'valueOf', '__proto__', 'toLocaleString'],
+        'Array' => ['length', 'constructor', 'at', 'concat', 'copyWithin', 'fill', 'find', 'findIndex', 'findLast', 'findLastIndex', 'lastIndexOf', 'pop', 'push', 'reverse', 'shift', 'unshift', 'slice', 'sort', 'splice', 'includes', 'indexOf', 'join', 'keys', 'entries', 'values', 'forEach', 'filter', 'flat', 'flatMap', 'map', 'every', 'some', 'reduce', 'reduceRight', 'toReversed', 'toSorted', 'toSpliced', 'with', 'toLocaleString', 'toString'],
+        'Function' => ['length', 'name', 'arguments', 'caller', 'constructor', 'apply', 'bind', 'call', 'toString'],
+        'Map' => ['constructor', 'get', 'set', 'has', 'delete', 'clear', 'entries', 'forEach', 'keys', 'size', 'values'],
+        'Set' => ['constructor', 'has', 'add', 'delete', 'clear', 'entries', 'forEach', 'size', 'values', 'keys', 'union', 'intersection', 'difference', 'symmetricDifference', 'isSubsetOf', 'isSupersetOf', 'isDisjointFrom'],
+        'Date' => ['constructor', 'toString', 'toDateString', 'toTimeString', 'toISOString', 'toUTCString', 'toGMTString', 'getDate', 'setDate', 'getDay', 'getFullYear', 'setFullYear', 'getHours', 'setHours', 'getMilliseconds', 'setMilliseconds', 'getMinutes', 'setMinutes', 'getMonth', 'setMonth', 'getSeconds', 'setSeconds', 'getTime', 'setTime', 'getTimezoneOffset', 'getUTCDate', 'setUTCDate', 'getUTCDay', 'getUTCFullYear', 'setUTCFullYear', 'getUTCHours', 'setUTCHours', 'getUTCMilliseconds', 'setUTCMilliseconds', 'getUTCMinutes', 'setUTCMinutes', 'getUTCMonth', 'setUTCMonth', 'getUTCSeconds', 'setUTCSeconds', 'valueOf', 'getYear', 'setYear', 'toJSON', 'toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'],
+        'RegExp' => ['constructor', 'exec', 'dotAll', 'flags', 'global', 'hasIndices', 'ignoreCase', 'multiline', 'source', 'sticky', 'unicode', 'compile', 'toString', 'test', 'unicodeSets'],
+        'Error' => ['constructor', 'name', 'message', 'toString'],
+        'Math' => ['abs', 'acos', 'acosh', 'asin', 'asinh', 'atan', 'atanh', 'atan2', 'ceil', 'cbrt', 'expm1', 'clz32', 'cos', 'cosh', 'exp', 'floor', 'fround', 'hypot', 'imul', 'log', 'log1p', 'log2', 'log10', 'max', 'min', 'pow', 'random', 'round', 'sign', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'trunc', 'E', 'LN10', 'LN2', 'LOG10E', 'LOG2E', 'PI', 'SQRT1_2', 'SQRT2'],
+    ];
+
+    private static function prototypeHas(string $prototype, string $key): bool
+    {
+        return in_array($key, self::PROTOTYPE_NAMES[$prototype], true)
+            || ($prototype !== 'Object' && in_array($key, self::PROTOTYPE_NAMES['Object'], true));
+    }
+
+    /**
+     * Compiled `key in object` (ECMAScript 13.10.1): the object must not be a primitive, then the
+     * key goes through ToPropertyKey and own properties are checked before the fixed prototype
+     * chain of each runtime value (class methods, the built-in prototype, Object.prototype). A
+     * null-prototype object has only its own properties. Arrays are dense, so an index is present
+     * exactly when it is below the length.
+     */
+    public static function hasProperty(mixed $key, mixed $object): bool
+    {
+        if (!is_object($object) || $object instanceof JsUndefined) {
+            $search = is_object($key) ? '[object Object]' : self::str($key);
+            $in = is_string($object) ? $object : self::str($object);
+            throw new JsError("Cannot use 'in' operator to search for '$search' in $in", 'TypeError');
+        }
+        $key = self::key($key);
+        $index = static fn (int $length): bool => preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && (float) $key < 4294967295 && (int) $key < $length;
+        if ($object instanceof JsObject) {
+            if (array_key_exists($key, $object->p)) { return true; }
+            if ($object->nullPrototype) { return false; }
+            return ($object->class?->hasMethod($key) ?? false) || self::prototypeHas('Object', $key);
+        }
+        if ($object instanceof JsArray) {
+            return array_key_exists($key, $object->p) || $index(count($object->a)) || self::prototypeHas('Array', $key);
+        }
+        if ($object instanceof JsArguments) {
+            // Arguments indexes can be deleted, so presence is the slot itself, not the length.
+            $own = preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && array_key_exists((int) $key, $object->a);
+            return array_key_exists($key, $object->p) || $own || in_array($key, ['length', 'callee'], true) || self::prototypeHas('Object', $key);
+        }
+        if ($object instanceof JsClass) {
+            if ($object->has($key) || $object->hasStaticMethod($key) || in_array($key, ['length', 'name', 'prototype'], true)) { return true; }
+            return self::prototypeHas('Function', $key);
+        }
+        if ($object instanceof \Closure) {
+            if (in_array($key, ['prototype', 'arguments', 'caller'], true)) {
+                throw new JsError('Function metadata is not supported', 'TypeError');
+            }
+            return self::prototypeHas('Function', $key);
+        }
+        if ($object instanceof JsError) {
+            if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
+            return self::prototypeHas('Error', $key);
+        }
+        if ($object instanceof RegExp) { return $key === 'lastIndex' || self::prototypeHas('RegExp', $key); }
+        $prototype = match (true) {
+            $object instanceof JsMap => 'Map', $object instanceof JsSet => 'Set', $object instanceof JsDate => 'Date',
+            $object instanceof JsNamespace => $object->name, default => 'Object',
+        };
+        return self::prototypeHas($prototype, $key);
+    }
+
+    /**
+     * Compiled `delete object[key]` in strict mode (ECMAScript 13.5.1). Configurable properties
+     * are removed and the result is true, also when the property is absent. Removing an own
+     * object key keeps the order of the others. Deleting an array element would leave a hole and
+     * keep `length`; Zero arrays are dense, so an in-range index throws RangeError instead of
+     * silently changing `length` (use `splice`). Out-of-range indexes and named array properties
+     * are removed like object keys. Non-configurable properties (array and string `length` and
+     * string indexes, regex `lastIndex`, class and function `prototype`, arguments `callee`, Math
+     * constants) throw JavaScript's TypeError.
+     */
+    public static function delete(mixed $object, mixed $key): bool
+    {
+        if (self::isNullish($object)) { throw new JsError('Cannot convert undefined or null to object', 'TypeError'); }
+        $key = self::key($key);
+        $refuse = static function (string $where) use ($key): never {
+            throw new JsError("Cannot delete property '$key' of $where", 'TypeError');
+        };
+        $canonicalIndex = preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && (float) $key < 4294967295;
+        if ($object instanceof JsObject) {
+            if ($key === '__proto__' && !$object->nullPrototype && !array_key_exists($key, $object->p)) { return true; }
+            unset($object->p[$key]);
+            return true;
+        }
+        if ($object instanceof JsArray) {
+            if ($key === 'length') { $refuse('[object Array]'); }
+            if ($canonicalIndex) {
+                if ((int) $key < count($object->a)) {
+                    throw new JsError('Zero arrays are dense: delete cannot leave a hole; use splice to remove elements', 'RangeError');
+                }
+                return true;
+            }
+            unset($object->p[$key]);
+            return true;
+        }
+        if ($object instanceof JsArguments) {
+            if ($key === 'callee') { $refuse('#<Object>'); }
+            if ($key === 'length') { throw new JsError('Deleting arguments.length is not supported', 'TypeError'); }
+            if ($canonicalIndex) { unset($object->a[(int) $key]); return true; }
+            unset($object->p[$key]);
+            return true;
+        }
+        if (is_string($object)) {
+            if ($key === 'length' || $canonicalIndex && (int) $key < self::length($object)) { $refuse('[object String]'); }
+            return true;
+        }
+        if ($object instanceof JsClass) {
+            if ($key === 'prototype') { $refuse('class'); }
+            if (array_key_exists($key, $object->statics->p)) { unset($object->statics->p[$key]); return true; }
+            if ($object->hasStaticMethod($key)) { throw new JsError('Deleting class methods is not supported', 'TypeError'); }
+            return true;
+        }
+        if ($object instanceof RegExp && $key === 'lastIndex') { $refuse('[object RegExp]'); }
+        if ($object instanceof JsNamespace && in_array($key, ['E', 'LN10', 'LN2', 'LOG10E', 'LOG2E', 'PI', 'SQRT1_2', 'SQRT2'], true)) { $refuse('#<Object>'); }
+        if ($object instanceof \Closure && $key === 'prototype') { $refuse('function'); }
+        if ($object instanceof JsError && $key === 'message' && $object->hasMessage) {
+            throw new JsError('Deleting an Error message is not supported', 'TypeError');
+        }
+        // Other own properties of built-in values are not modeled as deletable; inherited ones are
+        // absent, so deleting them is a successful no-op as in JavaScript.
+        if (is_object($object) && !$object instanceof JsUndefined && Js::hasProperty($key, $object) && !self::prototypeProperty($object, $key)) {
+            throw new JsError('Deleting built-in properties is not supported', 'TypeError');
+        }
+        return true;
+    }
+
+    /** Whether a present key of a built-in value is inherited (so `delete` is a no-op). */
+    private static function prototypeProperty(object $object, string $key): bool
+    {
+        if ($object instanceof JsMap || $object instanceof JsSet || $object instanceof JsDate || $object instanceof \Closure && !in_array($key, ['length', 'name'], true)) { return true; }
+        if ($object instanceof JsNamespace) { return false; }
+        if ($object instanceof JsError) { return $key !== 'message'; }
+        if ($object instanceof RegExp) { return $key !== 'lastIndex'; }
+        return true;
     }
 
     /** += needs the actual primitive types, including an absent old property. */

@@ -76,3 +76,19 @@ later with the same mechanism.
 
 This is in the shared core (`eval`, `compile`), so the native binary and the
 WASM build behave the same.
+
+## Effects analysis
+
+The mutation-effects pass (`src/compile/effects.rs`) follows the same chains:
+a static member read resolves to the build-time value and registers that
+function, class or data singleton, so calls such as `ns.touch(record)` still
+record the argument writes. The namespace object itself never becomes a graph
+node.
+
+## Known next layer
+
+picomatch's `parse()` (1,400 lines, one function) now gets through the
+evaluator and the member resolution, but the effects fixpoint doesn't finish
+within minutes. The same happens on `main` with `parse.fastpaths` removed, so
+it's an existing cost of that pass on very large functions and not something
+this change introduced. It needs its own fix.

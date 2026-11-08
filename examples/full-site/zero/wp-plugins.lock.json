@@ -13,17 +13,6 @@
       "treeSha256": "9402fc48fca3048fc80b5e5ce4657f5e9ceb250dfcd8c22ec89083ec3fb33ca5"
     },
     {
-      "slug": "akismet",
-      "version": "5.7.2",
-      "pluginData": {
-        "resource": "wordpress.org/plugins",
-        "slug": "akismet.5.7.2.zip"
-      },
-      "sha256": "e76d9ad61b95fb36c99b580e23c23e16a2cf9fd8483baa16d756d47f1994126d",
-      "requires": [],
-      "treeSha256": "404bad1c6184bf9d30f2ba73db27baa32afac5ef064faba1066cf27d3b0b2122"
-    },
-    {
       "slug": "mcp-adapter",
       "version": "0.7.1",
       "pluginData": {

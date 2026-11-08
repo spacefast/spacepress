@@ -65,11 +65,12 @@ final class WpSite
     // ================================================================ building the site
 
     /**
-     * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool} $fixture
+     * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool, akismet?: bool, muPlugins?: array<string, string>} $fixture
      *   schema: the app's schema.php array (name, collections, ...); functions: PHP after `namespace ZeroApp;`;
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
      *   identity: install zero-identity too; users: extra WordPress users (name => role);
-     *   server: start a php -S that answers the private-files probe (needed for file buckets).
+     *   server: start a php -S that answers the private-files probe (needed for file buckets);
+     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one.
      */
     public static function create(string $label, array $fixture): self
     {
@@ -115,6 +116,12 @@ final class WpSite
                 }
                 wpCopy(wpPlugin($slug, $pin['version'], $pin['sha256']), "$dir/content/plugins/$slug");
                 $activate[] = $slug;
+            }
+            // Not a platform plugin: a site gets Akismet through Jetpack. `akismet: true` activates the copy
+            // WordPress core ships, the one a Jetpack setup turns on.
+            if ($fixture['akismet'] ?? false) {
+                wpCopy("$core/wp-content/plugins/akismet", "$dir/content/plugins/akismet");
+                $activate[] = 'akismet';
             }
             $site->runtimePlugin($repo, $fixture);
             $activate[] = 'zero-runtime';

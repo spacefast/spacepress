@@ -58,25 +58,6 @@ function execute(file, args, { capture = false, timeout = 180000, env = process.
   });
 }
 
-/** Relative path → bytes for every file below `root`; directories only by the files they hold. */
-async function treeFiles(root, prefix = '', out = new Map()) {
-  for (const entry of await readdir(join(root, prefix), { withFileTypes: true })) {
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isSymbolicLink()) return null;
-    if (entry.isDirectory()) {
-      if (await treeFiles(root, rel, out) === null) return null;
-    } else out.set(rel, await readFile(join(root, rel)));
-  }
-  return out;
-}
-
-/** True when two plugin trees hold the same files with the same bytes. */
-async function sameTree(a, b) {
-  if (!await exists(b)) return false;
-  const [left, right] = [await treeFiles(a), await treeFiles(b)];
-  return left !== null && right !== null && left.size === right.size && [...left].every(([rel, bytes]) => right.get(rel)?.equals(bytes));
-}
-
 async function plainDirectory(path) {
   if ((await lstat(path)).isSymbolicLink()) throw new Error(`Refusing a symbolic link at ${path}`);
   if (!(await lstat(path)).isDirectory()) throw new Error(`Expected a directory at ${path}`);
@@ -159,15 +140,12 @@ export async function publishPlugins(content, managed) {
   if (!plugins.every((slug) => /^[a-z0-9][a-z0-9-]*$/.test(slug))) throw new Error('Invalid plugin slug in build manifest.');
   const target = join(managed.owner.site, 'wp-content/plugins');
   await plainDirectory(target);
-  // Preflight the entire set before replacing anything. Extra plugins belong to the site owner. A copy
-  // identical to what the build installs (WordPress ships Akismet in every new site) is adopted as is.
+  // Preflight the entire set before replacing anything. Extra plugins belong to the site owner.
   for (const slug of plugins) {
     const destination = join(target, slug);
     if (await exists(destination)) {
       await plainDirectory(destination);
-      if (managed.owner.generated.includes(slug)) continue;
-      if (!await sameTree(destination, join(content, 'plugins', slug))) throw new Error(`Plugin ${slug} already exists and is not managed by Zero. Move or rename it before continuing.`);
-      managed.owner.generated.push(slug);
+      if (!managed.owner.generated.includes(slug)) throw new Error(`Plugin ${slug} already exists and is not managed by Zero. Move or rename it before continuing.`);
     }
   }
   for (const slug of plugins) {

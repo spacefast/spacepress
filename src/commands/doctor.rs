@@ -194,6 +194,21 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                 format!("{found}; requires {}+", plugin.version),
             );
         }
+        // Spam checks fail open: this line reports them and never fails doctor.
+        let akismet = &versions["akismet"];
+        check(
+            checks,
+            "spam checks",
+            true,
+            if akismet["spamChecks"] == true {
+                format!("on: Akismet {} has a key", akismet["version"].as_str().unwrap_or("?"))
+            } else if akismet["version"].is_string() {
+                "off: Akismet has no key (connect Jetpack or set WPCOM_API_KEY); comments are not spam-checked"
+                    .to_string()
+            } else {
+                "off: Akismet is not active (set it up through Jetpack); comments are not spam-checked".to_string()
+            },
+        );
         let incompatible = versions["incompatibleTables"].as_array();
         check(
             checks,

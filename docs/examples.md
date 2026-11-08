@@ -10,6 +10,7 @@ builds its disposable app under `.zero/showcase/`, leaving its sources unchanged
 | `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | [`examples/stuff-drawer/`](../examples/stuff-drawer/README.md) | Personal inventory and lending log in wp-admin, SCF and Zero Admin; owner filters, agent abilities and overdue stamps, with main's current gaps documented |
+| [`examples/drive-locker/`](../examples/drive-locker/README.md) | Owner-scoped drive inventory, health trends, Action Scheduler, typed React SPA and capacity reports; main runtime and publication gaps are documented |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
 | `examples/wp-plugins/` | Extra pinned WordPress plugins (see [plugin dependencies](wp-plugins.md)) |

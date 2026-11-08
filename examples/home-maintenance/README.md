@@ -204,9 +204,12 @@ static publish receipt as a successful Zero deployment. After publishing,
 inspect the Space's runtime and grants, then verify a collection, an action,
 and sign-in on the live origin.
 
-## Known gaps on main (b66e98b3866037061198c51ebef9534609a5e301)
+## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
 
-The final app compiles with zero compiler diagnostics on this revision.
+The final app compiles with zero compiler diagnostics on this revision. The
+local artifact was rebuilt and its HTTP checks repeated after merging current
+main. The screenshots and native form check were captured on the earlier
+`b66e98b3866037061198c51ebef9534609a5e301` revision, as recorded in their report.
 No compiler or runtime code is changed by this example.
 
 | Source or command | Observed limitation |

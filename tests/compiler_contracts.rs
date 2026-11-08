@@ -3415,35 +3415,44 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
-/// Methods that read `this` compile once each, in the order of the siblings they read, so a
-/// refusal inside a helper or class they call is reported, never retried past into a build that
-/// calls a function PHP never got.
+/// A helper or class that Zero refuses is reported wherever it is first compiled: in a sibling
+/// method that reads `this`, in an `if`, a ternary or a `for await` array, or behind an
+/// `instanceof` check. The checks that type a branch never leave it registered without code, so
+/// the build never calls a function PHP never got.
 #[test]
-fn a_refusal_inside_a_this_method_helper_is_reported() {
-    for (declarations, call) in [
+fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled() {
+    let first =
+        "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }";
+    let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }";
+    for (declarations, handler) in [
         (
-            "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }",
-            "first([1, 3, 2])",
+            first,
+            "() => ({ a() { return first([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
         ),
         (
-            "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }",
-            "new Box(1).top([1, 3, 2])",
+            boxed,
+            "() => ({ a() { return new Box(1).top([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
+        ),
+        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }"),
+        (
+            first,
+            "async () => { let n = 0; for await (const v of [first([1, 3, 2])]) n += v; return n; }",
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => ({{ a() {{ return {call} + this.b(); }}, b() {{ return this.n; }}, n: 1 }}).a() }}) }} }});\n"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: {handler} }}) }} }});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{call}: {report}");
+        assert_eq!(out.status.code(), Some(1), "{handler}: {report}");
         assert!(
             report["diagnostics"][0]["message"]
                 .as_str()
                 .unwrap()
                 .contains("sorting requires a numeric key-difference comparator"),
-            "{call}: {report}"
+            "{handler}: {report}"
         );
     }
 }

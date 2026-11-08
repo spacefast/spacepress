@@ -1073,6 +1073,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         // Recursive calls need the signature before the body is compiled.
+        let typed_before = self.helper_types.contains_key(&closure_key(closure));
         if fx.ret.is_some() || self.javascript_module(f.module) {
             let fallback = Ty::Dynamic;
             let ret = fx.ret.as_ref().unwrap_or(&fallback);
@@ -1093,7 +1094,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
-        let (params_php, body) = result?;
+        let (params_php, body) = match result {
+            Ok(compiled) => compiled,
+            Err(d) => {
+                if !typed_before {
+                    self.helper_types.remove(&closure_key(closure));
+                }
+                return Err(d);
+            }
+        };
         let ret_ty = predicate.unwrap_or_else(|| fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone())));
         self.helper_types.insert(
             closure_key(closure),
@@ -3878,7 +3887,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
                         self.helpers.insert(helper_key, name.clone());
-                        self.compile_helper_now(c, &name)?;
+                        // A failed compile leaves nothing registered, so the next reference to the
+                        // helper compiles it again and reports the refusal. Narrowing and path typing
+                        // compile speculatively and drop the error; a name kept here would let the
+                        // real compile skip the helper and call a function PHP never got.
+                        if let Err(d) = self.compile_helper_now(c, &name) {
+                            self.helpers.remove(&helper_key);
+                            return Err(d);
+                        }
                         name
                     }
                 };

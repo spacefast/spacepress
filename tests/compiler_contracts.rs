@@ -3415,37 +3415,58 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
-/// A helper or class that Zero refuses is reported wherever it is first compiled: in a sibling
-/// method that reads `this`, in an `if`, a ternary or a `for await` array, or behind an
-/// `instanceof` check. The checks that type a branch never leave it registered without code, so
-/// the build never calls a function PHP never got.
+/// A helper, class, namespace receiver or captured collection that Zero refuses is reported
+/// wherever it is first compiled: in a sibling method that reads `this`, in an `if`, a ternary or
+/// a `for await` array, or behind an `instanceof` check. The checks that type a branch never leave
+/// it registered without code, so the build never calls a function PHP never got.
 #[test]
 fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled() {
     let first =
         "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }";
     let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }";
-    for (declarations, handler) in [
+    let sort = "sorting requires a numeric key-difference comparator";
+    for (declarations, handler, message) in [
         (
             first,
             "() => ({ a() { return first([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
+            sort,
         ),
         (
             boxed,
             "() => ({ a() { return new Box(1).top([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
+            sort,
         ),
-        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }"),
+        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }", sort),
         (
             first,
             "async () => { let n = 0; for await (const v of [first([1, 3, 2])]) n += v; return n; }",
+            sort,
         ),
-        (first, "() => (first([1, 3, 2]) ? 1 : 0)"),
+        (first, "() => (first([1, 3, 2]) ? 1 : 0)", sort),
         (
             first,
             "() => ({ a() { if (first([1, 3, 2])) return this.n; return 0; }, n: 1 }).a()",
+            sort,
         ),
         (
             boxed,
             "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box) return 1; return 0; }",
+            sort,
+        ),
+        (
+            format!("{boxed} function h(): number {{ return new Box(1).v; }}").as_str(),
+            "() => { if (h()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "function bad(): number { return [1].sort(function (a, b) { return b > a ? 1 : -1; })[0]; } const ns = { n: 1, get(this: { n: number }): number { return this.n; }, bad };",
+            "() => { if (ns.get()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "const m = new Map([[\"a\", () => 1]]);",
+            "() => { if (m.get(\"a\")) return 1; return 0; }",
+            "captured data contains a function, which can't be used in PHP",
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
@@ -3457,10 +3478,7 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{handler}: {report}");
         assert!(
-            report["diagnostics"][0]["message"]
-                .as_str()
-                .unwrap()
-                .contains("sorting requires a numeric key-difference comparator"),
+            report["diagnostics"][0]["message"].as_str().unwrap().contains(message),
             "{handler}: {report}"
         );
     }

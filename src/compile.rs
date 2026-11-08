@@ -4022,23 +4022,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     let name = self.unique_name("captured_collection");
                     self.data_helpers.insert(key, name.clone());
-                    let mut body = format!(
-                        "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
-                        if c.set { "JsSet" } else { "JsMap" }
-                    );
-                    for (k, v) in &c.entries {
-                        validate_captured_data(k, span, &mut HashSet::new())?;
-                        validate_captured_data(v, span, &mut HashSet::new())?;
-                        let k = self.captured_data(k)?;
-                        if c.set {
-                            let _ = writeln!(body, "        $value->add({k});");
-                        } else {
-                            let v = self.captured_data(v)?;
-                            let _ = writeln!(body, "        $value->set({k}, {v});");
+                    let body = (|| {
+                        let mut body = format!(
+                            "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
+                            if c.set { "JsSet" } else { "JsMap" }
+                        );
+                        for (k, v) in &c.entries {
+                            validate_captured_data(k, span, &mut HashSet::new())?;
+                            validate_captured_data(v, span, &mut HashSet::new())?;
+                            let k = self.captured_data(k)?;
+                            if c.set {
+                                let _ = writeln!(body, "        $value->add({k});");
+                            } else {
+                                let v = self.captured_data(v)?;
+                                let _ = writeln!(body, "        $value->set({k}, {v});");
+                            }
+                        }
+                        body.push_str("    }\n    return $value;\n}\n\n");
+                        Ok(body)
+                    })();
+                    // A refused collection leaves no name behind (see `captured_use`), so the
+                    // next read validates it again instead of trusting an unemitted helper.
+                    match body {
+                        Ok(body) => self.output.push_str(&body),
+                        Err(d) => {
+                            self.data_helpers.remove(&key);
+                            return Err(d);
                         }
                     }
-                    body.push_str("    }\n    return $value;\n}\n\n");
-                    self.output.push_str(&body);
                     name
                 };
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
@@ -4342,42 +4353,53 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let name = self.unique_name("receiver");
         self.data_helpers.insert(key, name.clone());
         let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let mut body = format!(
-            "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
-        );
-        for (key, member) in fields {
-            let member_path = format!("{path}.{key}");
-            // Every member gets its run-time form or a compile error: a dropped field would read
-            // as undefined through `this`.
-            let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
-                self.receiver_value(&member_path, &member, binding, span)?
-            } else if matches!(&member, Value::Closure(c) if c.has_props()) {
-                // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
-                return Err(Diag::new(
-                    span,
-                    format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
-                )
-                .code(crate::diag::Code::Unsupported)
-                .help(format!(
-                    "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
-                )));
-            } else {
-                self.captured_use(&member_path, member, binding, span, true, true)
-                    .map_err(|d| {
-                        if d.help.is_some() {
-                            return d;
-                        }
-                        let help = format!(
-                            "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
-                        );
-                        d.help(help)
-                    })?
-                    .php
-            };
-            let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+        let body = (|| {
+            let mut body = format!(
+                "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
+            );
+            for (key, member) in fields {
+                let member_path = format!("{path}.{key}");
+                // Every member gets its run-time form or a compile error: a dropped field would read
+                // as undefined through `this`.
+                let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
+                    self.receiver_value(&member_path, &member, binding, span)?
+                } else if matches!(&member, Value::Closure(c) if c.has_props()) {
+                    // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
+                    return Err(Diag::new(
+                        span,
+                        format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
+                    )
+                    .code(crate::diag::Code::Unsupported)
+                    .help(format!(
+                        "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
+                    )));
+                } else {
+                    self.captured_use(&member_path, member, binding, span, true, true)
+                        .map_err(|d| {
+                            if d.help.is_some() {
+                                return d;
+                            }
+                            let help = format!(
+                                "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                            );
+                            d.help(help)
+                        })?
+                        .php
+                };
+                let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+            }
+            body.push_str("    }\n    return $value;\n}\n\n");
+            Ok(body)
+        })();
+        // A refused member leaves no receiver behind (see `captured_use`), so the next call
+        // through the namespace compiles it again and reports the refusal.
+        match body {
+            Ok(body) => self.output.push_str(&body),
+            Err(d) => {
+                self.data_helpers.remove(&key);
+                return Err(d);
+            }
         }
-        body.push_str("    }\n    return $value;\n}\n\n");
-        self.output.push_str(&body);
         Ok(format!("\\ZeroApp\\{name}()"))
     }
 

@@ -695,6 +695,7 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
 
 /// A page route pattern (`/notes/[]`, whose last segment is an item) in the route path grammar
 /// (`/notes/:item`), so one matcher serves `routes` and `pagePaths`.
+#[cfg(feature = "host")]
 fn page_path(pattern: &str) -> String {
     pattern
         .split('/')

@@ -7,7 +7,7 @@
 
 use crate::diag::{Diag, Span, suggest};
 use crate::ir::*;
-use crate::loader::{Program, ZERO_MODULE};
+use crate::loader::{Program, WORDPRESS_MODULE, ZERO_MODULE};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
@@ -80,6 +80,13 @@ impl ValueIterator {
     }
 }
 
+/// Where a destructuring-assignment leaf reads its value: already read (array elements, rests)
+/// or a property read that runs after the leaf resolves its target.
+enum PatternSource {
+    Value(Value),
+    Property(Value, String),
+}
+
 enum ValuePlace {
     Binding(String),
     Property(Value, Value),
@@ -88,8 +95,27 @@ enum ValuePlace {
 enum Flow {
     Normal,
     Return(Value),
-    Break,
-    Continue,
+    /// `break` or `break label`.
+    Break(Option<String>),
+    /// `continue` or `continue label`.
+    Continue(Option<String>),
+}
+
+/// What a loop does with the flow its body ended with. `labels` are the labels directly on the
+/// loop statement: a labeled `continue` naming one of them continues this loop.
+enum LoopStep {
+    Next,
+    Exit,
+    Leave(Flow),
+}
+
+fn loop_step(flow: Flow, labels: &[String]) -> LoopStep {
+    match flow {
+        Flow::Normal | Flow::Continue(None) => LoopStep::Next,
+        Flow::Continue(Some(l)) if labels.contains(&l) => LoopStep::Next,
+        Flow::Break(None) => LoopStep::Exit,
+        other => LoopStep::Leave(other),
+    }
 }
 
 fn err<T>(span: Span, msg: impl Into<String>) -> R<T> {
@@ -225,6 +251,9 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "once",
     "jobs",
     "fetch",
+    "crypto",
+    "mail",
+    "definePlugin",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
 const ZERO_TYPES: &[&str] = &[
@@ -273,6 +302,7 @@ const ZERO_TYPES: &[&str] = &[
     "ServiceFormField",
     "ServiceProduct",
     "InferActionInput",
+    "Plugin",
 ];
 
 pub const GLOBALS: &[&str] = &[
@@ -322,6 +352,8 @@ pub struct Evaluator<'p> {
     pub key_spans: HashMap<(usize, String), Span>,
     // Retain collided objects so allocation identities cannot be reused.
     duplicate_keys: HashMap<usize, (Value, Vec<(String, Span)>)>,
+    /// Labels directly on the statement being executed, taken by the loop they label.
+    pending_labels: Vec<String>,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -344,6 +376,7 @@ impl<'p> Evaluator<'p> {
             depth: 0,
             key_spans: HashMap::new(),
             duplicate_keys: HashMap::new(),
+            pending_labels: Vec::new(),
         }
     }
 
@@ -367,6 +400,12 @@ impl<'p> Evaluator<'p> {
 
     pub fn program(&self) -> &'p Program {
         self.program
+    }
+
+    /// Evaluates another entry module (a `wp-hooks/` file) and returns its exports.
+    pub fn run_module(&mut self, module: usize) -> Result<IndexMap<String, Value>, Diag> {
+        self.eval_module(module).map_err(uncaught)?;
+        Ok(self.exports[module].clone())
     }
 
     pub fn module_scope(&self, module: usize) -> Option<Rc<Scope>> {
@@ -454,7 +493,7 @@ impl<'p> Evaluator<'p> {
             if let Stmt::Import { source, .. }
             | Stmt::ExportNames { from: Some(source), .. }
             | Stmt::ExportAll { from: source, .. } = stmt
-                && source != ZERO_MODULE
+                && !crate::loader::builtin_module(source)
                 && let Some(&target) = self.program.resolved.get(&(id, source.clone()))
             {
                 self.eval_module(target)?;
@@ -483,6 +522,18 @@ impl<'p> Evaluator<'p> {
                 }
                 Stmt::ExportNames { names, from, span } => {
                     for (local, exported) in names {
+                        let erased = module.dynamic
+                            && match from {
+                                Some(source) => self
+                                    .program
+                                    .resolved
+                                    .get(&(id, source.clone()))
+                                    .is_some_and(|&target| self.erased_type_export(target, local, 0)),
+                                None => scope.lookup(local).is_none() && self.erased_type_import(id, local, 0),
+                            };
+                        if erased {
+                            continue;
+                        }
                         let v = match from {
                             None => match scope.lookup(local) {
                                 Some(b) if b.initialized => b.value,
@@ -523,13 +574,62 @@ impl<'p> Evaluator<'p> {
         Ok(())
     }
 
+    /// Whether `name` is a type that a dynamic module erased, directly or through re-exports.
+    fn erased_type_export(&self, module: usize, name: &str, depth: usize) -> bool {
+        let m = &self.program.modules[module];
+        if depth > 64 || !m.dynamic || self.exports[module].contains_key(name) {
+            return false;
+        }
+        if m.type_names.contains(name) {
+            return true;
+        }
+        let target = |source: &str| self.program.resolved.get(&(module, source.to_string())).copied();
+        m.body.iter().any(|stmt| match stmt {
+            Stmt::ExportNames { names, from, .. } => names.iter().any(|(local, exported)| {
+                exported == name
+                    && match from {
+                        Some(source) => target(source).is_some_and(|t| self.erased_type_export(t, local, depth + 1)),
+                        None => self.erased_type_import(module, local, depth),
+                    }
+            }),
+            Stmt::ExportAll { from, .. } => target(from).is_some_and(|t| self.erased_type_export(t, name, depth + 1)),
+            _ => false,
+        })
+    }
+
+    fn erased_type_import(&self, module: usize, local: &str, depth: usize) -> bool {
+        let m = &self.program.modules[module];
+        m.type_names.contains(local)
+            || m.body.iter().any(|stmt| {
+                let Stmt::Import { source, specs, .. } = stmt else {
+                    return false;
+                };
+                specs.iter().any(
+                    |spec| match (&spec.imported, self.program.resolved.get(&(module, source.clone()))) {
+                        (ImportName::Named(imported), Some(&t)) if spec.local == local => {
+                            self.erased_type_export(t, imported, depth + 1)
+                        }
+                        _ => false,
+                    },
+                )
+            })
+    }
+
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
         if source == ZERO_MODULE {
             return zero_export(name, span);
         }
+        if source == WORDPRESS_MODULE {
+            return wordpress_export(name, span);
+        }
         let target = self.program.resolved[&(from, source.to_string())];
         match self.exports[target].get(name) {
             Some(v) => Ok(v.clone()),
+            None if self.erased_type_export(target, name, 0) => err_help(
+                span,
+                format!("`{name}` comes from an installed package or JavaScript module, whose types Zero erases"),
+                "describe the value with a local type, or narrow it with `typeof`/`instanceof` at the call site",
+            ),
             None => {
                 let mut d = Diag::new(span, format!("\"{source}\" has no export named `{name}`"));
                 if let Some(s) = suggest(name, self.exports[target].keys().map(String::as_str)) {
@@ -545,19 +645,34 @@ impl<'p> Evaluator<'p> {
             if spec.type_only {
                 continue;
             }
+            // TypeScript elides imports that only name types.
+            if let ImportName::Named(name) = &spec.imported
+                && self.program.modules[id].dynamic
+                && let Some(&target) = self.program.resolved.get(&(id, source.to_string()))
+                && self.erased_type_export(target, name, 0)
+            {
+                continue;
+            }
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
                 ImportName::Default => {
-                    if source == ZERO_MODULE {
+                    if crate::loader::builtin_module(source) {
                         return err_help(
                             spec.span,
-                            "\"zero\" has no default export",
-                            "import names: `import { collection } from \"zero\"`",
+                            format!("\"{source}\" has no default export"),
+                            format!("import names: `import {{ ... }} from \"{source}\"`"),
                         );
                     }
                     self.import_value(id, source, "default", spec.span)?
                 }
                 ImportName::Namespace => {
+                    if source == WORDPRESS_MODULE {
+                        return err_help(
+                            spec.span,
+                            "\"php/wordpress\" can't be imported as a namespace",
+                            "import the names you use: `import { abilities } from \"php/wordpress\"`",
+                        );
+                    }
                     if source == ZERO_MODULE {
                         let mut map = IndexMap::new();
                         for n in ZERO_EXPORTS {
@@ -646,6 +761,99 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    /// A destructuring assignment, in JavaScript order: each leaf resolves its target, then reads
+    /// its value, then applies its default, then writes.
+    fn assign_pattern(&mut self, pattern: &AssignPat, value: Value, scope: &Rc<Scope>) -> R<()> {
+        self.assign_pattern_from(pattern, PatternSource::Value(value), scope)
+    }
+
+    fn read_source(&self, source: PatternSource, span: Span) -> R<Value> {
+        match source {
+            PatternSource::Value(value) => Ok(value),
+            PatternSource::Property(object, key) => self.get_prop(&object, &key, span),
+        }
+    }
+
+    fn assign_pattern_from(&mut self, pattern: &AssignPat, source: PatternSource, scope: &Rc<Scope>) -> R<()> {
+        let span = pattern.span();
+        let (target, default) = match pattern {
+            AssignPat::Target(target) => (Some(target), None),
+            AssignPat::Default(inner, default) => match &**inner {
+                AssignPat::Target(target) => (Some(target), Some(default)),
+                _ => (None, Some(default)),
+            },
+            _ => (None, None),
+        };
+        if let Some(target) = target {
+            let place = self.capture_place(target, scope)?;
+            let mut value = self.read_source(source, span)?;
+            if let Some(default) = default
+                && matches!(value, Value::Undef)
+            {
+                value = self.eval(default, scope)?;
+            }
+            return self.write_place(place, value, scope, target.span);
+        }
+        let mut value = self.read_source(source, span)?;
+        let inner = match pattern {
+            AssignPat::Default(inner, default) => {
+                if matches!(value, Value::Undef) {
+                    value = self.eval(default, scope)?;
+                }
+                &**inner
+            }
+            other => other,
+        };
+        match inner {
+            AssignPat::Obj { props, rest, span } => {
+                let Value::Object(obj) = &value else {
+                    return err(*span, format!("can't destructure {} as an object", value.describe()));
+                };
+                let mut taken = Vec::new();
+                for (key, p) in props {
+                    let key = match key {
+                        PropKey::Static(k) => k.clone(),
+                        PropKey::Computed(k) => {
+                            let k = self.eval(k, scope)?;
+                            require_static_coercion(&k, *span)?;
+                            k.to_js_string()
+                                .ok_or_else(|| Ctl::Err(Diag::new(*span, "destructuring keys must be primitive")))?
+                        }
+                    };
+                    taken.push(key.clone());
+                    self.assign_pattern_from(p, PatternSource::Property(value.clone(), key), scope)?;
+                }
+                if let Some(r) = rest {
+                    let mut map = obj.borrow().clone();
+                    for key in &taken {
+                        map.shift_remove(key);
+                    }
+                    self.assign_pattern_from(r, PatternSource::Value(Value::object(map)), scope)?;
+                }
+                Ok(())
+            }
+            AssignPat::Arr { elems, rest, span } => {
+                let mut items = ValueIterator::new(value, *span)?;
+                for p in elems {
+                    let item = items.next(*span)?.unwrap_or(Value::Undef);
+                    if let Some(p) = p {
+                        self.assign_pattern_from(p, PatternSource::Value(item), scope)?;
+                    }
+                }
+                if let Some(r) = rest {
+                    let mut tail = Vec::new();
+                    while let Some(item) = items.next(*span)? {
+                        self.tick(*span)?;
+                        tail.push(item);
+                    }
+                    self.assign_pattern_from(r, PatternSource::Value(Value::array(tail)), scope)?;
+                }
+                Ok(())
+            }
+            AssignPat::Target(_) | AssignPat::Default(..) => unreachable!("handled above"),
+        }
+    }
+
     fn exec_block(&mut self, body: &[Stmt], parent: &Rc<Scope>) -> R<Flow> {
         let scope = Scope::new(Some(parent.clone()), parent.module);
         hoist(body, &scope);
@@ -663,6 +871,8 @@ impl<'p> Evaluator<'p> {
     }
 
     fn exec(&mut self, stmt: &Stmt, scope: &Rc<Scope>) -> R<Flow> {
+        // Labels apply to this statement only; a loop keeps them for `continue label`.
+        let labels = std::mem::take(&mut self.pending_labels);
         match stmt {
             Stmt::Decl {
                 kind,
@@ -739,10 +949,10 @@ impl<'p> Evaluator<'p> {
                     {
                         break;
                     }
-                    match self.exec_block(body, &loop_scope)? {
-                        Flow::Break => break,
-                        Flow::Return(v) => return Ok(Flow::Return(v)),
-                        _ => {}
+                    match loop_step(self.exec_block(body, &loop_scope)?, &labels) {
+                        LoopStep::Next => {}
+                        LoopStep::Exit => break,
+                        LoopStep::Leave(flow) => return Ok(flow),
                     }
                     if per_iteration {
                         loop_scope = loop_scope.fork_bindings();
@@ -783,10 +993,10 @@ impl<'p> Evaluator<'p> {
                         &iter_scope,
                         (*kind != DeclKind::Var).then_some(*kind == DeclKind::Let),
                     )?;
-                    match self.exec_block(body, &iter_scope)? {
-                        Flow::Break => break,
-                        Flow::Return(v) => return Ok(Flow::Return(v)),
-                        _ => {}
+                    match loop_step(self.exec_block(body, &iter_scope)?, &labels) {
+                        LoopStep::Next => {}
+                        LoopStep::Exit => break,
+                        LoopStep::Leave(flow) => return Ok(flow),
                     }
                 }
             }
@@ -817,10 +1027,10 @@ impl<'p> Evaluator<'p> {
                     } else {
                         self.assign(target, Value::str(&key), &iter_scope)?;
                     }
-                    match self.exec_block(body, &iter_scope)? {
-                        Flow::Break => break,
-                        Flow::Return(v) => return Ok(Flow::Return(v)),
-                        _ => {}
+                    match loop_step(self.exec_block(body, &iter_scope)?, &labels) {
+                        LoopStep::Next => {}
+                        LoopStep::Exit => break,
+                        LoopStep::Leave(flow) => return Ok(flow),
                     }
                 }
             }
@@ -829,14 +1039,34 @@ impl<'p> Evaluator<'p> {
                 if !self.eval_static_data(test, scope)?.truthy() {
                     break;
                 }
-                match self.exec_block(body, scope)? {
-                    Flow::Break => break,
-                    Flow::Return(v) => return Ok(Flow::Return(v)),
-                    _ => {}
+                match loop_step(self.exec_block(body, scope)?, &labels) {
+                    LoopStep::Next => {}
+                    LoopStep::Exit => break,
+                    LoopStep::Leave(flow) => return Ok(flow),
                 }
             },
-            Stmt::Break(_) => return Ok(Flow::Break),
-            Stmt::Continue(_) => return Ok(Flow::Continue),
+            Stmt::DoWhile(body, test) => loop {
+                self.tick(test.span)?;
+                match loop_step(self.exec_block(body, scope)?, &labels) {
+                    LoopStep::Next => {}
+                    LoopStep::Exit => break,
+                    LoopStep::Leave(flow) => return Ok(flow),
+                }
+                if !self.eval_static_data(test, scope)?.truthy() {
+                    break;
+                }
+            },
+            Stmt::Labeled(label, body, _) => {
+                let mut inner = labels;
+                inner.push(label.clone());
+                self.pending_labels = inner;
+                return match self.exec(body, scope)? {
+                    Flow::Break(Some(l)) if l == *label => Ok(Flow::Normal),
+                    other => Ok(other),
+                };
+            }
+            Stmt::Break(label, _) => return Ok(Flow::Break(label.clone())),
+            Stmt::Continue(label, _) => return Ok(Flow::Continue(label.clone())),
             Stmt::Throw(e) => {
                 let v = self.eval(e, scope)?;
                 return Err(Ctl::Throw(v, e.span));
@@ -881,7 +1111,7 @@ impl<'p> Evaluator<'p> {
                     for (_, body) in &cases[start..] {
                         match self.exec_block(body, &switch_scope)? {
                             Flow::Normal => {}
-                            Flow::Break => break,
+                            Flow::Break(None) => break,
                             other => return Ok(other),
                         }
                     }
@@ -995,6 +1225,89 @@ impl<'p> Evaluator<'p> {
                 }))
             }
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
+            // Evaluator arrays carry no named properties, so the strings array's `raw` can't be
+            // modeled during configuration evaluation; handlers compile tagged templates.
+            ExprKind::TemplateStrings { .. } => {
+                return err_help(
+                    e.span,
+                    "tagged templates are only available inside compiled callbacks",
+                    "call the tag inside a handler, or use an ordinary template literal",
+                );
+            }
+            ExprKind::AssignPattern(pattern, value) => {
+                let value = self.eval(value, scope)?;
+                self.assign_pattern(pattern, value.clone(), scope)?;
+                value
+            }
+            ExprKind::Delete(target) => {
+                let inner = match &target.kind {
+                    ExprKind::Chain(inner) => inner,
+                    _ => target,
+                };
+                let (object, key) = match &inner.kind {
+                    ExprKind::Member {
+                        obj, prop, optional, ..
+                    } => {
+                        let object = self.eval(obj, scope)?;
+                        if *optional && matches!(object, Value::Null | Value::Undef) {
+                            return Ok(Value::Bool(true));
+                        }
+                        (object, prop.clone())
+                    }
+                    ExprKind::Index { obj, index, optional } => {
+                        let object = self.eval(obj, scope)?;
+                        if *optional && matches!(object, Value::Null | Value::Undef) {
+                            return Ok(Value::Bool(true));
+                        }
+                        let key = self.eval(index, scope)?;
+                        require_static_data(&key, e.span)?;
+                        require_static_coercion(&key, e.span)?;
+                        let Some(key) = key.to_js_string() else {
+                            return err(e.span, "`delete` at build time needs a primitive property key");
+                        };
+                        (object, key)
+                    }
+                    _ => return err(e.span, "`delete` needs an object property"),
+                };
+                match &object {
+                    Value::Object(o) => {
+                        o.borrow_mut().shift_remove(&key);
+                    }
+                    Value::Array(a) => {
+                        let in_range = key
+                            .parse::<usize>()
+                            .is_ok_and(|i| i.to_string() == key && i < a.borrow().len());
+                        if key == "length" || in_range {
+                            return err_help(
+                                e.span,
+                                "`delete` would leave a hole in a dense Zero array",
+                                "use splice to remove elements",
+                            );
+                        }
+                    }
+                    Value::Null | Value::Undef => {
+                        return err(e.span, "`delete` on null or undefined throws a TypeError");
+                    }
+                    _ => {
+                        return err_help(
+                            e.span,
+                            "`delete` at build time removes only plain object properties",
+                            "move the deletion into a handler",
+                        );
+                    }
+                }
+                Value::Bool(true)
+            }
+            ExprKind::In(key, object) => {
+                let key = self.eval(key, scope)?;
+                let object = self.eval(object, scope)?;
+                require_static_data(&key, e.span)?;
+                require_static_coercion(&key, e.span)?;
+                let Some(key) = key.to_js_string() else {
+                    return err(e.span, "`in` at build time needs a primitive property key");
+                };
+                Value::Bool(build_time_in(&key, &object, e.span)?)
+            }
             ExprKind::Num(n) => Value::Num(*n),
             ExprKind::Str(s) => Value::str(s),
             ExprKind::Bool(b) => Value::Bool(*b),
@@ -1098,13 +1411,14 @@ impl<'p> Evaluator<'p> {
             })),
             ExprKind::Unary(op, x) => {
                 let v = self.eval_static_data(x, scope)?;
-                if matches!(op, UnOp::Neg | UnOp::Plus) {
+                if matches!(op, UnOp::Neg | UnOp::Plus | UnOp::BitNot) {
                     require_static_coercion(&v, e.span)?;
                 }
                 match op {
                     UnOp::Not => Value::Bool(!v.truthy()),
                     UnOp::Neg => Value::Num(-to_number(&v)),
                     UnOp::Plus => Value::Num(to_number(&v)),
+                    UnOp::BitNot => Value::Num(f64::from(!crate::num::to_int32(to_number(&v)))),
                     UnOp::TypeOf => {
                         if let Value::Builtin(Builtin::Global(
                             name @ ("process" | "require" | "globalThis" | "crypto"),
@@ -1799,6 +2113,14 @@ impl<'p> Evaluator<'p> {
                 Ok(Value::object(out))
             }
             Builtin::DefineConfig => Ok(arg(0)),
+            Builtin::DefinePlugin => match arg(0) {
+                config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
+                _ => err_help(
+                    span,
+                    "definePlugin() needs `{ name, hooks?, actions?, jobs?, routes? }`",
+                    "pass the plugin definition as an object literal",
+                ),
+            },
             Builtin::Env => match arg(0) {
                 Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
                     Ok(Value::Env(n))
@@ -1823,11 +2145,13 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Once | Builtin::Jobs | Builtin::Fetch => err_help(
-                span,
-                "once(), jobs and fetch() only work inside hooks, actions, routes and jobs, which run in PHP at request time",
-                "move the call into a handler",
-            ),
+            Builtin::Once | Builtin::Jobs | Builtin::Fetch | Builtin::Crypto | Builtin::Mail | Builtin::Abilities => {
+                err_help(
+                    span,
+                    "once(), jobs, fetch(), crypto, mail and abilities only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                    "move the call into a handler",
+                )
+            }
             Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
@@ -2449,6 +2773,8 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
         "fetch" => Builtin::Fetch,
+        "crypto" => Builtin::Crypto,
+        "mail" => Builtin::Mail,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
         "group" => Builtin::Field("group"),
@@ -2457,6 +2783,7 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "global" => Builtin::DefineGlobal,
         "defineRelations" => Builtin::DefineRelations,
         "defineConfig" => Builtin::DefineConfig,
+        "definePlugin" => Builtin::DefinePlugin,
         "action" => Builtin::Action,
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
@@ -2464,6 +2791,36 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         _ => {
             let mut d = Diag::new(span, format!("\"zero\" has no export named `{name}`"));
             if let Some(s) = suggest(name, ZERO_EXPORTS.iter().copied()) {
+                d = d.help(format!("did you mean `{s}`?"));
+            }
+            return Err(Ctl::Err(d));
+        }
+    }))
+}
+
+/// Names exported by `"php/wordpress"`.
+pub const WORDPRESS_EXPORTS: &[&str] = &["abilities"];
+/// Type-only exports of `"php/wordpress"`: importable, erased.
+const WORDPRESS_TYPES: &[&str] = &[
+    "Abilities",
+    "AbilityName",
+    "AbilityInput",
+    "AbilityOutput",
+    "Hooks",
+    "HookName",
+    "Handler",
+    "WP_Post",
+    "WP_User",
+    "WP_Query",
+];
+
+fn wordpress_export(name: &str, span: Span) -> R<Value> {
+    Ok(Value::Builtin(match name {
+        "abilities" => Builtin::Abilities,
+        n if WORDPRESS_TYPES.contains(&n) => return Ok(Value::Undef),
+        _ => {
+            let mut d = Diag::new(span, format!("\"php/wordpress\" has no export named `{name}`"));
+            if let Some(s) = suggest(name, WORDPRESS_EXPORTS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(Ctl::Err(d));
@@ -2533,7 +2890,8 @@ fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
                 ann,
                 ..
             } => binding(pat, ann, scope),
-            Stmt::Block(body) | Stmt::While(_, body) => hoist_vars(body, scope),
+            Stmt::Block(body) | Stmt::While(_, body) | Stmt::DoWhile(body, _) => hoist_vars(body, scope),
+            Stmt::Labeled(_, body, _) => hoist_vars(std::slice::from_ref(body), scope),
             Stmt::If(_, yes, no) => {
                 hoist_vars(yes, scope);
                 if let Some(no) = no {
@@ -3063,6 +3421,93 @@ fn slice_bounds(len: f64, start: &Value, end: &Value) -> (usize, usize) {
     (clamp(start, 0.0), clamp(end, len))
 }
 
+/// Own string names of Object.prototype and Array.prototype, as Node reports them.
+const OBJECT_PROTOTYPE: &[&str] = &[
+    "constructor",
+    "__defineGetter__",
+    "__defineSetter__",
+    "hasOwnProperty",
+    "__lookupGetter__",
+    "__lookupSetter__",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toString",
+    "valueOf",
+    "__proto__",
+    "toLocaleString",
+];
+const ARRAY_PROTOTYPE: &[&str] = &[
+    "length",
+    "constructor",
+    "at",
+    "concat",
+    "copyWithin",
+    "fill",
+    "find",
+    "findIndex",
+    "findLast",
+    "findLastIndex",
+    "lastIndexOf",
+    "pop",
+    "push",
+    "reverse",
+    "shift",
+    "unshift",
+    "slice",
+    "sort",
+    "splice",
+    "includes",
+    "indexOf",
+    "join",
+    "keys",
+    "entries",
+    "values",
+    "forEach",
+    "filter",
+    "flat",
+    "flatMap",
+    "map",
+    "every",
+    "some",
+    "reduce",
+    "reduceRight",
+    "toReversed",
+    "toSorted",
+    "toSpliced",
+    "with",
+    "toLocaleString",
+    "toString",
+];
+
+/// `key in object` during configuration evaluation, for the plain data values the evaluator
+/// models. Runtime `Js::hasProperty` covers every runtime value.
+fn build_time_in(key: &str, object: &Value, span: Span) -> R<bool> {
+    let index_below = |length: usize| key.parse::<usize>().is_ok_and(|i| i.to_string() == key && i < length);
+    Ok(match object {
+        Value::Object(o) => o.borrow().contains_key(key) || OBJECT_PROTOTYPE.contains(&key),
+        Value::Arguments(o) => {
+            o.borrow().contains_key(key) || matches!(key, "length" | "callee") || OBJECT_PROTOTYPE.contains(&key)
+        }
+        Value::Array(a) => {
+            index_below(a.borrow().len()) || ARRAY_PROTOTYPE.contains(&key) || OBJECT_PROTOTYPE.contains(&key)
+        }
+        Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_) => {
+            return err_help(
+                span,
+                "`in` needs an object on its right side; JavaScript throws a TypeError here",
+                "check `typeof value === \"object\" && value !== null` first",
+            );
+        }
+        _ => {
+            return err_help(
+                span,
+                "`in` at build time inspects only plain objects, arrays and arguments",
+                "move the check into a handler",
+            );
+        }
+    })
+}
+
 fn build_regex(pattern: &str, flags: &str, span: Span) -> R<regex::Regex> {
     let mut prefix = String::new();
     for f in flags.chars() {
@@ -3390,6 +3835,10 @@ fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
         BinOp::Ne => Value::Bool(!a.strict_eq(b)),
         BinOp::LooseEq => Value::Bool(loose_eq(a, b, span)?),
         BinOp::LooseNe => Value::Bool(!loose_eq(a, b, span)?),
+        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr | BinOp::UShr => {
+            let (a, b) = (to_number(&prim(a)?), to_number(&prim(b)?));
+            Value::Num(crate::num::bitwise(op, a, b))
+        }
         BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
             let (a, b) = (prim(a)?, prim(b)?);
             let ord = match (&a, &b) {

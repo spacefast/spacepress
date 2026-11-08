@@ -37,6 +37,11 @@ final class JsClass
         return isset($this->methods[$name]) || ($this->parent?->hasMethod($name) ?? false);
     }
 
+    public function hasStaticMethod(string $name): bool
+    {
+        return isset($this->staticMethods[$name]) || ($this->parent?->hasStaticMethod($name) ?? false);
+    }
+
     private function method(string $name, bool $static): \Closure
     {
         $method = ($static ? $this->staticMethods : $this->methods)[$name] ?? null;

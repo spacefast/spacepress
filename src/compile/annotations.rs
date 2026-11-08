@@ -148,6 +148,18 @@ impl Compiler<'_, '_> {
                 if args.is_empty() {
                     for stmt in &self.ev_program().modules[module].body {
                         if let Stmt::Import { source, specs, .. } = stmt
+                            && source == crate::loader::WORDPRESS_MODULE
+                        {
+                            for spec in specs {
+                                if spec.local == *name
+                                    && let ImportName::Named(imported) = &spec.imported
+                                    && matches!(imported.as_str(), "WP_Post" | "WP_User" | "WP_Query")
+                                {
+                                    return Ok(crate::wordpress::class(imported));
+                                }
+                            }
+                        }
+                        if let Stmt::Import { source, specs, .. } = stmt
                             && source == crate::loader::ZERO_MODULE
                         {
                             for spec in specs {
@@ -170,6 +182,17 @@ impl Compiler<'_, '_> {
                     self.imported_type(module, name)
                 };
                 if let Some((owner, local)) = alias {
+                    if self.ev_program().modules[owner].dynamic
+                        && !self.type_aliases.contains_key(&(owner, local.clone()))
+                    {
+                        return err_help(
+                            *span,
+                            format!(
+                                "`{name}` comes from an installed package or JavaScript module, whose types Zero erases"
+                            ),
+                            "describe the value with a local type, or narrow it with `typeof`/`instanceof`",
+                        );
+                    }
                     return self.instantiate_alias(name, (owner, &local), args, *span, module, generics);
                 }
                 match (name.as_str(), args.as_slice()) {

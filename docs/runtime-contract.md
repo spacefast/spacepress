@@ -45,7 +45,9 @@ serialization own their numeric spelling independently of PHP's ini precision.
 The bundled Composer loader and its autoloaded function files load on the first
 `Zero\Vendor\*` or `Zero_Vendor_*` class use. Ordinary requests do not load the
 optional Markdown, merge or S3 dependencies. Both scoped namespace and global
-class names use the same authoritative Composer map.
+class names use the same authoritative Composer map. HTML parsing and block
+parsing/serialization are WordPress core's (`WP_HTML_*`, `parse_blocks`,
+`serialize_blocks`); the bundle carries no copy.
 
 The signing key for private-file URLs is the `zero_runtime_secret` option,
 minted on activation.
@@ -687,7 +689,7 @@ JSON arrays. This distinction does not change schema nullability. Public client
 result types describe serialization: undefined array slots become null, and
 properties whose values may be undefined become optional with undefined removed
 from the present value domain.
-Array and object destructuring retain undefined for absent entries. Configuration
+Array and object destructuring retain undefined for absent entries. Destructuring assignment evaluates its right side once and returns it; each leaf resolves its target (computed key, then receiver), reads its part, applies its default only for undefined, and writes through the same `set`/`setAt`/`dynamicSet` calls as `=`. Configuration
 for-of and array destructuring use live iterators, including permanent exhaustion
 after completion. Optional/default parameters before rest parameters remain
 omittable.
@@ -704,7 +706,12 @@ bindings remain available. Destructured var loops refuse during configuration
 evaluation as well as handler compilation.
 
 Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
-does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
+does not weaken authored TypeScript `unknown`. TypeScript installed under
+`node_modules` shares this domain: its annotations, type declarations, type-only
+imports, generics and signatures are erased while lowering, as esbuild and
+`tsc --noCheck` erase them; runtime syntax keeps the checked subset. Authored
+code cannot name an erased package type (see
+`docs/decisions/2026-11-07-erase-package-typescript.md`). `JsDynamic` checks properties,
 calls, constructors, iteration and primitive operations against the supported
 value model; unknown methods and unsupported signatures throw `JsError`
 TypeError. Checked JavaScript calls resolve an own method before evaluating
@@ -715,7 +722,7 @@ Extracted supported builtin methods retain the receiver passed through
 `call`/`apply`.
 Ordinary functions receive `JsArguments` (numeric properties, independent
 non-enumerable length); arrows inherit the surrounding arguments. Parameters
-are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,
+are not sloppy-mode mapped aliases. `do…while` compiles to PHP `do … while`. Labeled loops and switches use PHP's numbered `break N`/`continue N`, counting every enclosing loop, switch and labeled block; a labeled block that is not a loop becomes a one-pass `do { … } while (false)` so `break label` can leave it. Function-scoped `var`, comma expressions,
 loose equality and own-key `for…in` share the evaluator's lowering. Runtime
 `for…in` snapshots the original keys and skips keys deleted before their turn.
 
@@ -792,6 +799,10 @@ Conversions:
 - `numStr(int|float $n): string` — `Number.prototype.toString()`: `NaN`, `Infinity`, `-Infinity`, `-0` → `"0"`, integral values below 1e21 without exponent, shortest round-trip digits (including adjacent decimal candidates at binary rounding boundaries), exponent form `1e+21`, `1.5e-7` exactly where JS uses it (≥ 1e21 or < 1e-6).
 - `toNumber(mixed $v): int|float` — `Number(v)`: null → 0, bool → 0/1, string trimmed of JS whitespace: `""` → 0, decimal, `0x`/`0o`/`0b` prefixes, `Infinity`/`-Infinity`, otherwise NAN. Safe integers (|n| ≤ 2^53) return int, larger values float.
 - `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So Zero ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
+- `bitwise(string $operator, mixed $a, mixed $b): int` — compiled `&`, `|`, `^`, `<<`, `>>`, `>>>` and their compound assignments. Both operands go through `toNumber` (objects with the number hint), then ToInt32; the left side of `>>>` uses ToUint32. Shift counts are ToUint32 masked to five bits, so a negative count or a count of 32 or more wraps as in JavaScript. The result is a signed 32-bit int, or an unsigned one for `>>>`. `bitNot(mixed $a): int` is `~a`. Checked JavaScript reaches both through `dynamicBinary`.
+- `hasProperty(mixed $key, mixed $object): bool` — compiled `key in object`. A primitive or undefined right side throws `TypeError` with JavaScript's message. The key goes through ToPropertyKey; own properties are checked, then the value's fixed prototype chain: class methods (instances) or statics and static methods (classes), the built-in prototype names of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then `Object.prototype`. Null-prototype objects see only own keys. Arrays are dense, so an index is present exactly when it is below the length. Reading `prototype`, `arguments` or `caller` presence on a closure, or `stack` on an error, throws, as their reads do.
+- `delete(mixed $object, mixed $key): bool` — compiled `delete object[key]` in strict mode. Null and undefined receivers throw `TypeError`. Own object keys are removed without reordering the others; the result is true, also for absent and inherited keys. Arrays are dense: an in-range index throws `RangeError` (typed code refuses it at build time) rather than leaving a hole, while named array properties and indexes past the end are removed like object keys. `arguments` indexes are removable slots. Non-configurable properties throw JavaScript's `TypeError` (`Cannot delete property 'length' of [object Array]`): array and string `length`, in-range string indexes, regex `lastIndex`, class and function `prototype`, `arguments.callee`, Math constants. Class statics are removable; class methods, error messages and other modeled built-in own properties throw an explicit unsupported `TypeError`.
+- `templateStrings(string $site, array $cooked, array $raw): JsArray` — a tagged template's first argument: the cooked strings (undefined where an escape is invalid) with a `raw` property. `$site` names the call site, so every call of one site receives the same array. `templateRaw(JsArray $strings): JsArray` reads `raw` from a typed `TemplateStringsArray`. `stringRaw(mixed $template, mixed ...$substitutions): string` is `String.raw`.
 - `Seam` owns conversions between compiled handles and schema-shaped runtime arrays: Db inputs/results, callback contexts, validators, generators, action/job inputs, Sync envelopes and ability inputs/outputs. User `json()` leaves remain handles in runtime rows. Write inputs detach them from compiled locals; each callback receives a fresh graph. Validator `value` aliases its full path in `ctx.data`; a before-hook's `data`/`patch` aliases `ctx.data` and is read back when no replacement is returned. Native `Extensions` callbacks keep array contracts. A string in a schema callback slot names compiled code; native callbacks use non-string callables.
 - Objects enumerate canonical array-index keys in ascending order, then other keys in insertion order (`ownKeys`). Empty objects encode as `{}` and empty arrays as `[]`, including nested JSON and numeric-keyed objects.
 - Array length assignment applies ToUint32 and ToNumber separately, including both object-conversion effects, before validating the new length.

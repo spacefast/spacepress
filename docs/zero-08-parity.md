@@ -473,7 +473,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | --- | --- | --- | --- |
 | Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `pages/<path>/page.tsx`, rendered at capture, served by WordPress; relative imports are adjusted for the move | Auto, **WP** (hosted compile) | Run `zero-pages build` and commit `zero/pages.json` |
 | `client/index.tsx` static `Layout` | `pages/layout.tsx` | Auto, **WP** | — |
-| Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/zero/client.js` answering `@spacefast/zero/client` | Auto | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
+| Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/zero/client.js` answering `@spacefast/zero/client` | Auto (native CLI; the WebAssembly compiler refuses it with `Z08_CLIENT_NATIVE`) | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
 | `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | `load()` reads as the visitor, plus `<Island>` with an Interactivity store calling actions | Refused, lists what each page uses | Port each page |
 | `usePaginatedQuery` | An island over the paginated action | Refused | Port |
 | `@spacefast/zero/kit` components | **missing**: plain markup and CSS | Refused | Restyle |

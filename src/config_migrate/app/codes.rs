@@ -141,6 +141,14 @@ pub static RULES: &[Rule] = &[
         example: ("/client/index.tsx", "client source the browser build cannot compile: x"),
     },
     Rule {
+        code: "Z08_CLIENT_NATIVE",
+        feature: "client app converted by the browser compiler",
+        v2: "zero migrate app from the native CLI",
+        fix: "Run zero migrate app --from zero-0.8 with the native CLI; it compiles the client into public/.",
+        test: |_, r| r.starts_with(client::TAG_NATIVE),
+        example: ("/client/index.tsx", "client app conversion outside the native CLI: x"),
+    },
+    Rule {
         code: "Z08_SOURCE_NOT_RECOVERABLE",
         feature: "a published 0.8 version without its authored source",
         v2: "the authored TypeScript at the published commit",

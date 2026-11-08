@@ -19,11 +19,8 @@ use super::super::{Entry, Failure, entry, fail};
 use crate::loader::Fs;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ImportDeclarationSpecifier, ModuleExportName, Statement, Str};
-use oxc_codegen::Codegen;
 use oxc_parser::Parser;
-use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
-use oxc_transformer::{JsxOptions, JsxRuntime, TransformOptions, Transformer};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -91,6 +88,7 @@ pub(super) const TAG_IMPORT: &str = "client import outside the capsule";
 pub(super) const TAG_DYNAMIC: &str = "dynamic import in the client";
 pub(super) const TAG_ASSET: &str = "client import of a non-script file";
 pub(super) const TAG_SYNTAX: &str = "client source the browser build cannot compile";
+pub(super) const TAG_NATIVE: &str = "client app conversion outside the native CLI";
 
 /// The refusal tag for a 0.8 client name the bridge does not provide.
 fn unbridged(name: &str) -> &'static str {
@@ -297,35 +295,66 @@ impl Walk<'_> {
                 source.raw = None;
             }
         }
-        let semantic = SemanticBuilder::new().build(&program);
-        let options = TransformOptions {
-            jsx: JsxOptions {
-                runtime: JsxRuntime::Automatic,
-                // `jsxImportSource` + `/jsx-runtime` is the import the transform adds; 0.8 used Preact's.
-                import_source: Some("preact".into()),
-                ..JsxOptions::enable()
-            },
-            ..TransformOptions::default()
-        };
-        let transformed = Transformer::new(&arena, relative, &options)
-            .build_with_scoping(semantic.semantic.into_scoping(), &mut program);
-        if let Some(e) = transformed.diagnostics.first() {
-            let offset = e.labels.first().map_or(0, |l| l.offset());
-            self.refuse(relative, &text, offset, TAG_SYNTAX, e.to_string());
-            return target;
+        match emit(&arena, relative, &mut program, &up) {
+            Ok(code) => {
+                self.out.insert(format!("public/{target}"), code);
+            }
+            Err((offset, message)) => {
+                self.refuse(relative, &text, offset, TAG_SYNTAX, message);
+                return target;
+            }
         }
-        // The JSX transform's own import, added after the rewrite above.
-        let jsx = format!("{up}zero/preact/jsx-runtime.js");
-        let code = Codegen::new()
-            .build(&program)
-            .code
-            .replace("from \"preact/jsx-runtime\"", &format!("from \"{jsx}\""));
-        self.out.insert(format!("public/{target}"), code);
         for file in follow {
             self.module(&file);
         }
         target
     }
+}
+
+/// The browser module for a rewritten program: TypeScript stripped, JSX on Preact's automatic
+/// runtime. Needs the oxc transformer, which only the native build carries (`host`): its target
+/// table reaches for JavaScript globals on wasm32, which the browser compiler cannot import.
+#[cfg(feature = "host")]
+fn emit<'a>(
+    arena: &'a Allocator,
+    relative: &Path,
+    program: &mut oxc_ast::ast::Program<'a>,
+    up: &str,
+) -> Result<String, (u32, String)> {
+    use oxc_codegen::Codegen;
+    use oxc_semantic::SemanticBuilder;
+    use oxc_transformer::{JsxOptions, JsxRuntime, TransformOptions, Transformer};
+    let semantic = SemanticBuilder::new().build(program);
+    let options = TransformOptions {
+        jsx: JsxOptions {
+            runtime: JsxRuntime::Automatic,
+            // `jsxImportSource` + `/jsx-runtime` is the import the transform adds; 0.8 used Preact's.
+            import_source: Some("preact".into()),
+            ..JsxOptions::enable()
+        },
+        ..TransformOptions::default()
+    };
+    let transformed =
+        Transformer::new(arena, relative, &options).build_with_scoping(semantic.semantic.into_scoping(), program);
+    if let Some(e) = transformed.diagnostics.first() {
+        return Err((e.labels.first().map_or(0, |l| l.offset()), e.to_string()));
+    }
+    // The JSX transform's own import, added after the specifier rewrite.
+    Ok(Codegen::new().build(program).code.replace(
+        "from \"preact/jsx-runtime\"",
+        &format!("from \"{up}zero/preact/jsx-runtime.js\""),
+    ))
+}
+
+/// Without the transformer, every module still gets its coded refusals; the emit is the native CLI's.
+#[cfg(not(feature = "host"))]
+fn emit<'a>(
+    _arena: &'a Allocator,
+    _relative: &Path,
+    _program: &mut oxc_ast::ast::Program<'a>,
+    _up: &str,
+) -> Result<String, (u32, String)> {
+    Ok(String::new())
 }
 
 fn export_name(name: &ModuleExportName) -> String {
@@ -415,6 +444,16 @@ pub(super) fn convert(
         seen: BTreeSet::new(),
     };
     let module = walk.module(entry_file);
+    #[cfg(not(feature = "host"))]
+    if walk.errors.is_empty() {
+        walk.errors.push(
+            fail(
+                &super::pages::at(entry_file),
+                format!("{TAG_NATIVE}: this build has no TypeScript-to-browser compiler"),
+            )
+            .located(entry_file.to_string_lossy().replace('\\', "/"), 1, 1),
+        );
+    }
     let main = format!(
         "// Mounts the converted 0.8 client app as 0.8 did: its App (or default export) in #root.\nimport {{ h, render }} from \"./preact/preact.js\";\nimport * as Client from \"../{module}\";\n\nconst App = Client.App ?? Client.default;\nif (!App) throw new Error(\"The client entry must export App.\");\nrender(h(App, {{}}), document.getElementById(\"root\"));\n"
     );

@@ -475,6 +475,12 @@ trait JsDynamic
      * Called plainly it receives undefined (strict mode); called as a method, or through
      * call/apply, it receives that receiver.
      */
+    /** Calls a function value with an explicit receiver, as `receiver.method(...args)` does. */
+    public static function callWithReceiver(mixed $function, mixed $receiver, JsArray $args): mixed
+    {
+        return self::dynamicInvoke($function, $receiver, $args);
+    }
+
     public static function receiverFunction(\Closure $method): \Closure
     {
         return self::dynamicMethodFunction(

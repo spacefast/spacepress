@@ -2,7 +2,8 @@
 // borrowed methods, call/apply and arrows inside methods. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. `this-helpers.mjs` runs the untyped forms.
 import { action, defineConfig } from "zero";
-import { detached, factory, receivers } from "./this-helpers.mjs";
+import * as thisModule from "./this-helpers.mjs";
+import { detached, factory, mod, moduleReceivers, receivers, store } from "./this-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -34,6 +35,7 @@ export default defineConfig({
       counter.inc(2);
       return [counter.inc(3), counter.describe()];
     }),
+    thisModuleObjects: run(() => [mod.who(), store.get(), thisModule.nsThis(), moduleReceivers()]),
     thisDirectHelper: run(() => [who(), tag(1), tag.call("r", 2), who.apply(5, [])]),
     thisSpreadLiteral: run(() => {
       const base = { count: 1 };

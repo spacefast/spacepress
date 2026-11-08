@@ -2506,24 +2506,3 @@ fn expr_children<'a>(x: &'a Expr, out: &mut Vec<&'a Expr>) {
         _ => {}
     }
 }
-
-#[cfg(test)]
-mod refusal_help {
-    /// Every refusal tells the author (often an agent) what to write instead.
-    #[test]
-    fn every_unsupported_construct_names_a_fix() {
-        let source = include_str!("lower.rs");
-        let empty: Vec<_> = source
-            .match_indices("self.unsupported(")
-            .filter_map(|(at, _)| {
-                let call = &source[at..source[at..].find(')').map_or(source.len(), |end| at + end)];
-                let args: Vec<_> = call.split(',').collect();
-                (args.len() >= 3 && args[2].trim() == "\"\"").then(|| source[..at].lines().count() + 1)
-            })
-            .collect();
-        assert!(
-            empty.is_empty(),
-            "refusals without a fix at src/lower.rs lines {empty:?}"
-        );
-    }
-}

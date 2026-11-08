@@ -4165,6 +4165,65 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(format!("\\ZeroApp\\{name}()"))
     }
 
+    /// The per-request object for a static namespace object that has a method reading `this`.
+    fn stateful_namespace(&mut self, obj: &Expr) -> Result<Option<String>> {
+        let Some((_, Value::Object(o), _)) = self.static_receiver(obj)? else {
+            return Ok(None);
+        };
+        let stateful = o
+            .borrow()
+            .values()
+            .any(|v| matches!(v, Value::Closure(c) if receives_this(&c.func)));
+        if !stateful {
+            return Ok(None);
+        }
+        self.receiver_object(obj).map(Some)
+    }
+
+    /// A static namespace materialized as the receiver of a method that reads `this`: data
+    /// properties become their captured values and function members their callable values.
+    fn receiver_object(&mut self, obj: &Expr) -> Result<String> {
+        let Some((path, value, binding)) = self.static_receiver(obj)? else {
+            let recv = self.expr(obj)?;
+            return Ok(self.finish_value(recv, obj.span)?.php);
+        };
+        let Value::Object(o) = &value else {
+            return err_help(
+                obj.span,
+                format!("`{path}` can't be the receiver of a method that reads `this`"),
+                "call the method on a plain object",
+            );
+        };
+        let key = (self.owner(), 2, Rc::as_ptr(o) as usize);
+        if let Some(name) = self.data_helpers.get(&key) {
+            return Ok(format!("\\ZeroApp\\{name}()"));
+        }
+        let name = self.unique_name("receiver");
+        self.data_helpers.insert(key, name.clone());
+        let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let mut body = format!(
+            "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
+        );
+        for (key, member) in fields {
+            let php = match &member {
+                Value::Closure(_) => {
+                    self.captured_use(&format!("{path}.{key}"), member.clone(), &binding, obj.span, true, true)?
+                        .php
+                }
+                data if !is_static_namespace(data)
+                    && validate_captured_data(data, obj.span, &mut HashSet::new()).is_ok() =>
+                {
+                    self.captured_data(data)?
+                }
+                _ => continue,
+            };
+            let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+        }
+        body.push_str("    }\n    return $value;\n}\n\n");
+        self.output.push_str(&body);
+        Ok(format!("\\ZeroApp\\{name}()"))
+    }
+
     fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {
         // Compile the helper before its caller so its return type is known.
         let no_db = self.fx().no_db;
@@ -5376,6 +5435,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
         }
+        // A namespace with methods that read `this` is one per-request object: its methods may
+        // write its fields, so reads go to that object rather than the build-time constant.
+        if let Some(receiver) = self.stateful_namespace(obj)? {
+            let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicGet({receiver}, {})", php_str(prop)),
+                if javascript { Ty::Dynamic } else { Ty::Unknown },
+            ));
+        }
         if let Some((path, value, binding)) = self.static_member(obj, prop, prop_span)? {
             return self.captured_use(&path, value, &binding, span, false, true);
         }
@@ -6382,9 +6450,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     return self.static_call(g, prop, args, span);
                 }
-                // `ns.f(x)` on a build-time namespace calls the resolved function directly.
-                // Zero refuses `this` outside classes, so the receiver is unobservable.
+                // `ns.f(x)` on a build-time namespace calls the resolved function directly, unless
+                // the function reads `this`: then the namespace is its receiver, as in JavaScript.
                 if let Some((path, value, binding)) = self.static_member(obj, prop, *prop_span)? {
+                    if matches!(&value, Value::Closure(c) if receives_this(&c.func)) {
+                        let f = self.captured_use(&path, value, &binding, callee.span, true, true)?;
+                        // The namespace exists only at build time; the receiver is a run-time copy of
+                        // it, built once per request, holding its data and its functions' values.
+                        let recv = self.receiver_object(obj)?;
+                        let argv = self.javascript_args(args)?;
+                        let ret = match &f.ty {
+                            Ty::Fn(_, ret) => match &**ret {
+                                Ty::Predicate(..) => Ty::Bool,
+                                ret => ret.clone(),
+                            },
+                            _ => Ty::Dynamic,
+                        };
+                        return Ok(Out::atom(
+                            format!("\\Zero\\Js::callWithReceiver({}, {}, {argv})", f.php, recv),
+                            ret,
+                        ));
+                    }
                     let f = self.captured_use(&path, value, &binding, callee.span, true, true)?;
                     return self.call_value(f, args, span, callee.span);
                 }

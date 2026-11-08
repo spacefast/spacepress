@@ -40,3 +40,15 @@ export function factory() {
   const stack = makeStack().push("a").push("b");
   return [stack.pop(), stack.items, stack.size()];
 }
+
+// Module-level objects whose methods read `this`: the shape 0.8 bundles use most.
+function whoModule() { return typeof this; }
+export const mod = { who: whoModule };
+export const store = { count: 2, get() { return this.count; } };
+export const counter = { count: 0, inc() { this.count += 1; return this.count; }, peek() { return this.count; } };
+export function nsThis() { return typeof this; }
+
+export function moduleReceivers() {
+  counter.inc();
+  return [mod.who(), store.get(), counter.inc(), counter.peek(), counter.count];
+}

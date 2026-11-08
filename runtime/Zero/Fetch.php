@@ -53,7 +53,15 @@ final class Fetch
         }
         $init = $init instanceof JsObject ? $init->p : (is_array($init) ? $init : []);
         $init = array_filter($init, static fn ($v): bool => $v !== JsUndefined::Value && $v !== null);
-        $method = strtoupper(is_string($init['method'] ?? null) ? $init['method'] : 'GET');
+        // The compiler refuses other keys in written-out init objects; a computed init is checked here.
+        $unknown = array_diff(array_keys($init), ['method', 'headers', 'body', 'redirect']);
+        if ($unknown !== []) {
+            throw new JsError('fetch() init option ' . reset($unknown) . ' isn\'t available in Zero code', 'TypeError');
+        }
+        if (isset($init['method']) && !is_string($init['method'])) {
+            throw new JsError('fetch() method must be a string', 'TypeError');
+        }
+        $method = strtoupper($init['method'] ?? 'GET');
         if (!in_array($method, self::METHODS, true)) {
             throw self::refuse('zero_fetch_method_denied', 'The fetch method is not permitted.');
         }

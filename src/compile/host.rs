@@ -355,7 +355,7 @@ impl Compiler<'_, '_> {
         self.host_use(HostUse::Fetch(host.as_deref()), url_expr.span)?;
         let url = self.expr(url_expr)?;
         let url = self.finish_value(url, url_expr.span)?;
-        if !url.ty.is_str() || url.ty.is_nullable() {
+        if !text(&url.ty) {
             return err_help(
                 url_expr.span,
                 format!("fetch() needs a URL string, not {}", url.ty.describe()),
@@ -383,6 +383,13 @@ impl Compiler<'_, '_> {
                 }
                 let init = self.expr(init_expr)?;
                 let init = self.finish_value(init, init_expr.span)?;
+                if init.ty == Ty::Dynamic {
+                    // Checked JavaScript: Zero\Fetch::call refuses other keys and values at runtime.
+                    return Ok(Out::atom(
+                        format!("\\Zero\\Fetch::call({}, {}{})", url.php, init.php, self.fetch_hosts()),
+                        Ty::Promise(Box::new(Ty::Host(HostTy::Response))),
+                    ));
+                }
                 let Ty::Obj(fields) = &init.ty else {
                     return err_help(
                         init_expr.span,
@@ -527,7 +534,7 @@ impl Compiler<'_, '_> {
         let e = self.arg(size, 0, at, "a size")?;
         let n = self.expr(e)?;
         let n = self.finish_value(n, e.span)?;
-        if !n.ty.is_num() || n.ty.is_nullable() {
+        if n.ty != Ty::Dynamic && (!n.ty.is_num() || n.ty.is_nullable()) {
             return err(
                 e.span,
                 format!("randomBytes() needs a number of bytes, not {}", n.ty.describe()),
@@ -666,7 +673,7 @@ impl Compiler<'_, '_> {
     fn string_arg(&mut self, e: &Expr, call: &str, help: &str) -> Result<String> {
         let v = self.expr(e)?;
         let v = self.finish_value(v, e.span)?;
-        if !v.ty.is_str() || v.ty.is_nullable() {
+        if !text(&v.ty) {
             return err_help(e.span, format!("{call} needs a string, not {}", v.ty.describe()), help);
         }
         Ok(v.php)
@@ -870,12 +877,12 @@ fn absent(t: &Ty) -> bool {
 
 fn init_value(key: &str, t: &Ty, span: Span) -> Result<()> {
     let ok = match key {
-        "method" => t.all(|t| t.is_str() || absent(t)),
+        "method" => t.all(|t| text(t) || absent(t)),
         "headers" => t.all(|t| header_init(t) || absent(t)),
-        "body" => t.all(|t| t.is_str() || matches!(t, Ty::Host(HostTy::SearchParams)) || absent(t)),
+        "body" => t.all(|t| text(t) || matches!(t, Ty::Host(HostTy::SearchParams)) || absent(t)),
         "redirect" => t.all(|t| match t {
             Ty::StrLit(v) | Ty::FreshStrLit(v) => matches!(v.as_str(), "follow" | "manual" | "error"),
-            t => t.is_str() || absent(t),
+            t => text(t) || absent(t),
         }),
         _ => true,
     };
@@ -896,8 +903,9 @@ fn init_value(key: &str, t: &Ty, span: Span) -> Result<()> {
     )
 }
 
+/// A string, or a checked-JavaScript value the runtime classes validate (they throw TypeError).
 fn text(t: &Ty) -> bool {
-    t.is_str() && !t.is_nullable()
+    *t == Ty::Dynamic || t.is_str() && !t.is_nullable()
 }
 
 fn string_pairs(t: &Ty) -> bool {
@@ -922,7 +930,7 @@ fn string_record(t: &Ty) -> bool {
 }
 
 fn header_init(t: &Ty) -> bool {
-    string_record(t) || string_pairs(t) || matches!(t, Ty::Host(HostTy::Headers))
+    *t == Ty::Dynamic || string_record(t) || string_pairs(t) || matches!(t, Ty::Host(HostTy::Headers))
 }
 
 fn search_init(t: &Ty) -> bool {

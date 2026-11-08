@@ -80,10 +80,13 @@ eq('request shape is checked before any network work',
         $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => str_repeat('x', Fetch::MAX_BODY + 1)])),
         $type(fn () => Fetch::call('https://a.example/', ['redirect' => 'never'])),
         $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => new \Zero\JsArray([])])),
+        $type(fn () => Fetch::call('https://a.example/', ['signal' => true])),
+        $type(fn () => Fetch::call('https://a.example/', ['method' => 1])),
     ],
     ['fetch() needs a URL string', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
         'Headers: invalid header value', 'zero_fetch_payload_too_large',
-        "fetch() redirect must be 'follow', 'manual' or 'error'", 'fetch() body must be a string or URLSearchParams']);
+        "fetch() redirect must be 'follow', 'manual' or 'error'", 'fetch() body must be a string or URLSearchParams',
+        "fetch() init option signal isn't available in Zero code", 'fetch() method must be a string']);
 
 // Headers, URLSearchParams and Response, as the WHATWG classes behave (Node prints the same).
 $h = new \Zero\FetchHeaders(new \Zero\JsArray([new \Zero\JsArray(['X-A', ' 1 ']), new \Zero\JsArray(['x-a', '2'])]));

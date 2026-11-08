@@ -1024,10 +1024,11 @@ export default defineConfig({ name: "flows", collections: { posts }, use: [sync(
         tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
         r#"import { action, db, definePlugin } from "zero";
 import { abilities } from "php/wordpress";
+import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
 // as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
 async function push(body: string) {
-  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: process.env.SYNC_KEY ?? "" } });
+  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: process.env.SYNC_KEY ?? "", "x-signature": createHmac("sha256", process.env.SYNC_SIGNING!).update(body).digest("hex") } });
   return response.status;
 }
 export default () => definePlugin({
@@ -1058,7 +1059,9 @@ export default () => definePlugin({
     assert_eq!(plugin["status"], "added");
     assert_eq!(plugin["inferred"]["read"], json!(["posts"]));
     assert_eq!(plugin["inferred"]["http"], json!(["hooks.example.com"]));
-    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
+    // The global forms are capabilities like the old imports were: process.env reads, including a
+    // createHmac key read from process.env, and the global fetch's static host.
+    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY", "SYNC_SIGNING"]));
     assert_eq!(
         plugin["inferred"]["actions"],
         json!(["sync_count", "sync_export", "sync_list"])
@@ -1072,7 +1075,7 @@ export default () => definePlugin({
         plugin["flows"],
         json!([{
             "handler": "plugin_sync__action__sync_export",
-            "reads": ["env: SYNC_KEY", "read: posts"],
+            "reads": ["env: SYNC_KEY", "env: SYNC_SIGNING", "read: posts"],
             "sends": ["http: hooks.example.com"],
         }])
     );

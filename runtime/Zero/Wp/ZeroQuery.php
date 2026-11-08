@@ -34,8 +34,12 @@ final class ZeroQuery
         unset($opts['limit']);
         if ($search !== null) {
             $opts['where'] = isset($opts['where']) ? ['AND' => [$opts['where'], $search]] : $search;
-            // Zero's search replaces core's (title, content and excerpt only).
+            // Zero's search replaces core's (title, content and excerpt only). `orderby=relevance`
+            // needs core's own term, so it becomes core's date order over the rows Zero matched.
             $request->set_param('search', null);
+            if ($request['orderby'] === 'relevance') {
+                $request->set_param('orderby', 'date');
+            }
         }
         $pk = $db->schema()->collection($collection)['primaryKey'];
         $rows = $db->findMany($collection, $opts + ['columns' => [$pk => true]] + self::allLocales($collection), $viewer);
@@ -89,7 +93,7 @@ final class ZeroQuery
     private static function search(string $collection, \WP_REST_Request $request, Viewer $viewer): ?array
     {
         $term = $request['search'];
-        if (!is_string($term) || $term === '' || $request['orderby'] === 'relevance') {
+        if (!is_string($term) || $term === '') {
             return null;
         }
         $spec = Plugin::instance()?->schema->collection($collection) ?? throw new \LogicException('No Zero app');

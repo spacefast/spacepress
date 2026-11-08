@@ -5,7 +5,7 @@
 // The SQL text is pinned in tests/php/sql_test.php; this suite proves MariaDB agrees with it.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { core, http, ok, problem, qs, run, sql, wp } from "./env.ts";
+import { core, http, ok, problem, qs, run, sql, wp, zero } from "./env.ts";
 
 const ids: Record<string, number> = {};
 let post: any;
@@ -138,6 +138,12 @@ test("core list routes take Zero's where, orderBy and search", async () => {
   // search matches any text field, not only title and content.
   const noted = await ok("POST", "/events", { as: "editor", body: { title: `Noted ${run}` } });
   assert.equal(await coreTitles({ search: run, where: { id: { in: [ids.A, noted.id] } }, orderBy: "title" }), "AN");
+  // A term only in a meta text field is found, with orderby=relevance too (core can't rank it).
+  const staff = zero("insert", "field_staff", JSON.stringify({ name: `Staff ${run}`, kind: "pro", plan: `metaonly-${run}` }))[0].id;
+  for (const extra of [{}, { orderby: "relevance" }]) {
+    const r = await http("GET", `${core}/zero_field_staff` + qs({ search: `metaonly-${run}`, ...extra }), { as: "editor" });
+    assert.deepEqual([r.status, r.json.map((s: any) => s.id)], [200, [staff]], JSON.stringify(extra));
+  }
   // The same refusals as /zero/v1, as WP_Error.
   const bad = await http("GET", `${core}/zero_events` + qs({ where: { kinds: { in: ["talk"] } } }));
   assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [400, "invalid_query", "/where/kinds/in"]);

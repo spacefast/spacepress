@@ -620,7 +620,14 @@ final class CoreAccess
                     if ($singleSelector && array_key_exists($col, $data)) {
                         throw new HttpError(403, 'forbidden', "Submit $col only once", HttpError::seg((string) $col));
                     }
-                    $data[$col] = \Zero\Seam::toPhp($meta[$col], $def);
+                    // The value as it will be saved (PostMeta::update_value normalizes the same way),
+                    // so a data-dependent rule sees the same data before and after the save. A value
+                    // that doesn't normalize is kept raw: the save refuses it with Zero's 422.
+                    try {
+                        $data[$col] = \Zero\Schema::normalize($def, \Zero\Seam::toPhp($meta[$col], $def), (string) $col, HttpError::seg((string) $col));
+                    } catch (HttpError) {
+                        $data[$col] = \Zero\Seam::toPhp($meta[$col], $def);
+                    }
                 }
             }
         }

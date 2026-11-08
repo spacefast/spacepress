@@ -162,8 +162,9 @@ pub(super) fn carries(key: &str, value: &serde_json::Value) -> bool {
 }
 
 /// Whether a redirect rule's `source` can match a `/wp-json/...` path: an absolute URL, an empty
-/// source, or a first segment that is `wp-json`, a `:name` capture or a `*` splat. Exactly `/`
-/// matches only the root. Anything this can't read counts as reaching it, so it is refused.
+/// source, or a first segment that is `wp-json` or holds a pattern character. The engine compiles
+/// `:name` anywhere in a segment to `[^/]+` (so `/w:x` matches `/wp-json`) and `*` to a splat.
+/// Exactly `/` matches only the root. Anything this can't read counts as reaching it.
 fn redirect_reaches_wp_json(rule: &serde_json::Value) -> bool {
     let Some(source) = rule.get("source").and_then(serde_json::Value::as_str) else {
         return true;
@@ -175,7 +176,7 @@ fn redirect_reaches_wp_json(rule: &serde_json::Value) -> bool {
         return true;
     };
     let first = path.split('/').next().unwrap_or("");
-    first.is_empty() || first.eq_ignore_ascii_case("wp-json") || first.starts_with(':') || first.contains('*')
+    first.is_empty() || first.eq_ignore_ascii_case("wp-json") || first.contains([':', '*'])
 }
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
@@ -626,6 +627,10 @@ mod tests {
             ("/*", true),
             ("/:lang/*", true),
             ("/a*", true),
+            // A capture inside a segment compiles to `[^/]+`, so these match /wp-json/... too.
+            ("/w:x/*", true),
+            ("/wp-:rest/*", true),
+            ("/w:x", true),
             ("https://old.example/*", true),
             ("", true),
         ] {

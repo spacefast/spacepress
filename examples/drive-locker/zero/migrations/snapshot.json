@@ -1,0 +1,528 @@
+{
+  "version": 2,
+  "tables": {
+    "drives": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "label": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 120.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "model": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 160.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "serial": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 160.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "serialKey": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": true,
+          "max": 191.0,
+          "enum": null,
+          "default": "",
+          "references": null
+        },
+        "kind": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "ssd",
+            "hdd",
+            "nvme",
+            "sd",
+            "usb"
+          ],
+          "default": null,
+          "references": null
+        },
+        "capacityGb": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "interface": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 80.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "purchasedOn": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "warrantyUntil": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "placeId": {
+          "type": "integer",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "places",
+            "column": "id",
+            "onDelete": "set null",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "in-use",
+            "spare",
+            "failed",
+            "retired"
+          ],
+          "default": "spare",
+          "references": null
+        },
+        "notes": {
+          "type": "text",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "tags": {
+          "type": "json",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "replacementNeededAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      }
+    },
+    "places": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 120.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "kind": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "nas-bay",
+            "desktop",
+            "laptop",
+            "drawer",
+            "offsite"
+          ],
+          "default": null,
+          "references": null
+        }
+      }
+    },
+    "health_readings": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "driveId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "drives",
+            "column": "id",
+            "onDelete": "cascade",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "readOn": {
+          "type": "date",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "powerOnHours": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "wearPercent": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "reallocatedSectors": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "tempC": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      }
+    },
+    "contents": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "driveId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "drives",
+            "column": "id",
+            "onDelete": "cascade",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "description": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 500.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "usedGb": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "lastBackupOn": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      }
+    },
+    "members": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "email": {
+          "type": "email",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": true,
+          "max": 191.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "role": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "guest",
+            "subscriber",
+            "author",
+            "editor",
+            "admin"
+          ],
+          "default": "subscriber",
+          "references": null
+        },
+        "passwordHash": {
+          "type": "text",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "suspendedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "guest": {
+          "type": "boolean",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "auth": true
+    }
+  }
+}

@@ -977,6 +977,58 @@ const sharedLiteral: 0 | 1 = effects.sharedCount;
 }
 
 #[test]
+fn private_names_and_imported_javascript_classes_match_node() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = root().join("tests/differential");
+    std::fs::copy(dir.join("class-private.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(
+        dir.join("class-private-lib.mjs"),
+        tmp.path().join("class-private-lib.mjs"),
+    )
+    .unwrap();
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(tmp.path().join("zero.config.ts"))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    assert_eq!(expected["cases"].as_object().unwrap().len(), 3);
+    assert!(
+        expected["cases"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|r| r.get("data").is_some()),
+        "{expected}"
+    );
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\ZeroApp\\' . $action['handler'];
+            try { $out[$name] = ['data' => $fn()]; }
+            catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+        }
+        echo \Zero\Js::jsonStringify($out);
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-class-private/zero/app"),
+        ],
+    );
+    assert_eq!(
+        actual, expected["cases"],
+        "private names or JavaScript classes differ from Node"
+    );
+}
+
+#[test]
 fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     for (declarations, handler, message) in [
         (
@@ -1019,7 +1071,16 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
             "new D()",
             "`this` outside a class",
         ),
-        ("class C { #secret = 1; }", "new C()", "private class fields"),
+        (
+            "class C { #secret = 1; } class D { static read(d: D) { return d.#secret; } }",
+            "D.read(new D())",
+            "private name `#secret` must be declared in an enclosing class",
+        ),
+        (
+            "class C { #n = 1; constructor() { this.#check(); } #check(): number { return this.#n; } }",
+            "new C()",
+            "method calls during construction",
+        ),
         (
             "class C { constructor(public toJSON: () => number) {} }",
             "new C(() => 1)",
@@ -1438,7 +1499,7 @@ echo \Zero\Js::jsonStringify($fn($input, new \Zero\JsObject()));
 }
 
 #[test]
-fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefined() {
+fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("helper.js"),
@@ -1453,6 +1514,7 @@ fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefin
             for (const f of [() => read(instance, 'm'), () => invoke(instance, 'm')]) {
                 try { results.push(f()); } catch (e) { results.push([e.name, e.message]); }
             }
+            results.push(instance.m === new C().m, instance.m.call({}), read(instance, 'missing'));
             return results;
         }
     "#,
@@ -1469,19 +1531,19 @@ fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefin
     "#,
         &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
     );
-    assert_eq!(
-        actual,
-        json!([
-            [
-                "TypeError",
-                "Class method values are not supported by checked JavaScript"
-            ],
-            [
-                "TypeError",
-                "Class method values are not supported by checked JavaScript"
-            ]
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args([
+            "--input-type=module",
+            "-e",
+            "import {test} from './helper.js'; process.stdout.write(JSON.stringify(test()));",
         ])
-    );
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected, json!(["function", 4, true, 4, "undefined"]));
+    assert_eq!(actual, expected);
 }
 
 #[test]

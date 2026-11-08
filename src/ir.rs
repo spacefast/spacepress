@@ -376,6 +376,8 @@ pub enum ExprKind {
     /// `key in object`: own or inherited property presence. The key is evaluated first.
     In(P<Expr>, P<Expr>),
     Num(f64),
+    /// A BigInt literal as its decimal digits, with an optional leading `-` never present here.
+    BigInt(String),
     Str(String),
     Bool(bool),
     Null,
@@ -543,6 +545,7 @@ pub struct TypeParam {
 #[derive(Debug, Clone)]
 pub enum TyAnn {
     Num,
+    BigInt,
     NumLit(f64),
     Str,
     StrLit(String),

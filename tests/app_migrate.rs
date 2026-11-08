@@ -630,6 +630,10 @@ fn the_global_fetch_imports_from_zero_with_the_same_egress_policy() {
     let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
     assert!(config.contains("import { fetch } from \"zero\";"), "{config}");
     assert!(config.contains("__z08EndpointValue(await response.json())"), "{config}");
+    assert!(
+        config.contains("__z08EndpointValue(await (await fetch(\"https://api.example.com/status\")).json())"),
+        "an expression-bodied endpoint's body read is awaited too: {config}"
+    );
     build(&out);
 }
 

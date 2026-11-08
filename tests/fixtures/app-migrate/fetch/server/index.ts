@@ -15,5 +15,7 @@ export default capsule({
       const response = await fetch("https://api.example.com/status");
       return response.json();
     }),
+    // The same in an expression body.
+    relay: endpoint({ method: "GET", path: "/api/relay" }, async () => (await fetch("https://api.example.com/status")).json()),
   },
 });

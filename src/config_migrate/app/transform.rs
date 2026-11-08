@@ -1331,7 +1331,9 @@ fn endpoint(
     let body = match &f.body {
         FnBody::Expr(e) => {
             r.expr(e)?;
-            format!("return __z08EndpointValue({});", r.apply(e.span))
+            // `async () => response.json()` returned the promise and 0.8 awaited it, as handlers do.
+            let await_body = if returns_body_read(e) { "await " } else { "" };
+            format!("return __z08EndpointValue({await_body}{});", r.apply(e.span))
         }
         FnBody::Block(stmts) => {
             for s in stmts {

@@ -235,14 +235,29 @@ final class Fetch
             throw new \LogicException('fetch() needs WordPress loaded (wp_remote_request)');
         }
         // Pin the connection to the address checked above. Only the cURL transport can pin: any
-        // other transport would resolve the name again, and could connect to a rebound address.
+        // other transport would resolve the name again, and could connect to a rebound address. So
+        // the request is sent with cURL or not at all, and the pin runs before cURL connects.
+        if (!class_exists(\WpOrg\Requests\Transport\Curl::class) || !\WpOrg\Requests\Transport\Curl::test(['ssl' => true])) {
+            throw self::refuse('zero_fetch_upstream_unavailable', 'Outbound fetch needs the cURL transport to pin the checked address.');
+        }
+        // The URL cURL sees names exactly the host the pin covers: `example.com.` and `EXAMPLE.com`
+        // would otherwise miss the CURLOPT_RESOLVE entry and let cURL resolve the name itself.
+        $url = self::withHost($url, $host);
         $pinned = false;
         $pin = static function ($handle) use ($host, $port, $address, &$pinned): void {
             $ip = str_contains($address, ':') ? '[' . $address . ']' : $address;
             $pinned = curl_setopt($handle, CURLOPT_RESOLVE, ["$host:$port:$ip"])
                 && curl_setopt($handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+            if (!$pinned) {
+                // An unpinned handle must not connect: point it at nothing it can reach.
+                curl_setopt($handle, CURLOPT_URL, 'https://0.0.0.0:0/');
+            }
+        };
+        $force = static function (&$url, &$headers, &$data, &$type, &$options): void {
+            $options['transport'] = \WpOrg\Requests\Transport\Curl::class;
         };
         add_action('http_api_curl', $pin, PHP_INT_MAX);
+        add_action('requests-requests.before_request', $force, PHP_INT_MAX, 5);
         try {
             $response = wp_remote_request($url, [
                 'method' => $method,
@@ -258,6 +273,7 @@ final class Fetch
             ]);
         } finally {
             remove_action('http_api_curl', $pin, PHP_INT_MAX);
+            remove_action('requests-requests.before_request', $force, PHP_INT_MAX);
         }
         // Fail closed: a request the pin did not reach went out over another transport, unpinned,
         // so nothing it returned is used.
@@ -280,6 +296,15 @@ final class Fetch
         }
 
         return ['status' => (int) wp_remote_retrieve_response_code($response), 'headers' => $out, 'body' => $raw];
+    }
+
+    /** The URL with its host replaced by the normalized one the address check and pin used. */
+    private static function withHost(string $url, string $host): string
+    {
+        $parts = parse_url($url);
+        $authority = (str_contains($host, ':') ? '[' . $host . ']' : $host) . (isset($parts['port']) ? ':' . $parts['port'] : '');
+
+        return 'https://' . $authority . ($parts['path'] ?? '') . (isset($parts['query']) ? '?' . $parts['query'] : '');
     }
 
     /** @return array{string, int} lowercase host and effective port of an https URL */

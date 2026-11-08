@@ -432,8 +432,13 @@ fn omissions_are_errors_and_static_files_carry_over() {
         ".well-known/stattic-runtime",
         ".next/cache/a.txt",
         ".spacefast-0123456789abcdef01234567.lock",
+        "tsconfig.build.json",
     ];
-    for path in denied.iter().chain(&skipped).chain(&["invalid_rsa_key.json"]) {
+    for path in denied
+        .iter()
+        .chain(&skipped)
+        .chain(&["invalid_rsa_key.json", "tsconfig-foo.json", "tsconfigs.json"])
+    {
         let file = secrets.join(path);
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(file, "{\"secret\":1}\n").unwrap();
@@ -459,9 +464,16 @@ fn omissions_are_errors_and_static_files_carry_over() {
         .map(|e| e["pointer"].as_str().unwrap())
         .collect();
     // A fixture that only contains the letters is content.
+    // Only `tsconfig.json` and `tsconfig.<name>.json` were project files.
     assert_eq!(
         carried,
-        ["/humans.txt", "/index.html", "/invalid_rsa_key.json",],
+        [
+            "/humans.txt",
+            "/index.html",
+            "/invalid_rsa_key.json",
+            "/tsconfig-foo.json",
+            "/tsconfigs.json",
+        ],
         "{report:#}"
     );
 

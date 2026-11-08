@@ -50,6 +50,8 @@ const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", "
 /// CLI's own temporary and lock files, at any depth (matched on the lowercased path).
 const IGNORED_PATH_PATTERN: &str = r"(?:^|/)\.next/cache(?:/|$)|(?:^|/)\.spacefast-(?:[0-9a-f-]{36}\.(?:tmp(?:\.mjs)?|rollback|retired)|[0-9a-f]{24}\.lock)$";
 static IGNORED_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(IGNORED_PATH_PATTERN).expect("ignored paths"));
+/// zero-compile's `CAPSULE_TSCONFIG_FILE`.
+static TSCONFIG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^tsconfig(?:\.[^/]+)?\.json$").expect("tsconfig"));
 // The paths 0.8's publish kept out as the runtime's own (`runtimeOwnedPaths`, the
 // `static_runtime_control_path_not_supported` paths of publish-policy's `staticUploadPathViolation`)
 // and the execution-control files that policy refuses. Lowercase, compared with the folded path.
@@ -183,7 +185,7 @@ fn served(relative: &str) -> bool {
         || relative.rsplit('/').next() == Some("package.json")
         // isZeroProjectOnlyPath: TypeScript anywhere and tsconfig files. Plain JavaScript outside
         // the source roots is the author's content, and 0.8 served it.
-        || (!relative.contains('/') && relative.starts_with("tsconfig") && relative.ends_with(".json"))
+        || TSCONFIG.is_match(relative)
         || TYPESCRIPT.contains(&extension)
         || policy(relative) != Policy::Keep
         || runtime_owned(relative))

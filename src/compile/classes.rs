@@ -458,10 +458,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } else {
                 vec![receiver]
             };
-            let closure = Rc::new(Closure {
-                func: accessor.func.clone(),
-                env: env.clone(),
-            });
+            let closure = Rc::new(Closure::new(accessor.func.clone(), env.clone()));
             self.compile_function(&closure, &helper, Some(params), None, no_db)?;
             if !accessor.setter && !javascript {
                 let Ty::Fn(_, ret) = self.helper_types[&closure_key(&closure)].clone() else {

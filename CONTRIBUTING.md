@@ -25,10 +25,11 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
 1. **Parse.** [oxc](https://oxc.rs) parses `zero.config.ts` and the local `.ts`
    and supported installed source packages it imports.
 2. **Lower.** The syntax tree becomes Zero's own IR. Anything outside the
-   supported subset (abstract/generic classes, dynamic `require`, named CommonJS
-   exports, Node host APIs, ...) fails the build with `file:line:col` and a suggested fix.
+   supported subset (abstract/generic classes, dynamic `require`, Node host APIs,
+   ...) fails the build with `file:line:col` and a suggested fix.
    Installed JavaScript uses checked PHP operations; authored TypeScript keeps
-   static checking. CommonJS is limited to one static top-level function export.
+   static checking. CommonJS is limited to static top-level `require` and
+   `module.exports`/`exports.name` assignments, which run once at build time.
 3. **Evaluate.** The config runs in a small, pure Rust evaluator: no I/O, no
    clock, a step budget. So composition works: helpers, factories, spreads, and
    shared field sets. The result is the schema as plain data.

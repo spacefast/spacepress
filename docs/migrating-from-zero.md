@@ -214,7 +214,7 @@ and rich-text body. Spacefast's data migration copies the fenced native rows
 into that collection with their IDs, authors, dates and revisions intact. Legacy
 sync declarations are dropped with a review hint; hosted edits do not rebuild
 static frontends. Custom native post fields need an explicit port. Other content
-collections use `zero migrate site` and their content-model release on standalone
+collections use `zero migrate-legacy` and their content-model release on standalone
 WordPress. Do not activate a candidate before its data migration succeeds.
 
 An `auth` declaration adds a `members` user projection with a required unique
@@ -366,14 +366,15 @@ record and field if one is missing.
 ## 4. Dry run
 
 ```sh
-zero migrate site content-model.php --dry-run --wp "wp --path=/srv/site"
+zero migrate-legacy - --dry-run --site @original < content-model.php
 ```
 
-`--wp` is any WP-CLI command that reaches the site: `wp --ssh=host:/path`,
-`docker compose exec -T cli wp`, and so on. The release is sent on stdin, so the
-file stays on your machine. Without `--wp`, the command targets the current
+`zero migrate-legacy` runs `wp zero migrate-legacy` on the site `--site` picks.
+`@original` is a WP-CLI alias in your `wp-cli.yml` (`ssh: host/path`, or a
+local `path:`); WP-CLI reaches the site. The release is sent on stdin, so the
+file stays on your machine. Without `--site`, the command targets the current
 project's WordPress Studio site created by `zero dev`. This selects a target;
-it does not import an existing site or its database into Studio. Use `--wp`
+it does not import an existing site or its database into Studio. Use an alias
 to migrate the original site in place.
 
 The report lists each collection's record ids, how many revisions come along,
@@ -384,7 +385,7 @@ No content is written: the dry run plans inside a transaction and rolls it back.
 ## 5. Migrate
 
 ```sh
-zero migrate site content-model.php --wp "wp --path=/srv/site"
+zero migrate-legacy - --site @original < content-model.php
 ```
 
 Each record keeps its post id, so references, media ids, comments and links
@@ -517,7 +518,7 @@ counterpart; the host's own error pages replace them. Render with
 
 `zero migrate app --from zero-0.8` converts supported application source and
 emits adoption SQL. It does not connect to a database. `zero migrate config
---from zero` imports supported content declarations, while `zero migrate site`
+--from zero` imports supported content declarations, while `zero migrate-legacy`
 uses the original content-model release to migrate records in place.
 `wp zero migrate-legacy-users` carries app users into a user projection.
 
@@ -544,7 +545,7 @@ native `posts`, `pages` and `media` declarations, and the capsule's `schema`
 tables, queries, mutations, actions, endpoints, pages, auth, connectors, sync
 bindings and favicon declarations. An old capsule with `queries` fails instead
 of producing a config with those handlers removed. For a site built with the
-original Zero, `zero migrate site` then moves the content; application tables
+original Zero, `zero migrate-legacy` then moves the content; application tables
 and handlers go through [`zero migrate app --from zero-0.8`](#application-source-migration).
 
 ### Executable acceptance

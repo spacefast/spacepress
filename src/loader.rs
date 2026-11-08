@@ -15,9 +15,10 @@ pub const ZERO_MODULE: &str = "zero";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
 
-/// Modules the compiler provides itself; nothing is loaded for them.
+/// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
+/// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == ZERO_MODULE || spec == WORDPRESS_MODULE
+    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || crate::builtins::module(spec).is_some()
 }
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
@@ -996,7 +997,11 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
 fn package_error(spec: &str, span: Span, reason: &str) -> Diag {
     Diag::new(span, format!("can't import \"{spec}\": {reason}"))
         .code(diag::Code::NpmImport)
-        .help("install a source package locally; its TypeScript, ESM, or static CommonJS source must fit Zero's PHP compiler subset")
+        .help(if spec.starts_with("node:") {
+            "handlers run in PHP: use the global fetch, process.env.NAME and \"node:crypto\""
+        } else {
+            "install a source package locally; its TypeScript, ESM, or static CommonJS source must fit Zero's PHP compiler subset"
+        })
 }
 
 fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions: Conditions) -> Result<PathBuf> {
@@ -1010,7 +1015,11 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions:
         return Err(package_error(
             spec,
             span,
-            "unsupported package specifier (Node built-ins and package aliases are unavailable)",
+            if spec.starts_with("node:") {
+                "Node built-ins other than node:crypto are unavailable"
+            } else {
+                "unsupported package specifier (package aliases are unavailable)"
+            },
         ));
     }
     let name = parts[..count].join("/");
@@ -1245,7 +1254,7 @@ mod tests {
             (
                 r#"{"exports":"./source.ts"}"#,
                 "node:fs",
-                "unsupported package specifier",
+                "Node built-ins other than node:crypto are unavailable",
             ),
         ] {
             let fs = memory(&[

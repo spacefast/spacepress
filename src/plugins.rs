@@ -27,8 +27,8 @@ pub const KINDS: &[(&str, &str)] = &[
     // and handlers registered on WordPress actions and filters.
     ("abilities", "calls the ability"),
     ("wpHooks", "registers the WordPress hook"),
-    // Reserved: PHP functions imported from "php/wordpress", "php/<slug>" or "php", recorded as
-    // `<source>:<function>`. Nothing records them yet.
+    // PHP functions imported from "php/wordpress" (later "php/<slug>" or "php"), recorded as
+    // `<source>:<function>`.
     ("php", "calls the PHP function"),
 ];
 

@@ -374,5 +374,190 @@
       "source": "wp-login.php",
       "byReference": false
     }
+  },
+  "functions": {
+    "get_option": {
+      "params": [
+        {
+          "name": "option",
+          "type": "string"
+        }
+      ],
+      "returns": "unknown",
+      "fixed": {},
+      "wpError": false
+    },
+    "update_option": {
+      "params": [
+        {
+          "name": "option",
+          "type": "string"
+        },
+        {
+          "name": "value",
+          "type": "unknown"
+        }
+      ],
+      "returns": "boolean",
+      "fixed": {},
+      "wpError": false
+    },
+    "delete_option": {
+      "params": [
+        {
+          "name": "option",
+          "type": "string"
+        }
+      ],
+      "returns": "boolean",
+      "fixed": {},
+      "wpError": false
+    },
+    "get_post": {
+      "params": [
+        {
+          "name": "post",
+          "type": "number"
+        }
+      ],
+      "returns": "WP_Post | null",
+      "fixed": {},
+      "wpError": false
+    },
+    "wp_insert_post": {
+      "params": [
+        {
+          "name": "postarr",
+          "type": "{ post_title?: string; post_content?: string; post_excerpt?: string; post_status?: string; post_type?: string; post_name?: string; post_author?: number; post_parent?: number; menu_order?: number }"
+        }
+      ],
+      "returns": "number",
+      "fixed": {
+        "wp_error": true
+      },
+      "wpError": true
+    },
+    "current_user_can": {
+      "params": [
+        {
+          "name": "capability",
+          "type": "string"
+        }
+      ],
+      "returns": "boolean",
+      "fixed": {},
+      "wpError": false
+    },
+    "is_user_logged_in": {
+      "params": [],
+      "returns": "boolean",
+      "fixed": {},
+      "wpError": false
+    },
+    "get_current_user_id": {
+      "params": [],
+      "returns": "number",
+      "fixed": {},
+      "wpError": false
+    },
+    "get_userdata": {
+      "params": [
+        {
+          "name": "user_id",
+          "type": "number"
+        }
+      ],
+      "returns": "WP_User | false",
+      "fixed": {},
+      "wpError": false
+    },
+    "get_permalink": {
+      "params": [
+        {
+          "name": "post",
+          "type": "number"
+        }
+      ],
+      "returns": "string | false",
+      "fixed": {},
+      "wpError": false
+    },
+    "home_url": {
+      "params": [
+        {
+          "name": "path",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    },
+    "sanitize_text_field": {
+      "params": [
+        {
+          "name": "str",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    },
+    "sanitize_title": {
+      "params": [
+        {
+          "name": "title",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    },
+    "esc_html": {
+      "params": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    },
+    "esc_attr": {
+      "params": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    },
+    "esc_url": {
+      "params": [
+        {
+          "name": "url",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    },
+    "wp_strip_all_tags": {
+      "params": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    }
   }
 }

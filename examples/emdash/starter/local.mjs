@@ -13,7 +13,7 @@ export const zero = resolve(process.env.ZERO_BIN ?? join(repository, 'target/deb
 export async function command(args) {
   return (await execute(zero, args, { cwd: repository, timeout: 600000, maxBuffer: 8 * 1024 * 1024 })).stdout.trim();
 }
-export const wp = (project, ...args) => command(['dev', 'wp', project, '--', ...args]);
+export const wp = (project, ...args) => command(['wp', '--site', project, ...args]);
 async function freePort() {
   const server = createServer();
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });

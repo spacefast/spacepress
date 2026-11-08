@@ -1599,41 +1599,43 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     std::fs::remove_dir_all(source.join("pages")).unwrap();
     std::fs::remove_file(source.join("sf.jsonc")).unwrap();
 
-    // A recorded binary asset is compared by its bytes, not refused as unreadable text.
-    let mut with_image: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    // A real finalize manifest records the capsule's source, never the static files served beside
+    // it, so those can't be checked against the publish: each is refused at its file, neither
+    // carried unchecked nor dropped. OS metadata is still skipped.
     let png: &[u8] = &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe];
+    std::fs::create_dir_all(source.join("assets")).unwrap();
     std::fs::create_dir_all(source.join("public")).unwrap();
     std::fs::write(source.join("public/logo.png"), png).unwrap();
-    with_image["artifact"]["sourceManifest"]["files"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!({
-            "path": "public/logo.png", "size": png.len(),
-            "sha256": sha2::Sha256::digest(png).iter().map(|b| format!("{b:02x}")).collect::<String>(),
-        }));
-    let image_path = temp.path().join("with-image.json");
-    std::fs::write(&image_path, with_image.to_string()).unwrap();
-    let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b4"));
+    std::fs::write(
+        source.join("index.html"),
+        "<!doctype html><script src=/assets/app.js></script>",
+    )
+    .unwrap();
+    std::fs::write(source.join("assets/app.js"), "document.title = 'x';\n").unwrap();
+    std::fs::write(source.join(".DS_Store"), png).unwrap();
+    let (ok, report) = migrate_manifest(&manifest, Some(&source), &temp.path().join("b4"));
     assert!(!ok);
-    let codes: Vec<&str> = report["errors"]
+    let refused: Vec<(&str, &str)> = report["errors"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|e| e["code"].as_str().unwrap())
+        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
         .collect();
-    // The image matches its hash; 0.8 served it at /public/logo.png, which v2's public/ moves.
-    assert_eq!(codes, ["Z08_OMITTED_CLIENT", "Z08_OMITTED_PUBLIC"], "{report:#}");
-    std::fs::write(source.join("public/logo.png"), b"\xff\xfe changed").unwrap();
-    let (ok, report) = migrate_manifest(&image_path, Some(&source), &temp.path().join("b5"));
-    assert!(!ok);
-    assert!(
-        report["errors"][0]["reason"]
-            .as_str()
-            .unwrap()
-            .contains("public/logo.png (changed)"),
+    assert_eq!(
+        refused,
+        [
+            ("Z08_OMITTED_CLIENT", "client/main.tsx"),
+            ("Z08_OMITTED_UNVERIFIED", "assets/app.js"),
+            ("Z08_OMITTED_UNVERIFIED", "index.html"),
+            ("Z08_OMITTED_UNVERIFIED", "public/logo.png"),
+        ],
         "{report:#}"
     );
-    std::fs::remove_dir_all(source.join("public")).unwrap();
+    for path in ["public", "assets"] {
+        std::fs::remove_dir_all(source.join(path)).unwrap();
+    }
+    std::fs::remove_file(source.join("index.html")).unwrap();
+    std::fs::remove_file(source.join(".DS_Store")).unwrap();
 
     // A recorded sf.jsonc that names another entry than the publish compiled is refused.
     let mut renamed: Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();

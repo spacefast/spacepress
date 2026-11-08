@@ -25,6 +25,7 @@ pub(super) const SYNC: &str = "content sync is not carried over";
 pub(super) const PUBLIC: &str = "public/ is not carried over";
 pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
 pub(super) const DENIED: &str = "the credential file is not carried over";
+pub(super) const UNVERIFIED: &str = "the unverified static file is not carried over";
 
 /// The monorepo's one source deny list, verbatim: `DENIED_SOURCE_PATH_PATTERN` in
 /// packages/common/src/utils/source-archive-policy.ts, compiled case-insensitively as there.
@@ -173,6 +174,58 @@ fn walk(fs: &dyn Fs, root: &Path, dir: &Path, tree: &mut Tree, denied: bool) {
     }
 }
 
+/// A finalize manifest records only the capsule's source (code in the source roots, pages,
+/// package.json, env files), never the static files 0.8 served beside it. Those can't be checked
+/// against the published version, so each one in the source tree is refused rather than carried
+/// unchecked or dropped. `verified` lists the recorded paths, which the conversion sweeps itself.
+pub(super) fn unverified(
+    fs: &dyn Fs,
+    root: &Path,
+    verified: &std::collections::BTreeSet<String>,
+    errors: &mut Vec<Failure>,
+) {
+    let mut tree = Tree::default();
+    walk(fs, root, root, &mut tree, false);
+    let name = |p: &PathBuf| p.to_string_lossy().replace('\\', "/");
+    let at = |n: &str| format!("/{}", n.replace('~', "~0"));
+    for path in tree.denied.iter().map(name).filter(|n| !verified.contains(n)) {
+        errors.push(
+            fail(
+                &at(&path),
+                format!("{DENIED}: {path} is on the source deny list, so the candidate leaves it out"),
+            )
+            .located(path.clone(), 1, 1),
+        );
+    }
+    for link in tree.links.iter().map(name) {
+        if SOURCE_ROOTS.contains(&link.split('/').next().unwrap_or("")) {
+            continue;
+        }
+        errors.push(
+            fail(
+                &at(&link),
+                format!("{SYMLINK}: {link} is a symbolic link, and the candidate copies only regular files inside the project"),
+            )
+            .located(link.clone(), 1, 1),
+        );
+    }
+    for file in tree.files.iter().map(name).filter(|n| !verified.contains(n)) {
+        // Unrecorded source was not part of the publish; unrecorded content may have been.
+        let first = file.split('/').next().unwrap_or("");
+        let content = RULE_FILES.contains(&file.as_str()) || first == "public" || served(&file);
+        if SOURCE_ROOTS.contains(&first) || !content {
+            continue;
+        }
+        errors.push(
+            fail(
+                &at(&file),
+                format!("{UNVERIFIED}: {file} is not in the finalize manifest, so the candidate can't check it is the published file"),
+            )
+            .located(file.clone(), 1, 1),
+        );
+    }
+}
+
 /// The candidate's omissions. `converted_pages` lists the page files that converted or were
 /// already refused (capsule paths); `client_carried` says whether `client/` was reproduced, as the
 /// pages layout or as a converted client app (which then owns `public/`).
@@ -288,10 +341,6 @@ pub(super) fn sweep(
         }
         let reserved = super::endpoints::RESERVED.contains(&first.to_ascii_lowercase().as_str());
         match fs.read_to_string(&root.join(&relative)) {
-            Ok(text) if text == super::manifest::BINARY => errors.push(file(fail(
-                &at,
-                format!("{STATIC}: {name} is not UTF-8 text, and the candidate carries text files only"),
-            ))),
             Ok(text) if !reserved => {
                 out.files.insert(format!("public/{name}"), text);
                 out.carried.push(name);

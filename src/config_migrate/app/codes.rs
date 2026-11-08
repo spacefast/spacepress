@@ -74,6 +74,14 @@ pub static RULES: &[Rule] = &[
         example: ("/logo.png", "the static file is not carried over: x"),
     },
     Rule {
+        code: "Z08_OMITTED_UNVERIFIED",
+        feature: "static file the finalize manifest doesn't record",
+        v2: "a file in public/, served at the same URL",
+        fix: "Check the file is the published one and copy it into the candidate's public/, or convert from the source tree without --manifest.",
+        test: |_, r| r.starts_with(omitted::UNVERIFIED),
+        example: ("/index.html", "the unverified static file is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_PUBLIC",
         feature: "0.8 public/ directory",
         v2: "public/, served at the site root",

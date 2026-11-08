@@ -275,7 +275,19 @@ pub fn migrate_manifest(fs: Rc<dyn Fs>, text: &str, source: Option<&Path>, table
             ),
         ));
     }
-    migrate(memory, &published, tables, users)
+    let mut candidate = migrate(memory, &published, tables, users);
+    // The manifest records the capsule's source, not the static files served beside it.
+    let recorded = verified.keys().cloned().collect();
+    let mut unverified = vec![];
+    if let Ok(root) = fs.canonicalize(root) {
+        omitted::unverified(fs.as_ref(), &root, &recorded, &mut unverified);
+    }
+    if !unverified.is_empty() {
+        candidate.report.errors.extend(unverified);
+        candidate.report.status = "refused";
+        candidate.files.clear();
+    }
+    candidate
 }
 
 pub fn migrate(fs: Rc<dyn Fs>, input: &Path, tables: Tables, users: bool) -> Candidate {

@@ -463,6 +463,10 @@ Throwing anything aborts the request and rolls back every write in it.
 
 ## HTTP routes
 
+> On a hosted Spacefast Space, routes outside `/wp-json` aren't served yet: the host doesn't hand those paths to WordPress. The compiled manifest lists them (`routes`, and `pagePaths` for pages) for the host change that will. On your own WordPress they work today.
+>
+> For a host reading those lists: trim one trailing `/` from the request path, treat `HEAD` as `GET`, and hand over any request whose path matches an entry whatever its method, so the app answers a wrong method with 405. `*name` takes one or more segments.
+
 `routes` serves your own method and path on the site, outside `/wp-json`: a
 feed, a sitemap, a payment provider's webhook, anything that is not a JSON
 action call.

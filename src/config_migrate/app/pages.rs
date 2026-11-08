@@ -223,6 +223,42 @@ fn relocate(text: &str, extra: usize) -> String {
     out
 }
 
+/// Points a converted page's imports of the app's own modules (`../shared/plans`) into the Zero
+/// root, where the candidate moves them (`../zero/shared/plans`). `file` is the page's path in the
+/// candidate (`pages/pricing/page.tsx`); an import that resolves inside `pages/` is unchanged.
+pub(super) fn into_zero_root(file: &str, text: &str) -> String {
+    let dir: Vec<&str> = file.split('/').collect::<Vec<_>>()[..file.split('/').count() - 1].to_vec();
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("from ") {
+        let (head, tail) = rest.split_at(at + "from ".len());
+        out.push_str(head);
+        rest = tail;
+        let Some(quote) = rest.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+            continue;
+        };
+        let Some(end) = rest[1..].find(quote) else { continue };
+        let spec = &rest[1..1 + end];
+        let ups = spec.split('/').take_while(|s| *s == "..").count();
+        // Relative imports only; `ups` directories above the page's own, all of them left.
+        let leaves_pages = spec.starts_with("../") && ups >= dir.len();
+        out.push(quote);
+        if leaves_pages {
+            let prefix = "../".repeat(ups);
+            out.push_str(&prefix);
+            out.push_str(crate::layout::ROOT);
+            out.push('/');
+            out.push_str(&spec[prefix.len()..]);
+        } else {
+            out.push_str(spec);
+        }
+        out.push(quote);
+        rest = &rest[2 + end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Why a page needs a manual port: what it uses, and what replaces it on v2.
 pub(super) fn reason(text: &str, kind: &str) -> String {
     let client = text.trim_start().starts_with("\"use client\"") || text.trim_start().starts_with("'use client'");

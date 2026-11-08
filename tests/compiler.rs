@@ -55,6 +55,12 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "zero.config.ts:2:11",
     );
     rejects("reject-infinite-loop", "step budget exceeded", "zero.config.ts:2:");
+    // App code loads only from zero/ (Z1210): here a module inside zero/ reaches back out.
+    rejects(
+        "reject-import-fence",
+        "zero/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside zero/",
+        "zero/tags.ts:2:1",
+    );
 }
 
 #[test]
@@ -577,7 +583,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let project = tmp.join("pantry");
     copy(&root().join("examples/pantry"), &project);
     let _ = std::fs::remove_dir_all(project.join(".zero"));
-    let _ = std::fs::remove_dir_all(project.join("zero"));
+    let _ = std::fs::remove_dir_all(project.join("zero/_generated"));
 
     let out = zero().arg("build").arg(&project).output().unwrap();
     assert!(
@@ -879,10 +885,17 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let tmp = std::env::temp_dir().join(format!("zero-diff-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
-    std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
-    std::fs::copy(dir.join("namespace.mjs"), tmp.join("namespace.mjs")).unwrap();
+    // App code loads from zero/; the root config re-exports the cases' config.
+    std::fs::create_dir_all(tmp.join("zero")).unwrap();
+    std::fs::copy(dir.join("cases.ts"), tmp.join("zero/cases.ts")).unwrap();
+    std::fs::copy(dir.join("namespace.mjs"), tmp.join("zero/namespace.mjs")).unwrap();
     // Plain JavaScript modules the cases import run through checked dynamic dispatch.
-    std::fs::copy(dir.join("stdlib.js"), tmp.join("stdlib.js")).unwrap();
+    std::fs::copy(dir.join("stdlib.js"), tmp.join("zero/stdlib.js")).unwrap();
+    std::fs::write(
+        tmp.join("zero.config.ts"),
+        "export { default } from \"./zero/cases.ts\";\n",
+    )
+    .unwrap();
     let built = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(
         built.status.success(),
@@ -1815,7 +1828,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("defineConfig() has no option `target`"), "{stderr}");
     assert!(
-        !tmp.join(".zero").exists() && !tmp.join("zero").exists(),
+        !tmp.join(".zero").exists() && !tmp.join("zero/_generated").exists() && !tmp.join("zero/dist").exists(),
         "a refusal wrote files"
     );
     std::fs::write(tmp.join("zero.config.ts"), config).unwrap();

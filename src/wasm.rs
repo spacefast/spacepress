@@ -8,7 +8,7 @@
 //! Request:
 //! ```json
 //! { "name": "pantry",
-//!   "files": { "zero.config.ts": "…", "lib/fields.ts": "…", "zero/_generated/abilities.json": "…",
+//!   "files": { "zero.config.ts": "…", "zero/lib/fields.ts": "…", "zero/_generated/abilities.json": "…",
 //!              "zero/_generated/plugins.lock.json": "…" },,
 //!   "previous": null, "migrationFiles": [], "frozen": false }
 //! ```

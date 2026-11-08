@@ -11,5 +11,5 @@
       "zero": ["../../types/zero/index.d.ts"]
     }
   },
-  "include": ["zero.config.ts", "zero/_generated/db.d.ts", "lib/**/*.ts"]
+  "include": ["zero.config.ts", "zero/_generated/db.d.ts", "zero/lib/**/*.ts"]
 }

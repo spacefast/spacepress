@@ -381,7 +381,10 @@ fn convert(
         }
         None => BTreeMap::new(),
     };
-    if sources.contains_key(Path::new("zero.config.ts")) || sources.contains_key(Path::new("server/__z08-content.ts")) {
+    if sources.contains_key(Path::new("zero.config.ts"))
+        || sources.contains_key(Path::new("server/__z08-content.ts"))
+        || sources.keys().any(|p| p.starts_with(crate::layout::ROOT))
+    {
         return Err(fail("", "input imports a reserved generated config path"));
     }
     let canonical = PathBuf::from("server/index.ts");
@@ -398,11 +401,26 @@ fn convert(
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }
+    // The candidate's app code lives under the Zero root (docs/spec/spec.md §1); pages keep their
+    // place, and their imports of the app's modules follow them in.
+    let mut sources: BTreeMap<PathBuf, String> = sources
+        .into_iter()
+        .map(|(path, text)| match path.starts_with("pages") {
+            true => (path, text),
+            false => (Path::new(crate::layout::ROOT).join(path), text),
+        })
+        .collect();
     sources.insert(
         PathBuf::from("zero.config.ts"),
-        "export { default } from \"./server/index\";\n".into(),
+        "export { default } from \"./zero/server/index\";\n".into(),
     );
-    let page_files = converted;
+    let page_files: BTreeMap<String, String> = converted
+        .into_iter()
+        .map(|(path, text)| {
+            let text = pages::into_zero_root(&path, &text);
+            (path, text)
+        })
+        .collect();
     // Fail closed: whatever 0.8 served that the candidate does not reproduce is an error, so a
     // candidate without errors can replace the published version. Static files v2 serves
     // unchanged travel in public/.

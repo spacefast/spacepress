@@ -2,7 +2,7 @@ import {
   table, text, integer, date, timestamp, defineConfig, defineRelations,
   action, job, jobs, once, db, HttpError, type InferSelectModel,
 } from "zero";
-import { advanceRenewal, monthlyAmount } from "./lib/calendar";
+import { advanceRenewal, monthlyAmount } from "./zero/lib/calendar";
 
 const ownership = {
   ownerId: integer().notNull().default(0).access({ create: false, update: false }),

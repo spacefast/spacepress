@@ -15,9 +15,9 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(
         &project,
         "zero.config.ts",
-        "import { defineConfig, action, global, text } from 'zero'; import { message } from './src/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
+        "import { defineConfig, action, global, text } from 'zero'; import { message } from './zero/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
     );
-    write(&project, "src/message.ts", "export const message = 'v1';");
+    write(&project, "zero/message.ts", "export const message = 'v1';");
     write(
         &project,
         "node_modules/shared/package.json",
@@ -48,7 +48,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let app: zero::bundle::SourceBundle =
         serde_json::from_slice(&fs::read(first.join("app.zero.json")).unwrap()).unwrap();
     assert!(!app.files.contains_key("unrelated.ts"));
-    write(&project, "src/message.ts", "export const message = 'v2';");
+    write(&project, "zero/message.ts", "export const message = 'v2';");
     let second = work.path().join("second");
     let later = zero::bundle::sources(&project, &second).unwrap();
     assert_eq!(sources.vendor_sha256, later.vendor_sha256);

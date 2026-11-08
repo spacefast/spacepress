@@ -63,22 +63,17 @@ final class Purges
                 self::add($plugin, [...self::termUrls([...$changed, ...$previous], $taxonomy), ...$urls]);
             }
         }, 10, 6);
-        add_action('edit_term', static function (int $termId, int $ttId, string $taxonomy) use ($plugin): void {
-            if (self::listening()) {
-                self::add($plugin, self::termUrls([$ttId], $taxonomy));
-            }
-        }, 10, 3);
-        add_action('edited_term', static function (int $termId, int $ttId, string $taxonomy) use ($plugin): void {
-            if (self::listening()) {
-                self::add($plugin, self::termUrls([$ttId], $taxonomy));
-            }
-        }, 10, 3);
-        add_action('pre_delete_term', static function (int $termId, string $taxonomy) use ($plugin): void {
+        // A term edit purges its archive before (edit_terms runs before the update, so a slug change
+        // still names the old URL) and after; a delete purges it before the term goes.
+        $term = static function (int $termId, string $taxonomy) use ($plugin): void {
             $term = get_term($termId, $taxonomy);
             if (self::listening() && $term instanceof \WP_Term) {
-                self::add($plugin, self::termUrls([$term->term_taxonomy_id], $taxonomy));
+                self::add($plugin, self::listings(self::termUrls([$term->term_taxonomy_id], $taxonomy)));
             }
-        }, 10, 2);
+        };
+        add_action('edit_terms', $term, 10, 2);
+        add_action('edited_term', static fn (int $termId, int $ttId, string $taxonomy) => $term($termId, $taxonomy), 10, 3);
+        add_action('pre_delete_term', $term, 10, 2);
     }
 
     /**
@@ -187,16 +182,29 @@ final class Purges
                 array_push($urls, ...self::termUrls(array_map(static fn (\WP_Term $t): int => $t->term_taxonomy_id, $terms), $taxonomy));
             }
         }
-        $listings = array_slice($urls, 1);
+        $urls = array_values(array_filter($urls, static fn (mixed $url): bool => is_string($url) && $url !== ''));
+
+        return [$urls[0], ...self::listings(array_slice($urls, 1))];
+    }
+
+    /**
+     * Listing URLs with their next LISTING_PAGES pages (`/category/news/page/2/`); feeds have none.
+     *
+     * @param list<string> $urls
+     * @return list<string>
+     */
+    private static function listings(array $urls): array
+    {
+        $out = $urls;
         for ($page = 2; $page <= 1 + self::LISTING_PAGES; $page++) {
-            foreach ($listings as $listing) {
-                if (!str_contains($listing, '/feed')) {
-                    $urls[] = self::paged($listing, $page);
+            foreach ($urls as $url) {
+                if (!str_contains($url, '/feed')) {
+                    $out[] = self::paged($url, $page);
                 }
             }
         }
 
-        return array_values(array_filter($urls, static fn (mixed $url): bool => is_string($url) && $url !== ''));
+        return $out;
     }
 
     /**

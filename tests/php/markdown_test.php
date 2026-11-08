@@ -326,7 +326,15 @@ check('trashing a published post purges where it was', in_array('/second-post/',
 eq('a draft that stays a draft purges nothing', $writes(static fn () => wp_update_post(['ID' => $draft, 'post_content' => 'Still a draft.'])), []);
 eq('a Zero collection row (not public) purges nothing', $writes(static fn () => wp_update_post(['ID' => $note, 'post_content' => 'New note.'])), []);
 $termEdit = $writes(static fn () => wp_update_term($category['term_id'], 'category', ['description' => 'New description.']))[0] ?? [];
-check('editing a term purges its archive and twin', in_array('/category/field-notes/', $termEdit, true) && in_array('/category/field-notes.md', $termEdit, true), $termEdit);
+foreach (['/category/field-notes/', '/category/field-notes.md', '/category/field-notes/page/2/', '/category/field-notes/page/2.md'] as $path) {
+    check("editing a term purges $path", in_array($path, $termEdit, true), $termEdit);
+}
+$renamed = $writes(static fn () => wp_update_term($category['term_id'], 'category', ['slug' => 'field-log']))[0] ?? [];
+foreach (['/category/field-notes/', '/category/field-notes/page/2.md', '/category/field-log/', '/category/field-log/page/2/'] as $path) {
+    check("renaming a term's slug purges $path", in_array($path, $renamed, true), $renamed);
+}
+$gone = $writes(static fn () => wp_delete_term($cat['term_id'], 'category'))[0] ?? [];
+check('deleting a term purges its archive pages', in_array('/category/elsewhere/', $gone, true) && in_array('/category/elsewhere/page/2/', $gone, true), $gone);
 $connection = $site->connection();
 $inside = null;
 $committed = $writes(static function () use ($connection, $about, &$announced, &$inside): void {

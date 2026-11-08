@@ -910,6 +910,20 @@ pub(super) fn app(
             if converted_helpers.get(&key) == Some(&(*writes, *sends)) {
                 continue;
             }
+            // One function has one signature: a helper reached with the context or request at
+            // different argument positions would need two rewrites of one source.
+            if converted_helpers.keys().any(|(f, args)| f == function && args != position) {
+                if converted_helpers.insert(key, (*writes, *sends)).is_none() {
+                    ctx_helper_errors.push(
+                        fail(
+                            &pointer(&pointer("/helpers", function), "ctx"),
+                            "unsupported context service, alias or dynamic use: the helper takes the context or request at different argument positions across its calls; give it one signature",
+                        )
+                        .spanned(*span, Path::new("")),
+                    );
+                }
+                continue;
+            }
             converted_helpers.insert(key, (*writes, *sends));
             let f = module_functions[function];
             let at = pointer("/helpers", function);
@@ -928,21 +942,6 @@ pub(super) fn app(
                 }
                 Err(e) => ctx_helper_errors.push(e.spanned(*span, Path::new(""))),
             }
-        }
-    }
-    // One function has one signature: a helper reached with the context or request at different
-    // argument positions would be rewritten twice, and only one rewrite can replace its source.
-    let mut signatures: BTreeMap<&str, &HelperArgs> = BTreeMap::new();
-    for ((function, args), _) in &converted_helpers {
-        if signatures.insert(function, args).is_some_and(|first| first != args) {
-            let span = helper_modes[&(function.clone(), *args)].2;
-            ctx_helper_errors.push(
-                fail(
-                    &pointer(&pointer("/helpers", function), "ctx"),
-                    "unsupported context service, alias or dynamic use: the helper takes the context or request at different argument positions across its calls; give it one signature",
-                )
-                .spanned(span, Path::new("")),
-            );
         }
     }
     errors.extend(ctx_helper_errors);

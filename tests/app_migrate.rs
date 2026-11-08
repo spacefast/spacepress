@@ -346,9 +346,12 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
     assert_eq!(
         mapped,
         [
+            "/helpers/authed",
+            "/helpers/getHeader",
             "/helpers/listAll",
             "/helpers/owner",
             "/helpers/prefix",
+            "/helpers/readBody",
             "/helpers/save",
             "/helpers/subject"
         ]
@@ -375,8 +378,15 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         .arg(out.join(".zero/wp-content"))
         .arg(
             r#"putenv("NOTE_PREFIX=hi ");
+               putenv("NOTE_KEY=k1");
                $r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as)[1];
+               // The endpoint hands its request to helpers: a header check through two of them, then
+               // the JSON body through a third.
+               $post = fn ($auth) => $app->serveRoute($app->matchRoute("POST", "/api/notes"), "POST", "/api/notes", "", "{\"body\":\"three\"}", ["Authorization" => $auth], null)[0];
+               $denied = $post("Bearer nope");
+               $saved = $post("Bearer k1");
                echo json_encode([
+                 "denied" => $denied, "saved" => $saved,
                  "add" => $r("add", ["body" => "one"], "ada"),
                  "addGuest" => $r("add", ["body" => "two"], null),
                  "list" => array_map(fn ($n) => [$n["body"], $n["owner"]], $r("list", [], null)),
@@ -397,7 +407,8 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         got,
         serde_json::json!({
             "add": true, "addGuest": false,
-            "list": [["two", "anonymous"], ["one", "ada"]],
+            "denied": 403, "saved": 201,
+            "list": [["two", "anonymous"], ["one", "ada"], ["three", "anonymous"]],
             "greeting": "hi ada", "greetingGuest": "hi anonymous",
             // A member without a copied 0.8 subject answers wp:<id>, as in a handler.
             "me": format!("wp:{}", got["id"]),
@@ -494,12 +505,35 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
             "Z08_DB_WRITE_IN_READ",
             "writes are only allowed",
         ),
+        // A request handed to a helper follows the endpoint's request rules, and the helper's
+        // parameter must be one plain name.
+        (
+            "request-api",
+            "async function form(req: any) { return req.formData(); }",
+            "endpoints: { e: endpoint({ method: \"POST\", path: \"/e\" }, async (_ctx, req) => text(String(await form(req)))) }",
+            "Z08_ENDPOINT_REQUEST_API",
+            "request API has no v2 route equivalent",
+        ),
+        (
+            "request-destructured",
+            "function auth({ headers }: any) { return headers.get(\"authorization\"); }",
+            "endpoints: { e: endpoint({ method: \"GET\", path: \"/e\" }, (_ctx, req) => text(auth(req) ?? \"\")) }",
+            "Z08_ENDPOINT_REQUEST_API",
+            "request API has no v2 route equivalent",
+        ),
+        (
+            "request-signatures",
+            "function method(x: any) { return String(x.method); }",
+            "endpoints: { e: endpoint({ method: \"GET\", path: \"/e\" }, (ctx, req) => text(method(req) + method(ctx))) }",
+            "Z08_CTX_DYNAMIC",
+            "different argument positions",
+        ),
     ] {
         let root = temp.path().join(case);
         project(&root, "{}");
         std::fs::write(
             root.join("server/index.ts"),
-            format!("import {{ capsule, query, string, table }} from \"@spacefast/zero/server\";\n{helper}\nexport default capsule({{ name: \"r\", schema: {{ notes: table({{ body: string() }}) }}, {handler} }});\n"),
+            format!("import {{ capsule, endpoint, query, string, table, text }} from \"@spacefast/zero/server\";\n{helper}\nexport default capsule({{ name: \"r\", schema: {{ notes: table({{ body: string() }}) }}, {handler} }});\n"),
         )
         .unwrap();
         let (ok, refused) = migrate(

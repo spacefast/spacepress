@@ -1205,11 +1205,22 @@ body. A class `toJSON()` method is called by `JSON.stringify` with the property
 key; actions that return such an instance directly are refused, because the
 generated client describes own fields.
 
+Classes can extend `Error`, `TypeError` and `RangeError`. `super(message,
+options)` sets non-enumerable `message`, `cause` (from `options.cause`) and
+`stack`, so `Object.keys` and JSON show only fields and an assigned `name`.
+`name` and `message` otherwise come from the prototype, and `String(error)`
+follows `Error.prototype.toString`. `instanceof` sees the whole chain, including
+`Error`. Any such instance can be thrown and caught with its identity and fields
+intact. `stack` is the `Name: message` header without frames; Zero does not
+expose PHP frames. `Error.captureStackTrace(target)` gives `target` that same
+header-only stack. In typed code, `catch (e)` narrows with
+`e instanceof AppError`.
+
 These class features remain outside the supported surface, with located errors:
 class expressions, default-export class declarations and
 anonymous/local/abstract/ambient/generic classes;
 decorators; private/protected members; private accessors; static blocks; computed names;
-generic/rest methods; dynamic or built-in inheritance; constructor return values;
+generic/rest methods; dynamic inheritance and built-in bases other than the Error family; constructor return values;
 prototype/reflection machinery and custom coercion members (`toString`, `valueOf`).
 Indexed class members and recursive class field types are also refused.
 Uninitialized optional fields follow the same missing-to-null boundary. Class

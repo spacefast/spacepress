@@ -91,6 +91,8 @@ pub struct WeakVal {
 pub struct ClassValue {
     pub class: Rc<crate::ir::Class>,
     pub base: Option<Rc<ClassValue>>,
+    /// `extends Error` (or TypeError/RangeError): the built-in root when there is no class base.
+    pub builtin_base: Option<&'static str>,
     pub env: Rc<Scope>,
     pub statics: IndexMap<String, Value>,
 }

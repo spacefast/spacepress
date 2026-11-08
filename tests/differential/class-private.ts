@@ -1,5 +1,5 @@
 import { defineConfig, action } from "zero";
-import { untypedPrivate, untypedClasses, untypedAccessors } from "./class-private-lib.mjs";
+import { untypedPrivate, untypedClasses, untypedAccessors, untypedErrors } from "./class-private-lib.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -42,6 +42,24 @@ class Kelvin extends Temperature {
   get celsius(): number { return super.celsius + 1000; }
 }
 
+class AppError extends Error {
+  code = "";
+  constructor(code: string, message: string, options?: { cause: unknown }) {
+    super(message, options);
+    this.name = "AppError";
+    this.code = code;
+  }
+}
+class QuotaError extends AppError {
+  limit = 0;
+  constructor(limit: number) { super("Quota", `over ${limit}`); this.limit = limit; }
+}
+function failWith(kind: number): never {
+  if (kind === 0) throw new QuotaError(3);
+  if (kind === 1) throw new AppError("Bad", "bad input", { cause: "upstream" });
+  throw new TypeError("plain");
+}
+
 export default defineConfig({
   name: "class-private",
   actions: {
@@ -72,6 +90,21 @@ export default defineConfig({
       };
     }),
     accessorsUntyped: run(() => untypedAccessors()),
+    errorsTyped: run(() => {
+      const out: { app: boolean; quota: boolean; error: boolean; name: string; message: string; text: string; stack: string; code: string; limit: number; json: string }[] = [];
+      for (const kind of [0, 1, 2]) {
+        try { failWith(kind); } catch (e) {
+          out.push({
+            app: e instanceof AppError, quota: e instanceof QuotaError, error: e instanceof Error,
+            name: e.name, message: e.message, text: String(e), stack: (e.stack ?? "").split("\n")[0] ?? "",
+            code: e instanceof AppError ? e.code : "", limit: e instanceof QuotaError ? e.limit : -1,
+            json: JSON.stringify(e) ?? "",
+          });
+        }
+      }
+      return out;
+    }),
+    errorsUntyped: run(() => untypedErrors()),
     privateUntyped: run(() => untypedPrivate()),
     classesUntyped: run(() => untypedClasses()),
   },

@@ -77,7 +77,7 @@ also produces. We do not report PHP frames: they would expose compiler
 internals and differ from Node.
 
 Throwing is the PHP boundary. `throw v` for a non-`JsError` value throws
-`Zero\JsThrown` (a `JsError` subclass) carrying the original value, and `catch`
+`Zero\JsThrow` (a `JsError` subclass, shared with the promise runtime) carrying the original value, and `catch`
 binds the original value. Thrown error-class instances keep their identity,
 fields and `instanceof` results. Builtin `Error` values keep their current
 `JsError` representation.

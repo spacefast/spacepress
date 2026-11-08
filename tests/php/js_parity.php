@@ -271,7 +271,7 @@ $deviations = [
     ['array Error cause is refused', function () { $a = new JsArray(); $a->p['cause'] = 42; return Js::dynamicConstruct('Error', new JsArray(['x', $a])); }, ['$err' => 'TypeError']],
     ['default object sort requires a comparator', fn () => Js::sort(new JsArray([new JsObject(), new JsObject()])), ['$err' => 'TypeError']],
     ['unsupported legacy control escapes are refused', fn () => Js::re('\\c0', ''), ['$err' => 'SyntaxError']],
-    ['error stack access is refused', fn () => Js::dynamicGet(new JsError('x'), 'stack'), ['$err' => 'TypeError']],
+    ['error stack is its header line', fn () => Js::dynamicGet(new JsError('x', 'TypeError'), 'stack'), 'TypeError: x'],
     ['non-ISO Date strings are refused', fn () => Js::date('2020-1-1'), ['$err' => 'RangeError']],
 ];
 

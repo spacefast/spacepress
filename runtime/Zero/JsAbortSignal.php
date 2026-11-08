@@ -16,6 +16,8 @@ final class JsAbortSignal
     private array $listeners = [];
     /** Dependents of AbortSignal.any: aborted with this signal's reason. */
     private array $dependents = [];
+    /** For a composite (AbortSignal.any) signal: the non-composite signals it follows. */
+    private ?array $sources = null;
 
     public function onabort(): ?\Closure { return $this->onabort; }
 
@@ -48,6 +50,7 @@ final class JsAbortSignal
     /** @param iterable<mixed> $signals */
     public static function any(iterable $signals): self
     {
+        $signals = is_array($signals) ? $signals : iterator_to_array($signals, false);
         $result = new self();
         foreach ($signals as $signal) {
             if (!$signal instanceof self) { throw new JsError("Failed to execute 'any' on 'AbortSignal': Failed to convert value to 'AbortSignal'.", 'TypeError'); }
@@ -57,7 +60,17 @@ final class JsAbortSignal
                 return $result;
             }
         }
-        foreach ($signals as $signal) { $signal->dependents[] = \WeakReference::create($result); }
+        // https://dom.spec.whatwg.org/#create-a-dependent-abort-signal: a composite follows the
+        // sources of its composite inputs, so nested AbortSignal.any folds flatten to the roots.
+        $result->sources = [];
+        foreach ($signals as $signal) {
+            foreach ($signal->sources ?? [$signal] as $source) {
+                if (!in_array($source, $result->sources, true)) {
+                    $result->sources[] = $source;
+                    $source->dependents[] = \WeakReference::create($result);
+                }
+            }
+        }
         return $result;
     }
 
@@ -120,21 +133,31 @@ final class JsAbortSignal
             }
         }
         $this->dependents = [];
-        $this->dispatch();
-        foreach ($dependents as $dependent) { $dependent->dispatch(); }
+        // A listener's exception doesn't stop dispatch: every listener, then every dependent's,
+        // runs; the first exception is rethrown afterwards, as Node reports it once dispatch ends
+        // (there as an uncaught exception, which ends the process; here it ends the request).
+        $error = $this->dispatch();
+        foreach ($dependents as $dependent) { $error ??= $dependent->dispatch(); }
+        if ($error !== null) { throw $error; }
     }
 
-    private function dispatch(): void
+    private function dispatch(): ?\Throwable
     {
         $event = new JsObject(['type' => 'abort', 'target' => $this, 'currentTarget' => $this]);
+        $error = null;
         // Listeners added during dispatch don't run; removed ones don't run either.
         $count = count($this->listeners);
         for ($i = 0; $i < $count; $i++) {
             $entry = $this->listeners[$i];
             if ($entry === null) { continue; }
             if ($entry[1]) { $this->listeners[$i] = null; }
-            ($entry[0] === self::$handlerMarker ? $this->onabort : $entry[0])($event);
+            try {
+                ($entry[0] === self::$handlerMarker ? $this->onabort : $entry[0])($event);
+            } catch (\Throwable $e) {
+                $error ??= $e;
+            }
         }
+        return $error;
     }
 
     private static ?\Closure $handlerMarker = null;

@@ -5309,6 +5309,67 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// a no-op; the merge keeps #142's body and these call sites.
     fn uses(&mut self, _kind: &'static str, _value: impl Into<String>, _span: Span) {}
 
+    /// `URL.parse`/`URL.canParse` and `AbortSignal.abort`/`any`/`timeout` in typed code.
+    fn typed_standard_static(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let mut argv = Vec::new();
+        for a in args {
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
+            let v = self.expr(x)?;
+            argv.push((self.finish_value(v, x.span)?, x.span));
+        }
+        let need = |ok: bool, at: Span, what: &str| -> Result<()> {
+            if ok {
+                Ok(())
+            } else {
+                err_help(at, format!("`{g}.{m}` needs {what}"), format!("pass {what}"))
+            }
+        };
+        Ok(match (g, m) {
+            ("URL", "parse" | "canParse") => {
+                for (i, (v, at)) in argv.iter().enumerate() {
+                    need(
+                        v.ty.is_str() || v.ty == Ty::Url || (i == 1 && v.ty == Ty::Undefined),
+                        *at,
+                        "a string or URL",
+                    )?;
+                }
+                let list: Vec<&str> = argv.iter().map(|(v, _)| v.php.as_str()).collect();
+                let call = format!("\\Zero\\JsUrl::{}({})", m, list.join(", "));
+                if m == "parse" {
+                    Out::atom(call, Ty::Url.nullable())
+                } else {
+                    Out::atom(call, Ty::Bool)
+                }
+            }
+            ("AbortSignal", "abort") => {
+                let reason = argv
+                    .first()
+                    .map_or_else(|| "\\Zero\\Js::undefined()".into(), |(v, _)| v.php.clone());
+                Out::atom(format!("\\Zero\\JsAbortSignal::aborted({reason})"), Ty::AbortSignal)
+            }
+            ("AbortSignal", "timeout") => {
+                let (ms, at) = &argv[0];
+                need(ms.ty.is_num(), *at, "a number of milliseconds")?;
+                self.uses("timers", "AbortSignal.timeout", span);
+                Out::atom(format!("\\Zero\\JsAbortSignal::timeout({})", ms.php), Ty::AbortSignal)
+            }
+            ("AbortSignal", "any") => {
+                let (signals, at) = &argv[0];
+                let ok = self
+                    .iterable_element(&signals.ty)
+                    .is_some_and(|el| el.all(|t| *t == Ty::AbortSignal));
+                need(ok, *at, "an array of AbortSignals")?;
+                Out::atom(
+                    format!("\\Zero\\JsAbortSignal::any(\\Zero\\Js::iter({}))", signals.php),
+                    Ty::AbortSignal,
+                )
+            }
+            _ => return err(span, format!("`{g}.{m}` isn't supported")),
+        })
+    }
+
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         self.builtin_args(g, m, args, span)?;
         if (g, m) == ("Math", "pow") {
@@ -5319,6 +5380,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (g, m) == ("Number", "parseInt") {
             crate::builtins::check_parse_int_literals(args, span)?;
+        }
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) && matches!(g, "URL" | "AbortSignal") {
+            return self.typed_standard_static(g, m, args, span);
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))

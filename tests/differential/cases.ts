@@ -944,7 +944,15 @@ function stdlibActions() {
       try { signal.throwIfAborted(); } catch (e) { thrown = e.message; }
       const timer = setTimeout(() => { order.push("never"); }, 10);
       clearTimeout(timer);
-      return [before, signal.aborted, order, thrown, signal.reason === undefined];
+      // Static constructors from typed code, and nested AbortSignal.any folding.
+      const root = new AbortController();
+      const inner = AbortSignal.any([root.signal]);
+      const outer = AbortSignal.any([inner, AbortSignal.timeout(1000)]);
+      outer.addEventListener("abort", () => { order.push("outer"); });
+      root.abort(new Error("root"));
+      const pre = AbortSignal.abort(new Error("pre"));
+      const parsed = URL.parse("https://example.com/a?b=1");
+      return [before, signal.aborted, order, thrown, signal.reason === undefined, inner.aborted, outer.aborted, pre.aborted, parsed?.pathname ?? "none", URL.canParse("nope")];
     }),
     typedUrls: run(() => {
       const disposition = 'attachment; filename="a b.txt"';

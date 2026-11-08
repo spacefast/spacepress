@@ -321,7 +321,13 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
         while (\Zero\Timers::runNext()) { $log[] = \Zero\Timers::clock(); }
         \Zero\Timers::set(function() {}, 500);
         try { \Zero\Timers::runNext(); $log[]='slept'; } catch (\Zero\JsError $e) { $log[]=$e->jsName; }
-        echo json_encode([$log, $signal->aborted, $signal->reason->jsName]);"#,
+        // A throwing abort listener: dispatch continues (as in Node), then the error ends the
+        // request where Node would report it as uncaught.
+        $faulty = new \Zero\JsAbortController(); $seen = [];
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \Zero\JsError('listener'); });
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 2; });
+        try { $faulty->abort(); } catch (\Zero\JsError $e) { $seen[] = $e->getMessage(); }
+        echo json_encode([$log, $signal->aborted, $signal->reason->jsName, $seen]);"#,
         &[&root().join("runtime/Zero/bootstrap.php")],
     );
     assert_eq!(
@@ -329,7 +335,8 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
         json!([
             ["a", 1010, 1015, "b", 1020, "c", 1020, "RangeError"],
             true,
-            "TimeoutError"
+            "TimeoutError",
+            [1, 2, "listener"]
         ])
     );
 }

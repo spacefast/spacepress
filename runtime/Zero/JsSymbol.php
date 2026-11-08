@@ -12,7 +12,7 @@ final class JsSymbol
     private static array $registry = [];
     private static array $wellKnown = [];
 
-    private function __construct(public readonly string|JsUndefined $description, public readonly ?string $registryKey = null) {}
+    private function __construct(public readonly string|JsUndefined $description, public readonly ?string $registryKey = null, public readonly bool $isWellKnown = false) {}
 
     /** `Symbol(description)`: a fresh symbol each call. */
     public static function create(JsArray $args): self
@@ -37,7 +37,7 @@ final class JsSymbol
     public static function wellKnown(string $name): self
     {
         if (!in_array($name, self::WELL_KNOWN, true)) { throw new JsError('Unsupported well-known symbol Symbol.' . $name, 'TypeError'); }
-        return self::$wellKnown[$name] ??= new self('Symbol.' . $name);
+        return self::$wellKnown[$name] ??= new self('Symbol.' . $name, null, true);
     }
 
     /** Registered symbols are not weakly held, so they can't be weak collection keys. */

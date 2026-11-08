@@ -265,8 +265,11 @@ struct FnCtx {
     captures: Option<Vec<(String, bool)>>,
     outer: Option<Box<FnCtx>>,
     tmp: usize,
-    /// Switches between the current statement and the nearest loop (PHP counts them for `continue`).
-    switch_depth: usize,
+    /// Enclosing loops, switches and labeled blocks, innermost last. PHP's `break N` and
+    /// `continue N` count each of them as one level.
+    jumps: Vec<JumpTarget>,
+    /// Labels for the next statement compiled, when it is a loop or switch.
+    pending_labels: Vec<String>,
     conditional_depth: usize,
     /// Access rules can't query (§1.6): `db` is rejected inside them and their closures.
     no_db: bool,
@@ -277,6 +280,8 @@ struct FnCtx {
 
 pub struct Compiler<'a, 'p> {
     classes: HashMap<usize, classes::CompiledClass>,
+    /// Class ids by (owning plugin, class value).
+    class_ids: HashMap<(usize, usize), usize>,
     pub schema: &'a Schema,
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
@@ -286,11 +291,11 @@ pub struct Compiler<'a, 'p> {
     annotation_steps: usize,
     resolving_json_types: HashSet<usize>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
-    helpers: HashMap<(usize, bool), String>,
-    helper_values: HashMap<usize, String>,
+    helpers: HashMap<(usize, usize, bool), String>,
+    helper_values: HashMap<(usize, usize), String>,
     helper_closures: HashMap<usize, Rc<Closure>>,
     helper_types: HashMap<usize, Ty>,
-    data_helpers: HashMap<(u8, usize), String>,
+    data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
@@ -300,6 +305,42 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// Every ability `abilities.call` may name, typed (src/abilities.rs).
+    pub abilities: crate::wordpress::abilities::Catalog,
+    /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
+    pub wordpress_uses: Vec<WordPressUse>,
+    /// The plugin whose root is compiling, and its name; `None` for the app's own code.
+    plugin: Option<(usize, String)>,
+    /// The PHP function compiling right now, for the read→send report.
+    current: String,
+    /// Every capability-bearing call in a plugin's compiled code.
+    pub uses: Vec<crate::plugins::Use>,
+    /// Which compiled functions each function calls, for the read→send report.
+    pub calls: HashMap<String, HashSet<String>>,
+    plugin_names: Vec<String>,
+    /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
+    pub host_functions: Vec<String>,
+}
+
+/// What kind of WordPress feature a module uses: the capability kinds a plugin gate counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WordPressKind {
+    /// `abilities.call("vendor/name", ...)`.
+    Ability,
+    /// A `wp-hooks/<hook>` handler.
+    Hook,
+}
+
+/// One use of a WordPress feature, located at the source that makes it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct WordPressUse {
+    pub kind: WordPressKind,
+    pub name: String,
+    /// The project-relative or absolute path of the module that makes the use.
+    pub module: String,
+    #[serde(skip)]
+    pub span: Span,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -320,6 +361,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         Compiler {
             classes: HashMap::new(),
+            class_ids: HashMap::new(),
             schema,
             ev,
             collections: &ext.collections,
@@ -340,6 +382,153 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
+            plugin: None,
+            current: String::new(),
+            uses: Vec::new(),
+            calls: HashMap::new(),
+            host_functions: Vec::new(),
+            plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
+            abilities: crate::wordpress::abilities::Catalog::default(),
+            wordpress_uses: Vec::new(),
+        }
+    }
+
+    /// What registering a plugin root itself uses: the collection a hook sees, its own action or
+    /// route, and the secret a signature reads.
+    fn root_capabilities(&mut self, root: &Root) {
+        let span = root.closure.func.span;
+        match &root.slot {
+            Slot::Hook { table, kind } => {
+                let key = self.schema.collections[table].key.clone();
+                // Every hook receives its row: that read is granted, but it isn't data the
+                // handler chose to read, so the flow report doesn't attribute it.
+                let handler = std::mem::take(&mut self.current);
+                self.uses("read", key.clone(), span);
+                self.current = handler;
+                self.uses("hooks", format!("{key}.{}", kind.name()), span);
+            }
+            Slot::ActionHandler { action } => {
+                self.uses("actions", action.clone(), span);
+                if let Some(env) = self.schema.actions[action]
+                    .signature
+                    .as_ref()
+                    .and_then(|s| s["secret"]["env"].as_str())
+                {
+                    self.uses("env", env.to_string(), span);
+                }
+            }
+            Slot::RouteHandler { route } => {
+                let r = &self.schema.routes[route];
+                self.uses("routes", format!("{} {}", r.method, r.path), span);
+                if let Some(env) = r.signature.as_ref().and_then(|s| s["secret"]["env"].as_str()) {
+                    self.uses("env", env.to_string(), span);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A before-hook writes the fields it sets on `data` (directly, through helpers it passes
+    /// `data` to, or through `ctx.data`) and the fields of a replacement it returns.
+    fn hook_writes(&mut self, root: &Root) {
+        let Slot::Hook {
+            table,
+            kind: HookKind::BeforeCreate | HookKind::BeforeUpdate,
+        } = &root.slot
+        else {
+            return;
+        };
+        if self.plugin.is_none() {
+            return;
+        }
+        let key = self.schema.collections[table].key.clone();
+        let f = &root.closure.func;
+        let mut fields = std::collections::BTreeSet::new();
+        if let Some(p) = f.params.first() {
+            let columns = &self.schema.collections[table].columns;
+            for path in self.effects.writes_below(p.pat.span()) {
+                match path.as_slice() {
+                    [] => {}
+                    [effects::Step::Field(name), ..] if columns.contains_key(name) => {
+                        fields.insert(name.clone());
+                    }
+                    _ => {
+                        fields.insert("*".to_string());
+                    }
+                }
+            }
+            if !matches!(p.pat, Pat::Id(..)) {
+                fields.insert("*".to_string());
+            }
+        }
+        if let Some(Ty::Fn(_, ret)) = self.helper_types.get(&closure_key(&root.closure)) {
+            let ret = match &**ret {
+                Ty::Promise(t) => (**t).clone(),
+                t => t.clone(),
+            };
+            let parts = match ret {
+                Ty::Union(ts) => ts,
+                t => vec![t],
+            };
+            for t in parts {
+                match t {
+                    Ty::Void | Ty::Undefined | Ty::Null | Ty::Never => {}
+                    Ty::Obj(f) => fields.extend(f.keys().cloned()),
+                    _ => {
+                        fields.insert("*".to_string());
+                    }
+                }
+            }
+        }
+        for field in fields {
+            self.uses("write", format!("{key}.{field}"), f.span);
+        }
+    }
+
+    /// One PHP function running several hooks of a collection in order: plugins in `use` order,
+    /// then the app's. A before-hook's returned replacement becomes the next hook's `data`.
+    pub fn chain(&mut self, table: &str, kind: HookKind, functions: &[String]) -> String {
+        let name = self.unique_name(&format!("{table}__{}__chain", kind.name()));
+        let calls: Vec<String> = functions.iter().map(|f| format!("'\\\\ZeroApp\\\\{f}'")).collect();
+        let list = calls.join(", ");
+        let body = match kind {
+            HookKind::BeforeCreate => format!(
+                "function {name}(\\Zero\\JsObject $data, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+            ),
+            HookKind::BeforeUpdate => format!(
+                "function {name}(\\Zero\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+            ),
+            _ => format!(
+                "function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"
+            ),
+        };
+        self.output.push_str(&body);
+        name
+    }
+
+    /// Records a capability the plugin compiling now uses; app code is unrestricted.
+    fn uses(&mut self, kind: &'static str, value: impl Into<String>, span: Span) {
+        if let Some((plugin, _)) = &self.plugin {
+            self.uses.push(crate::plugins::Use {
+                plugin: *plugin,
+                function: self.current.clone(),
+                kind,
+                value: value.into(),
+                span,
+            });
+        }
+    }
+
+    /// Plugins never share compiled state: their helpers, captured data and classes are emitted
+    /// once per plugin under its own prefix.
+    fn owner(&self) -> usize {
+        self.plugin.as_ref().map_or(0, |(i, _)| i + 1)
+    }
+
+    fn named(&self, base: &str) -> String {
+        match &self.plugin {
+            Some((_, name)) if !base.starts_with(&format!("plugin_{name}__")) => format!("plugin_{name}__{base}"),
+            _ => base.to_string(),
         }
     }
 
@@ -348,6 +537,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn unique_name(&mut self, base: &str) -> String {
+        let base = &self.named(base);
         let mut name: String = base
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
@@ -523,9 +713,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // Solve all roots together before emitting shared helper signatures.
         self.effects = effects::Effects::analyze(roots, self.schema, self.ev_program());
         let mut out = Vec::new();
+        for i in 0..self.plugin_names.len() {
+            self.plugin = Some((i, self.plugin_names[i].clone()));
+            let name = self.unique_name("fetch_hosts");
+            self.host_functions.push(name);
+        }
         for root in roots {
+            self.plugin = root.plugin.map(|i| (i, self.plugin_names[i].clone()));
             let params = self.root_params(&root.slot);
             let name = self.unique_name(&root.name);
+            self.current = name.clone();
+            self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
             let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
@@ -539,6 +737,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 crate::builtins::check_json_serialization_type(&ret, root.closure.func.span)?;
                 self.action_results.insert(action.clone(), ret);
+            }
+            if let Slot::WpHook { index } = &root.slot {
+                let hook = &self.schema.wp_hooks[*index];
+                let returns = crate::wordpress::hook(&hook.hook).expect("catalog hook").returns;
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => (**ret).clone(),
+                    _ => Ty::Unknown,
+                };
+                if matches!(ret, Ty::Promise(_)) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("a `{}` handler can't be async", hook.hook),
+                        "WordPress calls hooks synchronously; remove `async` and `await`",
+                    );
+                }
+                if hook.filter && !assignable(&ret, &returns) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!(
+                            "the `{}` filter must return {}, not {}",
+                            hook.hook,
+                            returns.describe(),
+                            ret.describe()
+                        ),
+                        "return the filtered value, changed or not",
+                    );
+                }
+                self.use_wordpress(WordPressKind::Hook, &hook.hook, root.closure.func.span);
             }
             if let Slot::RouteHandler { route } = &root.slot {
                 let ret = match self.helper_types.get(&key) {
@@ -556,9 +782,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             }
-            self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());
+            self.helpers
+                .entry((self.owner(), key, no_db))
+                .or_insert_with(|| name.clone());
+            self.hook_writes(root);
             out.push((root.slot.clone(), name));
         }
+        self.plugin = None;
         while let Some((closure, name, params)) = self.pending.pop() {
             self.compile_function(&closure, &name, params, None, false)?;
         }
@@ -588,6 +818,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 types::job_ctx(),
             ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
+            Slot::WpHook { index } => crate::wordpress::hook(&self.schema.wp_hooks[*index].hook)
+                .expect("checked in the pipeline")
+                .params
+                .into_iter()
+                .map(|(_, t)| t)
+                .collect(),
             Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
@@ -657,7 +893,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: None,
             outer: None,
             tmp: 0,
-            switch_depth: 0,
+            jumps: Vec::new(),
+            pending_labels: Vec::new(),
             conditional_depth: 0,
             no_db,
             access: match slot {
@@ -756,7 +993,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let saved = self.fx.replace(fx);
+        let caller = std::mem::replace(&mut self.current, name.to_string());
         let result = self.compile_function_body(&f, name, &param_tys, slot);
+        self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
         let (params_php, body) = result?;
         let ret_ty = predicate.unwrap_or_else(|| fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone())));
@@ -1144,7 +1383,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             out.push_str(&self.stmt(s, indent)?);
             terminated = matches!(
                 s,
-                Stmt::Return(..) | Stmt::Throw(_) | Stmt::Break(_) | Stmt::Continue(_)
+                Stmt::Return(..) | Stmt::Throw(_) | Stmt::Break(..) | Stmt::Continue(..)
             );
         }
         Ok(out)
@@ -1160,6 +1399,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn stmt(&mut self, s: &Stmt, indent: usize) -> Result<String> {
         let p = pad(indent);
         let mut out = String::new();
+        // Labels written directly on this statement (only a loop or switch receives them).
+        let labels = std::mem::take(&mut self.fx().pending_labels);
         match s {
             Stmt::Decl {
                 kind,
@@ -1384,7 +1625,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .collect::<Vec<_>>()
                     .join(", ");
                 let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
@@ -1444,7 +1685,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.bind_pattern(pat, &value, &el, mutable, &mut out, indent + 1)?;
                 }
                 self.invalidate_loop(*span);
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
@@ -1523,7 +1764,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         },
                     );
                 }
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
                 if let Some((name, before)) = previous
@@ -1536,19 +1777,65 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.invalidate_loop(test.span);
                 let t = self.cond(test)?;
                 let _ = writeln!(out, "{p}while ({t}) {{");
-                out.push_str(&self.loop_body(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1, labels.clone())?);
                 let _ = writeln!(out, "{p}}}");
             }
-            Stmt::Break(_) => {
-                let _ = writeln!(out, "{p}break;");
+            Stmt::Break(label, span) => {
+                let level = self.jump_level(label.as_deref(), false, *span)?;
+                let _ = writeln!(
+                    out,
+                    "{p}break{};",
+                    if level == 1 { String::new() } else { format!(" {level}") }
+                );
             }
-            Stmt::Continue(_) => {
-                // In PHP a `switch` counts as a loop level for `continue`.
-                match self.fx().switch_depth {
-                    0 => writeln!(out, "{p}continue;"),
-                    n => writeln!(out, "{p}continue {};", n + 1),
+            Stmt::Continue(label, span) => {
+                let level = self.jump_level(label.as_deref(), true, *span)?;
+                let _ = writeln!(
+                    out,
+                    "{p}continue{};",
+                    if level == 1 { String::new() } else { format!(" {level}") }
+                );
+            }
+            Stmt::DoWhile(body, test) => {
+                self.invalidate_loop(test.span);
+                let _ = writeln!(out, "{p}do {{");
+                out.push_str(&self.loop_body(body, indent + 1, labels)?);
+                let t = self.cond(test)?;
+                let _ = writeln!(out, "{p}}} while ({t});");
+            }
+            Stmt::Labeled(label, body, _) => {
+                let mut labels = labels;
+                labels.push(label.clone());
+                let mut body = &**body;
+                while let Stmt::Labeled(label, inner, _) = body {
+                    labels.push(label.clone());
+                    body = inner;
                 }
-                .ok();
+                if matches!(
+                    body,
+                    Stmt::While(..)
+                        | Stmt::DoWhile(..)
+                        | Stmt::For { .. }
+                        | Stmt::ForOf { .. }
+                        | Stmt::ForIn { .. }
+                        | Stmt::Switch { .. }
+                ) {
+                    self.fx().pending_labels = labels;
+                    out.push_str(&self.stmt(body, indent)?);
+                } else {
+                    // A labeled block is left by `break label`: PHP gets a one-pass loop to break.
+                    self.fx().jumps.push(JumpTarget {
+                        kind: JumpKind::Block,
+                        labels,
+                    });
+                    let _ = writeln!(out, "{p}do {{");
+                    self.fx().conditional_depth += 1;
+                    let inner = self.stmts(std::slice::from_ref(body), indent + 1);
+                    self.fx().conditional_depth -= 1;
+                    self.fx().jumps.pop();
+                    out.push_str(&inner?);
+                    let _ = writeln!(out, "{p}}} while (false);");
+                }
             }
             Stmt::Throw(e) => {
                 let v = self.throw_value(e)?;
@@ -1611,11 +1898,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let _ = writeln!(out, "{p}    default:");
                         }
                     }
-                    self.fx().switch_depth += 1;
+                    self.fx().jumps.push(JumpTarget {
+                        kind: JumpKind::Switch,
+                        labels: labels.clone(),
+                    });
                     self.fx().conditional_depth += 1;
                     let inner = self.block(body, indent + 2);
                     self.fx().conditional_depth -= 1;
-                    self.fx().switch_depth -= 1;
+                    self.fx().jumps.pop();
                     out.push_str(&inner?);
                 }
                 if switch_is_exhaustive(&d.ty, &case_types) {
@@ -1647,8 +1937,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn loop_body(&mut self, body: &[Stmt], indent: usize) -> Result<String> {
-        let saved = std::mem::take(&mut self.fx().switch_depth);
+    /// PHP's level for `break` / `continue` (optionally to a label): the number of enclosing
+    /// loops, switches and labeled blocks up to and including the target.
+    fn jump_level(&mut self, label: Option<&str>, is_continue: bool, span: Span) -> Result<usize> {
+        let jumps = &self.fx().jumps;
+        let target = jumps.iter().rposition(|target| match label {
+            Some(label) => target.labels.iter().any(|l| l == label),
+            None if is_continue => target.kind == JumpKind::Loop,
+            None => target.kind != JumpKind::Block,
+        });
+        let Some(index) = target else {
+            return err(span, "this jump has no enclosing target");
+        };
+        if is_continue && jumps[index].kind != JumpKind::Loop {
+            return err(span, "`continue` must name a loop");
+        }
+        Ok(jumps.len() - index)
+    }
+
+    fn loop_body(&mut self, body: &[Stmt], indent: usize, labels: Vec<String>) -> Result<String> {
+        self.fx().jumps.push(JumpTarget {
+            kind: JumpKind::Loop,
+            labels,
+        });
         let saved_bindings = self.fx().loop_bindings.clone();
         let bindings: Vec<_> = self
             .fx()
@@ -1661,7 +1972,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let r = self.block(body, indent);
         self.fx().conditional_depth -= 1;
         self.fx().loop_bindings = saved_bindings;
-        self.fx().switch_depth = saved;
+        self.fx().jumps.pop();
         r
     }
 
@@ -2012,6 +2323,54 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
+            // `"key" in x` keeps the object-union members that declare `key` (TypeScript's `in`
+            // narrowing). A member with an open map or an optional `key` stays on both sides.
+            ExprKind::In(key, object) => {
+                if let ExprKind::Str(key) = &key.kind
+                    && let Some((path, original)) = self.path_ty(object)
+                    && original == Ty::Unknown
+                {
+                    // TypeScript narrows `unknown` to `object & Record<key, unknown>`; reads
+                    // through it stay checked (`dataGet`), whatever object the value is.
+                    let yes = Ty::Obj([(key.clone(), (Ty::Unknown, false))].into_iter().collect());
+                    out.push(if negate {
+                        (path, Ty::Unknown, yes)
+                    } else {
+                        (path, yes, Ty::Unknown)
+                    });
+                } else if let ExprKind::Str(key) = &key.kind
+                    && let Some((path, original)) = self.path_ty(object)
+                    && let Ty::Union(items) = &original
+                {
+                    let declares = |item: &Ty| match item {
+                        Ty::Obj(fields) => fields.get(key.as_str()).map(|(_, optional)| !optional),
+                        Ty::Instance(_, fields) => match &**fields {
+                            Ty::Obj(fields) => fields.get(key.as_str()).map(|(_, optional)| !optional),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let (mut hit, mut miss) = (Vec::new(), Vec::new());
+                    for item in items {
+                        match item {
+                            Ty::Obj(_) | Ty::Instance(..) => match declares(item) {
+                                Some(true) => hit.push(item.clone()),
+                                Some(false) => {
+                                    hit.push(item.clone());
+                                    miss.push(item.clone());
+                                }
+                                None => miss.push(item.clone()),
+                            },
+                            other => {
+                                hit.push(other.clone());
+                                miss.push(other.clone());
+                            }
+                        }
+                    }
+                    let (yes, no) = (Ty::union(hit), Ty::union(miss));
+                    out.push(if negate { (path, no, yes) } else { (path, yes, no) });
+                }
+            }
             ExprKind::IsNullish(inner, negated) => {
                 if let Some((n, t)) = self.path_ty(inner) {
                     // `x == null` retains each nullish member, including undefined.
@@ -2331,6 +2690,43 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Bool,
                 )
             }
+            ExprKind::Delete(target) => self.delete(target, span)?,
+            // A tagged template's strings: one frozen-in-spirit array per call site with a `raw`
+            // property. Cached per site, as JavaScript reuses the same array for every call.
+            ExprKind::TemplateStrings { cooked, raw } => {
+                let items = cooked
+                    .iter()
+                    .map(|c| c.as_deref().map_or("\\Zero\\Js::undefined()".to_string(), php_str))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let raw = raw.iter().map(|r| php_str(r)).collect::<Vec<_>>().join(", ");
+                // The site key keeps one array per call site across calls, as in JavaScript.
+                let site = format!("{}:{}:{}", span.file, span.start, span.end);
+                Out::atom(
+                    format!("\\Zero\\Js::templateStrings({}, [{items}], [{raw}])", php_str(&site)),
+                    Ty::NonEmptyArray(Box::new(if cooked.iter().all(Option::is_some) {
+                        Ty::Str
+                    } else {
+                        Ty::union([Ty::Str, Ty::Undefined])
+                    })),
+                )
+            }
+            ExprKind::AssignPattern(pattern, value) => self.assign_pattern(pattern, value)?,
+            ExprKind::In(key, object) => {
+                let key = self.expr(key)?;
+                let key = self.finish_value(key, span)?;
+                let object = self.expr(object)?;
+                let object = if matches!(object.ty, Ty::Class(_)) {
+                    object
+                } else {
+                    self.finish_value(object, span)?
+                };
+                // Js::hasProperty: own properties, then the value's fixed prototype chain.
+                Out::atom(
+                    format!("\\Zero\\Js::hasProperty({}, {})", key.php, object.php),
+                    Ty::Bool,
+                )
+            }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
@@ -2530,6 +2926,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             // Js::neg: the operand as a JS number, like the binary operators.
                             _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
                         }
+                    }
+                    UnOp::BitNot => {
+                        if v.ty != Ty::Dynamic {
+                            self.need_num(&v, x.span, "`~`")?;
+                        }
+                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::Num)
                     }
                     UnOp::Plus => {
                         if v.ty.is_num() {
@@ -2864,6 +3266,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             BinOp::LooseEq | BinOp::LooseNe => unreachable!("loose equality uses checked JavaScript dispatch"),
+            BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr | BinOp::UShr => {
+                let sym = op.bitwise_symbol().expect("bitwise operator");
+                self.need_num(&a, span, &format!("`{sym}`"))?;
+                self.need_num(&b, span, &format!("`{sym}`"))?;
+                // Js::bitwise: ToInt32/ToUint32 on JS numbers, a signed or (`>>>`) unsigned 32-bit result.
+                Out::atom(
+                    format!("\\Zero\\Js::bitwise({}, {}, {})", php_str(sym), a.php, b.php),
+                    Ty::Num,
+                )
+            }
         })
     }
 
@@ -2909,7 +3321,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Class(class) => self.class_value(class),
             Value::Closure(c) => {
                 let key = closure_key(c);
-                let helper_key = (key, self.fx().no_db);
+                let helper_key = (self.owner(), key, self.fx().no_db);
                 let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
                     None => {
@@ -2919,6 +3331,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         name
                     }
                 };
+                let caller = self.current.clone();
+                self.calls.entry(caller).or_default().insert(name.clone());
                 let Some(ty) = self.helper_types.get(&key).cloned() else {
                     return err_help(
                         span,
@@ -2926,11 +3340,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("annotate it: `function {n}(...): number`"),
                     );
                 };
-                let wrapper = match self.helper_values.get(&key) {
+                let wrapper = match self.helper_values.get(&(self.owner(), key)) {
                     Some(wrapper) => wrapper.clone(),
                     None => {
                         let wrapper = self.unique_name(&format!("{name}_value"));
-                        self.helper_values.insert(key, wrapper.clone());
+                        self.helper_values.insert((self.owner(), key), wrapper.clone());
                         let _ = writeln!(
                             self.output,
                             "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
@@ -2961,14 +3375,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\Zero\\db()", Ty::Db))
             }
-            Value::Env(name) => Ok(Out::atom(
-                format!("\\Zero\\Env::get({})", php_str(name)),
-                Ty::Str.nullable(),
-            )),
-            Value::Builtin(Builtin::Env | Builtin::Once) => err_help(
+            Value::Env(name) => {
+                self.uses("env", name.to_string(), span);
+                Ok(Out::atom(
+                    format!("\\Zero\\Env::get({})", php_str(name)),
+                    Ty::Str.nullable(),
+                ))
+            }
+            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Fetch) => err_help(
                 span,
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
+            ),
+            Value::Builtin(Builtin::Crypto) => err_help(
+                span,
+                "`crypto` can't be used as a value",
+                "call its functions directly: `crypto.sha256(text)`",
+            ),
+            Value::Builtin(Builtin::Mail) => err_help(
+                span,
+                "`mail` can't be used as a value",
+                "call `mail.send({ to, subject, text })` directly",
+            ),
+            Value::Builtin(Builtin::Abilities) => err_help(
+                span,
+                "`abilities` can't be used as a value",
+                "call `abilities.call(\"vendor/name\", input)` directly",
             ),
             Value::Builtin(Builtin::Jobs) => err_help(
                 span,
@@ -2986,6 +3418,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Action(_)
             | Value::Job(_)
             | Value::Route(_)
+            | Value::Plugin(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,
@@ -2997,7 +3430,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     SymbolVal::Registered(key) => format!("\\Zero\\JsSymbol::for({})", php_str(key)),
                     SymbolVal::WellKnown(name) => format!("\\Zero\\JsSymbol::wellKnown({})", php_str(name)),
                     SymbolVal::Unique(description) => {
-                        let key = (3, Rc::as_ptr(symbol) as usize);
+                        let key = (self.owner(), 3, Rc::as_ptr(symbol) as usize);
                         let name = match self.data_helpers.get(&key) {
                             Some(name) => name.clone(),
                             None => {
@@ -3025,7 +3458,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("use the {kind} from imported JavaScript, or key a Record<string, T> by a string id"),
                     );
                 }
-                let key = (4, Rc::as_ptr(weak) as usize);
+                let key = (self.owner(), 4, Rc::as_ptr(weak) as usize);
                 let name = match self.data_helpers.get(&key) {
                     Some(name) => name.clone(),
                     None => {
@@ -3041,7 +3474,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ok(Out::atom(format!("\\ZeroApp\\{name}()"), Ty::Dynamic))
             }
             Value::Regex(p, f) => {
-                let key = (2, Rc::as_ptr(p) as *const () as usize);
+                let key = (self.owner(), 2, Rc::as_ptr(p) as *const () as usize);
                 let name = if let Some(name) = self.data_helpers.get(&key) {
                     name.clone()
                 } else {
@@ -3079,9 +3512,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn captured_data(&mut self, value: &Value) -> Result<String> {
+        let owner = self.owner();
         let (key, array) = match value {
-            Value::Array(a) => ((0, Rc::as_ptr(a) as usize), true),
-            Value::Object(o) => ((1, Rc::as_ptr(o) as usize), false),
+            Value::Array(a) => ((owner, 0, Rc::as_ptr(a) as usize), true),
+            Value::Object(o) => ((owner, 1, Rc::as_ptr(o) as usize), false),
             _ => {
                 return Ok(match value {
                     Value::Undef => "\\Zero\\Js::undefined()".into(),
@@ -3335,7 +3769,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: Some(Vec::new()),
             outer: None,
             tmp: 0,
-            switch_depth: 0,
+            jumps: Vec::new(),
+            pending_labels: Vec::new(),
             conditional_depth: 0,
             no_db: self.fx().no_db,
             access: None,
@@ -3553,6 +3988,223 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Self::assignment_sequence(steps, Self::write_place(&write, &v.php), statement),
             v.ty,
         ))
+    }
+
+    /// `[a, b] = value` / `({ a, b: c.d = 1, ...rest } = value)`. The value is evaluated once and is
+    /// the result. Each leaf runs in JavaScript order: its computed key, then its target reference,
+    /// then the read from the value, then its default (only for undefined), then the write.
+    fn assign_pattern(&mut self, pattern: &AssignPat, value: &Expr) -> Result<Out> {
+        let v = self.expr(value)?;
+        let v = self.finish_value(v, value.span)?;
+        let source = self.tmp_var();
+        let mut steps = vec![format!("{source} = {}", v.php)];
+        // Untyped JavaScript reads absent fields as undefined: destructure through checked dispatch.
+        let ty = if self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            Ty::Dynamic
+        } else {
+            v.ty.clone()
+        };
+        self.assign_pattern_steps(pattern, &source, None, &ty, &mut steps)?;
+        Ok(Out::new(Self::sequence(steps, source), v.ty))
+    }
+
+    /// `pending` is the step that reads this pattern's value into `src`. A leaf target resolves
+    /// its reference first, as JavaScript does; a nested pattern reads first.
+    fn assign_pattern_steps(
+        &mut self,
+        pattern: &AssignPat,
+        src: &str,
+        pending: Option<String>,
+        ty: &Ty,
+        steps: &mut Vec<String>,
+    ) -> Result<()> {
+        match pattern {
+            AssignPat::Target(target) => self.assign_pattern_leaf(target, None, src, pending, ty, steps),
+            AssignPat::Default(inner, default) => {
+                if let AssignPat::Target(target) = &**inner {
+                    return self.assign_pattern_leaf(target, Some(default), src, pending, ty, steps);
+                }
+                steps.extend(pending);
+                let (value, ty) = self.assign_pattern_default(default, src, ty, steps)?;
+                self.assign_pattern_steps(inner, &value, None, &ty, steps)
+            }
+            AssignPat::Obj { props, rest, span } => {
+                steps.extend(pending);
+                if ty.is_nullable() && *ty != Ty::Dynamic {
+                    return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                let object = self.tmp_var();
+                steps.push(format!("{object} = \\Zero\\Js::requirePresent({src})"));
+                let mut keys = Vec::new();
+                for (key, p) in props {
+                    let (key_php, field_ty) = match key {
+                        PropKey::Static(k) => {
+                            let field = if *ty == Ty::Dynamic {
+                                Some(Ty::Dynamic)
+                            } else {
+                                ty.non_null().field(k).map(|(t, optional)| {
+                                    if optional || matches!(ty.non_null(), Ty::Map(_)) {
+                                        Ty::union([t, Ty::Undefined])
+                                    } else {
+                                        t
+                                    }
+                                })
+                            };
+                            let Some(field) = field else {
+                                return Err(self.no_field(ty, k, p.span()));
+                            };
+                            (php_str(k), field)
+                        }
+                        PropKey::Computed(k) => {
+                            let key = self.expr(k)?;
+                            let key = self.finish_value(key, k.span)?;
+                            let tmp = self.tmp_var();
+                            steps.push(format!("{tmp} = \\Zero\\Js::key({})", key.php));
+                            let literal = match &key.ty {
+                                Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
+                                _ => None,
+                            };
+                            let field = match ty.non_null() {
+                                Ty::Dynamic => Ty::Dynamic,
+                                Ty::Map(t) => Ty::union([*t, Ty::Undefined]),
+                                fields @ (Ty::Obj(_) | Ty::Instance(..)) if literal.is_some() => {
+                                    let name = literal.expect("literal key");
+                                    let Some((t, optional)) = fields.field(&name) else {
+                                        return Err(self.no_field(ty, &name, k.span));
+                                    };
+                                    if optional { Ty::union([t, Ty::Undefined]) } else { t }
+                                }
+                                other => {
+                                    return err(
+                                        k.span,
+                                        format!(
+                                            "a computed destructuring key needs an open map, not {}",
+                                            other.describe()
+                                        ),
+                                    );
+                                }
+                            };
+                            (tmp, field)
+                        }
+                    };
+                    keys.push(key_php.clone());
+                    let read = self.tmp_var();
+                    let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };
+                    let pending = format!("{read} = \\Zero\\Js::{getter}({object}, {key_php})");
+                    self.assign_pattern_steps(p, &read, Some(pending), &field_ty, steps)?;
+                }
+                if let Some(r) = rest {
+                    let value = self.tmp_var();
+                    let pending = format!("{value} = \\Zero\\Js::omit({object}, [{}])", keys.join(", "));
+                    let rest_ty = match ty.non_null() {
+                        Ty::Obj(f) => Ty::Obj(
+                            f.into_iter()
+                                .filter(|(k, _)| {
+                                    !props.iter().any(|(pk, _)| matches!(pk, PropKey::Static(s) if s == k))
+                                })
+                                .collect(),
+                        ),
+                        other => other,
+                    };
+                    self.assign_pattern_steps(r, &value, Some(pending), &rest_ty, steps)?;
+                }
+                Ok(())
+            }
+            AssignPat::Arr { elems, rest, span } => {
+                steps.extend(pending);
+                let element = match ty.non_null() {
+                    Ty::Dynamic => None,
+                    Ty::Array(t) | Ty::NonEmptyArray(t) => Some(Ty::union([*t, Ty::Undefined])),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(Ty::union(ts.into_iter().chain([Ty::Undefined]))),
+                    _ => return err(*span, format!("can't destructure {} as an array", ty.describe())),
+                };
+                if ty.is_nullable() && *ty != Ty::Dynamic {
+                    return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                // The iterable is read once; for checked JavaScript it may be any iterable.
+                let list = self.tmp_var();
+                steps.push(match element {
+                    None => format!("{list} = \\Zero\\Js::dynamicIterable({src})"),
+                    Some(_) => format!("{list} = \\Zero\\Js::arrSlice({src}, 0)"),
+                });
+                for (i, p) in elems.iter().enumerate() {
+                    let Some(p) = p else { continue };
+                    let read = self.tmp_var();
+                    let el_ty = match (&element, ty.non_null()) {
+                        (None, _) => Ty::Dynamic,
+                        (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => ts.get(i).cloned().unwrap_or(Ty::Undefined),
+                        (Some(t), _) => t.clone(),
+                    };
+                    let pending = format!("{read} = \\Zero\\Js::dynamicGet({list}, {i})");
+                    self.assign_pattern_steps(p, &read, Some(pending), &el_ty, steps)?;
+                }
+                if let Some(r) = rest {
+                    let value = self.tmp_var();
+                    let pending = format!("{value} = \\Zero\\Js::arrSlice({list}, {})", elems.len());
+                    let rest_ty = match (&element, ty.non_null()) {
+                        (None, _) => Ty::Dynamic,
+                        (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => {
+                            Ty::Array(Box::new(Ty::union(ts.into_iter().skip(elems.len()))))
+                        }
+                        (Some(_), Ty::Array(t) | Ty::NonEmptyArray(t)) => Ty::Array(t),
+                        _ => unreachable!("array element type"),
+                    };
+                    self.assign_pattern_steps(r, &value, Some(pending), &rest_ty, steps)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn assign_pattern_default(
+        &mut self,
+        default: &Expr,
+        src: &str,
+        ty: &Ty,
+        steps: &mut Vec<String>,
+    ) -> Result<(String, Ty)> {
+        let value = self.tmp_var();
+        let d = self.expr(default)?;
+        let d = self.finish_value(d, default.span)?;
+        steps.push(format!(
+            "{value} = ({src} === \\Zero\\Js::undefined() ? {} : {src})",
+            d.php
+        ));
+        Ok((value, Ty::union([defined_type(ty), d.ty])))
+    }
+
+    fn assign_pattern_leaf(
+        &mut self,
+        target: &Expr,
+        default: Option<&Expr>,
+        src: &str,
+        pending: Option<String>,
+        ty: &Ty,
+        steps: &mut Vec<String>,
+    ) -> Result<()> {
+        let place = self.place(target)?;
+        let (captured, _, write) = self.capture_place(place.target, &place.read);
+        steps.extend(captured);
+        steps.extend(pending);
+        let (value, ty) = match default {
+            Some(default) => self.assign_pattern_default(default, src, ty, steps)?,
+            None => (src.to_string(), ty.clone()),
+        };
+        if !assignable(&ty, &place.constraint) {
+            return err(
+                target.span,
+                format!(
+                    "can't assign {} to something of type {}",
+                    ty.describe(),
+                    place.constraint.describe()
+                ),
+            );
+        }
+        steps.push(Self::write_place(&write, &value));
+        if let ExprKind::Ident(name) = &target.kind {
+            self.set_local_ty(name, ty);
+        }
+        Ok(())
     }
 
     fn assignment_sequence(mut steps: Vec<String>, result: String, statement: bool) -> String {
@@ -3797,6 +4449,110 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// `delete obj.key` / `delete obj[key]` / `delete obj?.key`. As in TypeScript, a typed object
+    /// may lose only an optional property (or a map entry), so later reads stay sound; arrays,
+    /// checked JavaScript and other receivers go through Js::delete's runtime semantics.
+    fn delete(&mut self, target: &Expr, span: Span) -> Result<Out> {
+        let (chain, inner) = match &target.kind {
+            ExprKind::Chain(inner) => {
+                check_optional_chain(inner)?;
+                (true, &**inner)
+            }
+            _ => (false, target),
+        };
+        let (obj, key, optional, prop) = match &inner.kind {
+            ExprKind::Member {
+                obj, prop, optional, ..
+            } => (obj, None, *optional, Some(prop.as_str())),
+            ExprKind::Index { obj, index, optional } => (obj, Some(index), *optional, None),
+            _ => return err(span, "`delete` needs an object property"),
+        };
+        if chain && !optional {
+            return err_help(
+                span,
+                "`delete` through an optional chain is supported only at its last step",
+                "check the earlier steps first",
+            );
+        }
+        let o = self.expr(obj)?;
+        let o = if matches!(o.ty, Ty::Class(_)) {
+            o
+        } else {
+            self.finish_value(o, obj.span)?
+        };
+        let key_php = match (key, prop) {
+            (Some(index), _) => {
+                let k = self.expr(index)?;
+                self.finish_value(k, index.span)?.php
+            }
+            (None, Some(prop)) => php_str(prop),
+            _ => unreachable!(),
+        };
+        let receiver_ty = self.argument_constraint(obj).unwrap_or(o.ty.clone());
+        if key.is_some()
+            && matches!(
+                receiver_ty.non_null(),
+                Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
+            )
+        {
+            return err_help(
+                span,
+                "`delete` on an array element would leave a hole; Zero arrays are dense",
+                "remove it with `splice(index, 1)`, or assign `undefined` to keep the length",
+            );
+        }
+        if let Some(prop) = prop.map(str::to_string).or_else(|| match key.map(|k| &k.kind) {
+            Some(ExprKind::Str(s)) => Some(s.clone()),
+            _ => None,
+        }) {
+            let required = |ty: &Ty| match ty {
+                Ty::Obj(fields) => fields.get(&prop).is_some_and(|(_, optional)| !optional),
+                Ty::Instance(_, fields) => {
+                    matches!(&**fields, Ty::Obj(f) if f.get(&prop).is_some_and(|(_, optional)| !optional))
+                }
+                _ => false,
+            };
+            let mut members = Vec::new();
+            match receiver_ty.non_null() {
+                Ty::Union(items) => members.extend(items),
+                other => members.push(other),
+            }
+            if members.iter().any(required) {
+                return err_help(
+                    span,
+                    format!("can't delete `{prop}`: the type requires it"),
+                    "make the property optional (`key?: T`), as TypeScript requires for `delete`",
+                );
+            }
+        } else if matches!(receiver_ty.non_null(), Ty::Obj(_) | Ty::Instance(..)) {
+            return err_help(
+                span,
+                "`delete` with a computed key needs an open map type",
+                "use Record<string, T>, or delete a named optional property",
+            );
+        }
+        if o.ty.is_nullable() && !optional {
+            return err_help(
+                span,
+                format!("can't delete from this: it might be null ({})", o.ty.describe()),
+                "check it first, or use `delete obj?.key`",
+            );
+        }
+        // Js::delete: strict-mode [[Delete]] on Zero's value model.
+        Ok(if optional {
+            let tmp = self.tmp_var();
+            Out::atom(
+                format!(
+                    "(\\Zero\\Js::isNullish({tmp} = {}) ? true : \\Zero\\Js::delete({tmp}, {key_php}))",
+                    o.php
+                ),
+                Ty::Bool,
+            )
+        } else {
+            Out::atom(format!("\\Zero\\Js::delete({}, {key_php})", o.php), Ty::Bool)
+        })
+    }
+
     fn no_field(&self, t: &Ty, prop: &str, span: Span) -> Diag {
         let mut d = Diag::new(span, format!("{} has no field `{prop}`", t.non_null().describe()));
         if let Ty::Obj(f) = t.non_null()
@@ -3955,6 +4711,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
                 let php = guarded(self, &|x| format!("count(({x})->a)"));
                 Out::atom(php, suffix_null(Ty::Num))
+            }
+            // `TemplateStringsArray.raw`: a tagged template's strings carry their source text.
+            // The annotation resolves to a non-empty string array; a plain array has no `raw`,
+            // so the checked read throws instead of returning a wrong value.
+            (Ty::NonEmptyArray(element) | Ty::Array(element), "raw") if **element == Ty::Str => {
+                let php = guarded(self, &|x| format!("\\Zero\\Js::templateRaw({x})"));
+                Out::atom(php, suffix_null(Ty::Array(Box::new(Ty::Str))))
             }
             (Ty::Error, "message" | "name") => {
                 let php = guarded(self, &|x| {
@@ -4463,20 +5226,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let builtin = |this: &mut Self, e: &Expr| -> Result<Option<Builtin>> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
-                Resolved::Value(Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env)), _) => Some(b),
+                Resolved::Value(
+                    Value::Builtin(
+                        b @ (Builtin::Once
+                        | Builtin::Jobs
+                        | Builtin::Env
+                        | Builtin::Fetch
+                        | Builtin::Crypto
+                        | Builtin::Mail
+                        | Builtin::Abilities),
+                    ),
+                    _,
+                ) => Some(b),
                 _ => None,
             })
         };
         match &callee.kind {
             ExprKind::Ident(_) => match builtin(self, callee)? {
                 Some(Builtin::Once) => self.once_call(args, span).map(Some),
+                Some(Builtin::Fetch) => self.fetch_call(args, span).map(Some),
                 Some(Builtin::Env) => {
                     let name = self.arg(args, 0, span, "an environment variable name")?;
                     match &name.kind {
-                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => Ok(Some(Out::atom(
-                            format!("\\Zero\\Env::get({})", php_str(s)),
-                            Ty::Str.nullable(),
-                        ))),
+                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => {
+                            self.uses("env", s.clone(), name.span);
+                            Ok(Some(Out::atom(
+                                format!("\\Zero\\Env::get({})", php_str(s)),
+                                Ty::Str.nullable(),
+                            )))
+                        }
                         _ => err_help(
                             name.span,
                             "env() needs an environment variable name",
@@ -4486,6 +5264,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 _ => Ok(None),
             },
+            // Only a name that resolves to the imported `crypto` is ours; `super`, unbound and
+            // shadowed names fall through to ordinary member calls.
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Crypto) =>
+            {
+                self.crypto_call(prop, args, span).map(Some)
+            }
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
+            {
+                self.mail_call(prop, args, span).map(Some)
+            }
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Abilities) =>
+            {
+                self.abilities_call(prop, args, span).map(Some)
+            }
             ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
                 ExprKind::Member {
                     obj: root, prop: job, ..
@@ -4496,6 +5294,343 @@ impl<'a, 'p> Compiler<'a, 'p> {
             },
             _ => Ok(None),
         }
+    }
+
+    /// `fetch(url, { method?, headers?, body? })` → `Promise<FetchResponse>`, see `types::fetch_response`.
+    fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't use fetch()",
+                "move it into a hook, action or route",
+            );
+        }
+        if args.is_empty() || args.len() > 2 {
+            return err_help(
+                span,
+                "fetch() takes a URL and optional init",
+                "write fetch(url, { method, headers, body })",
+            );
+        }
+        let url_expr = self.arg(args, 0, span, "a URL")?;
+        let host = static_host(url_expr);
+        self.uses("http", host.clone().unwrap_or_else(|| "*".into()), url_expr.span);
+        let url = self.expr(url_expr)?;
+        let url = self.finish_value(url, url_expr.span)?;
+        if !url.ty.is_str() || url.ty.is_nullable() {
+            return err_help(url_expr.span, "fetch() needs a URL string", "pass the URL as a string");
+        }
+        let init = match args.get(1) {
+            None => "null".to_string(),
+            Some(_) => {
+                let init_expr = self.arg(args, 1, span, "init")?;
+                let init = self.expr(init_expr)?;
+                let init = self.finish_value(init, init_expr.span)?;
+                let ok = match &init.ty {
+                    Ty::Obj(fields) => fields.iter().all(|(k, (t, _))| match k.as_str() {
+                        "method" | "body" => t.all(|t| t.is_str() || matches!(t, Ty::Null | Ty::Undefined)),
+                        "headers" => t.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Null | Ty::Undefined)),
+                        _ => false,
+                    }),
+                    _ => false,
+                };
+                if !ok {
+                    return err_help(
+                        init_expr.span,
+                        format!(
+                            "fetch() init must be {{ method?, headers?, body? }} with strings, not {}",
+                            init.ty.describe()
+                        ),
+                        "stringify JSON bodies with JSON.stringify(...)",
+                    );
+                }
+                init.php
+            }
+        };
+        // A plugin's fetches are checked against its locked hosts on every hop, so a runtime-built
+        // URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
+        let allow = match &self.plugin {
+            Some((i, _)) => format!(", \\ZeroApp\\{}()", self.host_functions[*i]),
+            None => String::new(),
+        };
+        Ok(Out::atom(
+            format!("\\Zero\\Fetch::call({}, {init}{allow})", url.php),
+            Ty::Promise(Box::new(types::fetch_response())),
+        ))
+    }
+
+    /// `crypto.<fn>(...)`: synchronous digests and comparisons over `Zero\Crypto`. Every result is
+    /// lowercase hex (or a boolean / UUID), matching the original runtime's `ctx.crypto`.
+    fn crypto_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let (arity, ret, php) = match name {
+            "sha256" | "sha1" | "sha512" | "md5" => (1, Ty::Str, name),
+            "hmacSha256" => (1, Ty::Str, "hmacSha256"),
+            "timingSafeEqual" => (2, Ty::Bool, "timingSafeEqual"),
+            "randomHex" => (1, Ty::Str, "randomHex"),
+            "randomUUID" => (0, Ty::Str, "randomUUID"),
+            _ => {
+                let mut d = Diag::new(span, format!("`crypto` has no function `{name}`"));
+                let names = [
+                    "sha256",
+                    "sha1",
+                    "sha512",
+                    "md5",
+                    "hmacSha256",
+                    "timingSafeEqual",
+                    "randomHex",
+                    "randomUUID",
+                ];
+                if let Some(s) = suggest(name, names.iter().copied()) {
+                    d = d.help(format!("did you mean `crypto.{s}`?"));
+                }
+                return Err(d);
+            }
+        };
+        if args.len() != arity {
+            return err(
+                span,
+                format!(
+                    "crypto.{name}() takes {arity} argument{}",
+                    if arity == 1 { "" } else { "s" }
+                ),
+            );
+        }
+        let mut argv = Vec::new();
+        for i in 0..arity {
+            let e = self.arg(args, i, span, "an argument")?;
+            let v = self.expr(e)?;
+            let v = self.finish_value(v, e.span)?;
+            let ok = match (name, i) {
+                ("randomHex", _) => v.ty.is_num() && !v.ty.is_nullable(),
+                ("hmacSha256", _) => match &v.ty {
+                    Ty::Obj(f) => {
+                        f.keys().all(|k| k == "key" || k == "data")
+                            && f.get("data").is_some_and(|(t, opt)| !opt && t.is_str() && !t.is_nullable())
+                            && f.get("key").is_some_and(|(t, opt)| {
+                                !opt && (t.is_str() && !t.is_nullable()
+                                    || matches!(t, Ty::Obj(k) if k.len() == 1 && k.get("value").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())))
+                            })
+                    }
+                    _ => false,
+                },
+                _ => v.ty.is_str() && !v.ty.is_nullable(),
+            };
+            if !ok {
+                return err_help(
+                    e.span,
+                    format!("crypto.{name}() can't take {}", v.ty.describe()),
+                    match name {
+                        "hmacSha256" => "pass { key: \"VAR_NAME\" | { value }, data: string }",
+                        "randomHex" => "pass a number of bytes",
+                        _ => "pass a string",
+                    },
+                );
+            }
+            argv.push(v.php);
+        }
+        if name == "hmacSha256"
+            && let Some(ArrEl::Item(Expr {
+                kind: ExprKind::Object(props),
+                ..
+            })) = args.first()
+        {
+            for p in props {
+                if let Prop::KV(PropKey::Static(k), v) = p
+                    && k == "key"
+                {
+                    match &v.kind {
+                        ExprKind::Str(var) => self.uses("env", var.clone(), v.span),
+                        ExprKind::Object(_) => {}
+                        _ => self.uses("env", "*", v.span),
+                    }
+                }
+            }
+        } else if name == "hmacSha256" {
+            self.uses("env", "*", span);
+        }
+        Ok(Out::atom(format!("\\Zero\\Crypto::{php}({})", argv.join(", ")), ret))
+    }
+
+    /// `mail.send(message)`: queues inside the handler's transaction, hands off after commit.
+    fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name != "send" {
+            return err_help(
+                span,
+                format!("`mail` has no function `{name}`"),
+                "use `mail.send(message)`",
+            );
+        }
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't send mail",
+                "move it into a hook, action, route or job",
+            );
+        }
+        if args.len() != 1 {
+            return err_help(
+                span,
+                "mail.send() takes one message",
+                "write mail.send({ to, subject, text })",
+            );
+        }
+        let e = self.arg(args, 0, span, "a message")?;
+        let v = self.expr(e)?;
+        let v = self.finish_value(v, e.span)?;
+        let address = |t: &Ty| {
+            t.is_str() && !t.is_nullable()
+                || matches!(t, Ty::Obj(f) if f.keys().all(|k| k == "email" || k == "name")
+                    && f.get("email").is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable()))
+        };
+        let list = |t: &Ty| {
+            address(t)
+                || matches!(t, Ty::Array(x) | Ty::NonEmptyArray(x) if address(x))
+                || matches!(t, Ty::ArrayLiteral(xs) | Ty::Tuple(xs) if xs.iter().all(address))
+        };
+        let optional = |t: &Ty, ok: &dyn Fn(&Ty) -> bool| t.all(|t| matches!(t, Ty::Null | Ty::Undefined) || ok(t));
+        let ok = match &v.ty {
+            Ty::Obj(f) => {
+                f.keys().all(|k| {
+                    [
+                        "from", "to", "subject", "text", "html", "cc", "bcc", "replyTo", "headers",
+                    ]
+                    .contains(&k.as_str())
+                }) && f.get("to").is_some_and(|(t, o)| !o && list(t))
+                    && f.get("subject")
+                        .is_some_and(|(t, o)| !o && t.is_str() && !t.is_nullable())
+                    && (f.contains_key("text") || f.contains_key("html"))
+                    && f.iter().all(|(k, (t, _))| match k.as_str() {
+                        "to" | "subject" => true,
+                        "text" | "html" => optional(t, &|t| t.is_str()),
+                        "from" | "replyTo" => optional(t, &address),
+                        "cc" | "bcc" => optional(t, &list),
+                        "headers" => optional(t, &|t| matches!(t, Ty::Obj(_) | Ty::Map(_))),
+                        _ => false,
+                    })
+            }
+            _ => false,
+        };
+        if !ok {
+            return err_help(
+                e.span,
+                format!(
+                    "mail.send() needs {{ to, subject, text or html }}, not {}",
+                    v.ty.describe()
+                ),
+                "addresses are strings or { email, name? }; to/cc/bcc may be lists",
+            );
+        }
+        self.uses("mail", "send", span);
+        Ok(Out::atom(
+            format!("\\Zero\\Mail::send({})", v.php),
+            Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
+        ))
+    }
+
+    /// Records one use of a WordPress feature: in `Built::wordpress_uses` for every module, and as
+    /// a capability when a plugin's code makes it. This is the single place each use is noted.
+    pub fn use_wordpress(&mut self, kind: WordPressKind, name: &str, span: Span) {
+        self.uses(
+            match kind {
+                WordPressKind::Ability => "abilities",
+                WordPressKind::Hook => "wpHooks",
+            },
+            name,
+            span,
+        );
+        let module = self
+            .ev_program()
+            .modules
+            .iter()
+            .find(|m| m.file == span.file)
+            .map(|m| m.path.display().to_string())
+            .unwrap_or_default();
+        self.wordpress_uses.push(WordPressUse {
+            kind,
+            name: name.to_string(),
+            module,
+            span,
+        });
+    }
+
+    /// `abilities.call("vendor/name", input?)` from "php/wordpress": core's `WP_Ability::execute()`.
+    fn abilities_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name != "call" {
+            return err_help(
+                span,
+                format!("`abilities` has no function `{name}`"),
+                "use `abilities.call(\"vendor/name\", input)`",
+            );
+        }
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't call abilities",
+                "move the call into a hook, action, route or job",
+            );
+        }
+        if args.is_empty() || args.len() > 2 {
+            return err_help(
+                span,
+                "abilities.call() takes an ability name and its input",
+                "write abilities.call(\"vendor/name\", { ... })",
+            );
+        }
+        let name_expr = self.arg(args, 0, span, "an ability name")?;
+        let ExprKind::Str(ability) = &name_expr.kind else {
+            return err_help(
+                name_expr.span,
+                "abilities.call() needs the ability name as a string literal",
+                "write the name in place, e.g. abilities.call(\"woocommerce/create-order\", input), so the build can type it",
+            );
+        };
+        let Some((input_ty, output_ty)) = self.abilities.abilities.get(ability).cloned() else {
+            let mut d = Diag::new(name_expr.span, format!("unknown ability `{ability}`"));
+            d = match suggest(ability, self.abilities.abilities.keys().map(String::as_str)) {
+                Some(s) => d.help(format!("did you mean `{s}`?")),
+                None => d.help(format!(
+                    "abilities outside this app come from {}; run `zero abilities pull --site <url>` and commit it",
+                    crate::wordpress::abilities::LOCK
+                )),
+            };
+            return Err(d);
+        };
+        let input = match args.get(1) {
+            // No schema: core wants no input at all. An object schema gets `{}`, which core's
+            // validation accepts when nothing is required.
+            None if accepts_omission(&input_ty) => "null".to_string(),
+            None if matches!(&input_ty, Ty::Map(_))
+                || matches!(&input_ty, Ty::Obj(f) if f.values().all(|(_, o)| *o)) =>
+            {
+                "new \\Zero\\JsObject()".to_string()
+            }
+            None => {
+                return err_help(
+                    span,
+                    format!("`{ability}` needs input {}", input_ty.describe()),
+                    "pass the input as the second argument",
+                );
+            }
+            Some(_) => {
+                let e = self.arg(args, 1, span, "the ability input")?;
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                // An inline literal keeps its literal type, so `{ status: "draft" }` meets an enum.
+                if !assignable(&v.ty, &input_ty) {
+                    return err_help(
+                        e.span,
+                        format!("`{ability}` takes {}, not {}", input_ty.describe(), v.ty.describe()),
+                        "the input type comes from the ability's input schema",
+                    );
+                }
+                v.php
+            }
+        };
+        self.use_wordpress(WordPressKind::Ability, ability, name_expr.span);
+        Ok(Out::atom(
+            format!("\\Zero\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
+            Ty::Promise(Box::new(output_ty)),
+        ))
     }
 
     fn once_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
@@ -4529,12 +5664,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t => t,
         };
         Ok(Out::atom(
-            format!("\\Zero\\Jobs\\Receipts::once('fn', {}, {})", key.php, cb.php),
+            // Receipts are shared storage: each plugin keeps its own `once` keys.
+            format!(
+                "\\Zero\\Jobs\\Receipts::once({}, {}, {})",
+                php_str(
+                    &self
+                        .plugin
+                        .as_ref()
+                        .map_or("fn".to_string(), |(_, p)| format!("plugin:{p}"))
+                ),
+                key.php,
+                cb.php
+            ),
             Ty::Promise(Box::new(classes::wire_type(&ret))),
         ))
     }
 
     fn enqueue_call(&mut self, job: &str, job_span: Span, args: &[ArrEl], span: Span) -> Result<Out> {
+        // Inside a plugin, `jobs.<name>` names the plugin's own job.
+        let registered = match &self.plugin {
+            Some((_, plugin)) => format!("{plugin}_{job}"),
+            None => job.to_string(),
+        };
+        let job = registered.as_str();
+        self.uses("jobs", job, job_span);
         let Some(spec) = self.schema.jobs.get(job) else {
             let mut d = Diag::new(job_span, format!("unknown job `{job}`"));
             if let Some(s) = suggest(job, self.schema.jobs.keys().map(String::as_str)) {
@@ -4857,6 +6010,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (g, m) == ("Number", "parseInt") {
             crate::builtins::check_parse_int_literals(args, span)?;
+        }
+        if (g, m) == ("String", "raw") {
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(format!("\\Zero\\Js::stringRaw(...({argv})->a)"), Ty::Str));
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
@@ -5736,6 +6893,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- database ---------------------------------------------------------------
 
     fn query_call(&mut self, table: &str, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        let key = self.schema.collections[table].key.clone();
+        self.uses("read", key, m_span);
         if !matches!(m, "findMany" | "findFirst") {
             return err_help(
                 m_span,
@@ -5900,6 +7059,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 continue;
             }
             let r = self.check_relation(table, rel, v.span)?.clone();
+            let target = self.schema.collections[&r.collection].key.clone();
+            self.uses("read", target, v.span);
             match &v.kind {
                 ExprKind::Bool(true) => {
                     parts.push(format!("{} => true", php_str(rel)));
@@ -6013,6 +7174,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             return err(v.span, "relation filters only work in findMany/findFirst");
                         }
                         let target = c.relations[name].collection.clone();
+                        let key = self.schema.collections[&target].key.clone();
+                        self.uses("read", key, v.span);
                         match &v.kind {
                             ExprKind::Bool(true) => "true".to_string(),
                             _ => self.filter(&target, v, true)?,
@@ -6225,6 +7388,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
     fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
+        self.uses(
+            if m == "update" { "write" } else { "read" },
+            format!("globals.{name}"),
+            m_span,
+        );
         // Typed like collection rows: `json().$type<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
@@ -6297,6 +7465,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Collection(table) = v.ty else {
             return err(t.span, format!("db.{m}() needs a collection, not {}", v.ty.describe()));
         };
+        if kind == BuilderKind::Delete {
+            let key = self.schema.collections[&table].key.clone();
+            self.uses("delete", key, t.span);
+        }
         if v.php != php_str(&table) {
             return err_help(
                 t.span,
@@ -6329,6 +7501,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 b.set = Some(self.write_values(&b.table, x, false)?);
             }
             (BuilderKind::Update | BuilderKind::Delete, "where") if b.filter.is_none() => {
+                let key = self.schema.collections[&b.table].key.clone();
+                self.uses("read", key, m_span);
                 if b.kind == BuilderKind::Update && b.set.is_none() {
                     return err_help(
                         span,
@@ -6375,6 +7549,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(e)?;
         let v = self.finish_value(v, e.span)?;
+        let key = self.schema.collections[table].key.clone();
+        let fields: Vec<String> = match v.ty.non_null() {
+            Ty::Obj(f) => f.keys().cloned().collect(),
+            Ty::Array(el) | Ty::NonEmptyArray(el) => match *el {
+                Ty::Obj(f) => f.keys().cloned().collect(),
+                _ => vec!["*".into()],
+            },
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => ts
+                .iter()
+                .flat_map(|t| match t {
+                    Ty::Obj(f) => f.keys().cloned().collect(),
+                    _ => vec!["*".to_string()],
+                })
+                .collect(),
+            _ => vec!["*".into()],
+        };
+        for field in fields {
+            self.uses("write", format!("{key}.{field}"), e.span);
+        }
         let want = if insert {
             types::insert(self.schema, table)
         } else {
@@ -6409,6 +7602,79 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         Ok(v.php)
+    }
+}
+
+/// The host of a URL whose `https://host/` prefix is written in the source: a string, a template
+/// or a `+` chain starting with one. Anything else is built at runtime.
+fn static_host(e: &Expr) -> Option<String> {
+    let complete = matches!(e.kind, ExprKind::Str(_));
+    let prefix = match &e.kind {
+        ExprKind::Str(s) => s.clone(),
+        ExprKind::Template(quasis, _) => quasis.first()?.clone(),
+        ExprKind::Binary(BinOp::Add, left, _) => {
+            let mut left = left;
+            while let ExprKind::Binary(BinOp::Add, l, _) = &left.kind {
+                left = l;
+            }
+            match &left.kind {
+                ExprKind::Str(s) => s.clone(),
+                ExprKind::Template(quasis, _) => quasis.first()?.clone(),
+                _ => return None,
+            }
+        }
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => return static_host(inner),
+        _ => return None,
+    };
+    let rest = prefix
+        .get(..8)
+        .filter(|p| p.eq_ignore_ascii_case("https://"))
+        .map(|_| &prefix[8..])?;
+    let end = rest.find(['/', '?', '#']).or(complete.then_some(rest.len()))?;
+    let authority = &rest[..end];
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    // A bracketed IPv6 literal holds colons of its own; only a port follows the bracket.
+    let host = match authority.strip_prefix('[') {
+        Some(rest) => rest.split_once(']')?.0,
+        None => authority
+            .rsplit_once(':')
+            .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
+            .map_or(authority, |(h, _)| h),
+    };
+    // The same normalization `Zero\Fetch::target` applies before comparing hosts.
+    Some(host.trim_end_matches('.').to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::static_host;
+    use crate::diag::Span;
+    use crate::ir::{Expr, ExprKind};
+
+    #[test]
+    fn locked_hosts_normalize_like_the_runtime_fetch_check() {
+        let host = |url: &str| {
+            static_host(&Expr {
+                kind: ExprKind::Str(url.to_string()),
+                span: Span::NONE,
+            })
+        };
+        assert_eq!(
+            host("https://[2606:4700:4700::1111]/").as_deref(),
+            Some("2606:4700:4700::1111")
+        );
+        assert_eq!(
+            host("https://[2606:4700::1111]:8443/x").as_deref(),
+            Some("2606:4700::1111")
+        );
+        assert_eq!(
+            host("https://API.Example.com.:8443/v1").as_deref(),
+            Some("api.example.com")
+        );
+        assert_eq!(host("https://api.example.com").as_deref(), Some("api.example.com"));
+        assert_eq!(host("https://user@api.example.com/"), None);
     }
 }
 
@@ -6888,8 +8154,9 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
 
 fn stmt_span(s: &Stmt) -> Span {
     match s {
-        Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(span) | Stmt::Continue(span) => *span,
-        Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) => e.span,
+        Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(_, span) | Stmt::Continue(_, span) => *span,
+        Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) | Stmt::DoWhile(_, e) => e.span,
+        Stmt::Labeled(_, _, span) => *span,
         Stmt::For { span, .. } | Stmt::ForOf { span, .. } | Stmt::Switch { span, .. } => *span,
         Stmt::Func(f) => f.span,
         _ => Span::NONE,
@@ -6899,8 +8166,21 @@ fn stmt_span(s: &Stmt) -> Span {
 fn ends_with_exit(stmts: &[Stmt]) -> bool {
     matches!(
         stmts.last(),
-        Some(Stmt::Return(..) | Stmt::Throw(_) | Stmt::Continue(_) | Stmt::Break(_))
+        Some(Stmt::Return(..) | Stmt::Throw(_) | Stmt::Continue(..) | Stmt::Break(..))
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JumpKind {
+    Loop,
+    Switch,
+    Block,
+}
+
+#[derive(Debug, Clone)]
+struct JumpTarget {
+    kind: JumpKind,
+    labels: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -6909,6 +8189,8 @@ enum Completion {
     Return,
     Throw,
     Break,
+    /// `break label`: only the labeled statement it names completes normally on it.
+    BreakLabel,
     Continue,
 }
 
@@ -6967,8 +8249,9 @@ fn stmt_completions(
         }
         Stmt::Return(..) => HashSet::from([Return]),
         Stmt::Throw(_) => HashSet::from([Throw]),
-        Stmt::Break(_) => HashSet::from([Break]),
-        Stmt::Continue(_) => HashSet::from([Continue]),
+        Stmt::Break(None, _) => HashSet::from([Break]),
+        Stmt::Break(Some(_), _) => HashSet::from([BreakLabel]),
+        Stmt::Continue(..) => HashSet::from([Continue]),
         Stmt::Block(body) => block_completions(body, diverging, exhaustive_switches),
         Stmt::If(test, yes, no) => {
             let yes = block_completions(yes, diverging, exhaustive_switches);
@@ -7043,6 +8326,25 @@ fn stmt_completions(
             flow.remove(&Break);
             flow.remove(&Continue);
             flow.insert(Normal);
+            flow
+        }
+        // The test runs only after the body completes normally or continues.
+        Stmt::DoWhile(body, test) => {
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
+            let breaks = flow.remove(&Break);
+            let tested = flow.remove(&Normal) | flow.remove(&Continue);
+            if breaks || tested && !matches!(test.kind, ExprKind::Bool(true)) {
+                flow.insert(Normal);
+            }
+            flow
+        }
+        // `break label` completes the labeled statement normally. Labels are not tracked here,
+        // so any break in the body is read as one (which only adds reachable paths).
+        Stmt::Labeled(_, body, _) => {
+            let mut flow = stmt_completions(body, diverging, exhaustive_switches);
+            if flow.remove(&BreakLabel) {
+                flow.insert(Normal);
+            }
             flow
         }
         _ => HashSet::from([Normal]),

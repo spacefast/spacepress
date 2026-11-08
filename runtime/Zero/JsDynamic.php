@@ -204,16 +204,13 @@ trait JsDynamic
         throw new JsError('Cannot create property on a primitive value', 'TypeError');
     }
 
-    /**
-     * Plain objects inherit no symbol-keyed properties from Object.prototype, so an
-     * absent own symbol is undefined. Other values inherit well-known symbol methods
-     * (Array.prototype[Symbol.iterator], Function.prototype[Symbol.hasInstance]) that
-     * Zero doesn't model, so reading one throws instead of returning a wrong undefined.
-     */
+    /** Reading a symbol key: undefined when absent, unless an unmodeled inherited symbol could answer. */
     private static function symbolGet(mixed $value, JsSymbol $key): mixed
     {
-        if ($value instanceof JsObject && ($value->class === null || $value->hasSymbol($key))) { return $value->getSymbol($key); }
-        throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
+        if (!self::symbolAbsentInherited($value, $key)) {
+            throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
+        }
+        return $value instanceof JsObject ? $value->getSymbol($key) : JsUndefined::Value;
     }
 
     /**
@@ -636,6 +633,7 @@ trait JsDynamic
             }
             if ($method === 'of') { return new JsArray($a); }
         }
+        if ($owner === 'String' && $method === 'raw') { return self::stringRaw(...$a); }
         if ($owner === 'Object') {
             $source = $get(0);
             if (in_array($method, ['keys', 'values', 'entries'], true)) {
@@ -799,6 +797,7 @@ trait JsDynamic
     {
         if ($operator === '===' || $operator === '!==') { $equal = self::strictEq($left, $right); return $operator === '===' ? $equal : !$equal; }
         if ($operator === '==' || $operator === '!=') { $equal = self::looseEq($left, $right); return $operator === '==' ? $equal : !$equal; }
+        if (in_array($operator, ['&', '|', '^', '<<', '>>', '>>>'], true)) { return self::bitwise($operator, $left, $right); }
         $left = self::dynamicPrimitive($left); $right = self::dynamicPrimitive($right);
         if ($operator === '+') {
             return is_string($left) || is_string($right) ? self::str($left) . self::str($right) : self::add(self::toNumber($left), self::toNumber($right));

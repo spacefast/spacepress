@@ -7,6 +7,6 @@ export default capsule({
   queries: {
     email: query(async (ctx) => ctx.email.send({})),
     identity: query(async (ctx) => ctx.auth.userId),
-    pages: query(async (ctx) => ctx.db.tasks.withIndex("by_creation").paginate({ numItems: 10 })),
+    pages: query(async (ctx) => ctx.db.tasks.withIndex("by_creation").offset(10).collect()),
   },
 });

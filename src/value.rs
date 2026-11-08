@@ -38,6 +38,8 @@ pub enum Value {
     Action(Rc<ActionVal>),
     Job(Rc<ActionVal>),
     Route(Rc<ActionVal>),
+    /// `definePlugin({ name, hooks, actions, jobs, routes })`, registered in `defineConfig({ use })`.
+    Plugin(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
     Global(Rc<GlobalVal>),
@@ -101,6 +103,7 @@ pub enum Builtin {
     DefineGlobal,
     DefineRelations,
     DefineConfig,
+    DefinePlugin,
     Action,
     Job,
     Route,
@@ -108,6 +111,14 @@ pub enum Builtin {
     Env,
     Once,
     Jobs,
+    /// `fetch(url, init?)`: outbound HTTPS, compiled to `Zero\Fetch::call`.
+    Fetch,
+    /// `crypto.sha256(...)` and friends from "zero", compiled to `Zero\Crypto`.
+    Crypto,
+    /// `mail.send(message)` from "zero", compiled to `Zero\Mail::send`.
+    Mail,
+    /// `abilities.call(name, input)` from "php/wordpress", compiled to `Zero\Wp\Abilities\Call::run`.
+    Abilities,
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,
@@ -117,6 +128,8 @@ pub enum Builtin {
     Global(&'static str),
     /// A static function on a global, e.g. `Math.max`.
     Static(&'static str, Rc<str>),
+    /// `require` in the CommonJS module with this id; it only runs while the config is built.
+    Require(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -362,6 +375,7 @@ impl Value {
             Value::Action(_) => "an action".into(),
             Value::Job(_) => "a job".into(),
             Value::Route(_) => "a route".into(),
+            Value::Plugin(_) => "a plugin".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
             Value::Global(g) => format!("global \"{}\"", g.name),

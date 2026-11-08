@@ -22,9 +22,13 @@ every function in the request sees the same symbol.
 Symbol-keyed properties live in their own slot on `JsObject`, not in the string
 property array. `Object.keys`, `for…in`, `JSON.stringify` and the other string
 enumerations therefore never see them. Object spread copies enumerable symbol
-properties, as in JavaScript. Arrays, arguments, functions and other values
-have no symbol slot; reading or writing a symbol key on them throws TypeError in
-checked JavaScript instead of inventing a property.
+properties, as in JavaScript, and `in`/`delete` read the same slot. Arrays,
+arguments, functions and other values have no symbol slot. Their prototypes
+carry well-known symbol methods (`Array.prototype[Symbol.iterator]`) that Zero
+doesn't model, so a well-known symbol on them, any symbol on a class instance
+without it as an own property, and every symbol write on them throws TypeError
+instead of guessing. Other symbols on those values are absent, as in
+JavaScript.
 
 ## Weak collections
 
@@ -47,6 +51,5 @@ every other use of `globalThis` stay refused with a located diagnostic.
 ## Not in this change
 
 Class computed keys such as `static [Symbol.hasInstance]()` belong to class
-syntax, the `in` operator to the language-gaps work, and `unique symbol` to the
-TypeScript type work. Authored TypeScript keeps refusing `WeakMap`/`WeakSet`
+syntax and `unique symbol` to the TypeScript type work. Authored TypeScript keeps refusing `WeakMap`/`WeakSet`
 like `Map`. `Object.defineProperty` and symbol keys on arrays are refused.

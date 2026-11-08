@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "site": "https://example.test",
+  "fetchedAt": "2026-11-07T00:00:00Z",
+  "abilities": [
+    {
+      "name": "acme/site-info",
+      "label": "Site info",
+      "description": "Reads one site setting.",
+      "category": "acme",
+      "input_schema": { "type": "object", "properties": { "field": { "type": "string", "enum": ["name", "url"] } }, "required": ["field"] },
+      "output_schema": { "type": "object", "properties": { "value": { "type": "string" } }, "required": ["value"] },
+      "schemaHash": "test"
+    }
+  ]
+}

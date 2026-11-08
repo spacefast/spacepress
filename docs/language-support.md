@@ -36,7 +36,7 @@ Install the package with your package manager. Zero reads supported local TypeSc
 
 Status: **supported**.
 
-Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. The CommonJS subset accepts one static top-level function export; require, named CommonJS exports, implicit sloppy arguments, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
+Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require("<literal>")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
 
 [Evidence](../src/loader.rs) (`installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports`)
 
@@ -52,7 +52,7 @@ Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations 
 
 Status: **supported**.
 
-Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is "symbol", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. Symbol keys on arrays, functions, class instances without that own symbol, and other values throw TypeError. Class computed members such as static [Symbol.hasInstance]() and the `in` operator are separate class and operator work.
+Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is "symbol", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. `key in object` and `delete object[key]` accept symbol keys. Built-in values and class instances may inherit well-known symbol methods Zero doesn't model, so reading, testing or writing a well-known symbol on them, or any symbol on a class instance without that own symbol, throws TypeError instead of guessing; other symbols on built-in values are absent. Class computed members such as static [Symbol.hasInstance]() belong to the class work.
 
 [Evidence](../tests/compiler_contracts.rs) (`symbols_and_weak_collections_match_node_in_imported_javascript`)
 
@@ -79,6 +79,78 @@ Status: **refused**. Diagnostic: `Z4001`.
 typeof globalThis, typeof globalThis.X and globalThis.X compared with undefined are resolved at compile time when X is one of Zero's globals (its JavaScript typeof) or a runtime Zero never provides (window, document, self, location, Bun, Deno, EdgeRuntime, DOMParser, WebSocketPair, XMLHttpRequest, importScripts, WorkerGlobalScope: undefined). Host globals such as fetch, process, crypto, Buffer, atob and timers, and any other name, are refused at the read; call supported capabilities directly instead of detecting them. Calling an absent global is refused because it always throws.
 
 [Evidence](../tests/fixtures/reject-globalthis-host)
+
+## erased-package-typescript
+
+Status: **supported**.
+
+TypeScript sources installed under node_modules compile like JavaScript: annotations, type declarations, type-only imports and re-exports, generics, overload and abstract signatures, `this` parameters, assertion signatures and type assertions are erased, not modelled. Runtime constructs keep the checked-JavaScript subset and its refusals; enums, namespaces, parameter properties and decorators are not erased. Values crossing into authored code are JavaScript values that need refinement, and authored code can't name a package type until declaration hydration lands.
+
+[Evidence](../tests/compiler_contracts.rs) (`installed_package_typescript_is_type_erased_like_javascript_and_matches_node`)
+
+## bitwise-operators
+
+Status: **supported**.
+
+`&`, `|`, `^`, `~`, `<<`, `>>`, `>>>` and their compound assignments compile in typed code, imported JavaScript and configuration evaluation. Operands go through ToNumber, then ToInt32 (ToUint32 for the left side of `>>>`); shift counts use ToUint32 masked to five bits, so negative counts and counts of 32 or more wrap as in JavaScript. Results are signed 32-bit integers, except `>>>`, which is unsigned. NaN, the infinities and -0 become 0. Typed code requires number operands; imported JavaScript coerces strings, booleans, null, undefined and objects through their primitive value.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## in-operator
+
+Status: **supported**.
+
+`key in object` compiles in typed code, imported JavaScript and configuration evaluation. The key goes through ToPropertyKey after the key expression runs; own properties are checked first, then the value's fixed prototype chain: class methods and statics, the built-in prototype of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then Object.prototype. Arrays are dense, so an index is present exactly when it is below the length. A primitive right side throws JavaScript's TypeError. `"key" in x` narrows object unions like TypeScript; members with an optional key stay on both branches, and `unknown` narrows to an object whose key reads stay checked. Configuration evaluation inspects plain objects, arrays and arguments, and refuses a primitive right side at build time.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## delete-operator
+
+Status: **supported**.
+
+`delete obj.key`, `delete obj[key]` and `delete obj?.key` compile in typed code, imported JavaScript and configuration evaluation with strict-mode semantics. They return true, also for absent and inherited properties, and remove own object keys without reordering the rest. Non-configurable properties (array and string length, string indexes, regex lastIndex, class and function prototype, arguments callee, Math constants) throw JavaScript's TypeError; null and undefined receivers throw TypeError. Typed code may delete only optional properties and map entries, as TypeScript requires, so later reads stay sound.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## delete-required-property
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+TypeScript allows `delete` only on optional properties. Declare the property optional (`key?: T`) or build a new object without it.
+
+[Evidence](../tests/fixtures/reject-delete-required)
+
+## delete-array-element
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Zero arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead.
+
+[Evidence](../tests/fixtures/reject-delete-array-element)
+
+## do-while-and-labels
+
+Status: **supported**.
+
+`do…while` runs its body before the first test; `continue` goes to the test. Labeled loops, switches and blocks compile with `break label` and `continue label` in typed code, imported JavaScript and configuration evaluation, through nested loops, switches and labeled blocks. Labeled function declarations are refused, as in strict mode.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## destructuring-assignment
+
+Status: **supported**.
+
+Array and object patterns on the left of `=` assign existing variables, object fields and array elements, including elisions, defaults, rest elements, nested patterns and computed keys. The right side is evaluated once and is the expression's value. Each leaf runs in JavaScript order: computed key, target reference, read, default (only for undefined), write. Typed targets must accept the value, so a missing optional field needs a default or an optional target; computed keys need an open map or a literal key. Compound destructuring assignment does not exist in JavaScript.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## tagged-templates
+
+Status: **supported**.
+
+tag`…${x}…` calls the tag with the call site's strings array, then the substitutions, in typed code and imported JavaScript. The strings array has a `raw` property with the source text, cooked strings are undefined where an escape is invalid, and each call site keeps one array across calls. String.raw is supported, including its object form in imported JavaScript. Configuration evaluation refuses tagged templates; call the tag inside a handler.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
 ## build-time-clock
 
@@ -303,3 +375,99 @@ Status: **supported**.
 undefined denotes the built-in missing value. Runtime bindings named undefined are refused at source, including function/class names, parameters, local declarations, imports, catch variables, loop variables and rest/destructuring bindings. Use a different local name.
 
 [Evidence](../tests/compiler_contracts.rs) (`undefined_bindings_are_located_refusals_in_all_runtime_binding_forms`)
+
+## wordpress-ability-unknown
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in zero/abilities.json by `zero abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+
+[Evidence](../tests/fixtures/reject-ability-unknown)
+
+## wordpress-ability-input
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+An ability's input is checked against the TypeScript type generated from its input JSON Schema (enums, required properties, closed objects). WordPress validates the same schema again at run time; a mismatch the build can see never ships.
+
+[Evidence](../tests/fixtures/reject-ability-input)
+
+## wordpress-ability-name
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+The ability name must be written in place so the build can type the input and result and record which abilities the app uses. Branch between literal calls when the ability depends on data.
+
+[Evidence](../tests/fixtures/reject-ability-name)
+
+## wordpress-ability-call
+
+Status: **supported**.
+
+abilities.call("vendor/name", input) compiles to Zero\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from zero/abilities.json, which build and check read without touching the network. zero.gen.ts carries the same types for the editor.
+
+[Evidence](../tests/compiler_contracts.rs) (`wordpress_abilities_are_typed_from_the_lock_and_the_schema`)
+
+## wordpress-hook-unknown
+
+Status: **refused**. Diagnostic: `Z3001`.
+
+A wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check.
+
+[Evidence](../tests/fixtures/reject-wp-hook-unknown)
+
+## wordpress-hook-filter-return
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+A filter handler returns the filtered value: its first argument's type, from the catalog. Returning another type would hand WordPress a value its later callbacks do not expect.
+
+[Evidence](../tests/fixtures/reject-wp-hook-filter-return)
+
+## wordpress-hook-no-default
+
+Status: **refused**. Diagnostic: `Z3001`.
+
+Each wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module.
+
+[Evidence](../tests/fixtures/reject-wp-hook-no-default)
+
+## wordpress-hook-file
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register.
+
+[Evidence](../tests/fixtures/reject-wp-hook-file)
+
+## wordpress-hooks
+
+Status: **supported**.
+
+wp-hooks/<hook>.ts and wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
+
+[Evidence](../tests/compiler_contracts.rs) (`wp_hooks_register_in_file_order_with_their_priorities`)
+
+## plugin-narrowed-write
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+
+[Evidence](../tests/fixtures/reject-plugin-write)
+
+## plugin-static-host
+
+Status: **refused**. Diagnostic: `Z4201`.
+
+A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop.
+
+[Evidence](../tests/fixtures/reject-plugin-http)
+
+## plugin-cross-import
+
+Status: **refused**. Diagnostic: `Z1201`.
+
+A plugin package imports its own modules, "zero" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+
+[Evidence](../tests/fixtures/reject-plugin-isolation)

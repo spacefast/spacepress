@@ -151,6 +151,82 @@ fn reports_all_unsupported_features_and_never_writes_a_refused_app() {
     );
 }
 
+/// Every refusal carries the diagnostic contract a publish response shows: a registered stable code,
+/// the 0.8 file, line and column, the feature, its v2 equivalent and a one-line fix.
+#[test]
+fn every_refusal_carries_the_diagnostic_contract() {
+    let registry: Value = serde_json::from_str(include_str!("compatibility/registry.json")).unwrap();
+    let codes: Vec<&str> = registry["zero08"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["code"].as_str().unwrap())
+        .collect();
+    let temp = tempfile::tempdir().unwrap();
+    let (ok, report) = migrate(
+        &fixture("refused"),
+        &temp.path().join("out"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors = report["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 5, "{report}");
+    for e in errors {
+        for key in ["feature", "v2", "fix"] {
+            let text = e[key].as_str().unwrap_or_else(|| panic!("{key} in {e}"));
+            assert!(!text.is_empty() && !text.contains('\n'), "{e}");
+        }
+        assert!(codes.contains(&e["code"].as_str().unwrap()), "{e}");
+        let file = e["file"].as_str().unwrap();
+        assert!(fixture("refused").join(file).is_file(), "{e}");
+        assert!(
+            e["line"].as_u64().unwrap() >= 1 && e["column"].as_u64().unwrap() >= 1,
+            "{e}"
+        );
+    }
+    let at = |pointer: &str| errors.iter().find(|e| e["pointer"] == pointer).unwrap();
+    // `ctx.auth.userId` on line 9 of the capsule, at the expression itself.
+    let source = std::fs::read_to_string(fixture("refused").join("server/index.ts")).unwrap();
+    let line = source.lines().nth(8).unwrap();
+    let identity = at("/queries/identity/ctx/auth/userId");
+    assert_eq!(
+        (
+            identity["code"].as_str(),
+            identity["file"].as_str(),
+            identity["line"].as_u64()
+        ),
+        (Some("Z08_CTX_AUTH_USERS"), Some("server/index.ts"), Some(9))
+    );
+    assert_eq!(
+        identity["column"].as_u64().unwrap() as usize,
+        line.find("ctx.auth.userId").unwrap() + 1
+    );
+    assert_eq!(at("/auth/onGuestUpgrade")["code"], "Z08_AUTH_CALLBACK");
+    assert_eq!(at("/pages/live.tsx")["file"], "pages/live.tsx");
+    // A construct the v2 compiler refuses names itself in `feature`, located in the converted entry.
+    let capsule = temp.path().join("with");
+    project(&capsule, "{}");
+    std::fs::write(
+        capsule.join("server/index.ts"),
+        "import { capsule, query, string, table } from \"@spacefast/zero/server\";\nfunction f(o: { a: number }) { with (o) { return a; } }\nexport default capsule({ name: \"g\", schema: { notes: table({ body: string() }) }, queries: { n: query(async (ctx) => f({ a: 1 })) } });\n",
+    )
+    .unwrap();
+    let (ok, report) = migrate(
+        &capsule,
+        &temp.path().join("out-with"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let e = &report["errors"][0];
+    assert_eq!(e["code"], "Z08_LANGUAGE", "{report}");
+    assert_eq!(e["feature"], "JavaScript construct: `with`", "{e}");
+    assert_eq!(
+        (e["file"].as_str(), e["line"].as_u64(), e["column"].as_u64()),
+        (Some("server/index.ts"), Some(2), Some(32)),
+        "{e}"
+    );
+}
+
 fn project(root: &Path, capsule: &str) {
     std::fs::create_dir_all(root.join("server")).unwrap();
     std::fs::write(root.join("sf.jsonc"), r#"{"runtime":{"kind":"zero"}}"#).unwrap();

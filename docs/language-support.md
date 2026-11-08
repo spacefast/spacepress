@@ -727,3 +727,11 @@ Status: **supported**.
 `function name() {}` as an expression binds `name` only inside itself, to itself, as in JavaScript: recursion works, parameters and `var`s of the same name shadow it, and the name is not visible outside. Assigning to the name inside the function throws in strict JavaScript, so it is refused with a pointer; assign to a local variable instead. Local function declarations with a declared signature, and every function in imported JavaScript, may also call themselves.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## this-outside-classes
+
+Status: **supported**.
+
+An ordinary function or object-literal method that reads `this` gets its call receiver: the object for a method call (`obj.m()`, `obj[k]()`), the first argument of `call`/`apply`, and undefined for a plain call (strict mode). Arrows inside see the same `this`. In authored TypeScript, `this` is typed by a `this:` parameter, or for an object-literal method by the literal's own fields. `this` at module level, in a module-level arrow, or before `super()` in a derived constructor is refused with a fix.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)

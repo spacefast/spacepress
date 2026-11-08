@@ -1257,7 +1257,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         (
             "class C {} class D extends C { constructor(public n: number = this.n) { super(); } }",
             "new D()",
-            "`this` outside a class",
+            "before `super()` in a derived constructor",
         ),
         (
             "class C { #secret = 1; } class D { static read(d: D) { return d.#secret; } }",
@@ -3737,5 +3737,81 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
                 "{source}: {report}"
             );
         }
+    }
+}
+
+/// Every refusal names what to write instead, so an author (often an agent) can act on it. Each
+/// source here hits one `Zero code doesn't support ...` refusal; the diagnostic must carry a
+/// location and non-empty help. Add a case whenever a refusal is added.
+#[test]
+fn language_refusals_carry_a_location_and_a_fix() {
+    // (name, declarations, handler body): the handler reaches each construct so it is compiled.
+    let cases: &[(&str, &str, &str)] = &[
+        ("with", "", "{ const o = { a: 1 }; with (o) { return a; } }"),
+        ("debugger", "", "{ debugger; return 1; }"),
+        ("this at module level", "const self = () => this;", "self()"),
+        ("enum", "enum Unit { Pcs, G }", "Unit.Pcs"),
+        ("namespace", "namespace N { export const x = 1; }", "N.x"),
+        (
+            "computed destructuring key",
+            "",
+            "{ const o: Record<string, number> = {}; const k = 'a'; const { [k]: v } = o; return v; }",
+        ),
+        ("nested rest", "", "{ const a = [[1]]; const [...[x]] = a; return x; }"),
+        ("array holes", "", "[1, , 2]"),
+        ("getters and setters", "", "({ get x() { return 1; } }).x"),
+        (
+            "generators",
+            "function* g(): Generator<number> { yield 1; }",
+            "[...g()]",
+        ),
+        (
+            "delete of a variable",
+            "",
+            "{ let x = 1; return delete (x as unknown as { y?: number }); }",
+        ),
+        (
+            "call signature",
+            "type F = { (x: number): string };",
+            "{ const f: F = (x: number) => String(x); return f(1); }",
+        ),
+        ("dynamic import", "", "{ const m = import('./x'); return 1; }"),
+        (
+            "this through a module namespace",
+            "import * as ns from './ns.mjs';",
+            "ns.nsThis()",
+        ),
+        (
+            "function with properties in a this receiver",
+            "import { withHelper } from './ns.mjs';",
+            "withHelper.read()",
+        ),
+        (
+            "this before super",
+            "class A {} class B extends A { constructor(public n: number = (this as unknown as { n: number }).n) { super(); } }",
+            "new B()",
+        ),
+    ];
+    for (name, declarations, handler) in cases {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("ns.mjs"),
+            "export function nsThis() { return typeof this; }\nfunction helper() { return 1; }\nhelper.x = 42;\nexport const withHelper = { helper, read() { return this.helper.x; } };\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});\n"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{name}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["location"]["line"].as_u64().is_some_and(|l| l >= 2),
+            "{name}: {report}"
+        );
+        let help = diagnostic["help"].as_str().unwrap_or("");
+        assert!(!help.trim().is_empty(), "{name}: refusal without a fix: {report}");
     }
 }

@@ -434,6 +434,19 @@ trait JsDynamic
     }
 
     /** Registers a function value whose receiver comes from call/apply or a method call. */
+    /**
+     * An ordinary function that reads `this`, compiled with its receiver as the first parameter.
+     * Called plainly it receives undefined (strict mode); called as a method, or through
+     * call/apply, it receives that receiver.
+     */
+    public static function receiverFunction(\Closure $method): \Closure
+    {
+        return self::dynamicMethodFunction(
+            static fn (...$args) => $method(JsUndefined::Value, ...$args),
+            static fn ($thisArg, JsArray $args) => $method($thisArg, ...$args->a),
+        );
+    }
+
     public static function dynamicMethodFunction(\Closure $function, \Closure $invoke): \Closure
     {
         self::$dynamicMethodReceivers ??= new \WeakMap();

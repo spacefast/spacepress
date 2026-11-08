@@ -370,6 +370,8 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
+    /// The `this` type for the next object-literal method compiled (the literal's own type).
+    implicit_this: Option<Ty>,
     /// Generated code queues promise jobs, so each root drains them and checks rejections at its end.
     uses_jobs: bool,
     /// Every ability `abilities.call` may name, typed (src/abilities.rs).
@@ -440,6 +442,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             annotation_steps: 0,
             resolving_json_types: HashSet::new(),
             async_callback: false,
+            implicit_this: None,
             uses_jobs: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
@@ -3098,6 +3101,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let mut fields: IndexMap<String, (Ty, bool)> = IndexMap::new();
                 let mut map_values = Vec::new();
                 let mut is_map = false;
+                // TypeScript types `this` in an object literal's methods as the literal itself.
+                // The data fields (not the methods, which may read `this`) give that type here.
+                let mut literal_this = IndexMap::new();
+                for p in props {
+                    if let Prop::KV(PropKey::Static(k), value) = p
+                        && !matches!(&value.kind, ExprKind::Func(f) if receives_this(f))
+                    {
+                        let saved = self.fx().tmp;
+                        if let Ok(v) = self.expr(value) {
+                            literal_this.insert(k.clone(), (widen_fresh_literals(&v.ty), false));
+                        }
+                        self.fx().tmp = saved;
+                    }
+                }
                 for p in props {
                     match p {
                         Prop::KV(key, value) => {
@@ -3115,7 +3132,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                     (format!("\\Zero\\Js::key({})", k.php), None)
                                 }
                             };
-                            let v = self.expr(value)?;
+                            let v = match &value.kind {
+                                ExprKind::Func(f) if receives_this(f) && !self.javascript_module(f.module) => {
+                                    self.method_with_this(f, Ty::Obj(literal_this.clone()))?
+                                }
+                                _ => self.expr(value)?,
+                            };
                             let v = self.finish_value(v, value.span)?;
                             if let Some(k) = name {
                                 fields.shift_remove(k);
@@ -3727,9 +3749,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => {
                         let wrapper = self.unique_name(&format!("{name}_value"));
                         self.helper_values.insert((self.owner(), key), wrapper.clone());
+                        // A helper that reads `this` takes its receiver first: its value binds it.
+                        let receives_this = receives_this(&c.func);
+                        let callable = format!("\\Closure::fromCallable('\\\\ZeroApp\\\\{name}')");
+                        let callable = if receives_this {
+                            format!("\\Zero\\Js::receiverFunction({callable})")
+                        } else {
+                            callable
+                        };
                         let _ = writeln!(
                             self.output,
-                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
+                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= {callable}; }}\n"
                         );
                         wrapper
                     }
@@ -4226,6 +4256,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(v)
     }
 
+    /// An object-literal method that reads `this`, compiled with `this` typed as the literal.
+    fn method_with_this(&mut self, f: &Rc<Func>, this: Ty) -> Result<Out> {
+        let saved = self.implicit_this.replace(this);
+        let out = self.closure_with_types(f, None);
+        self.implicit_this = saved;
+        out
+    }
+
     fn closure_with_types(&mut self, f: &Rc<Func>, params: Option<&[Ty]>) -> Result<Out> {
         if !f.type_params.is_empty() {
             return err_help(
@@ -4246,8 +4284,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ps.get(i).cloned()
                 }
             });
-            let t = match &p.ann {
-                Some(a) => {
+            let implicit_this = (i == 0 && receives_this(f) && p.ann.is_none())
+                .then(|| self.implicit_this.take())
+                .flatten();
+            let t = match (&p.ann, implicit_this) {
+                (None, Some(this)) => this,
+                (Some(a), _) => {
                     let declared = self.resolve_runtime_ann(a, module)?;
                     if let Some(given) = &given {
                         check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
@@ -4256,7 +4298,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     declared
                 }
-                None => match given {
+                (None, None) => match given {
                     Some(t) => widen_fresh_literals(&t),
                     None if self.javascript_module(f.module) => {
                         if p.rest {
@@ -4352,6 +4394,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let php = if self.suspends(f) {
             self.suspending_closure(f, php)
+        } else {
+            php
+        };
+        // A function reading `this` takes its receiver as a hidden first parameter. Registered as
+        // a receiver function, a plain call passes undefined and a method call, `call` or `apply`
+        // passes the receiver (Js::receiverFunction).
+        let php = if receives_this(f) {
+            format!("\\Zero\\Js::receiverFunction({php})")
         } else {
             php
         };
@@ -7128,7 +7178,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let mut recv = self.finish_value(recv, recv_span)?;
         let javascript_instance = self.javascript_module(self.fx.as_ref().expect("fn").module) && family.is_some();
-        if recv.ty == Ty::Dynamic || javascript_instance {
+        // `f.call(thisArg, ...args)` / `f.apply(thisArg, args)` choose the receiver. A function that
+        // reads `this` is a receiver function at run time, so the checked dispatcher binds it.
+        let function_receiver = matches!(recv.ty.non_null(), Ty::Fn(..)) && matches!(m, "call" | "apply");
+        if recv.ty == Ty::Dynamic || javascript_instance || function_receiver {
             let argv = self.javascript_args(args)?;
             let receiver = if optional { self.tmp_var() } else { recv.php.clone() };
             let call = format!(
@@ -8796,10 +8849,13 @@ fn check_callback_parameters(given: &[Ty], declared: &[Ty], span: Span) -> Resul
 }
 
 fn callable_parameters(function: &Func, parameters: &[Ty]) -> Vec<Ty> {
+    // A receiver function's `this` is supplied by the call (method, call/apply), not an argument.
+    let skip = usize::from(receives_this(function));
     function
         .params
         .iter()
         .zip(parameters)
+        .skip(skip)
         .map(|(parameter, ty)| {
             if parameter.rest {
                 Ty::Rest(Box::new(ty.clone()))
@@ -8841,6 +8897,11 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
     } else {
         ""
     }
+}
+
+/// Whether an ordinary function takes its receiver as the hidden `this` parameter.
+fn receives_this(f: &Func) -> bool {
+    f.receives_this
 }
 
 fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {

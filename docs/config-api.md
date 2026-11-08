@@ -1075,8 +1075,7 @@ Host globals: `fetch`, `Headers`, `URLSearchParams`, `process.env.NAME`,
 [Runtime variables](#runtime-variables) and
 [Hashing](#hashing-and-random-values). They run in handlers only.
 
-Rejected with a located error and a fix: `this` outside class methods or their
-arrows, `enum`, generators,
+Rejected with a located error and a fix: `this` at module level, `enum`, generators,
 getters/setters, dynamic `import()`, `any`,
 `eval`/`Function`, `setTimeout`, `globalThis`, `Promise`, `URL`, `Request`,
 `Response`, `FormData`, `Blob`, `AbortController`, `require` outside static

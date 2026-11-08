@@ -14,6 +14,12 @@ pub struct Lowerer {
     pub file: u32,
     pub module: usize,
     pub class_context: std::cell::Cell<bool>,
+    /// Inside an ordinary (non-arrow, non-method) function: `this` is its call receiver.
+    pub function_this: std::cell::Cell<bool>,
+    /// Set when the current ordinary function's body (or one of its arrows) reads `this`.
+    pub reads_this: std::cell::Cell<bool>,
+    /// Inside a derived constructor's parameters, before `super()`: `this` doesn't exist yet.
+    pub before_super: std::cell::Cell<bool>,
     pub super_call: std::cell::Cell<bool>,
     /// Installed package TypeScript compiles like JavaScript: types are erased,
     /// not modelled. Syntax with runtime semantics is still lowered or refused.
@@ -284,7 +290,11 @@ impl Lowerer {
                 if m.declare {
                     Ok(())
                 } else {
-                    self.unsupported(m.span, "module declarations", "")
+                    self.unsupported(
+                        m.span,
+                        "module declarations",
+                        "move the declarations into their own module file and import them",
+                    )
                 }
             }
             a::Declaration::TSNamespaceDeclaration(m) => {
@@ -307,7 +317,13 @@ impl Lowerer {
             a::VariableDeclarationKind::Const => DeclKind::Const,
             a::VariableDeclarationKind::Let => DeclKind::Let,
             a::VariableDeclarationKind::Var => DeclKind::Var,
-            _ => return self.unsupported(v.span, "`using` declarations", ""),
+            _ => {
+                return self.unsupported(
+                    v.span,
+                    "`using` declarations",
+                    "release the resource explicitly in a `try { ... } finally { ... }`",
+                );
+            }
         };
         for d in &v.declarations {
             out.push(Stmt::Decl {
@@ -572,8 +588,8 @@ impl Lowerer {
                 };
                 Stmt::Labeled(l.label.name.to_string(), Box::new(body), self.sp(l.span))
             }
-            a::Statement::WithStatement(w) => return self.unsupported(w.span, "`with`", ""),
-            a::Statement::DebuggerStatement(d) => return self.unsupported(d.span, "`debugger`", ""),
+            a::Statement::WithStatement(w) => return self.unsupported(w.span, "`with`", "name the object explicitly: `obj.prop` instead of `with (obj) { prop }`; strict-mode code has no `with`"),
+            a::Statement::DebuggerStatement(d) => return self.unsupported(d.span, "`debugger`", "remove the `debugger` statement; use `console.log` to inspect values"),
             a::Statement::EmptyStatement(_) => Stmt::Block(vec![]),
             other => {
                 let mut out = Vec::new();
@@ -581,7 +597,7 @@ impl Lowerer {
                     self.declaration(d, &mut out)?;
                     return Ok(Stmt::Block(out));
                 }
-                return self.unsupported(other.span(), "this statement", "");
+                return self.unsupported(other.span(), "this statement", "rewrite it with `if`, loops, `switch` or `try`");
             }
         })
     }
@@ -589,9 +605,45 @@ impl Lowerer {
     fn function(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
         let saved = self.class_context.replace(false);
         let super_call = self.super_call.replace(false);
-        let result = self.function_inner(f);
+        let function_this = self.function_this.replace(true);
+        let reads_this = self.reads_this.replace(false);
+        let this_ann = f
+            .this_param
+            .as_ref()
+            .map(|t| self.annotation(t.type_annotation.as_ref()))
+            .transpose()?
+            .flatten();
+        let result = self.function_inner(f).map(|func| {
+            if !self.reads_this.get() && this_ann.is_none() {
+                return func;
+            }
+            // A function that reads `this` takes its receiver as a hidden first parameter, as
+            // class methods do; calls supply it (see Js::receiverFunction).
+            let mut func = Rc::try_unwrap(func).expect("new function");
+            func.receives_this = true;
+            func.params.insert(
+                0,
+                Param {
+                    pat: Pat::Id(
+                        "this".into(),
+                        Span {
+                            end: func.span.start,
+                            ..func.span
+                        },
+                    ),
+                    ann: this_ann.clone(),
+                    default: None,
+                    optional: false,
+                    rest: false,
+                    span: func.span,
+                },
+            );
+            Rc::new(func)
+        });
         self.class_context.set(saved);
         self.super_call.set(super_call);
+        self.function_this.set(function_this);
+        self.reads_this.set(reads_this);
         result
     }
 
@@ -726,7 +778,11 @@ impl Lowerer {
                             }
                             if p.accessibility.is_some() || p.readonly {
                                 if !is_ctor {
-                                    return self.unsupported(p.span, "parameter properties outside constructors", "");
+                                    return self.unsupported(
+                                        p.span,
+                                        "parameter properties outside constructors",
+                                        "declare the field in the class body and assign it in the constructor",
+                                    );
                                 }
                                 let a::BindingPattern::BindingIdentifier(i) = &p.pattern else {
                                     return self.unsupported(
@@ -902,13 +958,22 @@ impl Lowerer {
             self.binding_name(id.name.as_str(), id.span)?;
         }
         let Some(body) = &f.body else {
-            return self.unsupported(f.span, "a function without a body", "");
+            return self.unsupported(
+                f.span,
+                "a function without a body",
+                "give the function a body, or declare only its type with `declare function`",
+            );
         };
         let context = self.class_context.get();
-        if self.super_call.get() {
+        // Before `super()` a derived constructor has no `this` yet, including in its parameter
+        // defaults; reading it there throws in JavaScript.
+        let before_super = self.super_call.get();
+        if before_super {
             self.class_context.set(false);
         }
+        let saved_before_super = self.before_super.replace(before_super);
         let params = self.params(&f.params, context);
+        self.before_super.set(saved_before_super);
         self.class_context.set(context);
         let params = params?;
         let body = FnBody::Block(self.block(&body.statements)?);
@@ -920,6 +985,7 @@ impl Lowerer {
             body,
             is_async: f.r#async,
             is_generator: f.generator,
+            receives_this: false,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -941,6 +1007,7 @@ impl Lowerer {
             body,
             is_async: f.r#async,
             is_generator: false,
+            receives_this: false,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -952,7 +1019,11 @@ impl Lowerer {
         let mut out = Vec::new();
         for item in &p.items {
             if (item.accessibility.is_some() || item.readonly) && !parameter_properties {
-                return self.unsupported(item.span, "parameter properties", "");
+                return self.unsupported(
+                    item.span,
+                    "parameter properties",
+                    "declare the field in the class body and assign it in the constructor",
+                );
             }
             out.push(Param {
                 pat: self.pattern(&item.pattern)?,
@@ -985,7 +1056,11 @@ impl Lowerer {
                 let mut props = Vec::new();
                 for prop in &o.properties {
                     let Some(key) = prop.key.static_name() else {
-                        return self.unsupported(prop.span, "computed keys in destructuring", "");
+                        return self.unsupported(
+                            prop.span,
+                            "computed keys in destructuring",
+                            "read the property first: `const value = obj[key];`",
+                        );
                     };
                     let key = key.to_string();
                     props.push((key, self.pattern(&prop.value)?));
@@ -996,7 +1071,13 @@ impl Lowerer {
                         a::BindingPattern::BindingIdentifier(id) => {
                             Some((self.binding_name(id.name.as_str(), id.span)?, self.sp(id.span)))
                         }
-                        _ => return self.unsupported(r.span, "nested rest patterns", ""),
+                        _ => {
+                            return self.unsupported(
+                                r.span,
+                                "nested rest patterns",
+                                "bind the rest to a name, then destructure that name in a second statement",
+                            );
+                        }
                     },
                 };
                 Pat::Obj {
@@ -1016,7 +1097,13 @@ impl Lowerer {
                         a::BindingPattern::BindingIdentifier(id) => {
                             Some((self.binding_name(id.name.as_str(), id.span)?, self.sp(id.span)))
                         }
-                        _ => return self.unsupported(r.span, "nested rest patterns", ""),
+                        _ => {
+                            return self.unsupported(
+                                r.span,
+                                "nested rest patterns",
+                                "bind the rest to a name, then destructure that name in a second statement",
+                            );
+                        }
                     },
                 };
                 Pat::Arr {
@@ -1051,7 +1138,11 @@ impl Lowerer {
             E::NumericLiteral(n) => self.mk(span, ExprKind::Num(n.value)),
             E::StringLiteral(s) => {
                 if s.lone_surrogates {
-                    return self.unsupported(s.span, "strings with lone UTF-16 surrogates", "");
+                    return self.unsupported(
+                        s.span,
+                        "strings with lone UTF-16 surrogates",
+                        "use complete characters; a lone surrogate can't be stored as UTF-8",
+                    );
                 }
                 self.mk(span, ExprKind::Str(s.value.to_string()))
             }
@@ -1069,7 +1160,7 @@ impl Lowerer {
                 let mut quasis = Vec::new();
                 for q in &t.quasis {
                     let Some(cooked) = q.value.cooked else {
-                        return self.unsupported(q.span, "invalid escape sequences in templates", "");
+                        return self.unsupported(q.span, "invalid escape sequences in templates", "escape the backslash, or move the template into imported JavaScript and tag it with `String.raw`");
                     };
                     quasis.push(cooked.to_string());
                 }
@@ -1154,12 +1245,22 @@ impl Lowerer {
                             } else {
                                 match p.key.static_name() {
                                     Some(n) => PropKey::Static(n.to_string()),
-                                    None => return self.unsupported(p.span, "this property key", ""),
+                                    None => {
+                                        return self.unsupported(
+                                            p.span,
+                                            "this property key",
+                                            "use a string, number or identifier key",
+                                        );
+                                    }
                                 }
                             };
                             let value = if p.method {
                                 let a::Expression::FunctionExpression(f) = &p.value else {
-                                    return self.unsupported(p.span, "this method", "");
+                                    return self.unsupported(
+                                        p.span,
+                                        "this method",
+                                        "write the method as `name(...) { ... }` or `name: function (...) { ... }`",
+                                    );
                                 };
                                 let func = self.function(f)?;
                                 Expr {
@@ -1225,7 +1326,11 @@ impl Lowerer {
                                 }
                             },
                             a::Expression::PrivateFieldExpression(_) => {
-                                return self.unsupported(u.span, "private fields", "");
+                                return self.unsupported(
+                                    u.span,
+                                    "private fields",
+                                    "use a public field, or a module-level WeakMap keyed by the object",
+                                );
                             }
                             _ => {
                                 return self.unsupported(
@@ -1342,7 +1447,11 @@ impl Lowerer {
                     Some(t) => self.simple_target(t)?,
                     None => {
                         if op.is_some() {
-                            return self.unsupported(asg.span, "compound destructuring assignment", "");
+                            return self.unsupported(
+                                asg.span,
+                                "compound destructuring assignment",
+                                "destructure first, then combine: `[a, b] = [a + x, b + y]`",
+                            );
                         }
                         let pattern = self.assign_pattern(&asg.left)?;
                         return Ok(self.mk(
@@ -1402,11 +1511,24 @@ impl Lowerer {
                 ExprKind::Sequence(s.expressions.iter().map(|e| self.expr(e)).collect::<Result<_>>()?),
             ),
             E::ThisExpression(t) if self.class_context.get() => self.mk(t.span, ExprKind::Ident("this".into())),
+            // An ordinary function's `this` is the receiver it was called with (undefined for a
+            // plain call, as in strict mode); its arrows see the same `this`.
+            E::ThisExpression(t) if self.function_this.get() => {
+                self.reads_this.set(true);
+                self.mk(t.span, ExprKind::Ident("this".into()))
+            }
+            E::ThisExpression(t) if self.before_super.get() => {
+                return self.unsupported(
+                    t.span,
+                    "`this` outside a class body's initialized instance (before `super()` in a derived constructor)",
+                    "a derived constructor has no `this` until `super()` runs; compute the value from the parameters, or assign the field after `super()`",
+                );
+            }
             E::ThisExpression(t) => {
                 return self.unsupported(
                     t.span,
-                    "`this` outside a class or its arrows",
-                    "pass values as parameters",
+                    "`this` at module level or in a module-level arrow",
+                    "module code has no receiver (`this` is undefined there); pass the value as a parameter, or use a function or class method that is called on an object",
                 );
             }
             E::ClassExpression(c) => {
@@ -1437,10 +1559,34 @@ impl Lowerer {
             ),
             E::ImportExpression(i) => return self.unsupported(i.span, "dynamic `import()`", "use a static import"),
             E::Super(s) if self.class_context.get() => self.mk(s.span, ExprKind::Ident("super".into())),
-            E::Super(s) => return self.unsupported(s.span, "`super` outside a class", ""),
-            E::JSXElement(j) => return self.unsupported(j.span, "JSX", ""),
-            E::JSXFragment(j) => return self.unsupported(j.span, "JSX", ""),
-            other => return self.unsupported(other.span(), "this expression", ""),
+            E::Super(s) => {
+                return self.unsupported(
+                    s.span,
+                    "`super` outside a class",
+                    "call the parent's function directly, or move this code into a class method",
+                );
+            }
+            E::JSXElement(j) => {
+                return self.unsupported(
+                    j.span,
+                    "JSX",
+                    "build the value with function calls; JSX compiles only in pages (`.tsx` files under `pages/`)",
+                );
+            }
+            E::JSXFragment(j) => {
+                return self.unsupported(
+                    j.span,
+                    "JSX",
+                    "build the value with function calls; JSX compiles only in pages (`.tsx` files under `pages/`)",
+                );
+            }
+            other => {
+                return self.unsupported(
+                    other.span(),
+                    "this expression",
+                    "rewrite it with supported operators and calls",
+                );
+            }
         })
     }
 
@@ -1567,7 +1713,13 @@ impl Lowerer {
                             } else {
                                 match pp.name.static_name() {
                                     Some(n) => PropKey::Static(n.to_string()),
-                                    None => return self.unsupported(pp.span, "this property key", ""),
+                                    None => {
+                                        return self.unsupported(
+                                            pp.span,
+                                            "this property key",
+                                            "use a string, number or identifier key",
+                                        );
+                                    }
                                 }
                             };
                             props.push((key, self.assign_maybe_default(&pp.binding)?));
@@ -1662,7 +1814,7 @@ impl Lowerer {
                 a::TSLiteral::TemplateLiteral(t) if t.expressions.is_empty() => {
                     let q = &t.quasis[0];
                     let Some(cooked) = q.value.cooked else {
-                        return self.unsupported(q.span, "invalid escape sequences in templates", "");
+                        return self.unsupported(q.span, "invalid escape sequences in templates", "escape the backslash, or move the template into imported JavaScript and tag it with `String.raw`");
                     };
                     TyAnn::StrLit(cooked.to_string())
                 }
@@ -1685,7 +1837,13 @@ impl Lowerer {
                         n.value
                     })
                 }
-                _ => return self.unsupported(l.span, "this literal type", ""),
+                _ => {
+                    return self.unsupported(
+                        l.span,
+                        "this literal type",
+                        "use a string, number or boolean literal type, or a named type",
+                    );
+                }
             },
             T::TSTypeLiteral(lit) => self.members(&lit.members)?,
             T::TSFunctionType(f) => {
@@ -1756,7 +1914,9 @@ impl Lowerer {
                     TyAnn::KeyOf(Box::new(self.ty(&o.type_annotation)?), self.sp(o.span))
                 }
                 a::TSTypeOperatorOperator::Readonly => self.ty(&o.type_annotation)?,
-                a::TSTypeOperatorOperator::Unique => return self.unsupported(o.span, "`unique symbol`", ""),
+                a::TSTypeOperatorOperator::Unique => {
+                    return self.unsupported(o.span, "`unique symbol`", "use a string literal type for the key");
+                }
             },
             other => return self.unsupported(other.span(), "this type", "use a simpler type"),
         })
@@ -1783,7 +1943,11 @@ impl Lowerer {
                         );
                     }
                     let Some(key) = p.key.static_name() else {
-                        return self.unsupported(p.span, "computed keys in types", "");
+                        return self.unsupported(
+                            p.span,
+                            "computed keys in types",
+                            "use a string literal key, or `Record<K, V>` for a key type",
+                        );
                     };
                     let ty = match &p.type_annotation {
                         Some(t) => self.ty(&t.type_annotation)?,
@@ -1830,7 +1994,11 @@ impl Lowerer {
                         );
                     }
                     let Some(key) = ms.key.static_name() else {
-                        return self.unsupported(ms.span, "computed keys in types", "");
+                        return self.unsupported(
+                            ms.span,
+                            "computed keys in types",
+                            "use a string literal key, or `Record<K, V>` for a key type",
+                        );
                     };
                     let mut params = Vec::new();
                     for p in &ms.params.items {
@@ -1843,7 +2011,13 @@ impl Lowerer {
                     };
                     fields.push((key.to_string(), TyAnn::Fn(params, Box::new(ret)), ms.optional));
                 }
-                other => return self.unsupported(other.span(), "call and construct signatures", ""),
+                other => {
+                    return self.unsupported(
+                        other.span(),
+                        "call and construct signatures",
+                        "use a function type alias: `type F = (x: number) => string`",
+                    );
+                }
             }
         }
         Ok(TyAnn::Obj(fields))
@@ -2157,5 +2331,26 @@ fn class_member_name(key: &a::PropertyKey<'_>) -> Option<String> {
     match key {
         a::PropertyKey::PrivateIdentifier(p) => Some(format!("#{}", p.name)),
         other => other.static_name().map(|n| n.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod refusal_help {
+    /// Every refusal tells the author (often an agent) what to write instead.
+    #[test]
+    fn every_unsupported_construct_names_a_fix() {
+        let source = include_str!("lower.rs");
+        let empty: Vec<_> = source
+            .match_indices("self.unsupported(")
+            .filter_map(|(at, _)| {
+                let call = &source[at..source[at..].find(')').map_or(source.len(), |end| at + end)];
+                let args: Vec<_> = call.split(',').collect();
+                (args.len() >= 3 && args[2].trim() == "\"\"").then(|| source[..at].lines().count() + 1)
+            })
+            .collect();
+        assert!(
+            empty.is_empty(),
+            "refusals without a fix at src/lower.rs lines {empty:?}"
+        );
     }
 }

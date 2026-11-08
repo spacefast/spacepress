@@ -646,6 +646,13 @@
       "fixture": "tests/fixtures/reject-function-properties-value",
       "message": "is a function with properties, which can't be used as a value in PHP",
       "guidance": "A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value."
+    },
+    {
+      "id": "this-outside-classes",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "An ordinary function or object-literal method that reads `this` gets its call receiver: the object for a method call (`obj.m()`, `obj[k]()`), the first argument of `call`/`apply`, and undefined for a plain call (strict mode). Arrows inside see the same `this`. In authored TypeScript, `this` is typed by a `this:` parameter, or for an object-literal method by the literal's own fields. `this` at module level, in a module-level arrow, or before `super()` in a derived constructor is refused with a fix."
     }
   ],
   "zero08": [

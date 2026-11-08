@@ -687,3 +687,11 @@ Status: **refused**. Diagnostic: `Z4001`.
 A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value.
 
 [Evidence](../tests/fixtures/reject-function-properties-value)
+
+## this-outside-classes
+
+Status: **supported**.
+
+An ordinary function or object-literal method that reads `this` gets its call receiver: the object for a method call (`obj.m()`, `obj[k]()`), the first argument of `call`/`apply`, and undefined for a plain call (strict mode). Arrows inside see the same `this`. In authored TypeScript, `this` is typed by a `this:` parameter, or for an object-literal method by the literal's own fields. `this` at module level, in a module-level arrow, or before `super()` in a derived constructor is refused with a fix.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)

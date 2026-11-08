@@ -1069,7 +1069,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         (
             "class C {} class D extends C { constructor(public n: number = this.n) { super(); } }",
             "new D()",
-            "`this` outside a class",
+            "before `super()` in a derived constructor",
         ),
         (
             "class C { #secret = 1; } class D { static read(d: D) { return d.#secret; } }",

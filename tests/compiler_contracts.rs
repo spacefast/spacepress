@@ -3468,6 +3468,16 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
             "() => { if (m.get(\"a\")) return 1; return 0; }",
             "captured data contains a function, which can't be used in PHP",
         ),
+        (
+            "class Box { constructor(public v: number) {} m(): number { return h().v; } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } function h(): Box { return new Box(1); }",
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && h().ok()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "class Box { constructor(public v: number) {} m(): number { return new Tag().of(this); } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } class Tag { of(b: Box): number { return b.v; } box(): Box | null { return null; } } function t(): Tag { return new Tag(); }",
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && t().box()!.ok()) return 1; return 0; }",
+            sort,
+        ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(

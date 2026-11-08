@@ -136,14 +136,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if self.classes.contains_key(&id) {
             return Ok(id);
         }
-        // A refused class leaves no entry, so the next reference compiles it again and reports
-        // the refusal instead of naming a class function PHP never got (`instanceof` narrowing
-        // compiles the class speculatively and drops the error).
-        let compiled = self.compile_class(id, class);
-        if compiled.is_err() {
-            self.classes.remove(&id);
-        }
-        compiled
+        // A refused class registers nothing, so the next reference compiles it again and reports
+        // the refusal (`instanceof` narrowing compiles the class speculatively; see `attempt`).
+        self.attempt(|this| this.compile_class(id, class))
     }
 
     fn compile_class(&mut self, id: usize, class: &Rc<ClassValue>) -> Result<usize> {

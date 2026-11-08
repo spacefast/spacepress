@@ -535,6 +535,21 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
             "Z08_CTX_DYNAMIC",
             "shadowed context",
         ),
+        // A promise returned unawaited from a `try` escaped its catch in 0.8; awaiting it would not.
+        (
+            "request-returned-in-try",
+            "",
+            "endpoints: { e: endpoint({ method: \"POST\", path: \"/e\" }, async (_ctx, req) => { try { return req.json(); } catch { return text(\"caught\"); } }) }",
+            "Z08_ENDPOINT_REQUEST_API",
+            "request API has no v2 route equivalent",
+        ),
+        (
+            "request-helper-returned-in-try",
+            "async function body(req: any) { return req.text(); }",
+            "endpoints: { e: endpoint({ method: \"POST\", path: \"/e\" }, async (_ctx, req) => { try { return body(req); } finally { } }) }",
+            "Z08_ENDPOINT_REQUEST_API",
+            "request API has no v2 route equivalent",
+        ),
         // Zero awaits every async call, so a body read held as a promise has no v2 form.
         (
             "request-held",

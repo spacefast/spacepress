@@ -1617,6 +1617,7 @@ fn handler(
         calls: vec![],
         inline_subject: None,
         reads_subject: false,
+        protected_try: 0,
     };
     let body = match &f.body {
         FnBody::Expr(e) => {
@@ -1762,6 +1763,7 @@ fn ctx_helper(
         calls: vec![],
         inline_subject: Some(f.is_async),
         reads_subject: false,
+        protected_try: 0,
     };
     match &f.body {
         FnBody::Expr(e) => r.expr(e)?,
@@ -1826,6 +1828,7 @@ fn endpoint(
         calls: vec![],
         inline_subject: None,
         reads_subject: false,
+        protected_try: 0,
     };
     for span in super::endpoints::returns(f) {
         r.returns.push(span);
@@ -2012,6 +2015,9 @@ struct Rewrite<'a> {
     inline_subject: Option<bool>,
     /// A helper read the caller's subject, so a writing caller needs the 401 gate.
     reads_subject: bool,
+    /// Inside a `try` block whose `catch` or `finally` would run if a returned promise were awaited
+    /// there: a promise returned unawaited escaped them in 0.8, so it can't become `await`.
+    protected_try: u32,
 }
 
 /// A call that passes the context, the route request or both to a module function, at these
@@ -2095,6 +2101,12 @@ impl Rewrite<'_> {
     /// A value this function returns directly, which a return of a promise awaits.
     fn returned_here(&self, span: Span) -> bool {
         self.returned.contains(&span) || self.returns.contains(&span)
+    }
+
+    /// A returned promise the conversion may await: not inside a `try` whose `catch` or `finally`
+    /// the awaited rejection would reach, where 0.8's unawaited promise escaped them.
+    fn returned_unprotected(&self, span: Span) -> bool {
+        self.returned_here(span) && self.protected_try == 0
     }
 
     /// The route request parameter itself.
@@ -2376,8 +2388,15 @@ impl Rewrite<'_> {
                 .iter()
                 .any(|a| matches!(a, ArrEl::Item(x) if self.is_ctx_expr(x) || self.is_request_expr(x)))
         {
-            // 0.8 awaited a promise the handler returned; v2 needs the await written out.
-            if self.returned.contains(&e.span) || self.returns.contains(&e.span) {
+            // 0.8 awaited a promise the handler returned; v2 needs the await written out. Inside a
+            // protected `try` the awaited rejection would reach its catch, which 0.8's didn't.
+            let passes_request = args
+                .iter()
+                .any(|a| matches!(a, ArrEl::Item(x) if self.is_request_expr(x)));
+            if passes_request && self.returned_here(e.span) && !self.returned_unprotected(e.span) {
+                return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
+            }
+            if self.returned_here(e.span) {
                 self.edits.push((
                     Span {
                         end: e.span.start,
@@ -2655,13 +2674,17 @@ impl Rewrite<'_> {
                 {
                     return Err(fail(self.at, "shadowed context or reserved catch binding"));
                 }
-                for ss in [Some(block), handler.as_ref(), finalizer.as_ref()]
-                    .into_iter()
-                    .flatten()
-                {
-                    for s in ss {
-                        self.stmt(s)?;
-                    }
+                // The block is protected by a catch or finally, the catch block by a finally.
+                for (ss, protected) in [
+                    (Some(block), handler.is_some() || finalizer.is_some()),
+                    (handler.as_ref(), finalizer.is_some()),
+                    (finalizer.as_ref(), false),
+                ] {
+                    let Some(ss) = ss else { continue };
+                    self.protected_try += u32::from(protected);
+                    let walked = ss.iter().try_for_each(|s| self.stmt(s));
+                    self.protected_try -= u32::from(protected);
+                    walked?;
                 }
             }
             Stmt::Switch { disc, cases, .. } => {
@@ -2864,7 +2887,7 @@ impl Rewrite<'_> {
             let [ArrEl::Item(handler @ Expr { kind: E::Func(f), .. })] = args.as_slice() else {
                 return refuse(&format!("{body}.catch"));
             };
-            if f.is_async || f.params.len() > 1 || !awaited && !self.returned_here(e.span) {
+            if f.is_async || f.params.len() > 1 || !awaited && !self.returned_unprotected(e.span) {
                 return refuse(&format!("{body}.catch"));
             }
             let text = if body == "json" {
@@ -2902,7 +2925,7 @@ impl Rewrite<'_> {
                     }
                     // Returned unawaited: the promise 0.8 awaited, which the return now awaits. A
                     // promise held anywhere else has no v2 form (Zero awaits every async call).
-                    ("text" | "json", true, false) if !self.returned_here(e.span) => return refuse(prop),
+                    ("text" | "json", true, false) if !self.returned_unprotected(e.span) => return refuse(prop),
                     ("text", true, false) => {
                         self.helpers.push(READ_TEXT.into());
                         format!("__z08ReadText({req}.body)")

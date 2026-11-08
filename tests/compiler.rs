@@ -838,6 +838,9 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
+    std::fs::copy(dir.join("namespace.mjs"), tmp.join("namespace.mjs")).unwrap();
+    // Plain JavaScript modules the cases import run through checked dynamic dispatch.
+    std::fs::copy(dir.join("stdlib.js"), tmp.join("stdlib.js")).unwrap();
     let built = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(
         built.status.success(),

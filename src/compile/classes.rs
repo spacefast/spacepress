@@ -378,10 +378,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(_) => {
                     let helper = self.unique_name(&format!("{}_init_{}", c.name, field.name));
                     let f = field.initializer(class.env.module).expect("initialized field");
-                    let closure = Rc::new(Closure {
-                        func: f,
-                        env: constructing_env.clone(),
-                    });
+                    let closure = Rc::new(Closure::new(f, constructing_env.clone()));
                     let initializing = if javascript {
                         Ty::Dynamic
                     } else {
@@ -424,10 +421,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let Ty::Fn(params, _) = self.classes[&id].constructor.clone() else {
                 unreachable!()
             };
-            let closure = Rc::new(Closure {
-                func: f.clone(),
-                env: constructing_env.clone(),
-            });
+            let closure = Rc::new(Closure::new(f.clone(), constructing_env.clone()));
             self.compile_function(
                 &closure,
                 &helper,
@@ -464,10 +458,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } else {
                 vec![receiver]
             };
-            let closure = Rc::new(Closure {
-                func: accessor.func.clone(),
-                env: env.clone(),
-            });
+            let closure = Rc::new(Closure::new(accessor.func.clone(), env.clone()));
             self.compile_function(&closure, &helper, Some(params), None, no_db)?;
             if !accessor.setter && !javascript {
                 let Ty::Fn(_, ret) = self.helper_types[&closure_key(&closure)].clone() else {
@@ -520,10 +511,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } else {
                 instance.clone()
             };
-            let closure = Rc::new(Closure {
-                func: f.clone(),
-                env: env.clone(),
-            });
+            let closure = Rc::new(Closure::new(f.clone(), env.clone()));
             self.compile_function(
                 &closure,
                 &helper,
@@ -561,9 +549,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.captured_data(value)?
             }
         };
-        let parent_php = parent
-            .map(|id| format!("\\ZeroApp\\{}()", self.classes[&id].name))
-            .unwrap_or("null".into());
+        let parent_php = match (parent, class.builtin_base) {
+            (Some(id), _) => format!("\\ZeroApp\\{}()", self.classes[&id].name),
+            (None, Some(builtin)) => format!("\\Zero\\JsClass::builtin({})", php_str(builtin)),
+            (None, None) => "null".into(),
+        };
         writeln!(self.output, "function {name}(): \\Zero\\JsClass\n{{\n    static $class;\n    return $class ??= new \\Zero\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}]);\n}}\n", php_str(&format!("\\ZeroApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
         Ok(id)
     }
@@ -650,6 +640,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("\\Zero\\Js::dynamicGet({}, {})", receiver.php, php_str(prop))
                 },
                 accessor.ty.clone(),
+            ));
+        }
+        if !is_static && let Some(ty) = self.error_member(&receiver.ty, prop) {
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicGet({}, {})", receiver.php, php_str(prop)),
+                ty,
             ));
         }
         let shape = if is_static {
@@ -744,6 +740,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!(
                     "\\ZeroApp\\{}({}, \\ZeroApp\\{}())",
                     self.classes[&id].fields, receiver.php, self.classes[&id].name
+                ),
+                Ty::Null,
+            )));
+        }
+        if let Some(builtin) = class.builtin_base {
+            let argv = self.javascript_args(args)?;
+            return Ok(Some(Out::atom(
+                format!(
+                    "\\Zero\\JsClass::builtin({})->initialize({}, ({argv})->a)",
+                    php_str(builtin),
+                    receiver.php
                 ),
                 Ty::Null,
             )));
@@ -997,8 +1004,33 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
+    /// Error members inherited from the built-in root: read and written through JavaScript lookup.
+    pub(super) fn error_member(&self, ty: &Ty, prop: &str) -> Option<Ty> {
+        if !self.error_instance(ty) || ty.non_null().field(prop).is_some() {
+            return None;
+        }
+        match prop {
+            "name" | "message" | "stack" => Some(Ty::Str),
+            "cause" => Some(Ty::Unknown),
+            _ => None,
+        }
+    }
+
+    /// Instances of classes whose chain reaches `extends Error` (or TypeError/RangeError).
+    pub(super) fn error_instance(&self, ty: &Ty) -> bool {
+        let Ty::Instance(identity, _) = ty.non_null() else {
+            return false;
+        };
+        std::iter::once(identity.id)
+            .chain(identity.ancestors.iter().copied())
+            .any(|id| self.classes[&id]._value.builtin_base.is_some())
+    }
+
     /// An accessor write target: `Some(value type)` for a setter, an error for a getter-only accessor.
     pub(super) fn class_accessor_write(&self, receiver: &Ty, prop: &str, span: Span) -> Result<Option<Ty>> {
+        if let Some(ty) = self.error_member(receiver, prop) {
+            return Ok(Some(ty));
+        }
         let (id, is_static) = match receiver.non_null() {
             Ty::Instance(identity, _) => (identity.id, false),
             Ty::Class(id) => (id, true),

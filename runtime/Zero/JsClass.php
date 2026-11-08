@@ -30,7 +30,93 @@ final class JsClass
         private readonly array $accessors = [],
         /** @var array<string, array{0: ?\Closure, 1: ?\Closure}> static getter/setter pairs */
         private readonly array $staticAccessors = [],
+        /** Prototype data properties of a built-in root (Error.prototype.name and .message). */
+        private readonly array $prototypeData = [],
+        /** The built-in constructor this descriptor models ('Error', 'TypeError', 'RangeError'), if any. */
+        public readonly ?string $builtin = null,
     ) {}
+
+    /** @var array<string, self> */
+    private static array $builtins = [];
+
+    /**
+     * The built-in Error constructors as class roots, so `class E extends Error` gets
+     * Error's constructor, prototype name/message and toString, and instanceof sees them.
+     */
+    public static function builtin(string $name): self
+    {
+        if (isset(self::$builtins[$name])) { return self::$builtins[$name]; }
+        if (!in_array($name, ['Error', 'TypeError', 'RangeError'], true)) {
+            throw new JsError("Extending $name is not supported", 'TypeError');
+        }
+        $parent = $name === 'Error' ? null : self::builtin('Error');
+        $constructor = static function (JsObject $self, mixed $message = JsUndefined::Value, mixed $options = JsUndefined::Value): void {
+            if ($message !== JsUndefined::Value) { $self->hidden['message'] = Js::str($message); }
+            // InstallErrorCause: HasProperty(options, "cause"), so an inherited cause counts too.
+            if ($options instanceof JsObject && Js::hasProperty('cause', $options)) { $self->hidden['cause'] = Js::dynamicGet($options, 'cause'); }
+            $self->hidden['stack'] = self::lazyStack();
+        };
+        $toString = static function (mixed $self): string {
+            $name = Js::dynamicGet($self, 'name');
+            $message = Js::dynamicGet($self, 'message');
+            $name = $name === JsUndefined::Value ? 'Error' : Js::str($name);
+            $message = $message === JsUndefined::Value ? '' : Js::str($message);
+            return $name === '' ? $message : ($message === '' ? $name : "$name: $message");
+        };
+        return self::$builtins[$name] = new self(
+            $parent,
+            $constructor,
+            static function (): void {},
+            $parent === null ? ['toString' => $toString] : [],
+            [],
+            new JsObject(),
+            prototypeData: ['name' => $name, 'message' => ''],
+            builtin: $name,
+        );
+    }
+
+    /** The root built-in constructor name of a class chain ('Error', 'TypeError', ...), or null. */
+    public function builtinRoot(): ?string
+    {
+        for ($class = $this; $class !== null; $class = $class->parent) {
+            if ($class->builtin !== null) { return $class->builtin; }
+        }
+        return null;
+    }
+
+    /** True when the chain reaches the built-in constructor $name (TypeError reaches Error too). */
+    public function extendsBuiltin(string $name): bool
+    {
+        for ($class = $this; $class !== null; $class = $class->parent) {
+            if ($class->builtin === $name) { return true; }
+        }
+        return false;
+    }
+
+    /** Marks a stack that is formatted on first read, as V8 does, from the error's current name and message. */
+    public static function lazyStack(): \stdClass
+    {
+        static $marker;
+        return $marker ??= new \stdClass();
+    }
+
+    /** Error.captureStackTrace(target): defines an own non-enumerable stack; Zero records no frames. */
+    public static function captureStackTrace(mixed $target): JsUndefined
+    {
+        if (!$target instanceof JsObject) { throw new JsError('Invalid argument', 'TypeError'); }
+        $target->hidden['stack'] = self::lazyStack();
+        return JsUndefined::Value;
+    }
+
+    /** True for any prototype member: accessor, method or built-in prototype data. */
+    public function hasMember(string $name): bool
+    {
+        if ($this->accessor($name, false) !== null || $this->hasMethod($name)) { return true; }
+        for ($class = $this; $class !== null; $class = $class->parent) {
+            if (array_key_exists($name, $class->prototypeData)) { return true; }
+        }
+        return false;
+    }
 
     /** The nearest accessor pair for a key along the prototype chain, or null. */
     public function accessor(string $name, bool $static): ?array
@@ -59,6 +145,11 @@ final class JsClass
         if ($static ? $this->hasStaticMethod($name) : $this->hasMethod($name)) {
             return $this->methodValue($name, $static);
         }
+        if (!$static) {
+            for ($class = $this; $class !== null; $class = $class->parent) {
+                if (array_key_exists($name, $class->prototypeData)) { return $class->prototypeData[$name]; }
+            }
+        }
         return self::absent();
     }
 
@@ -83,6 +174,11 @@ final class JsClass
 
     public function initialize(JsObject $instance, array $args): void
     {
+        // A built-in root only runs its own constructor; it has no fields or parent fields.
+        if ($this->builtin !== null) {
+            ($this->constructor)($instance, ...array_slice($args, 0, 2));
+            return;
+        }
         if ($this->constructor !== null) {
             if ($this->parent === null) { ($this->fields)($instance, $this); }
             ($this->constructor)($instance, ...$args);

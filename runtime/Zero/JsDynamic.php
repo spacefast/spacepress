@@ -34,7 +34,7 @@ trait JsDynamic
             $receiver instanceof JsArray => 'Array', is_string($receiver) => 'String',
             $receiver instanceof RegExp => 'RegExp', $receiver instanceof JsDate => 'Date',
             $receiver instanceof JsError => 'Error',
-            $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map',
+            $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map', $receiver instanceof JsIterator => 'Iterator',
             $receiver instanceof JsWeakMap => 'WeakMap', $receiver instanceof JsWeakSet => 'WeakSet',
             $receiver instanceof JsSymbol => 'Symbol',
             $receiver instanceof \Closure => 'Function', is_bool($receiver) => 'Boolean',
@@ -133,6 +133,7 @@ trait JsDynamic
         if ($value instanceof JsObject) {
             if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
             if (array_key_exists($key, $value->p)) { return $value->p[$key]; }
+            if (array_key_exists($key, $value->hidden)) { return self::hiddenValue($value, $key); }
             if ($value->class !== null && ($inherited = $value->class->readInherited($value, $key, false)) !== JsClass::absent()) { return $inherited; }
             return self::dynamicMethodValue($value, $key);
         }
@@ -146,7 +147,7 @@ trait JsDynamic
                     : throw new JsError('Unsupported Math property ' . $key, 'TypeError'),
             };
         }
-        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => throw new JsError('Error stack metadata is not supported', 'TypeError'), default => self::dynamicMethodValue($value, $key) }; }
+        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str($value), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue($value, $key) }; }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             if ($value instanceof JsArguments && $key === 'callee') { throw new JsError('Restricted arguments property', 'TypeError'); }
             if ($key === 'length') { return $value instanceof JsArguments ? $value->length : count($value->a); }
@@ -168,9 +169,20 @@ trait JsDynamic
             };
         }
         if ($key === 'size' && ($value instanceof JsSet || $value instanceof JsMap)) {
-            return count($value instanceof JsSet ? $value->values : $value->entries);
+            return $value->size();
         }
         return self::dynamicMethodValue($value, $key);
+    }
+
+    /** A hidden own property; a lazy stack is formatted from the error's current name and message. */
+    private static function hiddenValue(JsObject $value, string $key): mixed
+    {
+        $hidden = $value->hidden[$key];
+        if ($key === 'stack' && $hidden === JsClass::lazyStack()) {
+            // V8 formats the header from the error at the first read; Zero records no frames.
+            $hidden = $value->hidden['stack'] = self::str($value);
+        }
+        return $hidden;
     }
 
     public static function dataGet(mixed $value, mixed $key): mixed
@@ -192,6 +204,10 @@ trait JsDynamic
             return $target->setSymbol($key, $value);
         }
         $key = self::key($key);
+        if ($target instanceof JsObject && array_key_exists($key, $target->hidden)) {
+            $target->hidden[$key] = $value;
+            return $value;
+        }
         if ($target instanceof JsObject || $target instanceof JsClass) {
             return self::set($target, $key, $value);
         }
@@ -329,7 +345,7 @@ trait JsDynamic
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
-        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
+        if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
 
@@ -360,6 +376,19 @@ trait JsDynamic
         return new JsArray(iterator_to_array(self::dynamicIterator($value), false));
     }
 
+    /** Array-pattern destructuring of a JavaScript value: the first $count iterated values (all when null). */
+    public static function destructure(mixed $value, ?int $count): JsArray
+    {
+        if (self::isNullish($value)) { throw new JsError('Cannot destructure ' . self::str($value) . ' as it is not iterable', 'TypeError'); }
+        $out = new JsArray();
+        if ($count === 0) { return $out; }
+        foreach (self::dynamicIterator($value) as $item) {
+            $out->a[] = $item;
+            if ($count !== null && count($out->a) >= $count) { break; }
+        }
+        return $out;
+    }
+
     public static function dynamicIterator(mixed $value): \Generator
     {
         if ($value instanceof JsArray) {
@@ -369,9 +398,11 @@ trait JsDynamic
         } elseif (is_string($value)) {
             yield from self::from($value)->a;
         } elseif ($value instanceof JsSet) {
-            for ($i = 0; $i < count($value->values); $i++) { yield $value->values[$i]; }
+            yield from $value->iterate();
         } elseif ($value instanceof JsMap) {
-            for ($i = 0; $i < count($value->entries); $i++) { yield new JsArray($value->entries[$i]); }
+            yield from $value->entriesIterator();
+        } elseif ($value instanceof JsIterator) {
+            yield from $value->rest();
         } elseif ($value instanceof JsGenerator || $value instanceof JsObject && JsIter::wellKnownMethod($value, 'iterator') !== null) {
             // Spread, Array.from and the combinators follow the iterator protocol, closing on a throw.
             $iter = JsIter::open($value);
@@ -393,9 +424,10 @@ trait JsDynamic
             is_bool($value) => 'Boolean', is_int($value), is_float($value) => 'Number', is_string($value) => 'String',
             $value instanceof JsArray => 'Array', $value instanceof JsArguments => 'Arguments', $value instanceof JsSet => 'Set',
             $value instanceof JsMap => 'Map', $value instanceof JsDate => 'Date', $value instanceof RegExp => 'RegExp',
+            $value instanceof JsIterator => $value->tag,
             $value instanceof JsWeakMap => 'WeakMap', $value instanceof JsWeakSet => 'WeakSet', $value instanceof JsSymbol => 'Symbol',
             $value instanceof JsNamespace => $value->name,
-            $value instanceof JsError => 'Error',
+            $value instanceof JsError, $value instanceof JsObject && $value->class?->builtinRoot() !== null => 'Error',
             $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
         };
         return '[object ' . $tag . ']';
@@ -413,8 +445,18 @@ trait JsDynamic
     public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
     {
         if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
+        if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) { return self::isError($value, $constructor); }
         if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
         throw new JsError("Right-hand side of 'instanceof' is not callable", 'TypeError');
+    }
+
+    /** `value instanceof Error` (or TypeError/RangeError) for built-in errors and Error subclasses. */
+    public static function isError(mixed $value, string $name = 'Error'): bool
+    {
+        if ($value instanceof JsError) {
+            return $name === 'Error' || $value->jsName === $name;
+        }
+        return $value instanceof JsObject && ($value->class?->extendsBuiltin($name) ?? false);
     }
 
     public static function dynamicCall(mixed $function, JsArray $args): mixed
@@ -495,7 +537,7 @@ trait JsDynamic
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
-            $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map',
+            $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map', $receiver instanceof JsIterator => 'iterator',
             $receiver instanceof JsWeakMap => 'weakmap', $receiver instanceof JsWeakSet => 'weakset', $receiver instanceof JsSymbol => 'symbol',
             is_bool($receiver) => 'boolean', $receiver instanceof \Closure => 'function',
             default => 'object',
@@ -526,10 +568,31 @@ trait JsDynamic
             };
         }
         if ($receiver instanceof JsSet) {
-            return match ($name) { 'add' => $receiver->add($get(0)), 'has' => $receiver->has($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+            return match ($name) {
+                'add' => $receiver->add($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)),
+                'clear' => self::cleared($receiver),
+                'forEach' => self::dynamicCollectionForEach($receiver, $get(0), $get(1)),
+                'values', 'keys' => new JsIterator($receiver->valuesIterator(), 'Set Iterator'),
+                'entries' => new JsIterator($receiver->entriesIterator(), 'Set Iterator'),
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
         }
         if ($receiver instanceof JsMap) {
-            return match ($name) { 'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
+            return match ($name) {
+                'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)),
+                'delete' => $receiver->delete($get(0)), 'clear' => self::cleared($receiver),
+                'forEach' => self::dynamicCollectionForEach($receiver, $get(0), $get(1)),
+                'keys' => new JsIterator($receiver->keysIterator(), 'Map Iterator'),
+                'values' => new JsIterator($receiver->valuesIterator(), 'Map Iterator'),
+                'entries' => new JsIterator($receiver->entriesIterator(), 'Map Iterator'),
+                default => throw new JsError($name . ' is not a function', 'TypeError'),
+            };
+        }
+        if ($receiver instanceof JsIterator) {
+            return match ($name) { 'next' => $receiver->next(), default => throw new JsError($name . ' is not a function', 'TypeError') };
+        }
+        if ($receiver instanceof JsArray && in_array($name, ['keys', 'values', 'entries'], true)) {
+            return new JsIterator(self::arrayIterator($receiver, $name), 'Array Iterator');
         }
         if ($receiver instanceof JsWeakMap) {
             return match ($name) { 'set' => $receiver->set($get(0), $get(1)), 'get' => $receiver->get($get(0)), 'has' => $receiver->has($get(0)), 'delete' => $receiver->delete($get(0)), default => throw new JsError($name . ' is not a function', 'TypeError') };
@@ -637,6 +700,27 @@ trait JsDynamic
         return new JsArray(array_splice($source->a, $start, $count, array_slice($args->a, 2)));
     }
 
+    private static function cleared(JsMap|JsSet $collection): JsUndefined
+    {
+        $collection->clear();
+        return JsUndefined::Value;
+    }
+
+    private static function dynamicCollectionForEach(JsMap|JsSet $collection, mixed $callback, mixed $thisArg): JsUndefined
+    {
+        if ($thisArg !== JsUndefined::Value) { throw new JsError('forEach thisArg is not supported', 'TypeError'); }
+        $collection->forEach(self::dynamicCallback($callback));
+        return JsUndefined::Value;
+    }
+
+    /** Array iterators read the live array by index, as %ArrayIteratorPrototype%.next does. */
+    public static function arrayIterator(JsArray $array, string $kind): \Generator
+    {
+        for ($i = 0; $i < count($array->a); $i++) {
+            yield match ($kind) { 'keys' => $i, 'values' => $array->a[$i], default => new JsArray([$i, $array->a[$i]]) };
+        }
+    }
+
     private static function dynamicArrayFind(JsArray $source, string $method, \Closure $callback): mixed
     {
         $matched = JsUndefined::Value;
@@ -656,10 +740,11 @@ trait JsDynamic
         $result = new JsArray();
         if ($source instanceof JsArray) {
             for ($i = 0; $i < count($source->a); $i++) { $value = $source->a[$i]; $result->a[] = $callback === null ? $value : $callback($value, $i); }
-        } elseif ($source instanceof JsSet || $source instanceof JsMap) {
-            for ($i = 0; $i < count($source instanceof JsSet ? $source->values : $source->entries); $i++) {
-                $value = $source instanceof JsSet ? $source->values[$i] : new JsArray($source->entries[$i]);
+        } elseif ($source instanceof JsSet || $source instanceof JsMap || $source instanceof JsIterator) {
+            $i = 0;
+            foreach (self::dynamicIterator($source) as $value) {
                 $result->a[] = $callback === null ? $value : $callback($value, $i);
+                $i++;
             }
         } elseif ($source instanceof JsArguments) {
             for ($i = 0; $i < max(0, self::toInteger(self::toNumber($source->length))); $i++) {
@@ -746,9 +831,9 @@ trait JsDynamic
                     throw new JsError('Unsupported Math property ' . $key, 'TypeError');
                 }
                 if ($source instanceof JsError) {
-                    if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
-                    return $key === 'message' && $source->hasMessage;
+                    return $key === 'stack' || $key === 'message' && $source->hasMessage;
                 }
+                if ($source instanceof JsObject && array_key_exists($key, $source->hidden)) { return true; }
                 if ($key === 'length' && ($source instanceof JsArray || is_string($source) || $source instanceof JsArguments && !$source->lengthDeleted)) { return true; }
                 if ($key === 'callee' && $source instanceof JsArguments || $key === 'lastIndex' && $source instanceof RegExp) { return true; }
                 return in_array($key, self::dynamicKeys($source)->a, true);
@@ -883,6 +968,12 @@ trait JsDynamic
                     if (!$value->p[$method] instanceof \Closure) { continue; }
                     $result = self::dynamicInvoke($value->p[$method], $value, new JsArray());
                 } elseif ($value instanceof JsObject && $value->nullPrototype) { continue; }
+                elseif ($value instanceof JsObject && $value->class !== null
+                    && ($inherited = $value->class->readInherited($value, $method, false)) !== JsClass::absent()) {
+                    // Class methods and Error.prototype.toString come before Object.prototype's.
+                    if (!$inherited instanceof \Closure) { continue; }
+                    $result = self::dynamicInvoke($inherited, $value, new JsArray());
+                }
                 else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
                 if ($result === JsUndefined::Value || !is_object($result) || $result instanceof JsBigInt) { return $result; }
             }

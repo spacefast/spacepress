@@ -5,6 +5,11 @@ final class JsObject
 {
     public bool $nullPrototype = false;
     /**
+     * Non-enumerable own string-keyed properties (an Error's message, cause and stack).
+     * Enumeration, JSON, spread and cloning read only $p, so these stay invisible to them.
+     */
+    public array $hidden = [];
+    /**
      * Symbol-keyed own properties, apart from the string keys in $p so that
      * string enumeration (keys, for…in, JSON) never sees them.
      * spl_object_id(symbol) => [symbol, value, enumerable, writable, configurable]

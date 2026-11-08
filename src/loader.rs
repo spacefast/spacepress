@@ -894,7 +894,7 @@ impl CommonJsScope<'_> {
                 }
                 self.expression(value)?;
             }
-            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
+            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => {
                 self.expression(callee)?;
                 for ArrEl::Item(value) | ArrEl::Spread(value) in args {
                     self.expression(value)?;

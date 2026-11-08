@@ -230,6 +230,14 @@ impl Compiler<'_, '_> {
                     ("Array" | "ReadonlyArray", [t]) => Ty::Array(Box::new(self.resolve_ann(t, module, generics)?)),
                     ("TemplateStringsArray", []) => Ty::NonEmptyArray(Box::new(Ty::Str)),
                     ("Promise", [t]) => Ty::Promise(Box::new(self.resolve_ann(t, module, generics)?)),
+                    ("Map" | "ReadonlyMap", [k, v]) => Ty::MapOf(
+                        Box::new(self.resolve_ann(k, module, generics)?),
+                        Box::new(self.resolve_ann(v, module, generics)?),
+                    ),
+                    ("Set" | "ReadonlySet", [t]) => Ty::SetOf(Box::new(self.resolve_ann(t, module, generics)?)),
+                    ("IterableIterator" | "MapIterator" | "SetIterator" | "ArrayIterator", [t]) => {
+                        Ty::Iter(Box::new(self.resolve_ann(t, module, generics)?))
+                    }
                     ("Date", []) => Ty::Date,
                     ("RegExp", []) => Ty::Regex,
                     ("Error", []) => Ty::Error,
@@ -888,8 +896,17 @@ fn type_step(steps: &mut usize, span: Span) -> Result<()> {
 fn type_copy(t: &Ty, span: Span, steps: &mut usize) -> Result<()> {
     type_step(steps, span)?;
     match t {
-        Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Rest(t) | Ty::Map(t) | Ty::Promise(t) | Ty::Instance(_, t) => {
-            type_copy(t, span, steps)?
+        Ty::Array(t)
+        | Ty::NonEmptyArray(t)
+        | Ty::Rest(t)
+        | Ty::Map(t)
+        | Ty::Promise(t)
+        | Ty::Instance(_, t)
+        | Ty::SetOf(t)
+        | Ty::Iter(t) => type_copy(t, span, steps)?,
+        Ty::MapOf(k, v) => {
+            type_copy(k, span, steps)?;
+            type_copy(v, span, steps)?;
         }
         Ty::Tuple(parts) | Ty::ArrayLiteral(parts) | Ty::Union(parts) => {
             for t in parts {
@@ -1055,6 +1072,9 @@ pub(super) fn runtime_type(t: Ty) -> Ty {
                 .collect(),
         ),
         Ty::Map(t) => Ty::Map(Box::new(runtime_type(*t))),
+        Ty::MapOf(k, v) => Ty::MapOf(Box::new(runtime_type(*k)), Box::new(runtime_type(*v))),
+        Ty::SetOf(t) => Ty::SetOf(Box::new(runtime_type(*t))),
+        Ty::Iter(t) => Ty::Iter(Box::new(runtime_type(*t))),
         Ty::Instance(identity, fields) => Ty::Instance(identity, Box::new(runtime_type(*fields))),
         Ty::Union(ts) => Ty::union(ts.into_iter().map(runtime_type)),
         Ty::Fn(ps, ret) => Ty::Fn(ps.into_iter().map(runtime_type).collect(), Box::new(runtime_type(*ret))),

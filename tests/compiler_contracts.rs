@@ -2965,6 +2965,23 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         diagnostic["help"].as_str().unwrap().contains("local variable"),
         "{report}"
     );
+    // A parameter default runs where the name is still the function, so writing it is refused too.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("h.mjs"),
+        "export const run = () => { const fn = function f(x = (f = () => 1)) { return x; }; return fn(); };\n",
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nimport { run } from './h.mjs';\nexport default defineConfig({actions:{probe:action({handler:()=>run()})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    assert!(
+        report["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("own name"),
+        "{report}"
+    );
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the

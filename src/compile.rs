@@ -4551,11 +4551,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .cloned()
                 {
                     Some((ann, module)) => Some(self.resolve_runtime_ann(&ann, module)?),
-                    None => match self.captured_use(&member_path, member.clone(), binding, span, false, true) {
-                        Ok(out) => Some(out.ty),
-                        Err(d) if needed => return Err(d),
-                        Err(_) => None,
-                    },
+                    // `receiver_value` builds every member in PHP, so a member that can't be
+                    // built is refused here, the first time it is compiled, never dropped.
+                    None => Some(
+                        self.captured_use(&member_path, member.clone(), binding, span, false, true)
+                            .map_err(|d| {
+                                if d.help.is_some() {
+                                    return d;
+                                }
+                                d.help(format!(
+                                    "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                                ))
+                            })?
+                            .ty,
+                    ),
                 },
             };
             match ty {

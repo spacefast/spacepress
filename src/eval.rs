@@ -610,8 +610,9 @@ impl<'p> Evaluator<'p> {
             let exports = Value::object(IndexMap::new());
             let wrapper = Value::object(IndexMap::from([("exports".to_string(), exports.clone())]));
             declare(&scope, "module", wrapper.clone(), false);
-            declare(&scope, "exports", exports, false);
+            declare(&scope, "exports", exports.clone(), false);
             declare(&scope, "require", Value::Builtin(Builtin::Require(id)), false);
+            declare(&scope, crate::lower::COMMONJS_THIS, exports.clone(), false);
             (wrapper, names)
         });
         // Dependencies first, like ESM. A CommonJS module loads its `require` targets lazily.

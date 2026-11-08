@@ -975,9 +975,12 @@ fn static_commonjs_packages_match_node_through_generated_php() {
         ),
         (
             "node_modules/glob-lite/index.js",
-            "'use strict';\nconst { log } = require('./lib/log');\nlog.push('index');\nconst escape = require('./lib/escape');\nconst { STAR } = require('./lib/constants');\nlog.push('after');\nfunction toSource(glob) { return glob.split(STAR).map(escape).join('[^/]*'); }\nmodule.exports = toSource;\n",
+            "'use strict';\nconst { log, add, isModule } = require('./lib/log');\nadd(isModule ? 'index' : 'wrong-this');\nconst escape = require('./lib/escape');\nconst { STAR } = require('./lib/constants');\nlog.push('after');\nfunction toSource(glob) { return glob.split(STAR).map(escape).join('[^/]*'); }\nmodule.exports = toSource;\n",
         ),
-        ("node_modules/glob-lite/lib/log.js", "exports.log = [];\n"),
+        (
+            "node_modules/glob-lite/lib/log.js",
+            "var __add = (this && this.__add) || function (list, entry) { list.push(entry); };\nexports.log = [];\nexports.add = (entry) => __add(exports.log, entry);\nexports.isModule = this === module.exports;\n",
+        ),
         (
             "node_modules/glob-lite/lib/constants.js",
             "require('./log').log.push('constants');\nmodule.exports = { STAR: '*', SPECIAL: /[.+?^${}()|[\\]\\\\]/g };\n",

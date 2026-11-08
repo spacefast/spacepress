@@ -3,7 +3,8 @@
 // origin that answers /json, /text and /redirect identically on both sides.
 import { action, defineConfig } from "zero";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-const nodeCrypto = require("node:crypto");
+import * as nodeCrypto from "node:crypto";
+import { digest, mac } from "./host-crypto.cjs";
 
 const text = "zero → php ✓ 😀";
 
@@ -20,6 +21,8 @@ export default defineConfig({
         createHash("sha384").update(text).digest("hex"),
         createHmac("sha256", "Jefe").update("what do ya want for nothing?").digest("hex"),
         createHmac("sha512", text).update(text).digest("base64"),
+        mac("Jefe", text),
+        digest(text),
       ],
     }),
     secrets: action({

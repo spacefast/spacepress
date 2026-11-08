@@ -29,7 +29,7 @@
       "status": "supported",
       "evidence": "src/loader.rs",
       "test": "installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports",
-      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. The CommonJS subset accepts one static top-level function export; require, named CommonJS exports, implicit sloppy arguments, Node built-ins other than node:crypto, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
+      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require(\"<literal>\")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins other than node:crypto, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
     },
     {
       "id": "unannotated-javascript",
@@ -523,10 +523,10 @@
     {
       "id": "require",
       "status": "refused",
-      "code": "Z1002",
+      "code": "Z1102",
       "fixture": "tests/fixtures/reject-require-module",
-      "message": "doesn't support `require(\"node:fs\")`",
-      "guidance": "A top-level const declaration may require(\"node:crypto\"). Every other require is refused; use import."
+      "message": "can't import \"node:fs\": Node built-ins other than node:crypto are unavailable",
+      "guidance": "Static CommonJS may require(\"node:crypto\") (or \"crypto\"); it resolves through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required."
     },
     {
       "id": "zero-fetch-import",

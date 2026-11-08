@@ -557,8 +557,8 @@ value, and is refused inside handlers.
 
 ## Hashing and random values
 
-Hash, sign and compare with `"node:crypto"`, imported or loaded with a
-top-level `const ... = require("node:crypto")`. Random UUIDs also come from the
+Hash, sign and compare with `"node:crypto"` (or `"crypto"`), imported in
+TypeScript or required from static CommonJS. Random UUIDs also come from the
 global `crypto`. Every call is synchronous:
 
 ```ts
@@ -1008,8 +1008,8 @@ Rejected with a located error and a fix: `this` outside class methods or their
 arrows, `enum`, generators,
 getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, `setTimeout`, `globalThis`, `Promise`, `URL`, `Request`,
-`Response`, `FormData`, `Blob`, `AbortController`, `require` of anything but
-`"node:crypto"`, assigning to module-level state from a hook,
+`Response`, `FormData`, `Blob`, `AbortController`, `require` outside static
+CommonJS sources, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal
 (use a literal position or omit it; typed missing values use the nullable boundary), `await` on
@@ -1023,10 +1023,17 @@ Imports: `"zero"`, `"node:crypto"` (or `"crypto"`), relative TypeScript/ESM
 JavaScript sources, and locally installed source packages. Package imports search the nearest `node_modules`, support scoped
 names and exact subpath exports, and select `import`/`default` export conditions,
 an explicit `module` entry, or a supported `main`/index entry. `.mjs`, `.ts` and `.mts` identify
-source directly. A narrow CommonJS subset supports one top-level
-`module.exports = function` or assignment of a local function. `require`, named
-CommonJS exports, mixed ESM/CommonJS and implicit sloppy-mode `arguments` are
-refused. Export patterns, Node built-ins other than `node:crypto`,
+source directly. A `.cjs` source, or a `.js` source with no ESM syntax outside a
+`"type": "module"` package, is static CommonJS. It runs once at build time, like
+Node's module cache: top-level `require("<literal>")` of relative files and
+CommonJS packages (resolved with the `require`/`default` conditions), and
+`module.exports = …` or `exports.name = …` outside functions. ESM importers get
+`module.exports` as the default export, plus the statically assigned names as
+named exports. Dynamic `require`, `require` inside a function, `require` of an ES
+module, `require` cycles, writes to `module` or `exports` inside a function,
+other `module` properties, mixed ESM/CommonJS and implicit sloppy-mode
+`arguments` are refused. `require("node:crypto")` gives the supported
+`node:crypto` functions. Export patterns, Node built-ins other than `node:crypto`,
 package aliases and declaration-only targets are refused. Package entry targets
 must name existing files inside the package; the compiler does not install them.
 Relative `.js` imports can resolve to their TypeScript source counterparts.

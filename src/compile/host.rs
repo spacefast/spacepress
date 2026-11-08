@@ -210,8 +210,8 @@ impl Compiler<'_, '_> {
                 Ok(Resolved::Global("fetch")) => self.fetch_call(args, span).map(Some),
                 Ok(Resolved::Global("require")) => err_help(
                     span,
-                    "`require` only loads \"node:crypto\", in a top-level `const` declaration",
-                    "use `import` for your own modules and packages",
+                    "`require` only works at the top level of static CommonJS sources",
+                    "use `import`, including `import { createHash } from \"node:crypto\"`",
                 ),
                 Ok(Resolved::Value(Value::Builtin(Builtin::NodeCrypto(Some(f))), _)) => {
                     self.node_crypto_call(f, args, span).map(Some)

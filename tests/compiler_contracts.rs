@@ -671,6 +671,86 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
 }
 
 #[test]
+fn static_commonjs_packages_match_node_through_generated_php() {
+    // picomatch's shapes: relative and package `require`, destructured `require`,
+    // `exports.x =` read back through `exports`, `module.exports = { … }`, a
+    // function export with named exports for ESM importers, and evaluation order.
+    let tmp = tempfile::tempdir().unwrap();
+    let files: &[(&str, &str)] = &[
+        (
+            "node_modules/glob-lite/package.json",
+            r#"{"name":"glob-lite","main":"index.js"}"#,
+        ),
+        (
+            "node_modules/glob-lite/index.js",
+            "'use strict';\nconst { log } = require('./lib/log');\nlog.push('index');\nconst escape = require('./lib/escape');\nconst { STAR } = require('./lib/constants');\nlog.push('after');\nfunction toSource(glob) { return glob.split(STAR).map(escape).join('[^/]*'); }\nmodule.exports = toSource;\n",
+        ),
+        ("node_modules/glob-lite/lib/log.js", "exports.log = [];\n"),
+        (
+            "node_modules/glob-lite/lib/constants.js",
+            "require('./log').log.push('constants');\nmodule.exports = { STAR: '*', SPECIAL: /[.+?^${}()|[\\]\\\\]/g };\n",
+        ),
+        (
+            "node_modules/glob-lite/lib/escape.js",
+            "const { SPECIAL } = require('./constants');\nrequire('./log').log.push('escape');\nexports.escape = (part) => part.replace(SPECIAL, '\\\\$&');\nmodule.exports = exports.escape;\n",
+        ),
+        (
+            "node_modules/counts/package.json",
+            r#"{"name":"counts","exports":{".":{"require":"./counts.cjs","import":"./missing.mjs"}}}"#,
+        ),
+        (
+            "node_modules/counts/counts.cjs",
+            "exports.limit = 3;\nexports.label = 'items';\n",
+        ),
+        (
+            "probe.cjs",
+            "const toSource = require('glob-lite');\nconst { log } = require('glob-lite/lib/log');\nconst { limit, label } = require('counts');\nfunction run(glob) { return { source: toSource(glob), order: log.join(','), limit, label }; }\nmodule.exports = run;\n",
+        ),
+    ];
+    for (path, source) in files {
+        let path = tmp.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    std::fs::write(
+        tmp.path().join("node.cjs"),
+        "process.stdout.write(JSON.stringify(require('./probe.cjs')('src/*.test.js')));",
+    )
+    .unwrap();
+    let node = Command::new("node").arg(tmp.path().join("node.cjs")).output().unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(
+        expected,
+        json!({"source": "src/[^/]*\\.test\\.js", "order": "index,constants,escape,after", "limit": 3, "label": "items"})
+    );
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"
+import { action, defineConfig, text } from "zero";
+import run from "./probe.cjs";
+export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text().notNull() }, handler: (input) => run(input.glob) }) } });
+"#,
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
+        echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(['glob' => 'src/*.test.js']), \Zero\Seam::ctx(['user' => null])));
+    "#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-commonjs/zero/app"),
+        ],
+    );
+    assert_eq!(result, expected);
+}
+
+#[test]
 fn classes_match_node_through_generated_php_and_wire_client_types() {
     let tmp = tempfile::tempdir().unwrap();
     let config = root().join("tests/differential/classes.ts");
@@ -925,6 +1005,7 @@ fn host_globals_match_node_through_generated_php() {
     let secret = " lane secret \n";
     let tmp = tempfile::tempdir().unwrap();
     std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(dir.join("host-crypto.cjs"), tmp.path().join("host-crypto.cjs")).unwrap();
     let js = tmp.path().join("node");
     let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
@@ -937,15 +1018,10 @@ fn host_globals_match_node_through_generated_php() {
         "{}",
         String::from_utf8_lossy(&transpiled.stdout)
     );
-    // The config is an ES module that also uses a static require, as a TypeScript project may.
+    // The config imports its CommonJS helper, which Node loads with its own require.
     let module = std::fs::read_to_string(js.join("zero.config.js")).unwrap();
-    std::fs::write(
-        js.join("zero.config.mjs"),
-        format!(
-            "import {{ createRequire }} from 'node:module';\nconst require = createRequire(import.meta.url);\n{module}"
-        ),
-    )
-    .unwrap();
+    std::fs::write(js.join("zero.config.mjs"), module).unwrap();
+    std::fs::copy(dir.join("host-crypto.cjs"), js.join("host-crypto.cjs")).unwrap();
     // Node reads the origin directly; the PHP side sees the same answers through the stub.
     let node = Command::new("node")
         .arg(dir.join("run-node.mjs"))

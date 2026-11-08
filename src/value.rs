@@ -95,6 +95,8 @@ pub enum Builtin {
     Global(&'static str),
     /// A static function on a global, e.g. `Math.max`.
     Static(&'static str, Rc<str>),
+    /// `require` in the CommonJS module with this id; it only runs while the config is built.
+    Require(usize),
 }
 
 #[derive(Debug, Clone)]

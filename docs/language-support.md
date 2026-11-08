@@ -36,7 +36,7 @@ Install the package with your package manager. Zero reads supported local TypeSc
 
 Status: **supported**.
 
-Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. The CommonJS subset accepts one static top-level function export; require, named CommonJS exports, implicit sloppy arguments, Node built-ins other than node:crypto, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
+Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require("<literal>")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins other than node:crypto, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
 
 [Evidence](../src/loader.rs) (`installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports`)
 
@@ -554,9 +554,9 @@ Handlers run in PHP. Use the global fetch, process.env.NAME and "node:crypto".
 
 ## require
 
-Status: **refused**. Diagnostic: `Z1002`.
+Status: **refused**. Diagnostic: `Z1102`.
 
-A top-level const declaration may require("node:crypto"). Every other require is refused; use import.
+Static CommonJS may require("node:crypto") (or "crypto"); it resolves through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required.
 
 [Evidence](../tests/fixtures/reject-require-module)
 

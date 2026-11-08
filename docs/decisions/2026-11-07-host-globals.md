@@ -25,7 +25,7 @@ capability check has one place to hook.
   It handles `fetch(...)`, `crypto.*(...)`, `node:crypto` functions and their
   chains (`createHash(a).update(s).digest(e)`, `createHmac(a, k)...`,
   `randomBytes(n).toString("hex")`, `timingSafeEqual(Buffer.from(a), Buffer.from(b))`),
-  `Buffer.byteLength(s)`, `process.*(...)` and `require(...)`.
+  `Buffer.byteLength(s)` and `process.*(...)`.
 - Reads: `Compiler::host_member` / `host_index` handle `process.env.NAME` and
   `process.env["NAME"]`, and refuse every other `process` read.
 - `new Headers(...)`, `new URLSearchParams(...)` in `host_new`; `new URL`,
@@ -54,10 +54,12 @@ capability check has one place to hook.
 - `process.env.X` is `string | undefined` (missing is the `undefined`
   sentinel, not PHP null) and reads `Zero\Env::get`. Dynamic keys, iteration,
   writes and other `process` members are refused.
-- `node:crypto` / `crypto` imports and a top-level
-  `const ... = require("node:crypto")` lower to the same binding (the require
-  is rewritten to an import in `lower.rs`). Other Node built-ins are refused in
-  the loader.
+- `node:crypto` / `crypto` resolve through one lookup,
+  `builtins::module(spec) -> Option<BuiltinModule>`. The loader skips loading
+  for it, an `import` binds its functions, and static CommonJS
+  `require("node:crypto")` (the loader's `require` path) returns the same
+  namespace, destructurable into the same functions. Other Node built-ins are
+  refused in the loader, imported or required.
 - HMAC keys read as `process.env.NAME` (optionally with `!`) keep the 0.8
   rule: trimmed, and a missing or blank secret throws
   `500 crypto_key_unavailable`. Any other key expression is used as given.

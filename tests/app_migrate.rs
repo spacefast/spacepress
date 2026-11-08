@@ -438,6 +438,26 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
 }
 
 #[test]
+fn the_unused_favicon_option_is_dropped_with_a_review_entry() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(&root, r#"{name:"Icon",favicon:"/icon.png",schema:{}}"#);
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(ok, "{report:#}");
+    let entry = report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["pointer"] == "/favicon")
+        .expect("favicon entry");
+    assert_eq!(entry["outcome"], "review");
+    let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
+    assert!(!config.contains("icon.png"), "{config}");
+    build(&out);
+}
+
+#[test]
 fn env_and_log_services_map_to_v2_builtins() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("services");

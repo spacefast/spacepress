@@ -23,8 +23,12 @@ async function subject(ctx: Ctx): Promise<string> {
 function getHeader(req: Req, name: string): string | null {
   return req.headers.get(name);
 }
+// Sync helpers that hand the request on keep their values; nothing to await.
+function bearer(req: Req): string | null {
+  return getHeader(req, "Authorization");
+}
 async function authed(ctx: Ctx, req: Req): Promise<boolean> {
-  return getHeader(req, "Authorization") === "Bearer " + (ctx.env.NOTE_KEY ?? "");
+  return bearer(req) === "Bearer " + (ctx.env.NOTE_KEY ?? "");
 }
 function originOf(req: Req) {
   return new URL(req.url).origin;

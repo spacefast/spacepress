@@ -722,7 +722,8 @@ pub(super) fn app(
             _ => None,
         })
         .collect();
-    let functions: BTreeSet<String> = module_functions.keys().cloned().collect();
+    // Each module function by name, with whether it is async (a call to it needs `await`).
+    let functions: BTreeMap<String, bool> = module_functions.iter().map(|(n, f)| (n.clone(), f.is_async)).collect();
     let mut calls: Vec<CtxCall> = Vec::new();
     // Rewritten helpers replace their copied source in the prelude.
     let mut ctx_helpers: BTreeMap<String, String> = BTreeMap::new();
@@ -1434,8 +1435,9 @@ struct Mode<'a> {
     sends: bool,
     /// Set for a 0.8 endpoint, which becomes a v2 route at the same method and path.
     route: Option<&'a super::endpoints::Route>,
-    /// Functions declared at the top of the module; passing the context to one is followed.
-    functions: &'a BTreeSet<String>,
+    /// Functions declared at the top of the module, and whether each is async; passing the
+    /// context to one is followed.
+    functions: &'a BTreeMap<String, bool>,
 }
 
 fn handler(
@@ -1699,7 +1701,7 @@ fn ctx_helper(
     writes: bool,
     sends: bool,
     subjects: bool,
-    functions: &BTreeSet<String>,
+    functions: &BTreeMap<String, bool>,
 ) -> Result<(Converted, bool), Failure> {
     let mut edits = vec![];
     let ctx = match position.0 {
@@ -1990,8 +1992,9 @@ struct Rewrite<'a> {
     /// Spans of values the handler returns directly (an expression body or `return <e>`).
     returned: Vec<Span>,
     edits: Vec<(Span, String)>,
-    /// Functions declared at the top of the module, which may take the context.
-    functions: &'a BTreeSet<String>,
+    /// Functions declared at the top of the module, which may take the context, and whether each
+    /// is async.
+    functions: &'a BTreeMap<String, bool>,
     /// Names bound to the context itself (`const c = ctx`).
     aliases: Vec<String>,
     /// Names bound to one context service (`const { db } = ctx`, `const auth = ctx.auth`).
@@ -2371,7 +2374,7 @@ impl Rewrite<'_> {
         // (`transform::app` follows the calls).
         if let E::Call { callee, args, .. } = &e.kind
             && let E::Ident(function) = &callee.kind
-            && self.functions.contains(function)
+            && let Some(&callee_async) = self.functions.get(function)
             && args
                 .iter()
                 .any(|a| matches!(a, ArrEl::Item(x) if self.is_ctx_expr(x) || self.is_request_expr(x)))
@@ -2384,7 +2387,14 @@ impl Rewrite<'_> {
             if passes_request && self.returned_here(e.span) && !self.returned_unprotected(e.span) {
                 return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
             }
-            if self.returned_here(e.span) {
+            // A sync helper can't await. Returning a sync helper's value needs none; returning an
+            // async one's promise, which 0.8's caller awaited later, has no v2 form, since Zero
+            // awaits every async call where it is made.
+            let sync_caller = self.inline_subject == Some(false);
+            if passes_request && callee_async && sync_caller && self.returned_here(e.span) {
+                return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
+            }
+            if !sync_caller && self.returned_here(e.span) {
                 self.edits.push((
                     Span {
                         end: e.span.start,

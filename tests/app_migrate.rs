@@ -347,6 +347,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         mapped,
         [
             "/helpers/authed",
+            "/helpers/bearer",
             "/helpers/getHeader",
             "/helpers/listAll",
             "/helpers/originOf",
@@ -547,6 +548,14 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
             "request-helper-returned-in-try",
             "async function body(req: any) { return req.text(); }",
             "endpoints: { e: endpoint({ method: \"POST\", path: \"/e\" }, async (_ctx, req) => { try { return body(req); } finally { } }) }",
+            "Z08_ENDPOINT_REQUEST_API",
+            "request API has no v2 route equivalent",
+        ),
+        // A sync helper returning an async request helper's promise has no v2 form either.
+        (
+            "request-sync-chain",
+            "async function body(r: any) { return r.text(); } function read(r: any) { return body(r); }",
+            "endpoints: { e: endpoint({ method: \"POST\", path: \"/e\" }, async (_ctx, req) => text(await read(req))) }",
             "Z08_ENDPOINT_REQUEST_API",
             "request API has no v2 route equivalent",
         ),

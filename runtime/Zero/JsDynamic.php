@@ -209,6 +209,8 @@ trait JsDynamic
     {
         if (self::isNullish($value)) { return new JsArray(); }
         if ($value instanceof JsObject) { return new JsArray(array_map('strval', self::ownKeys($value->p))); }
+        // A class's enumerable own properties are its static fields (methods are non-enumerable).
+        if ($value instanceof JsClass) { return new JsArray(array_map('strval', self::ownKeys($value->statics->p))); }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             $properties = $value->a;
             foreach ($value->p as $key => $item) { $properties[$key] = $item; }

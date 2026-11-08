@@ -19,6 +19,8 @@ pub struct Args {
     pub(crate) no_watch: bool,
     pub(crate) allow_destructive: bool,
     pub(crate) preserve_data: Option<PathBuf>,
+    /// Refuse plugin grants the committed lock doesn't hold (also on whenever `CI` is set).
+    pub(crate) frozen: bool,
 }
 
 const COMMANDS: &str = include_str!("../runtime/Zero/Cli/commands.json");
@@ -94,6 +96,7 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
         no_watch: false,
         allow_destructive: false,
         preserve_data: None,
+        frozen: false,
     };
     let command = args.command.clone();
     let fail = |message: String| usage_error(&command, message);
@@ -112,6 +115,7 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
                 args.site = Some(it.next().ok_or_else(|| fail("--site needs a URL".into()))?)
             }
             "--json" if matches!(command.as_str(), "doctor" | "check") => args.json = true,
+            "--frozen" if matches!(command.as_str(), "build" | "check") => args.frozen = true,
             "--out" if command != "check" => {
                 args.out = Some(PathBuf::from(
                     it.next().ok_or_else(|| fail("--out needs a directory".into()))?,
@@ -171,6 +175,14 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "deploy" => crate::commands::deploy::adapter(&rest),
+        "abilities" if rest.first().is_some_and(|sub| sub == "pull") => crate::commands::abilities::cli(&rest),
+        "abilities" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {
+            eprintln!(
+                "{}",
+                usage_error("abilities", format!("no command abilities {}", rest[0]))
+            );
+            ExitCode::from(2)
+        }
         "migrate" if rest.first().is_some_and(|sub| sub == "app") => crate::config_migrate::app::cli(&rest[1..]),
         "migrate" if rest.first().is_some_and(|sub| sub == "config") => crate::config_migrate::cli(),
         "migrate" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {

@@ -3,10 +3,11 @@
     { "name": "dev", "args": "[dir] [--port n] [--no-watch] [--allow-destructive]", "summary": "start the local WordPress site and rebuild on change" },
     { "name": "dev stop", "args": "[dir]", "summary": "stop the local site, keeping its data" },
     { "name": "dev status", "args": "[dir]", "summary": "report the local site" },
-    { "name": "build", "args": "[dir] [--out dir] [--quiet] [--preserve-data snapshot.json]", "summary": "write the WordPress plugins to .zero/wp-content" },
-    { "name": "check", "args": "[dir] [--json]", "summary": "compile and report problems; write nothing" },
+    { "name": "build", "args": "[dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]", "summary": "write the WordPress plugins to .zero/wp-content" },
+    { "name": "check", "args": "[dir] [--json] [--frozen]", "summary": "compile and report problems; write nothing" },
     { "name": "doctor", "args": "[dir] [--out dir] [--site url] [--json]", "summary": "check a build, and a running site (ZERO_TOKEN)" },
     { "name": "sync", "args": "[status | resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]", "summary": "content files <-> site records (ZERO_APP_PASSWORD or ZERO_TOKEN)" },
+    { "name": "abilities pull", "args": "[dir] --site url [--only vendor/*]", "summary": "lock a site's abilities into zero/abilities.json (ZERO_APP_PASSWORD)" },
     { "name": "migrate app", "args": "--from zero-0.8 <capsule-dir> --out <new-dir> [--space id] [--dry-run] [--json]", "summary": "convert a Zero 0.8 app" },
     { "name": "migrate config", "args": "--from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>", "summary": "import another CMS's schema" },
     { "name": "deploy", "args": "<inspect|publish|init|status|backup|restore> <options>", "summary": "artifact preflight and offline workspaces (docs/deployment.md)" }

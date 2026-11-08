@@ -40,6 +40,8 @@ pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
         module: 0,
         class_context: std::cell::Cell::new(false),
         super_call: std::cell::Cell::new(false),
+        erase_types: false,
+        erased_types: Default::default(),
     }
     .program(&parsed.program)
     .map_err(|d| fail("", diag::render(&d, Path::new("."))))
@@ -1682,6 +1684,7 @@ impl Rewrite<'_> {
             E::Binary(_, a, b)
             | E::Logical(_, a, b)
             | E::Instanceof(a, b)
+            | E::In(a, b)
             | E::Assign {
                 target: a, value: b, ..
             } => {
@@ -1801,12 +1804,13 @@ impl Rewrite<'_> {
                     self.stmt(s)?;
                 }
             }
-            Stmt::While(iter, body) => {
+            Stmt::While(iter, body) | Stmt::DoWhile(body, iter) => {
                 self.expr(iter)?;
                 for s in body {
                     self.stmt(s)?;
                 }
             }
+            Stmt::Labeled(_, body, _) => self.stmt(body)?,
             Stmt::Try {
                 block,
                 handler,

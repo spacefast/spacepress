@@ -57,8 +57,9 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 `zero help` prints every command, grouped. **Build** commands (`dev`, `build`,
-`check`, `doctor`, `sync`, `migrate app|config`, `deploy`) run in the `zero`
-binary against the project's files. **Site** commands (`migrate`, `seed`,
+`check`, `doctor`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `zero`
+binary against the project's files (`abilities pull` reads a site's abilities
+into the committed `zero/abilities.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp zero <command>` in
 the `zero-runtime` plugin; `zero <command>` forwards to it unchanged, and
 `zero wp <args>` forwards any WP-CLI command. `--site` picks the site: absent,
@@ -69,7 +70,9 @@ or a WP-CLI `@alias`. Credentials come only from `ZERO_APP_PASSWORD` or
 there and one PHP handler.
 
 `zero build` writes new migrations to `zero/migrations/`, the typed client to
-`zero/client/`, `zero.gen.ts` and `zero/wp-plugins.lock.json` (all committed),
+`zero/client/`, `zero.gen.ts`, `zero/wp-plugins.lock.json` and, with plugin
+packages, `zero/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
+plugin grants the lock doesn't hold),
 and the artifact to `.zero/wp-content`: plugin folders, ZIPs, pinned
 dependencies and one `zero-manifest.json`. `zero dev` installs that artifact
 into a persistent Studio site at `<project>/.zero/dev/wordpress`, activates

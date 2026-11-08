@@ -126,6 +126,29 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
 }
 
 #[test]
+fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
+    // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp zero abilities`.
+    let wp = fake_wp();
+    let mut command = zero();
+    command.args(["abilities", "--site", "@prod"]);
+    with_path(&mut command, wp.path());
+    let out = command.output().unwrap();
+    assert_eq!(out.status.code(), Some(7));
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["args"], serde_json::json!(["@prod", "zero", "abilities"]));
+    let mut command = zero();
+    command.args(["abilities", "pull"]);
+    with_path(&mut command, wp.path());
+    let out = command.output().unwrap();
+    assert!(out.stdout.is_empty(), "pull must not reach WP-CLI");
+    assert!(
+        text(&out.stderr).starts_with("--site is required"),
+        "{}",
+        text(&out.stderr)
+    );
+}
+
+#[test]
 fn a_site_url_is_refused_for_wp_cli_commands() {
     let out = zero()
         .args(["jobs", "list", "--site", "https://example.test"])

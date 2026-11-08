@@ -5,9 +5,10 @@ one of them at a time, never both in the same version.
 
 ## 0.8 support lives in zero-v0, not here
 
-This repository's `main` has no Zero 0.8 code and no compatibility with it.
-Everything that reads or converts 0.8 apps is frozen on the `v0` branch, cut
-from `main` at `43d695e9`. That covers:
+This repository's `main` drops Zero 0.8 code and any compatibility with it.
+The code still on `main` is deleted by workstream 1's first PR; until then it is
+unmaintained, and nothing new depends on it. Everything that reads or converts
+0.8 apps is frozen on the `v0` branch, cut from `main` at `43d695e9`. That covers:
 
 - the converter (`zero migrate app --from zero-0.8`);
 - the runtime that adopts 0.8 tables, users and sessions (`runtime/Zero/Wp/Legacy/`);

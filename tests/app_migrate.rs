@@ -1656,8 +1656,8 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     assert_eq!(
         refused,
         [
-            ("Z08_OMITTED_UNVERIFIED", "sf.jsonc"),
-            ("Z08_OMITTED_UNVERIFIED", "theme.json")
+            ("Z08_OMITTED_UNVERIFIED_CONFIG", "sf.jsonc"),
+            ("Z08_OMITTED_UNVERIFIED_CONFIG", "theme.json")
         ],
         "{written:#}"
     );

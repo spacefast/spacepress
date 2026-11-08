@@ -27,6 +27,7 @@ pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
 pub(super) const DENIED: &str = "the credential file is not carried over";
 pub(super) const CONFIG: &str = "the setting is not carried over";
 pub(super) const UNVERIFIED: &str = "the unverified static file is not carried over";
+pub(super) const UNVERIFIED_CONFIG: &str = "the unverified config is not carried over";
 
 /// The monorepo's one source deny list, verbatim: `DENIED_SOURCE_PATH_PATTERN` in
 /// packages/common/src/utils/source-archive-policy.ts, compiled case-insensitively as there.
@@ -50,6 +51,9 @@ const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", "
 /// CLI's own temporary and lock files, at any depth (matched on the lowercased path).
 const IGNORED_PATH_PATTERN: &str = r"(?:^|/)\.next/cache(?:/|$)|(?:^|/)\.spacefast-(?:[0-9a-f-]{36}\.(?:tmp(?:\.mjs)?|rollback|retired)|[0-9a-f]{24}\.lock)$";
 static IGNORED_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(IGNORED_PATH_PATTERN).expect("ignored paths"));
+/// publish-policy's `IGNORED_EXACT_PATHS` that the deny list doesn't already cover: 0.8 dropped
+/// a path when any lowercased segment equals one, at any depth.
+const IGNORED_EXACT_SEGMENTS: &[&str] = &[".gitignore", "_routes.json"];
 /// zero-compile's `CAPSULE_TSCONFIG_FILE`.
 static TSCONFIG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^tsconfig(?:\.[^/]+)?\.json$").expect("tsconfig"));
 // The paths 0.8's publish kept out as the runtime's own (`runtimeOwnedPaths`, the
@@ -103,8 +107,6 @@ const REPOSITORY_FILES: &[&str] = &[
     "pnpm-lock.yaml",
     "yarn.lock",
     "package.json",
-    ".gitignore",
-    "_routes.json",
 ];
 const REPOSITORY_ROOTS: &[&str] = &[".github", "test", "tests", "tools"];
 /// zero-compile's `ZERO_SOURCE_CODE_EXTENSIONS`.
@@ -163,7 +165,9 @@ fn policy(relative: &str) -> Policy {
                 Policy::Denied
             };
         }
-        if UNPUBLISHED_DIRECTORIES.contains(&segment) {
+        if UNPUBLISHED_DIRECTORIES.contains(&segment)
+            || IGNORED_EXACT_SEGMENTS.contains(&segment.to_ascii_lowercase().as_str())
+        {
             return Policy::Skip;
         }
     }
@@ -186,7 +190,7 @@ fn served(relative: &str) -> bool {
         // isZeroProjectOnlyPath: TypeScript anywhere and tsconfig files. Plain JavaScript outside
         // the source roots is the author's content, and 0.8 served it.
         || TSCONFIG.is_match(relative)
-        || TYPESCRIPT.contains(&extension)
+        || TYPESCRIPT.iter().any(|t| relative.ends_with(&format!(".{t}")))
         || policy(relative) != Policy::Keep
         || runtime_owned(relative))
 }
@@ -349,7 +353,7 @@ pub(super) fn unverified(
             errors.push(
                 fail(
                     &at(file),
-                    format!("{UNVERIFIED}: {file} is not in the finalize manifest, so the candidate can't check it is the published config"),
+                    format!("{UNVERIFIED_CONFIG}: {file} is not in the finalize manifest, so the candidate can't check it is the published config"),
                 )
                 .located(file.to_string(), 1, 1),
             );

@@ -219,6 +219,7 @@ Everything else gets a `Z08_OMITTED_*` error:
 | `Z08_OMITTED_CLEAN_URLS` | `cleanUrls`, or carried `<name>.html` or `<name>.htm` files that 0.8 served at `/<name>` by default. |
 | `Z08_OMITTED_SERVE` | `fallback`, `index`, `listing`, `serve`, `inject`, `firewall` and `cache` in `sf.jsonc`. |
 | `Z08_OMITTED_CONFIG` | Any other `sf.jsonc` key except `$schema`, `runtime`, `name` and `space`, and `theme.json`, which 0.8 turned into the pages' `theme.css`. |
+| `Z08_OMITTED_UNVERIFIED_CONFIG` | With `--manifest`, a Space config or `theme.json` the finalize manifest doesn't record. |
 | `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
 | `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/` and OS metadata are skipped without an error. |
 | `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |

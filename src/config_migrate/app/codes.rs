@@ -74,6 +74,14 @@ pub static RULES: &[Rule] = &[
         example: ("/logo.png", "the static file is not carried over: x"),
     },
     Rule {
+        code: "Z08_OMITTED_UNVERIFIED_CONFIG",
+        feature: "Space config or theme.json the finalize manifest doesn't record",
+        v2: "the candidate's own config, theme and routes",
+        fix: "Convert from the source tree without --manifest, so the config is read and ported or refused key by key.",
+        test: |_, r| r.starts_with(omitted::UNVERIFIED_CONFIG),
+        example: ("/sf.jsonc", "the unverified config is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_UNVERIFIED",
         feature: "static file the finalize manifest doesn't record",
         v2: "a file in public/, served at the same URL",

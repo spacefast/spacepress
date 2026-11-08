@@ -58,6 +58,47 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
+fn fetch_is_an_explicit_zero_import_with_string_bodies() {
+    // The ambient global stays refused, so every outbound call is visible in the imports.
+    rejects(
+        "reject-global-fetch",
+        "`fetch` isn't available in Zero code",
+        "zero.config.ts:3:",
+    );
+    rejects(
+        "reject-fetch-init",
+        "fetch() init must be { method?, headers?, body? } with strings",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/fetch-import"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn crypto_takes_strings_and_names_only_its_functions() {
+    rejects(
+        "reject-crypto-arg",
+        "crypto.sha256() can't take string | null",
+        "zero.config.ts:3:",
+    );
+    rejects(
+        "reject-crypto-unknown",
+        "`crypto` has no function `sha265`",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/crypto-import"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn a_catch_all_route_segment_comes_last() {
     rejects(
         "reject-route-catchall-middle",
@@ -67,6 +108,21 @@ fn a_catch_all_route_segment_comes_last() {
     let out = zero()
         .args(["check"])
         .arg(root().join("tests/fixtures/route-catchall"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn mail_send_needs_recipients_a_subject_and_a_body() {
+    rejects(
+        "reject-mail-message",
+        "mail.send() needs { to, subject, text or html }",
+        "zero.config.ts:3:",
+    );
+    let out = zero()
+        .args(["check"])
+        .arg(root().join("tests/fixtures/mail-import"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -1795,4 +1851,50 @@ fn auth_fixture_matches_the_compiler() {
         String::from_utf8_lossy(&out.stderr)
     );
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// A plugin package from a fixture `node_modules`, registered from the app and run as generated
+/// PHP: its hook transforms the row before the app's hook sees it, a write the lock doesn't grant
+/// is refused at build, and a runtime-built fetch URL outside the locked hosts is refused at run.
+#[test]
+fn a_plugin_package_runs_under_its_locked_grant() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("plugins");
+    copy(&root().join("tests/fixtures/plugin-seo"), &project);
+    let index = project.join("node_modules/zero-plugin-seo/src/index.ts");
+    let source = std::fs::read_to_string(&index).unwrap();
+
+    // The owner's lock grants posts.summary only; the same package writing posts.body is refused.
+    std::fs::write(
+        &index,
+        source.replace("data.summary = ", "data.body = \"x\";\n          data.summary = "),
+    )
+    .unwrap();
+    let refused = zero().args(["build", "--frozen"]).arg(&project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("plugin \"seo\" writes posts.body; zero/plugins.lock.json grants it only posts.summary"),
+        "{stderr}"
+    );
+    assert!(!project.join(".zero").exists(), "a refused plugin generates nothing");
+
+    std::fs::write(&index, source).unwrap();
+    let out = zero().args(["build", "--frozen"]).arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let got = wp_eval_json(
+        &project.join(".zero/wp-content"),
+        r#"$row = json_decode($app->cli(['insert', 'posts', '{"title":"Hello plugins"}'])[1], true)['data'][0];
+           $denied = json_decode($app->cli(['action', 'seo_lookup', '{"url":"https://elsewhere.example/x"}'])[1], true);
+           echo json_encode(['summary' => $row['summary'], 'body' => $row['body'], 'denied' => $denied['error']['code'] ?? $denied]);"#,
+        &serde_json::Value::Null,
+    );
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "summary": "HELLO PLUGIN | Site",
+            "body": "seen: HELLO PLUGIN | Site",
+            "denied": "zero_fetch_host_denied",
+        })
+    );
 }

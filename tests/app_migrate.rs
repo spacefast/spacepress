@@ -505,6 +505,10 @@ fn omissions_are_errors_and_static_files_carry_over() {
     let mut overlay = config.clone();
     overlay["dataSources"] = serde_json::json!({ "blog": { "url": "https://blog.example" } });
     overlay["network"] = serde_json::json!({ "egress": "allowlist" });
+    // The engine checks a rewrite's path, and compiles a listing, against 0.8 pages only, so on v2
+    // they would take over the app's URLs: refused.
+    overlay["rewrites"] = serde_json::json!([{ "source": "/(.*)", "destination": "/index.html" }]);
+    overlay["listing"] = true.into();
     std::fs::write(
         platform.join("sf.jsonc"),
         serde_json::to_string_pretty(&overlay).unwrap(),
@@ -526,7 +530,9 @@ fn omissions_are_errors_and_static_files_carry_over() {
         refused,
         [
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/dataSources"),
-            ("Z08_OMITTED_CONFIG", "/sf.jsonc/network")
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/network"),
+            ("Z08_OMITTED_SERVE", "/sf.jsonc/rewrites"),
+            ("Z08_OMITTED_SERVE", "/sf.jsonc/listing"),
         ]
     );
     std::fs::write(
@@ -551,8 +557,8 @@ fn omissions_are_errors_and_static_files_carry_over() {
     }
     build(&out);
 
-    // With no config file, the engine serves `<name>.htm` at `/<name>` for files published from
-    // public/, by default, as it did for 0.8; the page carries over with no error and no sf.jsonc.
+    // With no config file, the page carries over with no error and no sf.jsonc: the engine serves
+    // public/'s static files as it served 0.8's (`.htm` keeps its name on both).
     let bare = temp.path().join("bare");
     copy_tree(&fixture("server-only"), &bare);
     std::fs::remove_file(bare.join("sf.jsonc")).unwrap();

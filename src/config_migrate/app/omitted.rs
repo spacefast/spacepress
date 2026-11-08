@@ -121,19 +121,19 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// Keys Spacefast applies to the Space, not the Zero app, the same under v2: written unchanged
 /// into the candidate's own sf.jsonc, which the v2 publish uploads and finalize compiles.
 /// - Engine serving rules that run before an unmatched request falls through to WordPress, where
-///   v2 renders (monorepo runtime/engine/runtime/serve.php): `redirects`, `rewrites`, `headers`,
-///   and `cleanUrls`, `index` and `listing` over the static files published from public/.
+///   v2 renders (monorepo runtime/engine/runtime/serve.php): `redirects`, `headers`, and
+///   `cleanUrls` and `index` over the static files published from public/. Not `rewrites` or
+///   `listing`: the engine's path check sees 0.8's pages but not v2's, which render in WordPress,
+///   so a catch-all rewrite or a root listing would shadow the v2 app.
 /// - Platform settings the control plane applies from the committed file whatever the runtime:
 ///   access, crons, analytics, sell, build, placement, the system manifest, edge cache and firewall
 ///   (monorepo `spaceConfigFileSchema`). `network`, `dataSources` and `defaultDataSource` are Space
 ///   overlay settings that the file can't set, so they are refused, never reported as carried.
 pub(super) const PLATFORM_KEYS: &[&str] = &[
     "redirects",
-    "rewrites",
     "headers",
     "cleanUrls",
     "index",
-    "listing",
     "access",
     "crons",
     "analytics",
@@ -147,10 +147,18 @@ pub(super) const PLATFORM_KEYS: &[&str] = &[
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
 /// The serving keys with their own error; any other key raises `CONFIG`.
-/// - `fallback`: an SPA fallback answers before the WordPress fallthrough, shadowing v2's pages.
+/// - `rewrites`, `listing`: the engine checks a rewrite's path, and compiles a listing, against
+///   0.8's pages; v2's render in WordPress, so the rule would take over the v2 app's URLs.
+/// - `fallback`: not shown to leave v2's WordPress-rendered pages alone.
 /// - `inject`: not shown to reach WordPress-rendered HTML.
 /// - `serve`: 0.8's own serving block.
-const SERVING_KEYS: &[(&str, &str)] = &[("fallback", SERVE), ("serve", SERVE), ("inject", SERVE)];
+const SERVING_KEYS: &[(&str, &str)] = &[
+    ("rewrites", SERVE),
+    ("listing", SERVE),
+    ("fallback", SERVE),
+    ("serve", SERVE),
+    ("inject", SERVE),
+];
 
 /// Files this sweep carries over (`public/<path>` → contents) and the errors for the rest.
 pub(super) struct Omitted {
@@ -550,7 +558,8 @@ pub(super) fn sweep(
         }
     }
     // Clean URLs need no error: the engine serves `<name>.html` at `/<name>` for the static files a
-    // v2 version publishes from public/, by default as for 0.8, and `cleanUrls` travels in sf.jsonc.
+    // v2 version publishes from public/, by default as it did for 0.8's (`.htm` keeps its name on
+    // both), and `cleanUrls` travels in sf.jsonc.
     // 0.8 inferred the pages' theme tokens from theme.json and linked the generated theme.css.
     if fs.is_file(&root.join(THEME_JSON)) {
         errors.push(

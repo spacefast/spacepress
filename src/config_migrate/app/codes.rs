@@ -110,9 +110,9 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_OMITTED_SERVE",
-        feature: "serving settings (fallback, serve, inject)",
+        feature: "serving settings (rewrites, listing, fallback, serve, inject)",
         v2: "WordPress serving and the Space's own settings",
-        fix: "Drop the setting or set it on the Space; v2 serves the app through WordPress.",
+        fix: "Move each rewrite into a v2 route, drop the setting, or keep the Space on 0.8; v2 serves the app through WordPress.",
         test: |_, r| r.starts_with(omitted::SERVE),
         example: ("/sf.jsonc/fallback", "the serving settings are not carried over: x"),
     },

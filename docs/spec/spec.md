@@ -304,6 +304,58 @@ await users.me();  await settings.get();  await menus.get("primary");
 - `posts.system.*` is the explicit trusted escape hatch.
 - `"php/wordpress"` gives raw WordPress functions.
 
+## 3a. HTTP: WordPress's own endpoints, no Zero namespace
+
+Zero adds no `/wp-json/zero/v1` API. Each kind is served by the core REST
+route WordPress already has for it. Zero's job is to make those routes enforce
+Zero's rules, as `runtime/Zero/Wp/CoreAccess.php` already does for collections:
+- access rules and field masks;
+- required fields and validation;
+- hooks.
+
+The typed client, external frontends, agents, the block editor and other
+plugins then all use one API.
+
+| Kind | Endpoint | What Zero adds |
+|---|---|---|
+| `posts`, `pages`, your collections | `/wp/v2/posts`, `/wp/v2/pages`, `/wp/v2/<type>` (`show_in_rest`) | fields as `meta` (registered with `register_post_meta`, `show_in_rest`); access through `map_meta_cap` plus read filtering; `where`/`with`/`search` as query params |
+| `media` | `/wp/v2/media` | access on private media |
+| your taxonomies, `categories`, `tags` | `/wp/v2/<taxonomy>` | term meta |
+| `comments`, comment types | `/wp/v2/comments` (`?type=review`) | the kind's `comments` options decide who may post. Anonymous posting goes through core's `rest_allow_anonymous_comments` filter, only for kinds with `guests: true`. Akismet runs on every create |
+| `users` | `/wp/v2/users`, `/wp/v2/users/me` | extended fields as user meta; `email` stays hidden from everyone except the user and admins |
+| `menus` | `/wp/v2/menu-items`, `/wp/v2/menu-locations` | public read for public locations (`rest_menu_read_access`) |
+| `settings`, `global()` | `/wp/v2/settings` for admins | public fields readable through the read-only Ability below, since core gates the settings route on `manage_options` |
+| `table()` | `/wp/v2/<table>` | **the one new controller**: core has no route for custom tables, so Zero registers a `WP_REST_Controller` under `wp/v2`, shaped like the post routes (`GET`/`POST` collection, `GET`/`POST`/`DELETE` item, `_links`, `X-WP-Total`) |
+| `action()` | `/wp-abilities/v1/abilities/<app>/<name>/run` | Abilities API, core since 6.9 (below) |
+| `app/**/route.ts` | your own path, outside `/wp-json` | front-controller route (rendering.md) |
+| sign-in | `/wp-json/zero-identity/v1/*` (existing) and OIDC | |
+
+**Actions are Abilities.** `export const like = action(...)` registers the
+Ability `<app>/like`. Core's run route serves it: `GET` for actions marked
+`readonly`, `POST` for writes, and `DELETE` for destructive, idempotent ones.
+Input and output schemas come from the TypeScript signature. Access is the
+Ability's `permission_callback`. MCP gets the same Ability through the MCP
+Adapter. One mismatch to note: core's abilities list route needs a signed-in
+user (`current_user_can('read')`), and the run route defers to the ability's
+own permission check. A public action (`access: "anyone"`) can therefore run
+anonymously, while discovering abilities still needs a sign-in. That's
+acceptable, because the typed client knows the names at build time.
+
+**The query vocabulary over HTTP:**
+- `where`, `orderBy`, `with` and `search` are added as query parameters on the
+  core list routes. Core's own parameters (`per_page`, `page`, `search`,
+  `orderby`, `_embed`, `_fields`) keep working.
+- Responses keep core's shape: `X-WP-Total` and `X-WP-TotalPages` headers, and `_links`.
+- Errors are core's `WP_Error` JSON (`code`, `message`, `data.status`), not
+  Zero's own problem documents.
+- One shape for everything clients and plugins see.
+
+**Markdown:** `?format=md` on any core item route returns the markdown twin.
+
+**Spec for clients:** `zero pull` reads the core REST index (`/wp-json`, which
+already describes every route's arguments and schema) plus the Abilities list.
+No `/zero/v1/spec` route.
+
 ## 4. Server code
 
 ```ts
@@ -317,9 +369,12 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 ```
 
 - **`action`** takes its types from the handler signature. Options: `access`
-  (default `editor`), `idempotent`, `signature`, `abilities`, `name`. Each
-  action gets `POST /wp-json/zero/v1/actions/<name>`, a typed client method
-  `zero.<name>()`, and an Ability. The name is the export name (§1.1).
+  (default `editor`), `idempotent`, `readonly`, `signature`, `abilities`,
+  `name`. Each action is an Ability `<app>/<name>`, run through core's
+  `/wp-abilities/v1/abilities/<app>/<name>/run` (§3a), and a typed client method
+  `zero.<name>()`. The name is the export name (§1.1). A `signature` action
+  (an inbound webhook) is an `app/**/route.ts` instead, since its caller signs
+  the raw body.
   It can also be called from a form (rendering.md).
 - **`job`** runs on Action Scheduler after the request commits. A plain call
   becomes an async action. `every` compiles to a recurring action and `cron`

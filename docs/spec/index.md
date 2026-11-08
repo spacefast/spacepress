@@ -25,6 +25,7 @@ front, with a typed client and cache purges that just work.
 | [rendering.md](rendering.md) | routing compared with Next/TanStack/Vite frameworks, pages, everything interactive on the Interactivity API, forms, navigation, live data over Cast, markdown, caching on Batcache + edge with URL purges | rendering |
 | [external-frontends.md](external-frontends.md) | Astro, Next.js, TanStack Start, preview, cache tags, webhooks, agents and MCP | frontends |
 | [tsx-to-php.md](tsx-to-php.md) | compiler spike: JSX → component IR → PHP renderer and Interactivity store, with parity tests | compiler |
+| [build-plan.md](build-plan.md) | the twelve workstreams from today's `main` to this spec: what exists, what to build and delete, order, sizes | all |
 
 ## Decisions, 2026-11-08
 
@@ -78,14 +79,14 @@ front, with a typed client and cache purges that just work.
 | Zero | Compiles to |
 |---|---|
 | `collection()` | `register_post_type` + SCF field group + `register_post_meta` |
-| `table()` | SQL table + Zero REST controller |
+| `table()` | SQL table + a `wp/v2/<table>` controller shaped like core's post routes (the only new REST route) |
 | `taxonomy()` / `terms()` | `register_taxonomy` + `register_term_meta` |
 | `global()` | `register_setting` with `show_in_rest` |
 | `users()` | `wp_users` + usermeta projection |
 | `menu()` | `register_nav_menu` + `wp_navigation` |
 | `url` patterns | rewrite rules + `post_type_link` / `term_link` + automatic 301s |
 | `job()`, `every`, `cron` | Action Scheduler async / recurring / cron actions |
-| `action()` | Zero REST endpoint + `wp_register_ability` |
+| `action()` | `wp_register_ability`, run through core's Abilities REST route and the MCP Adapter |
 | `app/**/page.tsx` | compiled PHP renderer behind one `template_redirect` gate |
 | `"use client"` | Interactivity API store module + `data-wp-*` directives |
 | live updates | `zero_realtime_changes` → control plane → Cast room |
@@ -97,6 +98,5 @@ front, with a typed client and cache purges that just work.
    host). URL purges need the gateway's path purge; verify its parameters and
    limits from the platform's Edge_Cache adapter (`class-edge-cache-atomic.php`)
    before building [rendering.md](rendering.md) §6.
-2. **Order.** The compiler spike ([tsx-to-php.md](tsx-to-php.md)) and the
-   schema and layout work ([spec.md](spec.md)) start in parallel. Rendering and
-   external frontends follow once the spec lands.
+2. **Order.** See [build-plan.md](build-plan.md): the authoring cutover, the
+   compiler spike and the opinionated WordPress setup start in parallel.

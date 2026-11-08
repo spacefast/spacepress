@@ -904,6 +904,7 @@ impl CommonJsScope<'_> {
             | ExprKind::Null
             | ExprKind::Undefined
             | ExprKind::Regex { .. }
+            | ExprKind::BigInt(_)
             | ExprKind::TemplateStrings { .. } => {}
         }
         Ok(())

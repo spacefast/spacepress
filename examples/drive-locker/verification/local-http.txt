@@ -1,0 +1,44 @@
+Anonymous read blocked: GET /wp-json/zero/v1/drives -> 401 {"type":"about:blank","title":"Unauthenticated","status":401,"code":"unauthenticated","detail":"Sign in to do read drives"}
+Anonymous action blocked: POST /wp-json/zero/v1/actions/capacityReport -> 401 {"type":"about:blank","title":"Unauthenticated","status":401,"code":"unauthenticated","detail":"Sign in to do run capacityReport"}
+Place create: POST /wp-json/zero/v1/places -> 201 {"data":{"id":5,"ownerId":1,"name":"locker-1794100026487","kind":"nas-bay"}}
+Drive create: POST /wp-json/zero/v1/drives -> 403 {"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"You can't set serialKey","pointer":"/serialKey"}
+Trusted CLI fixture: drive 6; this does not verify HTTP drive creation.
+Drive edit contract: PATCH /wp-json/zero/v1/drives/6 -> 403 {"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"You can't set serialKey","pointer":"/serialKey"}
+Duplicate serial: POST /wp-json/zero/v1/drives -> 403 {"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"You can't set serialKey","pointer":"/serialKey"}
+Same serial allowed for another owner: drive 7, owner 2, via trusted CLI
+Owner cannot be supplied: POST /wp-json/zero/v1/places -> 403 {"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"You can't set ownerId","pointer":"/ownerId"}
+Other owner list: GET /wp-json/zero/v1/drives -> 200 {"data":[]}
+Other owner cannot update: PATCH /wp-json/zero/v1/drives/6 -> 404 {"type":"about:blank","title":"Not found","status":404,"code":"not_found","detail":"No drives row with id 6"}
+Other owner cannot relate: POST /wp-json/zero/v1/contents -> 404 {"type":"about:blank","title":"Not found","status":404,"code":"not_found","detail":"Drive not found."}
+Other owner cannot move into place: POST /wp-json/zero/v1/drives -> 403 {"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"You can't set serialKey","pointer":"/serialKey"}
+Contents create: POST /wp-json/zero/v1/contents -> 201 {"data":{"id":4,"ownerId":1,"driveId":6,"description":"locker-1794100026487 photos","usedGb":240,"lastBackupOn":"2026-11-01"}}
+Contents read: GET /wp-json/zero/v1/contents/4 -> 200 {"data":{"id":4,"ownerId":1,"driveId":6,"description":"locker-1794100026487 photos","usedGb":240,"lastBackupOn":"2026-11-01"}}
+whereIs contents search: POST /wp-json/zero/v1/actions/whereIs -> 200 {"data":[{"drive":{"id":6,"ownerId":1,"label":"locker-1794100026487","model":"Example NVMe","serial":"LOCKER-1794100026487","kind":"nvme","capacityGb":1000,"interface":"PCIe 4.0","purchasedOn":null,"warrantyUntil":"2026-11-08","placeId":5,"status":"in-use","notes":null,"tags":["verification"],"replacementNeededAt":null,"place":{"id":5,"ownerId":1,"name":"locker-1794100026487","kind":"nas-bay"},"contents":[{"id":4,"ownerId":1,"driveId":6,"description":"locker-1794100026487 photos","usedGb":240,"lastBackupOn":"2026-11-01"}]},"place":{"id":5,"ownerId":1,"name":"locker-1794100026487","kind":"nas-bay"},"contents":[{"id":4,"ownerId":1,"driveId":6,"description":"locker-1794100026487 photos","usedGb":240,"lastBackupOn":"2026-11-01"}]}]}
+capacityReport: POST /wp-json/zero/v1/actions/capacityReport -> 200 {"data":{"totalGb":1000,"usedGb":240,"freeGb":760,"byPlace":[{"placeId":5,"name":"locker-1794100026487","totalGb":1000,"usedGb":240,"freeGb":760},{"placeId":null,"name":"Unassigned","totalGb":0,"usedGb":0,"freeGb":0}],"byKind":[{"kind":"ssd","totalGb":0,"usedGb":0,"freeGb":0},{"kind":"hdd","totalGb":0,"usedGb":0,"freeGb":0},{"kind":"nvme","totalGb":1000,"usedGb":240,"freeGb":760},{"kind":"sd","totalGb":0,"usedGb":0,"freeGb":0},{"kind":"usb","totalGb":0,"usedGb":0,"freeGb":0}]}}
+Over-capacity rejected: POST /wp-json/zero/v1/contents -> 422 {"type":"about:blank","title":"Unprocessable content","status":422,"code":"capacity_exceeded","detail":"Contents exceed the drive's capacity."}
+Capacity shrink rejected: PATCH /wp-json/zero/v1/drives/6 -> 422 {"type":"about:blank","title":"Unprocessable content","status":422,"code":"capacity_exceeded","detail":"Capacity is smaller than the recorded contents."}
+warrantyExpiring: POST /wp-json/zero/v1/actions/warrantyExpiring -> 200 {"data":[{"id":6,"ownerId":1,"label":"locker-1794100026487","model":"Example NVMe","serial":"LOCKER-1794100026487","kind":"nvme","capacityGb":1000,"interface":"PCIe 4.0","purchasedOn":null,"warrantyUntil":"2026-11-08","placeId":5,"status":"in-use","notes":null,"tags":["verification"],"replacementNeededAt":null,"place":{"id":5,"ownerId":1,"name":"locker-1794100026487","kind":"nas-bay"}}]}
+logHealth ok: POST /wp-json/zero/v1/actions/logHealth -> 200 {"data":{"reading":{"id":10,"ownerId":1,"driveId":6,"readOn":"2026-11-01","powerOnHours":1000,"wearPercent":10,"reallocatedSectors":0,"tempC":35},"verdict":"ok"}}
+logHealth watch: POST /wp-json/zero/v1/actions/logHealth -> 200 {"data":{"reading":{"id":11,"ownerId":1,"driveId":6,"readOn":"2026-11-02","powerOnHours":1000,"wearPercent":13,"reallocatedSectors":0,"tempC":35},"verdict":"watch"}}
+logHealth replace: POST /wp-json/zero/v1/actions/logHealth -> 200 {"data":{"reading":{"id":12,"ownerId":1,"driveId":6,"readOn":"2026-11-03","powerOnHours":1000,"wearPercent":23,"reallocatedSectors":0,"tempC":35},"verdict":"replace"}}
+Backdated health rejected: POST /wp-json/zero/v1/actions/logHealth -> 422 {"type":"about:blank","title":"Unprocessable content","status":422,"code":"reading_order","detail":"Use a date after the latest reading."}
+Counter reset rejected: POST /wp-json/zero/v1/actions/logHealth -> 422 {"type":"about:blank","title":"Unprocessable content","status":422,"code":"counter_decreased","detail":"Lifetime counters cannot decrease. Check the drive and units."}
+Other owner cannot log: POST /wp-json/zero/v1/actions/logHealth -> 404 {"type":"about:blank","title":"Not found","status":404,"code":"not_found","detail":"Drive not found."}
+Action Scheduler: Found 1 scheduled task
+Started processing action 13
+Completed processing action 13 with hook: zero_job
+1 batch executed.
+Success: 0 scheduled tasks completed.
+Replacement stamp: GET /wp-json/zero/v1/drives/6 -> 200 {"data":{"id":6,"ownerId":1,"label":"locker-1794100026487","model":"Example NVMe","serial":"LOCKER-1794100026487","kind":"nvme","capacityGb":1000,"interface":"PCIe 4.0","purchasedOn":null,"warrantyUntil":"2026-11-08","placeId":5,"status":"in-use","notes":null,"tags":["verification"],"replacementNeededAt":"2026-11-08T01:07:23.439Z"}}
+retire: POST /wp-json/zero/v1/actions/retire -> 200 {"data":{"id":6,"ownerId":1,"label":"locker-1794100026487","model":"Example NVMe","serial":"LOCKER-1794100026487","kind":"nvme","capacityGb":1000,"interface":"PCIe 4.0","purchasedOn":null,"warrantyUntil":"2026-11-08","placeId":5,"status":"retired","notes":null,"tags":["verification"],"replacementNeededAt":"2026-11-08T01:07:23.439Z"}}
+Other owner cannot retire: POST /wp-json/zero/v1/actions/retire -> 404 {"type":"about:blank","title":"Not found","status":404,"code":"not_found","detail":"Drive not found."}
+Content update: PATCH /wp-json/zero/v1/contents/4 -> 200 {"data":{"id":4,"ownerId":1,"driveId":6,"description":"locker-1794100026487 photos","usedGb":200,"lastBackupOn":"2026-11-01"}}
+Place update: PATCH /wp-json/zero/v1/places/5 -> 200 {"data":{"id":5,"ownerId":1,"name":"locker-1794100026487 updated","kind":"nas-bay"}}
+MCP initialize: POST /wp-json/mcp/zero-drive-locker -> 200 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"prompts":{"listChanged":false},"resources":{"subscribe":false,"listChanged":false},"tools":{"listChanged":false}},"serverInfo":{"name":"Drive-locker","version":"0.3.0"},"instructions":"Zero app drive-locker"}}
+Content delete: DELETE /wp-json/zero/v1/contents/4 -> 200 {"data":{"id":4,"ownerId":1,"driveId":6,"description":"locker-1794100026487 photos","usedGb":200,"lastBackupOn":"2026-11-01"}}
+VERIFIED: all five actions, contents CRUD, two-owner isolation, trend verdicts, replacement job and MCP initialization. Drive creation requires a trusted CLI fixture due to the recorded main gap.
+Cleanup: DELETE /wp-json/zero/v1/drives/6 -> 409 {"type":"about:blank","title":"Reference violation","status":409,"code":"reference_violation","detail":"Rows in health_readings may reference this row"}
+Trusted CLI cleanup: drives/6. HTTP deletion remains blocked.
+Cleanup: DELETE /wp-json/zero/v1/places/5 -> 409 {"type":"about:blank","title":"Reference violation","status":409,"code":"reference_violation","detail":"Rows in drives may reference this row"}
+Trusted CLI cleanup: places/5. HTTP deletion remains blocked.
+KNOWN MAIN GAPS: ["You can't set serialKey","Rows in health_readings may reference this row","Rows in drives may reference this row"]

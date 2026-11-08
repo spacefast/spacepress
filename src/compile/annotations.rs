@@ -75,6 +75,7 @@ impl Compiler<'_, '_> {
     fn resolve_ann_inner(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, BoundType>) -> Result<Ty> {
         Ok(match a {
             TyAnn::Num => Ty::Num,
+            TyAnn::BigInt => Ty::BigInt,
             TyAnn::NumLit(n) => Ty::NumLit(*n),
             TyAnn::Str => Ty::Str,
             TyAnn::StrLit(s) => Ty::StrLit(s.clone()),

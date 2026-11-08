@@ -120,6 +120,14 @@ tag`…${x}…` calls the tag with the call site's strings array, then the subst
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## bigint
+
+Status: **supported**.
+
+BigInt literals, the `bigint` type, BigInt(), BigInt.asIntN/asUintN, Number(b), String(b) and b.toString(radix) compile in typed code and imported JavaScript with ECMAScript semantics, in pure PHP (Zero\JsBigInt, no GMP or bcmath). Arithmetic is exact, division truncates, bitwise operators and shifts act on infinite two's complement, comparisons and loose equality compare mathematically across BigInt, number and numeric strings. Mixing BigInt and number in arithmetic, `>>>`, unary `+`, JSON serialization and Math functions throw JavaScript's TypeError; typed code refuses a static mix at the source. Configuration evaluation refuses BigInt. tests/php/bigint_test.php checks 8,800 Node-computed results.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## build-time-clock
 
 Status: **refused**. Diagnostic: `Z2101`.

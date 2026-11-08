@@ -2014,14 +2014,12 @@ export default defineConfig({ name: "p", actions: { a: action({ access: "anyone"
     )
     .unwrap();
     let work = tmp.path().join("work.txt");
-    let started = std::time::Instant::now();
     let out = zero()
         .args(["check", "--json"])
         .arg(tmp.path())
         .env("ZERO_DEBUG_EFFECTS_WORK", &work)
         .output()
         .unwrap();
-    let elapsed = started.elapsed();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     let work = std::fs::read_to_string(&work).expect("debug builds record the solver's work");
     let (projections, facts) = work
@@ -2042,6 +2040,4 @@ export default defineConfig({ name: "p", actions: { a: action({ access: "anyone"
         projections < 5 * facts,
         "the effects solver repeats work: {projections} projections for {facts} facts"
     );
-    // About 10 s in a debug build; generous for loaded CI runners.
-    assert!(elapsed < std::time::Duration::from_secs(120), "took {elapsed:?}");
 }

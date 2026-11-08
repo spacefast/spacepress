@@ -357,6 +357,7 @@ fn convert(
         &mut report.errors,
     )?;
     report.connector_roles = transformed.connector_roles;
+    let declares_posts = transformed.declares_posts;
     let client_files = match &client_app {
         Some(file) => {
             if fs.exists(&root.join("public")) {
@@ -429,6 +430,7 @@ fn convert(
         // The client is reproduced as the pages layout, or converted to public/ by `client`.
         page_files.contains_key("pages/layout.tsx") || client_app.is_some(),
         client_app.is_some(),
+        declares_posts,
         &mut report.errors,
     );
     // A static file never replaces a generated client file; that would be a silent drop.

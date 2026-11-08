@@ -62,6 +62,10 @@ pub enum Ty {
     SetOf(Box<Ty>),
     /// A built-in iterator (`map.keys()`, `array.entries()`, ...) yielding T, consumed once.
     Iter(Box<Ty>),
+    /// DOM `AbortController` (`Zero\JsAbortController`).
+    AbortController,
+    /// DOM `AbortSignal` (`Zero\JsAbortSignal`).
+    AbortSignal,
     /// A WHATWG `URL` (`Zero\JsUrl`).
     Url,
     /// A WHATWG `URLSearchParams` (`Zero\JsUrlSearchParams`).
@@ -302,6 +306,8 @@ impl Ty {
             Ty::MapOf(k, v) => format!("Map<{}, {}>", k.describe(), v.describe()),
             Ty::SetOf(t) => format!("Set<{}>", t.describe()),
             Ty::Iter(t) => format!("IterableIterator<{}>", t.describe()),
+            Ty::AbortController => "AbortController".into(),
+            Ty::AbortSignal => "AbortSignal".into(),
             Ty::Url => "URL".into(),
             Ty::UrlParams => "URLSearchParams".into(),
             Ty::Union(ts) => ts.iter().map(Ty::describe).collect::<Vec<_>>().join(" | "),

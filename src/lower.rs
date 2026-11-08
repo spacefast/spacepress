@@ -1177,14 +1177,46 @@ impl Lowerer {
             }
             E::ArrowFunctionExpression(f) => self.mk(span, ExprKind::Func(self.arrow(f)?)),
             E::FunctionExpression(f) => {
-                if f.id.is_some() {
+                let func = self.function(f)?;
+                let Some(name) = &func.name else {
+                    return Ok(self.mk(span, ExprKind::Func(func)));
+                };
+                // `function name() {}` as an expression binds `name` only inside itself, to itself,
+                // and read-only. That is a function declaration in a scope of its own, returned:
+                // `(() => { function name() {} return name; })()`. Declarations are hoisted and bound
+                // to their own closure, and the body's parameters and `var`s shadow the name as in JS.
+                if func_assigns_own_name(&func, name) {
                     return self.unsupported(
                         f.span,
-                        "named function expressions",
-                        "use an anonymous function expression or a function declaration",
+                        "assigning to a named function expression's own name",
+                        "the name is read-only inside the function; assign to a local variable instead",
                     );
                 }
-                self.mk(span, ExprKind::Func(self.function(f)?))
+                let name = name.clone();
+                let wrapper = Rc::new(Func {
+                    name: None,
+                    is_arrow: true,
+                    params: vec![],
+                    body: FnBody::Block(vec![
+                        Stmt::Func(func.clone()),
+                        Stmt::Return(Some(self.mk(f.span, ExprKind::Ident(name))), self.sp(f.span)),
+                    ]),
+                    is_async: false,
+                    is_generator: false,
+                    ret: None,
+                    type_params: vec![],
+                    span: self.sp(f.span),
+                    module: self.module,
+                });
+                self.mk(
+                    span,
+                    ExprKind::Call {
+                        callee: Box::new(self.mk(f.span, ExprKind::Func(wrapper))),
+                        args: vec![],
+                        optional: false,
+                        type_args: vec![],
+                    },
+                )
             }
             E::ParenthesizedExpression(p) => self.expr(&p.expression)?,
             E::UnaryExpression(u) => {
@@ -2157,5 +2189,145 @@ fn class_member_name(key: &a::PropertyKey<'_>) -> Option<String> {
     match key {
         a::PropertyKey::PrivateIdentifier(p) => Some(format!("#{}", p.name)),
         other => other.static_name().map(|n| n.to_string()),
+    }
+}
+
+/// Whether a function's own body assigns its name (not shadowed by a parameter, a `var` or a
+/// nested binding). A named function expression's name is immutable there: writing it throws.
+fn func_assigns_own_name(func: &Func, name: &str) -> bool {
+    let mut params = Vec::new();
+    for p in &func.params {
+        p.pat.bindings(&mut params);
+    }
+    if params.iter().any(|(n, _)| *n == name) {
+        return false;
+    }
+    match &func.body {
+        FnBody::Expr(e) => expr_assigns(e, name),
+        FnBody::Block(body) => !declares(body, name) && stmts_assign(body, name),
+    }
+}
+
+/// Whether a block declares `name` itself (a `var`, `let`, `const` or function), which shadows it.
+fn declares(body: &[Stmt], name: &str) -> bool {
+    body.iter().any(|s| match s {
+        Stmt::Decl { pat, .. } => {
+            let mut names = Vec::new();
+            pat.bindings(&mut names);
+            names.iter().any(|(n, _)| *n == name)
+        }
+        Stmt::Func(f) => f.name.as_deref() == Some(name),
+        _ => false,
+    })
+}
+
+fn stmts_assign(body: &[Stmt], name: &str) -> bool {
+    body.iter().any(|s| stmt_assigns(s, name))
+}
+
+fn stmt_assigns(s: &Stmt, name: &str) -> bool {
+    let e = |x: &Expr| expr_assigns(x, name);
+    let b = |xs: &[Stmt]| !declares(xs, name) && stmts_assign(xs, name);
+    match s {
+        Stmt::Decl { init, .. } => init.as_ref().is_some_and(e),
+        Stmt::Func(f) => f.name.as_deref().is_none_or(|n| n != name) && func_assigns_own_name(f, name),
+        Stmt::Expr(x) | Stmt::Throw(x) | Stmt::ExportDefault(x) => e(x),
+        Stmt::Return(x, _) => x.as_ref().is_some_and(e),
+        Stmt::If(t, yes, no) => e(t) || b(yes) || no.as_deref().is_some_and(b),
+        Stmt::For {
+            init,
+            test,
+            update,
+            body,
+            ..
+        } => {
+            init.as_deref().is_some_and(|i| stmt_assigns(i, name))
+                || test.as_ref().is_some_and(e)
+                || update.as_ref().is_some_and(e)
+                || b(body)
+        }
+        Stmt::ForOf { iter, body, .. } => e(iter) || b(body),
+        Stmt::ForIn { target, iter, body, .. } => {
+            matches!(&target.kind, ExprKind::Ident(n) if n == name) || e(iter) || b(body)
+        }
+        Stmt::While(t, body) | Stmt::DoWhile(body, t) => e(t) || b(body),
+        Stmt::Labeled(_, body, _) => stmt_assigns(body, name),
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => b(block) || handler.as_deref().is_some_and(b) || finalizer.as_deref().is_some_and(b),
+        Stmt::Switch { disc, cases, .. } => {
+            e(disc) || cases.iter().any(|(t, body)| t.as_ref().is_some_and(e) || b(body))
+        }
+        Stmt::Block(body) => b(body),
+        Stmt::Exported(inner) => stmt_assigns(inner, name),
+        _ => false,
+    }
+}
+
+fn expr_assigns(x: &Expr, name: &str) -> bool {
+    let target_is_name = |t: &Expr| matches!(&t.kind, ExprKind::Ident(n) if n == name);
+    match &x.kind {
+        ExprKind::Assign { target, value, .. } => {
+            target_is_name(target) || expr_assigns(target, name) || expr_assigns(value, name)
+        }
+        ExprKind::Update { target, .. } => target_is_name(target),
+        ExprKind::AssignPattern(pattern, value) => {
+            pattern.targets().iter().any(|t| target_is_name(t)) || expr_assigns(value, name)
+        }
+        ExprKind::Func(f) => func_assigns_own_name(f, name),
+        _ => {
+            let mut children = Vec::new();
+            expr_children(x, &mut children);
+            children.into_iter().any(|c| expr_assigns(c, name))
+        }
+    }
+}
+
+/// The direct sub-expressions of an expression (not inside nested functions).
+fn expr_children<'a>(x: &'a Expr, out: &mut Vec<&'a Expr>) {
+    let item = |a: &'a ArrEl| match a {
+        ArrEl::Item(v) | ArrEl::Spread(v) => v,
+    };
+    match &x.kind {
+        ExprKind::Array(items) => out.extend(items.iter().map(item)),
+        ExprKind::Object(props) => {
+            for p in props {
+                match p {
+                    Prop::KV(key, value) => {
+                        if let PropKey::Computed(k) = key {
+                            out.push(k);
+                        }
+                        out.push(value);
+                    }
+                    Prop::Spread(v) => out.push(v),
+                }
+            }
+        }
+        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => {
+            out.push(callee);
+            out.extend(args.iter().map(item));
+        }
+        ExprKind::Unary(_, v)
+        | ExprKind::Delete(v)
+        | ExprKind::IsNullish(v, _)
+        | ExprKind::Chain(v)
+        | ExprKind::Await(v)
+        | ExprKind::As(v, _)
+        | ExprKind::NonNull(v)
+        | ExprKind::Member { obj: v, .. } => out.push(v),
+        ExprKind::Binary(_, a, b)
+        | ExprKind::Logical(_, a, b)
+        | ExprKind::Instanceof(a, b)
+        | ExprKind::In(a, b)
+        | ExprKind::Index { obj: a, index: b, .. } => {
+            out.push(a);
+            out.push(b);
+        }
+        ExprKind::Cond(a, b, c) => out.extend([&**a, &**b, &**c]),
+        ExprKind::Template(_, values) | ExprKind::Sequence(values) => out.extend(values.iter()),
+        _ => {}
     }
 }

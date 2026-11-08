@@ -265,6 +265,83 @@ export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {
 }
 
 #[test]
+fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
+    // A timer still pending when the handler returns would fire after the response in Node; the PHP
+    // request ends first, so the runtime refuses at handler end and names the creation site.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("timers.js"),
+        "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {pending,cleared,late} from './timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
+        $out=[];
+        foreach (['pending','cleared','late'] as $a) {
+            $fn='\\ZeroApp\\'.$s['actions'][$a]['handler'];
+            try { $out[]=['ok', \Zero\Timers::run(fn() => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])))]; }
+            catch (\Zero\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
+            $out[]=\Zero\Timers::pending();
+        }
+        echo json_encode($out);"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-timers/zero/app"),
+        ],
+    );
+    assert_eq!(
+        result,
+        json!([
+            [
+                "Error",
+                "A setTimeout callback is still pending when the handler returns (timers.js:1:28); await it or clearTimeout it first"
+            ],
+            0,
+            ["ok", 2],
+            0,
+            [
+                "Error",
+                "A setTimeout callback is still pending when the handler returns (timers.js:3:35); await it or clearTimeout it first"
+            ],
+            0
+        ])
+    );
+    // runNext() advances a pinned clock instead of sleeping, runs exactly one callback in
+    // (due, creation) order, and refuses waits past the request budget.
+    let order = php(
+        r#"require $argv[1];
+        putenv('ZERO_NOW=1000'); putenv('ZERO_TIMER_BUDGET_MS=100');
+        $log=[];
+        \Zero\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
+        \Zero\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
+        \Zero\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
+        $signal = \Zero\JsAbortSignal::timeout(15);
+        while (\Zero\Timers::runNext()) { $log[] = \Zero\Timers::clock(); }
+        \Zero\Timers::set(function() {}, 500);
+        try { \Zero\Timers::runNext(); $log[]='slept'; } catch (\Zero\JsError $e) { $log[]=$e->jsName; }
+        // A throwing abort listener: dispatch continues (as in Node), then the error ends the
+        // request where Node would report it as uncaught.
+        $faulty = new \Zero\JsAbortController(); $seen = [];
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \Zero\JsError('listener'); });
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 2; });
+        try { $faulty->abort(); } catch (\Zero\JsError $e) { $seen[] = $e->getMessage(); }
+        echo json_encode([$log, $signal->aborted, $signal->reason->jsName, $seen]);"#,
+        &[&root().join("runtime/Zero/bootstrap.php")],
+    );
+    assert_eq!(
+        order,
+        json!([
+            ["a", 1010, 1015, "b", 1020, "c", 1020, "RangeError"],
+            true,
+            "TimeoutError",
+            [1, 2, "listener"]
+        ])
+    );
+}
+
+#[test]
 fn url_vectors_agree_in_node_and_generated_php() {
     // Every WHATWG urltestdata.json case (tests/differential/URL-WPT-NOTICE.txt) plus URLSearchParams
     // and setter cases, through checked JavaScript, compared with Node byte for byte.
@@ -3047,7 +3124,8 @@ fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
 }
 
 #[test]
-fn named_function_expressions_refuse_with_a_source_position() {
+fn named_function_expressions_bind_their_name_inside_themselves() {
+    // The inner name shadows an outer binding of the same name, at build time and in a handler.
     for declaration in [
         "const x=7;const folded=(function x(){return typeof x;})();",
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
@@ -3055,22 +3133,26 @@ fn named_function_expressions_refuse_with_a_source_position() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{report}");
-        let diagnostic = &report["diagnostics"][0];
-        assert_eq!(diagnostic["code"], "Z1002", "{report}");
-        assert!(
-            diagnostic["message"]
-                .as_str()
-                .unwrap()
-                .contains("named function expressions"),
-            "{report}"
-        );
-        assert!(diagnostic["location"].is_object(), "{report}");
-        assert_eq!(
-            diagnostic["help"], "use an anonymous function expression or a function declaration",
-            "{report}"
-        );
+        assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
+    // Strict JavaScript throws on a write to the name, so it is refused where it is written.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nconst f=function g(){ g = () => 1; return 1; };\nexport default defineConfig({actions:{probe:action({handler:()=>f()})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    let diagnostic = &report["diagnostics"][0];
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .unwrap()
+            .contains("assigning to a named function expression's own name"),
+        "{report}"
+    );
+    assert_eq!(diagnostic["location"]["line"], 2, "{report}");
+    assert!(
+        diagnostic["help"].as_str().unwrap().contains("local variable"),
+        "{report}"
+    );
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the

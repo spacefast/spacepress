@@ -243,7 +243,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   // A WordPress session issued by another integration must still obey identity suspension.
   const suspendedId = Number(await wp('user', 'create', 'pages-suspended', 'pages-suspended@example.test', '--role=subscriber', '--porcelain'));
   assert.equal(Number.isInteger(suspendedId) && suspendedId > 0, true);
-  await wp('zero-identity', 'suspend', String(suspendedId));
+  await wp('zero', 'identity', 'suspend', String(suspendedId));
   const suspendedCookie = await wp('eval', `echo LOGGED_IN_COOKIE . '=' . wp_generate_auth_cookie(${suspendedId}, time() + 300, 'logged_in');`);
   const denied = await page('/about/', { cookie: suspendedCookie });
   assert.equal(denied.status, 404, 'a resolved suspended account cannot view a managed route');

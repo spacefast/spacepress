@@ -10,18 +10,18 @@
 use super::super::{Failure, fail, pointer};
 use crate::loader::Fs;
 use regex::{Regex, RegexBuilder};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 pub(super) const CLIENT: &str = "the 0.8 client app is not carried over";
 pub(super) const PAGES: &str = "the 0.8 page is not carried over";
 pub(super) const STATIC: &str = "the static file is not carried over";
-pub(super) const REDIRECTS: &str = "the redirect, rewrite and header rules are not carried over";
-pub(super) const CLEAN_URLS: &str = "clean URLs are not carried over";
+pub(super) const REDIRECTS: &str = "the redirect and header rule files are not carried over";
 pub(super) const SERVE: &str = "the serving settings are not carried over";
 pub(super) const CONNECTORS: &str = "the connector role is not carried over";
 pub(super) const SYNC: &str = "content sync is not carried over";
+pub(super) const POSTS: &str = "the posts content is not carried over";
 pub(super) const PUBLIC: &str = "public/ is not carried over";
 pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
 pub(super) const DENIED: &str = "the credential file is not carried over";
@@ -113,32 +113,116 @@ const REPOSITORY_ROOTS: &[&str] = &[".github", "test", "tests", "tools"];
 const CODE: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
 /// zero-compile's `TYPESCRIPT_SOURCE_FILE`, never served wherever it is.
 const TYPESCRIPT: &[&str] = &["ts", "tsx", "mts", "cts"];
-/// The rule files 0.8 compiled into routing instead of serving.
+/// The rule files 0.8 compiled into routing instead of serving. The candidate doesn't carry them:
+/// in public/ they would publish at the root, which this converter hasn't shown to apply the same.
 const RULE_FILES: &[&str] = &["_redirects", "_headers"];
 /// Config keys the candidate reproduces or that change nothing it serves: the converted runtime,
 /// the Space's display name (and the old CLI's `space` key) and the editor's schema pointer.
 const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
+/// Keys Spacefast applies to the Space, not the Zero app, and that an independent review traced to
+/// the same effect on a v2 version as on the 0.8 one; written unchanged into the candidate's own
+/// sf.jsonc, which the migrated publish uploads.
+/// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
+///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php). Only
+///   when no rule can reach a URL the v2 app answers that 0.8 kept out of the redirect stage:
+///   WordPress's and Zero's paths (v2's `/wp-json/zero/v1/*` isn't reserved from redirects as 0.8's
+///   data URLs were) and the folders the candidate serves (see `redirect_reaches_app`).
+/// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
+/// - `analytics`, `system`: frozen from the file config whatever the runtime.
+/// - `build`, `placement`: read from the repository or the Space at build or creation time, never
+///   from the version, so carrying them changes nothing; kept so the file still says what it said.
+/// - `access` as `"public"`, the only string form Spacefast accepts: no path patterns, and v2's
+///   `/wp-json` lane enforces it through the same access engine (see `carries`).
+///
+/// Every other key is refused. Path rules don't survive the move, because the app's data URLs
+/// move from 0.8's `/__zero/*` to v2's `/wp-json/zero/v1/*`: so `access` path patterns, `cache`
+/// and `firewall` are refused, as are `crons` (no `CRON_SECRET` on v2) and `sell` (its product file
+/// and paid assets would be swept into public/).
+pub(super) const PLATFORM_KEYS: &[&str] = &[
+    "redirects",
+    "cleanUrls",
+    "index",
+    "analytics",
+    "build",
+    "placement",
+    "system",
+    "access",
+];
+
+/// Whether the candidate carries `key` with `value`: every platform key, `access` only as
+/// `"public"`, and `redirects` only when no rule can reach a URL the v2 app answers that 0.8 kept
+/// out of the redirect stage. `served` holds the first segments of every file the candidate
+/// writes under public/ (see `redirect_reaches_app`).
+pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<String>) -> bool {
+    PLATFORM_KEYS.contains(&key)
+        && match key {
+            "access" => value.as_str() == Some("public"),
+            "redirects" => value
+                .as_array()
+                .is_some_and(|rules| rules.iter().all(|r| !redirect_reaches_app(r, served))),
+            _ => true,
+        }
+}
+
+/// Whether a redirect rule's `source` can reach a URL the v2 app answers that 0.8 kept out of the
+/// redirect stage, so a carried rule would catch requests it never caught on 0.8. That is any of:
+/// - an absolute URL or an empty source;
+/// - a first segment holding a pattern character (the engine compiles `:name` anywhere in a
+///   segment to `[^/]+`, so `/w:x` matches `/wp-json`, and `*` to a splat);
+/// - a first segment WordPress or Zero owns (`endpoints::RESERVED`, `wp-json` among them), or one
+///   starting with `wp-` (WordPress's own entry points);
+/// - a first segment the candidate serves files under (`served`, from its public/ tree: the
+///   converted client's `app/`, `zero/` and stylesheet folders, and the carried static files).
+///
+/// The last one is read from what the candidate writes, so it covers every folder the converter
+/// adds. A carried static file keeps its 0.8 path and was a table entry on 0.8 too, so a rule
+/// there behaves the same; refusing it only refuses more than needed. Exactly `/` matches only the
+/// root. Anything this can't read counts as reaching one.
+fn redirect_reaches_app(rule: &serde_json::Value, served: &BTreeSet<String>) -> bool {
+    let Some(source) = rule.get("source").and_then(serde_json::Value::as_str) else {
+        return true;
+    };
+    if source == "/" {
+        return false;
+    }
+    let Some(path) = source.strip_prefix('/') else {
+        return true;
+    };
+    let first = path.split('/').next().unwrap_or("");
+    let lower = first.to_ascii_lowercase();
+    first.is_empty()
+        || first.contains([':', '*'])
+        || lower.starts_with("wp-")
+        || super::endpoints::RESERVED.contains(&lower.as_str())
+        || served.contains(&lower)
+}
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
 const THEME_JSON: &str = "theme.json";
 /// The serving keys with their own error; any other key raises `CONFIG`.
+/// - `rewrites`, `listing`: the engine checks a rewrite's path, and compiles a listing, against
+///   0.8's pages; v2's render in WordPress, so the rule would take over the v2 app's URLs.
+/// - `headers`: header rules apply to response-table entries only, so on v2 they'd skip the app's
+///   WordPress-rendered pages that they covered on 0.8.
+/// - `fallback`: not shown to leave v2's WordPress-rendered pages alone.
+/// - `inject`: not shown to reach WordPress-rendered HTML.
+/// - `serve`: 0.8's own serving block.
 const SERVING_KEYS: &[(&str, &str)] = &[
-    ("redirects", REDIRECTS),
-    ("rewrites", REDIRECTS),
-    ("headers", REDIRECTS),
-    ("cleanUrls", CLEAN_URLS),
-    ("fallback", SERVE),
-    ("index", SERVE),
+    ("rewrites", SERVE),
+    ("headers", SERVE),
     ("listing", SERVE),
+    ("fallback", SERVE),
     ("serve", SERVE),
     ("inject", SERVE),
-    ("firewall", SERVE),
-    ("cache", SERVE),
 ];
 
 /// Files this sweep carries over (`public/<path>` → contents) and the errors for the rest.
 pub(super) struct Omitted {
     pub files: BTreeMap<String, String>,
     pub carried: Vec<String>,
+    /// The candidate's sf.jsonc: the 0.8 config's platform keys, when it has any.
+    pub config: Option<String>,
+    /// The 0.8 config keys the candidate carries, in their order (`carries`).
+    pub kept: serde_json::Map<String, serde_json::Value>,
 }
 
 /// What the sweep does with a capsule-relative path before deciding whether 0.8 served it.
@@ -388,11 +472,15 @@ pub(super) fn sweep(
     client_entry: Option<&Path>,
     client_carried: bool,
     client_app_converted: bool,
+    declares_posts: bool,
+    client_public: &[String],
     errors: &mut Vec<Failure>,
 ) -> Omitted {
     let mut out = Omitted {
         files: BTreeMap::new(),
         carried: vec![],
+        config: None,
+        kept: serde_json::Map::new(),
     };
     let mut tree = Tree::default();
     walk(fs, root, root, &mut tree, false);
@@ -423,6 +511,7 @@ pub(super) fn sweep(
         );
     }
     let mut client_reported = false;
+    let mut posts_reported = false;
     // 0.8 built a client with no pages as the whole site and generated its index.html, shadowing
     // the author's (zero-compile's `standaloneClient`). The client is `runtime.client` wherever it
     // lives, as the client conversion resolves it.
@@ -449,6 +538,21 @@ pub(super) fn sweep(
             if !client_carried && !client_reported {
                 client_reported = true;
                 errors.push(fail("/client", format!("{CLIENT}: 0.8 built client/ into the Space's browser app beside its pages; only a client app without pages is converted, so publishing would remove this interface")).located(name.clone(), 1, 1));
+            }
+            continue;
+        }
+        // zero-compile's ZERO_STRUCTURAL_COLLECTIONS: without a declared `collections.posts`, 0.8
+        // rebuilt content/posts/ into the Space's native posts on every publish (and also served the
+        // files). The candidate adopts the existing post rows but doesn't rebuild them, so its posts
+        // would stop following these files. A declared `posts` collection had no such default:
+        // 0.8 only served the files, as the candidate does, and its `sync` has its own error.
+        if name.starts_with("content/posts/") && !declares_posts {
+            if !posts_reported {
+                posts_reported = true;
+                errors.push(file(fail(
+                    "/content/posts",
+                    format!("{POSTS}: 0.8 published content/posts/ as the Space's posts; the candidate keeps the existing posts but doesn't rebuild them from these files"),
+                )));
             }
             continue;
         }
@@ -506,19 +610,26 @@ pub(super) fn sweep(
             ))),
         }
     }
-    // 0.8 served `<name>.html` (or `.htm`) at `/<name>` unless cleanUrls was false; v2 serves files
-    // as named.
-    let clean_page = out.carried.iter().find(|f| {
-        let base = f.rsplit('/').next().unwrap_or(f);
-        (base.ends_with(".html") || base.ends_with(".htm")) && !base.starts_with("index.")
-    });
+    // The first segment of every file the candidate serves from public/, lowercased.
+    let served: BTreeSet<String> = client_public
+        .iter()
+        .chain(out.files.keys())
+        .filter_map(|p| p.strip_prefix("public/"))
+        .filter_map(|p| p.split('/').next())
+        .filter(|first| !first.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect();
     if let Some((config_file, config, text)) = config {
         // The key's line in the config file, where the fix goes.
         let keys = top_level_keys(text);
         let line_of = |key: &str| -> (usize, usize) { keys.get(key).copied().unwrap_or((1, 1)) };
         // Fail closed: every key 0.8 applied is refused unless it is known to change nothing.
-        for key in config.as_object().into_iter().flat_map(|o| o.keys()) {
+        for (key, value) in config.as_object().into_iter().flatten() {
             if NO_OP_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+            if carries(key, value, &served) {
+                out.kept.insert(key.clone(), value.clone());
                 continue;
             }
             let reason = SERVING_KEYS
@@ -526,34 +637,31 @@ pub(super) fn sweep(
                 .find(|(k, _)| k == key)
                 .map_or(CONFIG, |(_, reason)| reason);
             let (line, column) = line_of(key);
+            // Name the redirect that blocks the key, so the author knows which rule to move.
+            let blocking = (key == "redirects")
+                .then(|| value.as_array())
+                .flatten()
+                .and_then(|rules| rules.iter().find(|r| redirect_reaches_app(r, &served)))
+                .and_then(|r| r.get("source"))
+                .and_then(serde_json::Value::as_str)
+                .map(|source| {
+                    format!(
+                        "; the rule on `{source}` can reach a path WordPress, Zero or the converted app answers on v2"
+                    )
+                })
+                .unwrap_or_default();
             errors.push(
                 fail(
                     &pointer(&format!("/{config_file}"), key),
-                    format!("{reason}: 0.8 applied {config_file} `{key}` to the Space"),
+                    format!("{reason}: 0.8 applied {config_file} `{key}` to the Space{blocking}"),
                 )
                 .located(config_file.to_string(), line, column),
             );
         }
-        if let Some(page) = clean_page
-            && config.get("cleanUrls").is_none()
-        {
-            errors.push(
-                fail(
-                    &pointer(&format!("/{config_file}"), "cleanUrls"),
-                    format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default, {page} included"),
-                )
-                .located(config_file.to_string(), 1, 1),
-            );
-        }
-    } else if let Some(page) = clean_page {
-        errors.push(
-            fail(
-                "/cleanUrls",
-                format!("{CLEAN_URLS}: 0.8 served each <name>.html at /<name> by default, {page} included"),
-            )
-            .located(page.clone(), 1, 1),
-        );
     }
+    // Clean URLs need no error: the engine serves `<name>.html` at `/<name>` for the static files a
+    // v2 version publishes from public/, by default as it did for 0.8's (`.htm` keeps its name on
+    // both), and `cleanUrls` travels in sf.jsonc.
     // 0.8 inferred the pages' theme tokens from theme.json and linked the generated theme.css.
     if fs.is_file(&root.join(THEME_JSON)) {
         errors.push(
@@ -565,4 +673,52 @@ pub(super) fn sweep(
         );
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redirect_reaches_app;
+
+    /// A redirect is carried only when its first segment is a literal nothing on v2 answers.
+    #[test]
+    fn a_redirect_reaches_the_app_unless_its_first_segment_is_a_free_literal() {
+        let served: std::collections::BTreeSet<String> = ["app", "zero", "client", "assets"].map(String::from).into();
+        for (source, reaches) in [
+            ("/", false),
+            ("/old", false),
+            ("/blog/:slug", false),
+            // Any wp- first segment is WordPress territory, so even an unknown one is refused.
+            ("/wp-jsonx/a", true),
+            ("/wp-json/*", true),
+            ("/WP-JSON/zero", true),
+            ("/*", true),
+            ("/:lang/*", true),
+            ("/a*", true),
+            // A capture inside a segment compiles to `[^/]+`, so these match /wp-json/... too.
+            ("/w:x/*", true),
+            ("/wp-:rest/*", true),
+            ("/w:x", true),
+            // The converted client app's modules and runtime live under these on v2.
+            ("/app/*", true),
+            ("/zero/client.js", true),
+            // WordPress and Zero own these first segments on v2.
+            ("/wp-admin/*", true),
+            ("/wp-content/uploads/*", true),
+            ("/zero-admin", true),
+            ("/apps/old", false),
+            // Any folder the candidate serves, read from its public/ tree, and WordPress's wp-*.
+            ("/client/*", true),
+            ("/assets/logo.png", true),
+            ("/wp-comments-post.php", true),
+            ("https://old.example/*", true),
+            ("", true),
+        ] {
+            let rule = serde_json::json!({ "source": source, "destination": "/" });
+            assert_eq!(redirect_reaches_app(&rule, &served), reaches, "{source}");
+        }
+        assert!(redirect_reaches_app(
+            &serde_json::json!({ "destination": "/" }),
+            &served
+        ));
+    }
 }

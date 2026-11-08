@@ -2025,3 +2025,86 @@ fn a_plugin_package_runs_under_its_locked_grant() {
         })
     );
 }
+
+/// One large imported function in the shape of picomatch's `parse.js`: a token loop whose
+/// branches push, pop, slice and copy token objects that point at each other through `prev`.
+/// The effects solver once re-ran every rule over every fact on each pass, which took minutes
+/// here. It now reads only new facts, so its work stays a small multiple of the facts it
+/// produces. Debug builds count that work (`ZERO_DEBUG_EFFECTS_WORK`). On this program the
+/// old solver made 51M path projections for 1.36M facts (37 per fact) and took 20 s in a
+/// release build; the incremental solver makes 3.5M (2.6 per fact).
+#[test]
+fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
+    let mut body = String::from(
+        "export function run(input) {
+  const state = { index: -1, output: '', tokens: [], prev: null, depth: 0 };
+  const bos = { type: 'bos', value: '', output: '' };
+  const tokens = [bos];
+  let prev = bos;
+  let value = '';
+  const advance = () => input[++state.index];
+  const append = tok => { state.output += tok.output != null ? tok.output : tok.value; };
+  const push = tok => {
+    if (prev && prev.type === tok.type) { prev.value += tok.value; prev.output = (prev.output || '') + tok.value; return; }
+    tok.prev = prev; tokens.push(tok); prev = tok; state.prev = tok;
+  };
+  const pop = () => { const tok = tokens.pop(); prev = tokens[tokens.length - 1]; return tok; };
+  while (state.index < input.length - 1) {
+    value = advance();
+",
+    );
+    for i in 0..60 {
+        body.push_str(&match i % 6 {
+            0 => format!("    if (value === 'a{i}') {{ push({{ type: 't{}', value, output: prev.output + value }}); continue; }}\n", i % 7),
+            1 => format!("    if (value === 'b{i}') {{ const t = {{ type: 'p', value, prev: prev.prev }}; t.output = prev.value; push(t); append(t); continue; }}\n"),
+            2 => format!("    if (value === 'c{i}' && prev.prev) {{ prev.prev.output = prev.output; prev.value = state.output; state.depth++; continue; }}\n"),
+            3 => format!("    if (value === 'd{i}') {{ const last = pop(); if (last) {{ last.output = value; push(last); }} continue; }}\n"),
+            4 => format!("    if (value === 'e{i}') {{ const s = tokens.slice(-2); state.tokens = s; prev.output = s.length + ''; continue; }}\n"),
+            _ => format!("    if (value === 'f{i}') {{ const o = {{ ...prev, value: prev.value + value }}; append(o); push({{ type: 'f', value: o.value, output: o.output }}); continue; }}\n"),
+        });
+    }
+    body.push_str(
+        "    push({ type: 'text', value, output: value });
+  }
+  return state.output + ':' + tokens.length + ':' + state.depth;
+}
+",
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { action, defineConfig, text } from "zero";
+import { run } from "./run.mjs";
+export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+"#,
+    )
+    .unwrap();
+    let work = tmp.path().join("work.txt");
+    let out = zero()
+        .args(["check", "--json"])
+        .arg(tmp.path())
+        .env("ZERO_DEBUG_EFFECTS_WORK", &work)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let work = std::fs::read_to_string(&work).expect("debug builds record the solver's work");
+    let (projections, facts) = work
+        .lines()
+        .map(|line| {
+            let field = |name: &str| -> u64 {
+                line.split(' ')
+                    .find_map(|part| part.strip_prefix(name)?.strip_prefix('='))
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or_else(|| panic!("{name} in {line:?}"))
+            };
+            (field("projections"), field("facts"))
+        })
+        .max_by_key(|(_, facts)| *facts)
+        .expect("one solve");
+    assert!(facts > 1_000_000, "the program no longer stresses the solver: {work}");
+    assert!(
+        projections < 5 * facts,
+        "the effects solver repeats work: {projections} projections for {facts} facts"
+    );
+}

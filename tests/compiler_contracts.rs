@@ -3450,35 +3450,93 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
-/// Methods that read `this` compile once each, in the order of the siblings they read, so a
-/// refusal inside a helper or class they call is reported, never retried past into a build that
-/// calls a function PHP never got.
+/// A helper, class, namespace receiver or captured collection that Zero refuses is reported
+/// wherever it is first compiled: in a sibling method that reads `this`, in an `if`, a ternary or
+/// a `for await` array, or behind an `instanceof` check. The checks that type a branch never leave
+/// it registered without code, so the build never calls a function PHP never got.
 #[test]
-fn a_refusal_inside_a_this_method_helper_is_reported() {
-    for (declarations, call) in [
+fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled() {
+    let first =
+        "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }";
+    let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }";
+    let sort = "sorting requires a numeric key-difference comparator";
+    for (declarations, handler, message) in [
         (
-            "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }",
-            "first([1, 3, 2])",
+            first,
+            "() => ({ a() { return first([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
+            sort,
         ),
         (
-            "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }",
-            "new Box(1).top([1, 3, 2])",
+            boxed,
+            "() => ({ a() { return new Box(1).top([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
+            sort,
+        ),
+        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }", sort),
+        (
+            first,
+            "async () => { let n = 0; for await (const v of [first([1, 3, 2])]) n += v; return n; }",
+            sort,
+        ),
+        (first, "() => (first([1, 3, 2]) ? 1 : 0)", sort),
+        (
+            first,
+            "() => ({ a() { if (first([1, 3, 2])) return this.n; return 0; }, n: 1 }).a()",
+            sort,
+        ),
+        (
+            boxed,
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box) return 1; return 0; }",
+            sort,
+        ),
+        (
+            format!("{boxed} function h(): number {{ return new Box(1).v; }}").as_str(),
+            "() => { if (h()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "function bad(): number { return [1].sort(function (a, b) { return b > a ? 1 : -1; })[0]; } const ns = { n: 1, get(this: { n: number }): number { return this.n; }, bad };",
+            "() => { if (ns.get()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "const m = new Map([[\"a\", () => 1]]);",
+            "() => { if (m.get(\"a\")) return 1; return 0; }",
+            "captured data contains a function, which can't be used in PHP",
+        ),
+        // A module-level literal whose method reads `this` is built whole in PHP, so a member the
+        // method never reads is still compiled, and its refusal is reported, not dropped.
+        (
+            "class K { m(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } const api = { K, n: 1, f() { return this.n; } };",
+            "() => [api.f(), new K().m([1, 3, 2])]",
+            sort,
+        ),
+        (
+            "const api = { m: new Map([[1, () => 2]]), n: 1, f() { return this.n; } };",
+            "() => api.f()",
+            "captured data contains a function, which can't be used in PHP",
+        ),
+        (
+            "class Box { constructor(public v: number) {} m(): number { return h().v; } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } function h(): Box { return new Box(1); }",
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && h().ok()) return 1; return 0; }",
+            sort,
+        ),
+        (
+            "class Box { constructor(public v: number) {} m(): number { return new Tag().of(this); } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } class Tag { of(b: Box): number { return b.v; } box(): Box | null { return null; } } function t(): Tag { return new Tag(); }",
+            "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && t().box()!.ok()) return 1; return 0; }",
+            sort,
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => ({{ a() {{ return {call} + this.b(); }}, b() {{ return this.n; }}, n: 1 }}).a() }}) }} }});\n"),
+            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: {handler} }}) }} }});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{call}: {report}");
+        assert_eq!(out.status.code(), Some(1), "{handler}: {report}");
         assert!(
-            report["diagnostics"][0]["message"]
-                .as_str()
-                .unwrap()
-                .contains("sorting requires a numeric key-difference comparator"),
-            "{call}: {report}"
+            report["diagnostics"][0]["message"].as_str().unwrap().contains(message),
+            "{handler}: {report}"
         );
     }
 }
@@ -3845,69 +3903,174 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
 /// location and non-empty help. Add a case whenever a refusal is added.
 #[test]
 fn language_refusals_carry_a_location_and_a_fix() {
-    // (name, declarations, handler body): the handler reaches each construct so it is compiled.
-    let cases: &[(&str, &str, &str)] = &[
-        ("with", "", "{ const o = { a: 1 }; with (o) { return a; } }"),
-        ("debugger", "", "{ debugger; return 1; }"),
-        ("this at module level", "const self = () => this;", "self()"),
-        ("enum", "enum Unit { Pcs, G }", "Unit.Pcs"),
-        ("namespace", "namespace N { export const x = 1; }", "N.x"),
+    // (name, declarations, handler body, message, help): the handler reaches each construct so it
+    // is compiled; the message (and help, when given) names this refusal and no other.
+    let cases: &[(&str, &str, &str, &str, &str)] = &[
+        (
+            "with",
+            "",
+            "{ const o = { a: 1 }; with (o) { return a; } }",
+            "doesn't support `with`",
+            "",
+        ),
+        (
+            "debugger",
+            "",
+            "{ debugger; return 1; }",
+            "doesn't support `debugger`",
+            "",
+        ),
+        (
+            "this at module level",
+            "const self = () => this;",
+            "self()",
+            "`this` at module level",
+            "",
+        ),
+        ("enum", "enum Unit { Pcs, G }", "Unit.Pcs", "doesn't support `enum`", ""),
+        (
+            "namespace",
+            "namespace N { export const x = 1; }",
+            "N.x",
+            "doesn't support namespaces",
+            "",
+        ),
         (
             "computed destructuring key",
             "",
             "{ const o: Record<string, number> = {}; const k = 'a'; const { [k]: v } = o; return v; }",
+            "computed keys in destructuring",
+            "",
         ),
-        ("nested rest", "", "{ const a = [[1]]; const [...[x]] = a; return x; }"),
-        ("array holes", "", "[1, , 2]"),
-        ("getters and setters", "", "({ get x() { return 1; } }).x"),
+        (
+            "nested rest",
+            "",
+            "{ const a = [[1]]; const [...[x]] = a; return x; }",
+            "nested rest patterns",
+            "",
+        ),
+        ("array holes", "", "[1, , 2]", "array holes", ""),
+        (
+            "getters and setters",
+            "",
+            "({ get x() { return 1; } }).x",
+            "getters and setters",
+            "",
+        ),
         (
             "generators",
             "function* g(): Generator<number> { yield 1; }",
             "[...g()]",
+            "generators only work in imported JavaScript",
+            "",
         ),
         (
             "delete of a variable",
             "",
             "{ let x = 1; return delete (x as unknown as { y?: number }); }",
+            "`delete` of a variable",
+            "",
         ),
         (
             "call signature",
             "type F = { (x: number): string };",
             "{ const f: F = (x: number) => String(x); return f(1); }",
+            "call and construct signatures",
+            "",
         ),
-        ("dynamic import", "", "{ const m = import('./x'); return 1; }"),
+        (
+            "dynamic import",
+            "",
+            "{ const m = import('./x'); return 1; }",
+            "dynamic `import()`",
+            "",
+        ),
         (
             "this through a module namespace",
             "import * as ns from './zero/ns.mjs';",
             "ns.nsThis()",
+            "through the module namespace `ns`",
+            "",
         ),
         (
             "function with properties in a this receiver",
             "import { withHelper } from './zero/ns.mjs';",
             "withHelper.read()",
+            "a function with properties (`withHelper.helper`)",
+            "",
         ),
         (
             "methods calling each other without return types",
             "",
             "({ a() { return this.b(); }, b() { return this.a(); } }).a()",
+            "has no field `a`",
+            "call each other through `this`",
         ),
         (
             "handler reading this",
             "",
             "{ return 1; } }), other: action({ input: {}, handler: function () { return typeof this; }",
+            "without a receiver, so `this` is undefined",
+            "",
+        ),
+        (
+            "module-level literal method used apart from its object",
+            "const api = { n: 1, f() { return this.n; } };",
+            "{ const g = api.f; return g(); }",
+            "using `api.f` apart from the object literal",
+            "",
+        ),
+        (
+            "module-level literal method copied onto another object",
+            "const api = { n: 1, f() { return this.n; } }; const copy = { ...api, n: 2 };",
+            "copy.f()",
+            "using `copy.f` apart from the object literal",
+            "",
+        ),
+        (
+            "untyped this outside an object literal",
+            "const api = { n: 1, f() { return this.n; } }; api.f = function () { return this.n; };",
+            "api.f()",
+            "`this` without a type in a function that isn't a method",
+            "",
+        ),
+        (
+            "module-level literal methods calling each other without return types",
+            "const api = { a() { return this.b(); }, b() { return this.a(); } };",
+            "api.a()",
+            "has no field `a`",
+            "`a` and `b` call each other through `this`",
+        ),
+        (
+            "module-level literal method calling itself without a return type",
+            "const api = { n: 1, fact(k: number) { return k ? this.n * this.fact(k - 1) : 1; } };",
+            "api.fact(2)",
+            "has no field `fact`",
+            "`fact` calls itself through `this`; annotate its return type, e.g. `fact(k: number): number`",
+        ),
+        (
+            "module-level literal method reaching a sibling through a variable",
+            "const api = { n: 1, first() { const self = this; return self.second(); }, second() { return this.n; } };",
+            "api.first()",
+            "has no field `second`",
+            "through `this` held in a variable",
         ),
         (
             "receiver-typed callback",
             "",
             "[1].map(function (this: { x: number }, value) { return this.x + value; })",
+            "so `this` is undefined, not { x: number }",
+            "",
         ),
         (
             "this before super",
             "class A {} class B extends A { constructor(public n: number = (this as unknown as { n: number }).n) { super(); } }",
             "new B()",
+            "before `super()` in a derived constructor",
+            "",
         ),
     ];
-    for (name, declarations, handler) in cases {
+    for (name, declarations, handler, message, fix) in cases {
         let tmp = tempfile::tempdir().unwrap();
         write_app(tmp.path().join("zero/ns.mjs"),
             "export function nsThis() { return typeof this; }\nfunction helper() { return 1; }\nhelper.x = 42;\nexport const withHelper = { helper, read() { return this.helper.x; } };\n",
@@ -3925,7 +4088,12 @@ fn language_refusals_carry_a_location_and_a_fix() {
             diagnostic["location"]["line"].as_u64().is_some_and(|l| l >= 2),
             "{name}: {report}"
         );
+        assert!(
+            diagnostic["message"].as_str().unwrap_or("").contains(message),
+            "{name}: {report}"
+        );
         let help = diagnostic["help"].as_str().unwrap_or("");
         assert!(!help.trim().is_empty(), "{name}: refusal without a fix: {report}");
+        assert!(help.contains(fix), "{name}: {report}");
     }
 }

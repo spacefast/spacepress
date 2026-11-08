@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +17,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quick:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install Rust
+        run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --component clippy --component rustfmt
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked --lib
   rust:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -70,6 +90,7 @@ jobs:
         run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs
 
   host:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -107,6 +128,7 @@ jobs:
       - run: tests/php/run.sh
 
   vendor:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container: php:8.2-cli
@@ -194,6 +216,7 @@ jobs:
       - run: node --test packages/cli/test/*.test.mjs packages/create-zero/test/*.test.mjs scripts/release/archive.test.mjs
 
   pages:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -228,6 +251,7 @@ jobs:
           ZERO_BIN: ${{ github.workspace }}/target/debug/zero
 
   wp:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -275,6 +299,7 @@ jobs:
           retention-days: 7
 
   wp-migrate:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -317,6 +342,7 @@ jobs:
         run: ZERO_WP_PROJECT=zero-wp-wordpress ZERO_WP_PORT=8898 tests/wp/wordpress/run.sh
 
   wp-s3:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -349,6 +375,7 @@ jobs:
 
   # Hosted TSX pages, the island in Chromium and custom HTTP routes, from `zero compile-sources`.
   wp-pages:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -387,6 +414,7 @@ jobs:
 
   # `zero dev` from a release binary after removing its build checkout.
   installed:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -415,6 +443,7 @@ jobs:
       - run: tests/wp/installed/run.sh
 
   system:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -444,6 +473,7 @@ jobs:
       - run: tests/system/run.sh
 
   identity:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:

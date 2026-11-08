@@ -389,6 +389,7 @@ pub(super) fn sweep(
     client_entry: Option<&Path>,
     client_carried: bool,
     client_app_converted: bool,
+    declares_posts: bool,
     errors: &mut Vec<Failure>,
 ) -> Omitted {
     let mut out = Omitted {
@@ -454,10 +455,12 @@ pub(super) fn sweep(
             }
             continue;
         }
-        // zero-compile's ZERO_STRUCTURAL_COLLECTIONS: 0.8 built content/posts/ into the Space's
-        // native posts on every publish. The candidate adopts the existing post rows but doesn't
-        // rebuild them from these files, so publishing it would serve them as raw files instead.
-        if name.starts_with("content/posts/") {
+        // zero-compile's ZERO_STRUCTURAL_COLLECTIONS: without a declared `collections.posts`, 0.8
+        // rebuilt content/posts/ into the Space's native posts on every publish (and also served the
+        // files). The candidate adopts the existing post rows but doesn't rebuild them, so its posts
+        // would stop following these files. A declared `posts` collection had no such default:
+        // 0.8 only served the files, as the candidate does, and its `sync` has its own error.
+        if name.starts_with("content/posts/") && !declares_posts {
             if !posts_reported {
                 posts_reported = true;
                 errors.push(file(fail(

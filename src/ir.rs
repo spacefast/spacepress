@@ -222,8 +222,14 @@ pub enum Stmt {
         span: Span,
     },
     While(Expr, Vec<Stmt>),
-    Break(Span),
-    Continue(Span),
+    /// `do { body } while (test)`: the body runs before the first test.
+    DoWhile(Vec<Stmt>, Expr),
+    /// `label: statement`. `break label` leaves it; `continue label` needs a loop body.
+    Labeled(String, P<Stmt>, Span),
+    /// An unlabeled `break` leaves the innermost loop or switch.
+    Break(Option<String>, Span),
+    /// An unlabeled `continue` continues the innermost loop.
+    Continue(Option<String>, Span),
     Throw(Expr),
     Try {
         block: Vec<Stmt>,
@@ -352,6 +358,14 @@ pub enum Prop {
 pub enum ExprKind {
     Class(Rc<Class>),
     Instanceof(P<Expr>, P<Expr>),
+    /// The strings array of a tagged template call site: `cooked` strings (None where an escape is
+    /// invalid, which JavaScript passes as undefined) with a `raw` property. One array per site.
+    TemplateStrings {
+        cooked: Vec<Option<String>>,
+        raw: Vec<String>,
+    },
+    /// `pattern = value` with an array or object pattern on the left. The value is the result.
+    AssignPattern(P<AssignPat>, P<Expr>),
     /// `delete target`, where the target is a member or index read, possibly `?.` at its last step.
     Delete(P<Expr>),
     /// `key in object`: own or inherited property presence. The key is evaluated first.
@@ -415,6 +429,90 @@ pub enum ExprKind {
     /// `e as T` / `<T>e` / `e satisfies T`. `as const` is dropped during lowering.
     As(P<Expr>, TyAnn),
     NonNull(P<Expr>),
+}
+
+/// The left side of a destructuring assignment. Leaves are ordinary assignment targets
+/// (identifiers, member and index expressions), assigned in source order.
+#[derive(Debug, Clone)]
+pub enum AssignPat {
+    Target(Expr),
+    /// `target = default`: the default runs only when the value is undefined.
+    Default(P<AssignPat>, Expr),
+    Obj {
+        props: Vec<(PropKey, AssignPat)>,
+        rest: Option<P<AssignPat>>,
+        span: Span,
+    },
+    Arr {
+        /// `None` is an elision (`[, b] = …`).
+        elems: Vec<Option<AssignPat>>,
+        rest: Option<P<AssignPat>>,
+        span: Span,
+    },
+}
+
+impl AssignPat {
+    pub fn span(&self) -> Span {
+        match self {
+            AssignPat::Target(e) | AssignPat::Default(_, e) => e.span,
+            AssignPat::Obj { span, .. } | AssignPat::Arr { span, .. } => *span,
+        }
+    }
+
+    /// Every expression inside the pattern, in source order: targets, computed keys, defaults.
+    pub fn exprs(&self) -> Vec<&Expr> {
+        let mut out = Vec::new();
+        self.collect(&mut out);
+        out
+    }
+
+    fn collect<'a>(&'a self, out: &mut Vec<&'a Expr>) {
+        match self {
+            AssignPat::Target(e) => out.push(e),
+            AssignPat::Default(p, d) => {
+                p.collect(out);
+                out.push(d);
+            }
+            AssignPat::Obj { props, rest, .. } => {
+                for (key, p) in props {
+                    if let PropKey::Computed(k) = key {
+                        out.push(k);
+                    }
+                    p.collect(out);
+                }
+                if let Some(r) = rest {
+                    r.collect(out);
+                }
+            }
+            AssignPat::Arr { elems, rest, .. } => {
+                for p in elems.iter().flatten() {
+                    p.collect(out);
+                }
+                if let Some(r) = rest {
+                    r.collect(out);
+                }
+            }
+        }
+    }
+
+    /// The leaf assignment targets, in source order.
+    pub fn targets(&self) -> Vec<&Expr> {
+        match self {
+            AssignPat::Target(e) => vec![e],
+            AssignPat::Default(p, _) => p.targets(),
+            AssignPat::Obj { props, rest, .. } => props
+                .iter()
+                .flat_map(|(_, p)| p.targets())
+                .chain(rest.iter().flat_map(|r| r.targets()))
+                .collect(),
+            AssignPat::Arr { elems, rest, .. } => elems
+                .iter()
+                .flatten()
+                .flat_map(|p| p.targets())
+                .chain(rest.iter().flat_map(|r| r.targets()))
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -977,6 +977,99 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     }
 }
 
+/// `zero check --json` reports each plugin's package, integrity, locked and inferred grant, and
+/// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
+#[test]
+fn check_reports_plugin_grants_and_read_to_send_flows() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("node_modules/zero-plugin-sync/src")).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { collection, defineConfig, id, text } from "zero";
+import sync from "zero-plugin-sync";
+const posts = collection({ id: id(), title: text().notNull() }, { title: "title" });
+export default defineConfig({ name: "flows", collections: { posts }, use: [sync()] });"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("node_modules/zero-plugin-sync/package.json"),
+        r#"{ "name": "zero-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
+        r#"import { action, db, definePlugin, env, fetch } from "zero";
+import { abilities } from "php/wordpress";
+// The send happens in a helper the handler calls with what it read. Package TypeScript compiles
+// as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
+async function push(body: string) {
+  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: env("SYNC_KEY") ?? "" } });
+  return response.status;
+}
+export default () => definePlugin({
+  name: "sync",
+  actions: {
+    export: action({ input: {}, async handler() { const rows = await db.query.posts.findMany(); push(JSON.stringify(rows)); return true; } }),
+    count: action({ input: {}, async handler() { return (await db.query.posts.findMany()).length; } }),
+    // A WordPress ability is a capability like any other: here the app's own `posts` list.
+    list: action({ input: {}, async handler() { const rows = await abilities.call("flows/posts-list", {}); return rows; } }),
+  },
+});"#,
+    )
+    .unwrap();
+    // A first local check, before any lock exists. Under CI the same plugin is refused until a
+    // lock is committed, which is its own assertion below.
+    let out = zero()
+        .env_remove("CI")
+        .args(["check", "--json"])
+        .arg(tmp.path())
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(out.status.success(), "{report}");
+    let plugin = &report["plugins"][0];
+    assert_eq!(plugin["package"], "zero-plugin-sync");
+    assert_eq!(plugin["version"], "3.1.0");
+    assert!(plugin["integrity"].as_str().unwrap().starts_with("sha256-"));
+    assert_eq!(plugin["status"], "added");
+    assert_eq!(plugin["inferred"]["read"], json!(["posts"]));
+    assert_eq!(plugin["inferred"]["http"], json!(["hooks.example.com"]));
+    assert_eq!(plugin["inferred"]["env"], json!(["SYNC_KEY"]));
+    assert_eq!(
+        plugin["inferred"]["actions"],
+        json!(["sync_count", "sync_export", "sync_list"])
+    );
+    assert_eq!(plugin["inferred"]["abilities"], json!(["flows/posts-list"]));
+    for empty in ["wpHooks", "php"] {
+        assert_eq!(plugin["inferred"][empty], json!([]));
+    }
+    // Only the handler that reads and then sends, through its helper, is flagged.
+    assert_eq!(
+        plugin["flows"],
+        json!([{
+            "handler": "plugin_sync__action__sync_export",
+            "reads": ["env: SYNC_KEY", "read: posts"],
+            "sends": ["http: hooks.example.com"],
+        }])
+    );
+    assert!(!tmp.path().join("zero").exists(), "check writes no lock");
+    let frozen = zero()
+        .args(["check", "--json", "--frozen"])
+        .arg(tmp.path())
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&frozen.stdout).unwrap();
+    assert_eq!(frozen.status.code(), Some(1), "{report}");
+    assert_eq!(report["diagnostics"][0]["code"], "Z4201");
+    assert!(
+        report["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/plugins.lock.json"),
+        "{report}"
+    );
+}
+
 #[test]
 fn installed_package_typescript_is_type_erased_like_javascript_and_matches_node() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1388,7 +1481,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
             "const helper = (value: any) => value; return helper('x');",
             "`any` isn't allowed",
         ),
-        ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
+        ("function* numbers() { yield 1; } return [...numbers()];", "generators"),
         ("return fetch('https://example.com');", "fetch"),
         ("return new Map<string, number>();", "new Map"),
         (

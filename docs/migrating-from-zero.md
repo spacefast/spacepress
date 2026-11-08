@@ -222,6 +222,7 @@ Everything else gets a `Z08_OMITTED_*` error:
 | `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
 | `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/`, `.wrangler/`, `.vercel/`, `.netlify/`, `.turbo/`, `.cache/`, `.zero/`, `.gitignore` and `_routes.json` at any depth, and OS metadata are skipped without an error, as 0.8 never published them. |
 | `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |
+| `Z08_OMITTED_POSTS` | Files under `content/posts/`: 0.8 rebuilt them into the Space's posts on every publish. |
 | `Z08_OMITTED_SYNC` | Content sync of native posts. |
 
 When a later release carries one of these over, its error goes away and

@@ -4914,6 +4914,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }),
                     });
                 }
+                // URL component setters (`u.pathname = "/x"`) run the URL Standard's setter steps in
+                // `JsUrl::set` through checked property assignment.
+                if o.ty == Ty::Url {
+                    if !URL_SETTERS.contains(&prop.as_str()) {
+                        return err_help(
+                            *prop_span,
+                            format!("URL has no writable property `{prop}`"),
+                            format!("assign one of {}", URL_SETTERS.join(", ")),
+                        );
+                    }
+                    return Ok(AssignmentPlace {
+                        read: Out::atom(format!("{}->get({})", o.wrapped(), php_str(prop)), Ty::Str),
+                        constraint: Ty::Str,
+                        target: Some(WriteTarget {
+                            receiver: o.php,
+                            key: php_str(prop),
+                            kind: WriteKind::Dynamic,
+                        }),
+                    });
+                }
                 if let Ty::Class(id) = o.ty {
                     o.ty = self.class_shape(id);
                 }
@@ -6850,6 +6870,44 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
+    /// `URL.parse` / `URL.canParse` in typed code.
+    fn typed_standard_static(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        let mut argv = Vec::new();
+        for a in args {
+            let ArrEl::Item(x) = a else {
+                return err(span, "spread arguments aren't supported here");
+            };
+            let v = self.expr(x)?;
+            argv.push((self.finish_value(v, x.span)?, x.span));
+        }
+        let need = |ok: bool, at: Span, what: &str| -> Result<()> {
+            if ok {
+                Ok(())
+            } else {
+                err_help(at, format!("`{g}.{m}` needs {what}"), format!("pass {what}"))
+            }
+        };
+        Ok(match (g, m) {
+            ("URL", "parse" | "canParse") => {
+                for (i, (v, at)) in argv.iter().enumerate() {
+                    need(
+                        v.ty.is_str() || v.ty == Ty::Url || (i == 1 && v.ty == Ty::Undefined),
+                        *at,
+                        "a string or URL",
+                    )?;
+                }
+                let list: Vec<&str> = argv.iter().map(|(v, _)| v.php.as_str()).collect();
+                let call = format!("\\Zero\\JsUrl::{}({})", m, list.join(", "));
+                if m == "parse" {
+                    Out::atom(call, Ty::Url.nullable())
+                } else {
+                    Out::atom(call, Ty::Bool)
+                }
+            }
+            _ => return err(span, format!("`{g}.{m}` isn't supported")),
+        })
+    }
+
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if (g, m) == ("Error", "captureStackTrace") {
             // Zero records no frames; the target gets Error's header-only stack.
@@ -6874,6 +6932,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.require_javascript_symbols(span)?;
         }
         self.builtin_args(g, m, args, span)?;
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) && g == "URL" {
+            return self.typed_standard_static(g, m, args, span);
+        }
         if g == "Symbol" && matches!(m, "for" | "keyFor") {
             let argv = self.javascript_args(args)?;
             let method = if m == "for" { "for" } else { "keyFor" };
@@ -9106,6 +9167,11 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         _ => false,
     }
 }
+
+/// URL's writable accessors (`origin` and `searchParams` are read-only).
+const URL_SETTERS: &[&str] = &[
+    "href", "protocol", "username", "password", "host", "hostname", "port", "pathname", "search", "hash",
+];
 
 /// URL's string-valued accessors.
 const URL_PROPERTIES: &[&str] = &[

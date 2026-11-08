@@ -57,12 +57,23 @@ final class JsUrlSearchParams implements \Stringable
     public function toString(): string { return $this->params->toString(); }
     public function __toString(): string { return $this->params->toString(); }
 
-    /** @return list<array{0: string, 1: string}> */
-    private function pairs(): array
+    /**
+     * The live pairs, as the URL Standard's iterator reads them: index i against the current list on
+     * each step, so pairs added during iteration are visited and removed ones shift the rest.
+     * rowbot exposes one shared Iterator cursor, so each read seeks it and nested loops stay
+     * independent.
+     *
+     * @return \Generator<int, array{0: string, 1: string}>
+     */
+    private function pairs(): \Generator
     {
-        $out = [];
-        foreach ($this->params as $pair) { $out[] = [$pair[0], $pair[1]]; }
-        return $out;
+        for ($i = 0; $i < $this->params->count(); $i++) {
+            $this->params->rewind();
+            for ($j = 0; $j < $i; $j++) { $this->params->next(); }
+            $pair = $this->params->current();
+            if ($pair === null) { return; }
+            yield [$pair[0], $pair[1]];
+        }
     }
 
     public function entriesIterator(): \Generator { foreach ($this->pairs() as $pair) { yield new JsArray($pair); } }

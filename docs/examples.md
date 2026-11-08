@@ -10,6 +10,7 @@ builds its disposable app under `.zero/showcase/`, leaving its sources unchanged
 | `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | [`examples/subscriptions/`](../examples/subscriptions/README.md) | Owner-scoped subscription tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA, with current gaps documented. [Connect an agent](agents.md). |
+| [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and Zero Admin; owner-scoped actions and an Action Scheduler shopping list, with current build and hosting blockers documented |
 | [`examples/home-maintenance/`](../examples/home-maintenance/README.md) | Private home systems, recurring tasks, work costs, and overdue jobs using wp-admin, SCF, and Zero Admin |
 | [`examples/stuff-drawer/`](../examples/stuff-drawer/README.md) | Personal inventory and lending log in wp-admin, SCF and Zero Admin; owner filters, agent abilities and overdue stamps, with main's current gaps documented |
 | [`examples/drive-locker/`](../examples/drive-locker/README.md) | Owner-scoped drive inventory, health trends, Action Scheduler, typed React SPA and capacity reports; main runtime and publication gaps are documented |

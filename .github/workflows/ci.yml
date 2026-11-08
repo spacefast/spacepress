@@ -36,12 +36,13 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
-  # Two shards in parallel, each about 20 minutes: the compiler suites and the npm comparison,
-  # and every other test target (a new tests/*.rs lands in `rest` without a workflow edit).
+  # Two shards in parallel: the compiler suites and the npm comparison (about 26 minutes), and
+  # fmt, clippy and every other test target (about 20). Test targets come from cargo metadata,
+  # so a new one lands in `rest` without a workflow edit.
   rust:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -80,9 +81,9 @@ jobs:
           key: wp-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json', 'tests/php/wp.php') }}
       # Migrated apps are type-checked with the standard Node declarations (tests/app_migrate.rs).
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
-      - if: matrix.shard == 'compiler'
+      - if: matrix.shard == 'rest'
         run: cargo fmt --check
-      - if: matrix.shard == 'compiler'
+      - if: matrix.shard == 'rest'
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: cargo test (${{ matrix.shard }})
         run: |
@@ -91,8 +92,7 @@ jobs:
             cargo test --locked "${compiler[@]/#/--test=}"
           else
             rest=()
-            for f in tests/*.rs; do
-              name=$(basename "$f" .rs)
+            for name in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].targets[] | select(.kind[] == "test") | .name'); do
               [[ " ${compiler[*]} " == *" $name "* ]] || rest+=("--test=$name")
             done
             cargo test --locked --lib --bins "${rest[@]}"

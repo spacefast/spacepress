@@ -1,12 +1,12 @@
 <?php
 
-namespace Zero\Vendor\Psr\Cache;
+namespace First\Vendor\Psr\Cache;
 
 /**
  * Exception interface for invalid cache arguments.
  *
  * Any time an invalid argument is passed into a method it must throw an
- * exception class which implements Zero\Vendor\Psr\Cache\InvalidArgumentException.
+ * exception class which implements First\Vendor\Psr\Cache\InvalidArgumentException.
  */
 interface InvalidArgumentException extends CacheException
 {

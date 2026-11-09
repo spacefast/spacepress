@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Object_;
+use First\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
+use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use First\Identity\Vendor\phpDocumentor\Reflection\Types\Object_;
 
 use function implode;
 

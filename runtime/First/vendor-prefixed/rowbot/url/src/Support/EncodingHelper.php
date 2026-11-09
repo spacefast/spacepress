@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Support;
+namespace First\Vendor\Rowbot\URL\Support;
 
 use function strtolower;
 

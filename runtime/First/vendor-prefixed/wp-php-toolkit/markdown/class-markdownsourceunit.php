@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Markdown;
+namespace First\Vendor\WordPress\Markdown;
 
 /**
  * Represents one Markdown source slice mapped to one WordPress block.

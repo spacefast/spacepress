@@ -1,21 +1,21 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Result;
+namespace First\Vendor\AsyncAws\S3\Result;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Result;
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use Zero\Vendor\AsyncAws\S3\Enum\EncodingType;
-use Zero\Vendor\AsyncAws\S3\Enum\ObjectStorageClass;
-use Zero\Vendor\AsyncAws\S3\Enum\RequestCharged;
-use Zero\Vendor\AsyncAws\S3\Input\ListObjectsV2Request;
-use Zero\Vendor\AsyncAws\S3\S3Client;
-use Zero\Vendor\AsyncAws\S3\ValueObject\AwsObject;
-use Zero\Vendor\AsyncAws\S3\ValueObject\CommonPrefix;
-use Zero\Vendor\AsyncAws\S3\ValueObject\Owner;
-use Zero\Vendor\AsyncAws\S3\ValueObject\RestoreStatus;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Result;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use First\Vendor\AsyncAws\S3\Enum\EncodingType;
+use First\Vendor\AsyncAws\S3\Enum\ObjectStorageClass;
+use First\Vendor\AsyncAws\S3\Enum\RequestCharged;
+use First\Vendor\AsyncAws\S3\Input\ListObjectsV2Request;
+use First\Vendor\AsyncAws\S3\S3Client;
+use First\Vendor\AsyncAws\S3\ValueObject\AwsObject;
+use First\Vendor\AsyncAws\S3\ValueObject\CommonPrefix;
+use First\Vendor\AsyncAws\S3\ValueObject\Owner;
+use First\Vendor\AsyncAws\S3\ValueObject\RestoreStatus;
 
 /**
  * @implements \IteratorAggregate<AwsObject|CommonPrefix>

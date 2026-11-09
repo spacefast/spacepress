@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * Specifies object key name filtering rules. For information about key name filtering, see Configuring event

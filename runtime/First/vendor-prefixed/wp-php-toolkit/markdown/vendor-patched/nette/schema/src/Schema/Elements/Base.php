@@ -7,11 +7,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Schema\Elements;
+namespace First\Vendor\Nette\Schema\Elements;
 
-use Zero\Vendor\Nette;
-use Zero\Vendor\Nette\Schema\Context;
-use Zero\Vendor\Nette\Schema\Helpers;
+use First\Vendor\Nette;
+use First\Vendor\Nette\Schema\Context;
+use First\Vendor\Nette\Schema\Helpers;
 
 
 /**
@@ -83,7 +83,7 @@ trait Base
 			if ($handler($value)) {
 				return $value;
 			}
-			$context->addError('Failed assertion ' . ($description ? "'%assertion%'" : '%assertion%') . ' for %label% %path% with value %value%.', \Zero\Vendor\Nette\Schema\Message::FailedAssertion, ['value' => $value, 'assertion' => $expected]);
+			$context->addError('Failed assertion ' . ($description ? "'%assertion%'" : '%assertion%') . ' for %label% %path% with value %value%.', \First\Vendor\Nette\Schema\Message::FailedAssertion, ['value' => $value, 'assertion' => $expected]);
 		});
 	}
 
@@ -102,7 +102,7 @@ trait Base
  public function completeDefault(Context $context)
 	{
 		if ($this->required) {
-			$context->addError('The mandatory item %path% is missing.', \Zero\Vendor\Nette\Schema\Message::MissingItem);
+			$context->addError('The mandatory item %path% is missing.', \First\Vendor\Nette\Schema\Message::MissingItem);
 			return null;
 		}
 
@@ -127,7 +127,7 @@ trait Base
 	private function doDeprecation(Context $context): void
 	{
 		if ($this->deprecated !== null) {
-			$context->addWarning($this->deprecated, \Zero\Vendor\Nette\Schema\Message::Deprecated);
+			$context->addWarning($this->deprecated, \First\Vendor\Nette\Schema\Message::Deprecated);
 		}
 	}
 

@@ -10,7 +10,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Webuni\FrontMatter\Processor;
+namespace First\Vendor\Webuni\FrontMatter\Processor;
 
 interface ProcessorInterface
 {

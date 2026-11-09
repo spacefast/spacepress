@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Tests;
+namespace First\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Zero\Vendor\Rowbot\URL\URL;
-use Zero\Vendor\Rowbot\URL\URLSearchParams;
+use First\Vendor\Rowbot\URL\URL;
+use First\Vendor\Rowbot\URL\URLSearchParams;
 
 /**
  * @see https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-size.any.js

@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\DataLiberation;
+namespace First\Vendor\WordPress\DataLiberation;
 
 use Exception;
 

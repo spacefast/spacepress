@@ -7,11 +7,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Iterators;
+namespace First\Vendor\Nette\Iterators;
 
 
 /**
- * @deprecated use Zero\Vendor\Nette\Utils\Iterables::map()
+ * @deprecated use First\Vendor\Nette\Utils\Iterables::map()
  */
 class Mapper extends \IteratorIterator
 {

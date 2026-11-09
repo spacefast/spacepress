@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Messenger;
+namespace First\Vendor\Symfony\Component\HttpClient\Messenger;
 
 /**
  * @author Kevin Bond <kevinbond@gmail.com>

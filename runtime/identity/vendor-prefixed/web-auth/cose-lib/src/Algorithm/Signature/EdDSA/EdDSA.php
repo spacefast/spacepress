@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
 
-use Zero\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use Zero\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use Zero\Identity\Vendor\Cose\Algorithms;
-use Zero\Identity\Vendor\Cose\Key\Key;
-use Zero\Identity\Vendor\Cose\Key\OkpKey;
+use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use First\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use First\Identity\Vendor\Cose\Algorithms;
+use First\Identity\Vendor\Cose\Key\Key;
+use First\Identity\Vendor\Cose\Key\OkpKey;
 use function extension_loaded;
 use function hash_equals;
 use InvalidArgumentException;

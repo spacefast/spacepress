@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\DN;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\DN;
 
 use function mb_strlen;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
 use function sprintf;
 use UnexpectedValueException;
 

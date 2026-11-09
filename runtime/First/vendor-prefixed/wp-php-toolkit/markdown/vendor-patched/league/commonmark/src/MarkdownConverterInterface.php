@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark;
+namespace First\Vendor\League\CommonMark;
 
-use Zero\Vendor\League\CommonMark\Exception\CommonMarkException;
-use Zero\Vendor\League\CommonMark\Output\RenderedContentInterface;
+use First\Vendor\League\CommonMark\Exception\CommonMarkException;
+use First\Vendor\League\CommonMark\Output\RenderedContentInterface;
 
 /**
  * Interface for a service which converts Markdown to HTML.

@@ -2,30 +2,30 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL;
+namespace First\Vendor\Rowbot\URL;
 
-use Zero\Vendor\Rowbot\URL\State\AuthorityState;
-use Zero\Vendor\Rowbot\URL\State\FileHostState;
-use Zero\Vendor\Rowbot\URL\State\FileSlashState;
-use Zero\Vendor\Rowbot\URL\State\FileState;
-use Zero\Vendor\Rowbot\URL\State\FragmentState;
-use Zero\Vendor\Rowbot\URL\State\HostnameState;
-use Zero\Vendor\Rowbot\URL\State\HostState;
-use Zero\Vendor\Rowbot\URL\State\NoSchemeState;
-use Zero\Vendor\Rowbot\URL\State\OpaquePathState;
-use Zero\Vendor\Rowbot\URL\State\PathOrAuthorityState;
-use Zero\Vendor\Rowbot\URL\State\PathStartState;
-use Zero\Vendor\Rowbot\URL\State\PathState;
-use Zero\Vendor\Rowbot\URL\State\PortState;
-use Zero\Vendor\Rowbot\URL\State\QueryState;
-use Zero\Vendor\Rowbot\URL\State\RelativeSlashState;
-use Zero\Vendor\Rowbot\URL\State\RelativeState;
-use Zero\Vendor\Rowbot\URL\State\SchemeStartState;
-use Zero\Vendor\Rowbot\URL\State\SchemeState;
-use Zero\Vendor\Rowbot\URL\State\SpecialAuthorityIgnoreSlashesState;
-use Zero\Vendor\Rowbot\URL\State\SpecialAuthoritySlashesState;
-use Zero\Vendor\Rowbot\URL\State\SpecialRelativeOrAuthorityState;
-use Zero\Vendor\Rowbot\URL\State\State;
+use First\Vendor\Rowbot\URL\State\AuthorityState;
+use First\Vendor\Rowbot\URL\State\FileHostState;
+use First\Vendor\Rowbot\URL\State\FileSlashState;
+use First\Vendor\Rowbot\URL\State\FileState;
+use First\Vendor\Rowbot\URL\State\FragmentState;
+use First\Vendor\Rowbot\URL\State\HostnameState;
+use First\Vendor\Rowbot\URL\State\HostState;
+use First\Vendor\Rowbot\URL\State\NoSchemeState;
+use First\Vendor\Rowbot\URL\State\OpaquePathState;
+use First\Vendor\Rowbot\URL\State\PathOrAuthorityState;
+use First\Vendor\Rowbot\URL\State\PathStartState;
+use First\Vendor\Rowbot\URL\State\PathState;
+use First\Vendor\Rowbot\URL\State\PortState;
+use First\Vendor\Rowbot\URL\State\QueryState;
+use First\Vendor\Rowbot\URL\State\RelativeSlashState;
+use First\Vendor\Rowbot\URL\State\RelativeState;
+use First\Vendor\Rowbot\URL\State\SchemeStartState;
+use First\Vendor\Rowbot\URL\State\SchemeState;
+use First\Vendor\Rowbot\URL\State\SpecialAuthorityIgnoreSlashesState;
+use First\Vendor\Rowbot\URL\State\SpecialAuthoritySlashesState;
+use First\Vendor\Rowbot\URL\State\SpecialRelativeOrAuthorityState;
+use First\Vendor\Rowbot\URL\State\State;
 
 enum ParserState
 {

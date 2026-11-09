@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
 use Symfony\Component\RateLimiter\LimiterInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * Limits the number of requests within a certain period.

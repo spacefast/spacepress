@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 66: an array of unsigned 32 bit integers, big endian.

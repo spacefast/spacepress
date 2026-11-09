@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
 
 use function preg_match;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
 
 /**
  * Implements 'Prohibit' step of the Internationalized String Preparation as specified by RFC 4518.

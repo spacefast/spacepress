@@ -11,18 +11,18 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Delimiter;
+namespace First\Vendor\League\CommonMark\Delimiter;
 
-use Zero\Vendor\League\CommonMark\Node\Node;
+use First\Vendor\League\CommonMark\Node\Node;
 
 final class Bracket
 {
     /**
-     * @var \Zero\Vendor\League\CommonMark\Node\Node
+     * @var \First\Vendor\League\CommonMark\Node\Node
      */
     private $node;
     /**
-     * @var \Zero\Vendor\League\CommonMark\Delimiter\Bracket|null
+     * @var \First\Vendor\League\CommonMark\Delimiter\Bracket|null
      */
     private $previous;
     /**

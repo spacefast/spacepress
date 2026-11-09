@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component\Host;
+namespace First\Vendor\Rowbot\URL\Component\Host;
 
-use Zero\Vendor\Rowbot\URL\Component\Host\Serializer\HostSerializerInterface;
-use Zero\Vendor\Rowbot\URL\Component\Host\Serializer\IPv4AddressSerializer;
+use First\Vendor\Rowbot\URL\Component\Host\Serializer\HostSerializerInterface;
+use First\Vendor\Rowbot\URL\Component\Host\Serializer\IPv4AddressSerializer;
 
 /**
  * @see https://url.spec.whatwg.org/#concept-ipv4

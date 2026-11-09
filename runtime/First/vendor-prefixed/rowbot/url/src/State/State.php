@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\State;
+namespace First\Vendor\Rowbot\URL\State;
 
-use Zero\Vendor\Rowbot\URL\ParserContext;
+use First\Vendor\Rowbot\URL\ParserContext;
 
 interface State
 {

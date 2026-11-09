@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\Idna\Resource;
+namespace First\Vendor\Rowbot\Idna\Resource;
 
 final class DisallowedRanges
 {

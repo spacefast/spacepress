@@ -14,9 +14,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Util;
+namespace First\Vendor\League\CommonMark\Util;
 
-use Zero\Vendor\League\CommonMark\Exception\UnexpectedEncodingException;
+use First\Vendor\League\CommonMark\Exception\UnexpectedEncodingException;
 
 /**
  * @psalm-immutable

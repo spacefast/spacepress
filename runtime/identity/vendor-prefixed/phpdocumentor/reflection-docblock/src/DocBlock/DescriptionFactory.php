@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\Factory;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Utils;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\Factory;
+use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
+use First\Identity\Vendor\phpDocumentor\Reflection\Utils;
 
 use function count;
 use function implode;

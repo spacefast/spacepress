@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\DirectoryString;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\DirectoryString;
 
 /**
  * 'stateOrProvinceName' attribute value.

@@ -11,17 +11,17 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\Embed;
+namespace First\Vendor\League\CommonMark\Extension\Embed;
 
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use First\Vendor\League\CommonMark\Parser\Cursor;
 
 class EmbedParser implements BlockContinueParserInterface
 {
     /**
-     * @var \Zero\Vendor\League\CommonMark\Extension\Embed\Embed
+     * @var \First\Vendor\League\CommonMark\Extension\Embed\Embed
      */
     private $embed;
 

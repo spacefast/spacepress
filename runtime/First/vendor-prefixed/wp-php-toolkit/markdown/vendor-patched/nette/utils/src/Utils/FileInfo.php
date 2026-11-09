@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -53,7 +53,7 @@ final class FileInfo extends \SplFileInfo
 
 	/**
 	 * Returns the contents of the file.
-	 * @throws Zero\Vendor\Nette\IOException
+	 * @throws First\Vendor\Nette\IOException
 	 */
 	public function read(): string
 	{
@@ -63,7 +63,7 @@ final class FileInfo extends \SplFileInfo
 
 	/**
 	 * Writes the contents to the file.
-	 * @throws Zero\Vendor\Nette\IOException
+	 * @throws First\Vendor\Nette\IOException
 	 */
 	public function write(string $content): void
 	{

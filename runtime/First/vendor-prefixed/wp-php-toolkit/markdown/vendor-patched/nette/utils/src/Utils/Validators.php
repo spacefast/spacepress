@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -17,7 +17,7 @@ use Zero\Vendor\Nette;
  */
 class Validators
 {
-	use \Zero\Vendor\Nette\StaticClass;
+	use \First\Vendor\Nette\StaticClass;
 
 	private const BuiltinTypes = [
 		'string' => 1, 'int' => 1, 'float' => 1, 'bool' => 1, 'array' => 1, 'object' => 1,
@@ -280,7 +280,7 @@ class Validators
 
 	/**
   * Checks if a variable is a zero-based integer indexed array.
-  * @deprecated  use Zero\Vendor\Nette\Utils\Arrays::isList
+  * @deprecated  use First\Vendor\Nette\Utils\Arrays::isList
   * @return ($value is list ? true : false)
   * @param mixed $value
   */

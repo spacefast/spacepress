@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast;
 
 use function array_key_exists;
 

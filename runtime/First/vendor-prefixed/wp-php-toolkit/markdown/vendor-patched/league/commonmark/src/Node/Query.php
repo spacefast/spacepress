@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Node;
+namespace First\Vendor\League\CommonMark\Node;
 
-use Zero\Vendor\League\CommonMark\Node\Query\AndExpr;
-use Zero\Vendor\League\CommonMark\Node\Query\OrExpr;
+use First\Vendor\League\CommonMark\Node\Query\AndExpr;
+use First\Vendor\League\CommonMark\Node\Query\OrExpr;
 
 final class Query
 {

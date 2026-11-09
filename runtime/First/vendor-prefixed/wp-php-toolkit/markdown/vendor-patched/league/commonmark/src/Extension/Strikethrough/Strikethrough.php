@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\Strikethrough;
+namespace First\Vendor\League\CommonMark\Extension\Strikethrough;
 
-use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
-use Zero\Vendor\League\CommonMark\Node\Inline\DelimitedInterface;
+use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use First\Vendor\League\CommonMark\Node\Inline\DelimitedInterface;
 
 final class Strikethrough extends AbstractInline implements DelimitedInterface
 {

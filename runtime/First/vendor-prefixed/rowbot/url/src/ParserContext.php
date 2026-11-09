@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL;
+namespace First\Vendor\Rowbot\URL;
 
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Rowbot\URL\String\StringBufferInterface;
-use Zero\Vendor\Rowbot\URL\String\StringIteratorInterface;
-use Zero\Vendor\Rowbot\URL\String\USVStringInterface;
-use Zero\Vendor\Rowbot\URL\Support\EncodingHelper;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Rowbot\URL\String\StringBufferInterface;
+use First\Vendor\Rowbot\URL\String\StringIteratorInterface;
+use First\Vendor\Rowbot\URL\String\USVStringInterface;
+use First\Vendor\Rowbot\URL\Support\EncodingHelper;
 
 final class ParserContext
 {

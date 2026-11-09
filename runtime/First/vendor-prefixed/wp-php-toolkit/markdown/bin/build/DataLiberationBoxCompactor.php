@@ -2,7 +2,7 @@
 
 use KevinGH\Box\Compactor\Compactor;
 
-class Zero_Vendor_DataLiberationBoxCompactor implements Compactor {
+class First_Vendor_DataLiberationBoxCompactor implements Compactor {
 
 	/**
 	 * {@inheritdoc}

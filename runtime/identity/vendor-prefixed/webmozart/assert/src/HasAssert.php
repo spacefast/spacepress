@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webmozart\Assert;
+namespace First\Identity\Vendor\Webmozart\Assert;
 
 /** @internal Used by the Psalm plugin */
 final class HasAssert

@@ -1,20 +1,20 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Input;
+namespace First\Vendor\AsyncAws\S3\Input;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Input;
-use Zero\Vendor\AsyncAws\Core\Request;
-use Zero\Vendor\AsyncAws\Core\Stream\StreamFactory;
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use Zero\Vendor\AsyncAws\S3\Enum\ObjectCannedACL;
-use Zero\Vendor\AsyncAws\S3\Enum\ObjectLockEventHold;
-use Zero\Vendor\AsyncAws\S3\Enum\ObjectLockLegalHoldStatus;
-use Zero\Vendor\AsyncAws\S3\Enum\ObjectLockMode;
-use Zero\Vendor\AsyncAws\S3\Enum\RequestPayer;
-use Zero\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
-use Zero\Vendor\AsyncAws\S3\Enum\StorageClass;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Input;
+use First\Vendor\AsyncAws\Core\Request;
+use First\Vendor\AsyncAws\Core\Stream\StreamFactory;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use First\Vendor\AsyncAws\S3\Enum\ObjectCannedACL;
+use First\Vendor\AsyncAws\S3\Enum\ObjectLockEventHold;
+use First\Vendor\AsyncAws\S3\Enum\ObjectLockLegalHoldStatus;
+use First\Vendor\AsyncAws\S3\Enum\ObjectLockMode;
+use First\Vendor\AsyncAws\S3\Enum\RequestPayer;
+use First\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
+use First\Vendor\AsyncAws\S3\Enum\StorageClass;
 
 final class CreateMultipartUploadRequest extends Input
 {

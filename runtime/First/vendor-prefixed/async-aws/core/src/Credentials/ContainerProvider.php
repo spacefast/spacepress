@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core\Credentials;
+namespace First\Vendor\AsyncAws\Core\Credentials;
 
-use Zero\Vendor\AsyncAws\Core\Configuration;
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Psr\Log\NullLogger;
-use Zero\Vendor\Symfony\Component\HttpClient\HttpClient;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\AsyncAws\Core\Configuration;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Psr\Log\NullLogger;
+use First\Vendor\Symfony\Component\HttpClient\HttpClient;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Provides Credentials for containers running in EKS with Pod Identity or ECS.

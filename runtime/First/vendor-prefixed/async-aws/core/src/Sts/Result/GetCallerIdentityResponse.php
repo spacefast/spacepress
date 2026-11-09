@@ -1,9 +1,9 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts\Result;
+namespace First\Vendor\AsyncAws\Core\Sts\Result;
 
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Result;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Result;
 
 /**
  * Contains the response to a successful GetCallerIdentity request, including information about the entity making the

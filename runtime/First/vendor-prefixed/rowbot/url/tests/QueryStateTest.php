@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Tests;
+namespace First\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Zero\Vendor\Rowbot\URL\BasicURLParser;
-use Zero\Vendor\Rowbot\URL\String\Utf8String;
-use Zero\Vendor\Rowbot\URL\URLRecord;
+use First\Vendor\Rowbot\URL\BasicURLParser;
+use First\Vendor\Rowbot\URL\String\Utf8String;
+use First\Vendor\Rowbot\URL\URLRecord;
 
 use function html_entity_decode;
 

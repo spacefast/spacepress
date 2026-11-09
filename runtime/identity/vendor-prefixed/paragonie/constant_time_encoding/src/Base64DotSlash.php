@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-namespace Zero\Identity\Vendor\ParagonIE\ConstantTime;
+namespace First\Identity\Vendor\ParagonIE\ConstantTime;
 
 use Override;
 

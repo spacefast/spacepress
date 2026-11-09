@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag;
+namespace First\Identity\Vendor\CBOR\Tag;
 
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use Zero\Identity\Vendor\CBOR\ListObject;
-use Zero\Identity\Vendor\CBOR\Normalizable;
-use Zero\Identity\Vendor\CBOR\Tag;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use First\Identity\Vendor\CBOR\ListObject;
+use First\Identity\Vendor\CBOR\Normalizable;
+use First\Identity\Vendor\CBOR\Tag;
 use InvalidArgumentException;
 
 /**

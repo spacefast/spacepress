@@ -2,28 +2,28 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core;
+namespace First\Vendor\AsyncAws\Core;
 
-use Zero\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
-use Zero\Vendor\AsyncAws\Core\AwsError\ChainAwsErrorFactory;
-use Zero\Vendor\AsyncAws\Core\Credentials\CacheProvider;
-use Zero\Vendor\AsyncAws\Core\Credentials\ChainProvider;
-use Zero\Vendor\AsyncAws\Core\Credentials\CredentialProvider;
-use Zero\Vendor\AsyncAws\Core\EndpointDiscovery\EndpointCache;
-use Zero\Vendor\AsyncAws\Core\EndpointDiscovery\EndpointInterface;
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Exception\LogicException;
-use Zero\Vendor\AsyncAws\Core\Exception\RuntimeException;
-use Zero\Vendor\AsyncAws\Core\HttpClient\AwsRetryStrategy;
-use Zero\Vendor\AsyncAws\Core\HttpClient\BuildHttpQueryTrait;
-use Zero\Vendor\AsyncAws\Core\Signer\Signer;
-use Zero\Vendor\AsyncAws\Core\Signer\SignerV4;
-use Zero\Vendor\AsyncAws\Core\Stream\StringStream;
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Psr\Log\NullLogger;
-use Zero\Vendor\Symfony\Component\HttpClient\HttpClient;
-use Zero\Vendor\Symfony\Component\HttpClient\RetryableHttpClient;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
+use First\Vendor\AsyncAws\Core\AwsError\ChainAwsErrorFactory;
+use First\Vendor\AsyncAws\Core\Credentials\CacheProvider;
+use First\Vendor\AsyncAws\Core\Credentials\ChainProvider;
+use First\Vendor\AsyncAws\Core\Credentials\CredentialProvider;
+use First\Vendor\AsyncAws\Core\EndpointDiscovery\EndpointCache;
+use First\Vendor\AsyncAws\Core\EndpointDiscovery\EndpointInterface;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Exception\LogicException;
+use First\Vendor\AsyncAws\Core\Exception\RuntimeException;
+use First\Vendor\AsyncAws\Core\HttpClient\AwsRetryStrategy;
+use First\Vendor\AsyncAws\Core\HttpClient\BuildHttpQueryTrait;
+use First\Vendor\AsyncAws\Core\Signer\Signer;
+use First\Vendor\AsyncAws\Core\Signer\SignerV4;
+use First\Vendor\AsyncAws\Core\Stream\StringStream;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Psr\Log\NullLogger;
+use First\Vendor\Symfony\Component\HttpClient\HttpClient;
+use First\Vendor\Symfony\Component\HttpClient\RetryableHttpClient;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Base class all API clients are inheriting.
@@ -212,7 +212,7 @@ abstract class AbstractApi
     protected function getEndpointMetadata(?string $region): array
     {
         /** @psalm-suppress TooManyArguments */
-        zero_vendor_trigger_deprecation('async-aws/core', '1.2', 'Extending "%s"" without overriding "%s" is deprecated. This method will be abstract in version 2.0.', __CLASS__, __FUNCTION__);
+        first_vendor_trigger_deprecation('async-aws/core', '1.2', 'Extending "%s"" without overriding "%s" is deprecated. This method will be abstract in version 2.0.', __CLASS__, __FUNCTION__);
 
         /** @var string $endpoint */
         $endpoint = $this->configuration->get('endpoint');
@@ -250,7 +250,7 @@ abstract class AbstractApi
 
         if (false !== strpos($endpoint, '%region%') || false !== strpos($endpoint, '%service%')) {
             /** @psalm-suppress TooManyArguments */
-            zero_vendor_trigger_deprecation('async-aws/core', '1.2', 'providing an endpoint with placeholder is deprecated and will be ignored in version 2.0. Provide full endpoint instead.');
+            first_vendor_trigger_deprecation('async-aws/core', '1.2', 'providing an endpoint with placeholder is deprecated and will be ignored in version 2.0. Provide full endpoint instead.');
 
             $endpoint = strtr($endpoint, [
                 '%region%' => $region ?? $this->configuration->get('region'),

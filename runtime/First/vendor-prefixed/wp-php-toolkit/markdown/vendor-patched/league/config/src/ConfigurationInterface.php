@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\Config;
+namespace First\Vendor\League\Config;
 
-use Zero\Vendor\League\Config\Exception\UnknownOptionException;
-use Zero\Vendor\League\Config\Exception\ValidationException;
+use First\Vendor\League\Config\Exception\UnknownOptionException;
+use First\Vendor\League\Config\Exception\ValidationException;
 
 /**
  * Interface for reading configuration values

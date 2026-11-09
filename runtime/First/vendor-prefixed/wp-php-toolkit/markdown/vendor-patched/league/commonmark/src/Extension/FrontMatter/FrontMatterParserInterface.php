@@ -11,9 +11,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\FrontMatter;
+namespace First\Vendor\League\CommonMark\Extension\FrontMatter;
 
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Input\MarkdownInputWithFrontMatter;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\Input\MarkdownInputWithFrontMatter;
 
 interface FrontMatterParserInterface
 {

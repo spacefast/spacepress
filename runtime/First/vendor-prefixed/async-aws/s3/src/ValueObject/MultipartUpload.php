@@ -1,10 +1,10 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use Zero\Vendor\AsyncAws\S3\Enum\StorageClass;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use First\Vendor\AsyncAws\S3\Enum\StorageClass;
 
 /**
  * Container for the `MultipartUpload` for the Amazon S3 object.

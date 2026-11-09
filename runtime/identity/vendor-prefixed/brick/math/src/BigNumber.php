@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Brick\Math;
+namespace First\Identity\Vendor\Brick\Math;
 
-use Zero\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
-use Zero\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Brick\Math\Exception\MathException;
-use Zero\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
-use Zero\Identity\Vendor\Brick\Math\Exception\PlatformException;
-use Zero\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
-use Zero\Identity\Vendor\Brick\Math\Internal\Safe;
+use First\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use First\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Brick\Math\Exception\MathException;
+use First\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
+use First\Identity\Vendor\Brick\Math\Exception\PlatformException;
+use First\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
+use First\Identity\Vendor\Brick\Math\Internal\Safe;
 use JsonSerializable;
 use Override;
 use Stringable;

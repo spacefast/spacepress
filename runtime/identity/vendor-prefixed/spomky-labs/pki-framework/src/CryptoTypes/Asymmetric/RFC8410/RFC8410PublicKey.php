@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410;
 
 use LogicException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKey;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKey;
 
 /**
  * Implements an intermediary object to store a public key using Curve25519 or Curve448 as defined by RFC 8410.

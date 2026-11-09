@@ -1,10 +1,10 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Signer;
+namespace First\Vendor\AsyncAws\Core\Signer;
 
-use Zero\Vendor\AsyncAws\Core\Credentials\Credentials;
-use Zero\Vendor\AsyncAws\Core\Request;
-use Zero\Vendor\AsyncAws\Core\RequestContext;
+use First\Vendor\AsyncAws\Core\Credentials\Credentials;
+use First\Vendor\AsyncAws\Core\Request;
+use First\Vendor\AsyncAws\Core\RequestContext;
 
 /**
  * Interface for signing a request.

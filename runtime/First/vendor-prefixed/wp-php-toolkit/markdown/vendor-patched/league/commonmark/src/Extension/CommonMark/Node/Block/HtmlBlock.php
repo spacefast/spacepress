@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block;
+namespace First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block;
 
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
 
 final class HtmlBlock extends AbstractBlock implements RawMarkupContainerInterface
 {

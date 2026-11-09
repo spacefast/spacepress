@@ -1,9 +1,9 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\AwsError;
+namespace First\Vendor\AsyncAws\Core\AwsError;
 
-use Zero\Vendor\AsyncAws\Core\Exception\UnexpectedValue;
-use Zero\Vendor\AsyncAws\Core\Exception\UnparsableResponse;
+use First\Vendor\AsyncAws\Core\Exception\UnexpectedValue;
+use First\Vendor\AsyncAws\Core\Exception\UnparsableResponse;
 
 final class JsonRpcAwsErrorFactory implements AwsErrorFactoryInterface
 {

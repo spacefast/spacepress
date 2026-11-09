@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts\Exception;
+namespace First\Vendor\AsyncAws\Core\Sts\Exception;
 
-use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * STS is not activated in the requested region for the account that is being asked to generate credentials. The account

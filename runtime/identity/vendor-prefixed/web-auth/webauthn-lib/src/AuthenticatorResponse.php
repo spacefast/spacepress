@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
 /**
  * @see https://www.w3.org/TR/webauthn/#authenticatorresponse

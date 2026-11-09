@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
 
-zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s" class is deprecated. Use "%s" class from "symfony/type-info" instead.', Type::class, \Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type::class);
+first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s" class is deprecated. Use "%s" class from "symfony/type-info" instead.', Type::class, \First\Identity\Vendor\Symfony\Component\TypeInfo\Type::class);
 
 /**
  * Type value object (immutable).
  *
  * @author Kévin Dunglas <dunglas@gmail.com>
  *
- * @deprecated since Symfony 7.3, use "Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type" class from "symfony/type-info" instead
+ * @deprecated since Symfony 7.3, use "First\Identity\Vendor\Symfony\Component\TypeInfo\Type" class from "symfony/type-info" instead
  *
  * @final
  */

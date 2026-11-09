@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace First\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
 final class UvmInputExtension extends AuthenticationExtension
 {

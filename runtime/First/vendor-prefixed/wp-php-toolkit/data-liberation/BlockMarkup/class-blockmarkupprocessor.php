@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\DataLiberation\BlockMarkup;
+namespace First\Vendor\WordPress\DataLiberation\BlockMarkup;
 
 use WP_Error;
 use WP_HTML_Tag_Processor;

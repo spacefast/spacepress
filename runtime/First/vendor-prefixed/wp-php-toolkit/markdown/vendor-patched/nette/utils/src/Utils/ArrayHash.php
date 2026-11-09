@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -67,7 +67,7 @@ class ArrayHash extends \stdClass implements \ArrayAccess, \Countable, \Iterator
 	public function offsetSet($key, $value): void
 	{
 		if (!is_scalar($key)) { // prevents null
-			throw new \Zero\Vendor\Nette\InvalidArgumentException(sprintf('Key must be either a string or an integer, %s given.', get_debug_type($key)));
+			throw new \First\Vendor\Nette\InvalidArgumentException(sprintf('Key must be either a string or an integer, %s given.', get_debug_type($key)));
 		}
 
 		$this->$key = $value;

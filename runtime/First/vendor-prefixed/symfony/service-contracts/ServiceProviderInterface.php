@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\Service;
+namespace First\Vendor\Symfony\Contracts\Service;
 
-use Zero\Vendor\Psr\Container\ContainerInterface;
+use First\Vendor\Psr\Container\ContainerInterface;
 
 /**
  * A ServiceProviderInterface exposes the identifiers and the types of services provided by a container.
@@ -35,7 +35,7 @@ interface ServiceProviderInterface extends ContainerInterface
      *
      * Examples:
      *
-     *  * ['logger' => 'Zero\Vendor\Psr\Log\LoggerInterface'] means the object provides a service named "logger" that implements Zero\Vendor\Psr\Log\LoggerInterface
+     *  * ['logger' => 'First\Vendor\Psr\Log\LoggerInterface'] means the object provides a service named "logger" that implements First\Vendor\Psr\Log\LoggerInterface
      *  * ['foo' => '?'] means the container provides service name "foo" of unspecified type
      *  * ['bar' => '?Bar\Baz'] means the container provides a service "bar" of type Bar\Baz|null
      *

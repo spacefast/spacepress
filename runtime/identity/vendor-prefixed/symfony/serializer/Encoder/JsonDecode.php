@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
 use Seld\JsonLint\JsonParser;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\UnsupportedException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\UnsupportedException;
 
 /**
  * Decodes JSON data.

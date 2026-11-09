@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Node;
+namespace First\Vendor\League\CommonMark\Node;
 
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
 
 /**
  * @implements \IteratorAggregate<int, Node>
@@ -23,7 +23,7 @@ final class NodeIterator implements \IteratorAggregate
     public const FLAG_BLOCKS_ONLY = 1;
 
     /**
-     * @var \Zero\Vendor\League\CommonMark\Node\Node
+     * @var \First\Vendor\League\CommonMark\Node\Node
      */
     private $node;
     /**

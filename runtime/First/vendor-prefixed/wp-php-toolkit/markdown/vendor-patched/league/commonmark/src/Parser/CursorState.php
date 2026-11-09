@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Parser;
+namespace First\Vendor\League\CommonMark\Parser;
 
 /**
  * Encapsulates the current state of a cursor in case you need to rollback later.

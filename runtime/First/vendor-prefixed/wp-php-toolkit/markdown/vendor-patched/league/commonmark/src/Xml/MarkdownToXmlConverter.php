@@ -11,24 +11,24 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Xml;
+namespace First\Vendor\League\CommonMark\Xml;
 
-use Zero\Vendor\League\CommonMark\ConverterInterface;
-use Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface;
-use Zero\Vendor\League\CommonMark\Exception\CommonMarkException;
-use Zero\Vendor\League\CommonMark\Output\RenderedContentInterface;
-use Zero\Vendor\League\CommonMark\Parser\MarkdownParser;
-use Zero\Vendor\League\CommonMark\Parser\MarkdownParserInterface;
-use Zero\Vendor\League\CommonMark\Renderer\DocumentRendererInterface;
+use First\Vendor\League\CommonMark\ConverterInterface;
+use First\Vendor\League\CommonMark\Environment\EnvironmentInterface;
+use First\Vendor\League\CommonMark\Exception\CommonMarkException;
+use First\Vendor\League\CommonMark\Output\RenderedContentInterface;
+use First\Vendor\League\CommonMark\Parser\MarkdownParser;
+use First\Vendor\League\CommonMark\Parser\MarkdownParserInterface;
+use First\Vendor\League\CommonMark\Renderer\DocumentRendererInterface;
 
 final class MarkdownToXmlConverter implements ConverterInterface
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Parser\MarkdownParserInterface */
+     * @var \First\Vendor\League\CommonMark\Parser\MarkdownParserInterface */
     private $parser;
 
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Renderer\DocumentRendererInterface */
+     * @var \First\Vendor\League\CommonMark\Renderer\DocumentRendererInterface */
     private $renderer;
 
     public function __construct(EnvironmentInterface $environment)

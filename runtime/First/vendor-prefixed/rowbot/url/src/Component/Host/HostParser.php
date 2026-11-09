@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component\Host;
+namespace First\Vendor\Rowbot\URL\Component\Host;
 
 use ReflectionClass;
 use ReflectionClassConstant;
-use Zero\Vendor\Rowbot\Idna\Idna;
-use Zero\Vendor\Rowbot\URL\ParserContext;
-use Zero\Vendor\Rowbot\URL\String\CodePoint;
-use Zero\Vendor\Rowbot\URL\String\EncodeSet;
-use Zero\Vendor\Rowbot\URL\String\PercentEncoder;
-use Zero\Vendor\Rowbot\URL\String\USVStringInterface;
+use First\Vendor\Rowbot\Idna\Idna;
+use First\Vendor\Rowbot\URL\ParserContext;
+use First\Vendor\Rowbot\URL\String\CodePoint;
+use First\Vendor\Rowbot\URL\String\EncodeSet;
+use First\Vendor\Rowbot\URL\String\PercentEncoder;
+use First\Vendor\Rowbot\URL\String\USVStringInterface;
 
 use function array_filter;
 use function assert;
@@ -40,7 +40,7 @@ class HostParser
      *
      * @param bool $isOpaque (optional) Whether or not the URL has a special scheme.
      *
-     * @return \Zero\Vendor\Rowbot\URL\Component\Host\HostInterface|false The returned Host can never be a null host.
+     * @return \First\Vendor\Rowbot\URL\Component\Host\HostInterface|false The returned Host can never be a null host.
      */
     public function parse(
         ParserContext $context,

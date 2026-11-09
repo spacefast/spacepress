@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
 
 /**
  * Converts between objects and arrays by mapping properties.

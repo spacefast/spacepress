@@ -6,12 +6,12 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
-    'Zero\\Vendor\\Webuni\\FrontMatter\\' => array($vendorDir . '/webuni/front-matter/src'),
-    'Zero\\Vendor\\Symfony\\Polyfill\\Php80\\' => array($vendorDir . '/symfony/polyfill-php80'),
-    'Zero\\Vendor\\Symfony\\Polyfill\\Ctype\\' => array($vendorDir . '/symfony/polyfill-ctype'),
-    'Zero\\Vendor\\Symfony\\Component\\Yaml\\' => array($vendorDir . '/symfony/yaml'),
-    'Zero\\Vendor\\Psr\\EventDispatcher\\' => array($vendorDir . '/psr/event-dispatcher/src'),
-    'Zero\\Vendor\\League\\Config\\' => array($vendorDir . '/league/config/src'),
-    'Zero\\Vendor\\League\\CommonMark\\' => array($vendorDir . '/league/commonmark/src'),
-    'Zero\\Vendor\\Dflydev\\DotAccessData\\' => array($vendorDir . '/dflydev/dot-access-data/src'),
+    'First\\Vendor\\Webuni\\FrontMatter\\' => array($vendorDir . '/webuni/front-matter/src'),
+    'First\\Vendor\\Symfony\\Polyfill\\Php80\\' => array($vendorDir . '/symfony/polyfill-php80'),
+    'First\\Vendor\\Symfony\\Polyfill\\Ctype\\' => array($vendorDir . '/symfony/polyfill-ctype'),
+    'First\\Vendor\\Symfony\\Component\\Yaml\\' => array($vendorDir . '/symfony/yaml'),
+    'First\\Vendor\\Psr\\EventDispatcher\\' => array($vendorDir . '/psr/event-dispatcher/src'),
+    'First\\Vendor\\League\\Config\\' => array($vendorDir . '/league/config/src'),
+    'First\\Vendor\\League\\CommonMark\\' => array($vendorDir . '/league/commonmark/src'),
+    'First\\Vendor\\Dflydev\\DotAccessData\\' => array($vendorDir . '/dflydev/dot-access-data/src'),
 );

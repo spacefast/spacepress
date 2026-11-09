@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
 
 use function array_values;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
 
 /**
  * Configuration for the certification path validation process.

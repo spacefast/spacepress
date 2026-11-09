@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -32,7 +32,7 @@ use Zero\Vendor\Nette;
  */
 class Paginator
 {
-	use \Zero\Vendor\Nette\SmartObject;
+	use \First\Vendor\Nette\SmartObject;
 
 	/**
   * @var int

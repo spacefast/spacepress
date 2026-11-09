@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 class UriTemplateHttpClient implements HttpClientInterface, ResetInterface
 {

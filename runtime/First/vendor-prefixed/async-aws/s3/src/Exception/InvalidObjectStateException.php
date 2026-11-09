@@ -1,11 +1,11 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Exception;
+namespace First\Vendor\AsyncAws\S3\Exception;
 
-use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
-use Zero\Vendor\AsyncAws\S3\Enum\IntelligentTieringAccessTier;
-use Zero\Vendor\AsyncAws\S3\Enum\StorageClass;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use First\Vendor\AsyncAws\S3\Enum\IntelligentTieringAccessTier;
+use First\Vendor\AsyncAws\S3\Enum\StorageClass;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * Object is archived and inaccessible until restored.

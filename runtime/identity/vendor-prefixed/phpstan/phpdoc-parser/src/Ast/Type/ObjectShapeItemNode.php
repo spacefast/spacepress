@@ -1,10 +1,10 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
 
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
 use function sprintf;
 
 class ObjectShapeItemNode implements Node

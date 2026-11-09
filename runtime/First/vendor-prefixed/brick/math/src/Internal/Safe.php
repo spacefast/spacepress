@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Brick\Math\Internal;
+namespace First\Vendor\Brick\Math\Internal;
 
-use Zero\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use First\Vendor\Brick\Math\Exception\IntegerOverflowException;
 
 use function is_int;
 use function sprintf;

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\Service\Attribute;
+namespace First\Vendor\Symfony\Contracts\Service\Attribute;
 
-use Zero\Vendor\Symfony\Contracts\Service\ServiceMethodsSubscriberTrait;
-use Zero\Vendor\Symfony\Contracts\Service\ServiceSubscriberInterface;
+use First\Vendor\Symfony\Contracts\Service\ServiceMethodsSubscriberTrait;
+use First\Vendor\Symfony\Contracts\Service\ServiceSubscriberInterface;
 
 /**
  * For use as the return value for {@see ServiceSubscriberInterface}.

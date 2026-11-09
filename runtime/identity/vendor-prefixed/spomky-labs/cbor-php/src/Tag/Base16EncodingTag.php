@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag;
+namespace First\Identity\Vendor\CBOR\Tag;
 
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\Tag;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\Tag;
 
 final class Base16EncodingTag extends Tag
 {

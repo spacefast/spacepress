@@ -11,24 +11,24 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\TableOfContents;
+namespace First\Vendor\League\CommonMark\Extension\TableOfContents;
 
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\Heading;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
-use Zero\Vendor\League\CommonMark\Extension\HeadingPermalink\HeadingPermalink;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\AsIsNormalizerStrategy;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\FlatNormalizerStrategy;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\NormalizerStrategyInterface;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\RelativeNormalizerStrategy;
-use Zero\Vendor\League\CommonMark\Node\Block\Document;
-use Zero\Vendor\League\CommonMark\Node\NodeIterator;
-use Zero\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
-use Zero\Vendor\League\CommonMark\Node\StringContainerHelper;
-use Zero\Vendor\League\Config\Exception\InvalidConfigurationException;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\Heading;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
+use First\Vendor\League\CommonMark\Extension\HeadingPermalink\HeadingPermalink;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\AsIsNormalizerStrategy;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\FlatNormalizerStrategy;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\NormalizerStrategyInterface;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer\RelativeNormalizerStrategy;
+use First\Vendor\League\CommonMark\Node\Block\Document;
+use First\Vendor\League\CommonMark\Node\NodeIterator;
+use First\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
+use First\Vendor\League\CommonMark\Node\StringContainerHelper;
+use First\Vendor\League\Config\Exception\InvalidConfigurationException;
 
 final class TableOfContentsGenerator implements TableOfContentsGeneratorInterface
 {

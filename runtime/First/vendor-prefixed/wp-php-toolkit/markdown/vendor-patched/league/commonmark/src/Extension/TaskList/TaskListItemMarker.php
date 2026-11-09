@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\TaskList;
+namespace First\Vendor\League\CommonMark\Extension\TaskList;
 
-use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
 
 final class TaskListItemMarker extends AbstractInline
 {

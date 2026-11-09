@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

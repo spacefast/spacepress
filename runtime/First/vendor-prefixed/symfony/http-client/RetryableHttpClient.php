@@ -9,18 +9,18 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
-use Zero\Vendor\Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
-use Zero\Vendor\Symfony\Component\HttpClient\Retry\RetryStrategyInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
+use First\Vendor\Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
+use First\Vendor\Symfony\Component\HttpClient\Retry\RetryStrategyInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * Automatically retries failing HTTP requests.

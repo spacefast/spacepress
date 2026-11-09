@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
+namespace First\Vendor\Symfony\Component\HttpClient\Internal;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
 
 /**
  * A pure PHP alternative to the native "dechunk" stream filter.

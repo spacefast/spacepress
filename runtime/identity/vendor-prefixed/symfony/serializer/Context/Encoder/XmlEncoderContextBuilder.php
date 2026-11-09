@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
+use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
 
 /**
  * A helper providing autocompletion for available XmlEncoder options.

@@ -11,22 +11,22 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\DisallowedRawHtml;
+namespace First\Vendor\League\CommonMark\Extension\DisallowedRawHtml;
 
-use Zero\Vendor\League\CommonMark\Node\Node;
-use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use Zero\Vendor\League\Config\ConfigurationAwareInterface;
-use Zero\Vendor\League\Config\ConfigurationInterface;
+use First\Vendor\League\CommonMark\Node\Node;
+use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use First\Vendor\League\Config\ConfigurationAwareInterface;
+use First\Vendor\League\Config\ConfigurationInterface;
 
 final class DisallowedRawHtmlRenderer implements NodeRendererInterface, ConfigurationAwareInterface
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface */
+     * @var \First\Vendor\League\CommonMark\Renderer\NodeRendererInterface */
     private $innerRenderer;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
+     * @var \First\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     public function __construct(NodeRendererInterface $innerRenderer)

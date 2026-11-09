@@ -7,12 +7,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Schema;
+namespace First\Vendor\Nette\Schema;
 
-use Zero\Vendor\Nette;
-use Zero\Vendor\Nette\Schema\Elements\AnyOf;
-use Zero\Vendor\Nette\Schema\Elements\Structure;
-use Zero\Vendor\Nette\Schema\Elements\Type;
+use First\Vendor\Nette;
+use First\Vendor\Nette\Schema\Elements\AnyOf;
+use First\Vendor\Nette\Schema\Elements\Structure;
+use First\Vendor\Nette\Schema\Elements\Type;
 
 
 /**
@@ -82,7 +82,7 @@ final class Expect
 					$def = ($prop instanceof \ReflectionProperty ? $prop->getValue($object) : $prop->getDefaultValue());
 					if (is_object($def)) {
 						$item = static::from($def);
-					} elseif ($def === null && !\Zero\Vendor\Nette\Utils\Validators::is(null, $type)) {
+					} elseif ($def === null && !\First\Vendor\Nette\Utils\Validators::is(null, $type)) {
 						$item->required();
 					} else {
 						$item->default($def);
@@ -99,19 +99,19 @@ final class Expect
 
 	/**
   * @param  mixed[]  $shape
-  * @return \Zero\Vendor\Nette\Schema\Elements\Structure|\Zero\Vendor\Nette\Schema\Elements\Type
+  * @return \First\Vendor\Nette\Schema\Elements\Structure|\First\Vendor\Nette\Schema\Elements\Type
   */
  public static function array(?array $shape = [])
 	{
-		return \Zero\Vendor\Nette\Utils\Arrays::first($shape ?? []) instanceof Schema
+		return \First\Vendor\Nette\Utils\Arrays::first($shape ?? []) instanceof Schema
 			? (new Structure($shape))->castTo('array')
 			: (new Type('array'))->default($shape);
 	}
 
 
 	/**
-  * @param string|\Zero\Vendor\Nette\Schema\Schema $valueType
-  * @param string|\Zero\Vendor\Nette\Schema\Schema|null $keyType
+  * @param string|\First\Vendor\Nette\Schema\Schema $valueType
+  * @param string|\First\Vendor\Nette\Schema\Schema|null $keyType
   */
  public static function arrayOf($valueType, $keyType = null): Type
 	{
@@ -120,7 +120,7 @@ final class Expect
 
 
 	/**
-  * @param string|\Zero\Vendor\Nette\Schema\Schema $type
+  * @param string|\First\Vendor\Nette\Schema\Schema $type
   */
  public static function listOf($type): Type
 	{

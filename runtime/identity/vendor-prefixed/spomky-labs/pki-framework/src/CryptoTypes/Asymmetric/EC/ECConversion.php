@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\EC;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\EC;
 
 use function assert;
-use Zero\Identity\Vendor\Brick\Math\BigInteger;
+use First\Identity\Vendor\Brick\Math\BigInteger;
 use function mb_strlen;
 use RangeException;
 use RuntimeException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
 
 /**
  * Implements data type conversions from SEC 1: Elliptic Curve Cryptography.

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\Idna;
+namespace First\Vendor\Rowbot\Idna;
 
-use Zero\Vendor\Rowbot\Idna\Resource\DisallowedRanges;
+use First\Vendor\Rowbot\Idna\Resource\DisallowedRanges;
 
 use const DIRECTORY_SEPARATOR as DS;
 

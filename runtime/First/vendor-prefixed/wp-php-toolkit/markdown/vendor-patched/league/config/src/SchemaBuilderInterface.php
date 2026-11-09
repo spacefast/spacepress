@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\Config;
+namespace First\Vendor\League\Config;
 
-use Zero\Vendor\Nette\Schema\Schema;
+use First\Vendor\Nette\Schema\Schema;
 
 /**
  * Interface that allows new schemas to be added to a configuration

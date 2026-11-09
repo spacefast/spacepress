@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * The container for the completed multipart upload details.

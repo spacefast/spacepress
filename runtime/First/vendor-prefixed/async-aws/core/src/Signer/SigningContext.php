@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Signer;
+namespace First\Vendor\AsyncAws\Core\Signer;
 
-use Zero\Vendor\AsyncAws\Core\Request;
+use First\Vendor\AsyncAws\Core\Request;
 
 /**
  * @author Jérémy Derussé <jeremy@derusse.com>

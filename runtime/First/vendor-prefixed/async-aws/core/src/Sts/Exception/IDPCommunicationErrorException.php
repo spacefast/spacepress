@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts\Exception;
+namespace First\Vendor\AsyncAws\Core\Sts\Exception;
 
-use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * The request could not be fulfilled because the identity provider (IDP) that was asked to verify the incoming identity

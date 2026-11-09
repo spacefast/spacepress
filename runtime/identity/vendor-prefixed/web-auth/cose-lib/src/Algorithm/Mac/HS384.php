@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Mac;
+namespace First\Identity\Vendor\Cose\Algorithm\Mac;
 
 final class HS384 extends Hmac
 {

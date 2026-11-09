@@ -10,9 +10,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Webuni\FrontMatter\Processor;
+namespace First\Vendor\Webuni\FrontMatter\Processor;
 
-use Zero\Vendor\Nette\Neon\Neon;
+use First\Vendor\Nette\Neon\Neon;
 
 final class NeonProcessor implements ProcessorInterface
 {

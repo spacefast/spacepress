@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node;
+namespace First\Vendor\League\CommonMark\Extension\TableOfContents\Node;
 
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
 
 final class TableOfContentsPlaceholder extends AbstractBlock
 {

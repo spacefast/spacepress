@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Clock;
+namespace First\Identity\Vendor\Symfony\Component\Clock;
 
-use Zero\Identity\Vendor\Psr\Clock\ClockInterface;
+use First\Identity\Vendor\Psr\Clock\ClockInterface;
 use Symfony\Contracts\Service\Attribute\Required;
 
 /**

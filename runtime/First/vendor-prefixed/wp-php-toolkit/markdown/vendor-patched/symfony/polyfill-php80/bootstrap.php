@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-use Zero\Vendor\Symfony\Polyfill\Php80 as p;
+use First\Vendor\Symfony\Polyfill\Php80 as p;
 
 if (\PHP_VERSION_ID >= 80000) {
     return;
 }
 
-if (!defined('ZERO_VENDOR_FILTER_VALIDATE_BOOL') && defined('FILTER_VALIDATE_BOOLEAN')) {
-    define('ZERO_VENDOR_FILTER_VALIDATE_BOOL', \FILTER_VALIDATE_BOOLEAN);
+if (!defined('FIRST_VENDOR_FILTER_VALIDATE_BOOL') && defined('FILTER_VALIDATE_BOOLEAN')) {
+    define('FIRST_VENDOR_FILTER_VALIDATE_BOOL', \FILTER_VALIDATE_BOOLEAN);
 }
 
 if (!function_exists('fdiv')) {

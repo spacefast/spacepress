@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * Container for `TagSet` elements.

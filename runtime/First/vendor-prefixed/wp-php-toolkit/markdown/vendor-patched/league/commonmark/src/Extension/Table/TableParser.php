@@ -13,15 +13,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\Table;
+namespace First\Vendor\League\CommonMark\Extension\Table;
 
-use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserWithInlinesInterface;
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
-use Zero\Vendor\League\CommonMark\Parser\InlineParserEngineInterface;
-use Zero\Vendor\League\CommonMark\Util\ArrayCollection;
+use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserWithInlinesInterface;
+use First\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Parser\InlineParserEngineInterface;
+use First\Vendor\League\CommonMark\Util\ArrayCollection;
 
 final class TableParser extends AbstractBlockContinueParser implements BlockContinueParserWithInlinesInterface
 {
@@ -31,7 +31,7 @@ final class TableParser extends AbstractBlockContinueParser implements BlockCont
     public const DEFAULT_MAX_AUTOCOMPLETED_CELLS = 10000;
 
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Extension\Table\Table */
+     * @var \First\Vendor\League\CommonMark\Extension\Table\Table */
     private $block;
 
     /**
@@ -88,7 +88,7 @@ final class TableParser extends AbstractBlockContinueParser implements BlockCont
         return true;
     }
 
-    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }

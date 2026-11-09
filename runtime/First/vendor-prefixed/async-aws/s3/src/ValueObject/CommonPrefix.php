@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * Container for all (if there are any) keys between Prefix and the next occurrence of the string specified by a

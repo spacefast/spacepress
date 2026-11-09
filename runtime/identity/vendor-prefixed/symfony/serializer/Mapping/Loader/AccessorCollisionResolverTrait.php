@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
 
 /**
  * Provides methods to detect accessor name collisions during serialization.

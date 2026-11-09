@@ -11,13 +11,13 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\Strikethrough;
+namespace First\Vendor\League\CommonMark\Extension\Strikethrough;
 
-use Zero\Vendor\League\CommonMark\Node\Node;
-use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Util\HtmlElement;
-use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use First\Vendor\League\CommonMark\Node\Node;
+use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use First\Vendor\League\CommonMark\Util\HtmlElement;
+use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
 
 final class StrikethroughRenderer implements NodeRendererInterface, XmlNodeRendererInterface
 {

@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
 /**
  * Extract a property's doc block.

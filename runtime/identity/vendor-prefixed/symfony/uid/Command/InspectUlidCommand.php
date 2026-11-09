@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Uid\Command;
+namespace First\Identity\Vendor\Symfony\Component\Uid\Command;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -19,7 +19,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Zero\Identity\Vendor\Symfony\Component\Uid\Ulid;
+use First\Identity\Vendor\Symfony\Component\Uid\Ulid;
 
 #[AsCommand(name: 'ulid:inspect', description: 'Inspect a ULID')]
 class InspectUlidCommand extends Command

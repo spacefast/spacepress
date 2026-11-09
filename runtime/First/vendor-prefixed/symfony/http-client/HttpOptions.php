@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * A helper providing autocompletion for available options.

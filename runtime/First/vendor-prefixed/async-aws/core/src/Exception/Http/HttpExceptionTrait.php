@@ -1,9 +1,9 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Exception\Http;
+namespace First\Vendor\AsyncAws\Core\Exception\Http;
 
-use Zero\Vendor\AsyncAws\Core\AwsError\AwsError;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\AsyncAws\Core\AwsError\AwsError;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

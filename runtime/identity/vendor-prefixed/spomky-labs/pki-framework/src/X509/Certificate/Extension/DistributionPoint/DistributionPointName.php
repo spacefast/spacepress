@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\RDN;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\RDN;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
 use UnexpectedValueException;
 
 /**

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\Idna\Test;
+namespace First\Vendor\Rowbot\Idna\Test;
 
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use Zero\Vendor\Rowbot\Idna\CodePoint;
-use Zero\Vendor\Rowbot\Idna\Idna;
+use First\Vendor\Rowbot\Idna\CodePoint;
+use First\Vendor\Rowbot\Idna\Idna;
 use RuntimeException;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
 

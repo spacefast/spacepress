@@ -9,18 +9,18 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Chunk\DataChunk;
-use Zero\Vendor\Symfony\Component\HttpClient\Chunk\ServerSentEvent;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\EventSourceException;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Symfony\Component\HttpClient\Chunk\DataChunk;
+use First\Vendor\Symfony\Component\HttpClient\Chunk\ServerSentEvent;
+use First\Vendor\Symfony\Component\HttpClient\Exception\EventSourceException;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
+use First\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * @author Antoine Bluchet <soyuka@gmail.com>

@@ -9,18 +9,18 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Psr\Log\LoggerAwareInterface;
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
+use First\Vendor\Psr\Log\LoggerAwareInterface;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
 use Symfony\Component\HttpFoundation\IpUtils;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * Decorator that blocks requests to private networks by default.
@@ -163,7 +163,7 @@ final class NoPrivateNetworkHttpClient implements HttpClientInterface, LoggerAwa
      */
     public function setLogger(LoggerInterface $logger): void
     {
-        zero_vendor_trigger_deprecation('symfony/http-client', '7.1', 'Configure the logger on the wrapped HTTP client directly instead.');
+        first_vendor_trigger_deprecation('symfony/http-client', '7.1', 'Configure the logger on the wrapped HTTP client directly instead.');
 
         if ($this->client instanceof LoggerAwareInterface) {
             $this->client->setLogger($logger);

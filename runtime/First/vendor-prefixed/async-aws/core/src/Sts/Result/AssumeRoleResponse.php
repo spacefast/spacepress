@@ -1,11 +1,11 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts\Result;
+namespace First\Vendor\AsyncAws\Core\Sts\Result;
 
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Result;
-use Zero\Vendor\AsyncAws\Core\Sts\ValueObject\AssumedRoleUser;
-use Zero\Vendor\AsyncAws\Core\Sts\ValueObject\Credentials;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Result;
+use First\Vendor\AsyncAws\Core\Sts\ValueObject\AssumedRoleUser;
+use First\Vendor\AsyncAws\Core\Sts\ValueObject\Credentials;
 
 /**
  * Contains the response to a successful AssumeRole request, including temporary Amazon Web Services credentials that

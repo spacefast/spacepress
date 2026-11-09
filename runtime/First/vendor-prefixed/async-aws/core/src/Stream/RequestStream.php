@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Stream;
+namespace First\Vendor\AsyncAws\Core\Stream;
 
 /**
  * Provides method to convert a input into string or chunks.

@@ -1,15 +1,15 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Result;
+namespace First\Vendor\AsyncAws\S3\Result;
 
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Result;
-use Zero\Vendor\AsyncAws\S3\Enum\EncryptionType;
-use Zero\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
-use Zero\Vendor\AsyncAws\S3\ValueObject\BlockedEncryptionTypes;
-use Zero\Vendor\AsyncAws\S3\ValueObject\ServerSideEncryptionByDefault;
-use Zero\Vendor\AsyncAws\S3\ValueObject\ServerSideEncryptionConfiguration;
-use Zero\Vendor\AsyncAws\S3\ValueObject\ServerSideEncryptionRule;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Result;
+use First\Vendor\AsyncAws\S3\Enum\EncryptionType;
+use First\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
+use First\Vendor\AsyncAws\S3\ValueObject\BlockedEncryptionTypes;
+use First\Vendor\AsyncAws\S3\ValueObject\ServerSideEncryptionByDefault;
+use First\Vendor\AsyncAws\S3\ValueObject\ServerSideEncryptionConfiguration;
+use First\Vendor\AsyncAws\S3\ValueObject\ServerSideEncryptionRule;
 
 class GetBucketEncryptionOutput extends Result
 {

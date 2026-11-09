@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\OTPHP;
+namespace First\Identity\Vendor\OTPHP;
 
 use function array_key_exists;
 use function chr;
@@ -11,11 +11,11 @@ use Exception;
 use function in_array;
 use function is_int;
 use function is_string;
-use Zero\Identity\Vendor\OTPHP\Exception\InvalidLabelException;
-use Zero\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
-use Zero\Identity\Vendor\OTPHP\Exception\ParameterNotFoundException;
-use Zero\Identity\Vendor\OTPHP\Exception\SecretDecodingException;
-use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base32;
+use First\Identity\Vendor\OTPHP\Exception\InvalidLabelException;
+use First\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
+use First\Identity\Vendor\OTPHP\Exception\ParameterNotFoundException;
+use First\Identity\Vendor\OTPHP\Exception\SecretDecodingException;
+use First\Identity\Vendor\ParagonIE\ConstantTime\Base32;
 use function sprintf;
 use const STR_PAD_LEFT;
 use function strlen;

@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-namespace Zero\Vendor\DiffMatchPatch;
+namespace First\Vendor\DiffMatchPatch;
 
 /**
  * This toolkit contains functions for working with texts.

@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/route-dashboard",
+	"name": "@first-admin/route-dashboard",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -13,11 +13,11 @@
 		}
 	},
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/boot": "workspace:*",
-		"@zero-admin/dashboard": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/telemetry": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/boot": "workspace:*",
+		"@first-admin/dashboard": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/telemetry": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

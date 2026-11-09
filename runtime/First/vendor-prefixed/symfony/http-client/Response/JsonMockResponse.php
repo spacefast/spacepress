@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
+namespace First\Vendor\Symfony\Component\HttpClient\Response;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+use First\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
 
 class JsonMockResponse extends MockResponse
 {

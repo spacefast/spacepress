@@ -11,13 +11,13 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Normalizer;
+namespace First\Vendor\League\CommonMark\Normalizer;
 
 // phpcs:disable Squiz.Strings.DoubleQuoteUsage.ContainsVar
 final class UniqueSlugNormalizer implements UniqueSlugNormalizerInterface
 {
     /**
-     * @var \Zero\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface
+     * @var \First\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface
      */
     private $innerNormalizer;
     /** @var array<string, bool> */

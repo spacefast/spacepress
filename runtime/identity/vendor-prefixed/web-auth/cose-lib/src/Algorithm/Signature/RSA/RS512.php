@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use Zero\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use First\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use const OPENSSL_ALGO_SHA512;
 
 final class RS512 extends RSA

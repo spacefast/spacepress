@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\Yaml\Command;
+namespace First\Vendor\Symfony\Component\Yaml\Command;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\CI\GithubActionReporter;
@@ -23,9 +23,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Zero\Vendor\Symfony\Component\Yaml\Exception\ParseException;
-use Zero\Vendor\Symfony\Component\Yaml\Parser;
-use Zero\Vendor\Symfony\Component\Yaml\Yaml;
+use First\Vendor\Symfony\Component\Yaml\Exception\ParseException;
+use First\Vendor\Symfony\Component\Yaml\Parser;
+use First\Vendor\Symfony\Component\Yaml\Yaml;
 
 /**
  * Validates YAML files syntax and outputs encountered errors.
@@ -36,7 +36,7 @@ use Zero\Vendor\Symfony\Component\Yaml\Yaml;
 class LintCommand extends Command
 {
     /**
-     * @var \Zero\Vendor\Symfony\Component\Yaml\Parser
+     * @var \First\Vendor\Symfony\Component\Yaml\Parser
      */
     private $parser;
     /**

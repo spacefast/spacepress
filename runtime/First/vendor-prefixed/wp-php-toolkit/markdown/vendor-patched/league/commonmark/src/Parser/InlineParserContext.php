@@ -14,28 +14,28 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Parser;
+namespace First\Vendor\League\CommonMark\Parser;
 
-use Zero\Vendor\League\CommonMark\Delimiter\DelimiterStack;
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Reference\ReferenceMapInterface;
+use First\Vendor\League\CommonMark\Delimiter\DelimiterStack;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Reference\ReferenceMapInterface;
 
 final class InlineParserContext
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock */
+     * @var \First\Vendor\League\CommonMark\Node\Block\AbstractBlock */
     private $container;
 
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Reference\ReferenceMapInterface */
+     * @var \First\Vendor\League\CommonMark\Reference\ReferenceMapInterface */
     private $referenceMap;
 
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Parser\Cursor */
+     * @var \First\Vendor\League\CommonMark\Parser\Cursor */
     private $cursor;
 
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Delimiter\DelimiterStack */
+     * @var \First\Vendor\League\CommonMark\Delimiter\DelimiterStack */
     private $delimiterStack;
 
     /**

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\AttestationStatement;
+namespace First\Identity\Vendor\Webauthn\AttestationStatement;
 
 interface AttestationStatementSupportManagerAwareInterface
 {

@@ -11,15 +11,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer;
+namespace First\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer;
 
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
 
 final class FlatNormalizerStrategy implements NormalizerStrategyInterface
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents */
+     * @var \First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents */
     private $toc;
 
     public function __construct(TableOfContents $toc)

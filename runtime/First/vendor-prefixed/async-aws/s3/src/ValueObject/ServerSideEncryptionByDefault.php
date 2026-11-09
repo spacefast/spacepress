@@ -1,9 +1,9 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
 
 /**
  * Describes the default server-side encryption to apply to new objects in the bucket. If a PUT Object request doesn't

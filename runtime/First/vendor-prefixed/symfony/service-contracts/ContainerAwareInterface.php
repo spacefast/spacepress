@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\Service;
+namespace First\Vendor\Symfony\Contracts\Service;
 
 /**
  * @deprecated use ContainerProviderInterface instead

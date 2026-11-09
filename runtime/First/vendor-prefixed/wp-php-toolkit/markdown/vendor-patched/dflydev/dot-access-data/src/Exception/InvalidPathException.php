@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Dflydev\DotAccessData\Exception;
+namespace First\Vendor\Dflydev\DotAccessData\Exception;
 
 /**
  * Thrown when trying to access an invalid path in the data array

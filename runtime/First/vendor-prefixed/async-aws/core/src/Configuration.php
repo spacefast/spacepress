@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core;
+namespace First\Vendor\AsyncAws\Core;
 
-use Zero\Vendor\AsyncAws\Core\Credentials\IniFileLoader;
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Credentials\IniFileLoader;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * Helper object that holds all configuration to the API.

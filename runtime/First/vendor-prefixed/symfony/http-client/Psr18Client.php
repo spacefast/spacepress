@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
 use Http\Discovery\Psr17Factory;
 use Http\Discovery\Psr17FactoryDiscovery;
@@ -27,17 +27,17 @@ use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Message\UriInterface;
-use Zero\Vendor\Symfony\Component\HttpClient\Internal\HttplugWaitLoop;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Symfony\Component\HttpClient\Internal\HttplugWaitLoop;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 if (!interface_exists(ClientInterface::class)) {
-    throw new \LogicException('You cannot use the "Zero\Vendor\Symfony\Component\HttpClient\Psr18Client" as the "psr/http-client" package is not installed. Try running "composer require php-http/discovery psr/http-client-implementation:*".');
+    throw new \LogicException('You cannot use the "First\Vendor\Symfony\Component\HttpClient\Psr18Client" as the "psr/http-client" package is not installed. Try running "composer require php-http/discovery psr/http-client-implementation:*".');
 }
 
 if (!interface_exists(RequestFactoryInterface::class)) {
-    throw new \LogicException('You cannot use the "Zero\Vendor\Symfony\Component\HttpClient\Psr18Client" as the "psr/http-factory" package is not installed. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
+    throw new \LogicException('You cannot use the "First\Vendor\Symfony\Component\HttpClient\Psr18Client" as the "psr/http-factory" package is not installed. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
 }
 
 /**
@@ -66,7 +66,7 @@ final class Psr18Client implements ClientInterface, RequestFactoryInterface, Str
             } elseif (class_exists(NyholmPsr17Factory::class)) {
                 $psr17Factory = new NyholmPsr17Factory();
             } else {
-                throw new \LogicException('You cannot use the "Zero\Vendor\Symfony\Component\HttpClient\Psr18Client" as no PSR-17 factories have been provided. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
+                throw new \LogicException('You cannot use the "First\Vendor\Symfony\Component\HttpClient\Psr18Client" as no PSR-17 factories have been provided. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
             }
 
             $responseFactory ??= $psr17Factory;

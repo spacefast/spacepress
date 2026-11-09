@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * Specifies the default server-side encryption configuration.

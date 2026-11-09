@@ -1,13 +1,13 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Markdown;
+namespace First\Vendor\WordPress\Markdown;
 
-use Zero\Vendor\League\CommonMark\Environment\Environment;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
-use Zero\Vendor\League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Parser\MarkdownParser;
-use Zero\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
+use First\Vendor\League\CommonMark\Environment\Environment;
+use First\Vendor\League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use First\Vendor\League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Parser\MarkdownParser;
+use First\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
 
 /**
  * Tracks a Markdown document's original source while exposing editable block markup.
@@ -300,8 +300,8 @@ class MarkdownSourceDocument {
 		$environment->addExtension( new CommonMarkCoreExtension() );
 		$environment->addExtension( new GithubFlavoredMarkdownExtension() );
 		$environment->addExtension(
-			new \Zero\Vendor\Webuni\FrontMatter\Markdown\FrontMatterLeagueCommonMarkExtension(
-				new \Zero\Vendor\Webuni\FrontMatter\FrontMatter()
+			new \First\Vendor\Webuni\FrontMatter\Markdown\FrontMatterLeagueCommonMarkExtension(
+				new \First\Vendor\Webuni\FrontMatter\FrontMatter()
 			)
 		);
 		$parser = new MarkdownParser( $environment );

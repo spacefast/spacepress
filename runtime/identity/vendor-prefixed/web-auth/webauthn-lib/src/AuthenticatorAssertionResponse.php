@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
-use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
+use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
 
 /**
  * @see https://www.w3.org/TR/webauthn/#authenticatorassertionresponse

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
 
 /**
  * Implements 'Insignificant Space Handling' step of the Internationalized String Preparation as specified by RFC 4518.

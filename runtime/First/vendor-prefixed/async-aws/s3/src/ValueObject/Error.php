@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * > For information about using the Amazon S3 API—including error handling—see the Amazon S3 Developer Guide [^1].

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR;
+namespace First\Identity\Vendor\CBOR;
 
-use Zero\Identity\Vendor\Brick\Math\BigInteger;
+use First\Identity\Vendor\Brick\Math\BigInteger;
 use function chr;
 use InvalidArgumentException;
 use function ord;

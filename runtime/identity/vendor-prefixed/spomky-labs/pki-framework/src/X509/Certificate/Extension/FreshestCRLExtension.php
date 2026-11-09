@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
 
 /**
  * Implements 'Freshest CRL' certificate extension.

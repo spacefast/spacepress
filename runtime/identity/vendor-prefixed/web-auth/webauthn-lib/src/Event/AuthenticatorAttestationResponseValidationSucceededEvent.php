@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Event;
+namespace First\Identity\Vendor\Webauthn\Event;
 
 use LogicException;
 use function sprintf;
-use Zero\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use Zero\Identity\Vendor\Webauthn\CredentialRecord;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use First\Identity\Vendor\Webauthn\CredentialRecord;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
 
 class AuthenticatorAttestationResponseValidationSucceededEvent
 {

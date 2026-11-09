@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
 use Closure;
 use Exception;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;

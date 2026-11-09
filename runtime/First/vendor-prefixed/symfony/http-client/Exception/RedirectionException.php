@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Exception;
+namespace First\Vendor\Symfony\Component\HttpClient\Exception;
 
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 
 /**
  * Represents a 3xx response.

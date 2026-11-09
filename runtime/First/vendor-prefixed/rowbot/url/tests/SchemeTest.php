@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Tests;
+namespace First\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
-use Zero\Vendor\Rowbot\URL\Component\Scheme;
+use First\Vendor\Rowbot\URL\Component\Scheme;
 
 class SchemeTest extends TestCase
 {

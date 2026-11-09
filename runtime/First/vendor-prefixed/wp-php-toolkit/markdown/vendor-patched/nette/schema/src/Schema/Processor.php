@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Schema;
+namespace First\Vendor\Nette\Schema;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -22,7 +22,7 @@ final class Processor
   */
  public $onNewContext = [];
 	/**
-  * @var \Zero\Vendor\Nette\Schema\Context
+  * @var \First\Vendor\Nette\Schema\Context
   */
  private $context;
 	/**
@@ -103,6 +103,6 @@ final class Processor
 	{
 		$this->context = new Context;
 		$this->context->skipDefaults = $this->skipDefaults;
-		\Zero\Vendor\Nette\Utils\Arrays::invoke($this->onNewContext, $this->context);
+		\First\Vendor\Nette\Utils\Arrays::invoke($this->onNewContext, $this->context);
 	}
 }

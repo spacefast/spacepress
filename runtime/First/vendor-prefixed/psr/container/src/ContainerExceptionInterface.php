@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\Psr\Container;
+namespace First\Vendor\Psr\Container;
 
 use Throwable;
 

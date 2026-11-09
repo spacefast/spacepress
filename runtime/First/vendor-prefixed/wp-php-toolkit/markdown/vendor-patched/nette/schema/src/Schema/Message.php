@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Schema;
+namespace First\Vendor\Nette\Schema;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 final class Message
@@ -99,7 +99,7 @@ final class Message
 			[, $space, $key] = $m;
 			return $vars[$key] === null ? '' : $space . $vars[$key];
 		}, $this->message) !== null) {
-      throw new \Zero\Vendor\Nette\InvalidStateException(preg_last_error_msg());
+      throw new \First\Vendor\Nette\InvalidStateException(preg_last_error_msg());
   }
   return preg_replace_callback('~( ?)%(\w+)%~', function ($m) use ($vars) {
 			[, $space, $key] = $m;

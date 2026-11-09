@@ -11,18 +11,18 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\TableOfContents;
+namespace First\Vendor\League\CommonMark\Extension\TableOfContents;
 
-use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\Heading;
-use Zero\Vendor\League\CommonMark\Extension\HeadingPermalink\HeadingPermalink;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContentsPlaceholder;
-use Zero\Vendor\League\CommonMark\Node\Block\Document;
-use Zero\Vendor\League\CommonMark\Node\NodeIterator;
-use Zero\Vendor\League\Config\ConfigurationAwareInterface;
-use Zero\Vendor\League\Config\ConfigurationInterface;
-use Zero\Vendor\League\Config\Exception\InvalidConfigurationException;
+use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\Heading;
+use First\Vendor\League\CommonMark\Extension\HeadingPermalink\HeadingPermalink;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContentsPlaceholder;
+use First\Vendor\League\CommonMark\Node\Block\Document;
+use First\Vendor\League\CommonMark\Node\NodeIterator;
+use First\Vendor\League\Config\ConfigurationAwareInterface;
+use First\Vendor\League\Config\ConfigurationInterface;
+use First\Vendor\League\Config\Exception\InvalidConfigurationException;
 
 final class TableOfContentsBuilder implements ConfigurationAwareInterface
 {
@@ -31,7 +31,7 @@ final class TableOfContentsBuilder implements ConfigurationAwareInterface
     public const POSITION_PLACEHOLDER     = 'placeholder';
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
+     * @var \First\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     public function onDocumentParsed(DocumentParsedEvent $event): void

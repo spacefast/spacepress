@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 /**
  * Traverses a property path and provides additional methods to find out

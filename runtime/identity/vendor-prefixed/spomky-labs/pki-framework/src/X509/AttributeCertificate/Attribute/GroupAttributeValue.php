@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
 
 /**
  * Implements value for 'Group' attribute.

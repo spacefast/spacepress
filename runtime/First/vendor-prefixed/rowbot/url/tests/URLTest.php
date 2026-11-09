@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Tests;
+namespace First\Vendor\Rowbot\URL\Tests;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
-use Zero\Vendor\Rowbot\URL\Exception\TypeError;
-use Zero\Vendor\Rowbot\URL\URL;
+use First\Vendor\Rowbot\URL\Exception\TypeError;
+use First\Vendor\Rowbot\URL\URL;
 use stdClass;
 use Stringable;
 use TypeError as NativeTypeError;

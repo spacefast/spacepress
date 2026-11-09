@@ -14,7 +14,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Util;
+namespace First\Vendor\League\CommonMark\Util;
 
 /**
  * Utility class for handling/generating XML and HTML

@@ -2,7 +2,7 @@
 /**
  * Core taxonomy term fields collection - applies to all taxonomies
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(

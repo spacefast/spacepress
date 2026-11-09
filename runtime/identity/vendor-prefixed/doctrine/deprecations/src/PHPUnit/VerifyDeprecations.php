@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Doctrine\Deprecations\PHPUnit;
+namespace First\Identity\Vendor\Doctrine\Deprecations\PHPUnit;
 
-use Zero\Identity\Vendor\Doctrine\Deprecations\Deprecation;
+use First\Identity\Vendor\Doctrine\Deprecations\Deprecation;
 use PHPUnit\Framework\Attributes\After;
 use PHPUnit\Framework\Attributes\Before;
 

@@ -14,11 +14,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Delimiter\Processor;
+namespace First\Vendor\League\CommonMark\Delimiter\Processor;
 
-use Zero\Vendor\League\CommonMark\Delimiter\DelimiterInterface;
-use Zero\Vendor\League\CommonMark\Exception\InvalidArgumentException;
-use Zero\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
+use First\Vendor\League\CommonMark\Delimiter\DelimiterInterface;
+use First\Vendor\League\CommonMark\Exception\InvalidArgumentException;
+use First\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
 
 /**
  * An implementation of DelimiterProcessorInterface that dispatches all calls to two or more other DelimiterProcessors

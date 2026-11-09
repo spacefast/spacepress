@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component\Host\Math;
+namespace First\Vendor\Rowbot\URL\Component\Host\Math;
 
 interface NumberInterface
 {
@@ -12,7 +12,7 @@ interface NumberInterface
     public function intdiv(int $number): self;
 
     /**
-     * @throws \Zero\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException If anything other than the
+     * @throws \First\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException If anything other than the
      *                                                                 instance is given.
      */
     public function isEqualTo(self $number): bool;
@@ -20,7 +20,7 @@ interface NumberInterface
     public function isGreaterThan(int $number): bool;
 
     /**
-     * @throws \Zero\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException If anything other than the
+     * @throws \First\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException If anything other than the
      *                                                                 instance is given.
      */
     public function isGreaterThanOrEqualTo(self $number): bool;
@@ -30,7 +30,7 @@ interface NumberInterface
     public function multipliedBy(int $number): self;
 
     /**
-     * @throws \Zero\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException If anything other than the
+     * @throws \First\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException If anything other than the
      *                                                                 instance is given.
      */
     public function plus(self $number): self;

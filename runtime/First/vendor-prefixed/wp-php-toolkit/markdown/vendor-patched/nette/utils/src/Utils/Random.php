@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 use Random\Randomizer;
 
 
@@ -18,7 +18,7 @@ use Random\Randomizer;
  */
 final class Random
 {
-	use \Zero\Vendor\Nette\StaticClass;
+	use \First\Vendor\Nette\StaticClass;
 
 	/**
 	 * Generates a random string of given length from characters specified in second argument.
@@ -33,9 +33,9 @@ final class Random
 		$chLen = strlen($charlist);
 
 		if ($length < 1) {
-			throw new \Zero\Vendor\Nette\InvalidArgumentException('Length must be greater than zero.');
+			throw new \First\Vendor\Nette\InvalidArgumentException('Length must be greater than zero.');
 		} elseif ($chLen < 2) {
-			throw new \Zero\Vendor\Nette\InvalidArgumentException('Character list must contain at least two chars.');
+			throw new \First\Vendor\Nette\InvalidArgumentException('Character list must contain at least two chars.');
 		} elseif (PHP_VERSION_ID >= 80300) {
 			return (new Randomizer)->getBytesFromString($charlist, $length);
 		}

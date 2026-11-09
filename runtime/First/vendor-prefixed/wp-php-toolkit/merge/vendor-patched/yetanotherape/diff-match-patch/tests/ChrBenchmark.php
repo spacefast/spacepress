@@ -20,12 +20,12 @@
  */
 
 
-function zero_vendor_unicodeChr1($code)
+function first_vendor_unicodeChr1($code)
 {
     return mb_convert_encoding('&#' . $code . ';', 'UTF-8', 'HTML-ENTITIES');
 }
 
-function zero_vendor_unicodeChr2($code)
+function first_vendor_unicodeChr2($code)
 {
     if ($code < 0xFFFF) {
         return json_decode('"' . sprintf('\u%04X', $code) . '"');
@@ -36,7 +36,7 @@ function zero_vendor_unicodeChr2($code)
     }
 }
 
-function zero_vendor_unicodeChr3($code)
+function first_vendor_unicodeChr3($code)
 {
     if ($code < 0xFF) {
         return chr($code);
@@ -49,7 +49,7 @@ function zero_vendor_unicodeChr3($code)
     }
 }
 
-function zero_vendor_unicodeChr4($code)
+function first_vendor_unicodeChr4($code)
 {
     if ($code < 0xFF) {
         return chr($code);
@@ -68,7 +68,7 @@ function zero_vendor_unicodeChr4($code)
     }
 }
 
-function zero_vendor_unicodeOrd1($char)
+function first_vendor_unicodeOrd1($char)
 {
     if (mb_internal_encoding() != 'UCS-4LE') {
         $char = iconv(mb_internal_encoding(), 'UCS-4LE', $char);
@@ -93,60 +93,60 @@ $code = 97;
 echo 'code = ' . $code . PHP_EOL;
 echo 'char = ' . 'a' . PHP_EOL;
 echo 'chr() = ' . chr($code) . PHP_EOL;
-echo 'unicodeChr1() = ' . zero_vendor_unicodeChr1($code) . PHP_EOL;
-echo 'unicodeChr2() = ' . zero_vendor_unicodeChr2($code) . PHP_EOL;
-echo 'unicodeChr3() = ' . zero_vendor_unicodeChr3($code) . PHP_EOL;
-echo 'unicodeChr4() = ' . zero_vendor_unicodeChr4($code) . PHP_EOL;
+echo 'unicodeChr1() = ' . first_vendor_unicodeChr1($code) . PHP_EOL;
+echo 'unicodeChr2() = ' . first_vendor_unicodeChr2($code) . PHP_EOL;
+echo 'unicodeChr3() = ' . first_vendor_unicodeChr3($code) . PHP_EOL;
+echo 'unicodeChr4() = ' . first_vendor_unicodeChr4($code) . PHP_EOL;
 echo PHP_EOL;
 
 $code = 255;
 echo 'code = ' . $code . PHP_EOL;
 echo 'char = ' . 'ÿ' . PHP_EOL;
 echo 'chr() = ' . chr($code) . PHP_EOL;
-echo 'unicodeChr1() = ' . zero_vendor_unicodeChr1($code) . PHP_EOL;
-echo 'unicodeChr2() = ' . zero_vendor_unicodeChr2($code) . PHP_EOL;
-echo 'unicodeChr3() = ' . zero_vendor_unicodeChr3($code) . PHP_EOL;
-echo 'unicodeChr4() = ' . zero_vendor_unicodeChr4($code) . PHP_EOL;
+echo 'unicodeChr1() = ' . first_vendor_unicodeChr1($code) . PHP_EOL;
+echo 'unicodeChr2() = ' . first_vendor_unicodeChr2($code) . PHP_EOL;
+echo 'unicodeChr3() = ' . first_vendor_unicodeChr3($code) . PHP_EOL;
+echo 'unicodeChr4() = ' . first_vendor_unicodeChr4($code) . PHP_EOL;
 echo PHP_EOL;
 
 $code = 256;
 echo 'code = ' . $code . PHP_EOL;
 echo 'char = ' . 'Ā' . PHP_EOL;
 echo 'chr() = ' . chr($code) . PHP_EOL;
-echo 'unicodeChr1() = ' . zero_vendor_unicodeChr1($code) . PHP_EOL;
-echo 'unicodeChr2() = ' . zero_vendor_unicodeChr2($code) . PHP_EOL;
-echo 'unicodeChr3() = ' . zero_vendor_unicodeChr3($code) . PHP_EOL;
-echo 'unicodeChr4() = ' . zero_vendor_unicodeChr4($code) . PHP_EOL;
+echo 'unicodeChr1() = ' . first_vendor_unicodeChr1($code) . PHP_EOL;
+echo 'unicodeChr2() = ' . first_vendor_unicodeChr2($code) . PHP_EOL;
+echo 'unicodeChr3() = ' . first_vendor_unicodeChr3($code) . PHP_EOL;
+echo 'unicodeChr4() = ' . first_vendor_unicodeChr4($code) . PHP_EOL;
 echo PHP_EOL;
 
 $code = 260;
 echo 'code = ' . $code . PHP_EOL;
 echo 'char = ' . 'Ą' . PHP_EOL;
 echo 'chr() = ' . chr($code) . PHP_EOL;
-echo 'unicodeChr1() = ' . zero_vendor_unicodeChr1($code) . PHP_EOL;
-echo 'unicodeChr2() = ' . zero_vendor_unicodeChr2($code) . PHP_EOL;
-echo 'unicodeChr3() = ' . zero_vendor_unicodeChr3($code) . PHP_EOL;
-echo 'unicodeChr4() = ' . zero_vendor_unicodeChr4($code) . PHP_EOL;
+echo 'unicodeChr1() = ' . first_vendor_unicodeChr1($code) . PHP_EOL;
+echo 'unicodeChr2() = ' . first_vendor_unicodeChr2($code) . PHP_EOL;
+echo 'unicodeChr3() = ' . first_vendor_unicodeChr3($code) . PHP_EOL;
+echo 'unicodeChr4() = ' . first_vendor_unicodeChr4($code) . PHP_EOL;
 echo PHP_EOL;
 
 $code = 65535;
 echo 'code = ' . $code . PHP_EOL;
 echo 'char = ' . '?' . PHP_EOL;
 echo 'chr() = ' . chr($code) . PHP_EOL;
-echo 'unicodeChr1() = ' . zero_vendor_unicodeChr1($code) . PHP_EOL;
-echo 'unicodeChr2() = ' . zero_vendor_unicodeChr2($code) . PHP_EOL;
-echo 'unicodeChr3() = ' . zero_vendor_unicodeChr3($code) . PHP_EOL;
-echo 'unicodeChr4() = ' . zero_vendor_unicodeChr4($code) . PHP_EOL;
+echo 'unicodeChr1() = ' . first_vendor_unicodeChr1($code) . PHP_EOL;
+echo 'unicodeChr2() = ' . first_vendor_unicodeChr2($code) . PHP_EOL;
+echo 'unicodeChr3() = ' . first_vendor_unicodeChr3($code) . PHP_EOL;
+echo 'unicodeChr4() = ' . first_vendor_unicodeChr4($code) . PHP_EOL;
 echo PHP_EOL;
 
 $code = 65536;
 echo 'code = ' . $code . PHP_EOL;
 echo 'char = ' . '𐀀' . PHP_EOL;
 echo 'chr() = ' . chr($code) . PHP_EOL;
-echo 'unicodeChr1() = ' . zero_vendor_unicodeChr1($code) . PHP_EOL;
-echo 'unicodeChr2() = ' . zero_vendor_unicodeChr2($code) . PHP_EOL;
-echo 'unicodeChr3() = ' . zero_vendor_unicodeChr3($code) . PHP_EOL;
-echo 'unicodeChr4() = ' . zero_vendor_unicodeChr4($code) . PHP_EOL;
+echo 'unicodeChr1() = ' . first_vendor_unicodeChr1($code) . PHP_EOL;
+echo 'unicodeChr2() = ' . first_vendor_unicodeChr2($code) . PHP_EOL;
+echo 'unicodeChr3() = ' . first_vendor_unicodeChr3($code) . PHP_EOL;
+echo 'unicodeChr4() = ' . first_vendor_unicodeChr4($code) . PHP_EOL;
 echo PHP_EOL;
 
 
@@ -154,31 +154,31 @@ $code = 128570;
 echo 'code = ' . $code . PHP_EOL;
 echo 'char = ' . '😺' . PHP_EOL;
 echo 'chr() = ' . chr($code) . PHP_EOL;
-echo 'unicodeChr1() = ' . zero_vendor_unicodeChr1($code) . PHP_EOL;
-echo 'unicodeChr2() = ' . zero_vendor_unicodeChr2($code) . PHP_EOL;
-echo 'unicodeChr3() = ' . zero_vendor_unicodeChr3($code) . PHP_EOL;
-echo 'unicodeChr4() = ' . zero_vendor_unicodeChr4($code) . PHP_EOL;
+echo 'unicodeChr1() = ' . first_vendor_unicodeChr1($code) . PHP_EOL;
+echo 'unicodeChr2() = ' . first_vendor_unicodeChr2($code) . PHP_EOL;
+echo 'unicodeChr3() = ' . first_vendor_unicodeChr3($code) . PHP_EOL;
+echo 'unicodeChr4() = ' . first_vendor_unicodeChr4($code) . PHP_EOL;
 echo PHP_EOL;
 
 
 $char = 'a';
 echo 'char = ' . $char . PHP_EOL;
 echo 'ord() = ' . ord($char) . PHP_EOL;
-echo 'unicodeOrd1() = ' . zero_vendor_unicodeOrd1($char) . PHP_EOL;
+echo 'unicodeOrd1() = ' . first_vendor_unicodeOrd1($char) . PHP_EOL;
 echo PHP_EOL;
 
 
 $char = 'Ą';
 echo 'char = ' . $char . PHP_EOL;
 echo 'ord() = ' . ord($char) . PHP_EOL;
-echo 'unicodeOrd1() = ' . zero_vendor_unicodeOrd1($char) . PHP_EOL;
+echo 'unicodeOrd1() = ' . first_vendor_unicodeOrd1($char) . PHP_EOL;
 echo PHP_EOL;
 
 
 $char = '😺';
 echo 'char = ' . $char . PHP_EOL;
 echo 'ord() = ' . ord($char) . PHP_EOL;
-echo 'unicodeOrd1() = ' . zero_vendor_unicodeOrd1($char) . PHP_EOL;
+echo 'unicodeOrd1() = ' . first_vendor_unicodeOrd1($char) . PHP_EOL;
 echo PHP_EOL;
 
 //exit;
@@ -203,7 +203,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 255;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr1($i % $M);
+    $char = first_vendor_unicodeChr1($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr1(), M = ' . $M . PHP_EOL;
@@ -215,7 +215,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 255;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr2($i % $M);
+    $char = first_vendor_unicodeChr2($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr2(), M = ' . $M . PHP_EOL;
@@ -226,7 +226,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 255;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr3($i % $M);
+    $char = first_vendor_unicodeChr3($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr3(), M = ' . $M . PHP_EOL;
@@ -237,7 +237,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 65535;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr1($i % $M);
+    $char = first_vendor_unicodeChr1($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr1(), M = ' . $M . PHP_EOL;
@@ -249,7 +249,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 65535;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr2($i % $M);
+    $char = first_vendor_unicodeChr2($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr2(), M = ' . $M . PHP_EOL;
@@ -260,7 +260,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 65535;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr3($i % $M);
+    $char = first_vendor_unicodeChr3($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr3(), M = ' . $M . PHP_EOL;
@@ -271,7 +271,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 65535;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr4($i % $M);
+    $char = first_vendor_unicodeChr4($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr4(), M = ' . $M . PHP_EOL;
@@ -283,7 +283,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 16777215;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr1($i % $M);
+    $char = first_vendor_unicodeChr1($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr1(), M = ' . $M . PHP_EOL;
@@ -295,7 +295,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 16777215;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr2($i % $M);
+    $char = first_vendor_unicodeChr2($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr2(), M = ' . $M . PHP_EOL;
@@ -306,7 +306,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 16777215;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr3($i % $M);
+    $char = first_vendor_unicodeChr3($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr3(), M = ' . $M . PHP_EOL;
@@ -317,7 +317,7 @@ echo 'Memory: ' . round(memory_get_peak_usage() / 1024 / 1024, 3) . PHP_EOL . PH
 $timeStart = microtime(1);
 $M = 16777215;
 for ($i = 0; $i < $N; $i++) {
-    $char = zero_vendor_unicodeChr4($i % $M);
+    $char = first_vendor_unicodeChr4($i % $M);
 }
 $timeElapsed = microtime(1) - $timeStart;
 echo 'unicodeChr4(), M = ' . $M . PHP_EOL;

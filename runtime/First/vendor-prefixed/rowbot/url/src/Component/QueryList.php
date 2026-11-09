@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component;
+namespace First\Vendor\Rowbot\URL\Component;
 
 use ArrayIterator;
 use Countable;
 use IteratorAggregate;
-use Zero\Vendor\Rowbot\URL\String\EncodeSet;
-use Zero\Vendor\Rowbot\URL\String\PercentEncoder;
-use Zero\Vendor\Rowbot\URL\String\Utf8String;
-use Zero\Vendor\Rowbot\URL\Support\EncodingHelper;
+use First\Vendor\Rowbot\URL\String\EncodeSet;
+use First\Vendor\Rowbot\URL\String\PercentEncoder;
+use First\Vendor\Rowbot\URL\String\Utf8String;
+use First\Vendor\Rowbot\URL\Support\EncodingHelper;
 
 use function array_column;
 use function array_filter;

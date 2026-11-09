@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Iterators;
+namespace First\Vendor\Nette\Iterators;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -26,7 +26,7 @@ use Zero\Vendor\Nette;
  */
 class CachingIterator extends \CachingIterator implements \Countable
 {
-	use \Zero\Vendor\Nette\SmartObject;
+	use \First\Vendor\Nette\SmartObject;
 
 	/**
   * @var int
@@ -41,7 +41,7 @@ class CachingIterator extends \CachingIterator implements \Countable
 	{
 		$iterable = $iterable instanceof \stdClass
 			? new \ArrayIterator($iterable)
-			: \Zero\Vendor\Nette\Utils\Iterables::toIterator($iterable);
+			: \First\Vendor\Nette\Utils\Iterables::toIterator($iterable);
 		parent::__construct($iterable, 0);
 	}
 
@@ -110,7 +110,7 @@ class CachingIterator extends \CachingIterator implements \Countable
 			return $inner->count();
 
 		} else {
-			throw new \Zero\Vendor\Nette\NotSupportedException('Iterator is not countable.');
+			throw new \First\Vendor\Nette\NotSupportedException('Iterator is not countable.');
 		}
 	}
 

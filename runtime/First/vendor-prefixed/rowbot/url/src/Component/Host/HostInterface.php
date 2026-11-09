@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component\Host;
+namespace First\Vendor\Rowbot\URL\Component\Host;
 
-use Zero\Vendor\Rowbot\URL\Component\Host\Serializer\HostSerializerInterface;
+use First\Vendor\Rowbot\URL\Component\Host\Serializer\HostSerializerInterface;
 
 /**
  * @see https://url.spec.whatwg.org/#concept-host

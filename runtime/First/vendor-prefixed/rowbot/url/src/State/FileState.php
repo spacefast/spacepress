@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\State;
+namespace First\Vendor\Rowbot\URL\State;
 
-use Zero\Vendor\Rowbot\URL\Component\Host\StringHost;
-use Zero\Vendor\Rowbot\URL\Component\PathList;
-use Zero\Vendor\Rowbot\URL\Component\Scheme;
-use Zero\Vendor\Rowbot\URL\ParserContext;
-use Zero\Vendor\Rowbot\URL\ParserState;
-use Zero\Vendor\Rowbot\URL\String\CodePoint;
+use First\Vendor\Rowbot\URL\Component\Host\StringHost;
+use First\Vendor\Rowbot\URL\Component\PathList;
+use First\Vendor\Rowbot\URL\Component\Scheme;
+use First\Vendor\Rowbot\URL\ParserContext;
+use First\Vendor\Rowbot\URL\ParserState;
+use First\Vendor\Rowbot\URL\String\CodePoint;
 
 /**
  * @see https://url.spec.whatwg.org/#file-state

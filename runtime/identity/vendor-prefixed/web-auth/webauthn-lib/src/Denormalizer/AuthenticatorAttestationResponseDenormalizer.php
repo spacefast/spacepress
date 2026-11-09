@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
+namespace First\Identity\Vendor\Webauthn\Denormalizer;
 
-use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
-use Zero\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use Zero\Identity\Vendor\Webauthn\CollectedClientData;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use Zero\Identity\Vendor\Webauthn\Util\Base64;
+use First\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
+use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use First\Identity\Vendor\Webauthn\CollectedClientData;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\Util\Base64;
 
 final class AuthenticatorAttestationResponseDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface
 {

@@ -12,28 +12,28 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\Footnote;
+namespace First\Vendor\League\CommonMark\Extension\Footnote;
 
-use Zero\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
-use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use Zero\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Event\AnonymousFootnotesListener;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Event\FixOrphanedFootnotesAndRefsListener;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Event\GatherFootnotesListener;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Event\NumberFootnotesListener;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteBackref;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteContainer;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Parser\AnonymousFootnoteRefParser;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Parser\FootnoteRefParser;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Parser\FootnoteStartParser;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteBackrefRenderer;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteContainerRenderer;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteRefRenderer;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteRenderer;
-use Zero\Vendor\League\Config\ConfigurationBuilderInterface;
-use Zero\Vendor\Nette\Schema\Expect;
+use First\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
+use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use First\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
+use First\Vendor\League\CommonMark\Extension\Footnote\Event\AnonymousFootnotesListener;
+use First\Vendor\League\CommonMark\Extension\Footnote\Event\FixOrphanedFootnotesAndRefsListener;
+use First\Vendor\League\CommonMark\Extension\Footnote\Event\GatherFootnotesListener;
+use First\Vendor\League\CommonMark\Extension\Footnote\Event\NumberFootnotesListener;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteBackref;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteContainer;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
+use First\Vendor\League\CommonMark\Extension\Footnote\Parser\AnonymousFootnoteRefParser;
+use First\Vendor\League\CommonMark\Extension\Footnote\Parser\FootnoteRefParser;
+use First\Vendor\League\CommonMark\Extension\Footnote\Parser\FootnoteStartParser;
+use First\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteBackrefRenderer;
+use First\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteContainerRenderer;
+use First\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteRefRenderer;
+use First\Vendor\League\CommonMark\Extension\Footnote\Renderer\FootnoteRenderer;
+use First\Vendor\League\Config\ConfigurationBuilderInterface;
+use First\Vendor\Nette\Schema\Expect;
 
 final class FootnoteExtension implements ConfigurableExtensionInterface
 {

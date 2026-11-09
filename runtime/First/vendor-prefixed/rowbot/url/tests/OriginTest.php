@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Tests;
+namespace First\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Zero\Vendor\Rowbot\URL\BasicURLParser;
-use Zero\Vendor\Rowbot\URL\Component\Host\HostParser;
-use Zero\Vendor\Rowbot\URL\Component\OpaqueOrigin;
-use Zero\Vendor\Rowbot\URL\Component\TupleOrigin;
-use Zero\Vendor\Rowbot\URL\Origin;
-use Zero\Vendor\Rowbot\URL\ParserContext;
-use Zero\Vendor\Rowbot\URL\String\StringBuffer;
-use Zero\Vendor\Rowbot\URL\String\Utf8String;
-use Zero\Vendor\Rowbot\URL\String\Utf8StringIterator;
-use Zero\Vendor\Rowbot\URL\URLRecord;
+use First\Vendor\Rowbot\URL\BasicURLParser;
+use First\Vendor\Rowbot\URL\Component\Host\HostParser;
+use First\Vendor\Rowbot\URL\Component\OpaqueOrigin;
+use First\Vendor\Rowbot\URL\Component\TupleOrigin;
+use First\Vendor\Rowbot\URL\Origin;
+use First\Vendor\Rowbot\URL\ParserContext;
+use First\Vendor\Rowbot\URL\String\StringBuffer;
+use First\Vendor\Rowbot\URL\String\Utf8String;
+use First\Vendor\Rowbot\URL\String\Utf8StringIterator;
+use First\Vendor\Rowbot\URL\URLRecord;
 
 class OriginTest extends TestCase
 {

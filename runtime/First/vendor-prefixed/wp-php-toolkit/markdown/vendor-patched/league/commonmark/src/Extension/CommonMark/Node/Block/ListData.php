@@ -14,7 +14,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block;
+namespace First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block;
 
 class ListData
 {

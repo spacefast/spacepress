@@ -12,22 +12,22 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Event;
+namespace First\Vendor\League\CommonMark\Extension\Footnote\Event;
 
-use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteBackref;
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteContainer;
-use Zero\Vendor\League\CommonMark\Node\Block\Document;
-use Zero\Vendor\League\CommonMark\Node\NodeIterator;
-use Zero\Vendor\League\CommonMark\Reference\Reference;
-use Zero\Vendor\League\Config\ConfigurationAwareInterface;
-use Zero\Vendor\League\Config\ConfigurationInterface;
+use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteBackref;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteContainer;
+use First\Vendor\League\CommonMark\Node\Block\Document;
+use First\Vendor\League\CommonMark\Node\NodeIterator;
+use First\Vendor\League\CommonMark\Reference\Reference;
+use First\Vendor\League\Config\ConfigurationAwareInterface;
+use First\Vendor\League\Config\ConfigurationInterface;
 
 final class GatherFootnotesListener implements ConfigurationAwareInterface
 {
     /**
-     * @var \Zero\Vendor\League\Config\ConfigurationInterface
+     * @var \First\Vendor\League\Config\ConfigurationInterface
      */
     private $config;
 

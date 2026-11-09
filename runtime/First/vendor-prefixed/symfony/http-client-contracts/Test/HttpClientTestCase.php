@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\HttpClient\Test;
+namespace First\Vendor\Symfony\Contracts\HttpClient\Test;
 
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TimeoutExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TimeoutExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * A reference test suite for HttpClientInterface implementations.

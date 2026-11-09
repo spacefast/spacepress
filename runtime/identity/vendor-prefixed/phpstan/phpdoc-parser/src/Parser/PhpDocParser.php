@@ -1,16 +1,16 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Parser;
 
 use LogicException;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use First\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
 use PHPStan\ShouldNotHappenException;
 use function array_key_exists;
 use function count;

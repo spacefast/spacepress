@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
 
 use LogicException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraints\GeneralSubtrees;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy\PolicyNode;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy\PolicyTree;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraints\GeneralSubtrees;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy\PolicyNode;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy\PolicyTree;
 
 /**
  * State class for the certification path validation process.

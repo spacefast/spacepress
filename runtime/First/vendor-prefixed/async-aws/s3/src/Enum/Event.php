@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Enum;
+namespace First\Vendor\AsyncAws\S3\Enum;
 
 /**
  * The bucket event for which to send notifications.

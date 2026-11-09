@@ -12,14 +12,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\Attributes;
+namespace First\Vendor\League\CommonMark\Extension\Attributes;
 
-use Zero\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
-use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use Zero\Vendor\League\CommonMark\Extension\Attributes\Event\AttributesListener;
-use Zero\Vendor\League\CommonMark\Extension\Attributes\Parser\AttributesBlockStartParser;
-use Zero\Vendor\League\CommonMark\Extension\Attributes\Parser\AttributesInlineParser;
-use Zero\Vendor\League\CommonMark\Extension\ExtensionInterface;
+use First\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
+use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use First\Vendor\League\CommonMark\Extension\Attributes\Event\AttributesListener;
+use First\Vendor\League\CommonMark\Extension\Attributes\Parser\AttributesBlockStartParser;
+use First\Vendor\League\CommonMark\Extension\Attributes\Parser\AttributesInlineParser;
+use First\Vendor\League\CommonMark\Extension\ExtensionInterface;
 
 final class AttributesExtension implements ExtensionInterface
 {

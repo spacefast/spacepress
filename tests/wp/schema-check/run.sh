@@ -16,7 +16,7 @@ trap cleanup EXIT
 mkdir -p "$work/app" "$work/content"
 # Each step is built into the same project in order, so its migration is planned against the
 # previous step's ledger, then staged as its own wp-content for the test to install.
-for step in initial additive required tighten rename drop adoptedField adoptedKind narrow retype retyped requiredNarrow toReal ratioText ratioReal memoText memoRef; do
+for step in initial additive required tighten rename drop adoptedField adoptedKind narrow retype retyped requiredNarrow toReal ratioText ratioReal memoText memoRef readoptField readoptRetype; do
   node "$here/steps.mjs" "$step" > "$work/app/zero.config.ts"
   "$target/debug/zero" build "$work/app" --quiet >/dev/null
   rsync -a --delete "$work/app/zero/dist/wp-content/" "$work/content/$step/"
@@ -29,6 +29,9 @@ rsync -a --delete "$work/content/initial/" "$work/live/"
 # A table the app didn't create, with rows, as a migrated 0.8 Space has before its first v2 deploy.
 "$wp/harness.sh" sql "CREATE TABLE sf_spc_schema_check_tasks_0123456789 (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, title LONGTEXT NOT NULL, note LONGTEXT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 "$wp/harness.sh" sql "INSERT INTO sf_spc_schema_check_tasks_0123456789 (title, note) VALUES ('kept', 'from 0.8'), ('also kept', NULL)"
+# A second table the app didn't create, for the adopted retype step: rank holds no values.
+"$wp/harness.sh" sql "CREATE TABLE sf_spc_schema_check_retype (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, rank BIGINT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+"$wp/harness.sh" sql "INSERT INTO sf_spc_schema_check_retype (name) VALUES ('from 0.8')"
 "$wp/harness.sh" up --wp-content "$work/live" > "$work/harness.json"
 ZERO_WP_HARNESS="$work/harness.json" ZERO_SCHEMA_CHECK_CONTENT="$work/content" ZERO_SCHEMA_CHECK_LIVE="$work/live" \
   node --test "$here/schema-check.test.ts"

@@ -205,6 +205,55 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     }
 }
 
+/// A bundle captured before the `zero/` import fence keeps its helpers beside `zero.config.ts`
+/// (`./lib/message`). A stored bundle is frozen data, so the host recompiles it as captured; only a
+/// live project is held to the fence.
+#[test]
+fn a_bundle_captured_before_the_import_fence_still_compiles() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("app");
+    write(
+        &project,
+        "zero.config.ts",
+        "import { defineConfig, action } from 'zero'; import { message } from './zero/message'; export default defineConfig({ actions: { hello: action({ access: 'anyone', handler() { return message; } }) } });",
+    );
+    write(&project, "zero/message.ts", "export const message = 'kept';");
+    let bundle = work.path().join("bundle");
+    zero::bundle::sources(&project, &bundle).unwrap();
+    // Rewrite the capture to the layout an older compiler took: the helper at the project root.
+    let app = bundle.join(zero::bundle::APP_FILE);
+    let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
+    let old = |s: &str| {
+        s.replace("zero/message.ts", "lib/message.ts")
+            .replace("./zero/message", "./lib/message")
+    };
+    for map in ["files", "canonical"] {
+        let entries = captured[map].as_object_mut().unwrap();
+        let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
+            .into_iter()
+            .map(|(k, v)| (old(&k), v.as_str().map_or(v.clone(), |s| old(s).into())))
+            .collect();
+        entries.extend(moved);
+    }
+    assert!(captured["files"].get("lib/message.ts").is_some(), "{captured}");
+    let bytes = serde_json::to_vec(&captured).unwrap();
+    fs::write(&app, &bytes).unwrap();
+    let manifest_path = bundle.join(zero::bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    use sha2::Digest as _;
+    manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        .into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    fs::remove_dir_all(&project).unwrap();
+    let compiled = work.path().join("compiled");
+    if let Err(e) = zero::bundle::compile(&bundle, &compiled, &bundle, None) {
+        panic!("a stored pre-fence bundle must recompile: {}", e.message);
+    }
+}
+
 /// A hosted compile types `abilities.call` from the captured `zero/_generated/abilities.json`: the bundle's
 /// file system is rooted at its own module directory, not at the app's name.
 #[test]

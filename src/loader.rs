@@ -33,6 +33,11 @@ pub trait Fs {
     fn allow_packages(&self) -> bool {
         true
     }
+    /// A stored source bundle: frozen data captured by some earlier compiler, so layout rules that
+    /// came later (the `zero/` import fence) don't apply to it. A live project is never frozen.
+    fn frozen_capture(&self) -> bool {
+        false
+    }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
     fn is_file(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
@@ -245,7 +250,10 @@ fn load_module(
         } else {
             resolve(fs, path, &spec, span)
         }
-        .and_then(|target| fence(&program.root, path, &spec, target, span));
+        .and_then(|target| match fs.frozen_capture() {
+            true => Ok(target),
+            false => fence(&program.root, path, &spec, target, span),
+        });
         match target.and_then(|target| load_module(fs, &target, program, by_path, diagnostics)) {
             Ok(target_id) => {
                 program.resolved.insert((id, spec), target_id);

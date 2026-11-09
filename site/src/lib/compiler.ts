@@ -7,7 +7,7 @@ export interface Request {
   name: string;
   /** Sources by project-relative path; `zero.config.ts` is the entry. */
   files: Record<string, string>;
-  /** The last build's `zero/migrations/snapshot.json`, or null for a first build. */
+  /** The last build's `zero/_generated/migrations/snapshot.json`, or null for a first build. */
   previous?: unknown;
   /** The file names beside that snapshot; they number the next migration like `zero build` does. */
   migrationFiles?: string[];

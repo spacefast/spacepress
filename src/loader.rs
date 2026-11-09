@@ -86,8 +86,6 @@ pub struct Program {
     pub wp_hooks: Vec<WpHookFile>,
     /// `zero/components/**/*.tsx` beside the entry: (path relative to `zero/`, module), sorted.
     pub components: Vec<(String, usize)>,
-    /// The directory holding the entry; JSX admission matches folders below it.
-    pub root: PathBuf,
 }
 
 /// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
@@ -119,11 +117,9 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         fs: fs.clone(),
         wp_hooks: Vec::new(),
         components: Vec::new(),
-        root: PathBuf::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let mut diagnostics = Vec::new();
-    program.root = entry.parent().expect("entry has a directory").to_path_buf();
     match load_module(&*fs, &entry, &mut program, &mut by_path, &mut diagnostics) {
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),

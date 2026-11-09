@@ -80,6 +80,21 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields
         }
     }
 
+    /**
+     * Fields of $row as Zero's API encodes them (shape-aware: a group stays an object even when every
+     * sub-field is hidden, a json() value keeps `{}` apart from `[]`), for core's JSON encoder.
+     *
+     * @param list<string> $fields
+     * @return array<string, mixed>
+     */
+    public static function values(string $collection, array $row, array $fields): array
+    {
+        $js = Js::jsonTree(\Zero\Seam::rowToJs($collection, array_intersect_key($row, array_flip($fields))));
+        $js = $js instanceof \stdClass ? get_object_vars($js) : (array) $js;
+
+        return array_intersect_key($js, array_flip($fields));
+    }
+
     /** @return array<string, array> the columns that live in postmeta, by name */
     public static function fields(array $spec): array
     {
@@ -142,8 +157,10 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields
         $out = [];
         $row = ($this->row !== null && $this->row[0] === (int) $object_id ? $this->row[1]
             : Plugin::instance()?->db()->editorRow($this->collection, (int) $object_id)) ?? [];
-        foreach (self::fields($spec) as $col => $def) {
-            $out[$col] = Js::jsonTree($row[$col] ?? null);
+        $fields = array_keys(self::fields($spec));
+        $out = array_fill_keys($fields, null);
+        foreach (self::values($this->collection, $row, $fields) as $col => $v) {
+            $out[$col] = $v;
         }
 
         return $out + $this->others(fn () => parent::get_value($object_id, $request));

@@ -58,6 +58,9 @@ final class Plugin
         CoreAccess::register();
         EditorSave::register();
         ProfileForm::register();
+        if (($this->schema->auth()['collection'] ?? null) !== null) {
+            UserMeta::register();
+        }
         IdentityBridge::hook($this->connection());
         add_action('rest_api_init', fn () => $this->unavailable() === null
             ? Rest::register(fn () => $this->app())

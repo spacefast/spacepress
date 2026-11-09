@@ -24,12 +24,12 @@ final class ZeroQuery
      *
      * @return ?list<int>
      */
-    public static function keys(string $collection, \WP_REST_Request $request, Viewer $viewer, ?bool &$searched = null): ?array
+    public static function keys(string $collection, \WP_REST_Request $request, Viewer $viewer, bool $search = true, ?bool &$searched = null): ?array
     {
         $searched = false;
         $given = self::given($request, ['where', 'orderBy']);
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No Zero app');
-        $search = self::search($collection, $request, $viewer);
+        $search = $search ? self::search($collection, $request, $viewer) : null;
         if ($given === [] && $search === null) {
             return null;
         }
@@ -85,11 +85,11 @@ final class ZeroQuery
         }
         $byId = [];
         foreach ($rows as $row) {
-            $byId[(int) $row[$pk]] = array_intersect_key($row, $with);
+            $byId[(int) $row[$pk]] = PostMeta::values($collection, $row, array_map('strval', array_keys($with)));
         }
         foreach ($items as &$item) {
             if (is_array($item) && isset($byId[(int) ($item['id'] ?? 0)])) {
-                $item['with'] = Js::jsonTree($byId[(int) $item['id']]);
+                $item['with'] = (object) $byId[(int) $item['id']];
             }
         }
         unset($item);

@@ -34,6 +34,11 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 
 | Code | Message | Fixture |
 | --- | --- | --- |
+| `F1003` | JSX files can't be part of a First config | [`reject-jsx-config-unused`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-config-unused) |
+| `F1003` | JSX files can't be part of a First config | [`reject-jsx-action`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-action) |
+| `F1003` | JSX files can't be part of a First config | [`reject-jsx-config`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-config) |
+| `F1003` | "use client" components aren't compiled yet | [`reject-jsx-use-client-prologue`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-use-client-prologue) |
+| `F1003` | "use client" components aren't compiled yet | [`reject-jsx-use-client`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-use-client) |
 | `F1003` | not a .ts handler file | [`reject-wp-hook-file`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-hook-file) |
 | `F1101` | abstract, ambient or generic classes | [`reject-class`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-class) |
 | `F1102` | Node built-ins other than node:crypto are unavailable | [`reject-node-builtin`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-builtin) |
@@ -63,6 +68,25 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | needs type argument | [`reject-type-arity`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-arity) |
 | `F4001` | depends on the host and can't be resolved at compile time | [`reject-globalthis-host`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-globalthis-host) |
 | `F4001` | has no field | [`reject-type-index`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-index) |
+| `F4001` | isn't a valid attribute name | [`reject-jsx-attribute-name`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-attribute-name) |
+| `F4001` | which JSX can't pass | [`reject-jsx-children-object`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-children-object) |
+| `F4001` | which JSX can't pass | [`reject-jsx-children-local`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-children-local) |
+| `F4001` | but the component expects | [`reject-jsx-props`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-props) |
+| `F4001` | `style` needs an object with fixed keys | [`reject-jsx-style-keys`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-style-keys) |
+| `F4001` | `dangerouslySetInnerHTML` isn't supported | [`reject-jsx-inner-html`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-inner-html) |
+| `F4001` | a component can't render `<title>` | [`reject-jsx-head`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-head) |
+| `F4001` | can't be rendered as a JSX child | [`reject-jsx-object-child`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-object-child) |
+| `F4001` | into attributes | [`reject-jsx-open-spread`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-open-spread) |
+| `F4001` | takes only literal text | [`reject-jsx-iframe-child`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-iframe-child) |
+| `F4001` | closes | [`reject-jsx-raw-close`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-raw-close) |
+| `F4001` | a component can't render | [`reject-jsx-script-case`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-script-case) |
+| `F4001` | server components can't handle events | [`reject-jsx-handler`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-handler) |
+| `F4001` | server components can't handle events | [`reject-jsx-spread-handler`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-spread-handler) |
+| `F4001` | `srcDoc` isn't supported | [`reject-jsx-srcdoc`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-srcdoc) |
+| `F4001` | is spelled `style` | [`reject-jsx-style-case`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-style-case) |
+| `F4001` | SVG animation of | [`reject-jsx-svg-animate`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-svg-animate) |
+| `F4001` | `<textarea>` can't have children | [`reject-jsx-textarea`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-textarea) |
+| `F4001` | is an unsafe URL | [`reject-jsx-unsafe-url`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-unsafe-url) |
 | `F4001` | localeCompare() isn't supported | [`reject-locale-compare`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-locale-compare) |
 | `F4001` | mapped keys need direct keyof | [`reject-type-mapped-provenance`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-mapped-provenance) |
 | `F4001` | holds functions, so it exists only while the config is built | [`reject-namespace-value`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-namespace-value) |

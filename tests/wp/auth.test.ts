@@ -860,3 +860,35 @@ test("core users list takes Zero's where and orderBy as the viewer", async () =>
   const hidden = await http("GET", `${coreUsers}?` + new URLSearchParams({ where: JSON.stringify({ suspendedAt: null }) }), { as: "admin" });
   assert.deepEqual([hidden.status, hidden.json.code], [403, "forbidden"]);
 });
+
+test("core users meta writes never leave a transaction behind: late errors and throws roll back", () => {
+  const sub = harness.users.subscriber.id;
+  zero("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ points: 5 }));
+  const out = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    $points = static fn () => (int) $db->findFirst('members', ['where' => ['id' => ${sub}]])['points'];
+    $name = static fn () => (clean_user_cache(${sub}) || true) ? get_userdata(${sub})->display_name : '';
+    $before = $name();
+    wp_set_current_user(${sub});
+    // A REST field that refuses after core and the member fields were written, inside an open transaction.
+    add_action('rest_api_init', static fn () => register_rest_field('user', 'zfail', ['update_callback' => static fn () => new WP_Error('nope', 'refused late', ['status' => 400]), 'schema' => ['type' => 'string']]));
+    $late = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $late->set_body_params(['name' => 'Half done', 'zfail' => 'x', 'meta' => ['points' => 6]]);
+    try { $db->transaction(static fn () => rest_do_request($late)); $caught = null; } catch (Throwable $e) { $caught = $e->getMessage(); }
+    $afterLate = [$caught, $points(), $name() === $before];
+    // A hook that throws during core's save: the caller catches it; nothing commits, nothing stays open.
+    $throw = static function () { throw new RuntimeException('hook threw'); };
+    add_action('profile_update', $throw);
+    $thrown = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $thrown->set_body_params(['name' => 'Thrown', 'meta' => ['points' => 7]]);
+    try { rest_do_request($thrown); $caught = null; } catch (Throwable $e) { $caught = $e->getMessage(); }
+    remove_action('profile_update', $throw);
+    $afterThrow = [$caught, $points(), $name() === $before, \\Zero\\Wp\\Plugin::instance()->connection()->inTransaction()];
+    // The next member write opens and commits normally.
+    $next = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $next->set_body_params(['meta' => ['points' => 8]]);
+    $status = rest_do_request($next)->get_status();
+    echo wp_json_encode([$afterLate, $afterThrow, [$status, $points()]]);
+  `));
+  assert.deepEqual(out, [["refused late", 5, true], ["hook threw", 5, true, false], [200, 8]]);
+});

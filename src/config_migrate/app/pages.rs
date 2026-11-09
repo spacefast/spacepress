@@ -206,9 +206,10 @@ fn strip_directive(text: &str) -> String {
     text.to_string()
 }
 
-/// Rewrites the source of every import declaration in `text` with `map` (`None` keeps it), from
-/// parsed specifier spans only: a string, comment or JSX text that merely looks like an import is
-/// never touched. Side-effect imports (`import "../shared/setup"`) are declarations too.
+/// Rewrites the source of every import declaration and re-export (`export … from`,
+/// `export * from`) in `text` with `map` (`None` keeps it), from parsed specifier spans only: a
+/// string, comment or JSX text that merely looks like an import is never touched. Side-effect
+/// imports (`import "../shared/setup"`) are declarations too.
 fn rewrite_imports(text: &str, map: impl Fn(&str) -> Option<String>) -> String {
     let arena = Allocator::default();
     let parsed = Parser::new(&arena, text, SourceType::tsx()).parse();
@@ -218,6 +219,8 @@ fn rewrite_imports(text: &str, map: impl Fn(&str) -> Option<String>) -> String {
         .iter()
         .filter_map(|s| match s {
             Statement::ImportDeclaration(i) => Some(&i.source),
+            Statement::ExportFromDeclaration(e) => Some(&e.source),
+            Statement::ExportAllDeclaration(e) => Some(&e.source),
             _ => None,
         })
         .filter_map(|source| {

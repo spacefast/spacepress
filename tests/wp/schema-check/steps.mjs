@@ -77,6 +77,12 @@ export const steps = {
   //     must not overflow on BIGINT's minimum (an erroring count must refuse, never pass).
   toReal: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
     "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: real() });"], "memos, tags"),
+  // 13. Text becomes a real: only a plain decimal converts. MySQL would read '1,5' and '1x5' as 1,
+  //     '1e3' as 1000 and '5\n' as 5, so each refuses.
+  ratioText: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: real(), ratio: text() });"], "memos, tags"),
+  ratioReal: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: real(), ratio: real() });"], "memos, tags"),
 };
 
 if (process.argv[2] !== undefined) {

@@ -472,28 +472,27 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
     };
     let (from, to) = (ty(before), ty(after));
     let col = "{col}";
-    // Canonical integer text within a range: no sign on zero, no leading zeros, and digit-length plus
-    // a text comparison against the bound (equal lengths compare as numbers do).
-    let digits = |sign: &str, bound: &str| {
-        format!(
-            "({col} REGEXP BINARY '^{sign}(0|[1-9][0-9]*)$' AND (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) < {len} OR (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) = {len} AND BINARY TRIM(LEADING '-' FROM {col}) <= '{bound}')))",
-            len = bound.len()
-        )
+    // An integer converts exactly when the value MySQL would store, printed back, is the same text,
+    // byte for byte: that refuses out-of-range text (clamped), `-0`, leading zeros, spaces, a
+    // trailing newline and anything else the conversion would rewrite, in one rule.
+    let round_trip = |cast: &str| format!("BINARY CAST(CAST({col} AS {cast}) AS CHAR) = BINARY {col}");
+    // A CHAR column drops trailing spaces when it's read back, so text with them would change.
+    let char_target = render(after).contains("` CHAR(");
+    let fits_width = |b: u32| {
+        let mut sql = format!("CHAR_LENGTH({col}) <= {b}");
+        if char_target {
+            sql.push_str(&format!(" AND BINARY {col} NOT LIKE '% '"));
+        }
+        sql
     };
-    let signed = format!(
-        "({} OR {})",
-        digits("", "9223372036854775807"),
-        digits("-", "9223372036854775808")
-    );
-    let unsigned = digits("", "18446744073709551615");
     match (from, to) {
         (a, b) if a == b && a != "text" => None,
         ("text", "text") => match (width(before), width(after)) {
             (_, None) => None,
-            (Some(a), Some(b)) if a <= b => None,
-            (_, Some(b)) => Some(format!("CHAR_LENGTH({col}) <= {b}")),
+            (Some(a), Some(b)) if a <= b && !char_target => None,
+            (_, Some(b)) => Some(fits_width(b)),
         },
-        (_, "text") => width(after).map(|b| format!("CHAR_LENGTH({col}) <= {b}")),
+        (_, "text") => width(after).map(fits_width),
         ("unsigned", "bigint") => Some(format!("{col} <= 9223372036854775807")),
         ("bigint", "unsigned") => Some(format!("{col} >= 0")),
         ("boolean", "bigint" | "unsigned" | "double") => None,
@@ -507,12 +506,14 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
         )),
         ("text", "boolean") => Some(format!("BINARY {col} IN ('0', '1')")),
         (_, "boolean") => Some(format!("{col} IN (0, 1)")),
-        ("text", "bigint") => Some(signed),
-        ("text", "unsigned") => Some(unsigned),
+        ("text", "bigint") => Some(round_trip("SIGNED")),
+        ("text", "unsigned") => Some(round_trip("UNSIGNED")),
         // A decimal of at most 15 significant digits (what a DOUBLE holds exactly), no exponent: an
-        // exponent could overflow the conversion, and more digits would be rounded.
+        // exponent could overflow the conversion, and more digits would be rounded. `[.]`, not `\.`:
+        // MariaDB's string literal drops the backslash, leaving `.`, which matches any character.
+        // PCRE's `$` also matches before a final newline, so newlines are refused separately.
         ("text", "double") => Some(format!(
-            "{col} REGEXP BINARY '^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$' AND CHAR_LENGTH(REPLACE(REPLACE(TRIM(LEADING '-' FROM {col}), '.', ''), '-', '')) <= 15"
+            "{col} REGEXP BINARY '^-?(0|[1-9][0-9]*)([.][0-9]+)?$' AND LOCATE(CHAR(10), {col}) = 0 AND CHAR_LENGTH(REPLACE(REPLACE(TRIM(LEADING '-' FROM {col}), '.', ''), '-', '')) <= 15"
         )),
         _ => Some("false".into()),
     }
@@ -1247,14 +1248,16 @@ mod tests {
         };
         // `'yes' IN (0, 1)` holds in MySQL ('yes' is 0); compared as text it doesn't.
         assert_eq!(fits_for("boolean"), "BINARY {col} IN ('0', '1')");
-        let bigint = fits_for("integer");
-        assert!(
-            bigint.contains("'9223372036854775807'") && bigint.contains("'9223372036854775808'"),
-            "{bigint}"
+        // Integers round-trip byte for byte: out of range, `-0` and a trailing newline all differ.
+        assert_eq!(
+            fits_for("integer"),
+            "BINARY CAST(CAST({col} AS SIGNED) AS CHAR) = BINARY {col}"
         );
+        let real = fits_for("real");
         assert!(
-            !bigint.contains("[0-9]+$'"),
-            "the shape alone allows out-of-range values: {bigint}"
+            real.contains("([.][0-9]+)?$'") && !real.contains("\\."),
+            "a backslash-dot is any character in MariaDB: {real}"
         );
+        assert!(real.contains("LOCATE(CHAR(10), {col}) = 0"), "{real}");
     }
 }

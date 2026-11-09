@@ -92,15 +92,20 @@ final class Migrator
         // The deploy-time schema check (spec §2.9): every pending statement that could lose rows or
         // leave them without a required value is measured first, across all pending files, so a
         // refusal leaves the tables, the rows and the ledger untouched.
+        // A file that stopped part way has steps that already ran: their renames are replayed (not
+        // measured), so the checks after them find the tables and columns under their new names.
         $pending = [];
+        $applied = [];
         foreach ($migrations as $id => $statements) {
             foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
-                if (!isset($done[$id . ':' . ($i + 1)])) {
+                if (isset($done[$id . ':' . ($i + 1)])) {
+                    $applied[] = $statement;
+                } else {
                     $pending[$id][] = $statement;
                 }
             }
         }
-        (new SchemaCheck($this->db, $this->drops))->check($pending);
+        (new SchemaCheck($this->db, $this->drops))->check($pending, $applied);
         // Check every pending adoption before any DDL or ledger writes, even across tables/files.
         foreach ($migrations as $id => $statements) {
             if (isset($done[$id])) {

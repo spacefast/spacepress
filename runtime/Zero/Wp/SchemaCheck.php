@@ -90,11 +90,23 @@ final class SchemaCheck
     /**
      * Refuses the pending statements when live rows don't allow them.
      *
+     * `$applied` are the statements of partly applied files that already ran: they aren't measured,
+     * but their renames are replayed, so a check written against the name a table had before the
+     * plan finds the name it has now (a migration that failed after a rename resumes).
+     *
      * @param array<string, list<string>> $pending migration id => its statements not yet applied
+     * @param list<string> $applied statements already applied, in order
      * @throws SchemaRefused
      */
-    public function check(array $pending): void
+    public function check(array $pending, array $applied = []): void
     {
+        foreach ($applied as $statement) {
+            $done = self::parse($statement);
+            if (($done['check'] ?? null) === 'rename') {
+                $done['table'] = str_replace('{prefix}', $this->db->prefix(), (string) $done['table']);
+                $this->moved($done);
+            }
+        }
         $refusals = [];
         foreach ($pending as $id => $statements) {
             foreach ($statements as $statement) {
@@ -224,6 +236,34 @@ final class SchemaCheck
         if (isset($this->created[$check['table']])) {
             $this->created[$to] = true;
         }
+    }
+
+    /**
+     * A rename that already ran: the name a check uses (the one before the plan) now lives under
+     * the new name. The opposite of renamed(), which keeps a pending rename's new name on the old.
+     */
+    private function moved(array $check): void
+    {
+        $to = (string) $check['to'];
+        if (isset($check['column'])) {
+            $live = $this->live($check['table']);
+            $this->columns[$live][(string) $check['column']] = $to;
+
+            return;
+        }
+        $to = str_replace('{prefix}', $this->db->prefix(), $to);
+        $from = (string) $check['table'];
+        // Column renames recorded under the old table follow it.
+        if (isset($this->columns[$from])) {
+            $this->columns[$to] = $this->columns[$from];
+            unset($this->columns[$from]);
+        }
+        foreach ($this->tables as $planned => $live) {
+            if ($live === $from) {
+                $this->tables[$planned] = $to;
+            }
+        }
+        $this->tables[$from] = $to;
     }
 
     /** The table as it is now, before any pending statement runs. */

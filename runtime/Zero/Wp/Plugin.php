@@ -134,7 +134,7 @@ final class Plugin
         // (Runtime's `wp zero` dispatcher already refused everything but `migrate` while storage is behind.)
         if (($args[0] ?? '') === 'migrate') {
             try {
-                // `--drop likes=1204,likes.note=12`: WP-CLI keeps the last of repeated flags, so values are comma-separated.
+                // `--drop=likes=1204,likes.note=12`: WP-CLI keeps the last of repeated flags, so values are comma-separated.
                 $this->drops = SchemaCheck::drops(array_key_exists('drop', $assocArgs) ? [$assocArgs['drop']] : []);
                 $mark = $assocArgs['mark-applied'] ?? null;
                 if (is_string($mark)) {

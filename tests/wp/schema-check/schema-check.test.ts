@@ -238,16 +238,18 @@ test("text becoming a boolean or an integer is checked as text, and integers aga
   sql("INSERT INTO wp_zero_tags (name, flag, count) VALUES ('a', 'yes', '7'), ('b', '1', '99999999999999999999'), ('c', '0', '-9223372036854775808'), ('d', NULL, '007')");
   // Look-alikes the column's accent-insensitive collation equates with '1': each would become 0.
   sql("INSERT INTO wp_zero_tags (name, flag, count) VALUES ('w', '１', '1'), ('x', '١', '1'), ('y', '¹', '1'), ('z', '1 ', '1')");
+  // PCRE's `$` matches before a final newline, and '-0' has no sign once stored: both would change.
+  sql("INSERT INTO wp_zero_tags (name, flag, count) VALUES ('n', '0', '5\n'), ('m', '0', '-0')");
   install("retyped");
   const before = tags();
   const error = refused();
   assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [
     ["value_does_not_fit", "tags.flag", 5],
-    ["value_does_not_fit", "tags.count", 2],
+    ["value_does_not_fit", "tags.count", 4],
   ]);
   assert.deepEqual(tags(), before, "nothing was converted");
   // Fixed by hand: the in-range values (including BIGINT's minimum) then convert unchanged.
-  sql("DELETE FROM wp_zero_tags WHERE name IN ('w', 'x', 'y', 'z')");
+  sql("DELETE FROM wp_zero_tags WHERE name IN ('w', 'x', 'y', 'z', 'n', 'm')");
   sql("UPDATE wp_zero_tags SET flag = '1' WHERE flag = 'yes'");
   sql("UPDATE wp_zero_tags SET count = '9223372036854775807' WHERE name = 'b'");
   sql("UPDATE wp_zero_tags SET count = '7' WHERE count = '007'");
@@ -312,5 +314,55 @@ test("a check whose count errors refuses with check_failed, never reading as zer
   } finally {
     execFileSync("rm", ["-f", file]);
     sql("DROP TABLE wp_zero_overflow");
+  }
+});
+
+test("text becoming a real converts only plain decimals: '1,5', '1e3' and '5\\n' refuse", () => {
+  install("ratioText");
+  assert.ok(applied().includes("0014_update"));
+  // MySQL would store these as 1, 1, 12, 3, 1000 and 5.
+  sql("UPDATE wp_zero_tags SET ratio = '1.5' WHERE name = 'a'");
+  sql("UPDATE wp_zero_tags SET ratio = '-0.25' WHERE name = 'b'");
+  sql("INSERT INTO wp_zero_tags (name, flag, count, ratio) VALUES ('p', 0, 0, '1,5'), ('q', 0, 0, '1x5'), ('r', 0, 0, '12-34'), ('s', 0, 0, '3 5'), ('t', 0, 0, '1e3'), ('u', 0, 0, '5\n')");
+  install("ratioReal");
+  const before = sql("SELECT name, ratio FROM wp_zero_tags ORDER BY id");
+  const error = refused();
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["value_does_not_fit", "tags.ratio", 6]]);
+  assert.deepEqual(sql("SELECT name, ratio FROM wp_zero_tags ORDER BY id"), before, "nothing was converted");
+  sql("DELETE FROM wp_zero_tags WHERE name IN ('p', 'q', 'r', 's', 't', 'u')");
+  assert.ok(applied().includes("0015_update"));
+  assert.deepEqual(sql("SELECT name, ratio FROM wp_zero_tags WHERE ratio IS NOT NULL ORDER BY id"), [{ name: "a", ratio: "1.5" }, { name: "b", ratio: "-0.25" }]);
+});
+
+test("a migration that failed after a rename resumes: later checks find the table under its new name", () => {
+  // One file: rename notes2 to memos2, then a step that fails (a constraint over an orphan row),
+  // then a drop whose check names the table as it was before the plan. Built here by hand, the shape
+  // `zero build` plans for a `was` rename plus a new reference and a removed field.
+  const live = process.env.ZERO_SCHEMA_CHECK_LIVE ?? "";
+  const file = `${live}/plugins/zero-app-schema-check/zero/app/migrations/9002_resume.sql`;
+  sql("CREATE TABLE wp_zero_notes2 (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, body LONGTEXT, ref BIGINT UNSIGNED, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  sql("INSERT INTO wp_zero_notes2 (body, ref) VALUES ('kept', 424242)");
+  const statements = [
+    '-- zero-check {"check":"rename","table":"{prefix}zero_notes2","to":"{prefix}zero_memos2"}\nRENAME TABLE `{prefix}zero_notes2` TO `{prefix}zero_memos2`;',
+    "ALTER TABLE `{prefix}zero_memos2` ADD CONSTRAINT `zero_memos2_ref_fk` FOREIGN KEY (`ref`) REFERENCES `{prefix}zero_memos` (`id`);",
+    '-- zero-check {"check":"drop","name":"memos2.body","table":"{prefix}zero_notes2","column":"body","adopted":false}\nALTER TABLE `{prefix}zero_memos2` DROP COLUMN `body`;',
+  ];
+  execFileSync("sh", ["-c", `printf '%s' "$0" > "$1"`, statements.join("\n--> statement-breakpoint\n"), file]);
+  try {
+    // The drop's check counts the row still in notes2, so it needs --drop; the constraint then fails.
+    const failed = migrate("--drop=memos2.body=1");
+    assert.ok(failed.error, JSON.stringify(failed));
+    assert.notEqual(failed.error.code, "schema_refused", "the check passed; the constraint failed");
+    assert.deepEqual(sql("SELECT id FROM wp_zero__migrations WHERE app = 'schema-check' AND id LIKE '9002%'").map((r) => r.id), ["9002_resume:1"]);
+    // The cause fixed. The retry checks the drop against memos2, where the row now is: still 1 row.
+    sql("UPDATE wp_zero_memos2 SET ref = NULL");
+    const again = refused();
+    assert.deepEqual(again.refusals.map((r) => [r.code, r.name, r.rows]), [["drop_has_rows", "memos2.body", 1]]);
+    assert.ok(applied("--drop=memos2.body=1").includes("9002_resume"));
+    assert.deepEqual(sql("SHOW COLUMNS FROM wp_zero_memos2").map((r) => r.Field), ["id", "ref"]);
+  } finally {
+    execFileSync("rm", ["-f", file]);
+    sql("DROP TABLE IF EXISTS wp_zero_memos2");
+    sql("DROP TABLE IF EXISTS wp_zero_notes2");
   }
 });

@@ -19,7 +19,7 @@ Every Zero file starts with `declare(strict_types=1);`. Namespace `Zero`.
 ## Build output layout
 
 ```
-<out>/                                 (default: <project>/.zero/wp-content)
+<out>/                                 (default: <project>/zero/dist/wp-content)
   zero-manifest.json                   versions, runtime series, platform requirements, dependency checksums
   plugins/zero-runtime/
     zero-runtime.php                   plugin header; boots Wp\Plugin

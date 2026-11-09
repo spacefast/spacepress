@@ -33,7 +33,7 @@ port="$(cat "$work/port")"
 mkdir "$work/app"
 cp "$here/zero.config.ts" "$work/app/"
 "$target/debug/zero" build "$work/app" --quiet >/dev/null
-"$wp/harness.sh" up --wp-content "$work/app/.zero/wp-content" > "$work/harness.json"
+"$wp/harness.sh" up --wp-content "$work/app/zero/dist/wp-content" > "$work/harness.json"
 # The CA and the lane's one trusted origin, for the web server only.
 "$wp/harness.sh" compose exec -T wordpress mkdir -p /zero-fetch
 "$wp/harness.sh" compose cp "$work/ca.pem" wordpress:/zero-fetch/ca.pem >/dev/null 2>&1

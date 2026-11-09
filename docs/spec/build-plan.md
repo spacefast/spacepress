@@ -144,7 +144,7 @@ type, with comments, categories, tags and menus all core.
 - The ledger moves to `_generated/`.
 - Deploy compares the planned change with live row counts:
   - required-field and drop refusals, with counts and fixes;
-  - `--drop kind=N`;
+  - `--drop=kind=N`;
   - `.was()` renames.
 - The Spacefast publish path passes `--drop` through `sf publish`.
 

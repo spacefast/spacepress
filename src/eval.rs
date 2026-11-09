@@ -3536,6 +3536,15 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "showIf" => c.show_if = Some(arg(0)),
         "ui" => c.ui = Some(arg(0)),
         "localized" => c.localized = true,
+        "was" => match arg(0) {
+            Value::Str(old) => c.was = Some(old.to_string()),
+            other => {
+                return err(
+                    span,
+                    format!("`.was()` needs the field's old name, not {}", other.describe()),
+                );
+            }
+        },
         "notNull" => c.not_null = true,
         "unique" => c.unique = true,
         "min" | "max" => {
@@ -3677,6 +3686,7 @@ const MODIFIERS: &[&str] = &[
     "showIf",
     "ui",
     "localized",
+    "was",
 ];
 
 /// "a text column", "an email column".
@@ -3747,6 +3757,7 @@ impl ColBuilder {
             ui: None,
             localized: false,
             bucket: None,
+            was: None,
             span,
             mods: Vec::new(),
         }

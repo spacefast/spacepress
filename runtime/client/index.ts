@@ -1,5 +1,5 @@
 // Zero typed client runtime. `zero build` copies this file next to the generated `types.ts`
-// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `zero/client/`. Do not edit the copy.
+// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `zero/_generated/client/`. Do not edit the copy.
 //
 // No dependencies; `fetch`-based; erasable TypeScript only, so Node (type stripping), Bun, Deno and
 // bundlers run it as-is. Wire format: design §4.8 / §7.

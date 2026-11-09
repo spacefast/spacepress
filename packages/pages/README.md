@@ -7,7 +7,7 @@ An app without `pages/` is unaffected, and Zero core never depends on this.
 
 ```sh
 zero build site            # the backend and its compiled schema
-zero-pages build site      # site/.zero/wp-content/plugins/zero-pages-<app>/
+zero-pages build site      # site/zero/dist/wp-content/plugins/zero-pages-<app>/
 ```
 
 The authoring guide, the supported subset and its limits are in

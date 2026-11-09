@@ -31,7 +31,7 @@ sed -i 's|  "cover": media(),|  "cover": media({ accept: "image" }),|' "$app/zer
 sed -i 's|  "notes": text({ multiline: true }),|  "notes": text({ multiline: true }).validate((value, ctx) => value === null \|\| ctx.data.status !== "published" \|\| value !== value.toUpperCase() \|\| "Don'"'"'t shout"),|' "$app/zero.config.ts"
 "$zero" build "$app" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-legacy"
-rsync -a --delete "$app/.zero/wp-content/" "$wp/.wp-content-legacy/"
+rsync -a --delete "$app/zero/dist/wp-content/" "$wp/.wp-content-legacy/"
 
 "$wp/harness.sh" down
 "$wp/harness.sh" up --wp-content "$wp/.wp-content-legacy" > "$wp/.harness-legacy.json"
@@ -57,6 +57,6 @@ export default capsule({collections:{posts:{publicRead:true}}});
 TS
 "$zero" migrate app --from zero-0.8 "$app/native" --out "$app/native-out" >/dev/null
 "$zero" build "$app/native-out" --quiet >/dev/null
-docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" cp "$app/native-out/.zero/wp-content/plugins/zero-app-migrated-app/zero/app/schema.php" cli:/tmp/zero-native-posts-schema.php >/dev/null 2>&1
+docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" cp "$app/native-out/zero/dist/wp-content/plugins/zero-app-migrated-app/zero/app/schema.php" cli:/tmp/zero-native-posts-schema.php >/dev/null 2>&1
 docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" cp "$here/native.php" cli:/tmp/zero-native-posts-proof.php >/dev/null 2>&1
 "$wp/harness.sh" wp eval-file /tmp/zero-native-posts-proof.php

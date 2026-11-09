@@ -32,10 +32,10 @@ an installer's payload is to the installer: distributed together, but
 separate works. The compiler's sources stay MIT, and because the packaged
 crate carries the embedded runtime, Cargo.toml declares the package as
 MIT AND GPL-2.0-or-later. The plugins written under
-.zero/wp-content/plugins (zero-runtime, zero-identity, zero-app-<name>) are
+zero/dist/wp-content/plugins (zero-runtime, zero-identity, zero-app-<name>) are
 GPL-2.0-or-later and each carries the license text. Files the compiler
 generates from your zero.config.ts (schema.php, functions.php, migrations,
-zero.gen.ts, zero/client/types.ts and schema.ts) are yours. The client's
+zero/_generated/db.d.ts, zero/_generated/client/types.ts and schema.ts) are yours. The client's
 index.ts and README.md are copied from runtime/client/ and stay MIT; the
 copy ships with its LICENSE.
 

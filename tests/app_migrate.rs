@@ -88,7 +88,7 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
     assert!(!config.contains("invalidate"), "{config}");
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(snapshot["tables"]["tasks"]["columns"]["id"]["autoIncrement"], true);
     assert_eq!(
         snapshot["tables"]["tasks"]["existingTable"],
@@ -96,14 +96,23 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     );
     build(&out);
     // The committed adoption snapshot is exactly what build accepts, without a second migration.
-    assert_eq!(std::fs::read_dir(out.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(out.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
     let (ok, collision) = migrate(&fixture("board"), &out, &["--space", "spc_migrate_test"]);
     assert!(!ok);
     assert_eq!(collision["status"], "refused");
     assert_eq!(collision["errors"][0]["pointer"], "");
     let mut changed = snapshot;
     changed["tables"]["tasks"]["existingTable"] = "some_other_table".into();
-    std::fs::write(out.join("zero/migrations/snapshot.json"), changed.to_string()).unwrap();
+    std::fs::write(
+        out.join("zero/_generated/migrations/snapshot.json"),
+        changed.to_string(),
+    )
+    .unwrap();
     let check = Command::new(env!("CARGO_BIN_EXE_zero"))
         .arg("check")
         .arg(&out)
@@ -146,11 +155,16 @@ fn fresh_tables_for_a_new_space() {
     );
     let config = std::fs::read_to_string(out.join("server/index.ts")).unwrap();
     assert!(!config.contains("existingTable"), "{config}");
-    assert!(out.join("zero/migrations/0001_init.sql").is_file());
-    assert!(!out.join("zero/migrations/0001_adopt.sql").exists());
+    assert!(out.join("zero/_generated/migrations/0001_init.sql").is_file());
+    assert!(!out.join("zero/_generated/migrations/0001_adopt.sql").exists());
     build(&out);
     // The committed init migration is what build expects: no second migration.
-    assert_eq!(std::fs::read_dir(out.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(out.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
     let run = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
@@ -745,7 +759,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         .unwrap()
         .replace_all(&source, "");
     std::fs::write(out.join("server/index.ts"), fresh.as_ref()).unwrap();
-    std::fs::remove_dir_all(out.join("zero/migrations")).unwrap();
+    std::fs::remove_dir_all(out.join("zero/_generated/migrations")).unwrap();
     let built = Command::new(env!("CARGO_BIN_EXE_zero"))
         .arg("build")
         .arg(&out)
@@ -822,7 +836,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
             .as_ref(),
     )
     .unwrap();
-    std::fs::remove_dir_all(shared.join("zero/migrations")).unwrap();
+    std::fs::remove_dir_all(shared.join("zero/_generated/migrations")).unwrap();
     build(&shared);
     let run = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -1042,7 +1056,7 @@ fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(snapshot["tables"]["posts"]["editor"], true);
     assert!(
         report["entries"]
@@ -1080,7 +1094,7 @@ fn native_post_declarations_and_space_users_compile_together() {
     let (ok, report) = migrate(&root, &out, &["--users"]);
     assert!(ok, "{report:#}");
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     let keys: Vec<_> = snapshot["tables"].as_object().unwrap().keys().cloned().collect();
     assert!(keys.contains(&"posts".to_string()), "{keys:?}");
     assert!(keys.contains(&"notes".to_string()), "{keys:?}");
@@ -1191,7 +1205,7 @@ fn space_user_subjects_back_owner_scoped_handlers() {
             .any(|e| e["pointer"] == "/auth" && e["outcome"] == "review")
     );
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(
         snapshot["tables"]["members"]["columns"]["spacefastSubject"]["type"], "text",
         "{:#}",

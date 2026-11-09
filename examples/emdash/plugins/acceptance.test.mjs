@@ -235,7 +235,7 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   assert.equal((await api('/events')).some((row) => row.event === 'lifecycle.deactivate'), true);
   await command(['dev', 'stop', owned.directory]);
   // Unchanged bounded fields must preserve data without destructive approval.
-  await cp(join(owned.directory, 'zero/migrations/snapshot.json'), join(evidence, 'snapshot-before-restart.json'));
+  await cp(join(owned.directory, 'zero/_generated/migrations/snapshot.json'), join(evidence, 'snapshot-before-restart.json'));
   await command(['dev', owned.directory, '--no-watch']);
   assert.equal((await zero(`/entries/${entry.id}`)).title, 'Native saffron edit');
   assert.deepEqual((await zero(`/records/${record.id}`)).payload, { nested: { enabled: true }, list: [1, 2] });

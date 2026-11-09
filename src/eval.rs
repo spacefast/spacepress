@@ -192,6 +192,13 @@ fn require_static_coercion(value: &Value, span: Span) -> R<()> {
                     visit(value, span, seen)?;
                 }
             }
+            Value::Object(o) if o.null_prototype() => {
+                return err_help(
+                    span,
+                    "an object created with `__proto__: null` has no `toString` or `valueOf`; JavaScript throws a TypeError converting it to a primitive",
+                    "convert one of its properties instead of the object",
+                );
+            }
             Value::Object(o) | Value::Arguments(o)
                 if o.borrow().contains_key("valueOf") || o.borrow().contains_key("toString") =>
             {
@@ -594,7 +601,7 @@ impl<'p> Evaluator<'p> {
                 "access arguments.callee inside a runtime handler; native Error descriptors aren't modeled while building",
             ),
             Value::Object(map) | Value::Arguments(map) => {
-                if key == "__proto__" && !map.borrow().contains_key(key) {
+                if key == "__proto__" && !map.null_prototype() && !map.borrow().contains_key(key) {
                     return err_help(
                         span,
                         "prototype mutation isn't supported",
@@ -1632,6 +1639,7 @@ impl<'p> Evaluator<'p> {
             }
             ExprKind::Object(props) => {
                 let mut map = IndexMap::new();
+                let mut null_prototype = false;
                 let mut spans = Vec::new();
                 let mut duplicates = Vec::new();
                 for p in props {
@@ -1687,9 +1695,14 @@ impl<'p> Evaluator<'p> {
                             Value::Undef | Value::Null => {}
                             other => return err(x.span, format!("can't spread {} into an object", other.describe())),
                         },
+                        Prop::NullPrototype => null_prototype = true,
                     }
                 }
-                let v = Value::object(map);
+                let v = if null_prototype {
+                    Value::null_prototype_object(map)
+                } else {
+                    Value::object(map)
+                };
                 self.record_duplicates(&v, duplicates);
                 if let Value::Object(o) = &v {
                     // A method written in this literal that reads `this` and still holds its key.
@@ -2157,6 +2170,7 @@ impl<'p> Evaluator<'p> {
             ),
             Value::Object(o) | Value::Arguments(o) => match o.borrow().get(prop) {
                 Some(value) => self.stored_property(value.clone(), span),
+                None if o.null_prototype() => Ok(Value::Undef),
                 None if crate::builtins::contract("object", prop).is_some() => err_help(
                     span,
                     "reading inherited configuration properties isn't supported",
@@ -3998,7 +4012,7 @@ const ARRAY_PROTOTYPE: &[&str] = &[
 fn build_time_in(key: &str, object: &Value, span: Span) -> R<bool> {
     let index_below = |length: usize| key.parse::<usize>().is_ok_and(|i| i.to_string() == key && i < length);
     Ok(match object {
-        Value::Object(o) => o.borrow().contains_key(key) || OBJECT_PROTOTYPE.contains(&key),
+        Value::Object(o) => o.borrow().contains_key(key) || !o.null_prototype() && OBJECT_PROTOTYPE.contains(&key),
         Value::Arguments(o) => {
             o.borrow().contains_key(key) || matches!(key, "length" | "callee") || OBJECT_PROTOTYPE.contains(&key)
         }

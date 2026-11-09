@@ -2326,7 +2326,14 @@ fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
 
 #[test]
 fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
-    for (expression, folded) in [("{__proto__: null}", true), ("{'__proto__': null}", false)] {
+    // Only `__proto__: null` (a null-prototype object) is supported; any other value would
+    // install a prototype.
+    for (expression, folded) in [
+        ("{__proto__: {}}", true),
+        ("{'__proto__': {}}", false),
+        ("{__proto__: Object.prototype}", true),
+        ("{__proto__: undefined}", false),
+    ] {
         let tmp = tempfile::tempdir().unwrap();
         let declaration = if folded {
             format!("const result = Object.hasOwn({expression}, '__proto__');")

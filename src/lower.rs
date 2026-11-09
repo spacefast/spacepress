@@ -1451,12 +1451,17 @@ impl Lowerer {
                                     "use a plain property or a function",
                                 );
                             }
-                            if !p.computed
-                                && !p.shorthand
-                                && !p.method
-                                && p.key.static_name().as_deref() == Some("__proto__")
-                            {
-                                return self.unsupported(p.span, "prototype setter syntax", "use a computed ['__proto__'] key for an own data property; custom prototypes aren't supported");
+                            if !p.computed && p.key.static_name().as_deref() == Some("__proto__") {
+                                // `__proto__: null` makes a null-prototype object. Any other
+                                // value would install a prototype, which Zero doesn't model;
+                                // shorthand and methods define an own property only in name.
+                                if !p.shorthand && !p.method && matches!(p.value, a::Expression::NullLiteral(_)) {
+                                    props.push(Prop::NullPrototype);
+                                    continue;
+                                }
+                                if !p.shorthand && !p.method {
+                                    return self.unsupported(p.span, "prototype setter syntax", "only `__proto__: null` is supported; use a computed ['__proto__'] key for an own data property; custom prototypes aren't supported");
+                                }
                             }
                             let key = if p.computed {
                                 PropKey::Computed(self.expr(p.key.to_expression())?)
@@ -2389,6 +2394,7 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_f
                         children.push(value);
                     }
                     Prop::Spread(value) => children.push(value),
+                    Prop::NullPrototype => {}
                 }
             }
             children
@@ -2777,6 +2783,7 @@ fn expr_children<'a>(x: &'a Expr, out: &mut Vec<&'a Expr>) {
                         out.push(value);
                     }
                     Prop::Spread(v) => out.push(v),
+                    Prop::NullPrototype => {}
                 }
             }
         }

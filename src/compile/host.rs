@@ -370,6 +370,7 @@ impl Compiler<'_, '_> {
                                 return err(k.span, "fetch() init keys must be written out");
                             }
                             Prop::Spread(e) => return err(e.span, "write fetch() init as one object literal"),
+                            Prop::NullPrototype => {}
                         }
                     }
                 }

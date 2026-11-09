@@ -33,3 +33,15 @@ pnpm check     # generated pages current, unit tests, links, browser tests
 ## Names
 
 The pages use First names. Until the code on `main` is renamed too, `lib/names.ts` maps the old names in text the generator copies out of the code, and `tests/unit/names.test.ts` checks that Zero 0.8 names stay as they are. Once `main` uses First names, no rule matches and the file can go.
+
+## Publish
+
+The site is a Spacefast Space at <https://first-docs.space.fast/>.
+
+```sh
+cd docs-site
+pnpm build                                    # ends with scripts/prepare-spacefast.mjs
+sf publish dist --space first-docs.space.fast --spa false
+```
+
+`scripts/prepare-spacefast.mjs` changes two things in `dist/` for Spacefast. It drops the `_headers` rules Spacefast refuses and serves `compiler.wasm` as `application/wasm`. It also marks each `.md` copy `raw: true`, so Spacefast serves the Markdown as written instead of rendering it into a page.

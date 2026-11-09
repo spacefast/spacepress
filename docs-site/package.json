@@ -13,7 +13,7 @@
 		"generate": "node scripts/generate.ts",
 		"generate:check": "node scripts/generate.ts --check",
 		"dev": "pnpm wasm && pnpm generate && blume dev",
-		"build": "pnpm wasm && pnpm generate && blume build",
+		"build": "pnpm wasm && pnpm generate && blume build && node scripts/prepare-spacefast.mjs",
 		"test": "node --test tests/unit/*.test.ts",
 		"test:browser": "playwright test",
 		"check": "pnpm generate:check && pnpm test && blume validate && pnpm test:browser"

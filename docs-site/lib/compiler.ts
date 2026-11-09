@@ -73,6 +73,16 @@ interface Exports {
   zero_free(ptr: number, len: number): void;
 }
 
+/**
+ * Compiles while the module downloads when the server sends `application/wasm`; otherwise it reads
+ * the bytes first. A host that serves the file with another type still gets a working compiler.
+ */
+async function instantiateResponse(response: Response, imports: WebAssembly.Imports) {
+  if (!response.ok) throw new Error(`Could not load the compiler: HTTP ${response.status}`);
+  if (response.headers.get("content-type")?.startsWith("application/wasm")) return WebAssembly.instantiateStreaming(response, imports);
+  return WebAssembly.instantiate(await response.arrayBuffer(), imports);
+}
+
 export class Compiler {
   readonly #exports: Exports;
 
@@ -87,7 +97,7 @@ export class Compiler {
     const result =
       source instanceof ArrayBuffer || ArrayBuffer.isView(source)
         ? await WebAssembly.instantiate(source, imports)
-        : await WebAssembly.instantiateStreaming(source, imports);
+        : await instantiateResponse(await source, imports);
     return new Compiler(result.instance.exports as unknown as Exports);
   }
 

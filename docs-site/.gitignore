@@ -5,3 +5,9 @@ dist/
 public/compiler.wasm
 test-results/
 playwright-report/
+# The Space this directory publishes to (sf publish)
+.spacefast/
+.spacefast/state.json
+/.spacefast-*
+.spacefast/.spacefast-*
+.spacefast/.space-link-*.tmp

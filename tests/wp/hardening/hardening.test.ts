@@ -1,13 +1,20 @@
 // spec.md §6, "the opinionated WordPress": every hardening switch against real WordPress/MariaDB while the
 // Zero app is active, then the same checks with the app deactivated, where WordPress behaves as shipped.
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
 import { auth, core, harness, wp } from "../env.ts";
 import { loginCookie } from "../login.ts";
 
 const site = harness.url;
-const xmlrpc = (method: string, path = "/xmlrpc.php") =>
-  fetch(`${site}${path}`, { method: "POST", headers: { "content-type": "text/xml" }, body: `<?xml version="1.0"?><methodCall><methodName>${method}</methodName><params></params></methodCall>` });
+const call = (method: string, params = "") => `<?xml version="1.0"?><methodCall><methodName>${method}</methodName><params>${params}</params></methodCall>`;
+/** `system.multicall` wrapping one parameterless call. */
+const multicall = (method: string) =>
+  call("system.multicall", `<param><value><array><data><value><struct><member><name>methodName</name><value><string>${method}</string></value></member><member><name>params</name><value><array><data></data></array></value></member></struct></value></data></array></value></param>`);
+const xmlrpc = (method: string, path = "/xmlrpc.php", body = call(method)) =>
+  fetch(`${site}${path}`, { method: "POST", headers: { "content-type": "text/xml" }, body });
+const listedMethods = async (response: Response) => [...(await response.text()).matchAll(/<string>([^<]+)<\/string>/g)].map((m) => m[1]).sort();
+const SETUP_METHODS = ["jetpack.remoteAuthorize", "jetpack.remoteRegister", "jetpack.verifyRegistration", "system.getCapabilities", "system.listMethods", "system.multicall"];
 /** `current_user_can()` for the administrator, in a WP-CLI process that loads every active plugin. */
 const adminCan = (...caps: string[]) =>
   JSON.parse(wp("eval", `wp_set_current_user(${harness.users.admin.id}); echo wp_json_encode(array_map('current_user_can', json_decode('${JSON.stringify(caps)}')));`)) as boolean[];
@@ -46,8 +53,7 @@ test("xmlrpc: Jetpack's connection still answers WordPress.com, on both of its e
     // (they reach only these same methods).
     const listed = await xmlrpc("system.listMethods", path);
     assert.equal(listed.status, 200, path);
-    const methods = [...(await listed.text()).matchAll(/<string>([^<]+)<\/string>/g)].map((m) => m[1]).sort();
-    assert.deepEqual(methods, ["jetpack.remoteAuthorize", "jetpack.remoteRegister", "jetpack.verifyRegistration", "system.getCapabilities", "system.listMethods", "system.multicall"], path);
+    assert.deepEqual(await listedMethods(listed), SETUP_METHODS, path);
     // Jetpack's own handler answers: the bootstrap method exists and rejects a request with no user.
     // (Jetpack sends its faults with the fault's HTTP status, 400 here.)
     const register = await xmlrpc("jetpack.remoteRegister", path);
@@ -57,8 +63,9 @@ test("xmlrpc: Jetpack's connection still answers WordPress.com, on both of its e
     assert.match(body, /Jetpack: \[local_user_missing\]/, `${path}: ${body}`);
     // Signed methods need WordPress.com's signature, which an unsigned request doesn't carry.
     assert.match(await (await xmlrpc("jetpack.testConnection", path)).text(), /-32601/, path);
-    // Core's methods aren't reachable through Jetpack's door.
+    // Core's methods aren't reachable through Jetpack's door, directly or inside a multicall.
     assert.match(await (await xmlrpc("wp.getUsersBlogs", path)).text(), /-32601/, path);
+    assert.match(await (await xmlrpc("system.multicall", path, multicall("wp.getUsersBlogs"))).text(), /-32601/, path);
   }
   const plain = await xmlrpc("jetpack.remoteRegister");
   assert.equal(plain.status, 403, "without ?for=jetpack, XML-RPC stays off");
@@ -70,6 +77,48 @@ test("xmlrpc: Jetpack's connection still answers WordPress.com, on both of its e
     assert.match(await spoofed.text(), /XML-RPC is turned off/);
   } finally {
     wp("plugin", "activate", "jetpack");
+  }
+});
+
+// A connected site, without WordPress.com: a throwaway blog token in Jetpack's options, and requests signed
+// by Jetpack's own Jetpack_Signature, the code that verifies them. Jetpack checks the signature; Zero only
+// keeps core's methods out.
+test("xmlrpc: a Jetpack request signed with the blog token reaches Jetpack's signed methods; a forged one gets only setup", async () => {
+  const blogToken = `zerotest.${randomBytes(16).toString("hex")}`;
+  /** `?for=jetpack` signed the way WordPress.com signs it, with `token`'s secret. */
+  const signed = (method: string, token = blogToken) => {
+    const body = call(method);
+    const query = {
+      for: "jetpack",
+      token: `${blogToken.split(".")[0]}:1:0`,
+      timestamp: String(Math.floor(Date.now() / 1000)),
+      nonce: randomBytes(5).toString("hex"),
+      "body-hash": createHash("sha1").update(body).digest("base64"),
+    };
+    const uri = `${new URL(site).pathname.replace(/\/$/, "")}/xmlrpc.php?${new URLSearchParams(query)}`;
+    const { host, port } = new URL(site);
+    const args = Buffer.from(JSON.stringify({ query, uri, body, token, host, port: port || "80" })).toString("base64");
+    // The request as Apache sees it, signed by Jetpack. Apache takes SERVER_PORT from the Host header.
+    const signature = wp("eval", `$a = json_decode(base64_decode('${args}'), true);
+      $_GET = $a['query']; $_SERVER['REQUEST_METHOD'] = 'POST'; $_SERVER['HTTP_HOST'] = $a['host']; $_SERVER['REQUEST_URI'] = $a['uri']; $_SERVER['SERVER_PORT'] = $a['port'];
+      echo (new Jetpack_Signature($a['token'], 0))->sign_current_request(['body' => $a['body']]);`);
+    return fetch(`${new URL(site).origin}${uri}&${new URLSearchParams({ signature })}`, { method: "POST", headers: { "content-type": "text/xml" }, body });
+  };
+  wp("eval", `Jetpack_Options::update_options(['id' => 4242, 'blog_token' => '${blogToken}']);`);
+  try {
+    assert.equal(wp("eval", "echo wp_json_encode((new Automattic\\Jetpack\\Connection\\Manager())->is_connected());"), "true");
+    const forged = `${blogToken.split(".")[0]}.${randomBytes(16).toString("hex")}`;
+    assert.deepEqual(await listedMethods(await signed("system.listMethods", forged)), SETUP_METHODS, "a forged signature gets the setup methods");
+    assert.match(await (await signed("jetpack.testConnection", forged)).text(), /-32601/);
+    const connection = await signed("jetpack.testConnection");
+    const answer = await connection.text();
+    assert.equal(connection.status, 200, answer);
+    assert.match(answer, /<string>16\.4<\/string>/, answer);
+    // Signed or not, core's methods stay shut. Stock Jetpack answers the same: its signed method list
+    // replaces core's, so its own `wp.getOptions` override never reaches `?for=jetpack`.
+    assert.match(await (await signed("wp.getOptions")).text(), /-32601/);
+  } finally {
+    wp("eval", "Jetpack_Options::delete_option(['id', 'blog_token']);");
   }
 });
 

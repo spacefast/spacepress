@@ -43,6 +43,7 @@ final class MarkdownTwins
         add_action('wp', [self::class, 'answer'], PHP_INT_MIN);
         add_action('wp_head', [self::class, 'linkTag'], 1);
         add_filter('robots_txt', [self::class, 'robots'], PHP_INT_MAX);
+        add_filter('rest_request_before_callbacks', [self::class, 'restFields'], 10, 3);
         add_filter('rest_pre_serve_request', [self::class, 'restMarkdown'], 10, 4);
     }
 
@@ -269,6 +270,20 @@ final class MarkdownTwins
         if ($signal !== '') {
             header('Content-Signal: ' . $signal);
         }
+    }
+
+    /**
+     * rest_request_before_callbacks: a `?format=md` request needs only the item's id from core, so
+     * core builds no `content.rendered` or `excerpt.rendered` (two the_content runs) that
+     * restMarkdown() would throw away. Core's route still runs, permission check included.
+     */
+    public static function restFields(mixed $response, array $handler, \WP_REST_Request $request): mixed
+    {
+        if ($request->get_param('format') === 'md' && in_array($request->get_method(), ['GET', 'HEAD'], true)) {
+            $request->set_param('_fields', 'id');
+        }
+
+        return $response;
     }
 
     /**

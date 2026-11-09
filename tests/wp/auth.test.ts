@@ -8,7 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
-import { createClient } from "./app/zero/client/index.ts";
+import { createClient } from "./app/zero/_generated/client/index.ts";
 import { api, auth, harness, http, run, sql, wp, wpTry, zero } from "./env.ts";
 
 const site = harness.url;

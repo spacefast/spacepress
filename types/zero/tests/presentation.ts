@@ -1,5 +1,5 @@
 import { text, integer, group, type ColumnBuilder, type FieldUi } from "zero";
-import { seoFields } from "../../../examples/recipes/seo";
+import { seoFields } from "../../../examples/recipes/zero/seo";
 
 const presentation = { label: "Display name", help: "Shown to visitors", placeholder: "Jane", width: 50 } satisfies FieldUi;
 const title = text().notNull().ui(presentation);

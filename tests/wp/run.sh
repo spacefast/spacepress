@@ -16,25 +16,28 @@ zero="${CARGO_TARGET_DIR:-target}/debug/zero"
 # Retain downloads across the disposable source builds unless the caller chose a shared cache.
 export ZERO_WP_PLUGIN_CACHE="${ZERO_WP_PLUGIN_CACHE:-$here/app/.zero/cache/plugins}"
 # A fresh database expects one initial migration. Build fresh source each time so ignored
-# migrations from an earlier fixture schema cannot change the ledger under test. Keep the
-# same directory depth as app/ for its relative imports into tests/fixtures/.
+# migrations from an earlier fixture schema cannot change the ledger under test.
 build_app="$(mktemp -d "$here/.app-build.XXXXXX")"
 cleanup() {
   rm -rf -- "$build_app"
   [[ ${ZERO_WP_KEEP:-0} == 1 ]] || "$here/harness.sh" down
 }
 trap cleanup EXIT
-rsync -a --exclude '/zero/' --exclude '/.zero/' --exclude '/zero.gen.ts' "$here/app/" "$build_app/"
+rsync -a --exclude '/zero/_generated/' --exclude '/zero/dist/' --exclude '/zero/blog/' --exclude '/.zero/' "$here/app/" "$build_app/"
+# The frozen blog the app extends lives in tests/fixtures/blog (the PHP suites' golden); the app
+# imports it from zero/blog/, inside the Zero root.
+mkdir -p "$build_app/zero/blog"
+cp tests/fixtures/blog/zero.config.ts "$build_app/zero/blog/zero.config.ts"
 if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
-  cp "$here/uploads.s3.ts" "$build_app/uploads.ts"
+  cp "$here/uploads.s3.ts" "$build_app/zero/uploads.ts"
 fi
 "$zero" build "$build_app" --quiet >/dev/null
 # The client integration tests import this stable path; leave existing fixture migrations alone.
-mkdir -p "$here/app/zero/client"
-rsync -a --delete "$build_app/zero/client/" "$here/app/zero/client/"
+mkdir -p "$here/app/zero/_generated/client"
+rsync -a --delete "$build_app/zero/_generated/client/" "$here/app/zero/_generated/client/"
 # Stage into a stable dir: the build replaces its output dir, which would orphan a bind mount.
 mkdir -p tests/wp/.wp-content
-rsync -a --delete "$build_app/.zero/wp-content/" tests/wp/.wp-content/
+rsync -a --delete "$build_app/zero/dist/wp-content/" tests/wp/.wp-content/
 
 "$here/harness.sh" down
 # Relative to the repo root (run.sh's working directory): harness.sh resolves it against the caller.

@@ -1,0 +1,27 @@
+---
+title: Reference
+description: Every API First provides, generated from the code.
+---
+
+Each page here is written by `docs-site/scripts/generate.ts` from the code in the repository. CI fails when a page no longer matches the code.
+
+<CardGroup cols={2}>
+  <Card title="Config API" href="/reference/config" icon="file-code">
+    Every option of `defineConfig` and every function you import from `"first"`.
+  </Card>
+  <Card title="REST API" href="/rest" icon="code">
+    The routes every First app serves under `/wp-json/first/v1`.
+  </Card>
+  <Card title="JavaScript client" href="/reference/client" icon="braces">
+    The typed client `first build` writes to `first/client/`.
+  </Card>
+  <Card title="CLI" href="/reference/cli" icon="terminal">
+    Every `first` and `wp first` command.
+  </Card>
+  <Card title="Diagnostic codes" href="/reference/diagnostics" icon="triangle-alert">
+    What each code from `first check` means.
+  </Card>
+  <Card title="WordPress plugins" href="/reference/wordpress-plugins" icon="plug">
+    The plugins First installs and the plugins it supports.
+  </Card>
+</CardGroup>

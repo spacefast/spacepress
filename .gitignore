@@ -23,13 +23,7 @@ runtime/identity/apps/node_modules/
 # The optional packages/pages package (its own pnpm project)
 /packages/pages/node_modules/
 
-# The website (its own pnpm project; zero.wasm is built from src/ by site/scripts/build-wasm.mjs)
-/site/node_modules/
-/site/dist/
-/site/.astro/
-/site/public/zero.wasm
-/site/test-results/
-/site/playwright-report/
+# The docs site (its own pnpm project; docs-site/.gitignore lists its build output)
 
 # Disposable SQL adoption proof artifacts.
 /tests/wp/app-migrate/.run.*/

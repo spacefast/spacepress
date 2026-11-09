@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.blume/
+# Built by scripts/build-wasm.mjs from ../src.
+public/compiler.wasm
+test-results/
+playwright-report/

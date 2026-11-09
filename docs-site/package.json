@@ -1,0 +1,31 @@
+{
+	"name": "first-docs",
+	"private": true,
+	"type": "module",
+	"description": "The First documentation site: guides, every example, the in-browser compiler playground and the generated reference.",
+	"license": "MIT",
+	"packageManager": "pnpm@12.9.1",
+	"engines": {
+		"node": ">=22.19"
+	},
+	"scripts": {
+		"wasm": "node scripts/build-wasm.mjs",
+		"generate": "node scripts/generate.ts",
+		"generate:check": "node scripts/generate.ts --check",
+		"dev": "pnpm wasm && pnpm generate && blume dev",
+		"build": "pnpm wasm && pnpm generate && blume build",
+		"test": "node --test tests/unit/*.test.ts",
+		"test:browser": "playwright test",
+		"check": "pnpm generate:check && pnpm test && blume validate && pnpm test:browser"
+	},
+	"dependencies": {
+		"@pierre/diffs": "1.6.2",
+		"blume": "2.2.7"
+	},
+	"devDependencies": {
+		"@playwright/test": "1.64.1",
+		"@types/hast": "3.0.4",
+		"@types/node": "22.19.3",
+		"typescript": "5.9.3"
+	}
+}

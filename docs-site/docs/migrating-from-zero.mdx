@@ -1,0 +1,56 @@
+---
+title: Migrate from Zero 0.8
+description: Move an app from Zero 0.8 to First with one command.
+sidebar:
+  order: 3
+---
+
+Zero 0.8 is retired. Existing Zero 0.8 Spaces keep working, and Zero 0.9 will be its last release. First is the framework that replaces it. This page shows how to convert a Zero 0.8 app to a First app.
+
+## On Spacefast
+
+Publish the Zero 0.8 app with a `spacefast` CLI release after 0.8.0:
+
+```sh
+sf publish
+```
+
+The CLI converts the app to First before it uploads. When the converter refuses nothing, the Space moves to First. When it refuses something, the publish stops and prints each problem with a pointer to the code. Fix them and publish again.
+
+## Convert on your machine
+
+To review the result first, convert the app into a new directory:
+
+```sh
+first migrate app --from zero-0.8 ./old-app --out ./new-app --fresh
+```
+
+`--fresh` starts First with new, empty tables. To keep the data of a Spacefast app, pass `--space <id>` instead.
+
+The command prints a report. Each entry has a `pointer` to the part of the old app, an `outcome`, and a `reason`. For example:
+
+```json
+{
+	"pointer": "/realtime",
+	"outcome": "mapped",
+	"reason": "v2 announces every committed write as a change notice, so the declaration is no longer needed; Spacefast delivers notices over Cast. Replace client useQuery subscriptions with watch(client, [\"<table>\"], read, onResult) from the generated client."
+}
+```
+
+Then check the new app:
+
+```sh
+first check ./new-app
+```
+
+```text
+ok: 0 collections, 1 tables, 0 user projections, 0 globals, 0 hooks, 13 actions (13ms)
+```
+
+Add `--dry-run` to see the report without writing the new directory.
+
+## What changes for your frontend
+
+- Each Zero 0.8 query and mutation becomes a First action at `POST /wp-json/first/v1/actions/<name>`.
+- `useQuery` subscriptions become `watch()` from the [JavaScript client](/reference/client).
+- Errors become problem documents. See the [REST API](/rest).

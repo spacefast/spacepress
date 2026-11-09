@@ -1,0 +1,82 @@
+---
+title: Publish on Spacefast
+description: Put a First app online on Spacefast with sf publish.
+sidebar:
+  order: 1
+---
+
+Spacefast hosts First apps. You publish your app's source, Spacefast compiles it on its own WordPress, and your app gets a `space.fast` address. You don't upload PHP or a database.
+
+:::note
+Publishing a First app needs the `spacefast` CLI release after 0.8.0. Version 0.8.0 publishes only Zero 0.8 apps. Run `sf --version` to check which one you have.
+:::
+
+## Before you start
+
+- You have a First app that passes `first check`. The [getting started guide](/getting-started) makes one.
+- You have a Spacefast account.
+
+## Publish the app
+
+1. Install the Spacefast CLI:
+
+   ```sh
+   npm install --global spacefast
+   ```
+
+2. Sign in:
+
+   ```sh
+   sf login
+   ```
+
+   The command prints a link. Open it and approve the sign-in.
+
+3. Go to your app's directory. It is the one that holds `first.config.ts`:
+
+   ```sh
+   cd my-app
+   ```
+
+4. Check the app:
+
+   ```sh
+   sf first check
+   ```
+
+   Fix every problem it reports before you continue.
+
+5. Publish:
+
+   ```sh
+   sf publish
+   ```
+
+   The CLI compiles your source to a bundle on your machine, then uploads that bundle and the files in `public/`. The first publish creates a Space. The command prints its address, for example `https://my-app.space.fast`.
+
+6. Open the address. Check that a page loads, then call one route:
+
+   ```sh
+   curl https://my-app.space.fast/wp-json/first/v1/notes
+   ```
+
+To publish a new version, run `sf publish` again from the same directory. The CLI remembers the Space in `.spacefast/`.
+
+## What runs on the Space
+
+Each version runs the code it was compiled from. These work with no extra setup:
+
+- The REST routes under `/wp-json/first/v1`. See the [REST API reference](/rest).
+- The `routes` in your config, on their own paths.
+- `public/`, served as static files.
+- The typed client at `/__first/client.js`, with its types at `/__first/client.d.ts`.
+- Live updates. `watch()` in the client gets every committed change over Spacefast's realtime connection.
+
+TSX pages from `pages/` do not run on Spacefast yet. Keep your frontend in `public/`, or host it somewhere else and point it at the Space's address.
+
+## If publish fails
+
+| Message | What to do |
+| --- | --- |
+| `first_source_needs_local_capture` | An import needs npm packages, or a page has no current render. Run `npm install` in the app, then publish again from your machine. |
+| A diagnostic code such as `F1002` | The compiler refused the config. Read the [diagnostic codes](/reference/diagnostics), fix the file and line it names, and publish again. |

@@ -329,6 +329,12 @@ pub fn render(schema: &Schema) -> String {
             route.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into())
         );
     }
+    if !schema.components.is_empty() {
+        out.push_str("    ],\n    'components' => [\n");
+        for (name, function) in &schema.components {
+            let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
+        }
+    }
     // The fields each WordPress class view exposes (hook arguments, function results): the
     // catalog's, so the runtime and the types agree. Only apps that touch WordPress carry them.
     if schema.wp_views {

@@ -371,6 +371,19 @@ pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Resul
             _ => false,
         }
     }
+    fn html(ty: &Ty) -> bool {
+        match ty {
+            Ty::Html => true,
+            Ty::Obj(fields) => fields.values().any(|(ty, _)| html(ty)),
+            Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Map(t) | Ty::Instance(_, t) => html(t),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(html),
+            _ => false,
+        }
+    }
+    if html(ty) {
+        return Err(Diag::new(span, "rendered JSX can't be serialized as JSON")
+            .help("JSX renders only inside components; return the data, and render it in a component"));
+    }
     if contains_typed_date(ty) {
         return Err(Diag::new(span, "typed Dates require explicit JSON serialization")
             .help("call toISOString() or toJSON() before JSON.stringify or returning a Date from an action"));

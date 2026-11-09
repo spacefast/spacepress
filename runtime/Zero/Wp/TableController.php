@@ -279,7 +279,8 @@ final class TableController extends \WP_REST_Controller
         if (!$request->is_json_content_type() && ($request->get_content_type() !== null || trim($body) === '')) {
             $params = $request->get_body_params();
 
-            return is_array($params) ? $params : [];
+            // WordPress's own request controls (the cookie nonce, method override) are not row fields.
+            return is_array($params) ? array_diff_key($params, ['_wpnonce' => true, '_method' => true]) : [];
         }
         try {
             $decoded = \Zero\Seam::container(\Zero\Js::decodeJson($body));

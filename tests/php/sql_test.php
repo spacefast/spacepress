@@ -225,7 +225,7 @@ $locSchema = new Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'lo
 $byLocale = static fn (?string $fallback, int|string|null $groupOf = null) => ['where' => ['locale' => new \First\Locale\Filter('de', $fallback, $groupOf)]];
 $published = static fn (string $c): array => [['status' => 'published']];
 $plainDocs = new CompileOnlyStore($mysql, ['docs' => Source::plain($mysql, '`wp_first_docs`', $locSchema->collection('docs')['columns'])]);
-$whereOf = static fn (array $q): string => substr($q['sql'], strrpos($q['sql'], ' FROM `wp_first_docs` t0 WHERE ') + 30);
+$whereOf = static fn (array $q): string => substr($q['sql'], strrpos($q['sql'], ' FROM `wp_first_docs` t0 WHERE ') + strlen(' FROM `wp_first_docs` t0 WHERE '));
 $q = Sql::select($locSchema, $plainDocs, 'docs', $byLocale('en'), guardsFor: $published);
 eq('plain table: the locale, else the default row of a group with no readable de row', [$whereOf($q), $q['params']], [
     "(t0.`locale` = ? OR (t0.`locale` = ? AND (t0.`translationGroup` IS NULL OR t0.`translationGroup` NOT IN (SELECT t1.`translationGroup` FROM `wp_first_docs` t1 WHERE t1.`locale` = ? AND t1.`translationGroup` IS NOT NULL AND (t1.`status` = ?)))))",

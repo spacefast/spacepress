@@ -113,7 +113,7 @@ const RESERVED_COLLECTIONS: &[&str] = &[
     "media", "files", "globals", "actions", "me", "_schema", "auth", "services",
 ];
 /// WordPress limits post types to 20 characters; First prefixes `first_`.
-const MAX_POST_TYPE_TABLE: usize = 15;
+const MAX_POST_TYPE_TABLE: usize = 20 - "first_".len();
 /// MySQL utf8mb4 index prefix limit.
 const MAX_UNIQUE_TEXT: f64 = 191.0;
 const MAX_NESTING: usize = 3;

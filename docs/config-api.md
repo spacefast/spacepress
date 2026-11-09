@@ -162,7 +162,7 @@ registered once.
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
 
-Collections need a title and physical names of at most 15 characters (WordPress
+Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved. User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
 

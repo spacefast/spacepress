@@ -171,7 +171,7 @@ final class Invoke
             'ability_invalid_input' => 422,
             default => 500,
         };
-        $first = str_starts_with($code, 'first_') ? substr($code, 5) : match ($status) {
+        $first = str_starts_with($code, 'first_') ? substr($code, strlen('first_')) : match ($status) {
             401 => 'unauthenticated',
             403 => 'forbidden',
             422 => 'invalid_input',

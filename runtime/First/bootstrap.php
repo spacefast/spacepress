@@ -11,7 +11,7 @@ spl_autoload_register(static function (string $class): void {
         return;
     }
     if (str_starts_with($class, 'First\\')) {
-        $file = __DIR__ . '/' . str_replace('\\', '/', substr($class, 5)) . '.php';
+        $file = __DIR__ . '/' . str_replace('\\', '/', substr($class, strlen('First\\'))) . '.php';
         if (is_file($file)) {
             require $file;
         }

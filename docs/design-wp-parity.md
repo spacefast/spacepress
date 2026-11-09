@@ -173,7 +173,7 @@ export interface CollectionOptions {
 Rejections (both targets): using `collection()` and no title designation ("add a
 `title: text().notNull()` column or `title:` option, or use `table()`");
 `title` not a notNull text; `content` not richText; a collection named `media`,
-`globals`, `actions`, `me`, `_schema` (reserved); a table name longer than 15
+`globals`, `actions`, `me`, `_schema` (reserved); a table name longer than 14
 characters for `collection()` ("WordPress post types are limited to 20
 characters and First prefixes `first_`"); more than one `slug()` column; a
 `slug({ source })` naming a column that isn't text; `drafts: false` with

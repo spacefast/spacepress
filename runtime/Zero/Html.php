@@ -302,7 +302,8 @@ final class Html
         if (self::nullish($value) || $value instanceof \Closure) {
             return '';
         }
-        if ($name === 'style') {
+        // The browser reads `STYLE` and `Style` as `style`: every spelling goes through `style()`.
+        if (strtolower($name) === 'style') {
             return self::style($value);
         }
         if ($name === 'href' || $name === 'src' || $name === 'action' || $name === 'formAction' || $name === 'xlinkHref') {
@@ -362,7 +363,7 @@ final class Html
         if (self::nullish($value) || $value === false || $value instanceof \Closure) {
             return '';
         }
-        if ($name === 'style') {
+        if (strtolower($name) === 'style') {
             return self::style($value);
         }
         if ($value instanceof JsObject || $value instanceof JsArray) {
@@ -379,8 +380,9 @@ final class Html
      */
     public static function styleOf(mixed $style, array $names): mixed
     {
+        // The compiler admits only objects; anything else (a string from data) renders nothing.
         if (!$style instanceof JsObject) {
-            return $style;
+            return JsUndefined::Value;
         }
         return new JsObject(array_intersect_key($style->p, array_flip($names)));
     }

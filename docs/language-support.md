@@ -927,3 +927,11 @@ Status: **refused**. Diagnostic: `Z4001`.
 Every component's `children`, exported or local, is checked where JSX calls it.
 
 [Evidence](../tests/fixtures/reject-jsx-children-local)
+
+## jsx-style-spelling
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Browsers read `STYLE` and `Style` as `style`, which Zero narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key.
+
+[Evidence](../tests/fixtures/reject-jsx-style-case)

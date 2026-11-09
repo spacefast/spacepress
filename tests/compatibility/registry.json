@@ -880,6 +880,14 @@
       "fixture": "tests/fixtures/reject-jsx-children-local",
       "message": "which JSX can't pass",
       "guidance": "Every component's `children`, exported or local, is checked where JSX calls it."
+    },
+    {
+      "id": "jsx-style-spelling",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-style-case",
+      "message": "is spelled `style`",
+      "guidance": "Browsers read `STYLE` and `Style` as `style`, which Zero narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key."
     }
   ],
   "zero08": [

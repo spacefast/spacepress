@@ -175,6 +175,21 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "zero/components/Toggle.tsx:1:1",
     );
     rejects(
+        "reject-jsx-style-case",
+        "`STYLE` is spelled `style`",
+        "zero/components/Box.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-style-case-spread",
+        "`STYLE` is spelled `style`",
+        "zero/components/Box.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-style-case-custom",
+        "`Style` is spelled `style`",
+        "zero/components/Widget.tsx:2:17",
+    );
+    rejects(
         "reject-jsx-children-local",
         "this component types `children` as { title: string }, which JSX can't pass",
         "zero/components/Page.tsx:6:11",
@@ -1319,6 +1334,15 @@ fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
         $style = new \Zero\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px",
             "x:y;position" => "fixed", "inset\n" => "0", "--ok" => "1"]);
         echo \Zero\Html::element("div", ["style" => $style])->html(), "\n";
+        // Every spelling of `style` goes through the style filter, and a string is never CSS.
+        $css = "position:fixed;inset:0;background:url(//evil)";
+        echo \Zero\Html::element("div", ["Style" => $style])->html(), "\n";
+        // A string `style` throws, as React does, so it never reaches the attribute.
+        try { \Zero\Html::element("div", ["STYLE" => $css])->html(); echo "rendered\n"; }
+        catch (\Zero\JsError $e) { echo "refused\n"; }
+        echo \Zero\Html::element("my-el", ["STYLE" => $style])->html(), "\n";
+        var_export(\Zero\Html::styleOf($css, ["position"]) === \Zero\JsUndefined::Value);
+        echo "\n";
         // `styleOf` keeps only the names the compiler saw in the style's type.
         $extra = new \Zero\JsObject(["color" => "red", "position" => "fixed", "inset" => "0"]);
         echo \Zero\Html::element("p", ["style" => \Zero\Html::styleOf($extra, ["color"])])->html(), "\n";
@@ -1328,6 +1352,7 @@ fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
         "<a title=\"kept\">x</a>\n<my-el title=\"kept\"></my-el>\n<div style=\"width:1px;--ok:1\"></div>\n\
+         <div style=\"width:1px;--ok:1\"></div>\nrefused\n<my-el style=\"width:1px;--ok:1\"></my-el>\ntrue\n\
          <p style=\"color:red\"></p>\n"
     );
 }

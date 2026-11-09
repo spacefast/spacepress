@@ -6569,6 +6569,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let folded = name.to_ascii_lowercase();
+        // `style` is narrowed to its declared properties; any other spelling would skip that.
+        if folded == "style" && name != "style" {
+            return err_help(
+                span,
+                format!("`{name}` is spelled `style`"),
+                "write `style` in lowercase",
+            );
+        }
         if folded == "dangerouslysetinnerhtml" {
             return err_help(
                 span,

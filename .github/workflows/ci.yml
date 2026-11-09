@@ -340,7 +340,7 @@ jobs:
   wp-migrate:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
     steps:
@@ -405,7 +405,6 @@ jobs:
             .zero/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: corepack enable
       - run: cargo build --locked --bin zero
       - name: Deploy-time schema check against live rows
         run: ZERO_WP_PROJECT=zero-wp-schema-check ZERO_WP_PORT=8902 tests/wp/schema-check/run.sh

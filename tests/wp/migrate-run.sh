@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The migration lanes, each on a fresh stack running its own migrated app. tests/wp/run.sh runs
-# them after the main suites; CI runs them as their own job so neither job nears its time limit.
+# them after the main suites; CI runs them in the wp-migrate job so no job nears its time limit.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"

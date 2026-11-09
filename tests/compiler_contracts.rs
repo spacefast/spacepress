@@ -11,6 +11,35 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Writes an app module, creating its directory (app code lives under `zero/`).
+fn write_app(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    std::fs::create_dir_all(path.as_ref().parent().unwrap())?;
+    std::fs::write(path, contents)
+}
+
+/// Copies a file into the app, creating its directory.
+fn copy_app(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Result<u64> {
+    std::fs::create_dir_all(to.as_ref().parent().unwrap())?;
+    std::fs::copy(from, to)
+}
+
+/// A project whose app is `source` and the files beside it: the sources go under `zero/` (the only
+/// place app code loads from) and the root `zero.config.ts` re-exports `source`'s config.
+fn project_from(project: &Path, source: &Path, siblings: &[&Path]) {
+    let app = project.join("zero");
+    std::fs::create_dir_all(&app).unwrap();
+    for sibling in siblings {
+        std::fs::copy(sibling, app.join(sibling.file_name().unwrap())).unwrap();
+    }
+    let name = source.file_name().unwrap().to_str().unwrap();
+    std::fs::copy(source, app.join(name)).unwrap();
+    std::fs::write(
+        project.join("zero.config.ts"),
+        format!("export {{ default }} from \"./zero/{name}\";\n"),
+    )
+    .unwrap();
+}
+
 fn zero() -> Command {
     Command::new(env!("CARGO_BIN_EXE_zero"))
 }
@@ -86,9 +115,11 @@ fn registered_refusals_have_live_codes_and_no_stale_fixture_links() {
 fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     let tmp = tempfile::tempdir().unwrap();
     let source = "import './a';\nimport './b';\n/*😀*/ abstract class First {}\nabstract class Second {}\nconst clock = Date.now();\n";
+    let source = source.replace("'./a'", "'./zero/a'").replace("'./b'", "'./zero/b'");
+    let source = source.as_str();
     std::fs::write(tmp.path().join("zero.config.ts"), source).unwrap();
     for name in ["a.ts", "b.ts"] {
-        std::fs::write(tmp.path().join(name), "abstract class Imported {}\n").unwrap();
+        write_app(tmp.path().join("zero").join(name), "abstract class Imported {}\n").unwrap();
     }
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
@@ -112,7 +143,7 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     assert_eq!(loc["column"], "/*😀*/ ".encode_utf16().count() + 1);
     assert_eq!(loc["line"], 3);
     assert_eq!(report, checked(tmp.path()).1, "diagnostics must be deterministic");
-    assert!(!tmp.path().join("zero").exists());
+    assert!(!tmp.path().join("zero/_generated").exists() && !tmp.path().join("zero/dist").exists());
     assert!(!tmp.path().join(".zero").exists());
     // A partially lowered program must never run the Date.now() declaration.
     assert!(!report.to_string().contains("Z2101"));
@@ -124,8 +155,8 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
 #[test]
 fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    for file in ["zero.config.ts", "seo.ts"] {
-        std::fs::copy(root().join("examples/recipes").join(file), tmp.path().join(file)).unwrap();
+    for file in ["zero.config.ts", "zero/seo.ts"] {
+        copy_app(root().join("examples/recipes").join(file), tmp.path().join(file)).unwrap();
     }
     let (out, report) = checked(tmp.path());
     assert!(out.status.success(), "{report}");
@@ -269,12 +300,11 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
     // A timer still pending when the handler returns would fire after the response in Node; the PHP
     // request ends first, so the runtime refuses at handler end and names the creation site.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        tmp.path().join("timers.js"),
+    write_app(tmp.path().join("zero/timers.js"),
         "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {pending,cleared,late} from './timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {pending,cleared,late} from './zero/timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
@@ -367,12 +397,12 @@ fn url_vectors_agree_in_node_and_generated_php() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::copy(dir.join("url.js"), tmp.path().join("url.js")).unwrap();
+    copy_app(dir.join("url.js"), tmp.path().join("zero/url.js")).unwrap();
     std::fs::write(tmp.path().join("cases.json"), Value::Array(cases).to_string()).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
         r#"import { action, defineConfig } from "zero";
-import { parseAll, searchParams, invalid } from "./url.js";
+import { parseAll, searchParams, invalid } from "./zero/url.js";
 export default defineConfig({ name: "url", actions: { probe: action({ input: {}, handler: () => [searchParams(), invalid()] }) } });
 "#,
     )
@@ -637,7 +667,7 @@ export function objects(value) {
   return holder.value;
 }
 "#;
-    std::fs::write(tmp.path().join("helpers.mjs"), helper).unwrap();
+    write_app(tmp.path().join("zero/helpers.mjs"), helper).unwrap();
     let mutation = r#"
 function mutation() { const object = { count: 1 }; replaceCount(object); return object.count + 1; }
 function copiedSlots(): number { const object = { count: 1 }; replaceCopiedSlot(object); return object.count + 1; }
@@ -673,13 +703,13 @@ function nonempty() {
     let expression = r#"({ nullish: nullishValues(), mutation: mutation(), copiedSlots: copiedSlots(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
     let node = Command::new("node")
         .current_dir(tmp.path())
-        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects}} from './helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
+        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects}} from './zero/helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
         .output().unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
 import {{ action, defineConfig }} from 'zero';
-import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './helpers.mjs';
+import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './zero/helpers.mjs';
 {mutation}
 function nullable(value: string | null) {{ return value.trim(); }}
 export default defineConfig({{ name: 'js-values', actions: {{
@@ -734,8 +764,8 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
     );
 
     // Borrowed mutators cannot bypass a typed caller's array element domain.
-    std::fs::write(
-        tmp.path().join("helpers.mjs"),
+    write_app(
+        tmp.path().join("zero/helpers.mjs"),
         "export function change(values) { const push = [].push; push.call(values, 'x'); }",
     )
     .unwrap();
@@ -743,7 +773,7 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
         tmp.path().join("zero.config.ts"),
         r#"
 import { action, defineConfig } from 'zero';
-import { change } from './helpers.mjs';
+import { change } from './zero/helpers.mjs';
 export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
   const values: number[] = [1];
   change(values);
@@ -772,8 +802,7 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
         ("", "[].slice.call(arguments)", "[0].count", "...values"),
         ("first, value", "[].slice.call([value])", "[0].count", "...values"),
     ] {
-        std::fs::write(
-            tmp.path().join("helpers.mjs"),
+        write_app(tmp.path().join("zero/helpers.mjs"),
             format!("function mutate({parameters}) {{ const method = 'apply'; const copied = {copied}; copied{field} = 'x'; }} export function change(values) {{ mutate({argument}); }}"),
         )
         .unwrap();
@@ -781,7 +810,7 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
             tmp.path().join("zero.config.ts"),
             r#"
 import { action, defineConfig } from 'zero';
-import { change } from './helpers.mjs';
+import { change } from './zero/helpers.mjs';
 export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
   const object = { count: 1 };
   const values = [object, object];
@@ -818,13 +847,13 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
         "failures",
     ];
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::copy(
+    copy_app(
         root().join("tests/differential/async.mjs"),
-        tmp.path().join("async.mjs"),
+        tmp.path().join("zero/async.mjs"),
     )
     .unwrap();
     let script = format!(
-        "import * as m from './async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
+        "import * as m from './zero/async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
     );
     let node = Command::new("node")
         .current_dir(tmp.path())
@@ -841,7 +870,7 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
     std::fs::write(
         tmp.path().join("zero.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'zero';\nimport {{ {} }} from './async.mjs';\nexport default defineConfig({{ name: 'async-diff', actions: {{\n{actions}\n}} }});\n",
+            "import {{ action, defineConfig }} from 'zero';\nimport {{ {} }} from './zero/async.mjs';\nexport default defineConfig({{ name: 'async-diff', actions: {{\n{actions}\n}} }});\n",
             cases.join(", ")
         ),
     )
@@ -870,14 +899,13 @@ echo \Zero\Js::jsonStringify(new \Zero\JsArray($result));
     assert_eq!(actual, expected);
 
     // Handler end: an unhandled rejection and a promise nothing can settle are runtime errors.
-    std::fs::write(
-        tmp.path().join("async.mjs"),
+    write_app(tmp.path().join("zero/async.mjs"),
         "export async function lost() { Promise.reject(new Error('lost')); return 1; }\nexport async function stuck() { await new Promise(() => {}); }\n",
     )
     .unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
-        "import { action, defineConfig } from 'zero';\nimport { lost, stuck } from './async.mjs';\nexport default defineConfig({ name: 'async-diff', actions: {\n  lost: action({ input: {}, handler: async () => await lost() }),\n  stuck: action({ input: {}, handler: async () => await stuck() }),\n} });\n",
+        "import { action, defineConfig } from 'zero';\nimport { lost, stuck } from './zero/async.mjs';\nexport default defineConfig({ name: 'async-diff', actions: {\n  lost: action({ input: {}, handler: async () => await lost() }),\n  stuck: action({ input: {}, handler: async () => await stuck() }),\n} });\n",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -998,7 +1026,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
             "exports.limit = 3;\nexports.label = 'items';\n",
         ),
         (
-            "probe.cjs",
+            "zero/probe.cjs",
             "const toSource = require('glob-lite');\nconst { log } = require('glob-lite/lib/log');\nconst { limit, label } = require('counts');\nfunction run(glob) { return { source: toSource(glob), order: log.join(','), limit, label }; }\nmodule.exports = run;\n",
         ),
     ];
@@ -1009,7 +1037,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
     }
     std::fs::write(
         tmp.path().join("node.cjs"),
-        "process.stdout.write(JSON.stringify(require('./probe.cjs')('src/*.test.js')));",
+        "process.stdout.write(JSON.stringify(require('./zero/probe.cjs')('src/*.test.js')));",
     )
     .unwrap();
     let node = Command::new("node").arg(tmp.path().join("node.cjs")).output().unwrap();
@@ -1023,7 +1051,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
         tmp.path().join("zero.config.ts"),
         r#"
 import { action, defineConfig, text } from "zero";
-import run from "./probe.cjs";
+import run from "./zero/probe.cjs";
 export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text().notNull() }, handler: (input) => run(input.glob) }) } });
 "#,
     )
@@ -1171,15 +1199,14 @@ const sharedLiteral: 0 | 1 = effects.sharedCount;
 fn private_names_accessors_and_imported_javascript_classes_match_node() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = root().join("tests/differential");
-    std::fs::copy(dir.join("class-private.ts"), tmp.path().join("zero.config.ts")).unwrap();
-    std::fs::copy(
-        dir.join("class-private-lib.mjs"),
-        tmp.path().join("class-private-lib.mjs"),
-    )
-    .unwrap();
+    project_from(
+        tmp.path(),
+        &dir.join("class-private.ts"),
+        &[&dir.join("class-private-lib.mjs")],
+    );
     let node = Command::new("node")
         .arg(dir.join("run-node.mjs"))
-        .arg(tmp.path().join("zero.config.ts"))
+        .arg(dir.join("class-private.ts"))
         .output()
         .unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
@@ -1370,13 +1397,16 @@ fn host_globals_match_node_through_generated_php() {
     let _origin = Kill(origin);
     let secret = " lane secret \n";
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("zero.config.ts")).unwrap();
-    std::fs::copy(dir.join("host-crypto.cjs"), tmp.path().join("host-crypto.cjs")).unwrap();
+    project_from(
+        tmp.path(),
+        &dir.join("host-globals.ts"),
+        &[&dir.join("host-crypto.cjs")],
+    );
     let js = tmp.path().join("node");
     let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
         .arg(&js)
-        .arg(tmp.path().join("zero.config.ts"))
+        .arg(dir.join("host-globals.ts"))
         .output()
         .unwrap();
     assert!(
@@ -1385,7 +1415,7 @@ fn host_globals_match_node_through_generated_php() {
         String::from_utf8_lossy(&transpiled.stdout)
     );
     // The config imports its CommonJS helper, which Node loads with its own require.
-    let module = std::fs::read_to_string(js.join("zero.config.js")).unwrap();
+    let module = std::fs::read_to_string(js.join("host-globals.js")).unwrap();
     std::fs::write(js.join("zero.config.mjs"), module).unwrap();
     std::fs::copy(dir.join("host-crypto.cjs"), js.join("host-crypto.cjs")).unwrap();
     // Node reads the origin directly; the PHP side sees the same answers through the stub.
@@ -1522,7 +1552,7 @@ export default () => definePlugin({
             "sends": ["http: hooks.example.com"],
         }])
     );
-    assert!(!tmp.path().join("zero").exists(), "check writes no lock");
+    assert!(!tmp.path().join("zero/_generated").exists(), "check writes no lock");
     let frozen = zero()
         .args(["check", "--json", "--frozen"])
         .arg(tmp.path())
@@ -1702,8 +1732,8 @@ echo \Zero\Js::jsonStringify($fn($input, new \Zero\JsObject()));
 #[test]
 fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        tmp.path().join("helper.js"),
+    write_app(
+        tmp.path().join("zero/helper.js"),
         r#"
         class C { m() { return 4; } }
         class D extends C {}
@@ -1721,7 +1751,7 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     "#,
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; import {test} from './helper.js'; export default defineConfig({name:'classboundary',actions:{test:action({input:{},handler:()=>test()})}});").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; import {test} from './zero/helper.js'; export default defineConfig({name:'classboundary',actions:{test:action({input:{},handler:()=>test()})}});").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/zero-app-classboundary/zero/app");
     let actual = php(
@@ -1737,7 +1767,7 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
         .args([
             "--input-type=module",
             "-e",
-            "import {test} from './helper.js'; process.stdout.write(JSON.stringify(test()));",
+            "import {test} from './zero/helper.js'; process.stdout.write(JSON.stringify(test()));",
         ])
         .output()
         .unwrap();
@@ -1795,13 +1825,13 @@ export function probe() {
   };
 }
 "#;
-    std::fs::write(tmp.path().join("helpers.mjs"), helper).unwrap();
+    write_app(tmp.path().join("zero/helpers.mjs"), helper).unwrap();
     let node = Command::new("node")
         .current_dir(tmp.path())
         .args([
             "--input-type=module",
             "-e",
-            "import {probe} from './helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
+            "import {probe} from './zero/helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
         ])
         .output()
         .unwrap();
@@ -1809,7 +1839,7 @@ export function probe() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
-        "import { action, defineConfig } from 'zero'; import { probe, unmodeled } from './helpers.mjs'; export default defineConfig({ name: 'symbols', actions: { probe: action({ input: {}, handler: () => probe() }), unmodeled: action({ input: {}, handler: () => unmodeled() }) } });",
+        "import { action, defineConfig } from 'zero'; import { probe, unmodeled } from './zero/helpers.mjs'; export default defineConfig({ name: 'symbols', actions: { probe: action({ input: {}, handler: () => probe() }), unmodeled: action({ input: {}, handler: () => unmodeled() }) } });",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -1875,7 +1905,7 @@ echo \Zero\Js::jsonStringify(new \Zero\JsArray([$run('probe'), $run('unmodeled')
             "`globalThis.Bun` is undefined in Zero",
         ),
     ] {
-        std::fs::remove_file(tmp.path().join("helpers.mjs")).ok();
+        std::fs::remove_file(tmp.path().join("zero/helpers.mjs")).ok();
         std::fs::write(
             tmp.path().join("zero.config.ts"),
             format!("import {{ action, defineConfig }} from 'zero';\n{source}"),
@@ -1905,7 +1935,7 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
         let expression = v["expression"].as_str().unwrap();
         if let Some(files) = v["files"].as_object() {
             for (name, source) in files {
-                std::fs::write(tmp.path().join(name), source.as_str().unwrap()).unwrap();
+                write_app(tmp.path().join("zero").join(name), source.as_str().unwrap()).unwrap();
             }
         }
 
@@ -1928,9 +1958,15 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
             ));
         }
     }
-    std::fs::write(tmp.path().join("helper.js"), javascript).unwrap();
-    let entry = tmp.path().join("zero.config.ts");
+    write_app(tmp.path().join("zero/helper.js"), javascript).unwrap();
+    // The app and its helper modules live under zero/; the root config re-exports it.
+    let entry = tmp.path().join("zero/app.ts");
     std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{name: 'builtinparity', actions: {{{}}}}});", actions.join(",\n"))).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        "export { default } from './zero/app.ts';\n",
+    )
+    .unwrap();
     let node = Command::new("node")
         .arg(root().join("tests/differential/run-node.mjs"))
         .arg(&entry)
@@ -2467,8 +2503,8 @@ fn typed_date_coercion_requires_explicit_formatting() {
 #[test]
 fn dynamic_array_prototype_writes_are_refused() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'prototyperefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    write_app(tmp.path().join("zero/helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './zero/helper.js';export default defineConfig({name:'prototyperefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])));"#,
@@ -2491,12 +2527,11 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
         "function string coercion isn't supported"
     );
     assert_eq!(report["diagnostics"][0]["location"]["line"], 2);
-    std::fs::write(
-        tmp.path().join("helper.js"),
+    write_app(tmp.path().join("zero/helper.js"),
         "function convert(value){return String(value);} export function probe(){try{return convert(()=>1);}catch(e){return e.name;}}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'functionrefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './zero/helper.js';export default defineConfig({name:'functionrefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(),\Zero\Seam::ctx(['user'=>null])));"#,
@@ -2511,15 +2546,15 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
 #[test]
 fn non_iso_date_literals_are_refused_at_the_call() {
     for text in ["2020-1-1", "-000000-01-01"] {
-        for name in ["zero.config.ts", "helper.js"] {
+        for name in ["zero.config.ts", "zero/helper.js"] {
             let tmp = tempfile::tempdir().unwrap();
-            if name == "helper.js" {
-                std::fs::write(
+            if name == "zero/helper.js" {
+                write_app(
                     tmp.path().join(name),
                     format!("export const probe=()=>new Date({text:?}).getTime();"),
                 )
                 .unwrap();
-                std::fs::write(tmp.path().join("zero.config.ts"),"import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
+                std::fs::write(tmp.path().join("zero.config.ts"),"import {action,defineConfig} from 'zero';import {probe} from './zero/helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
             } else {
                 std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>new Date({text:?}).getTime()}})}}}});")).unwrap();
             }
@@ -2536,17 +2571,17 @@ fn non_iso_date_literals_are_refused_at_the_call() {
 
 #[test]
 fn effectful_sorting_is_refused_at_the_callback() {
-    for name in ["zero.config.ts", "helper.js"] {
+    for name in ["zero.config.ts", "zero/helper.js"] {
         let tmp = tempfile::tempdir().unwrap();
         let expression = "(() => { let calls=0; [3,2,1].sort((a,b)=>{calls++;return a-b;}); return calls; })()";
-        let body = if name == "helper.js" {
-            std::fs::write(tmp.path().join(name), format!("export const probe=()=>{expression};")).unwrap();
+        let body = if name == "zero/helper.js" {
+            write_app(tmp.path().join(name), format!("export const probe=()=>{expression};")).unwrap();
             "probe()"
         } else {
             expression
         };
-        let import = if name == "helper.js" {
-            "import {probe} from './helper.js';"
+        let import = if name == "zero/helper.js" {
+            "import {probe} from './zero/helper.js';"
         } else {
             ""
         };
@@ -2564,15 +2599,15 @@ fn effectful_sorting_is_refused_at_the_callback() {
 #[test]
 fn native_error_inspection_is_refused_during_configuration_evaluation() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';const folded=probe();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
+    write_app(tmp.path().join("zero/helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './zero/helper.js';const folded=probe();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
         report["diagnostics"][0]["message"],
         "restricted arguments properties aren't supported during configuration evaluation"
     );
-    assert_eq!(report["diagnostics"][0]["location"]["file"], "helper.js");
+    assert_eq!(report["diagnostics"][0]["location"]["file"], "zero/helper.js");
 }
 
 #[test]
@@ -2666,8 +2701,8 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
             let tmp = tempfile::tempdir().unwrap();
             let body = format!("const a=null;let n=0;try{{{expression};}}catch{{}}return n;");
             let handler = if javascript {
-                std::fs::write(
-                    tmp.path().join("helper.js"),
+                write_app(
+                    tmp.path().join("zero/helper.js"),
                     format!("export function probe(){{{body}}}"),
                 )
                 .unwrap();
@@ -2676,7 +2711,7 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
                 format!("()=>{{{body}}}")
             };
             let import = if javascript {
-                "import {probe} from './helper.js';"
+                "import {probe} from './zero/helper.js';"
             } else {
                 ""
             };
@@ -2735,8 +2770,8 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 #[test]
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    write_app(tmp.path().join("zero/helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './zero/helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])));"#,
@@ -2822,12 +2857,12 @@ fn parameter_default_scope_limits_are_located_refusals() {
         for javascript in [false, true] {
             let tmp = tempfile::tempdir().unwrap();
             let body = if javascript {
-                std::fs::write(
-                    tmp.path().join("helper.js"),
+                write_app(
+                    tmp.path().join("zero/helper.js"),
                     format!("export function probe(){{{source}return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
+                "import {probe} from './zero/helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
             } else {
                 format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
             };
@@ -2886,24 +2921,24 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
         "for(const undefined of [3]){String(undefined);}",
         "function undefined(){return 3;}undefined();",
         "class undefined{};new undefined();",
-        "import {n as undefined} from './binding-helper.js';String(undefined);",
-        "import undefined from './binding-helper.js';String(undefined);",
-        "import * as undefined from './binding-helper.js';String(undefined);",
+        "import {n as undefined} from './zero/binding-helper.js';String(undefined);",
+        "import undefined from './zero/binding-helper.js';String(undefined);",
+        "import * as undefined from './zero/binding-helper.js';String(undefined);",
     ] {
         for javascript in [false, true] {
             let tmp = tempfile::tempdir().unwrap();
-            std::fs::write(
-                tmp.path().join("binding-helper.js"),
+            write_app(
+                tmp.path().join("zero/binding-helper.js"),
                 "export const n=3;export default 3;",
             )
             .unwrap();
             let body = if javascript {
-                std::fs::write(
-                    tmp.path().join("binding-probe.js"),
+                write_app(
+                    tmp.path().join("zero/binding-probe.js"),
                     format!("{source}export function probe(){{return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './binding-probe.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
+                "import {probe} from './zero/binding-probe.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
             } else {
                 format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
             };
@@ -3011,8 +3046,8 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
 #[test]
 fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {read} from './helper.js';class Base {cause(){}} class Options extends Base {} export default defineConfig({name:'errorcause',actions:{test:action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}})}});").unwrap();
+    write_app(tmp.path().join("zero/helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {read} from './zero/helper.js';class Base {cause(){}} class Options extends Base {} export default defineConfig({name:'errorcause',actions:{test:action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}})}});").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/zero-app-errorcause/zero/app");
     let actual = php(
@@ -3036,28 +3071,28 @@ fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
 fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
     for (file, source, import) in [
         (
-            "counter.js",
+            "zero/counter.js",
             "export let value=0;export function inc(){value++;}",
-            "import {value,inc} from './counter.js';",
+            "import {value,inc} from './zero/counter.js';",
         ),
         (
-            "counter.ts",
+            "zero/counter.ts",
             "let counter=0;export {counter as value};export function inc(){counter++;}",
-            "import {value,inc} from './counter.ts';",
+            "import {value,inc} from './zero/counter.ts';",
         ),
         (
-            "counter.js",
+            "zero/counter.js",
             "export var value=0;export function inc(){value++;}",
-            "import * as counter from './counter.js';const {value,inc}=counter;",
+            "import * as counter from './zero/counter.js';const {value,inc}=counter;",
         ),
         (
-            "counter.js",
+            "zero/counter.js",
             "let value=0;export {value as default};export function inc(){value++;}",
-            "import value,{inc} from './counter.js';",
+            "import value,{inc} from './zero/counter.js';",
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join(file), source).unwrap();
+        write_app(tmp.path().join(file), source).unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{import}inc();const folded=value;export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
@@ -3077,12 +3112,12 @@ fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
 #[test]
 fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        tmp.path().join("array-overrides.js"),
+    write_app(
+        tmp.path().join("zero/array-overrides.js"),
         "export function installArrayOverrides(a,b){a.map=()=>[99];b.join=()=>'own';}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {installArrayOverrides} from './array-overrides.js';export default defineConfig({name:'arraynative',actions:{test:action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}})}});").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {installArrayOverrides} from './zero/array-overrides.js';export default defineConfig({name:'arraynative',actions:{test:action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}})}});").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/zero-app-arraynative/zero/app");
     let actual = php(
@@ -3158,12 +3193,12 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
     );
     // A parameter default runs where the name is still the function, so writing it is refused too.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        tmp.path().join("h.mjs"),
+    write_app(
+        tmp.path().join("zero/h.mjs"),
         "export const run = () => { const fn = function f(x = (f = () => 1)) { return x; }; return fn(); };\n",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nimport { run } from './h.mjs';\nexport default defineConfig({actions:{probe:action({handler:()=>run()})}});").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nimport { run } from './zero/h.mjs';\nexport default defineConfig({actions:{probe:action({handler:()=>run()})}});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert!(
@@ -3543,11 +3578,16 @@ fn language_constructs_match_node_through_generated_php() {
     for config in apps {
         let name = config.file_stem().unwrap().to_str().unwrap();
         let tmp = tempfile::tempdir().unwrap();
-        for entry in std::fs::read_dir(&dir).unwrap() {
-            let path = entry.unwrap().path();
-            std::fs::copy(&path, tmp.path().join(path.file_name().unwrap())).unwrap();
-        }
-        std::fs::copy(&config, tmp.path().join("zero.config.ts")).unwrap();
+        let siblings: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| *path != config)
+            .collect();
+        project_from(
+            tmp.path(),
+            &config,
+            &siblings.iter().map(PathBuf::as_path).collect::<Vec<_>>(),
+        );
         let node = Command::new("node")
             .arg(root().join("tests/differential/run-node.mjs"))
             .arg(&config)
@@ -3668,8 +3708,8 @@ fn build_time_namespaces_resolve_members_and_refuse_whole_values() {
     // picomatch's shape: a function with own properties, Object.assign onto it, a default export
     // object, and helper objects called as `utils.f(x)` from another module.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        tmp.path().join("utils.mjs"),
+    write_app(
+        tmp.path().join("zero/utils.mjs"),
         r#"
 export const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const constants = { REGEX_SLASH: /\//g, DEFAULT: { depth: 1 } };
@@ -3691,7 +3731,7 @@ export default main;
         .args([
             "--input-type=module",
             "-e",
-            &format!("import match from './utils.mjs'; import * as utils from './utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
+            &format!("import match from './zero/utils.mjs'; import * as utils from './zero/utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
         ])
         .output()
         .unwrap();
@@ -3702,8 +3742,8 @@ export default main;
         format!(
             r#"
 import {{ action, defineConfig }} from 'zero';
-import match from './utils.mjs';
-import * as utils from './utils.mjs';
+import match from './zero/utils.mjs';
+import * as utils from './zero/utils.mjs';
 export default defineConfig({{ name: 'namespaces', actions: {{ probe: action({{ input: {{}}, handler: () => {expression} }}) }} }});
 "#
         ),
@@ -3834,14 +3874,14 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            tmp.path().join("h.mjs"),
+        write_app(
+            tmp.path().join("zero/h.mjs"),
             "export function untyped() { return [1, 2]; }\n",
         )
         .unwrap();
         std::fs::write(
             tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\nimport {{ untyped }} from './h.mjs';\nexport default defineConfig({{ name: 'awaits', actions: {{ probe: action({{ input: {{}}, handler: async () => {{ {source} }} }}) }} }});"),
+            format!("import {{ action, defineConfig }} from 'zero';\nimport {{ untyped }} from './zero/h.mjs';\nexport default defineConfig({{ name: 'awaits', actions: {{ probe: action({{ input: {{}}, handler: async () => {{ {source} }} }}) }} }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3947,14 +3987,14 @@ fn language_refusals_carry_a_location_and_a_fix() {
         ),
         (
             "this through a module namespace",
-            "import * as ns from './ns.mjs';",
+            "import * as ns from './zero/ns.mjs';",
             "ns.nsThis()",
             "through the module namespace `ns`",
             "",
         ),
         (
             "function with properties in a this receiver",
-            "import { withHelper } from './ns.mjs';",
+            "import { withHelper } from './zero/ns.mjs';",
             "withHelper.read()",
             "a function with properties (`withHelper.helper`)",
             "",
@@ -4032,8 +4072,7 @@ fn language_refusals_carry_a_location_and_a_fix() {
     ];
     for (name, declarations, handler, message, fix) in cases {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            tmp.path().join("ns.mjs"),
+        write_app(tmp.path().join("zero/ns.mjs"),
             "export function nsThis() { return typeof this; }\nfunction helper() { return 1; }\nhelper.x = 42;\nexport const withHelper = { helper, read() { return this.helper.x; } };\n",
         )
         .unwrap();

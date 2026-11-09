@@ -10,7 +10,7 @@ const pantry = {
   name: "pantry",
   files: {
     "zero.config.ts": readFileSync(path.join(repo, "examples/pantry/zero.config.ts"), "utf8"),
-    "lib/fields.ts": readFileSync(path.join(repo, "examples/pantry/lib/fields.ts"), "utf8"),
+    "zero/lib/fields.ts": readFileSync(path.join(repo, "examples/pantry/zero/lib/fields.ts"), "utf8"),
   },
 };
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");

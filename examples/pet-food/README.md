@@ -121,7 +121,7 @@ curl --get --fail-with-body -u "$ZERO_AUTH" \
 
 ## Customize the admin
 
-Edit [lib/schema.ts](lib/schema.ts), then rebuild:
+Edit [zero/lib/schema.ts](zero/lib/schema.ts), then rebuild:
 
 | Change | Mechanism |
 | --- | --- |
@@ -181,13 +181,13 @@ The native compiler was rebuilt from this revision with `cargo build --locked`.
 `severity == "error"`. It stops at the first blocker; later compilation stages
 are not proven error-free.
 
-At `lib/schema.ts:6`, the source is `export function owned(ctx: AccessCtx) {`.
+At `zero/lib/schema.ts:6`, the source is `export function owned(ctx: AccessCtx) {`.
 `AccessCtx` is exported by `types/zero/index.d.ts`, but the callback compiler
 does not recognize the imported type. `zero build` prints this verbatim:
 
 ```text
 error: unknown type `AccessCtx`
-  --> lib/schema.ts:6:28
+  --> zero/lib/schema.ts:6:28
   |
 6 | export function owned(ctx: AccessCtx) {
   |                            ^^^^^^^^^

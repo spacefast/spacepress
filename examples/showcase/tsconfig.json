@@ -8,5 +8,5 @@
     "types": [],
     "paths": { "zero": ["../../types/zero/index.d.ts"] }
   },
-  "include": ["zero.config.ts", "pantry.ts", "zero/_generated/db.d.ts"]
+  "include": ["zero.config.ts", "zero/pantry.ts", "zero/stories.ts", "zero/_generated/db.d.ts"]
 }

@@ -6,6 +6,27 @@ Everything below is exported from the `"zero"` module. Shapes follow Drizzle
 ORM 1.0 (beta.22): column builders, `defineRelations`, relational-query
 `findMany`/`findFirst` with object filters.
 
+## Project layout
+
+`zero.config.ts` sits at the project root. Your own modules live under `zero/`
+([spec §1](spec/spec.md#1-layout)):
+
+```text
+my-project/
+├── zero.config.ts     # imports only from ./zero/** and npm packages
+├── zero/
+│   ├── lib/fields.ts  # your modules, any names
+│   ├── _generated/    # written by zero build, committed
+│   └── dist/          # written by zero build, gitignored
+└── wp-hooks/          # WordPress actions and filters (see below)
+```
+
+A relative import from `zero.config.ts` or from a module under `zero/` must
+resolve inside `zero/`. Anything else, such as `import { x } from "./lib/x"`
+at the root or `"../src/x"` from `zero/`, fails with `Z1210` and names the
+file to move. Packages (`"zero"`, `"php/wordpress"`, npm packages) are always
+allowed, and an installed package's own relative imports are its business.
+
 ## WordPress plugins
 
 Use a top-level package map in `defineConfig`:
@@ -106,7 +127,7 @@ Phase-2 modifiers:
   label, plain-text help, width and placeholders on supported input controls;
   schema description preserves metadata for other consumers. It never changes
   stored field names, JSON pointers, validation or access. Nested fields support
-  the same metadata. See the [SEO recipe](../examples/recipes/seo.ts).
+  the same metadata. See the [SEO recipe](../examples/recipes/zero/seo.ts).
 - `.showIf({ sibling: value | { eq, ne, in, isNull, isNotNull } })`: editor
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.

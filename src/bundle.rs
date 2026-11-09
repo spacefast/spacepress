@@ -328,6 +328,9 @@ impl CapturedFs {
 }
 #[cfg(feature = "host")]
 impl Fs for CapturedFs {
+    fn frozen_capture(&self) -> bool {
+        true
+    }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         let prefix = self
             .key(path)

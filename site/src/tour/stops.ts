@@ -63,7 +63,7 @@ export const tours: Tour[] = [
         config: { file: "zero.config.ts", lines: { from: 'export const items = table(', to: "}));" } },
         inputs: [
           { file: "zero.config.ts", lines: { from: "const named =", to: "const named =" } },
-          { file: "lib/fields.ts", lines: { from: "export const timestamps", toLine: "};" } },
+          { file: "zero/lib/fields.ts", lines: { from: "export const timestamps", toLine: "};" } },
         ],
         outputs: [{ file: { artifact: "migration" }, lines: { from: "CREATE TABLE `{prefix}zero_items`", to: "ENGINE=InnoDB" } }],
       },

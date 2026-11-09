@@ -1422,7 +1422,7 @@ body. A class `toJSON()` method is called by `JSON.stringify` with the property
 key; actions that return such an instance directly are refused, because the
 generated client describes own fields.
 
-Classes can extend `Error`, `TypeError` and `RangeError`. `super(message,
+Classes can extend `Error`, `TypeError`, `RangeError` and `SyntaxError`. `super(message,
 options)` sets non-enumerable `message`, `cause` (from `options.cause`) and
 `stack`, so `Object.keys` and JSON show only fields and an assigned `name`.
 `name` and `message` otherwise come from the prototype, and `String(error)`

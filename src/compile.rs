@@ -12,8 +12,9 @@ mod effects;
 mod host;
 mod javascript;
 
+use crate::builtins::ERROR_CONSTRUCTORS;
 use crate::diag::{Diag, Result, Span, suggest};
-use crate::eval::{Evaluator, GLOBALS};
+use crate::eval::Evaluator;
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
@@ -1478,7 +1479,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             return Ok(Resolved::Value(b.value.clone(), b));
         }
-        if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
+        if let Some(g) = crate::eval::provided_global(name) {
             return Ok(Resolved::Global(g));
         }
         let mut d = Diag::new(span, format!("`{name}` isn't defined"));
@@ -2336,7 +2337,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(callee.span, "throw `new Error(...)` or `new HttpError(...)`"),
             };
             match callee_v {
-                Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) => {
+                Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => {
                     return self.error_constructor(g, args).map(|value| value.php);
                 }
                 Resolved::Value(Value::Builtin(Builtin::HttpError), _) => {
@@ -3063,8 +3064,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ));
                 }
                 if let ExprKind::Ident(name) = &right.kind
-                    && let Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) =
-                        self.resolve(name, right.span)?
+                    && let Resolved::Global(g) = self.resolve(name, right.span)?
+                    && ERROR_CONSTRUCTORS.contains(&g)
                 {
                     let left = self.expr(left)?;
                     return Ok(Out::atom(
@@ -6855,7 +6856,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 })
             }
-            Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) => self.error_constructor(g, args),
+            Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => self.error_constructor(g, args),
             Resolved::Value(Value::Builtin(Builtin::HttpError), _) => err(
                 span,
                 "create HttpError directly in a `throw`: `throw new HttpError(404, \"not_found\", \"...\")`",
@@ -8003,7 +8004,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if g == "parseInt" {
             crate::builtins::check_parse_int_literals(args, span)?;
         }
-        if matches!(g, "Error" | "TypeError" | "RangeError") {
+        if ERROR_CONSTRUCTORS.contains(&g) {
             return self.error_constructor(g, args);
         }
         if matches!(g, "parseInt" | "parseFloat") && self.javascript_module(self.fx.as_ref().expect("fn").module) {

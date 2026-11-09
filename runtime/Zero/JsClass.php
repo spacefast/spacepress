@@ -32,7 +32,7 @@ final class JsClass
         private readonly array $staticAccessors = [],
         /** Prototype data properties of a built-in root (Error.prototype.name and .message). */
         private readonly array $prototypeData = [],
-        /** The built-in constructor this descriptor models ('Error', 'TypeError', 'RangeError'), if any. */
+        /** The built-in constructor this descriptor models (one of Builtins::ERROR_CONSTRUCTORS), if any. */
         public readonly ?string $builtin = null,
     ) {}
 
@@ -46,7 +46,7 @@ final class JsClass
     public static function builtin(string $name): self
     {
         if (isset(self::$builtins[$name])) { return self::$builtins[$name]; }
-        if (!in_array($name, ['Error', 'TypeError', 'RangeError'], true)) {
+        if (!in_array($name, Builtins::ERROR_CONSTRUCTORS, true)) {
             throw new JsError("Extending $name is not supported", 'TypeError');
         }
         $parent = $name === 'Error' ? null : self::builtin('Error');

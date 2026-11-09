@@ -310,7 +310,7 @@ const ZERO_TYPES: &[&str] = &[
     "Plugin",
 ];
 
-pub const GLOBALS: &[&str] = &[
+const GLOBALS: &[&str] = &[
     "Math",
     "Object",
     "Array",
@@ -331,9 +331,6 @@ pub const GLOBALS: &[&str] = &[
     "isFinite",
     "Date",
     "console",
-    "Error",
-    "TypeError",
-    "RangeError",
     "Infinity",
     "NaN",
     "fetch",
@@ -415,11 +412,20 @@ pub enum GlobalMember {
     Refused,
 }
 
+/// The provided global named `name`: `GLOBALS` plus the built-in Error constructors.
+pub fn provided_global(name: &str) -> Option<&'static str> {
+    GLOBALS
+        .iter()
+        .chain(crate::builtins::ERROR_CONSTRUCTORS)
+        .find(|g| **g == name)
+        .copied()
+}
+
 pub fn global_member(name: &str) -> GlobalMember {
     if HOST_GLOBALS.contains(&name) {
         return GlobalMember::Refused;
     }
-    if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
+    if let Some(g) = provided_global(name) {
         return GlobalMember::Provided(g);
     }
     if ABSENT_GLOBALS.contains(&name) {
@@ -1415,8 +1421,8 @@ impl<'p> Evaluator<'p> {
             }
             return Ok(b.value);
         }
-        if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
-            return Ok(match *g {
+        if let Some(g) = provided_global(name) {
+            return Ok(match g {
                 "Infinity" => Value::Num(f64::INFINITY),
                 "NaN" => Value::Num(f64::NAN),
                 g => Value::Builtin(Builtin::Global(g)),
@@ -1477,7 +1483,7 @@ impl<'p> Evaluator<'p> {
                 let base = match &class.base {
                     Some(name) => match self.lookup(name, scope, e.span)? {
                         Value::Class(c) => Some(c),
-                        Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
+                        Value::Builtin(Builtin::Global(g)) if crate::builtins::ERROR_CONSTRUCTORS.contains(&g) => {
                             builtin_base = Some(g);
                             None
                         }
@@ -1485,7 +1491,7 @@ impl<'p> Evaluator<'p> {
                             return err_help(
                                 e.span,
                                 "extend a named Zero class or Error; other built-in and dynamic inheritance are unsupported",
-                                "extend Error, TypeError, RangeError or a class declared in this program",
+                                "extend Error, TypeError, RangeError, SyntaxError or a class declared in this program",
                             );
                         }
                     },
@@ -4460,6 +4466,34 @@ mod tests {
             super::to_json(&result).unwrap(),
             serde_json::json!([[1, 2], [1, 2.5], [10, null, 2], ["a", ""], false, [1, null]])
         );
+    }
+
+    #[test]
+    fn error_constructors_are_globals_at_build_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("zero.config.ts");
+        std::fs::write(
+            &entry,
+            "class ParseFailure extends SyntaxError {}\nexport default [[Error, TypeError, RangeError, SyntaxError].map((c) => typeof c), typeof globalThis.SyntaxError, globalThis.SyntaxError === SyntaxError, typeof ParseFailure];",
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let result = super::Evaluator::new(&program).run().unwrap();
+        // Node prints the same for these expressions.
+        assert_eq!(
+            super::to_json(&result).unwrap(),
+            serde_json::json!([
+                ["function", "function", "function", "function"],
+                "function",
+                true,
+                "function"
+            ])
+        );
+        // The constructors themselves stay runtime-only, like Error.
+        std::fs::write(&entry, "export default new SyntaxError('x');").unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let error = super::Evaluator::new(&program).run().unwrap_err();
+        assert!(error.message.contains("constructor.SyntaxError"), "{error:?}");
     }
 
     #[test]

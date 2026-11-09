@@ -54,6 +54,10 @@ class QuotaError extends AppError {
   limit = 0;
   constructor(limit: number) { super("Quota", `over ${limit}`); this.limit = limit; }
 }
+class GlobSyntaxError extends SyntaxError {
+  pattern = "";
+  constructor(pattern: string) { super(`bad glob ${pattern}`); this.pattern = pattern; }
+}
 function failWith(kind: number): never {
   if (kind === 0) throw new QuotaError(3);
   if (kind === 1) throw new AppError("Bad", "bad input", { cause: "upstream" });
@@ -101,6 +105,28 @@ export default defineConfig({
             json: JSON.stringify(e) ?? "",
           });
         }
+      }
+      return out;
+    }),
+    syntaxErrorsTyped: run(() => {
+      const made = new SyntaxError("made");
+      const called = SyntaxError("called");
+      const glob = new GlobSyntaxError("[");
+      const out: (string | boolean)[] = [
+        made.name, made.message, String(made), (made.stack ?? "").split("\n")[0] ?? "",
+        called.name, called.message, String(SyntaxError()),
+        made instanceof SyntaxError, made instanceof Error, made instanceof TypeError, new RangeError("r") instanceof SyntaxError,
+        glob instanceof GlobSyntaxError, glob instanceof SyntaxError, glob instanceof Error, glob instanceof RangeError,
+        glob.name, glob.message, glob.pattern, String(glob), JSON.stringify(glob),
+      ];
+      try { JSON.parse("{"); } catch (e) {
+        out.push(e instanceof SyntaxError, e instanceof Error, e instanceof TypeError, e.name);
+      }
+      try { throw new SyntaxError("thrown"); } catch (e) {
+        out.push(e instanceof SyntaxError, e.name, e.message);
+      }
+      try { throw glob; } catch (e) {
+        out.push(e instanceof GlobSyntaxError, e instanceof SyntaxError, e instanceof GlobSyntaxError ? e.pattern : "");
       }
       return out;
     }),

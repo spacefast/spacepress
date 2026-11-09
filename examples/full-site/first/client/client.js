@@ -38,6 +38,16 @@ export const SCHEMA = {
 	"actions": ["cheer"],
 	"buckets": []
 };
+function registry() {
+	const g = globalThis;
+	return g.__firstRealtime ??= { waiters: new Set() };
+}
+/** For host scripts: every client on this page, created before or after, uses this transport by default. */
+export function registerRealtimeTransport(transport) {
+	const r = registry();
+	r.transport = transport;
+	for (const wake of [...r.waiters]) wake();
+}
 /** Thrown for every non-2xx response; the fields are the problem document. Network failures: status 0, code "network". */
 export class FirstError extends Error {
 	status;
@@ -493,12 +503,87 @@ export function createClient(options = {}) {
 			} : null;
 		}
 	};
+	// One transport connection per client while anything is watched; polling while it is not live.
+	const rtOpts = options.realtime ?? {};
+	const pollMs = rtOpts.pollMs === undefined ? 3e4 : rtOpts.pollMs;
+	const livePollMs = rtOpts.livePollMs === undefined ? 6e4 : rtOpts.livePollMs;
+	const listeners = new Set();
+	let disconnect = null;
+	let live = false;
+	// One timer: `pollMs` while down, `livePollMs` (jittered) while live. Rearmed after each refresh.
+	let poller = null;
+	let pollerLive = false;
+	const dispatch = (notice) => {
+		for (const l of [...listeners]) {
+			if (notice === null || notice.changes.some((c) => l.collections.has(c.collection))) l.onChange(notice);
+		}
+	};
+	const syncPolling = () => {
+		const every = live ? livePollMs : pollMs;
+		const want = listeners.size > 0 && every !== false;
+		if (poller !== null && (!want || pollerLive !== live)) {
+			clearTimeout(poller);
+			poller = null;
+		}
+		if (!want || poller !== null) return;
+		pollerLive = live;
+		// Jitter only the live safety poll: every tab of a busy page must not refresh at once.
+		const delay = live ? Math.round(every * (.8 + Math.random() * .4)) : every;
+		poller = setTimeout(() => {
+			poller = null;
+			dispatch(null);
+			syncPolling();
+		}, delay);
+	};
+	const connect = () => {
+		if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;
+		const transport = rtOpts.transport ?? registry().transport;
+		if (!transport || typeof transport.connect !== "function") return;
+		registry().waiters.delete(connect);
+		let current = true;
+		const stop = transport.connect((notice) => {
+			if (current && isObject(notice) && Array.isArray(notice.changes)) dispatch(notice);
+		}, (state) => {
+			if (!current) return;
+			const was = live;
+			live = state === "live";
+			syncPolling();
+			// Back online: catch up on whatever changed while the transport was down.
+			if (live && !was) dispatch(null);
+		});
+		disconnect = () => {
+			current = false;
+			live = false;
+			stop();
+		};
+	};
+	const realtime = { subscribe(collections, onChange) {
+		const entry = {
+			collections: new Set(collections),
+			onChange
+		};
+		listeners.add(entry);
+		registry().waiters.add(connect);
+		connect();
+		syncPolling();
+		return () => {
+			listeners.delete(entry);
+			if (listeners.size === 0) {
+				registry().waiters.delete(connect);
+				disconnect?.();
+				disconnect = null;
+			}
+			syncPolling();
+		};
+	} };
 	function collection(key) {
 		const desc = SCHEMA.collections[key];
 		const path = `/${seg(desc.path)}`;
 		const one = (id) => `${path}/${seg(id)}`;
+		const list = (q) => request("GET", path, { query: listParams(q) });
 		return {
-			list: (q) => request("GET", path, { query: listParams(q) }),
+			list,
+			watch: (q, onRows, onError) => watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
 			get: (id, q) => request("GET", one(id), { query: listParams(q ? {
 				with: q.with,
 				locale: q.locale
@@ -545,7 +630,65 @@ export function createClient(options = {}) {
 		schema: () => request("GET", "/_schema")
 	};
 	for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key);
+	hubs.set(client, realtime);
 	return client;
+}
+const hubs = new WeakMap();
+/**
+* Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
+* transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
+* express: an action's result, a `get`, a global. Returns a function that stops watching.
+*/
+export function watch(client, collections, read, onResult, onError) {
+	const hub = hubs.get(client) ?? (() => {
+		throw new TypeError("watch() needs a client from createClient()");
+	})();
+	return watchWith(hub, collections, read, onResult, onError);
+}
+function watchWith(hub, collections, read, onResult, onError) {
+	// Coalesced: one read in flight; changes during it schedule exactly one more.
+	let stopped = false;
+	let running = false;
+	let again = false;
+	const refresh = async () => {
+		if (running) {
+			again = true;
+			return;
+		}
+		running = true;
+		try {
+			do {
+				again = false;
+				try {
+					const value = await read();
+					if (!stopped) onResult(value);
+				} catch (e) {
+					if (!stopped) onError?.(e instanceof FirstError ? e : networkError(String(e)));
+				}
+			} while (again && !stopped);
+		} finally {
+			running = false;
+		}
+	};
+	const unsubscribe = hub.subscribe(collections, () => void refresh());
+	void refresh();
+	return () => {
+		stopped = true;
+		unsubscribe();
+	};
+}
+/** The collection and every collection its `with` loads: a change to any of them refreshes the read. */
+function dependencies(key, w, seen = new Set()) {
+	seen.add(key);
+	const relations = SCHEMA.collections[key]?.relations ?? {};
+	if (isObject(w)) {
+		for (const [name, v] of Object.entries(w)) {
+			const target = relations[name]?.collection;
+			if (!v || typeof target !== "string" || seen.has(target)) continue;
+			dependencies(target, isObject(v) ? v.with : undefined, seen);
+		}
+	}
+	return [...seen];
 }
 /** Problem documents map field by field; WordPress core errors (`{ code, message, data: { status } }`) are mapped onto the same shape. */
 function toError(res, body) {

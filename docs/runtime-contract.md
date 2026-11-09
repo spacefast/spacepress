@@ -598,6 +598,33 @@ values slashed as WordPress expects), as a signed-out visitor, and suppresses
 the headers WordPress would send for the HTML page. Call it at most once per
 request.
 
+## URL purges (`Wp\Purges`)
+
+After a committed write to public content, the v2 app plugin announces the
+URLs it changed on the host's `zero_purge_urls` action:
+`do_action('zero_purge_urls', list<string> $paths)`. On Spacefast the engine
+listens and purges those URLs from Batcache and the edge. With no listener
+(`has_action` is false), nothing is collected or announced.
+
+- **Writes covered:** posts and pages of public post types (create, update,
+  publish, unpublish, trash, delete), term assignments, and term edits and
+  deletes in public taxonomies. Drafts that stay drafts and Zero collections
+  (not public) announce nothing.
+- **Paths, root-relative with their query:** the item's URL before and after
+  the write (a slug change purges both), the home page, the posts page, the
+  post type archive, every term archive the post had or has, the author
+  archive, page 2 of each listing, the feed, `/llms.txt`, and every page
+  URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
+  slug change purges both the old and the new archive. Adding or removing a
+  post's terms (`wp_set_object_terms()`, `wp_remove_object_terms()`) purges
+  page 1 and page 2 of every term archive it joined or left. Deeper listing pages fall back to the edge's `s-maxage`
+  window.
+- **When:** once per request, after the outermost Zero transaction commits,
+  or at `shutdown` for writes made outside one (wp-admin, core REST). A
+  rolled-back transaction announces nothing.
+- `Purges::paths(array $urls): list<string>` turns URLs into the announced
+  paths, `.md` twins included.
+
 ## CLI (`wp zero`)
 
 ```

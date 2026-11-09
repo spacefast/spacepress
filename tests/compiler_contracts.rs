@@ -3206,7 +3206,11 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
         $out = \FirstApp\action__relay(new \First\JsObject(['who' => 'ada']), null);
         echo json_encode(['out' => \First\Js::jsonTree($out), 'seen' => \First\Wp\Abilities\Call::$seen]);
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &stub, &plugin],
+        &[
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &stub,
+            &plugin,
+        ],
     );
     assert_eq!(
         got,

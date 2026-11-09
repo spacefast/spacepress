@@ -245,7 +245,11 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
         std::fs::read(p.out.join("plugins/feature/assets/data.txt")).unwrap(),
         b"artifact bytes"
     );
-    assert!(p.out.join("plugins/first-app-fixtures/first-app-fixtures.php").is_file());
+    assert!(
+        p.out
+            .join("plugins/first-app-fixtures/first-app-fixtures.php")
+            .is_file()
+    );
     assert!(p.out.join("plugins/first-app-fixtures.zip").is_file());
     let lock_path = p.root.join("first/wp-plugins.lock.json");
     let locked = std::fs::read(&lock_path).unwrap();

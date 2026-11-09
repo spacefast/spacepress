@@ -7,7 +7,7 @@
 
 use crate::diag::{Diag, Span, suggest};
 use crate::ir::*;
-use crate::loader::{Program, WORDPRESS_MODULE, FIRST_MODULE};
+use crate::loader::{FIRST_MODULE, Program, WORDPRESS_MODULE};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;

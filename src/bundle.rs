@@ -125,7 +125,8 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
         fs: fs.clone(),
         packages,
     });
-    let program = loader::load_from(recording.clone(), &project.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
+    let program =
+        loader::load_from(recording.clone(), &project.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
     let built = pipeline::build(&project, &program, || Ok(pipeline::Previous::none()), |_| None)?;
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure(

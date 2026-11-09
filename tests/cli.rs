@@ -220,7 +220,12 @@ export default defineConfig({
 fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     let project = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
-    let built = first().arg("build").arg(project.path()).arg("--quiet").output().unwrap();
+    let built = first()
+        .arg("build")
+        .arg(project.path())
+        .arg("--quiet")
+        .output()
+        .unwrap();
     assert!(built.status.success(), "build: {}", text(&built.stderr));
 
     let mut child = Command::new("php")

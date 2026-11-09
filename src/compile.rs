@@ -1645,7 +1645,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match pat {
                     Pat::Id(n, _) => {
                         let php = self.declare_local(n, ty, mutable, pat.span());
-                        let v = value.map(|v| v.php).unwrap_or_else(|| "\\First\\Js::undefined()".into());
+                        let v = value
+                            .map(|v| v.php)
+                            .unwrap_or_else(|| "\\First\\Js::undefined()".into());
                         self.fresh_binding(&php, pat.span(), &mut out, indent);
                         let _ = writeln!(out, "{p}{php} = {v};");
                     }
@@ -2448,7 +2450,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         let php = self.declare_binding(name, types, mutable, *span);
                         self.fresh_binding(&php, *span, out, indent);
-                        let _ = writeln!(out, "{p}{php} = \\First\\Js::dynamicRest({src}, [{}]);", keys.join(", "));
+                        let _ = writeln!(
+                            out,
+                            "{p}{php} = \\First\\Js::dynamicRest({src}, [{}]);",
+                            keys.join(", ")
+                        );
                     }
                     return Ok(());
                 }
@@ -2554,7 +2560,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 for (i, e) in elems.iter().enumerate() {
                     let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
                     if let Some(e) = e {
-                        let access = format!("({done} ? \\First\\Js::undefined() : \\First\\Js::dynamicGet({src}, {i}))");
+                        let access =
+                            format!("({done} ? \\First\\Js::undefined() : \\First\\Js::dynamicGet({src}, {i}))");
                         let types = BindingTypes {
                             read: live_element(&ty, i, changed).expect("array read"),
                             constraint: live_element(&constraint, i, changed).expect("authored array"),
@@ -3707,7 +3714,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // Js::add: operands and result as JS numbers (exact ints past ±2^53 round, as in JS).
                     Out::atom(format!("\\First\\Js::add({}, {})", a.php, b.php), Ty::Num)
                 } else if a.ty.is_str() || b.ty.is_str() {
-                    Out::atom(format!("\\First\\Js::dynamicBinary('+', {}, {})", a.php, b.php), Ty::Str)
+                    Out::atom(
+                        format!("\\First\\Js::dynamicBinary('+', {}, {})", a.php, b.php),
+                        Ty::Str,
+                    )
                 } else {
                     return err_help(
                         span,
@@ -6457,7 +6467,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (_, "forEach") => {
                 let f = self.arg(args, 0, span, "a function")?;
                 let cb = self.callback(f, &[value, key, recv.ty.non_null()])?;
-                Out::atom(format!("\\First\\Js::collectionForEach({r}, {})", cb.php), Ty::Undefined)
+                Out::atom(
+                    format!("\\First\\Js::collectionForEach({r}, {})", cb.php),
+                    Ty::Undefined,
+                )
             }
             (false, "keys") => iter("keys", key),
             (_, "values") => iter("values", value),
@@ -7539,7 +7552,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if g == "RegExp" {
             let argv = self.javascript_args(args)?;
-            return Ok(Out::atom(format!("\\First\\Js::dynamicRegExpCall({argv})"), Ty::Dynamic));
+            return Ok(Out::atom(
+                format!("\\First\\Js::dynamicRegExpCall({argv})"),
+                Ty::Dynamic,
+            ));
         }
         if matches!(g, "setTimeout" | "clearTimeout") {
             return self.timer_call(g, args, span);
@@ -8011,7 +8027,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     },
                     _ => return err(span, "Object.fromEntries needs an array of [key, value] pairs"),
                 };
-                Out::atom(format!("\\First\\Js::fromEntries({})", php_args()), Ty::Map(Box::new(t)))
+                Out::atom(
+                    format!("\\First\\Js::fromEntries({})", php_args()),
+                    Ty::Map(Box::new(t)),
+                )
             }
             ("Object", "hasOwn") => {
                 if a0.is_some_and(|value| value.ty.all(|ty| matches!(ty, Ty::Fn(..) | Ty::Class(_)))) {
@@ -8643,7 +8662,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
-                    format!("(\\First\\Js::dynamicMethod({}, 'splice'))({})", a.php, extra.join(", ")),
+                    format!(
+                        "(\\First\\Js::dynamicMethod({}, 'splice'))({})",
+                        a.php,
+                        extra.join(", ")
+                    ),
                     Ty::Array(Box::new(el)),
                 )
             }

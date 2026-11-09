@@ -279,7 +279,11 @@ fn rejects_hooks_that_would_misbehave_in_php() {
         "this database call never runs",
         "first.config.ts:5:",
     );
-    rejects("reject-module-state", "hooks can't change `count`", "first.config.ts:4:");
+    rejects(
+        "reject-module-state",
+        "hooks can't change `count`",
+        "first.config.ts:4:",
+    );
     rejects(
         "reject-maybe-null",
         "can't read `length`: this might be null",
@@ -605,9 +609,10 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{example}: {}",
             String::from_utf8_lossy(&result.stderr)
         );
-        let actual: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(persisted.join("first/_generated/migrations/snapshot.json")).unwrap())
-                .unwrap();
+        let actual: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(persisted.join("first/_generated/migrations/snapshot.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             actual, stored,
             "{example}: the authoring change must preserve stored resources"
@@ -1121,15 +1126,15 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
             .unwrap()
     };
     assert_eq!(sync(&["--check"]).status.code(), Some(2));
-    let first = sync(&[]);
+    let initial = sync(&[]);
     assert_eq!(
-        first.status.code(),
+        initial.status.code(),
         Some(0),
         "{}",
-        String::from_utf8_lossy(&first.stdout)
+        String::from_utf8_lossy(&initial.stdout)
     );
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&first.stdout).unwrap()["data"]["applied"],
+        serde_json::from_slice::<serde_json::Value>(&initial.stdout).unwrap()["data"]["applied"],
         2
     );
     let again = sync(&[]);

@@ -587,7 +587,10 @@ fn collection(
                     }
                 }
                 Err(Stale) => {
-                    report.fail(format!("{}/{uid}: the site kept changing; run first sync again", c.name));
+                    report.fail(format!(
+                        "{}/{uid}: the site kept changing; run first sync again",
+                        c.name
+                    ));
                     break;
                 }
             }

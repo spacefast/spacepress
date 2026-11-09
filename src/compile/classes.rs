@@ -1005,7 +1005,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         );
         let tmp = self.tmp_var();
         Ok(Out::atom(
-            format!("(({tmp} = \\FirstApp\\{found}) === \\First\\JsClass::absent() ? \\First\\Js::undefined() : {tmp})"),
+            format!(
+                "(({tmp} = \\FirstApp\\{found}) === \\First\\JsClass::absent() ? \\First\\Js::undefined() : {tmp})"
+            ),
             ty,
         ))
     }

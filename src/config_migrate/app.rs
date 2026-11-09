@@ -382,7 +382,8 @@ fn convert(
         }
         None => BTreeMap::new(),
     };
-    if sources.contains_key(Path::new("first.config.ts")) || sources.contains_key(Path::new("server/__z08-content.ts")) {
+    if sources.contains_key(Path::new("first.config.ts")) || sources.contains_key(Path::new("server/__z08-content.ts"))
+    {
         return Err(fail("", "input imports a reserved generated config path"));
     }
     let canonical = PathBuf::from("server/index.ts");

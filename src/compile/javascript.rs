@@ -63,7 +63,12 @@ impl Compiler<'_, '_> {
             ty
         };
         Ok(Out::atom(
-            format!("\\First\\Js::dynamicBinary({}, {}, {})", php_str(operator), a.php, b.php),
+            format!(
+                "\\First\\Js::dynamicBinary({}, {}, {})",
+                php_str(operator),
+                a.php,
+                b.php
+            ),
             ty,
         ))
     }

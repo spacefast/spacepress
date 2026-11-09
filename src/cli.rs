@@ -65,7 +65,9 @@ pub fn help() -> String {
             out.push_str(&format!("  {:width$}  {}\n", e.name, e.summary));
         }
     }
-    out.push_str("\nzero help <command> shows its arguments. Credentials come from FIRST_APP_PASSWORD or FIRST_TOKEN.\n");
+    out.push_str(
+        "\nzero help <command> shows its arguments. Credentials come from FIRST_APP_PASSWORD or FIRST_TOKEN.\n",
+    );
     out
 }
 

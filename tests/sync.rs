@@ -380,13 +380,13 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
         "first build ignores .first except the bases:\n{ignore}"
     );
     std::fs::write(project.join("unrelated.txt"), "not sync's").unwrap();
-    let first = sync(&project, &site, &[]);
+    let initial = sync(&project, &site, &[]);
     assert_eq!(
-        first.status.code(),
+        initial.status.code(),
         Some(0),
         "{}{}",
-        String::from_utf8_lossy(&first.stdout),
-        String::from_utf8_lossy(&first.stderr)
+        String::from_utf8_lossy(&initial.stdout),
+        String::from_utf8_lossy(&initial.stderr)
     );
     let hello = read(&project, "content/notes/hello.md");
     let uid = hello
@@ -1746,7 +1746,7 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
         },
         edited.clone(),
     );
-    let first = first()
+    let initial = first()
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
@@ -1756,10 +1756,10 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(
-        first.status.code(),
+        initial.status.code(),
         Some(1),
         "{}",
-        String::from_utf8_lossy(&first.stderr)
+        String::from_utf8_lossy(&initial.stderr)
     );
     assert_eq!(site.rows("notes")[0]["title"], "Agreed");
     let second = sync(&project, &site, &["resolve", &uid]);

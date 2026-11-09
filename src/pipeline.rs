@@ -2,6 +2,7 @@
 //! Nothing here reads or writes a project; `commands::build` does that around it for the CLI and
 //! `wasm` hands it sources from a browser.
 
+mod exports;
 use crate::diag::{Diag, Span};
 use crate::extract::Slot;
 use crate::schema::{Access, DefaultKind, Owner};
@@ -149,6 +150,7 @@ pub fn build(
         start: 0,
         end: 0,
     };
+    exports::register(program, &mut ev, &config).map_err(|d| d.phase(diag::Code::Schema))?;
     let dir_name = project
         .file_name()
         .map(|n| extract::slugify_name(&n.to_string_lossy()))
@@ -375,7 +377,7 @@ pub fn build(
     })
 }
 
-/// Each `wp-hooks/` file becomes a root: its default export is the handler, an optional
+/// Each `zero/wp-hooks/` file becomes a root: its default export is the handler, an optional
 /// `export const priority = <integer>` its priority (default 10, so a hook's files run in file order).
 /// The hook must be in the catalog; the handler is typed from it when it compiles.
 fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
@@ -391,10 +393,10 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
             let mut d = Diag::new(span, format!("`{}` is not a WordPress hook Zero types", file.hook));
             d = match diag::suggest(&file.hook, crate::wordpress::hook_names()) {
                 Some(s) => d.help(format!(
-                    "did you mean `{s}`? Rename the file or directory under wp-hooks/"
+                    "did you mean `{s}`? Rename the file or directory under zero/wp-hooks/"
                 )),
                 None => d.help(format!(
-                    "wp-hooks/ supports: {}",
+                    "zero/wp-hooks/ supports: {}",
                     crate::wordpress::hook_names().collect::<Vec<_>>().join(", ")
                 )),
             };
@@ -403,7 +405,7 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
         let exports = ev.run_module(file.module)?;
         let Some(Value::Closure(closure)) = exports.get("default") else {
             return Err(
-                Diag::new(span, "a wp-hooks/ file needs a default-exported handler function").help(format!(
+                Diag::new(span, "a zero/wp-hooks/ file needs a default-exported handler function").help(format!(
                     "write `export default function ({}) {{ ... }}`",
                     hook.params
                         .iter()
@@ -425,7 +427,7 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
             if name != "default" && name != "priority" {
                 return Err(Diag::new(
                     span,
-                    format!("a wp-hooks/ file exports only `default` and `priority`, not `{name}`"),
+                    format!("a zero/wp-hooks/ file exports only `default` and `priority`, not `{name}`"),
                 )
                 .help("move shared code into a module both files import"));
             }

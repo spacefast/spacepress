@@ -268,6 +268,13 @@ final class CoreAccess
             return $response;
         }
         $spec = self::schema()->collection($collection);
+        if (is_array($data['meta'] ?? null) && $stored !== null) {
+            // Zero values, judged on the same row: a revision's `meta` is its own snapshot, not the
+            // raw postmeta core's revisions controller would read.
+            foreach (PostMeta::fields($spec) as $col => $_) {
+                $data['meta'][$col] = \Zero\Js::jsonTree($stored[$col] ?? null);
+            }
+        }
         $visible = $viewer === null || $stored === null ? null : (self::visibleFields($stored, $collection, $viewer));
         $dropped = false;
         foreach ($spec['columns'] as $col => $def) {
@@ -288,6 +295,9 @@ final class CoreAccess
                 $spec['slug'] ?? null => self::unset($data, ['slug', 'generated_slug', 'permalink_template', 'link']),
                 default => is_array($data['acf'] ?? null) ? self::unset($data['acf'], [$spec['wp']['metaPrefix'] . $col, $spec['wp']['metaPrefix'] . $col . '_source']) : null,
             };
+            if (is_array($data['meta'] ?? null)) {
+                unset($data['meta'][$col]);
+            }
         }
         $response->set_data($data);
         if ($dropped) {
@@ -602,6 +612,28 @@ final class CoreAccess
         if (($spec['drafts'] ?? false) && is_string($status = $request->get_param('status'))) {
             $data['status'] = ['publish' => 'published', 'future' => 'scheduled'][$status] ?? 'draft';
         }
+        // Core `meta` (PostMeta): each field under its own name, in Zero's value form.
+        $meta = PostMeta::input($request);
+        if (is_array($meta)) {
+            foreach (PostMeta::fields($spec) as $col => $def) {
+                if (array_key_exists($col, $meta)) {
+                    if ($singleSelector && array_key_exists($col, $data)) {
+                        throw new HttpError(403, 'forbidden', "Submit $col only once", HttpError::seg((string) $col));
+                    }
+                    // The value as it will be saved (PostMeta::update_value normalizes the same way),
+                    // so a data-dependent rule sees the same data before and after the save. A group
+                    // declares only the sub-fields the request sent: the ones it leaves out are kept or
+                    // defaulted by the save, not written by this request. A value that doesn't
+                    // normalize is kept raw: the save refuses it with Zero's 422.
+                    $raw = \Zero\Seam::toPhp($meta[$col], $def);
+                    try {
+                        $data[$col] = self::sent($def, \Zero\Schema::normalize($def, $raw, (string) $col, HttpError::seg((string) $col)), $raw);
+                    } catch (HttpError) {
+                        $data[$col] = $raw;
+                    }
+                }
+            }
+        }
         $acf = $request->get_param('acf');
         if (is_array($acf)) {
             $map = is_array($acf['_acf_field_key_map'] ?? null) ? $acf['_acf_field_key_map'] : [];
@@ -620,6 +652,22 @@ final class CoreAccess
         }
 
         return [$data, array_map('strval', array_keys($data))];
+    }
+
+    /** A normalized group value narrowed to the sub-fields $raw (the request's value) names, at any depth. */
+    private static function sent(array $def, mixed $norm, mixed $raw): mixed
+    {
+        if ($def['type'] !== 'group' || !is_array($norm) || !is_array($raw) || ($raw !== [] && array_is_list($raw))) {
+            return $norm;
+        }
+        $out = [];
+        foreach ($raw as $key => $value) {
+            if (array_key_exists($key, $norm) && isset($def['fields'][$key])) {
+                $out[$key] = self::sent($def['fields'][$key], $norm[$key], $value);
+            }
+        }
+
+        return $out;
     }
 
     // ================================================================ helpers

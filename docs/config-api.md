@@ -372,6 +372,20 @@ changes nothing. Core reads apply the read rule and field access; core writes
 and editor saves apply the create, update and field rules, and are authorized
 on the saved data before they commit.
 
+Core `/wp/v2/<post type>` speaks Zero's fields and queries too:
+
+- Every field is registered post meta (`register_post_meta`, `show_in_rest`,
+  with its JSON Schema) under its own name. `meta.seats` reads and writes the
+  value as Zero does: a group or repeater is one value, a date is
+  `YYYY-MM-DD`. Writes go through Zero's codec and rules, and a field hidden
+  from the viewer is dropped from `meta` like everywhere else.
+- List routes take Zero's query arguments next to core's own:
+  `where` (JSON), `orderBy` (`-seats,title`), `with` (`author,comments` or
+  JSON; each item gets the relations under `with`) and `search` (every text
+  and richText field the viewer may read). They run as the viewer, so a filter
+  or sort on a hidden field is the same 403 as on Zero's API. Core keeps
+  pagination (`page`, `per_page`, `X-WP-Total`) and `_fields`.
+
 ## Globals
 
 `global(name, fields, { label?, access?: { read?, update? } })`, registered in

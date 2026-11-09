@@ -24,6 +24,17 @@ final class PostsController extends \WP_REST_Posts_Controller
     {
         parent::__construct($post_type);
         $this->collection = CoreAccess::collection($post_type) ?? throw new \LogicException("$post_type is not a Zero post type");
+        $this->meta = new PostMeta($post_type, $this->collection);
+    }
+
+    /** Zero's query arguments (spec §3a), next to core's own; values as on the facade's `?where=`. */
+    public function get_collection_params()
+    {
+        return parent::get_collection_params() + [
+            'where' => ['description' => 'A Zero filter, as JSON: `{"seats":{"gte":10}}`.', 'type' => 'string'],
+            'orderBy' => ['description' => 'Zero fields to sort by, comma-separated; `-field` sorts descending.', 'type' => 'string'],
+            'with' => ['description' => 'Relations to attach under `with`: `author,comments` or a JSON object.', 'type' => 'string'],
+        ];
     }
 
     public function get_items_permissions_check($request)
@@ -40,20 +51,32 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     private function readItems(\WP_REST_Request $request)
     {
-        $keys = CoreAccess::keys($this->collection, 'read', CoreAccess::viewer() ?? throw new \LogicException('checked'));
-        if (!is_array($keys)) {
-            return parent::get_items($request);
+        $viewer = CoreAccess::viewer() ?? throw new \LogicException('checked');
+        try {
+            $query = ZeroQuery::keys($this->collection, $request, $viewer, searched: $searched);
+        } catch (\Zero\HttpError $e) {
+            return CoreAccess::error($e);
         }
-        $allowed = array_map('intval', $keys);
+        $keys = CoreAccess::keys($this->collection, 'read', $viewer);
+        $keys = is_array($keys) ? array_map('intval', $keys) : null;
+        if ($query !== null) {
+            // The Zero query already ran as this viewer (read rule, draft visibility, field masks).
+            $keys = $keys === null ? $query : array_values(array_intersect($query, $keys));
+        }
+        if ($keys === null) {
+            return ZeroQuery::attach($this->collection, $request, $viewer, parent::get_items($request));
+        }
         // Core maps the default empty `include` to post__in = [], which means no restriction.
-        $limit = static function (array $args) use ($allowed): array {
-            $in = !empty($args['post__in']) ? array_values(array_intersect($allowed, array_map('intval', (array) $args['post__in']))) : $allowed;
+        $ordered = $query !== null && $request['orderBy'] !== null;
+        $limit = static function (array $args) use ($keys, $ordered, $searched): array {
+            $in = !empty($args['post__in']) ? array_values(array_intersect($keys, array_map('intval', (array) $args['post__in']))) : $keys;
+            $args = $searched ? ZeroQuery::coreArgs($args) : $args;
 
-            return ['post__in' => $in === [] ? [0] : $in] + $args;
+            return ['post__in' => $in === [] ? [0] : $in] + ($ordered ? ['orderby' => 'post__in'] : []) + $args;
         };
         add_filter("rest_{$this->post_type}_query", $limit, PHP_INT_MAX);
         try {
-            return parent::get_items($request);
+            return ZeroQuery::attach($this->collection, $request, $viewer, parent::get_items($request));
         } finally {
             remove_filter("rest_{$this->post_type}_query", $limit, PHP_INT_MAX);
         }
@@ -94,7 +117,11 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function get_item($request)
     {
-        return $this->readRequest($request, fn () => parent::get_item($request));
+        return $this->readRequest($request, function () use ($request) {
+            $viewer = CoreAccess::viewer();
+
+            return $viewer === null ? parent::get_item($request) : ZeroQuery::attach($this->collection, $request, $viewer, parent::get_item($request));
+        });
     }
 
     private function readRequest(\WP_REST_Request $request, callable $read, ?string $passwordProof = null): mixed
@@ -117,9 +144,9 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function prepare_item_for_response($item, $request)
     {
-        $response = parent::prepare_item_for_response($item, $request);
-
         $stored = Plugin::instance()?->db()->editorRow($this->collection, (int) $item->ID);
+        $response = $this->meta instanceof PostMeta ? $this->meta->with((int) $item->ID, $stored, fn () => parent::prepare_item_for_response($item, $request))
+            : parent::prepare_item_for_response($item, $request);
 
         return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }
@@ -148,7 +175,7 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function create_item($request)
     {
-        return EditorSave::rest($this->collection, null, $request, fn () => parent::create_item($request));
+        return EditorSave::rest($this->collection, null, $request, fn () => $this->save($request, fn () => parent::create_item($request)));
     }
 
     /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */
@@ -172,6 +199,11 @@ final class PostsController extends \WP_REST_Posts_Controller
         $post = $this->get_post($request['id']);
         $postId = $post instanceof \WP_Post ? $post->ID : null;
 
-        return EditorSave::rest($this->collection, $postId, $request, fn () => parent::update_item($request));
+        return EditorSave::rest($this->collection, $postId, $request, fn () => $this->save($request, fn () => parent::update_item($request)));
+    }
+
+    private function save(\WP_REST_Request $request, callable $save): mixed
+    {
+        return $this->meta instanceof PostMeta ? $this->meta->saving($request, $save) : $save();
     }
 }

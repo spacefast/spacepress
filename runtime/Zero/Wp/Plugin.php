@@ -453,6 +453,7 @@ final class Plugin
                 'rewrite' => false,
                 'query_var' => false,
             ]);
+            PostMeta::register($spec);
         }
     }
 

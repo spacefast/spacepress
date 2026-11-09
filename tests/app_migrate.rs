@@ -302,13 +302,11 @@ fn omissions_are_errors_and_static_files_carry_over() {
             ("Z08_OMITTED_STATIC", "/assets/logo.png", "assets/logo.png", 1),
             ("Z08_OMITTED_CLIENT", "/client", "client/index.tsx", 1),
             ("Z08_OMITTED_PUBLIC", "/public/site.css", "public/site.css", 1),
-            ("Z08_OMITTED_REDIRECTS", "/sf.jsonc/redirects", "sf.jsonc", 4),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/fallback", "sf.jsonc", 5),
             // A key the converter doesn't know to be a no-op is refused, not passed through.
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/meta", "sf.jsonc", 6),
             // Located at the top-level key, not at the "theme" string inside meta.
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/theme", "sf.jsonc", 7),
-            ("Z08_OMITTED_CLEAN_URLS", "/sf.jsonc/cleanUrls", "sf.jsonc", 1),
             ("Z08_OMITTED_CONFIG", "/theme.json", "theme.json", 1),
         ],
         "{report:#}"
@@ -497,13 +495,101 @@ fn omissions_are_errors_and_static_files_carry_over() {
     );
 
     // A server-only project: no errors, and its static files land in public/ at the same URLs.
+    // The keys Spacefast applies to the Space travel unchanged in the candidate's own sf.jsonc,
+    // which the v2 publish uploads; the 0.8 runtime and name don't.
+    let platform = temp.path().join("server-only-source");
+    copy_tree(&fixture("server-only"), &platform);
+    let settings = serde_json::json!({
+        "redirects": [{ "source": "/old", "destination": "/new", "status": 301 }],
+        "cleanUrls": false,
+        // The string form has no path patterns, and v2's /wp-json lane enforces it the same way.
+        "access": "public",
+        "build": { "outputDirectory": "dist" },
+    });
+    let mut config = settings.clone();
+    config["runtime"] = serde_json::json!({ "kind": "zero", "server": "server/index.ts" });
+    config["name"] = "Server only".into();
+    std::fs::write(
+        platform.join("sf.jsonc"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+    // Space overlay settings the committed file can't set: refused at the key, not reported carried.
+    let mut overlay = config.clone();
+    overlay["dataSources"] = serde_json::json!({ "blog": { "url": "https://blog.example" } });
+    overlay["network"] = serde_json::json!({ "egress": "allowlist" });
+    // The engine checks a rewrite's path, and compiles a listing, against 0.8 pages only, so on v2
+    // they would take over the app's URLs: refused.
+    overlay["rewrites"] = serde_json::json!([{ "source": "/(.*)", "destination": "/index.html" }]);
+    overlay["listing"] = true.into();
+    // access path patterns, crons (no CRON_SECRET on v2) and sell (its product file and paid
+    // assets would be swept into public/) don't apply the same way: refused.
+    overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
+    // On v2 the app's data URLs are /wp-json/zero/v1/*, which nothing reserves from redirects: a
+    // rule whose source can reach them is refused (here a catch-all host move).
+    overlay["redirects"] = serde_json::json!([
+        { "source": "/old", "destination": "/new", "status": 301 },
+        { "source": "/*", "destination": "https://new.example/:splat", "status": 301 }
+    ]);
+    // Path rules don't survive the move: the app's data URLs move to /wp-json/zero/v1/*.
+    overlay["firewall"] =
+        serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
+    overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
+    overlay["crons"] = serde_json::json!([{ "path": "/api/nightly", "schedule": "daily" }]);
+    overlay["sell"] = serde_json::json!({ "mode": "test", "products": "sell/products.json" });
+    // Header rules apply to response-table entries only, so on v2 they would skip the app's
+    // WordPress-rendered pages: refused.
+    overlay["headers"] =
+        serde_json::json!([{ "source": "/(.*)", "headers": [{ "key": "x-frame-options", "value": "DENY" }] }]);
+    std::fs::write(
+        platform.join("sf.jsonc"),
+        serde_json::to_string_pretty(&overlay).unwrap(),
+    )
+    .unwrap();
+    let (ok, refused) = migrate(
+        &platform,
+        &temp.path().join("overlay"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let refused: Vec<(&str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["pointer"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        refused,
+        [
+            // Keys keep their place in the file: redirects (a rule can reach /wp-json), then access
+            // (path patterns).
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/redirects"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/access"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/dataSources"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/network"),
+            ("Z08_OMITTED_SERVE", "/sf.jsonc/rewrites"),
+            ("Z08_OMITTED_SERVE", "/sf.jsonc/listing"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/firewall"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/cache"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/crons"),
+            ("Z08_OMITTED_CONFIG", "/sf.jsonc/sell"),
+            ("Z08_OMITTED_SERVE", "/sf.jsonc/headers"),
+        ]
+    );
+    std::fs::write(
+        platform.join("sf.jsonc"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
     let out = temp.path().join("server-only");
-    let (ok, report) = migrate(&fixture("server-only"), &out, &["--space", "spc_migrate_test"]);
+    let (ok, report) = migrate(&platform, &out, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
     assert_eq!(report["errors"], serde_json::json!([]));
+    let carried: Value = serde_json::from_str(&std::fs::read_to_string(out.join("sf.jsonc")).unwrap()).unwrap();
+    assert_eq!(carried, settings);
     assert_eq!(
         std::fs::read_to_string(out.join("public/index.html")).unwrap(),
-        std::fs::read_to_string(fixture("server-only").join("index.html")).unwrap()
+        std::fs::read_to_string(platform.join("index.html")).unwrap()
     );
     assert!(out.join("public/humans.txt").is_file());
     // Repository files and source are not content.
@@ -512,20 +598,17 @@ fn omissions_are_errors_and_static_files_carry_over() {
     }
     build(&out);
 
-    // With no config file, 0.8 still served `<name>.htm` at `/<name>`; the error is at the page.
+    // With no config file, the page carries over with no error and no sf.jsonc: the engine serves
+    // public/'s static files as it served 0.8's (`.htm` keeps its name on both).
     let bare = temp.path().join("bare");
     copy_tree(&fixture("server-only"), &bare);
     std::fs::remove_file(bare.join("sf.jsonc")).unwrap();
     std::fs::write(bare.join("about.htm"), "<p>About</p>\n").unwrap();
-    let (ok, report) = migrate(&bare, &temp.path().join("bare-out"), &["--space", "spc_migrate_test"]);
-    assert!(!ok);
-    let refused: Vec<(&str, &str)> = report["errors"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| (e["code"].as_str().unwrap(), e["file"].as_str().unwrap()))
-        .collect();
-    assert_eq!(refused, [("Z08_OMITTED_CLEAN_URLS", "about.htm")], "{report:#}");
+    let out = temp.path().join("bare-out");
+    let (ok, report) = migrate(&bare, &out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    assert!(out.join("public/about.htm").is_file());
+    assert!(!out.join("sf.jsonc").exists());
 }
 
 #[test]
@@ -917,13 +1000,58 @@ fn project(root: &Path, capsule: &str) {
     .unwrap();
 }
 
+/// 0.8 rebuilt `content/posts/` into the Space's posts on every publish. The candidate adopts the
+/// post rows but doesn't rebuild them from the files, so the files are refused rather than served
+/// raw; without them, the posts are adopted.
 #[test]
 fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("source");
     project(&root, r#"{name:"spacefast-posts", realtime:{enabled:true}}"#);
-    std::fs::create_dir_all(root.join("content/posts")).unwrap();
+    std::fs::create_dir_all(root.join("content/posts/2026")).unwrap();
     std::fs::write(root.join("content/posts/hello.md"), "---\ntitle: Hello\n---\nBody").unwrap();
+    std::fs::write(root.join("content/posts/2026/later.html"), "<p>Later</p>").unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("refused"), &["--dry-run"]);
+    assert!(!ok);
+    let errors: Vec<(&str, &str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["pointer"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    // One error for the directory, located at its first file; nothing is carried as static.
+    assert_eq!(
+        errors,
+        [("Z08_OMITTED_POSTS", "/content/posts", "content/posts/2026/later.html")],
+        "{refused:#}"
+    );
+    // A declared `collections.posts` turned off 0.8's structural default, so 0.8 only served the
+    // files: they carry over as static files, with no posts error.
+    let declared = temp.path().join("declared");
+    project(
+        &declared,
+        r#"{name:"spacefast-posts", collections:{posts:{label:"Posts"}}}"#,
+    );
+    std::fs::create_dir_all(declared.join("content/posts")).unwrap();
+    std::fs::write(declared.join("content/posts/hello.md"), "---\ntitle: Hello\n---\nBody").unwrap();
+    let (ok, carried) = migrate(&declared, &temp.path().join("declared-out"), &["--dry-run"]);
+    assert!(ok, "{carried:#}");
+    assert!(
+        carried["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/content/posts/hello.md"),
+        "{carried:#}"
+    );
+    std::fs::remove_dir_all(root.join("content/posts")).unwrap();
+    std::fs::create_dir_all(root.join("content/posts")).unwrap();
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
@@ -1307,6 +1435,33 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
         pricing.contains("import { plans } from '../../zero/shared/plans';"),
         "a single-quoted relative import moves with the page and into the Zero root: {pricing}"
     );
+    // Only parsed import declarations move, side-effect imports included; a string, a comment or
+    // JSX text that merely reads like one keeps its exact bytes.
+    let site = temp.path().join("site-src");
+    copy_tree(&fixture("site"), &site);
+    std::fs::write(site.join("shared/setup.ts"), "export {};\n").unwrap();
+    let decoys = [
+        "// from '../shared/plans' is where the tiers live",
+        "const caption = \"from '../shared/plans'\";",
+        "<p>{caption} and from \"../shared/plans\"</p>",
+    ];
+    std::fs::write(
+        site.join("pages/about.tsx"),
+        format!(
+            "import '../shared/setup';\n{}\n{}\nexport default function About() {{ return ({}); }}\n",
+            decoys[0], decoys[1], decoys[2]
+        ),
+    )
+    .unwrap();
+    let moved = temp.path().join("site-moved");
+    let (ok, report) = migrate(&site, &moved, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    let about = std::fs::read_to_string(moved.join("pages/about/page.tsx")).unwrap();
+    assert!(about.contains("import '../../zero/shared/setup';"), "{about}");
+    assert!(moved.join("zero/shared/setup.ts").is_file());
+    for decoy in decoys {
+        assert!(about.contains(decoy), "rewrote non-import text {decoy:?}: {about}");
+    }
     // Interactive starters keep a pointer per page saying what to port.
     let (ok, refused) = migrate(
         &corpus("starter-todo"),
@@ -2065,6 +2220,33 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let checked: Value = serde_json::from_slice(&checked.stdout).unwrap();
     assert_eq!(checked["ok"], true, "{checked}");
     assert_eq!(checked["diagnostics"].as_array().unwrap().len(), 0, "{checked}");
+    // The candidate serves the client from public/app/, public/zero/ and its stylesheet folders
+    // (here public/client/), where 0.8 served nothing of the app, so a 0.8 redirect under them
+    // would now break it: refused, not carried.
+    let moved = temp.path().join("client-app-redirect");
+    copy_tree(&fixture("client-app"), &moved);
+    let config = std::fs::read_to_string(moved.join("sf.jsonc")).unwrap().replacen(
+        "\"name\": \"Shelf Notes\",",
+        "\"name\": \"Shelf Notes\",\n  \"redirects\": [{ \"source\": \"/app/*\", \"destination\": \"/moved\", \"status\": 301 }, { \"source\": \"/client/*\", \"destination\": \"/moved\", \"status\": 301 }],",
+        1,
+    );
+    std::fs::write(moved.join("sf.jsonc"), config).unwrap();
+    let (ok, refused) = migrate(
+        &moved,
+        &temp.path().join("client-app-redirect-out"),
+        &["--space", "spc_migrate_test", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors: Vec<(&str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["code"].as_str().unwrap(), e["pointer"].as_str().unwrap()))
+        .collect();
+    assert_eq!(errors, [("Z08_OMITTED_CONFIG", "/sf.jsonc/redirects")], "{refused:#}");
+    // The refusal names the first rule that blocks the key.
+    let reason = refused["errors"][0]["reason"].as_str().unwrap();
+    assert!(reason.contains("the rule on `/app/*`"), "{refused:#}");
 }
 
 /// The bridge posts a 0.8 positional call as the input the generated v2 action declares, and the

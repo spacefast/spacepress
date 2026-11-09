@@ -35,8 +35,19 @@ docker compose -p "$ZERO_WP_PROJECT" cp "$here/indexes.php" cli:/tmp/zero-app-mi
 docker compose -p "$ZERO_WP_PROJECT" exec -T db mariadb -uroot -pzero-test-root -e \
   "CREATE DATABASE zero_adopt_other; GRANT ALL ON zero_adopt_other.* TO 'wordpress'@'%';"
 "$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-indexes.php
-# A separate source candidate proves the portable zero-identity gate on a fresh site.
-"$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/content --out "$work/content" > "$work/content-report.json"
+# A separate source candidate proves the portable zero-identity gate on a fresh site. The fixture's
+# connector roles are refused (their credentials and grants don't migrate), so this lane converts a
+# copy without them, as tests/app_migrate.rs does.
+cp -R tests/fixtures/app-migrate/content "$work/content-source"
+python3 - "$work/content-source/server/index.ts" <<'PY'
+import sys
+path = sys.argv[1]
+source = open(path).read()
+start = source.index("  connectors: {")
+end = start + source[start:].index("  },\n") + len("  },\n")
+open(path, "w").write(source[:start] + source[end:])
+PY
+"$zero" migrate app --from zero-0.8 "$work/content-source" --out "$work/content" > "$work/content-report.json"
 "$zero" build "$work/content" --quiet >/dev/null
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/content/zero/dist/wp-content" > "$work/content-harness.json"

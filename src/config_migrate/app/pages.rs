@@ -206,6 +206,40 @@ fn strip_directive(text: &str) -> String {
     text.to_string()
 }
 
+/// Rewrites the source of every import declaration in `text` with `map` (`None` keeps it), from
+/// parsed specifier spans only: a string, comment or JSX text that merely looks like an import is
+/// never touched. Side-effect imports (`import "../shared/setup"`) are declarations too.
+fn rewrite_imports(text: &str, map: impl Fn(&str) -> Option<String>) -> String {
+    let arena = Allocator::default();
+    let parsed = Parser::new(&arena, text, SourceType::tsx()).parse();
+    let mut edits: Vec<(usize, usize, String)> = parsed
+        .program
+        .body
+        .iter()
+        .filter_map(|s| match s {
+            Statement::ImportDeclaration(i) => Some(&i.source),
+            _ => None,
+        })
+        .filter_map(|source| {
+            let spec = source.value.as_str();
+            let quote = &text[source.span.start as usize..source.span.start as usize + 1];
+            map(spec).map(|to| {
+                (
+                    source.span.start as usize,
+                    source.span.end as usize,
+                    format!("{quote}{to}{quote}"),
+                )
+            })
+        })
+        .collect();
+    edits.sort_by_key(|(start, ..)| std::cmp::Reverse(*start));
+    let mut out = text.to_string();
+    for (start, end, replacement) in edits {
+        out.replace_range(start..end, &replacement);
+    }
+    out
+}
+
 /// A page moves one directory deeper (`pages/about.tsx` → `pages/about/page.tsx`); relative
 /// imports of the app's own modules gain the same depth.
 fn relocate(text: &str, extra: usize) -> String {
@@ -213,50 +247,28 @@ fn relocate(text: &str, extra: usize) -> String {
         return text.to_string();
     }
     let up = "../".repeat(extra);
-    // Both quote styles: `from '../shared/plans'` is as valid as `from "../shared/plans"`.
-    let mut out = text.to_string();
-    for quote in ['"', '\''] {
-        out = out
-            .replace(&format!("from {quote}../"), &format!("from {quote}{up}../"))
-            .replace(&format!("from {quote}./"), &format!("from {quote}{up}"));
-    }
-    out
+    rewrite_imports(text, |spec| {
+        if let Some(rest) = spec.strip_prefix("./") {
+            Some(format!("{up}{rest}"))
+        } else {
+            spec.starts_with("../").then(|| format!("{up}{spec}"))
+        }
+    })
 }
 
 /// Points a converted page's imports of the app's own modules (`../shared/plans`) into the Zero
 /// root, where the candidate moves them (`../zero/shared/plans`). `file` is the page's path in the
 /// candidate (`pages/pricing/page.tsx`); an import that resolves inside `pages/` is unchanged.
 pub(super) fn into_zero_root(file: &str, text: &str) -> String {
-    let dir: Vec<&str> = file.split('/').collect::<Vec<_>>()[..file.split('/').count() - 1].to_vec();
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find("from ") {
-        let (head, tail) = rest.split_at(at + "from ".len());
-        out.push_str(head);
-        rest = tail;
-        let Some(quote) = rest.chars().next().filter(|c| *c == '"' || *c == '\'') else {
-            continue;
-        };
-        let Some(end) = rest[1..].find(quote) else { continue };
-        let spec = &rest[1..1 + end];
+    // Directories between the candidate root and the page, so `ups` reaching it leaves `pages/`.
+    let depth = file.split('/').count() - 1;
+    rewrite_imports(text, |spec| {
         let ups = spec.split('/').take_while(|s| *s == "..").count();
-        // Relative imports only; `ups` directories above the page's own, all of them left.
-        let leaves_pages = spec.starts_with("../") && ups >= dir.len();
-        out.push(quote);
-        if leaves_pages {
+        (spec.starts_with("../") && ups >= depth).then(|| {
             let prefix = "../".repeat(ups);
-            out.push_str(&prefix);
-            out.push_str(crate::layout::ROOT);
-            out.push('/');
-            out.push_str(&spec[prefix.len()..]);
-        } else {
-            out.push_str(spec);
-        }
-        out.push(quote);
-        rest = &rest[2 + end..];
-    }
-    out.push_str(rest);
-    out
+            format!("{prefix}{}/{}", crate::layout::ROOT, &spec[prefix.len()..])
+        })
+    })
 }
 
 /// Why a page needs a manual port: what it uses, and what replaces it on v2.

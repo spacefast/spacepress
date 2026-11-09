@@ -323,7 +323,11 @@ fn load_module(
 /// keep their own relative imports, and `"zero"`, `"php/wordpress"` and npm packages are always
 /// allowed.
 fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> Result<PathBuf> {
-    let installed = |p: &Path| p.components().any(|c| c.as_os_str() == "node_modules");
+    // Installed below the project, not because the project itself sits under some node_modules.
+    let installed = |p: &Path| {
+        p.strip_prefix(root)
+            .is_ok_and(|rel| rel.components().any(|c| c.as_os_str() == "node_modules"))
+    };
     if !spec.starts_with('.') || installed(from) || target.starts_with(root.join(crate::layout::ROOT)) {
         return Ok(target);
     }
@@ -1378,6 +1382,47 @@ mod tests {
             ("/p/node_modules/pkg/lib/x.js", "export const x = 2;"),
         ]);
         assert!(ok.is_ok(), "{:?}", ok.err());
+        // A project that itself lives under a node_modules directory is still fenced: only
+        // node_modules below the project root marks a package.
+        let nested =
+            |files: &[(&str, &str)]| load_from(Rc::new(memory(files)), Path::new("/w/node_modules/app/zero.config.ts"));
+        let diagnostics = nested(&[
+            (
+                "/w/node_modules/app/zero.config.ts",
+                "import { a } from './lib/a'; export default a;",
+            ),
+            ("/w/node_modules/app/lib/a.ts", "export const a = 1;"),
+        ])
+        .err()
+        .expect("refused");
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| (d.code, d.message.as_str()))
+                .collect::<Vec<_>>(),
+            [(
+                diag::Code::ImportFence,
+                "zero.config.ts imports \"./lib/a\" (lib/a.ts), which is outside zero/"
+            )]
+        );
+        assert!(
+            nested(&[
+                (
+                    "/w/node_modules/app/zero.config.ts",
+                    "import { x } from 'pkg'; export default x;"
+                ),
+                (
+                    "/w/node_modules/app/node_modules/pkg/package.json",
+                    r#"{"type":"module","exports":"./src/index.js"}"#
+                ),
+                (
+                    "/w/node_modules/app/node_modules/pkg/src/index.js",
+                    "export { x } from '../lib/x.js';"
+                ),
+                ("/w/node_modules/app/node_modules/pkg/lib/x.js", "export const x = 2;"),
+            ])
+            .is_ok()
+        );
         // Out of the config, out of a zero/ module, and into a sibling named like the root.
         assert_eq!(
             refused(&[

@@ -365,6 +365,9 @@ pub(super) struct Transformed {
     pub connector_roles: Value,
     /// Each converted query, mutation and action, as the client bridge calls it.
     pub handlers: Vec<ClientHandler>,
+    /// The capsule declared `collections.posts` itself, so 0.8 built no posts from content/posts/
+    /// (zero-compile skips its structural default for a declared collection).
+    pub declares_posts: bool,
 }
 
 /// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
@@ -675,6 +678,7 @@ pub(super) fn app(
         entries.push(entry("/realtime", "mapped", "v2 announces every committed write as a change notice, so the declaration is no longer needed; Spacefast delivers notices over Cast. Replace client useQuery subscriptions with watch(client, [\"<table>\"], read, onResult) from the generated client."));
     }
     let mut native_posts = content_posts.then(|| json!({}));
+    let mut declares_posts = false;
     let content_config = if let Some(collections) = root.get("collections") {
         for name in obj(collections, "/collections")?.keys() {
             if tables.contains_key(name) {
@@ -693,6 +697,7 @@ pub(super) fn app(
             if let Some(defs) = v["collections"].as_object_mut()
                 && let Some(posts) = defs.remove("posts")
             {
+                declares_posts = true;
                 native_posts = Some(posts);
             }
             v
@@ -1152,6 +1157,7 @@ pub(super) fn app(
         content_config,
         connector_roles: Value::Object(connector_roles),
         handlers: client_handlers,
+        declares_posts,
     })
 }
 

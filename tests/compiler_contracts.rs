@@ -3725,12 +3725,13 @@ fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
 }
 ",
     );
-    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    std::fs::create_dir(tmp.path().join("zero")).unwrap();
+    std::fs::write(tmp.path().join("zero/run.mjs"), body).unwrap();
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
         r#"import { action, defineConfig, text } from "zero";
-import { run } from "./run.mjs";
+import { run } from "./zero/run.mjs";
 export default defineConfig({ name: "tokens", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )
@@ -3767,7 +3768,7 @@ export default defineConfig({ name: "tokens", actions: { a: action({ access: "an
         .current_dir(tmp.path())
         .args(["--input-type=module", "-e"])
         .arg(format!(
-            "import {{ run }} from './run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            "import {{ run }} from './zero/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
             serde_json::to_string(&inputs).unwrap()
         ))
         .output()

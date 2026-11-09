@@ -1,0 +1,63 @@
+# The docs site (docs-site/): the compiler core built for the browser, the generated pages, the
+# Blume build, and the parity and browser tests.
+#
+# It runs on every pull request, without a path filter. The generated pages read src/, runtime/,
+# types/, examples/, tests/ and packages/, so a change almost anywhere can make one stale, and this
+# job is what fails when it does.
+name: Docs site
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-site-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  docs-site:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --component clippy --target wasm32-unknown-unknown
+        working-directory: .
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: docs-site-rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          package_json_file: docs-site/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: docs-site/pnpm-lock.yaml
+      # The core must build without the cli feature: no file system, network or embedded runtime.
+      - run: cargo clippy --locked --all-targets --no-default-features --target wasm32-unknown-unknown -- -D warnings
+        working-directory: .
+      # The parity tests compare the browser build with the native `check --json`.
+      - run: cargo build --locked --release
+        working-directory: .
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm wasm
+      # The landing page shows every file `first build` writes for examples/reading-list.
+      - run: pnpm showcase
+      # Fails when a generated page no longer matches the code. Run `pnpm generate` and commit.
+      - run: pnpm generate:check
+      - run: pnpm test
+      - run: pnpm exec blume build
+      - run: pnpm exec blume validate
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:browser

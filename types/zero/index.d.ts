@@ -1,3 +1,4 @@
+/// <reference path="./db.d.ts" />
 import type { ServicesConfig } from "./services";
 export type { ServicesConfig, ServiceForm, ServiceFormField, ServiceProduct } from "./services";
 
@@ -851,6 +852,9 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
 export interface Register {}
 
 type RegisteredSchema = Register extends { relations: Relations<infer S, any> } ? S : never;
+
+/** The app's kinds by registered name: what `import { posts } from "zero:db"` gives you. */
+export type RegisteredKinds = [RegisteredSchema] extends [never] ? {} : RegisteredSchema;
 type RegisteredRelations = Register extends { relations: Relations<any, infer C> } ? C : {};
 
 type UnregisteredQuery = {

@@ -16266,10 +16266,16 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "postId": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "name": {
           "type": "string"
@@ -16319,7 +16325,10 @@
       "type": "object",
       "properties": {
         "count": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
       "required": [
@@ -16364,7 +16373,10 @@
           "type": "string"
         },
         "seen": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
       "required": [

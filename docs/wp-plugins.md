@@ -111,7 +111,7 @@ must be repackaged. Original plugin license/readme files are preserved.
 must have its own exact package entry or be supplied by the platform. A plugin's
 `Requires Plugins` header must be covered by this list. First neither guesses
 versions nor fetches undeclared transitive packages. Duplicate declarations,
-missing dependencies, cycles, and reserved `zero-*` identities fail. Metadata is
+missing dependencies, cycles, and reserved `first-*` identities fail. Metadata is
 ordered by dependency, then lexically for independent nodes; this is also usable
 as a deployment activation order, though the build never activates plugins.
 

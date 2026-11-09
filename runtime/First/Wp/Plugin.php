@@ -396,7 +396,7 @@ final class Plugin
         if ($this->schema->globals() === []) {
             return;
         }
-        $slug = 'zero-' . $this->schema->name();
+        $slug = 'first-' . $this->schema->name();
         add_menu_page(ucfirst($this->schema->name()), ucfirst($this->schema->name()), 'edit_others_posts', $slug, static function () use ($slug): void {
             echo '<div class="wrap"><h1>' . esc_html(get_admin_page_title()) . '</h1></div>';
         }, 'dashicons-admin-settings');

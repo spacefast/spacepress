@@ -75,7 +75,7 @@ try {
     $mime = count($messages) === 1 ? file_get_contents($messages[0]) : '';
     check('the transport uses runtime env addresses and the saved submission',
         str_contains($mime, 'To: ts-inbox@example.test') && str_contains($mime, 'ts-sender@example.test')
-        && str_contains($mime, $values['message']) && str_contains($mime, 'zero-' . $receipt['id'] . '@example.test'));
+        && str_contains($mime, $values['message']) && str_contains($mime, 'first-' . $receipt['id'] . '@example.test'));
 
     $db = $wp->app()->db;
     $article = $db->insert('service_posts', ['title' => 'TypeScript workshop', 'excerpt' => 'Configured publication search', 'status' => 'published'], returning: true)[0];

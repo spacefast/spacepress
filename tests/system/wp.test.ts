@@ -393,7 +393,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   wp("plugin", "deactivate", "first-app-site", "first-identity", "first-runtime", "mcp-adapter", "action-scheduler");
   wp("plugin", "uninstall", "first-app-site", "first-identity", "first-runtime");
   // The harness's own must-use helpers aren't First's plugins; only regular plugins can be deleted.
-  assert.deepEqual(JSON.parse(wp("plugin", "list", "--status=active,inactive", "--field=name", "--format=json")).filter((n: string) => n.startsWith("zero-")), []);
+  assert.deepEqual(JSON.parse(wp("plugin", "list", "--status=active,inactive", "--field=name", "--format=json")).filter((n: string) => n.startsWith("first-")), []);
   const left = caps();
   assert.deepEqual(Object.values(left).flat().filter((c) => !["unrelated_cap", "edit_acme_zero_posts"].includes(c)), [], "no role keeps a capability for the app's post types, whoever granted it");
   assert.deepEqual(left.desk.sort(), ["edit_acme_zero_posts", "unrelated_cap"], "capabilities that aren't the app's stay");

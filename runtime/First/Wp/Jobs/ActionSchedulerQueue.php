@@ -71,7 +71,7 @@ final class ActionSchedulerQueue implements Queue
     {
         $app = Runtime::plugin()?->schema->name() ?? 'app';
         $at = (int) floor(\First\Js::date($runAtIso) / 1000);
-        if (as_schedule_single_action(max($at, time()), self::HOOK, ['id' => $id], 'zero-' . $app, false) === 0) {
+        if (as_schedule_single_action(max($at, time()), self::HOOK, ['id' => $id], 'first-' . $app, false) === 0) {
             throw new \RuntimeException("Action Scheduler refused to schedule job $id");
         }
     }

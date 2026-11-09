@@ -119,6 +119,8 @@ const MATH_AFTER = /^\s*(?:errors?|failures?|limbs?|bits?|octets?|or more|or (?:
 /** Rules for every renamed text. Each `[pattern, replacement]` only matches a spelling of zero. */
 const CODE_RULES = [
   // Whole phrases first.
+  // The First compiler's own diagnostics, which the 0.8 converter matches.
+  [/\bZero code\b/g, 'First code'],
   [/\bZero v2's\b/g, "First's"],
   [/\bZero v2\b/g, 'First'],
   [/\bzero[-_]v2(?=[-_.])[-_]?/g, 'first-'],
@@ -149,7 +151,7 @@ const CODE_RULES = [
   [/(?<![A-Za-z0-9_$])zero(?=[A-Z])/g, 'first'],
   [/(?<![A-Za-z0-9_])Zero(?=[A-Z])/g, 'First'],
   // Hyphenated names: zero-admin, zero-pages, create-zero, X-Zero-Signature, ...
-  [/(?<![\w-])zero-(?=[a-z<${])/g, 'first-'],
+  [/(?<![\w-])zero-(?=[a-z<${*'"`])/g, 'first-'],
   [/\b(create|class|zz|x|single|hello|resolve|reject|base|such|nonexistent|fixture|spacefast)-zero\b/g, '$1-first'],
   [/\b(X|x)-Zero\b/g, '$1-First'],
   [/(?<![\w-])Zero-(?=[A-Za-z])/g, 'First-'],

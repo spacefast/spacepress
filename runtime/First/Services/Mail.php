@@ -22,7 +22,7 @@ final class Mail
         foreach ($values as $key => $value) {
             $lines[] = $key . ': ' . (is_scalar($value) ? (string) $value : '');
         }
-        $messageId = '<zero-' . $row['id'] . '@' . substr(strrchr($from, '@'), 1) . '>';
+        $messageId = '<first-' . $row['id'] . '@' . substr(strrchr($from, '@'), 1) . '>';
         $restore = null;
         $configure = static function ($mailer) use ($messageId, &$restore): void {
             $properties = ['MessageID'];

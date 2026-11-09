@@ -103,12 +103,12 @@ const RULES = [
   ...LANGUAGE.map(([needle, label]) => [
     `language: ${label}`,
     "refusal",
-    (p, r) => !p && r.startsWith("error: Zero code doesn't support") && first(r).includes(needle),
+    (p, r) => !p && r.startsWith("error: First code doesn't support") && first(r).includes(needle),
   ]),
-  ["language: other construct", "refusal", (p, r) => !p && r.startsWith("error: Zero code doesn't support")],
+  ["language: other construct", "refusal", (p, r) => !p && r.startsWith("error: First code doesn't support")],
   // A global the handler calls that v2 does not provide; `fetch` is mapped from #131 on.
-  ["global: fetch", "refusal", (p, r) => /`fetch` isn't available in Zero code/.test(r)],
-  ["global: other host API", "refusal", (p, r) => /`[\w$.]+` isn't available in Zero code/.test(r)],
+  ["global: fetch", "refusal", (p, r) => /`fetch` isn't available in First code/.test(r)],
+  ["global: other host API", "refusal", (p, r) => /`[\w$.]+` isn't available in First code/.test(r)],
   // Shapes esbuild may have produced: settled only by the source.
   ["bundle shape", "source", () => true],
 ];

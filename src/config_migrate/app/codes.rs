@@ -32,7 +32,7 @@ pub struct Rule {
     pub example: (&'static str, &'static str),
 }
 
-const LANGUAGE: &str = "error: Zero code doesn't support ";
+const LANGUAGE: &str = "error: First code doesn't support ";
 
 /// `Z08_SCHEMA` when the candidate creates new tables: nothing is adopted, so the fix names the
 /// v2 declaration to write, not the 0.8 table to match.
@@ -733,7 +733,7 @@ pub static RULES: &[Rule] = &[
         test: |_, r| r.contains(LANGUAGE),
         example: (
             "",
-            "generated application refused by v2 compiler: error: Zero code doesn't support `with`",
+            "generated application refused by v2 compiler: error: First code doesn't support `with`",
         ),
     },
     Rule {
@@ -741,10 +741,10 @@ pub static RULES: &[Rule] = &[
         feature: "host API without a v2 counterpart",
         v2: "the \"first\" exports and the supported globals",
         fix: "Replace the call with a \"first\" export, or move it to the browser.",
-        test: |_, r| r.contains("isn't available in Zero code"),
+        test: |_, r| r.contains("isn't available in First code"),
         example: (
             "",
-            "generated application refused by v2 compiler: error: `setTimeout` isn't available in Zero code",
+            "generated application refused by v2 compiler: error: `setTimeout` isn't available in First code",
         ),
     },
     Rule {
@@ -886,7 +886,7 @@ mod tests {
 
     #[test]
     fn the_construct_and_service_reach_the_feature() {
-        let r = "generated application refused by v2 compiler: error: Zero code doesn't support generators\n  --> server/index.ts:3:1";
+        let r = "generated application refused by v2 compiler: error: First code doesn't support generators\n  --> server/index.ts:3:1";
         assert_eq!(feature(rule("", r), "", r), "JavaScript construct: generators");
         let p = "/queries/q/ctx/jwt";
         assert_eq!(feature(rule(p, "unsupported context service; x"), p, ""), "ctx.jwt");

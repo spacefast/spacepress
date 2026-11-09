@@ -56,7 +56,7 @@ final class Register
         if ($schema === null) {
             return;
         }
-        $id = 'zero-' . self::kebab($schema->name());
+        $id = 'first-' . self::kebab($schema->name());
         $tools = array_values(array_map(static fn (array $op): string => $op['name'], array_filter(self::operations(), static fn (array $op): bool => $op['agents'])));
         $adapter->create_server($id, 'mcp', $id, self::appLabel($schema), 'First app ' . $schema->name(), Runtime::VERSION,
             [\WP\MCP\Transport\HttpTransport::class], \WP\MCP\Infrastructure\ErrorHandling\ErrorLogMcpErrorHandler::class, null, $tools);

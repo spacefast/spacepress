@@ -134,9 +134,9 @@ impl Plugin {
     }
 
     fn validate(&self) -> Result<()> {
-        if !slug(&self.slug) || self.slug == "first" || self.slug.starts_with("zero-") {
+        if !slug(&self.slug) || self.slug == "first" || self.slug.starts_with("first-") {
             return Err(invalid(format!(
-                "invalid or reserved plugin slug `{}` (zero-* belongs to generated plugins)",
+                "invalid or reserved plugin slug `{}` (first-* belongs to generated plugins)",
                 self.slug
             )));
         }

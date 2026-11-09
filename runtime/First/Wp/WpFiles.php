@@ -41,7 +41,7 @@ final class WpFiles implements FileStorage
                 self::probe();
             }
         };
-        add_action('activated_plugin', static fn (string $plugin) => str_starts_with($plugin, 'zero-') ? $install() : null);
+        add_action('activated_plugin', static fn (string $plugin) => str_starts_with($plugin, 'first-') ? $install() : null);
         // Sites upgraded in place (no reactivation) install protection when the runtime adds the table.
         add_action('first_runtime_tables_installed', $install);
         add_action('admin_init', static function (): void {

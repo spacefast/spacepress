@@ -104,7 +104,7 @@ final class WpSite
                 }
             }
             // Dependencies first, then the runtime, then the app, as an installer would.
-            usort($activate, static fn (string $a, string $b): int => (str_starts_with($a, 'zero-') ? 1 + (int) str_starts_with($a, 'first-app-') : 0) <=> (str_starts_with($b, 'zero-') ? 1 + (int) str_starts_with($b, 'first-app-') : 0));
+            usort($activate, static fn (string $a, string $b): int => (str_starts_with($a, 'first-') ? 1 + (int) str_starts_with($a, 'first-app-') : 0) <=> (str_starts_with($b, 'first-') ? 1 + (int) str_starts_with($b, 'first-app-') : 0));
             $fixture['schema'] = ['name' => $manifest['app'], 'locales' => $manifest['locales'] ?? null];
         } else {
             $platform = json_decode((string) file_get_contents("$repo/tests/fixtures/platform.json"), true, 512, JSON_THROW_ON_ERROR);

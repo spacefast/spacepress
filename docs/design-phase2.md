@@ -88,7 +88,7 @@ in §1. Problem codes are RFC 9457 as in phase 1. New system tables are named
 Not written: `mu-plugins/` (nothing needs forced load order; `Requires Plugins`
 handles activation order), `uploads/` seeds (content arrives through sync, §5;
 `first seed` is deferred, §10). `first build` deletes and rewrites only
-`plugins/zero-*` directories and the zips; anything else under `plugins/`
+`plugins/first-*` directories and the zips; anything else under `plugins/`
 (SCF, Action Scheduler, the MCP adapter installed by the harness) is kept.
 
 Plugin headers:

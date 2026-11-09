@@ -249,7 +249,7 @@ final class Local
                 Files::copy($source . '/plugins/' . $slug, $root . '/site/wp-content/plugins/' . $slug);
             }
             // Native plugin dependencies remain authoritative; activate each in a fresh bootstrap.
-            $order = [...array_values(array_filter($slugs, static fn ($slug) => !str_starts_with($slug, 'zero-'))),
+            $order = [...array_values(array_filter($slugs, static fn ($slug) => !str_starts_with($slug, 'first-'))),
                 ...array_values(array_filter(['first-runtime', 'first-identity', 'first-admin', 'first-app-' . $artifact['app']], static fn ($slug) => in_array($slug, $slugs, true)))];
             foreach ($order as $slug) {
                 self::native($root, $owner, ['plugin', 'activate', $slug]);

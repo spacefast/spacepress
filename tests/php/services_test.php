@@ -106,13 +106,13 @@ eq('Action Scheduler delivers one message via the real SMTP socket', count($mail
 $bytes = count($mailFiles) === 1 ? file_get_contents($mailFiles[0]) : '';
 check('the SMTP sink received recipient, sender, stable message identity and submitted text',
     str_contains($bytes, 'To: inbox@example.test') && str_contains($bytes, 'sender@example.test')
-    && str_contains($bytes, 'zero-' . $id . '@example.test') && str_contains($bytes, $submission['data']['message']), $bytes);
+    && str_contains($bytes, 'first-' . $id . '@example.test') && str_contains($bytes, $submission['data']['message']), $bytes);
 $mailer = $GLOBALS['phpmailer'];
 eq('service mail restores the existing transport and message identity', [$mailer->MessageID, $mailer->Port, $mailer->Timeout, $mailer->getSMTPInstance() === $nativeSmtp, $nativeSmtp->connected()], ['', $nativeReady['port'], 9, true, true]);
 check('an unrelated WordPress message uses its own identity on the native transport', wp_mail('other@example.test', 'Unrelated WordPress notice', 'Independent notice'));
 $other = glob($evidence . '/native-mail/*.eml');
 $otherBytes = implode("\n", array_map(file_get_contents(...), $other));
-check('the next message uses the original transport and its own Message-ID', count($other) === 2 && str_contains($otherBytes, 'Independent notice') && !str_contains($otherBytes, 'zero-' . $id . '@example.test'), $otherBytes);
+check('the next message uses the original transport and its own Message-ID', count($other) === 2 && str_contains($otherBytes, 'Independent notice') && !str_contains($otherBytes, 'first-' . $id . '@example.test'), $otherBytes);
 eq('submissions are private', $wp->call('GET', '/services/submissions/' . $id)[0], 401);
 $observed = $wp->call('GET', '/services/submissions/' . $id, as: 'editor')[1];
 eq('editors can observe saved data and delivery completion', [$observed['body'], $observed['delivery']['state'], $observed['delivery']['attempts']], [$submission['data'], 'done', 1]);

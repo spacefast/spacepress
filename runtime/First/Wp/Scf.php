@@ -71,7 +71,7 @@ final class Scf
                 'active' => true,
             ]);
         }
-        $menu = 'zero-' . $schema->name();
+        $menu = 'first-' . $schema->name();
         foreach ($schema->globals() as $name => $g) {
             $wp = $g['wp'];
             acf_add_options_page([

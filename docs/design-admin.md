@@ -234,7 +234,7 @@ export default defineConfig({ name: "blog", admin: true, /* … */ });
 schema.php v3, accepted by `src/extract.rs`'s config allowlist. `first build`
 emits `plugins/first-admin` and lists it in `first-manifest.json` only when the
 flag is true; a build that turns the flag off deletes the directory like any
-other `zero-*` output. There is no CLI flag: the artifact is a function of the
+other `first-*` output. There is no CLI flag: the artifact is a function of the
 config. The plugin runs only inside WordPress, so the flag has no meaning
 elsewhere.
 

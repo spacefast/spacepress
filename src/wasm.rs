@@ -317,14 +317,14 @@ pub fn operation(operation: &str, request: &str) -> String {
                 }
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
-                    let previous = root.join(crate::layout::MIGRATIONS).join("snapshot.json");
+                    let previous = root.join(pipeline::LEDGER).join("snapshot.json");
                     let built = loader::load_from(fs.clone(), &root.join("zero.config.ts")).and_then(|program| {
                         pipeline::build(
                             &root,
                             &program,
                             || {
-                                if let Some(problem) = crate::layout::old_migrations(|p| fs.exists(p), &root) {
-                                    return Err(diag::Diag::new(diag::Span::NONE, problem));
+                                if fs.exists(&root.join(pipeline::OLD_LEDGER)) {
+                                    return Err(pipeline::moved_ledger());
                                 }
                                 let snapshot = if fs.exists(&previous) {
                                     Some(
@@ -337,7 +337,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                                 } else {
                                     None
                                 };
-                                let dir = root.join(crate::layout::MIGRATIONS);
+                                let dir = root.join(pipeline::LEDGER);
                                 let paths = if fs.is_dir(&dir) {
                                     fs.read_dir(&dir)
                                         .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?

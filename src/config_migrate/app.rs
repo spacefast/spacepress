@@ -522,9 +522,9 @@ fn convert(
     } else {
         "0001_init.sql"
     };
-    files.insert(format!("{}/{first}", crate::layout::MIGRATIONS), sql);
+    files.insert(format!("{}/{first}", crate::pipeline::LEDGER), sql);
     files.insert(
-        format!("{}/snapshot.json", crate::layout::MIGRATIONS),
+        format!("{}/snapshot.json", crate::pipeline::LEDGER),
         serde_json::to_string_pretty(&built.snapshot).unwrap(),
     );
     files.insert(

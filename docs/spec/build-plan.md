@@ -35,8 +35,10 @@ Start in parallel now: 1, 2, 4, 5, 11 and the URL-purge half of 8. 2 and 4
 work on the runtime and migrator side and rebase onto 1's authoring surface as
 it lands. Then 3 after 1. Then 6, 9 and 10. Then 7 and the rest of 8.
 
-0.8 → v2 migration stays opt-in and one command, and the converter tracks
-`main`: each workstream that changes what it emits updates it in the same PR.
+A 0.8 app migrates to v2 on its next publish when the converter and the
+publish checks refuse nothing ([coexistence.md](coexistence.md)). The converter
+tracks `main`: each workstream that changes what it emits updates it in the same
+PR.
 [coexistence.md](coexistence.md) lists the rules and the suites that hold them.
 
 ## 1. Authoring surface cutover
@@ -300,10 +302,10 @@ On Spacefast, the box image and Spacefast Access do the parts that belong to the
 **Build:**
 - **Docs:** rewrite `docs/config-api.md`, `docs/pages.md`, the README and the site to match the spec.
 - **Examples:** port every example.
-- **0.8 migration:** `zero migrate app --from zero-0.8` emits this layout. It is
-  opt-in: the owner runs it, or asks the Spacefast CLI or MCP to. The census
+- **0.8 migration:** `zero migrate app --from zero-0.8` emits this layout, and a
+  0.8 publish from the CLI, local MCP or a source build runs it. The census
   decides which 0.8 features get converted; anything else is a located refusal
-  with a fix.
+  with a fix, and that publish stays on 0.8.
 - **Monorepo:** `sf zero`, MCP and the Spacefast publish path follow the new layout.
 
 ## How fast

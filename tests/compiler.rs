@@ -1826,18 +1826,18 @@ fn builds_wordpress_and_knows_no_target_option() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A checkout from before the one-directory migration layout is refused, never read as empty: a
-/// `wp/` subdirectory, a `sqlite/` subdirectory or a version 1 snapshot each stop the build before it
-/// writes, so the numbering cannot restart at 0001 and the plugin cannot ship without its files.
+/// A project whose ledger is still at `zero/migrations/` is refused, never read as a first build:
+/// the build stops before it writes, so the numbering cannot restart at 0001 and the plugin cannot
+/// ship without its earlier files. Following the fix in the message builds again with nothing new.
+/// A version 1 snapshot is refused the same way.
 #[test]
-fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
+fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let tmp = std::env::temp_dir().join(format!("zero-legacy-layout-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let migrations = tmp.join("zero/_generated/migrations");
-    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
     let snapshot = std::fs::read_to_string(migrations.join("snapshot.json")).unwrap();
     /// Every file under the project with its bytes, so a refusal is proven to write nothing anywhere.
     fn tree(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
@@ -1860,19 +1860,24 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
         assert!(stderr.contains(message), "expected {message:?} in {stderr}");
         assert!(tree(&tmp) == before, "the refusal changed the project");
     };
-    for legacy in ["wp", "sqlite"] {
-        std::fs::create_dir_all(migrations.join(legacy)).unwrap();
-        std::fs::write(migrations.join(legacy).join("0001_init.sql"), &init).unwrap();
+    let old = tmp.join("zero/migrations");
+    std::fs::rename(&migrations, &old).unwrap();
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    // An old directory left beside the new one is refused too: one ledger, never two.
+    std::fs::create_dir_all(&migrations).unwrap();
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    std::fs::remove_dir(&migrations).unwrap();
+    // A pre-flat checkout moved as-is keeps its `wp/` and `sqlite/` subdirectories: still refused
+    // at the new path, so following the first message can't restart the numbering.
+    std::fs::rename(&old, &migrations).unwrap();
+    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
+    for nested in ["wp", "sqlite"] {
+        std::fs::create_dir_all(migrations.join(nested)).unwrap();
+        std::fs::write(migrations.join(nested).join("0001_init.sql"), &init).unwrap();
         refused(&format!(
-            "zero/_generated/migrations/{legacy}/ is from an earlier layout"
+            "zero/_generated/migrations/{nested}/ is from an earlier layout"
         ));
-        // Following the message: the SQL moved out, the directory deleted. An emptied directory
-        // left behind is still the earlier layout.
-        std::fs::remove_file(migrations.join(legacy).join("0001_init.sql")).unwrap();
-        refused(&format!(
-            "zero/_generated/migrations/{legacy}/ is from an earlier layout"
-        ));
-        std::fs::remove_dir(migrations.join(legacy)).unwrap();
+        std::fs::remove_dir_all(migrations.join(nested)).unwrap();
     }
     let mut v1: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
     v1["version"] = serde_json::json!(1);
@@ -1894,10 +1899,9 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
     std::fs::rename(&migrations, &old).unwrap();
     std::fs::remove_dir_all(tmp.join("zero/_generated")).unwrap();
     std::fs::remove_dir_all(tmp.join("zero/dist")).unwrap();
-    let fix = "mkdir -p zero/_generated && git mv zero/migrations zero/_generated/migrations";
-    refused(&format!(
-        "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ ({fix})"
-    ));
+    let fix = "mkdir -p zero/_generated && rmdir zero/_generated/migrations 2>/dev/null; git mv zero/migrations zero/_generated/migrations";
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    refused(fix);
     let git = |args: &[&str]| {
         let out = Command::new("git").args(args).current_dir(&tmp).output().unwrap();
         assert!(

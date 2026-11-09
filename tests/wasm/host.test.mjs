@@ -63,6 +63,18 @@ test('host capture gives npm imports an actionable stable diagnostic', () => {
   assert.equal(response.check.diagnostics[0].code, 'zero_source_needs_local_capture');
 });
 
+test('wasm capture and check refuse a ledger still at zero/migrations/', () => {
+  const files = {
+    'zero.config.ts': "import { defineConfig, table, id, text } from 'zero'; const notes = table({ id: id(), body: text() }); export default defineConfig({ tables: { notes } });",
+    'zero/migrations/snapshot.json': '{"version":2,"tables":{}}',
+  };
+  const moved = 'zero/migrations/ moved to zero/_generated/migrations/';
+  const sources = call(exports, 'zero_sources', { project: '/project', packages: false, files });
+  assert.equal(sources.check.diagnostics[0].message, moved);
+  const check = call(exports, 'zero_check', { project: '/project', files });
+  assert.deepEqual(check.check.diagnostics.map((d) => d.message), [moved]);
+});
+
 test('wasm and native capture include the same synced Markdown files', () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'zero-wasm-sync-'));
   try {

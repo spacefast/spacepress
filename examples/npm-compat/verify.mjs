@@ -61,7 +61,7 @@ function typedSource(probe, source) {
 const importLine = (entry, specifier) =>
   `import ${entry.named ? "{" + entry.binding + "}" : entry.binding} from ${JSON.stringify(specifier)};`;
 const config = `import {action, defineConfig} from "zero";
-import {run} from "./run";
+import {run} from "./zero/run";
 export default defineConfig({name: "npm-compat", actions: {probe: action({access: "anyone", input: {}, handler: () => run()})}});
 `;
 if (!options.isolated) await rm(work, { recursive: true, force: true });
@@ -116,8 +116,10 @@ for (const probe of selected) {
     ...(libraries.some((entry) => entry.typedAdapter) ? ["typed-source", "typed-installed"] : []),
   ]) {
     const directory = path.join(oracleDirectory, mode);
-    await mkdir(directory, { recursive: true });
-    if (probe.fixture) await writeFile(path.join(directory, "fixture.mjs"), probe.fixture);
+    // App code the config imports lives under zero/ (#229); copied library sources sit beside it.
+    const app = path.join(directory, "zero");
+    await mkdir(app, { recursive: true });
+    if (probe.fixture) await writeFile(path.join(app, "fixture.mjs"), probe.fixture);
     await writeFile(path.join(directory, "zero.config.ts"), config);
     const imports = [];
     for (const entry of libraries) {
@@ -129,7 +131,7 @@ for (const probe of selected) {
       const filename = `${entry.name.replaceAll("/", "-").replaceAll("@", "")}${extension}`;
       const adapted = adaptModule(entry, source);
       await writeFile(
-        path.join(directory, filename),
+        path.join(app, filename),
         mode.startsWith("typed-") ? typedSource(entry, adapted) : adapted,
       );
       let specifier = mode === "bare" ? (entry.specifier ?? entry.name) : "./" + filename;
@@ -152,7 +154,7 @@ for (const probe of selected) {
       }
       imports.push(importLine(entry, specifier));
     }
-    await writeFile(path.join(directory, "run.ts"), imports.join("\n") + "\n" + functionSource);
+    await writeFile(path.join(app, "run.ts"), imports.join("\n") + "\n" + functionSource);
     const checked = run(zero, ["check", directory, "--json"]);
     const route = {
       mode,

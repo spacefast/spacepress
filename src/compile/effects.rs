@@ -192,8 +192,8 @@ impl Effects {
             |paths| {
                 paths
                     .iter()
-                    .filter(|path| path.starts_with(view))
-                    .fold(ty.clone(), |ty, path| widen(&ty, &path[view.len()..]))
+                    .filter_map(|path| below_view(path, view))
+                    .fold(ty.clone(), |ty, path| widen(&ty, path))
             },
         )
     }
@@ -250,11 +250,26 @@ impl Effects {
             |paths| {
                 paths
                     .iter()
-                    .filter(|p| p.binding == binding && p.path.starts_with(view))
-                    .fold(ty.clone(), |ty, p| widen(&ty, &p.path[view.len()..]))
+                    .filter(|p| p.binding == binding)
+                    .filter_map(|p| below_view(&p.path, view))
+                    .fold(ty.clone(), |ty, path| widen(&ty, path))
             },
         )
     }
+}
+
+/// What a place changes below a read view: its steps after the view when it lies under it, or
+/// its `Descendants`/`DynamicDescendants` tail when it was cut above the end of the view and so
+/// covers all of it, as `projected_suffix` treats that step. Steps before the cut must equal
+/// the view's.
+fn below_view<'a>(path: &'a [Step], view: &[Step]) -> Option<&'a [Step]> {
+    if let Some(rest) = path.strip_prefix(view) {
+        return Some(rest);
+    }
+    let cut = path
+        .iter()
+        .position(|step| matches!(step, Step::Descendants | Step::DynamicDescendants))?;
+    (cut < view.len() && path[..cut] == view[..cut]).then(|| &path[cut..])
 }
 
 fn invalidate_paths(paths: &Places, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
@@ -2459,5 +2474,75 @@ fn scalar_return_annotation(annotation: &TyAnn) -> bool {
         | TyAnn::Never => true,
         TyAnn::Union(parts) => parts.iter().all(scalar_return_annotation),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn field(name: &str) -> Step {
+        Step::Field(name.into())
+    }
+
+    fn numeric(binding: Span, path: Vec<Step>) -> Effects {
+        let mut effects = Effects::default();
+        effects.numeric.entry(binding).or_default().insert(path);
+        effects
+    }
+
+    #[test]
+    fn a_place_cut_above_a_read_view_widens_the_whole_view() {
+        let binding = Span {
+            file: 0,
+            start: 1,
+            end: 2,
+        };
+        let view = [field("a"), field("b"), field("x")];
+        let literal = Ty::Obj(IndexMap::from([("y".into(), (Ty::NumLit(0.0), false))]));
+        let number = Ty::Obj(IndexMap::from([("y".into(), (Ty::Num, false))]));
+        // The solver cuts `o.a.b.x.y++` to `o.a.b.Descendants` past its depth bound.
+        let cut = numeric(binding, vec![field("a"), field("b"), Step::Descendants]);
+        assert_eq!(cut.read_view_type(binding, &view, &literal), number);
+        let dynamic = numeric(binding, vec![field("a"), Step::DynamicDescendants]);
+        assert_eq!(dynamic.read_view_type(binding, &view, &literal), Ty::Dynamic);
+        // A place below the view keeps its own path, as before.
+        let exact = numeric(binding, vec![field("a"), field("b"), field("x"), field("y")]);
+        assert_eq!(exact.read_view_type(binding, &view, &literal), number);
+        // A cut place on a sibling path, or below the view, changes nothing outside it.
+        let sibling = numeric(binding, vec![field("a"), field("c"), Step::Descendants]);
+        assert_eq!(sibling.read_view_type(binding, &view, &literal), literal);
+        let other = numeric(binding, vec![field("z"), Step::DynamicDescendants]);
+        assert_eq!(other.read_view_type(binding, &view, &literal), literal);
+    }
+
+    #[test]
+    fn a_write_event_cut_above_a_view_widens_the_view() {
+        let binding = Span {
+            file: 0,
+            start: 1,
+            end: 2,
+        };
+        let event = Span {
+            file: 0,
+            start: 3,
+            end: 4,
+        };
+        let mut effects = Effects::default();
+        effects.events.entry(event).or_default().insert(Place {
+            binding,
+            path: vec![field("a"), Step::DynamicDescendants],
+        });
+        let view = [field("a"), field("b")];
+        assert_eq!(effects.write_type(event, binding, &view, &Ty::NumLit(1.0)), Ty::Dynamic);
+        let unrelated = Span {
+            file: 0,
+            start: 5,
+            end: 6,
+        };
+        assert_eq!(
+            effects.write_type(event, unrelated, &view, &Ty::NumLit(1.0)),
+            Ty::NumLit(1.0)
+        );
     }
 }

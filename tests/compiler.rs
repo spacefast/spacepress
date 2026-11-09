@@ -90,7 +90,13 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-db-reexport",
         "\"zero:db\" can't be re-exported",
-        "zero/kinds.ts:2:1",
+        "zero/kinds.ts:4:1",
+    );
+    // ... and from a plugin, whose fix is to take the kinds as options.
+    rejects(
+        "reject-plugin-db-reexport",
+        "a plugin takes the app's kinds as options",
+        "node_modules/zero-plugin-reach/src/index.ts:3:1",
     );
     // A default export has no name to register under.
     rejects(

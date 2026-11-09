@@ -1,2 +1,4 @@
-// A barrel of the app's kinds: "zero:db" is imported where it's used, never handed on.
-export { notes } from "zero:db";
+// The app's kinds handed on under another name: "zero:db" is imported where it's used, never
+// re-exported (here a local export of the imported binding).
+import { notes } from "zero:db";
+export { notes as allNotes };

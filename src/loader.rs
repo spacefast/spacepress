@@ -306,16 +306,37 @@ fn load_module(
     } = parse(fs, &source, path, file, id, diagnostics)?;
     // `"zero:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
     // them on under another module's name, which no evaluator path resolves.
+    // Locals bound by `import { x } from "zero:db"`: exporting one again is the same re-export.
+    let db_locals: std::collections::HashSet<&str> = body
+        .iter()
+        .filter_map(|s| match s {
+            Stmt::Import { source, specs, .. } if source == DB_MODULE => Some(specs),
+            _ => None,
+        })
+        .flatten()
+        .map(|spec| spec.local.as_str())
+        .collect();
     for stmt in &body {
-        if let Stmt::ExportNames {
-            from: Some(from), span, ..
-        }
-        | Stmt::ExportAll { from, span } = stmt
-            && from == DB_MODULE
+        let reexports = match stmt {
+            Stmt::ExportNames { from: Some(from), .. } | Stmt::ExportAll { from, .. } => from == DB_MODULE,
+            Stmt::ExportNames { names, from: None, .. } => {
+                names.iter().any(|(local, _)| db_locals.contains(local.as_str()))
+            }
+            _ => false,
+        };
+        if let Stmt::ExportNames { span, .. } | Stmt::ExportAll { span, .. } = stmt
+            && reexports
         {
+            let installed = path
+                .strip_prefix(&program.root)
+                .is_ok_and(|rel| rel.components().any(|c| c.as_os_str() == "node_modules"));
             diagnostics.push(
                 Diag::new(*span, "\"zero:db\" can't be re-exported")
-                    .help("import the kinds where they're used: `import { posts } from \"zero:db\"`")
+                    .help(if installed {
+                        "a plugin takes the app's kinds as options, e.g. seo({ posts }); it can't import \"zero:db\""
+                    } else {
+                        "import the kinds where they're used: `import { posts } from \"zero:db\"`"
+                    })
                     .code(diag::Code::Import),
             );
         }

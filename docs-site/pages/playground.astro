@@ -1,0 +1,147 @@
+---
+// The playground: edit an example's config and see everything the compiler makes of it, compiled in
+// the browser by the same compiler as `first build` (public/compiler.wasm, built from src/wasm.rs).
+import path from "node:path";
+import { readFileSync } from "node:fs";
+import PageLayout from "blume/components/layout/PageLayout.astro";
+import data from "blume:data";
+import { example, repo } from "../lib/examples.ts";
+import { firstFiles, playgroundExamples, wordpressFiles } from "../lib/playground-catalog.ts";
+
+const examples = Object.fromEntries(await Promise.all(
+	playgroundExamples.map(async ({ name }) => [name, firstFiles((await example(name)).files)]),
+));
+const runtime = Object.fromEntries(wordpressFiles.map(({ path: file }) => [file, readFileSync(path.join(repo, file), "utf8")]));
+const { config } = data;
+// Playground fetches the blueprint from the published site.
+const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, "");
+---
+
+<PageLayout
+	site={{ title: config.title, description: config.description }}
+	logo={config.logo}
+	favicon={config.favicon}
+	navigation={data.navigation}
+	fontCssVars={data.fontCssVars}
+	themeMode={config.theme.mode}
+	searchEnabled={config.search.enabled}
+	siteUrl={config.site}
+	ogEnabled={config.og.enabled}
+	page={{ title: "Playground · First", description: "Edit a First config and see the PHP, SQL migrations and TypeScript client it compiles to. The compiler runs in your browser.", route: "/playground" }}
+>
+	<main class="playground" data-wasm="/compiler.wasm">
+		<div class="intro">
+			<div>
+				<h1>Playground</h1>
+				<p class="lede">Edit a config and see the PHP, SQL and TypeScript that First makes from it. The compiler runs in your browser.</p>
+			</div>
+			<div class="example-controls">
+				<label for="example">Example</label>
+				<select id="example">{playgroundExamples.map(({ name, label }) => <option value={name}>{label}</option>)}</select>
+				<button id="reset" type="button">Reset example</button>
+				<button id="run-wordpress" class="run" type="button" data-site={siteUrl}>Run in WordPress</button>
+			</div>
+		</div>
+		<p id="example-description" class="note">{playgroundExamples[0].description}</p>
+		<section id="wordpress" class="wordpress" hidden aria-labelledby="wordpress-heading">
+			<div class="pane-heading">
+				<h2 id="wordpress-heading">WordPress</h2>
+				<span class="wordpress-note">The example as committed, built when this site was built, running in <a href="https://wordpress.org/playground/">WordPress Playground</a> in your browser. Your edits don't apply here.</span>
+				<a id="wordpress-tab" target="_blank" rel="noopener">Open in a new tab ↗</a>
+			</div>
+			<iframe id="wordpress-frame" title="WordPress running the example"></iframe>
+		</section>
+		<nav class="wordpress-links" aria-label="WordPress integration">
+			<span>Inside WordPress</span>
+			{wordpressFiles.slice(0, 8).map(({ path: file, label }) => <button type="button" data-runtime-file={file}>{label}</button>)}
+		</nav>
+		<p id="compile-status" role="status" aria-live="polite" data-state="loading">Loading the compiler…</p>
+		<pre id="diagnostics" role="alert" hidden></pre>
+		<div class="editors">
+			<section class="editor-pane" aria-labelledby="source-heading">
+				<div class="pane-heading">
+					<h2 id="source-heading">Source</h2>
+					<label class="sr-only" for="source-file">Source file</label>
+					<select id="source-file"></select>
+				</div>
+				<label class="sr-only" for="source">Source code</label>
+				<div class="code-editor">
+					<pre class="diffs" aria-hidden="true"><code id="source-view"></code></pre>
+					<textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="soft" disabled></textarea>
+				</div>
+			</section>
+			<section class="editor-pane" aria-labelledby="output-heading">
+				<div class="pane-heading">
+					<h2 id="output-heading">Output and WordPress</h2>
+					<label class="sr-only" for="generated-file">Generated file</label>
+					<select id="generated-file" disabled></select>
+					<button id="download" type="button" disabled>Download file</button>
+				</div>
+				<p id="file-description" class="file-description">Generated from your config. Changes as you edit.</p>
+				<label class="sr-only" for="generated">Generated code</label>
+				<textarea id="generated" class="sr-only" readonly tabindex="-1"></textarea>
+				<div id="generated-view" class="output-view" aria-hidden="true"></div>
+			</section>
+		</div>
+		<p class="note">The file menu has the generated PHP, SQL and TypeScript, and the WordPress runtime that every app shares. Generated files change as you edit. Runtime files do not.</p>
+		<noscript>Turn on JavaScript to edit and compile a config.</noscript>
+	</main>
+	<script id="playground-examples" type="application/json" set:html={JSON.stringify(examples).replace(/</g, "\\u003c")} />
+	<script id="playground-runtime" type="application/json" set:html={JSON.stringify(runtime).replace(/</g, "\\u003c")} />
+	<script src="../lib/playground.ts"></script>
+</PageLayout>
+
+<style>
+	main.playground { max-width: 100rem; margin: 0 auto; padding: 2rem 1rem 3rem; --line: var(--blume-border); --muted: var(--blume-muted-foreground); --tint: var(--blume-muted); --paper: var(--blume-background); --ink: var(--blume-foreground); --mono: var(--blume-font-mono); }
+	h1 { font-size: 2rem; font-weight: 700; margin: 0 0 0.25rem; }
+	.lede { color: var(--muted); margin: 0; }
+	.intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; }
+	.example-controls, .pane-heading { display: flex; align-items: center; gap: 0.65rem; }
+	.example-controls { flex-wrap: wrap; padding-top: 0.25rem; font-size: 0.9rem; }
+	.wordpress-links { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; font-size: 0.8rem; }
+	.wordpress-links span { color: var(--muted); margin-right: 0.2rem; }
+	.file-description { padding: 0.6rem 0.8rem; margin: 0; color: var(--muted); font-size: 0.8rem; min-height: 3.7rem; border-bottom: 1px solid var(--line); }
+	button.run { border-color: var(--blume-accent); background: var(--blume-accent); color: #fff; font-weight: 500; }
+	button.run:hover:enabled { background: var(--blume-accent); filter: brightness(1.08); }
+	.wordpress { margin-top: 1rem; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+	.wordpress .pane-heading { gap: 0.8rem; }
+	.wordpress-note { flex: 1; color: var(--muted); }
+	.wordpress iframe { display: block; width: 100%; height: min(52rem, calc(100vh - 10rem)); border: 0; background: var(--tint); }
+	select, button { border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; padding: 0.45rem 0.6rem; }
+	select { min-width: 0; }
+	button { cursor: pointer; white-space: nowrap; }
+	button:hover:enabled { background: var(--tint); }
+	button:disabled { cursor: default; opacity: 0.5; }
+	:is(button, select, textarea):focus-visible { outline: 2px solid var(--blume-accent); outline-offset: 2px; }
+	#compile-status { color: var(--muted); font-size: 0.9rem; margin: 1.2rem 0 0.8rem; }
+	#compile-status[data-state="ok"] { color: #15803d; }
+	#compile-status[data-state="diagnostics"], #compile-status[data-state="failed"] { color: #b91c1c; }
+	#diagnostics { margin: 0 0 1rem; padding: 0.8rem 1rem; border: 1px solid #e8b5b5; border-radius: 6px; background: #fff7f7; color: #7f1d1d; white-space: pre-wrap; max-height: 14rem; overflow: auto; font: 0.8rem/1.5 var(--mono); }
+	.editors { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+	.editor-pane { min-width: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+	.pane-heading { min-height: 3.5rem; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); background: var(--tint); flex-wrap: wrap; font-size: 0.8rem; }
+	.pane-heading h2 { font-size: 0.9rem; font-weight: 600; margin: 0; }
+	.pane-heading select { flex: 1; font-family: var(--mono); }
+	/* The textarea edits; the highlighted copy behind it shows its text. Both wrap the same way and
+	   grow to the whole file, so a config never scrolls inside its box. */
+	.code-editor { position: relative; background: #fff; }
+	.code-editor.generated { background: #fafaf9; }
+	.code-editor pre { position: absolute; inset: 0; margin: 0; border: 0; border-radius: 0; padding: 1rem; overflow: hidden; background: none; font: 0.8rem/1.65 var(--mono); tab-size: 2; pointer-events: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+	.code-editor code { display: block; font: inherit; color: #161616; white-space: inherit; overflow-wrap: inherit; }
+	textarea { position: relative; display: block; width: 100%; min-height: 18rem; overflow: hidden; resize: none; border: 0; border-radius: 0; padding: 1rem; background: none; color: #161616; caret-color: #161616; font: 0.8rem/1.65 var(--mono); tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; }
+	:root[data-theme="dark"] .code-editor { background: #0a0a0a; }
+	:root[data-theme="dark"] .code-editor.generated { background: #111; }
+	:root[data-theme="dark"] .code-editor code, :root[data-theme="dark"] textarea { color: #ededed; caret-color: #ededed; }
+	textarea::placeholder { color: var(--muted); }
+	.code-editor[data-highlighted] textarea { color: transparent; }
+	.code-editor[data-highlighted] textarea::selection { color: transparent; background: #009fff33; }
+	.note { color: var(--muted); font-size: 0.85rem; margin-top: 0.8rem; }
+	/* Generated and runtime files can run to thousands of lines, so this pane scrolls; the config
+	   on the left grows to its whole length. */
+	.output-view { height: min(48rem, calc(100vh - 12rem)); overflow: auto; color-scheme: light; }
+	:root[data-theme="dark"] .output-view { color-scheme: dark; }
+	.output-view :global(diffs-container) { display: block; --diffs-font-family: var(--mono); --diffs-font-size: 12.5px; --diffs-line-height: 20px; }
+	.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+	@media (max-width: 64rem) { .intro { flex-direction: column; gap: 0.5rem; } }
+	@media (max-width: 48rem) { .editors { grid-template-columns: minmax(0, 1fr); } }
+</style>

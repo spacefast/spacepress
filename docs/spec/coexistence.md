@@ -17,13 +17,14 @@ one of them at a time, never both in the same version.
   can fix it and publish again. Until v2 hosting and the hosted data copy land,
   that includes every app with a frontend, pages, static files, posts, users or
   Functions (the `Z08_LOCAL_*` and `Z08_FUNCTIONS` refusals). A clean candidate on
-  a Space whose runtime doesn't run v2 yet also ships as 0.8, with status
-  `waiting_on_runtime`.
+  a 0.8 Space whose runtime doesn't run v2 yet also ships as 0.8, with status
+  `waiting_on_runtime`; on a Space with no 0.8 app it's refused with the
+  retryable `runtime_capabilities_pending`.
 - **There is no flag** to opt in or out. Hosted MCP doesn't build Zero apps, and
   older CLIs and direct API publishes never run the converter: the API doesn't
   convert.
 - **A new Space can still start on 0.8** until CLI 0.9.0 and Zero v2 ship. New
-  apps made with `zero init` start on v2.
+  apps made with `sf zero init` start on v2.
 - **The same command** runs on its own to preview the v2 candidate.
 
 So the converter always targets `main`. A PR that changes an authoring API, a

@@ -1,13 +1,14 @@
 # Migrating from Zero 0.8
 
-Migrate a Spacefast app with the hosted operation below. It converts supported
-source, preserves content and user IDs, and carries existing logins into v2.
+This guide covers the hosted migration operation, which isn't shipped yet. Once
+it is, it converts supported source, preserves content and user IDs, and carries
+existing logins into v2.
 Generated endpoints, actions, [HTTP routes](config-api.md#http-routes) and
 [live updates](realtime.md) work on Spacefast. [TSX pages](pages.md) do not
 yet: the Spacefast host mounts the runtime, the app and identity for a v2
 version, but not the compiled pages plugin, and it does not serve its assets.
-Until it does, a 0.8 app with pages stays on 0.8: its publish is refused with
-`Z08_LOCAL_PAGES`. This guide's commit step retires the 0.8 site.
+Until it does, a 0.8 app with pages stays on 0.8: its publish ships as 0.8 and
+reports `Z08_LOCAL_PAGES`. This guide's commit step retires the 0.8 site.
 
 The baseline is `@spacefast/zero` and `@spacefast/zero-compile` 0.8.1. A
 successful source conversion proves that the candidate compiles. Complete the
@@ -25,6 +26,9 @@ site, use the config and in-place data commands later in this guide. Both paths
 report unsupported behavior with pointers.
 
 ## Migrate a Spacefast app
+
+**Not shipped yet.** `sf zero migrate --space`, `migrateSpaceZero` and the
+migration route below don't exist on Spacefast today.
 
 Use this procedure for a user's Spacefast 0.8 app. The hosted operation converts
 source, copies scoped data, and commits the one-way transition together. The
@@ -98,7 +102,7 @@ not restore the database.
 
 ### Convert source locally for review
 
-If you need to inspect or port a candidate before the hosted operation, run:
+To inspect a candidate, run:
 
 ```sh
 sf zero migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example --dry-run --json
@@ -108,10 +112,10 @@ sf zero check ./candidate
 
 Add `--users` when Space Users is enabled without a capsule `auth` declaration.
 Each destination must be new. A dry run writes no candidate. Keep all generated
-source, the adoption snapshot, and `connector-roles.json` together. Submit a
-manual v2 port through the hosted migration operation so its data moves before
-the generation change. A normal v2 publish on a legacy Space is refused with
-`zero_migration_required`.
+source, the adoption snapshot, and `connector-roles.json` together. A candidate
+you publish by hand is a normal v2 publish, and on a legacy Space that is refused
+with `zero_migration_required`. Publish the 0.8 app instead, and the publish
+converts it.
 
 ### Copy data under the host's migration lock
 

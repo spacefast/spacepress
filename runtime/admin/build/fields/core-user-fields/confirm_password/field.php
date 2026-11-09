@@ -2,12 +2,12 @@
 /**
  * Confirm password field definition for core user fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'          => 'boolean',
-	'label'         => __( 'Confirm use of weak password', 'zero-admin' ),
+	'label'         => __( 'Confirm use of weak password', 'first-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 	'enableHiding'  => false,

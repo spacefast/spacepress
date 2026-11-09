@@ -2,12 +2,12 @@
 /**
  * Description field definition for core plugins fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Description', 'zero-admin' ),
+	'label'              => __( 'Description', 'first-admin' ),
 	'enableHiding'       => true,
 	'filterBy'           => false,
 	'enableGlobalSearch' => true,

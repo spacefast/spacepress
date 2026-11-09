@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/image-cropper",
+	"name": "@first-admin/image-cropper",
 	"version": "1.0.0",
 	"description": "Image cropper and basic editor tools",
 	"type": "module",

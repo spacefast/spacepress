@@ -1,7 +1,7 @@
 {
-	"name": "@zero-admin/ai-agent",
+	"name": "@first-admin/ai-agent",
 	"version": "1.0.0",
-	"description": "AI Agent interface for Zero Admin",
+	"description": "AI Agent interface for First Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -14,8 +14,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/theme": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/theme": "workspace:*",
 		"@wordpress/route": "catalog:",
 		"@wordpress/abilities": "catalog:",
 		"@wordpress/api-fetch": "catalog:",

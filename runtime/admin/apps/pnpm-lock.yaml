@@ -169,21 +169,21 @@ importers:
 
   .:
     dependencies:
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:packages/design-system
+      '@first-admin/theme':
+        specifier: workspace:*
+        version: link:packages/theme
       '@wordpress/base-styles':
         specifier: 13.0.1-next.v.202608281122.0
         version: 13.0.1-next.v.202608281122.0
       '@wordpress/core-data':
         specifier: 7.54.2-next.v.202608281122.0
         version: 7.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:packages/design-system
-      '@zero-admin/theme':
-        specifier: workspace:*
-        version: link:packages/theme
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -197,6 +197,9 @@ importers:
       '@babel/core':
         specifier: 'catalog:'
         version: 7.29.7
+      '@first-admin/wp-build':
+        specifier: workspace:*
+        version: link:packages/wp-build
       '@playwright/test':
         specifier: 1.64.1
         version: 1.64.1
@@ -233,9 +236,6 @@ importers:
       '@wordpress/jest-preset-default':
         specifier: 14.1.1-next.v.202608281122.0
         version: 14.1.1-next.v.202608281122.0(@babel/core@7.29.7)(jest@30.5.2(@types/node@22.20.0)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.25.12)))
-      '@zero-admin/wp-build':
-        specifier: workspace:*
-        version: link:packages/wp-build
       babel-jest:
         specifier: 'catalog:'
         version: 30.5.2(@babel/core@7.29.7)
@@ -251,33 +251,42 @@ importers:
 
   dashboard-widgets/core-quick-stats:
     dependencies:
+      '@first-admin/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
       '@wordpress/i18n':
         specifier: 6.27.1-next.v.202608281122.0
         version: 6.27.1-next.v.202608281122.0
-      '@zero-admin/dashboard':
-        specifier: workspace:*
-        version: link:../../packages/dashboard
 
   dashboard-widgets/core-recent-posts:
     dependencies:
+      '@first-admin/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
       '@wordpress/i18n':
         specifier: 6.27.1-next.v.202608281122.0
         version: 6.27.1-next.v.202608281122.0
-      '@zero-admin/dashboard':
-        specifier: workspace:*
-        version: link:../../packages/dashboard
 
   dashboard-widgets/core-weather:
     dependencies:
+      '@first-admin/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
       '@wordpress/i18n':
         specifier: 6.27.1-next.v.202608281122.0
         version: 6.27.1-next.v.202608281122.0
-      '@zero-admin/dashboard':
-        specifier: workspace:*
-        version: link:../../packages/dashboard
 
   fields/core-comments-fields:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -302,18 +311,15 @@ importers:
       '@wordpress/url':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
 
   fields/core-media-fields:
     dependencies:
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -341,15 +347,15 @@ importers:
       '@wordpress/url':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
 
   fields/core-plugin-fields:
     dependencies:
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@wordpress/core-data':
         specifier: 7.54.2-next.v.202608281122.0
         version: 7.54.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -359,15 +365,18 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
 
   fields/core-post-fields:
     dependencies:
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/lazy-editor':
+        specifier: workspace:*
+        version: link:../../packages/lazy-editor
       '@wordpress/block-editor':
         specifier: 17.0.2-next.v.202608281122.0
         version: 17.0.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -398,21 +407,18 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/lazy-editor':
-        specifier: workspace:*
-        version: link:../../packages/lazy-editor
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
 
   fields/core-taxonomy-term-fields:
     dependencies:
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@wordpress/core-data':
         specifier: 7.54.2-next.v.202608281122.0
         version: 7.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -422,15 +428,15 @@ importers:
       '@wordpress/i18n':
         specifier: 6.27.1-next.v.202608281122.0
         version: 6.27.1-next.v.202608281122.0
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
 
   fields/core-theme-fields:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -446,15 +452,15 @@ importers:
       '@wordpress/i18n':
         specifier: 6.27.1-next.v.202608281122.0
         version: 6.27.1-next.v.202608281122.0
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
 
   fields/core-user-fields:
     dependencies:
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -479,15 +485,21 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
 
   packages/admin-toolkit:
     dependencies:
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../design-system
+      '@first-admin/private-apis':
+        specifier: workspace:*
+        version: link:../private-apis
+      '@first-admin/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@wordpress/a11y':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
@@ -539,18 +551,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../design-system
-      '@zero-admin/private-apis':
-        specifier: workspace:*
-        version: link:../private-apis
-      '@zero-admin/theme':
-        specifier: workspace:*
-        version: link:../theme
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -567,6 +567,12 @@ importers:
 
   packages/ai-agent:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@first-admin/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@wordpress/abilities':
         specifier: 0.20.2-next.v.202608281122.0
         version: 0.20.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -585,12 +591,6 @@ importers:
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
-      '@zero-admin/theme':
-        specifier: workspace:*
-        version: link:../theme
 
   packages/attachment-importer:
     dependencies:
@@ -621,6 +621,42 @@ importers:
 
   packages/boot:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@first-admin/ai-agent':
+        specifier: workspace:*
+        version: link:../ai-agent
+      '@first-admin/attachment-importer':
+        specifier: workspace:*
+        version: link:../attachment-importer
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../core-data-next
+      '@first-admin/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../fields-next
+      '@first-admin/global-styles-engine':
+        specifier: workspace:*
+        version: link:../global-styles-engine
+      '@first-admin/lazy-editor':
+        specifier: workspace:*
+        version: link:../lazy-editor
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@first-admin/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@tanstack/history':
         specifier: ^1.120.17
         version: 1.162.5
@@ -717,42 +753,6 @@ importers:
       '@wordpress/url':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
-      '@zero-admin/ai-agent':
-        specifier: workspace:*
-        version: link:../ai-agent
-      '@zero-admin/attachment-importer':
-        specifier: workspace:*
-        version: link:../attachment-importer
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../core-data-next
-      '@zero-admin/dashboard':
-        specifier: workspace:*
-        version: link:../dashboard
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../fields-next
-      '@zero-admin/global-styles-engine':
-        specifier: workspace:*
-        version: link:../global-styles-engine
-      '@zero-admin/lazy-editor':
-        specifier: workspace:*
-        version: link:../lazy-editor
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../schema
-      '@zero-admin/theme':
-        specifier: workspace:*
-        version: link:../theme
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -768,6 +768,12 @@ importers:
 
   packages/core-data-next:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0
@@ -789,12 +795,6 @@ importers:
       '@wordpress/url':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
       react:
         specifier: 'catalog:'
         version: 18.3.1
@@ -804,6 +804,12 @@ importers:
       '@automattic/grid':
         specifier: 'catalog:'
         version: 0.2.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../design-system
       '@wordpress/base-styles':
         specifier: 13.0.1-next.v.202608281122.0
         version: 13.0.1-next.v.202608281122.0
@@ -834,12 +840,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../design-system
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -874,6 +874,9 @@ importers:
       '@base-ui/react':
         specifier: 'catalog:'
         version: 1.7.0(@date-fns/tz@1.5.0)(@types/react@18.3.27)(date-fns@4.4.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@first-admin/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@wordpress/a11y':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
@@ -904,9 +907,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/theme':
-        specifier: workspace:*
-        version: link:../theme
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -932,6 +932,15 @@ importers:
 
   packages/fields-next:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -959,15 +968,6 @@ importers:
       '@wordpress/url':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1017,6 +1017,21 @@ importers:
 
   packages/lazy-editor:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../core-data-next
+      '@first-admin/global-styles-engine':
+        specifier: workspace:*
+        version: link:../global-styles-engine
+      '@first-admin/load-assets':
+        specifier: workspace:*
+        version: link:../load-assets
+      '@first-admin/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@wordpress/core-data':
         specifier: 7.54.2-next.v.202608281122.0
         version: 7.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1029,21 +1044,6 @@ importers:
       '@wordpress/global-styles-engine':
         specifier: 1.21.1-next.v.202608281122.0
         version: 1.21.1-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../core-data-next
-      '@zero-admin/global-styles-engine':
-        specifier: workspace:*
-        version: link:../global-styles-engine
-      '@zero-admin/load-assets':
-        specifier: workspace:*
-        version: link:../load-assets
-      '@zero-admin/theme':
-        specifier: workspace:*
-        version: link:../theme
       react:
         specifier: 'catalog:'
         version: 18.3.1
@@ -1076,6 +1076,15 @@ importers:
 
   packages/schema:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@first-admin/attachment-importer':
+        specifier: workspace:*
+        version: link:../attachment-importer
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0
@@ -1088,15 +1097,6 @@ importers:
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
-      '@zero-admin/attachment-importer':
-        specifier: workspace:*
-        version: link:../attachment-importer
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
       react:
         specifier: 'catalog:'
         version: 18.3.1
@@ -1105,15 +1105,18 @@ importers:
 
   packages/theme:
     dependencies:
+      '@first-admin/private-apis':
+        specifier: workspace:*
+        version: link:../private-apis
       '@wordpress/theme':
         specifier: 2.1.1-next.v.202608281122.0
         version: 2.1.1-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/private-apis':
-        specifier: workspace:*
-        version: link:../private-apis
 
   packages/user-data:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0
@@ -1126,15 +1129,21 @@ importers:
       '@wordpress/i18n':
         specifier: 6.27.1-next.v.202608281122.0
         version: 6.27.1-next.v.202608281122.0
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
       react:
         specifier: ^18.0.0
         version: 18.3.1
 
   packages/views:
     dependencies:
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../design-system
       '@wordpress/base-styles':
         specifier: 13.0.1-next.v.202608281122.0
         version: 13.0.1-next.v.202608281122.0
@@ -1147,15 +1156,6 @@ importers:
       '@wordpress/preferences':
         specifier: 4.54.2-next.v.202608281122.0
         version: 4.54.2-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../design-system
       dequal:
         specifier: 'catalog:'
         version: 2.0.3
@@ -1189,6 +1189,27 @@ importers:
 
   routes/attachment:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/image-cropper':
+        specifier: workspace:*
+        version: link:../../packages/image-cropper
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/base-styles':
         specifier: 13.0.1-next.v.202608281122.0
         version: 13.0.1-next.v.202608281122.0
@@ -1237,78 +1258,72 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/image-cropper':
-        specifier: workspace:*
-        version: link:../../packages/image-cropper
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
 
   routes/collection-edit:
     dependencies:
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
 
   routes/collection-index:
     dependencies:
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
 
   routes/collection-list:
     dependencies:
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
 
   routes/collection-new:
     dependencies:
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
 
   routes/collections:
     dependencies:
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
 
   routes/dashboard:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/boot':
+        specifier: workspace:*
+        version: link:../../packages/boot
+      '@first-admin/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1336,21 +1351,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/boot':
-        specifier: workspace:*
-        version: link:../../packages/boot
-      '@zero-admin/dashboard':
-        specifier: workspace:*
-        version: link:../../packages/dashboard
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
     devDependencies:
       '@testing-library/react':
         specifier: 'catalog:'
@@ -1370,6 +1370,15 @@ importers:
 
   routes/design-navigation-edit:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/lazy-editor':
+        specifier: workspace:*
+        version: link:../../packages/lazy-editor
       '@wordpress/block-editor':
         specifier: 17.0.2-next.v.202608281122.0
         version: 17.0.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1409,18 +1418,27 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/lazy-editor':
-        specifier: workspace:*
-        version: link:../../packages/lazy-editor
 
   routes/design-navigation-list:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1454,27 +1472,18 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
 
   routes/design-styles:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/global-styles-engine':
+        specifier: workspace:*
+        version: link:../../packages/global-styles-engine
       '@wordpress/a11y':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
@@ -1529,15 +1538,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/global-styles-engine':
-        specifier: workspace:*
-        version: link:../../packages/global-styles-engine
       classnames:
         specifier: '*'
         version: 2.5.1
@@ -1553,24 +1553,30 @@ importers:
 
   routes/global-edit:
     dependencies:
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
 
   routes/globals:
     dependencies:
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
 
   routes/legacy-admin:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/boot':
+        specifier: workspace:*
+        version: link:../../packages/boot
       '@types/react':
         specifier: 'catalog:'
         version: 18.3.27
@@ -1580,15 +1586,33 @@ importers:
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/boot':
-        specifier: workspace:*
-        version: link:../../packages/boot
 
   routes/media:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/attachment-importer':
+        specifier: workspace:*
+        version: link:../../packages/attachment-importer
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/block-editor':
         specifier: 17.0.2-next.v.202608281122.0
         version: 17.0.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1637,30 +1661,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/attachment-importer':
-        specifier: workspace:*
-        version: link:../../packages/attachment-importer
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1670,7 +1670,7 @@ importers:
 
   routes/media-document:
     dependencies:
-      '@zero-admin/schema':
+      '@first-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
 
@@ -1682,6 +1682,24 @@ importers:
 
   routes/plugin-list:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/base-styles':
         specifier: 13.0.1-next.v.202608281122.0
         version: 13.0.1-next.v.202608281122.0
@@ -1715,24 +1733,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1750,6 +1750,33 @@ importers:
 
   routes/post-list:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/attachment-importer':
+        specifier: workspace:*
+        version: link:../../packages/attachment-importer
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/image-cropper':
+        specifier: workspace:*
+        version: link:../../packages/image-cropper
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/block-editor':
         specifier: 17.0.2-next.v.202608281122.0
         version: 17.0.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1798,33 +1825,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/attachment-importer':
-        specifier: workspace:*
-        version: link:../../packages/attachment-importer
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/image-cropper':
-        specifier: workspace:*
-        version: link:../../packages/image-cropper
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1849,6 +1849,9 @@ importers:
 
   routes/profile:
     dependencies:
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
       '@wordpress/core-data':
         specifier: 7.54.2-next.v.202608281122.0
         version: 7.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1858,9 +1861,6 @@ importers:
       '@wordpress/i18n':
         specifier: 6.27.1-next.v.202608281122.0
         version: 6.27.1-next.v.202608281122.0
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
 
   routes/settings:
     dependencies:
@@ -1870,6 +1870,9 @@ importers:
 
   routes/settings-experiments:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1891,12 +1894,18 @@ importers:
       '@wordpress/preferences':
         specifier: 4.54.2-next.v.202608281122.0
         version: 4.54.2-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
 
   routes/settings-general:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1921,18 +1930,18 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
 
   routes/settings-reading:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1960,18 +1969,27 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
 
   routes/term-add:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1999,27 +2017,30 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
 
   routes/term-edit:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2047,30 +2068,30 @@ importers:
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
 
   routes/term-list:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2101,33 +2122,33 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
       dequal:
         specifier: ^2.0.3
         version: 2.0.3
 
   routes/theme-list:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/base-styles':
         specifier: 13.0.1-next.v.202608281122.0
         version: 13.0.1-next.v.202608281122.0
@@ -2161,27 +2182,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
       dequal:
         specifier: 2.0.3
         version: 2.0.3
@@ -2195,6 +2195,18 @@ importers:
 
   routes/user:
     dependencies:
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/user-data':
+        specifier: workspace:*
+        version: link:../../packages/user-data
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2222,21 +2234,30 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/user-data':
-        specifier: workspace:*
-        version: link:../../packages/user-data
 
   routes/user-add:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2258,30 +2279,30 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
 
   routes/user-list:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/fields-next':
+        specifier: workspace:*
+        version: link:../../packages/fields-next
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0
@@ -2315,27 +2336,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/fields-next':
-        specifier: workspace:*
-        version: link:../../packages/fields-next
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -2345,6 +2345,27 @@ importers:
 
   routes/user-profile:
     dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/boot':
+        specifier: workspace:*
+        version: link:../../packages/boot
+      '@first-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../../packages/core-data-next
+      '@first-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@first-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@first-admin/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2375,27 +2396,6 @@ importers:
       '@wordpress/ui':
         specifier: 0.22.1-next.v.202608281122.0
         version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@zero-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@zero-admin/boot':
-        specifier: workspace:*
-        version: link:../../packages/boot
-      '@zero-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../../packages/core-data-next
-      '@zero-admin/dataviews':
-        specifier: workspace:*
-        version: link:../../packages/dataviews
-      '@zero-admin/design-system':
-        specifier: workspace:*
-        version: link:../../packages/design-system
-      '@zero-admin/telemetry':
-        specifier: workspace:*
-        version: link:../../packages/telemetry
-      '@zero-admin/views':
-        specifier: workspace:*
-        version: link:../../packages/views
 
 packages:
 

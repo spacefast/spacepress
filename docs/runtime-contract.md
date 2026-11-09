@@ -613,7 +613,9 @@ listens and purges those URLs from Batcache and the edge. With no listener
   post type archive, every term archive the post had or has, the author
   archive, page 2 of each listing, the feed, `/llms.txt`, and every page
   URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
-  slug change purges both the old and the new archive. Deeper listing pages fall back to the edge's `s-maxage`
+  slug change purges both the old and the new archive. Adding or removing a
+  post's terms (`wp_set_object_terms()`, `wp_remove_object_terms()`) purges
+  page 1 and page 2 of every term archive it joined or left. Deeper listing pages fall back to the edge's `s-maxage`
   window.
 - **When:** once per request, after the outermost Zero transaction commits,
   or at `shutdown` for writes made outside one (wp-admin, core REST). A

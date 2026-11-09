@@ -63,6 +63,12 @@ final class Purges
                 self::add($plugin, [...self::listings(self::termUrls([...$changed, ...$previous], $taxonomy)), ...$urls]);
             }
         }, 10, 6);
+        // wp_remove_object_terms() fires this, not set_object_terms: the terms the post left.
+        add_action('deleted_term_relationships', static function (int $id, array $ttIds, string $taxonomy) use ($plugin): void {
+            if (self::listening() && $ttIds !== [] && ($urls = self::postUrls(get_post($id))) !== []) {
+                self::add($plugin, [...self::listings(self::termUrls(array_map('intval', $ttIds), $taxonomy)), ...$urls]);
+            }
+        }, 10, 3);
         // A term edit purges its archive before (edit_terms runs before the update, so a slug change
         // still names the old URL) and after; a delete purges it before the term goes.
         $term = static function (int $termId, string $taxonomy) use ($plugin): void {

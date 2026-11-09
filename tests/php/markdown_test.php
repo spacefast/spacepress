@@ -384,6 +384,12 @@ $moved = $writes(static fn () => wp_set_post_categories($hello, [$cat['term_id']
 foreach (['/category/field-notes/', '/category/field-notes/page/2/', '/category/field-notes/page/2.md', '/category/elsewhere.md', '/category/elsewhere/page/2/'] as $path) {
     check("moving a post between terms purges $path", in_array($path, $moved, true), $moved);
 }
+$tag = wp_insert_term('Loose', 'post_tag');
+$writes(static fn () => wp_set_post_tags($hello, ['Loose'], true)); // its own announcement, not the one measured
+$removed = $writes(static fn () => wp_remove_object_terms($hello, [$tag['term_id']], 'post_tag'))[0] ?? [];
+foreach (['/tag/loose/', '/tag/loose.md', '/tag/loose/page/2/', '/tag/loose/page/2.md', '/hello-again/'] as $path) {
+    check("removing a term from a post (wp_remove_object_terms) purges $path", in_array($path, $removed, true), $removed);
+}
 $trashed = $writes(static fn () => wp_trash_post($secondPost))[0] ?? [];
 check('trashing a published post purges where it was', in_array('/second-post/', $trashed, true) && in_array('/index.md', $trashed, true), $trashed);
 eq('a draft that stays a draft purges nothing', $writes(static fn () => wp_update_post(['ID' => $draft, 'post_content' => 'Still a draft.'])), []);

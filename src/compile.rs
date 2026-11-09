@@ -372,6 +372,13 @@ pub struct Compiler<'a, 'p> {
     async_callback: bool,
     /// The `this` type for the next object-literal method compiled (the literal's own type).
     implicit_this: Option<Ty>,
+    /// The build-time object the next `captured_use` reads a member of, as a method call's
+    /// receiver or a member of a receiver object: a module-level literal's method that reads
+    /// `this` is typed as its own object, so it is used only through that object.
+    home_receiver: Option<usize>,
+    /// Module-level literal methods whose `this` type is being built, by (owner, closure): a
+    /// sibling method that reads one of them leaves it out of its `this`.
+    typing_this: HashSet<(usize, usize)>,
     /// A named function expression passed as a callback: its inner declaration's span and the
     /// callback's parameter types.
     named_callback: Option<(Span, Vec<Ty>)>,
@@ -446,6 +453,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             resolving_json_types: HashSet::new(),
             async_callback: false,
             implicit_this: None,
+            home_receiver: None,
+            typing_this: HashSet::new(),
             named_callback: None,
             uses_jobs: false,
             helpers: HashMap::new(),
@@ -906,6 +915,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .map(|(_, t)| t)
                 .collect(),
             Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
+            // A component's own annotation types its props (see `compile_function`).
+            Slot::Component { .. } => vec![],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,
@@ -1012,8 +1023,66 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
             );
         }
+        if matches!(slot, Some(Slot::Component { .. })) {
+            if f.params.len() > 1 {
+                return err_help(
+                    f.span,
+                    "a component takes one props object",
+                    "destructure every prop from the first parameter",
+                );
+            }
+            if let Some(p) = f.params.first()
+                && p.ann.is_none()
+            {
+                return err_help(
+                    p.span,
+                    "a component's props need a type",
+                    "annotate them, e.g. `({ title }: { title: string })`",
+                );
+            }
+            // `children` holds what JSX renders (text, numbers, rendered JSX, arrays of those). It
+            // can be read as its type (`children.toUpperCase()` on string children), as in React,
+            // but never as a structure to take apart (`Children.map`, `cloneElement`).
+            if let Some(p) = f.params.first()
+                && let Some(ann) = &p.ann
+                && let Ty::Obj(fields) = self.resolve_runtime_ann(ann, f.module)?
+                && let Some((children, _)) = fields.get("children")
+                && self.jsx_child_type(children, p.span).is_err()
+            {
+                return err_help(
+                    p.span,
+                    format!("`children` is typed {}, which JSX can't pass", children.describe()),
+                    "type it `ReactNode`, `JSX.Element`, `string` or `number`",
+                );
+            }
+        }
         let mut param_tys = Vec::new();
+        // A module-level literal's method types its hidden receiver as its object (see
+        // `home_this_type`), as `closure_with_types` does for a literal inside a function.
+        let mut implicit_this = if params.is_none() {
+            self.implicit_this.take()
+        } else {
+            None
+        };
         for (i, p) in f.params.iter().enumerate() {
+            if i == 0
+                && p.ann.is_none()
+                && params.is_none()
+                && let Some(this) = implicit_this.take()
+            {
+                param_tys.push(this);
+                continue;
+            }
+            if i == 0 && receives_this(&f) && p.ann.is_none() && !self.javascript_module(f.module) {
+                return Err(Diag::new(
+                    p.span,
+                    "Zero code doesn't support `this` without a type in a function that isn't a method of an object literal",
+                )
+                .code(crate::diag::Code::Unsupported)
+                .help(
+                    "declare it, e.g. `function f(this: { count: number })`, or write the function as a method in the object literal it is called on",
+                ));
+            }
             let declared = match &p.ann {
                 Some(a) => Some(self.resolve_runtime_ann(a, f.module)?),
                 None => None,
@@ -1057,6 +1126,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             });
         }
         if let Some(ps) = &params
+            && !matches!(slot, Some(Slot::Component { .. }))
             && ps.len()
                 < f.params
                     .iter()
@@ -1190,7 +1260,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
-                    let hint = php_hint(&t);
+                    // A hidden receiver is whatever the call supplies, undefined for a detached
+                    // call, so it takes no PHP type: reading through it throws as in JavaScript.
+                    let hint = if i == 0 && receives_this(f) { "" } else { php_hint(&t) };
                     if hint == "\\Zero\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
@@ -3531,6 +3603,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.expr(inner)?
             }
             ExprKind::Await(x) => self.await_expr(x, span)?,
+            ExprKind::Jsx(jsx) => self.jsx(jsx, span)?,
             ExprKind::Yield { arg, delegate } => self.yield_expr(arg.as_deref(), *delegate, span)?,
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
@@ -3853,6 +3926,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// `member`: the value was read through a static member chain (`ns.a.b`), so its type
     /// is the widened property type rather than a `const` binding's literal.
     fn captured_use(&mut self, n: &str, v: Value, b: &Binding, span: Span, callee: bool, member: bool) -> Result<Out> {
+        let home_receiver = self.home_receiver.take();
         if b.mutable && b.module_level && !self.javascript_module(self.fx.as_ref().expect("fn").module) {
             return err_help(
                 span,
@@ -3872,13 +3946,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
             Value::Closure(c) => {
                 let key = closure_key(c);
+                let home = self.method_home(c);
+                if let Some(home) = &home
+                    && home_receiver != Some(Rc::as_ptr(home) as usize)
+                {
+                    let method = n.rsplit('.').next().unwrap_or(n);
+                    return Err(Diag::new(
+                        span,
+                        format!("Zero code doesn't support using `{n}` apart from the object literal that defines it"),
+                    )
+                    .code(crate::diag::Code::Unsupported)
+                    .help(format!(
+                        "`{method}` reads `this`, which is typed as that object, so call it on the object, e.g. `obj.{method}()`; to call it with another receiver, declare its `this`, e.g. `{method}(this: {{ count: number }})`"
+                    )));
+                }
                 let helper_key = (self.owner(), key, self.fx().no_db);
                 let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
                     None => {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
-                        self.helpers.insert(helper_key, name.clone());
-                        self.compile_helper_now(c, &name)?;
+                        self.attempt(|this| {
+                            this.helpers.insert(helper_key, name.clone());
+                            match &home {
+                                Some(home) => this.compile_method_now(c, home, &name, n, b, span),
+                                None => this.compile_helper_now(c, &name, None),
+                            }
+                        })?;
                         name
                     }
                 };
@@ -4005,23 +4098,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     name.clone()
                 } else {
                     let name = self.unique_name("captured_collection");
-                    self.data_helpers.insert(key, name.clone());
-                    let mut body = format!(
-                        "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
-                        if c.set { "JsSet" } else { "JsMap" }
-                    );
-                    for (k, v) in &c.entries {
-                        validate_captured_data(k, span, &mut HashSet::new())?;
-                        validate_captured_data(v, span, &mut HashSet::new())?;
-                        let k = self.captured_data(k)?;
-                        if c.set {
-                            let _ = writeln!(body, "        $value->add({k});");
-                        } else {
-                            let v = self.captured_data(v)?;
-                            let _ = writeln!(body, "        $value->set({k}, {v});");
+                    let body = self.attempt(|this| {
+                        this.data_helpers.insert(key, name.clone());
+                        let mut body = format!(
+                            "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
+                            if c.set { "JsSet" } else { "JsMap" }
+                        );
+                        for (k, v) in &c.entries {
+                            validate_captured_data(k, span, &mut HashSet::new())?;
+                            validate_captured_data(v, span, &mut HashSet::new())?;
+                            let k = this.captured_data(k)?;
+                            if c.set {
+                                let _ = writeln!(body, "        $value->add({k});");
+                            } else {
+                                let v = this.captured_data(v)?;
+                                let _ = writeln!(body, "        $value->set({k}, {v});");
+                            }
                         }
-                    }
-                    body.push_str("    }\n    return $value;\n}\n\n");
+                        body.push_str("    }\n    return $value;\n}\n\n");
+                        Ok(body)
+                    })?;
                     self.output.push_str(&body);
                     name
                 };
@@ -4324,53 +4420,245 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(format!("\\ZeroApp\\{name}()"));
         }
         let name = self.unique_name("receiver");
-        self.data_helpers.insert(key, name.clone());
         let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let mut body = format!(
-            "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
-        );
-        for (key, member) in fields {
-            let member_path = format!("{path}.{key}");
-            // Every member gets its run-time form or a compile error: a dropped field would read
-            // as undefined through `this`.
-            let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
-                self.receiver_value(&member_path, &member, binding, span)?
-            } else if matches!(&member, Value::Closure(c) if c.has_props()) {
-                // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
-                return Err(Diag::new(
-                    span,
-                    format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
-                )
-                .code(crate::diag::Code::Unsupported)
-                .help(format!(
-                    "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
-                )));
-            } else {
-                self.captured_use(&member_path, member, binding, span, true, true)
-                    .map_err(|d| {
-                        if d.help.is_some() {
-                            return d;
-                        }
-                        let help = format!(
-                            "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
-                        );
-                        d.help(help)
-                    })?
-                    .php
-            };
-            let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
-        }
-        body.push_str("    }\n    return $value;\n}\n\n");
+        let body = self.attempt(|this| {
+            this.data_helpers.insert(key, name.clone());
+            let mut body = format!(
+                "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
+            );
+            for (key, member) in fields {
+                let member_path = format!("{path}.{key}");
+                // Every member gets its run-time form or a compile error: a dropped field would read
+                // as undefined through `this`.
+                let php = if matches!(member, Value::Object(_)) && is_static_namespace(&member) {
+                    this.receiver_value(&member_path, &member, binding, span)?
+                } else if matches!(&member, Value::Closure(c) if c.has_props()) {
+                    // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
+                    return Err(Diag::new(
+                        span,
+                        format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
+                    )
+                    .code(crate::diag::Code::Unsupported)
+                    .help(format!(
+                        "the object is built in PHP as its methods' `this`, and a PHP function can't carry properties; move `{key}` out of `{path}`, or keep its properties in a plain object field"
+                    )));
+                } else {
+                    this.home_receiver = Some(Rc::as_ptr(o) as usize);
+                    this.captured_use(&member_path, member, binding, span, true, true)
+                        .map_err(|d| {
+                            if d.help.is_some() {
+                                return d;
+                            }
+                            let help = format!(
+                                "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                            );
+                            d.help(help)
+                        })?
+                        .php
+                };
+                let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+            }
+            body.push_str("    }\n    return $value;\n}\n\n");
+            Ok(body)
+        })?;
         self.output.push_str(&body);
         Ok(format!("\\ZeroApp\\{name}()"))
     }
 
-    fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {
+    /// The object literal a TypeScript method that reads an untyped `this` was written in, when
+    /// the literal was built while the config was evaluated (see `Evaluator::method_homes`).
+    fn method_home(&self, c: &Rc<Closure>) -> Option<Obj> {
+        let f = &c.func;
+        if !receives_this(f) || f.params.first().is_some_and(|p| p.ann.is_some()) || self.javascript_module(f.module) {
+            return None;
+        }
+        self.ev.method_homes.get(&closure_key(c)).map(|(_, home)| home.clone())
+    }
+
+    /// Compiles a module-level literal's method with `this` typed as its object, as
+    /// `method_with_this` does for a literal inside a function: its fields, plus the sibling
+    /// methods typed so far (annotated or compiled), plus the siblings it reads through `this`
+    /// (`Func::this_reads`), each compiled first. A sibling still being typed (a cycle without
+    /// return types) is left out, and the refusal names the annotation that breaks the cycle.
+    fn compile_method_now(
+        &mut self,
+        c: &Rc<Closure>,
+        home: &Obj,
+        name: &str,
+        path: &str,
+        b: &Binding,
+        span: Span,
+    ) -> Result<()> {
+        let typing = (self.owner(), closure_key(c));
+        self.typing_this.insert(typing);
+        let home_path = path.rsplit_once('.').map_or(path, |(home, _)| home);
+        let binding = Binding { ann: None, ..b.clone() };
+        let result = self
+            .home_this_type(home, home_path, &c.func.this_reads, &binding, span, &mut Vec::new())
+            .and_then(|(this, left_out)| {
+                self.compile_helper_now(c, name, Some(this))
+                    .map_err(|d| self.this_cycle_help(d, home, path, &left_out))
+            });
+        self.typing_this.remove(&typing);
+        result
+    }
+
+    /// The fix for a `this` read refused because a sibling method had no type yet: a method that
+    /// calls itself, or methods calling each other, need one return type annotated; a method
+    /// reached through `this` held in a variable, spread or destructured isn't compiled first.
+    fn this_cycle_help(&self, d: Diag, home: &Obj, path: &str, left_out: &[String]) -> Diag {
+        let method = path.rsplit('.').next().unwrap_or(path);
+        let Some(m) = left_out
+            .iter()
+            .find(|m| d.message.ends_with(&format!("has no field `{m}`")))
+        else {
+            return d;
+        };
+        let Some(Value::Closure(c)) = home.borrow().get(m).cloned() else {
+            return d;
+        };
+        let params = c
+            .func
+            .params
+            .iter()
+            .skip(usize::from(receives_this(&c.func)))
+            .map(|p| match &p.pat {
+                Pat::Id(n, _) => format!("{n}: number"),
+                _ => "value: number".into(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let calls_back = c.func.this_reads.iter().any(|r| r == method || r == m);
+        let reads_directly = path_reads(home, method).is_some_and(|reads| reads.iter().any(|r| r == m));
+        let help = if m == method {
+            format!("`{m}` calls itself through `this`; annotate its return type, e.g. `{m}({params}): number`")
+        } else if calls_back && reads_directly {
+            format!(
+                "`{m}` and `{method}` call each other through `this`; annotate the return type of `{m}`, e.g. `{m}({params}): number`"
+            )
+        } else {
+            format!(
+                "`{method}` reaches `{m}` through `this` held in a variable, spread or destructured, so `{m}` isn't typed first; call it as `this.{m}(...)`, or annotate its parameters and return type, e.g. `{m}({params}): number`"
+            )
+        };
+        d.help(help)
+    }
+
+    /// The type of `home` as a method's `this`, and the keys left out because their method is
+    /// still being typed. `reads` names the members the method reads through `this`.
+    fn home_this_type(
+        &mut self,
+        home: &Obj,
+        path: &str,
+        reads: &[String],
+        binding: &Binding,
+        span: Span,
+        seen: &mut Vec<usize>,
+    ) -> Result<(Ty, Vec<String>)> {
+        seen.push(Rc::as_ptr(home) as usize);
+        let members: Vec<(String, Value)> = home.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let mut fields = IndexMap::new();
+        let mut left_out = Vec::new();
+        for (key, member) in members {
+            let needed = reads.contains(&key);
+            let member_path = format!("{path}.{key}");
+            let ty = match &member {
+                Value::Closure(c) => {
+                    if let Some(ty) = self.helper_types.get(&closure_key(c)).cloned() {
+                        Some(ty)
+                    } else if let Some(ty) = self.declared_signature(&c.func)? {
+                        Some(ty)
+                    } else if needed && !self.typing_this.contains(&(self.owner(), closure_key(c))) {
+                        self.attempt(|this| {
+                            this.home_receiver = Some(Rc::as_ptr(home) as usize);
+                            this.captured_use(&member_path, member.clone(), binding, span, true, true)
+                        })?;
+                        self.helper_types.get(&closure_key(c)).cloned()
+                    } else {
+                        None
+                    }
+                }
+                Value::Object(o) if is_static_namespace(&member) => {
+                    if seen.contains(&(Rc::as_ptr(o) as usize)) {
+                        None
+                    } else {
+                        // A nested object's methods are compiled when the method reads it.
+                        let all: Vec<String> = if needed {
+                            o.borrow().keys().cloned().collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Some(self.home_this_type(o, &member_path, &all, binding, span, seen)?.0)
+                    }
+                }
+                _ => match self
+                    .ev
+                    .method_home_fields
+                    .get(&(Rc::as_ptr(home) as usize, key.clone()))
+                    .cloned()
+                {
+                    Some((ann, module)) => Some(self.resolve_runtime_ann(&ann, module)?),
+                    // `receiver_value` builds every member in PHP, so a member that can't be
+                    // built is refused here, the first time it is compiled, never dropped.
+                    None => Some(
+                        self.attempt(|this| this.captured_use(&member_path, member.clone(), binding, span, false, true))
+                            .map_err(|d| {
+                                if d.help.is_some() {
+                                    return d;
+                                }
+                                d.help(format!(
+                                    "a method of `{path}` reads `this`, so the whole object is built in PHP; move `{key}` out of `{path}` or stop reading `this`"
+                                ))
+                            })?
+                            .ty,
+                    ),
+                },
+            };
+            match ty {
+                Some(ty) => {
+                    fields.insert(key, (widen_fresh_literals(&ty), false));
+                }
+                None => left_out.push(key),
+            }
+        }
+        seen.pop();
+        Ok((Ty::Obj(fields), left_out))
+    }
+
+    /// Builds a helper, class or captured-value helper so that a refusal registers nothing.
+    /// Narrowing and path typing compile an expression only for its type and drop the error. If a
+    /// failed build kept a name, signature or class it added, including a nested helper that
+    /// compiled fine but names the failed class, the real compile would reuse it: the refusal
+    /// would be lost, or a later read would find a class id that was never finished.
+    fn attempt<T>(&mut self, build: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        fn keys<K: Clone + Eq + std::hash::Hash, V>(map: &HashMap<K, V>) -> HashSet<K> {
+            map.keys().cloned().collect()
+        }
+        let classes = keys(&self.classes);
+        let helpers = keys(&self.helpers);
+        let helper_types = keys(&self.helper_types);
+        let helper_values = keys(&self.helper_values);
+        let data_helpers = keys(&self.data_helpers);
+        let built = build(self);
+        if built.is_err() {
+            self.classes.retain(|k, _| classes.contains(k));
+            self.helpers.retain(|k, _| helpers.contains(k));
+            self.helper_types.retain(|k, _| helper_types.contains(k));
+            self.helper_values.retain(|k, _| helper_values.contains(k));
+            self.data_helpers.retain(|k, _| data_helpers.contains(k));
+        }
+        built
+    }
+
+    /// `this`: the type of a module-level literal method's hidden receiver (`compile_method_now`).
+    fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str, this: Option<Ty>) -> Result<()> {
         // Compile the helper before its caller so its return type is known.
         let no_db = self.fx().no_db;
         let saved_out = std::mem::take(&mut self.output);
         let saved_fx = self.fx.take();
+        let saved_this = std::mem::replace(&mut self.implicit_this, this);
         let r = self.compile_function(c, name, None, None, no_db);
+        self.implicit_this = saved_this;
         self.fx = saved_fx;
         let helper_src = std::mem::replace(&mut self.output, saved_out);
         self.output.push_str(&helper_src);
@@ -5605,6 +5893,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
         }
+        // A literal's method typed by its object is used only through it: reading it as a value
+        // is refused where it is read (see `captured_use`).
+        if let Some((path, value @ Value::Closure(_), binding)) = self.static_member(obj, prop, prop_span)?
+            && matches!(&value, Value::Closure(c) if self.method_home(c).is_some())
+        {
+            return self.captured_use(&path, value, &binding, span, false, true);
+        }
         // A namespace with methods that read `this` is one per-request object: its methods may
         // write its fields, so reads go to that object rather than the build-time constant.
         if let Some(receiver) = self.stateful_namespace(obj)? {
@@ -5950,6 +6245,421 @@ impl<'a, 'p> Compiler<'a, 'p> {
             out.place = None;
         }
         Ok(out)
+    }
+
+    // ---- JSX (docs/decisions/2026-11-08-tsx-to-php.md) -----------------------------------------
+
+    /// A JSX node as rendered HTML. Literal parts fold to escaped strings at build time; every
+    /// value goes through `\Zero\Html`, which follows react-dom/server's child and attribute rules.
+    fn jsx(&mut self, jsx: &Jsx, span: Span) -> Result<Out> {
+        match &jsx.kind {
+            JsxKind::Component(call) => {
+                let ExprKind::Call { callee, args, .. } = &call.kind else {
+                    unreachable!("lowering builds component calls")
+                };
+                let [ArrEl::Item(props_expr)] = args.as_slice() else {
+                    unreachable!("a component call has one props object")
+                };
+                let f = self.expr(callee)?;
+                let f = self.finish_value(f, callee.span)?;
+                let Ty::Fn(params, ret) = f.ty.clone() else {
+                    return err_help(
+                        callee.span,
+                        format!("{} isn't a component", f.ty.describe()),
+                        "use a function that takes one props object and returns JSX",
+                    );
+                };
+                // React builds the element now and calls the component when it renders it.
+                let props = self.expr(props_expr)?;
+                let props = self.finish_value(props, props_expr.span)?;
+                // `key` evaluates for its effects and is then dropped, as React drops it from props.
+                let key = match jsx.attrs.as_slice() {
+                    [JsxAttr::Named { value, .. }] => {
+                        let v = self.expr(value)?;
+                        Some(self.finish_value(v, value.span)?.php)
+                    }
+                    _ => None,
+                };
+                // `children` is what JSX passes, for any component: exported or local.
+                if let Some(Ty::Obj(fields)) = callable_argument(&params, 0).map(|t| t.non_null())
+                    && let Some((children, _)) = fields.get("children")
+                    && self.jsx_child_type(children, callee.span).is_err()
+                {
+                    return err_help(
+                        callee.span,
+                        format!(
+                            "this component types `children` as {}, which JSX can't pass",
+                            children.describe()
+                        ),
+                        "type it `ReactNode`, `JSX.Element`, `string` or `number`",
+                    );
+                }
+                match callable_argument(&params, 0) {
+                    Some(want) if !assignable(&props.ty, &want) => {
+                        return err(
+                            props_expr.span,
+                            format!(
+                                "these props are {}, but the component expects {}",
+                                props.ty.describe(),
+                                want.describe()
+                            ),
+                        );
+                    }
+                    None if !matches!(&props_expr.kind, ExprKind::Object(p) if p.is_empty()) => {
+                        return err_help(
+                            props_expr.span,
+                            "this component takes no props",
+                            "remove the attributes and children",
+                        );
+                    }
+                    _ => {}
+                }
+                // An async server component blocks until its data is in (handlers' blocking `await`).
+                let ret = match *ret {
+                    Ty::Promise(t) => *t,
+                    t => t,
+                };
+                self.jsx_child_type(&ret, callee.span).map_err(|_| {
+                    Diag::new(
+                        callee.span,
+                        format!("this component returns {}, which JSX can't render", ret.describe()),
+                    )
+                    .help("return JSX, a string, a number or null")
+                })?;
+                let props = match key {
+                    // `[props, key][0]` evaluates both in source order and keeps the props.
+                    Some(key) => format!("[{}, {key}][0]", props.php),
+                    None => props.php,
+                };
+                Ok(Out::atom(
+                    format!("\\Zero\\Html::component({}, {props})", f.php),
+                    Ty::Html,
+                ))
+            }
+            JsxKind::Fragment => {
+                let children = self.jsx_children(&jsx.children)?;
+                Ok(Out::atom(
+                    format!("\\Zero\\Html::children({})", children.join(", ")),
+                    Ty::Html,
+                ))
+            }
+            JsxKind::Intrinsic(tag) => self.jsx_element(tag, jsx, span),
+        }
+    }
+
+    fn jsx_children(&mut self, children: &[Expr]) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        for child in children {
+            if let ExprKind::Str(text) = &child.kind {
+                out.push(format!("\\Zero\\Html::raw({})", php_str(&jsx_escape(text))));
+                continue;
+            }
+            let v = self.expr(child)?;
+            let v = self.finish_value(v, child.span)?;
+            self.jsx_child_type(&v.ty, child.span)?;
+            out.push(v.php);
+        }
+        Ok(out)
+    }
+
+    /// What React accepts as a child: text, numbers, booleans and nullish (which render nothing),
+    /// rendered JSX, and arrays of those.
+    fn jsx_child_type(&self, ty: &Ty, span: Span) -> Result<()> {
+        let ok = ty.all(|t| match t {
+            Ty::Html
+            | Ty::Str
+            | Ty::StrLit(_)
+            | Ty::FreshStrLit(_)
+            | Ty::Num
+            | Ty::NumLit(_)
+            | Ty::FreshNumLit(_)
+            | Ty::BigInt
+            | Ty::Bool
+            | Ty::BoolLit(_)
+            | Ty::FreshBoolLit(_)
+            | Ty::Null
+            | Ty::Undefined
+            | Ty::Void
+            | Ty::Never
+            | Ty::Dynamic => true,
+            // `ReactNode`'s nested arrays: `\Zero\Html::child` checks each element when it renders.
+            Ty::Array(inner) | Ty::NonEmptyArray(inner) if **inner == Ty::Unknown => true,
+            Ty::Array(inner) | Ty::NonEmptyArray(inner) => self.jsx_child_type(inner, span).is_ok(),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) => items.iter().all(|t| self.jsx_child_type(t, span).is_ok()),
+            _ => false,
+        });
+        if ok {
+            Ok(())
+        } else {
+            err_help(
+                span,
+                format!("{} can't be rendered as a JSX child", ty.describe()),
+                "render one of its fields, e.g. `{item.title}`, or map it to elements",
+            )
+        }
+    }
+
+    fn jsx_element(&mut self, tag: &str, jsx: &Jsx, span: Span) -> Result<Out> {
+        // Browsers lowercase tag names, so every tag rule matches the lowercased name
+        // (docs/decisions/2026-11-08-tsx-to-php.md, "Contexts text escaping can't make safe").
+        let folded_tag = tag.to_ascii_lowercase();
+        // React hoists or preloads these into the document head, which a fragment of a page can't
+        // reproduce; workstream 6's root layout owns the head.
+        if matches!(
+            folded_tag.as_str(),
+            "title" | "meta" | "link" | "script" | "style" | "base"
+        ) {
+            return err_help(
+                span,
+                format!("a component can't render `<{tag}>`"),
+                "set titles and meta tags with `export const metadata`, and import styles and scripts as modules",
+            );
+        }
+        if folded_tag == "textarea" && !jsx.children.is_empty() {
+            return err_help(
+                span,
+                "`<textarea>` can't have children",
+                "set its text with `defaultValue`",
+            );
+        }
+        // Raw-text and embedding elements: text escaping can't make an expression safe inside them.
+        if RAW_TEXT_TAGS.contains(&folded_tag.as_str()) {
+            for child in &jsx.children {
+                match &child.kind {
+                    ExprKind::Str(text) if !text.to_ascii_lowercase().contains(&format!("</{folded_tag}")) => {}
+                    ExprKind::Str(_) => {
+                        return err_help(
+                            child.span,
+                            format!("this text closes `<{tag}>` early"),
+                            format!("remove `</{folded_tag}` from the text"),
+                        );
+                    }
+                    _ => {
+                        return err_help(
+                            child.span,
+                            format!("`<{tag}>` takes only literal text"),
+                            "its content isn't parsed as escaped text, so values can't be placed in it safely",
+                        );
+                    }
+                }
+            }
+        }
+        let mut entries = Vec::new();
+        let mut spread = false;
+        for attr in &jsx.attrs {
+            match attr {
+                JsxAttr::Named { name, value, span } => {
+                    let literal = match &value.kind {
+                        ExprKind::Str(text) => Some(text.as_str()),
+                        _ => None,
+                    };
+                    self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
+                    let v = self.expr(value)?;
+                    let v = self.finish_value(v, value.span)?;
+                    let php = if name.eq_ignore_ascii_case("style") {
+                        self.jsx_style_type(&v.ty, value.span)?;
+                        style_of(&v.php, &v.ty)
+                    } else {
+                        v.php
+                    };
+                    entries.push(format!("{} => {}", php_str(name), php));
+                }
+                JsxAttr::Spread(value) => {
+                    let v = self.expr(value)?;
+                    let v = self.finish_value(v, value.span)?;
+                    // Only a spread with a closed set of keys: each key meets the rules as if written out.
+                    let fields = match v.ty.non_null() {
+                        Ty::Obj(fields) => fields,
+                        Ty::Instance(_, fields) => match *fields {
+                            Ty::Obj(fields) => fields,
+                            other => {
+                                return err(value.span, format!("can't spread {} into attributes", other.describe()));
+                            }
+                        },
+                        other => {
+                            return err_help(
+                                value.span,
+                                format!("can't spread {} into attributes", other.describe()),
+                                "spread an object whose type lists its keys, or write the attributes out",
+                            );
+                        }
+                    };
+                    for (key, (ty, _)) in &fields {
+                        let literal = match ty {
+                            Ty::StrLit(text) | Ty::FreshStrLit(text) => Some(text.as_str()),
+                            _ => None,
+                        };
+                        self.jsx_attribute_rule(&folded_tag, key, literal, value, value.span)
+                            .map_err(|d| d.help(format!("the spread sets `{key}`; write the attributes out")))?;
+                        if key.eq_ignore_ascii_case("style") {
+                            self.jsx_style_type(ty, value.span)?;
+                        }
+                    }
+                    spread = true;
+                    // A spread is narrowed to the keys its type declares, and its `style` to the
+                    // properties the style's type declares: extra keys in the data are dropped.
+                    let keys: Vec<String> = fields.keys().map(|k| php_str(k)).collect();
+                    let narrowed = format!(
+                        "array_intersect_key(({})->p ?? [], array_flip([{}]))",
+                        v.wrapped(),
+                        keys.join(", ")
+                    );
+                    let narrowed = match fields.iter().find(|(k, _)| k.as_str() == "style") {
+                        Some((_, (style_ty, _))) => format!(
+                            "(static function (array $a): array {{ if (array_key_exists('style', $a)) {{ $a['style'] = {}; }} return $a; }})({narrowed})",
+                            style_of("$a['style']", style_ty)
+                        ),
+                        None => narrowed,
+                    };
+                    entries.push(format!("...{narrowed}"));
+                }
+            }
+        }
+        let attrs = if spread {
+            // A later attribute replaces an earlier spread key, as object spread does.
+            format!(
+                "array_merge({})",
+                entries
+                    .iter()
+                    .map(|e| match e.strip_prefix("...") {
+                        Some(s) => s.to_string(),
+                        None => format!("[{e}]"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            format!("[{}]", entries.join(", "))
+        };
+        // The browser reads an HTML tag in any case as its lowercase name, so the output uses that
+        // name and `Html::element` applies the tag's rules (`<bR/>` is a void `<br/>`; React would
+        // print `<bR></bR>`, which browsers parse as two line breaks). SVG's camelCase elements and
+        // custom elements keep the case they were written in.
+        let output_tag = if SVG_CAMEL_TAGS.contains(&tag) || tag.contains('-') {
+            tag.to_string()
+        } else {
+            folded_tag.clone()
+        };
+        let mut args = vec![php_str(&output_tag), attrs];
+        // A literal string child stays a string, so `Html::element` can apply React's rules that
+        // depend on it (the doubled leading newline in `<pre>`).
+        match jsx.children.as_slice() {
+            [
+                Expr {
+                    kind: ExprKind::Str(text),
+                    ..
+                },
+            ] => args.push(php_str(text)),
+            children => args.extend(self.jsx_children(children)?),
+        }
+        Ok(Out::atom(
+            format!("\\Zero\\Html::element({})", args.join(", ")),
+            Ty::Html,
+        ))
+    }
+
+    /// One attribute of an intrinsic element, named in the source or set by a closed spread,
+    /// against the record's build-time rules. `literal` is its value when that is a known string.
+    fn jsx_attribute_rule(&self, tag: &str, name: &str, literal: Option<&str>, value: &Expr, span: Span) -> Result<()> {
+        if !valid_attribute_name(name) {
+            return err_help(
+                span,
+                format!("`{name}` isn't a valid attribute name"),
+                "attribute names start with a letter, `_` or `:`, then letters, digits, `_`, `.`, `:` or `-`",
+            );
+        }
+        let folded = name.to_ascii_lowercase();
+        // `style` is narrowed to its declared properties; any other spelling would skip that.
+        if folded == "style" && name != "style" {
+            return err_help(
+                span,
+                format!("`{name}` is spelled `style`"),
+                "write `style` in lowercase",
+            );
+        }
+        if folded == "dangerouslysetinnerhtml" {
+            return err_help(
+                span,
+                "`dangerouslySetInnerHTML` isn't supported",
+                "render the value as a child, which is escaped; trusted markup will use `<Html>`",
+            );
+        }
+        if folded == "srcdoc" {
+            return err_help(
+                span,
+                "`srcDoc` isn't supported",
+                "it is a document parsed as HTML; link to the document with `src`, and trusted markup will use `<Html>`",
+            );
+        }
+        if folded.starts_with("on") && folded.len() > 2 {
+            return if literal.is_some() || matches!(value.kind, ExprKind::Str(_) | ExprKind::Template(..)) {
+                err_help(
+                    span,
+                    format!("`{name}` with a string is inline script"),
+                    "handle events in a \"use client\" component with a function",
+                )
+            } else {
+                err_help(
+                    span,
+                    format!("server components can't handle events (`{name}`)"),
+                    "move the handler into a \"use client\" component",
+                )
+            };
+        }
+        if is_url_attribute(&folded)
+            && let Some(url) = literal
+            && !safe_url(url)
+        {
+            return err_help(
+                value.span,
+                format!("`{name}` is an unsafe URL"),
+                "use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`)",
+            );
+        }
+        // SVG animation can set any attribute of its target, URL attributes included, so it takes
+        // only literal values, and never targets a URL attribute.
+        if matches!(tag, "animate" | "set" | "animatemotion" | "animatetransform") {
+            if folded == "attributename"
+                && let Some(target) = literal
+                && (is_url_attribute(&target.to_ascii_lowercase()) || target.to_ascii_lowercase().starts_with("on"))
+            {
+                return err_help(
+                    span,
+                    format!("SVG animation of `{target}`"),
+                    "animate presentation attributes only",
+                );
+            }
+            if matches!(folded.as_str(), "attributename" | "values" | "to" | "from" | "by") && literal.is_none() {
+                return err_help(
+                    span,
+                    format!("`{name}` on `<{tag}>` must be literal"),
+                    "SVG animation can rewrite its target's attributes, so its values can't come from data",
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// `style` takes an object whose keys are known at build time, so request data can only fill
+    /// values (which `\Zero\Html` escapes), never choose properties.
+    fn jsx_style_type(&self, ty: &Ty, span: Span) -> Result<()> {
+        match ty.non_null() {
+            Ty::Obj(fields)
+                if fields.values().all(|(t, _)| {
+                    t.all(|t| {
+                        t.is_str() || t.is_num() || matches!(t, Ty::Undefined | Ty::Null | Ty::Bool | Ty::BoolLit(_))
+                    })
+                }) =>
+            {
+                Ok(())
+            }
+            Ty::Undefined | Ty::Never => Ok(()),
+            other => err_help(
+                span,
+                format!("`style` needs an object with fixed keys, not {}", other.describe()),
+                "write the properties out, e.g. `style={{ color: c }}`",
+            ),
+        }
     }
 
     fn await_expr(&mut self, x: &Expr, span: Span) -> Result<Out> {
@@ -6624,6 +7334,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // the function reads `this`: then the namespace is its receiver, as in JavaScript.
                 if let Some((path, value, binding)) = self.static_member(obj, prop, *prop_span)? {
                     if matches!(&value, Value::Closure(c) if receives_this(&c.func)) {
+                        if let Some((_, Value::Object(o), _)) = self.static_receiver(obj)? {
+                            self.home_receiver = Some(Rc::as_ptr(&o) as usize);
+                        }
                         let f = self.captured_use(&path, value, &binding, callee.span, true, true)?;
                         // The namespace exists only at build time; the receiver is a run-time copy of
                         // it, built once per request, holding its data and its functions' values.
@@ -9469,6 +10182,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Regex
         | Ty::Host(_)
         | Ty::Error
+        | Ty::Html
         | Ty::Collection(_)
         | Ty::Db
         | Ty::DbQuery
@@ -9630,6 +10344,14 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
     }
 }
 
+/// The `this.<key>` names the method stored under `key` in `home` reads (`Func::this_reads`).
+fn path_reads(home: &Obj, key: &str) -> Option<Vec<String>> {
+    match home.borrow().get(key) {
+        Some(Value::Closure(c)) => Some(c.func.this_reads.clone()),
+        _ => None,
+    }
+}
+
 /// Whether an ordinary function takes its receiver as the hidden `this` parameter.
 fn receives_this(f: &Func) -> bool {
     f.receives_this
@@ -9755,6 +10477,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Regex
         | Ty::Host(_)
         | Ty::Error
+        | Ty::Html
         | Ty::Collection(_)
         | Ty::Db
         | Ty::DbQuery
@@ -10125,3 +10848,145 @@ fn literal_position(e: &Expr) -> bool {
         _ => false,
     }
 }
+
+/// Text React would escape, escaped the same way (`&`, `<`, `>`, `"`, `'`).
+fn jsx_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// `\Zero\Html::URL`, for a lowercased attribute name.
+fn is_url_attribute(folded: &str) -> bool {
+    let name = folded
+        .strip_prefix("xlink:")
+        .or_else(|| folded.strip_prefix("xlink"))
+        .unwrap_or(folded);
+    matches!(
+        name,
+        "href"
+            | "src"
+            | "action"
+            | "formaction"
+            | "data"
+            | "ping"
+            | "poster"
+            | "background"
+            | "cite"
+            | "codebase"
+            | "longdesc"
+            | "manifest"
+            | "srcset"
+            | "imagesrcset"
+            | "icon"
+            | "profile"
+            | "usemap"
+            | "lowsrc"
+            | "dynsrc"
+            | "archive"
+            | "classid"
+    )
+}
+
+/// `\Zero\Html::safeUrl` at build time, for literal URLs.
+fn safe_url(url: &str) -> bool {
+    let url: String = url
+        .trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    if url.starts_with("//") || url.starts_with("/\\") || url.starts_with('\\') {
+        return false;
+    }
+    match url.find(':') {
+        Some(colon) if !url[..colon].contains(['/', '?', '#']) => {
+            matches!(url[..colon].to_ascii_lowercase().as_str(), "http" | "https" | "mailto")
+        }
+        _ => true,
+    }
+}
+
+/// Elements whose content isn't escaped text: they take only literal children.
+const RAW_TEXT_TAGS: &[&str] = &[
+    "script",
+    "style",
+    "textarea",
+    "title",
+    "iframe",
+    "noscript",
+    "template",
+    "xmp",
+    "noembed",
+    "noframes",
+    "plaintext",
+    "object",
+    "embed",
+];
+
+/// `[a-zA-Z_:][a-zA-Z0-9_.:-]*`.
+fn valid_attribute_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == ':')
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
+}
+
+/// `\Zero\Html::styleOf`: a `style` value narrowed to the property names its type declares.
+fn style_of(php: &str, ty: &Ty) -> String {
+    let names = match ty.non_null() {
+        Ty::Obj(fields) => fields.keys().map(|k| php_str(k)).collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    format!("\\Zero\\Html::styleOf({php}, [{}])", names.join(", "))
+}
+
+/// SVG elements whose names are camelCase in the specification; they keep their case.
+const SVG_CAMEL_TAGS: &[&str] = &[
+    "altGlyph",
+    "altGlyphDef",
+    "altGlyphItem",
+    "animateColor",
+    "animateMotion",
+    "animateTransform",
+    "clipPath",
+    "feBlend",
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feComposite",
+    "feConvolveMatrix",
+    "feDiffuseLighting",
+    "feDisplacementMap",
+    "feDistantLight",
+    "feDropShadow",
+    "feFlood",
+    "feFuncA",
+    "feFuncB",
+    "feFuncG",
+    "feFuncR",
+    "feGaussianBlur",
+    "feImage",
+    "feMerge",
+    "feMergeNode",
+    "feMorphology",
+    "feOffset",
+    "fePointLight",
+    "feSpecularLighting",
+    "feSpotLight",
+    "feTile",
+    "feTurbulence",
+    "foreignObject",
+    "glyphRef",
+    "linearGradient",
+    "radialGradient",
+    "textPath",
+];

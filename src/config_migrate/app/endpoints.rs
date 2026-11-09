@@ -9,7 +9,7 @@ use crate::diag::Span;
 use crate::ir::{FnBody, Func, Pat, Stmt};
 
 /// First path segments WordPress or Zero owns; v2 refuses routes under them (#129).
-const RESERVED: &[&str] = &[
+pub(super) const RESERVED: &[&str] = &[
     "wp-admin",
     "wp-json",
     "wp-content",

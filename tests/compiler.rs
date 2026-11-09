@@ -57,6 +57,156 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects("reject-infinite-loop", "step budget exceeded", "zero.config.ts:2:");
 }
 
+/// JSX outside the subset fails the build at its source, saying what to write instead
+/// (docs/decisions/2026-11-08-tsx-to-php.md, "Errors").
+#[test]
+fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
+    rejects(
+        "reject-jsx-unsafe-url",
+        "`href` is an unsafe URL",
+        "zero/components/Link.tsx:2:18",
+    );
+    rejects(
+        "reject-jsx-handler",
+        "server components can't handle events (`onClick`)",
+        "zero/components/Button.tsx:2:18",
+    );
+    rejects(
+        "reject-jsx-inner-html",
+        "`dangerouslySetInnerHTML` isn't supported",
+        "zero/components/Raw.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-object-child",
+        "{ title: string } can't be rendered as a JSX child",
+        "zero/components/Show.tsx:2:14",
+    );
+    rejects(
+        "reject-jsx-props",
+        "these props are { text: number }, but the component expects { text: string }",
+        "zero/components/Card.tsx:6:10",
+    );
+    rejects(
+        "reject-jsx-head",
+        "a component can't render `<title>`",
+        "zero/components/Head.tsx:2:10",
+    );
+    rejects(
+        "reject-jsx-config",
+        "JSX files can't be part of a Zero config",
+        "view.tsx:1:1",
+    );
+    // An action can't return rendered JSX: the config never reaches a component module.
+    rejects(
+        "reject-jsx-action",
+        "JSX files can't be part of a Zero config",
+        "zero/components/Badge.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-textarea",
+        "`<textarea>` can't have children",
+        "zero/components/Area.tsx:2:10",
+    );
+    rejects(
+        "reject-jsx-srcdoc",
+        "`srcDoc` isn't supported",
+        "zero/components/Frame.tsx:2:18",
+    );
+    // The record's "Contexts text escaping can't make safe": tag and attribute names in any case,
+    // raw-text tags, closed and open spreads, computed styles, names, SVG animation.
+    rejects(
+        "reject-jsx-script-case",
+        "a component can't render `<sCript>`",
+        "zero/components/Search.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-iframe-child",
+        "`<iframe>` takes only literal text",
+        "zero/components/Frame.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-raw-close",
+        "this text closes `<xmp>` early",
+        "zero/components/Code.tsx:2:16",
+    );
+    rejects(
+        "reject-jsx-open-spread",
+        "can't spread Record<string, string> into attributes",
+        "zero/components/Link.tsx:2:17",
+    );
+    rejects(
+        "reject-jsx-spread-handler",
+        "server components can't handle events (`onClick`)",
+        "zero/components/Button.tsx:2:22",
+    );
+    rejects(
+        "reject-jsx-style-keys",
+        "`style` needs an object with fixed keys",
+        "zero/components/Box.tsx:2:22",
+    );
+    rejects(
+        "reject-jsx-attribute-name",
+        "`a b` isn't a valid attribute name",
+        "zero/components/Odd.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-svg-animate",
+        "SVG animation of `href`",
+        "zero/components/Anim.tsx:2:27",
+    );
+    rejects(
+        "reject-jsx-use-client",
+        "\"use client\" components aren't compiled yet",
+        "zero/components/Counter.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-children-object",
+        "`children` is typed { title: string }, which JSX can't pass",
+        "zero/components/Wrap.tsx:1:22",
+    );
+    rejects(
+        "reject-jsx-config-unused",
+        "JSX files can't be part of a Zero config",
+        "label.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-use-client-prologue",
+        "\"use client\" components aren't compiled yet",
+        "zero/components/Toggle.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-style-case",
+        "`STYLE` is spelled `style`",
+        "zero/components/Box.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-style-case-spread",
+        "`STYLE` is spelled `style`",
+        "zero/components/Box.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-style-case-custom",
+        "`Style` is spelled `style`",
+        "zero/components/Widget.tsx:2:17",
+    );
+    rejects(
+        "reject-jsx-children-local",
+        "this component types `children` as { title: string }, which JSX can't pass",
+        "zero/components/Page.tsx:6:11",
+    );
+    // The folders that admit JSX are matched below the project, not anywhere in its path.
+    let nested = std::env::temp_dir().join(format!("zero-jsx-app-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&nested);
+    copy(
+        &root().join("tests/fixtures/reject-jsx-config"),
+        &nested.join("app/project"),
+    );
+    let out = zero().args(["check"]).arg(nested.join("app/project")).output().unwrap();
+    let _ = std::fs::remove_dir_all(&nested);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("JSX files can't be part of a Zero config"));
+}
+
 #[test]
 fn a_catch_all_route_segment_comes_last() {
     rejects(
@@ -351,13 +501,26 @@ fn context_values_pass_through_typed_helpers() {
         .arg(tmp.join(".zero/wp-content"))
         .arg(
             r#"$route = $app->matchRoute("POST", "/echo");
-               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"));
+               // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
+               // share-link secret redacted and the share parameter kept out of the query.
+               $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
+                   \Zero\Wp\HttpRoutes::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
+                   \Zero\Wp\HttpRoutes::url($host, $uri))[2], true);
+               $urls = [
+                 $at("Site.Example.:8443", "/echo?a=1&__=secret&b=2"),
+                 $at("site.example", "/echo?token=t1&purchaseToken=p1&tokens=kept"),
+                 $at("site.example", "/__/secret/echo"),
+                 $at("site.example", "/__/collab?x=1"),
+                 $at("[::1]:8080", "/echo"),
+               ];
+               [, $headers, $echo] = $app->serveRoute($route, "POST", "/echo", "", "raw body", [], $wp->user("ada"), "https://site.example/echo");
                echo json_encode([
                  "id" => $wp->userId("ada"),
                  "signedIn" => $wp->call("POST", "/actions/whoami", "{}", "ada")[1],
                  "guest" => $wp->call("POST", "/actions/whoami", "{}")[1],
                  "note" => $wp->call("POST", "/actions/note", ["body" => "x"], "ada")[1],
                  "echo" => json_decode($echo, true),
+                 "urls" => array_map(fn ($r) => [$r["url"], $r["share"]], $urls),
                ]);"#,
         )
         .arg("null")
@@ -375,7 +538,14 @@ fn context_values_pass_through_typed_helpers() {
             "signedIn": { "label": ada, "role": "editor", "anonymous": false, "viaIndex": false },
             "guest": { "label": "guest", "role": "guest", "anonymous": true, "viaIndex": true },
             "note": [ada],
-            "echo": { "method": "POST", "path": "/echo", "body": "raw body", "role": "editor" },
+            "echo": { "method": "POST", "url": "https://site.example/echo", "share": false, "path": "/echo", "body": "raw body", "role": "editor" },
+            "urls": [
+                ["https://site.example/echo?a=1&__=[redacted]&b=2", false],
+                ["https://site.example/echo?token=[redacted]&purchaseToken=[redacted]&tokens=kept", false],
+                ["https://site.example/__/[redacted]/echo", false],
+                ["https://site.example/__/collab?x=1", false],
+                ["https://[::1]/echo", false],
+            ],
         })
     );
     // Only a key no type can bound is refused, with the fix.
@@ -565,15 +735,16 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "build failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let init = std::fs::read_to_string(project.join("zero/migrations/0001_init.sql")).unwrap();
+    let init = std::fs::read_to_string(project.join("zero/_generated/migrations/0001_init.sql")).unwrap();
     assert!(init.contains("CREATE TABLE `{prefix}zero_items`"), "{init}");
     // A second build with no changes adds no migration.
     let again = zero().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert!(!project.join("zero/migrations/0002_update.sql").exists());
+    assert!(!project.join("zero/_generated/migrations/0002_update.sql").exists());
     for example in ["pantry", "blog", "site"] {
         let stored: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(root().join(format!("examples/{example}/zero/migrations/snapshot.json"))).unwrap(),
+            &std::fs::read(root().join(format!("examples/{example}/zero/_generated/migrations/snapshot.json")))
+                .unwrap(),
         )
         .unwrap();
         let persisted = tmp.join(format!("preserved-{example}"));
@@ -585,17 +756,18 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             String::from_utf8_lossy(&result.stderr)
         );
         let actual: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(persisted.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(persisted.join("zero/_generated/migrations/snapshot.json")).unwrap())
+                .unwrap();
         assert_eq!(
             actual, stored,
             "{example}: the authoring change must preserve stored resources"
         );
-        let migrations = std::fs::read_dir(persisted.join("zero/migrations"))
+        let migrations = std::fs::read_dir(persisted.join("zero/_generated/migrations"))
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
             .count();
-        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/migrations")))
+        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/_generated/migrations")))
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
@@ -613,12 +785,17 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     for file in ["snapshot.json", "0001_init.sql"] {
         assert_eq!(
-            std::fs::read(upgraded.join("zero/migrations").join(file)).unwrap(),
-            std::fs::read(fixture.join("zero/migrations").join(file)).unwrap(),
+            std::fs::read(upgraded.join("zero/_generated/migrations").join(file)).unwrap(),
+            std::fs::read(fixture.join("zero/_generated/migrations").join(file)).unwrap(),
             "the historical ledger must remain unchanged"
         );
     }
-    assert_eq!(std::fs::read_dir(upgraded.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(upgraded.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
 
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
@@ -626,7 +803,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     let built = zero().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let ledger = conflict.join("zero/migrations/snapshot.json");
+    let ledger = conflict.join("zero/_generated/migrations/snapshot.json");
     let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
     for stored_name in ["stockItems", "inventory"] {
         let mut legacy = canonical.clone();
@@ -644,7 +821,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{error}"
         );
         assert_eq!(std::fs::read(&ledger).unwrap(), legacy_bytes);
-        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        assert_eq!(
+            std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+                .unwrap()
+                .count(),
+            2
+        );
         std::fs::write(conflict.join("zero.config.ts"), format!("import {{ table, defineConfig }} from 'zero'; export default defineConfig({{ tables: {{ stockItems: table({{}}, {{ storageName: \"{stored_name}\" }}) }} }});")).unwrap();
         let preserved = zero().arg("build").arg(&conflict).output().unwrap();
         assert!(
@@ -654,7 +836,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         );
         let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
         assert_eq!(actual, legacy);
-        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        assert_eq!(
+            std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+                .unwrap()
+                .count(),
+            2
+        );
         std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     }
     // Physical-only siblings do not establish who owned the retained resource.
@@ -675,7 +862,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "{error}"
     );
     assert_eq!(std::fs::read(&ledger).unwrap(), sibling_bytes);
-    assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");
@@ -938,6 +1130,243 @@ fn compiled_php_matches_node_on_every_differential_case() {
         "compiled PHP disagrees with Node:\n{}",
         mismatches.join("\n")
     );
+}
+
+/// Every case in tests/differential/html/cases.json renders a compiled TSX component under PHP
+/// and the same TSX under React 19 (react-dom/static `prerender`); the HTML must be identical
+/// (docs/decisions/2026-11-08-tsx-to-php.md, "Parity tests"). Two things are normalized: React's
+/// `<!-- -->` text separators, and the `<link rel="preload" as="image">` React hoists for an
+/// eager `<img>`, which the page head will own.
+#[test]
+fn compiled_tsx_renders_the_html_react_renders() {
+    let dir = root().join("tests/differential/html");
+    assert!(
+        dir.join("node_modules/react-dom").is_dir(),
+        "run: npm ci --prefix tests/differential/html"
+    );
+    let tmp = std::env::temp_dir().join(format!("zero-tsx-parity-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&dir.join("project"), &tmp);
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(
+        built.status.success(),
+        "build failed:\n{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let node = Command::new("node")
+        .arg(dir.join("render-node.mjs"))
+        .arg(&tmp)
+        .arg(dir.join("cases.json"))
+        .output()
+        .expect("node is required for differential tests");
+    assert!(
+        node.status.success(),
+        "node failed:\n{}",
+        String::from_utf8_lossy(&node.stderr)
+    );
+    let plugins = tmp.join(".zero/wp-content/plugins");
+    let app = plugins.join(format!(
+        "zero-app-{}",
+        tmp.file_name().unwrap().to_string_lossy().replace('_', "-")
+    ));
+    let php = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(dir.join("cases.json"))
+        .output()
+        .unwrap();
+    assert!(
+        php.status.success() && php.stderr.is_empty(),
+        "php failed:\n{}{}",
+        String::from_utf8_lossy(&php.stdout),
+        String::from_utf8_lossy(&php.stderr)
+    );
+    let react: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
+    let compiled: serde_json::Value = serde_json::from_slice(&php.stdout).unwrap();
+    let cases = react.as_object().expect("case map");
+    assert!(!cases.is_empty());
+    let mut mismatches = Vec::new();
+    for (index, want) in cases {
+        let want = match want.get("html").and_then(serde_json::Value::as_str) {
+            Some(html) => serde_json::json!({ "html": without_image_preloads(&html.replace("<!-- -->", "")) }),
+            None => want.clone(),
+        };
+        let got = &compiled[index];
+        if *got != want {
+            mismatches.push(format!("case {index}\n  react: {want}\n  php:   {got}"));
+        }
+    }
+    // React rewrites `javascript:` URLs; Zero drops any URL attribute outside its policy.
+    let urls = [
+        "javascript:alert(1)",
+        " JavaScript:x",
+        "java\tscript:x",
+        "data:text/html,x",
+        "//evil.example",
+        "/\\evil.example",
+        "https://ok.example/?a=1&b=2",
+        "mailto:a@b.c",
+        "/root",
+        "?page=2",
+        "posts/1",
+        "#top",
+        "a/b:c",
+    ];
+    let file = tmp.join("urls.json");
+    let cases = serde_json::json!([{ "component": "components/urls.tsx#Links", "props": { "urls": urls } }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dropped = [
+        "javascript:alert(1)",
+        " JavaScript:x",
+        "java\tscript:x",
+        "data:text/html,x",
+        "//evil.example",
+        "/\\evil.example",
+    ]
+    .map(|u| format!("<a>{u}</a>"))
+    .concat();
+    let kept = [
+        ("https://ok.example/?a=1&amp;b=2", "https://ok.example/?a=1&amp;b=2"),
+        ("mailto:a@b.c", "mailto:a@b.c"),
+        ("/root", "/root"),
+        ("?page=2", "?page=2"),
+        ("posts/1", "posts/1"),
+        ("#top", "#top"),
+        ("a/b:c", "a/b:c"),
+    ]
+    .map(|(href, text)| format!("<a href=\"{href}\">{text}</a>"))
+    .concat();
+    assert_eq!(rendered["0"]["html"], format!("<p>{dropped}{kept}</p>"));
+    // The same policy whatever the name's spelling: letter case, an `xlink:` prefix, a closed
+    // spread, and custom elements. (Open spreads and named `on*` attributes are build errors.)
+    let extra = serde_json::json!({ "Href": "javascript:alert(1)", "title": "kept" });
+    let cases = serde_json::json!([{
+        "component": "components/urls.tsx#Variants",
+        "props": { "u": "javascript:alert(1)", "extra": extra },
+    }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div><a title=\"kept\">spread</a><my-el title=\"kept\"></my-el><a>upper</a><button>lower</button>\
+         <object></object><my-el></my-el><svg><use></use></svg></div>"
+    );
+    let cases = serde_json::json!([{ "component": "components/urls.tsx#TagCase", "props": {} }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div>a<br/>b<svg><foreignObject></foreignObject></svg></div>"
+    );
+    // Extra keys in decoded JSON never reach `style` or a spread's attributes.
+    let evil = "url(//evil.example/t)";
+    let cases = serde_json::json!([{
+        "component": "components/urls.tsx#ExtraKeys",
+        "props": {
+            "s": { "color": "red", "backgroundImage": evil, "position": "fixed", "inset": "0" },
+            "extra": {
+                "title": "t",
+                "onclick": "alert(1)",
+                "href": "javascript:alert(1)",
+                "style": { "color": "blue", "position": "fixed" },
+            },
+        },
+    }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div><p style=\"color:red\">style</p><p title=\"t\" style=\"color:blue\">spread</p></div>"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(
+        mismatches.is_empty(),
+        "compiled TSX disagrees with React:\n{}",
+        mismatches.join("\n")
+    );
+}
+
+/// Drops `<link rel="preload" as="image" …/>`, which React emits ahead of an eager `<img>`.
+/// `\Zero\Html` keeps its own attribute checks even though the compiler refuses these names and
+/// spreads at build time: a value that reaches it another way (an imported JavaScript object)
+/// still can't set a URL, an event handler or `srcdoc` (PHP's `$` matches before a final `\n`,
+/// so the name pattern must be anchored with `\z`).
+#[test]
+fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
+    let runtime = root().join("runtime/Zero/bootstrap.php");
+    let script = r#"
+        require $argv[1];
+        $attrs = ["href\n" => "javascript:alert(1)", "style\n" => "position:fixed", "onclick" => "x",
+            "ONMOUSEOVER" => "x", "Href" => "javascript:alert(1)", "srcdoc" => "<p>", "a b" => "x",
+            "title" => "kept"];
+        echo \Zero\Html::element("a", $attrs, "x")->html(), "\n";
+        echo \Zero\Html::element("my-el", $attrs)->html(), "\n";
+        $style = new \Zero\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px",
+            "x:y;position" => "fixed", "inset\n" => "0", "--ok" => "1"]);
+        echo \Zero\Html::element("div", ["style" => $style])->html(), "\n";
+        // Every spelling of `style` goes through the style filter, and a string is never CSS.
+        $css = "position:fixed;inset:0;background:url(//evil)";
+        echo \Zero\Html::element("div", ["Style" => $style])->html(), "\n";
+        // A string `style` throws, as React does, so it never reaches the attribute.
+        try { \Zero\Html::element("div", ["STYLE" => $css])->html(); echo "rendered\n"; }
+        catch (\Zero\JsError $e) { echo "refused\n"; }
+        echo \Zero\Html::element("my-el", ["STYLE" => $style])->html(), "\n";
+        var_export(\Zero\Html::styleOf($css, ["position"]) === \Zero\JsUndefined::Value);
+        echo "\n";
+        // `styleOf` keeps only the names the compiler saw in the style's type.
+        $extra = new \Zero\JsObject(["color" => "red", "position" => "fixed", "inset" => "0"]);
+        echo \Zero\Html::element("p", ["style" => \Zero\Html::styleOf($extra, ["color"])])->html(), "\n";
+    "#;
+    let out = Command::new("php").args(["-r", script]).arg(&runtime).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "<a title=\"kept\">x</a>\n<my-el title=\"kept\"></my-el>\n<div style=\"width:1px;--ok:1\"></div>\n\
+         <div style=\"width:1px;--ok:1\"></div>\nrefused\n<my-el style=\"width:1px;--ok:1\"></my-el>\ntrue\n\
+         <p style=\"color:red\"></p>\n"
+    );
+}
+
+fn without_image_preloads(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find("<link rel=\"preload\" as=\"image\"") {
+        out.push_str(&rest[..at]);
+        let end = rest[at..].find("/>").expect("closed link") + at + 2;
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn php_case(runtime: &Path, app: &Path, case: &str, args: serde_json::Value) -> std::process::Output {
@@ -1651,7 +2080,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let again = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(
-        !tmp.join("zero/migrations/0002_update.sql").exists(),
+        !tmp.join("zero/_generated/migrations/0002_update.sql").exists(),
         "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
@@ -1780,22 +2209,22 @@ fn builds_wordpress_and_knows_no_target_option() {
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     assert!(tmp.join(".zero/wp-content/zero-manifest.json").is_file());
-    assert!(tmp.join("zero/migrations/0001_init.sql").is_file());
+    assert!(tmp.join("zero/_generated/migrations/0001_init.sql").is_file());
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A checkout from before the one-directory migration layout is refused, never read as empty: a
-/// `wp/` subdirectory, a `sqlite/` subdirectory or a version 1 snapshot each stop the build before it
-/// writes, so the numbering cannot restart at 0001 and the plugin cannot ship without its files.
+/// A project whose ledger is still at `zero/migrations/` is refused, never read as a first build:
+/// the build stops before it writes, so the numbering cannot restart at 0001 and the plugin cannot
+/// ship without its earlier files. Following the fix in the message builds again with nothing new.
+/// A version 1 snapshot is refused the same way.
 #[test]
-fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
+fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let tmp = std::env::temp_dir().join(format!("zero-legacy-layout-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let migrations = tmp.join("zero/migrations");
-    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
+    let migrations = tmp.join("zero/_generated/migrations");
     let snapshot = std::fs::read_to_string(migrations.join("snapshot.json")).unwrap();
     /// Every file under the project with its bytes, so a refusal is proven to write nothing anywhere.
     fn tree(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
@@ -1818,15 +2247,24 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
         assert!(stderr.contains(message), "expected {message:?} in {stderr}");
         assert!(tree(&tmp) == before, "the refusal changed the project");
     };
-    for legacy in ["wp", "sqlite"] {
-        std::fs::create_dir_all(migrations.join(legacy)).unwrap();
-        std::fs::write(migrations.join(legacy).join("0001_init.sql"), &init).unwrap();
-        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
-        // Following the message: the SQL moved out, the directory deleted. An emptied directory
-        // left behind is still the earlier layout.
-        std::fs::remove_file(migrations.join(legacy).join("0001_init.sql")).unwrap();
-        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
-        std::fs::remove_dir(migrations.join(legacy)).unwrap();
+    let old = tmp.join("zero/migrations");
+    std::fs::rename(&migrations, &old).unwrap();
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    // An old directory left beside the new one is refused too: one ledger, never two.
+    std::fs::create_dir_all(&migrations).unwrap();
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    std::fs::remove_dir(&migrations).unwrap();
+    // A pre-flat checkout moved as-is keeps its `wp/` and `sqlite/` subdirectories: still refused
+    // at the new path, so following the first message can't restart the numbering.
+    std::fs::rename(&old, &migrations).unwrap();
+    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
+    for nested in ["wp", "sqlite"] {
+        std::fs::create_dir_all(migrations.join(nested)).unwrap();
+        std::fs::write(migrations.join(nested).join("0001_init.sql"), &init).unwrap();
+        refused(&format!(
+            "zero/_generated/migrations/{nested}/ is from an earlier layout"
+        ));
+        std::fs::remove_dir_all(migrations.join(nested)).unwrap();
     }
     let mut v1: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
     v1["version"] = serde_json::json!(1);
@@ -1936,5 +2374,88 @@ fn a_plugin_package_runs_under_its_locked_grant() {
             "body": "seen: HELLO PLUGIN | Site",
             "denied": "zero_fetch_host_denied",
         })
+    );
+}
+
+/// One large imported function in the shape of picomatch's `parse.js`: a token loop whose
+/// branches push, pop, slice and copy token objects that point at each other through `prev`.
+/// The effects solver once re-ran every rule over every fact on each pass, which took minutes
+/// here. It now reads only new facts, so its work stays a small multiple of the facts it
+/// produces. Debug builds count that work (`ZERO_DEBUG_EFFECTS_WORK`). On this program the
+/// old solver made 51M path projections for 1.36M facts (37 per fact) and took 20 s in a
+/// release build; the incremental solver makes 3.5M (2.6 per fact).
+#[test]
+fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
+    let mut body = String::from(
+        "export function run(input) {
+  const state = { index: -1, output: '', tokens: [], prev: null, depth: 0 };
+  const bos = { type: 'bos', value: '', output: '' };
+  const tokens = [bos];
+  let prev = bos;
+  let value = '';
+  const advance = () => input[++state.index];
+  const append = tok => { state.output += tok.output != null ? tok.output : tok.value; };
+  const push = tok => {
+    if (prev && prev.type === tok.type) { prev.value += tok.value; prev.output = (prev.output || '') + tok.value; return; }
+    tok.prev = prev; tokens.push(tok); prev = tok; state.prev = tok;
+  };
+  const pop = () => { const tok = tokens.pop(); prev = tokens[tokens.length - 1]; return tok; };
+  while (state.index < input.length - 1) {
+    value = advance();
+",
+    );
+    for i in 0..60 {
+        body.push_str(&match i % 6 {
+            0 => format!("    if (value === 'a{i}') {{ push({{ type: 't{}', value, output: prev.output + value }}); continue; }}\n", i % 7),
+            1 => format!("    if (value === 'b{i}') {{ const t = {{ type: 'p', value, prev: prev.prev }}; t.output = prev.value; push(t); append(t); continue; }}\n"),
+            2 => format!("    if (value === 'c{i}' && prev.prev) {{ prev.prev.output = prev.output; prev.value = state.output; state.depth++; continue; }}\n"),
+            3 => format!("    if (value === 'd{i}') {{ const last = pop(); if (last) {{ last.output = value; push(last); }} continue; }}\n"),
+            4 => format!("    if (value === 'e{i}') {{ const s = tokens.slice(-2); state.tokens = s; prev.output = s.length + ''; continue; }}\n"),
+            _ => format!("    if (value === 'f{i}') {{ const o = {{ ...prev, value: prev.value + value }}; append(o); push({{ type: 'f', value: o.value, output: o.output }}); continue; }}\n"),
+        });
+    }
+    body.push_str(
+        "    push({ type: 'text', value, output: value });
+  }
+  return state.output + ':' + tokens.length + ':' + state.depth;
+}
+",
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { action, defineConfig, text } from "zero";
+import { run } from "./run.mjs";
+export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+"#,
+    )
+    .unwrap();
+    let work = tmp.path().join("work.txt");
+    let out = zero()
+        .args(["check", "--json"])
+        .arg(tmp.path())
+        .env("ZERO_DEBUG_EFFECTS_WORK", &work)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let work = std::fs::read_to_string(&work).expect("debug builds record the solver's work");
+    let (projections, facts) = work
+        .lines()
+        .map(|line| {
+            let field = |name: &str| -> u64 {
+                line.split(' ')
+                    .find_map(|part| part.strip_prefix(name)?.strip_prefix('='))
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or_else(|| panic!("{name} in {line:?}"))
+            };
+            (field("projections"), field("facts"))
+        })
+        .max_by_key(|(_, facts)| *facts)
+        .expect("one solve");
+    assert!(facts > 1_000_000, "the program no longer stresses the solver: {work}");
+    assert!(
+        projections < 5 * facts,
+        "the effects solver repeats work: {projections} projections for {facts} facts"
     );
 }

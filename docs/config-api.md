@@ -189,7 +189,7 @@ under `collections` or `tables`. Keep the logical keys, existing physical storag
 and committed migration snapshots. The snapshot format and runtime storage
 model are unchanged: an authoring-only change must produce no migration.
 For a persisted name that differs from the derived snake_case name, set
-`storageName` to the exact name in `zero/migrations/snapshot.json`. For example,
+`storageName` to the exact name in `zero/_generated/migrations/snapshot.json`. For example,
 old `collection("stockItems", fields, { editor: false, revisions: true })`
 becomes:
 
@@ -207,13 +207,13 @@ The binding is permanent config, not a one-time rename instruction: retain it
 on subsequent builds. It controls SQL tables, post types, routes and persisted
 revision ownership; relations and client properties still use logical keys.
 
-1. Keep the entire committed `zero/migrations/` directory, including the v2
+1. Keep the entire committed `zero/_generated/migrations/` directory, including the v2
    `snapshot.json` and every numbered SQL file. Do not remove registrations as
    an intermediate step: that authors a destructive migration.
 2. Change the builders/registries and add the physical bindings, then run
    `zero build .`. This authoring-only transition must leave the snapshot and
    historical SQL unchanged and produce no new numbered SQL. Review with
-   `git diff -- zero/migrations` before deployment.
+   `git diff -- zero/_generated/migrations` before deployment.
 3. Deploy the generated `.zero/wp-content` plugins together as an ordinary
    file-copy update to the existing site. The runtime keeps the app's migration
    ledger, rows, reference targets and revision identities; it has no data
@@ -434,6 +434,10 @@ Throwing anything aborts the request and rolls back every write in it.
 
 ## HTTP routes
 
+> On a hosted Spacefast Space, routes outside `/wp-json` aren't served yet: the host doesn't hand those paths to WordPress. The compiled manifest lists them (`routes`, and `pagePaths` for pages) for the host change that will. On your own WordPress they work today.
+>
+> For a host reading those lists: trim one trailing `/` from the request path, treat `HEAD` as `GET`, and hand over any request whose path matches an entry whatever its method, so the app answers a wrong method with 405. `*name` takes one or more segments.
+
 `routes` serves your own method and path on the site, outside `/wp-json`: a
 feed, a sitemap, a payment provider's webhook, anything that is not a JSON
 action call.
@@ -485,8 +489,11 @@ export default defineConfig({
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
-- `req` is `{ method, path, params, query, headers, body }`. Header names are
-  lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
+- `req` is `{ method, url, path, params, query, headers, body }`. `url` is the
+  absolute URL: `https://`, the hostname (lowercase, no port), then the path and
+  query. A share-link secret never reaches the handler: `__`, `token` and
+  `purchaseToken` values and a `/__/<token>` segment read `[redacted]` in `url`,
+  and `__` is left out of `query`. Header names are lowercase. `body` is the raw text: use `JSON.parse(req.body)` for JSON.
 - `req.query` reads the raw query string the way `URLSearchParams` does:
   `get(name)` (the first value, or `null`), `getAll(name)`, `has(name)` and
   `entries()`. Names are kept exactly (`a.b`, `x[]`), `+` is a space, and a

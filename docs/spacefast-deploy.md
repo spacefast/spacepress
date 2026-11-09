@@ -139,7 +139,7 @@ with each immutable version. Mount that version's runtime and app before
 WordPress bootstrap; never substitute the newest app during an old-version
 request.
 
-Archive uploaded `zero/migrations` SQL and snapshots as source metadata. Generate
+Archive uploaded `zero/_generated/migrations` SQL and snapshots as source metadata. Generate
 executable migrations from the candidate schema and the host's trusted previous
 compiled schema. Uploaded SQL must never select the baseline or execute during
 initialization.

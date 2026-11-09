@@ -365,6 +365,9 @@ pub(super) struct Transformed {
     pub connector_roles: Value,
     /// Each converted query, mutation and action, as the client bridge calls it.
     pub handlers: Vec<ClientHandler>,
+    /// The capsule declared `collections.posts` itself, so 0.8 built no posts from content/posts/
+    /// (zero-compile skips its structural default for a declared collection).
+    pub declares_posts: bool,
 }
 
 /// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
@@ -590,7 +593,14 @@ pub(super) fn app(
             match parsed {
                 Ok(v) => {
                     connector_roles.insert(name, v);
-                    entries.push(entry(&at,"review","connector role normalized for the optional host overlay; credentials and grants are not migrated; ctx connector calls require a port"));
+                    // The role's credentials and grants stay behind, so the connector stops working.
+                    errors.push(
+                        fail(
+                            &at,
+                            format!("{}: its credentials and grants are not migrated, so calls through it would stop working", super::omitted::CONNECTORS),
+                        )
+                        .spanned(e.span, Path::new("")),
+                    );
                 }
                 Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
             }
@@ -668,6 +678,7 @@ pub(super) fn app(
         entries.push(entry("/realtime", "mapped", "v2 announces every committed write as a change notice, so the declaration is no longer needed; Spacefast delivers notices over Cast. Replace client useQuery subscriptions with watch(client, [\"<table>\"], read, onResult) from the generated client."));
     }
     let mut native_posts = content_posts.then(|| json!({}));
+    let mut declares_posts = false;
     let content_config = if let Some(collections) = root.get("collections") {
         for name in obj(collections, "/collections")?.keys() {
             if tables.contains_key(name) {
@@ -686,6 +697,7 @@ pub(super) fn app(
             if let Some(defs) = v["collections"].as_object_mut()
                 && let Some(posts) = defs.remove("posts")
             {
+                declares_posts = true;
                 native_posts = Some(posts);
             }
             v
@@ -722,7 +734,8 @@ pub(super) fn app(
             _ => None,
         })
         .collect();
-    let functions: BTreeSet<String> = module_functions.keys().cloned().collect();
+    // Each module function by name, with whether it is async (a call to it needs `await`).
+    let functions: BTreeMap<String, bool> = module_functions.iter().map(|(n, f)| (n.clone(), f.is_async)).collect();
     let mut calls: Vec<CtxCall> = Vec::new();
     // Rewritten helpers replace their copied source in the prelude.
     let mut ctx_helpers: BTreeMap<String, String> = BTreeMap::new();
@@ -885,8 +898,8 @@ pub(super) fn app(
     // Helpers that receive the context are rewritten like handlers, following calls between them.
     // A helper takes the strictest mode of its callers: writes and sends only when every caller
     // could, so a query never reaches a write through a helper.
-    let mut helper_modes: BTreeMap<(String, usize), (bool, bool, Span)> = BTreeMap::new();
-    let mut converted_helpers: BTreeMap<(String, usize), (bool, bool)> = BTreeMap::new();
+    let mut helper_modes: BTreeMap<(String, HelperArgs), (bool, bool, Span)> = BTreeMap::new();
+    let mut converted_helpers: BTreeMap<(String, HelperArgs), (bool, bool)> = BTreeMap::new();
     let mut ctx_helper_errors = Vec::new();
     // For the 401 gates: which helpers each writing handler reaches, which helpers call which,
     // and which read the subject themselves.
@@ -909,6 +922,23 @@ pub(super) fn app(
         for ((function, position), (writes, sends, span)) in &helper_modes {
             let key = (function.clone(), *position);
             if converted_helpers.get(&key) == Some(&(*writes, *sends)) {
+                continue;
+            }
+            // One function has one signature: a helper reached with the context or request at
+            // different argument positions would need two rewrites of one source.
+            if converted_helpers
+                .keys()
+                .any(|(f, args)| f == function && args != position)
+            {
+                if converted_helpers.insert(key, (*writes, *sends)).is_none() {
+                    ctx_helper_errors.push(
+                        fail(
+                            &pointer(&pointer("/helpers", function), "ctx"),
+                            "unsupported context service, alias or dynamic use: the helper takes the context or request at different argument positions across its calls; give it one signature",
+                        )
+                        .spanned(*span, Path::new("")),
+                    );
+                }
                 continue;
             }
             converted_helpers.insert(key, (*writes, *sends));
@@ -967,11 +997,15 @@ pub(super) fn app(
     for (_, _, _, code) in &mut prefixes {
         *code = settle(code);
     }
-    for (function, _) in converted_helpers.keys() {
+    for (function, (ctx, request)) in converted_helpers.keys() {
         entries.push(entry(
             &pointer("/helpers", function),
             "mapped",
-            "takes the v2 context (HookCtx); its ctx services are rewritten as in the handlers that call it",
+            match (ctx, request) {
+                (Some(_), None) => "takes the v2 context (HookCtx); its ctx services are rewritten as in the handlers that call it",
+                (None, _) => "takes the v2 route request (RouteRequest); its request reads are rewritten as in the endpoints that call it",
+                (Some(_), Some(_)) => "takes the v2 context (HookCtx) and route request (RouteRequest); both are rewritten as in the endpoints that call it",
+            },
         ));
     }
     // An exact endpoint at the prefix wins over the splat in 0.8 (exact paths are served first).
@@ -1020,7 +1054,7 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"zero\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
@@ -1123,13 +1157,21 @@ pub(super) fn app(
         content_config,
         connector_roles: Value::Object(connector_roles),
         handlers: client_handlers,
+        declares_posts,
     })
 }
 
 /// `x.json()` / `x.text()` with no arguments: a fetch body read, which returns a promise.
 fn returns_body_read(e: &Expr) -> bool {
-    matches!(&e.kind, E::Call { callee, args, .. }
-        if args.is_empty() && matches!(&callee.kind, E::Member { prop, .. } if prop == "json" || prop == "text"))
+    match &e.kind {
+        E::Call { callee, args, .. } => match &callee.kind {
+            E::Member { prop, .. } if args.is_empty() => prop == "json" || prop == "text",
+            // `return request.json().catch(() => null)`: the same promise, with a fallback.
+            E::Member { obj, prop, .. } if prop == "catch" => returns_body_read(obj),
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 /// ctx.crypto's three functions over node:crypto, with 0.8's results: SHA-256 and HMAC-SHA-256 as
@@ -1406,8 +1448,9 @@ struct Mode<'a> {
     sends: bool,
     /// Set for a 0.8 endpoint, which becomes a v2 route at the same method and path.
     route: Option<&'a super::endpoints::Route>,
-    /// Functions declared at the top of the module; passing the context to one is followed.
-    functions: &'a BTreeSet<String>,
+    /// Functions declared at the top of the module, and whether each is async; passing the
+    /// context to one is followed.
+    functions: &'a BTreeMap<String, bool>,
 }
 
 fn handler(
@@ -1589,6 +1632,7 @@ fn handler(
         calls: vec![],
         inline_subject: None,
         reads_subject: false,
+        protected_try: 0,
     };
     let body = match &f.body {
         FnBody::Expr(e) => {
@@ -1655,35 +1699,62 @@ fn handler(
     Ok((code, r.helpers, r.calls))
 }
 
-/// A module function that a handler passes the context to, rewritten to take the v2 context at
-/// `position`: its parameter becomes `__z08ctx: HookCtx` and its body goes through the same service
+/// A module function that a handler passes the context or its route request to, rewritten to take
+/// them at `position`: the context parameter becomes `__z08ctx: HookCtx`, the request parameter a
+/// `RouteRequest` under its own name, and the body goes through the same service and request
 /// rewrites as a handler's. Returns the function's new source, its generated helpers and the calls
-/// it makes with the context in turn.
+/// it makes with either in turn.
 #[allow(clippy::too_many_arguments)]
 fn ctx_helper(
     source: &str,
     f: &Func,
-    position: usize,
+    position: HelperArgs,
     tables: &BTreeMap<String, Table>,
     at: &str,
     writes: bool,
     sends: bool,
     subjects: bool,
-    functions: &BTreeSet<String>,
+    functions: &BTreeMap<String, bool>,
 ) -> Result<(Converted, bool), Failure> {
-    let param = f
-        .params
-        .get(position)
-        .ok_or_else(|| fail(&pointer(at, "ctx"), "unsupported context service, alias or dynamic use: the helper has no parameter where the context is passed"))?;
-    let Pat::Id(ctx, _) = &param.pat else {
-        return Err(fail(&pointer(at, "ctx"), DESTRUCTURE));
+    let mut edits = vec![];
+    let ctx = match position.0 {
+        None => "__z08unused",
+        Some(position) => {
+            let param = f
+                .params
+                .get(position)
+                .ok_or_else(|| fail(&pointer(at, "ctx"), "unsupported context service, alias or dynamic use: the helper has no parameter where the context is passed"))?;
+            let Pat::Id(ctx, _) = &param.pat else {
+                return Err(fail(&pointer(at, "ctx"), DESTRUCTURE));
+            };
+            if param.rest || param.default.is_some() {
+                return Err(fail(
+                    &pointer(at, "ctx"),
+                    "unsupported context service, alias or dynamic use: a rest or defaulted context parameter needs a manual port",
+                ));
+            }
+            // The parameter, with its 0.8 type annotation, becomes the typed v2 context.
+            edits.push((param.span, "__z08ctx: __z08HookCtx".to_string()));
+            ctx.as_str()
+        }
     };
-    if param.rest || param.default.is_some() {
-        return Err(fail(
-            &pointer(at, "ctx"),
-            "unsupported context service, alias or dynamic use: a rest or defaulted context parameter needs a manual port",
-        ));
-    }
+    // The request parameter keeps its name, so its uses rewrite as in an endpoint handler; a
+    // parameter the converter can't name (destructured, defaulted, rest, optional) is refused.
+    let request = match position.1 {
+        None => None,
+        Some(position) => {
+            let refuse = || fail(&pointer(&pointer(at, "request"), "parameter"), REQUEST_API);
+            let param = f.params.get(position).ok_or_else(refuse)?;
+            let Pat::Id(name, _) = &param.pat else {
+                return Err(refuse());
+            };
+            if param.rest || param.default.is_some() || param.optional || name.as_str() == ctx {
+                return Err(refuse());
+            }
+            edits.push((param.span, format!("{name}: __z08RouteRequest")));
+            Some(name.as_str())
+        }
+    };
     let mut r = Rewrite {
         source,
         ctx,
@@ -1693,23 +1764,22 @@ fn ctx_helper(
         subjects,
         uses_subject: false,
         action: f.name.as_deref().unwrap_or("helper"),
-        request: None,
+        request,
         returns: vec![],
         params: vec![],
         logs: false,
         helpers: vec![],
         sends,
         returned: super::endpoints::returns(f),
-        edits: vec![],
+        edits,
         functions,
         aliases: vec![],
         services: BTreeMap::new(),
         calls: vec![],
         inline_subject: Some(f.is_async),
         reads_subject: false,
+        protected_try: 0,
     };
-    // The parameter, with its 0.8 type annotation, becomes the typed v2 context.
-    r.edits.push((param.span, "__z08ctx: __z08HookCtx".into()));
     match &f.body {
         FnBody::Expr(e) => r.expr(e)?,
         FnBody::Block(stmts) => {
@@ -1721,7 +1791,7 @@ fn ctx_helper(
     if r.logs {
         r.helpers.push(LOG.into());
     }
-    // `ctx` itself is now `__z08ctx`; the remaining reads were rewritten as services.
+    // `ctx` itself is now `__z08ctx`; the remaining reads were rewritten as services and request reads.
     let text = r.apply(f.span);
     Ok(((text, r.helpers, r.calls), r.reads_subject))
 }
@@ -1773,6 +1843,7 @@ fn endpoint(
         calls: vec![],
         inline_subject: None,
         reads_subject: false,
+        protected_try: 0,
     };
     for span in super::endpoints::returns(f) {
         r.returns.push(span);
@@ -1849,6 +1920,53 @@ fn endpoint(
     Ok((code, r.helpers, r.calls))
 }
 
+/// 0.8's `request.json()` and `request.text()` as promises, for reads a handler doesn't await on
+/// the spot: an empty body is null, invalid JSON rejects.
+const READ_JSON: &str = r#"async function __z08ReadJson(body: string): Promise<unknown> {
+  return JSON.parse(body === "" ? "null" : body) as unknown;
+}
+"#;
+const READ_TEXT: &str = r#"async function __z08ReadText(body: string): Promise<string> {
+  return body;
+}
+"#;
+/// `request.json().catch(onRejected)`: the parse error goes to `onRejected`, as 0.8's rejection did.
+const JSON_OR: &str = r#"async function __z08JsonOr(body: string, onRejected: (error: unknown) => unknown): Promise<unknown> {
+  try {
+    return JSON.parse(body === "" ? "null" : body) as unknown;
+  } catch (error) {
+    return onRejected(error);
+  }
+}
+"#;
+
+/// `req.json()` or `req.text()` with no arguments: which of the two.
+fn body_read<'e>(e: &'e Expr, req: &str) -> Option<&'e str> {
+    let E::Call {
+        callee,
+        args,
+        optional: false,
+        ..
+    } = &e.kind
+    else {
+        return None;
+    };
+    let E::Member {
+        obj,
+        prop,
+        optional: false,
+        ..
+    } = &callee.kind
+    else {
+        return None;
+    };
+    (args.is_empty() && matches!(&obj.kind, E::Ident(n) if n == req) && (prop == "json" || prop == "text"))
+        .then_some(prop.as_str())
+}
+
+/// The refusal for a request use with no faithful v2 route form (`Z08_ENDPOINT_REQUEST_API`).
+const REQUEST_API: &str = "this request API has no v2 route equivalent; port it explicitly";
+
 /// Marks the bare-prefix route `endpoint()` returns among its helpers.
 const PREFIX_MARK: &str = "\0prefix-route\0";
 
@@ -1887,8 +2005,9 @@ struct Rewrite<'a> {
     /// Spans of values the handler returns directly (an expression body or `return <e>`).
     returned: Vec<Span>,
     edits: Vec<(Span, String)>,
-    /// Functions declared at the top of the module, which may take the context.
-    functions: &'a BTreeSet<String>,
+    /// Functions declared at the top of the module, which may take the context, and whether each
+    /// is async.
+    functions: &'a BTreeMap<String, bool>,
     /// Names bound to the context itself (`const c = ctx`).
     aliases: Vec<String>,
     /// Names bound to one context service (`const { db } = ctx`, `const auth = ctx.auth`).
@@ -1900,18 +2019,25 @@ struct Rewrite<'a> {
     inline_subject: Option<bool>,
     /// A helper read the caller's subject, so a writing caller needs the 401 gate.
     reads_subject: bool,
+    /// Inside a `try` block whose `catch` or `finally` would run if a returned promise were awaited
+    /// there: a promise returned unawaited escaped them in 0.8, so it can't become `await`.
+    protected_try: u32,
 }
 
-/// A call that passes the context to a module function at one argument position.
+/// A call that passes the context, the route request or both to a module function, at these
+/// argument positions.
 pub(super) struct CtxCall {
     function: String,
-    position: usize,
+    position: HelperArgs,
     writes: bool,
     sends: bool,
     span: Span,
     /// The writing handler whose 401 gate depends on what this helper reads (its gate marker).
     gate: Option<u32>,
 }
+
+/// Where a helper receives the context and the route request: `(ctx, request)` argument positions.
+type HelperArgs = (Option<usize>, Option<usize>);
 
 const DESTRUCTURE: &str = "context destructuring needs plain service names (`const { db, auth } = ctx`); nested patterns, defaults and rest need a manual port";
 
@@ -1969,11 +2095,27 @@ impl Rewrite<'_> {
 
     /// A binding a nested function or declaration would shadow.
     fn is_bound(&self, name: &str) -> bool {
-        self.is_ctx(name) || self.services.contains_key(name)
+        self.is_ctx(name) || self.services.contains_key(name) || Some(name) == self.request
     }
 
     fn is_ctx_expr(&self, e: &Expr) -> bool {
         matches!(&e.kind, E::Ident(n) if self.is_ctx(n))
+    }
+
+    /// A value this function returns directly, which a return of a promise awaits.
+    fn returned_here(&self, span: Span) -> bool {
+        self.returned.contains(&span) || self.returns.contains(&span)
+    }
+
+    /// A returned promise the conversion may await: not inside a `try` whose `catch` or `finally`
+    /// the awaited rejection would reach, where 0.8's unawaited promise escaped them.
+    fn returned_unprotected(&self, span: Span) -> bool {
+        self.returned_here(span) && self.protected_try == 0
+    }
+
+    /// The route request parameter itself.
+    fn is_request_expr(&self, e: &Expr) -> bool {
+        matches!(&e.kind, E::Ident(n) if Some(n.as_str()) == self.request)
     }
 
     /// The context service `e` names: `ctx.db`, `ctx["db"]`, or a name bound to it.
@@ -2240,15 +2382,32 @@ impl Rewrite<'_> {
                 "unsupported context service; port its authority and behavior explicitly",
             ));
         }
-        // `helper(ctx, ...)` for a function of this module: the helper takes the v2 context and
-        // its body is rewritten like a handler's (`transform::app` follows the calls).
+        // `helper(ctx, ...)` or `helper(req, ...)` for a function of this module: the helper takes
+        // the v2 context or route request there and its body is rewritten like a handler's
+        // (`transform::app` follows the calls).
         if let E::Call { callee, args, .. } = &e.kind
             && let E::Ident(function) = &callee.kind
-            && self.functions.contains(function)
-            && args.iter().any(|a| matches!(a, ArrEl::Item(x) if self.is_ctx_expr(x)))
+            && let Some(&callee_async) = self.functions.get(function)
+            && args
+                .iter()
+                .any(|a| matches!(a, ArrEl::Item(x) if self.is_ctx_expr(x) || self.is_request_expr(x)))
         {
-            // 0.8 awaited a promise the handler returned; v2 needs the await written out.
-            if self.returned.contains(&e.span) || self.returns.contains(&e.span) {
+            // 0.8 awaited a promise the handler returned; v2 needs the await written out. Inside a
+            // protected `try` the awaited rejection would reach its catch, which 0.8's didn't.
+            let passes_request = args
+                .iter()
+                .any(|a| matches!(a, ArrEl::Item(x) if self.is_request_expr(x)));
+            if passes_request && self.returned_here(e.span) && !self.returned_unprotected(e.span) {
+                return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
+            }
+            // A sync helper can't await. Returning a sync helper's value needs none; returning an
+            // async one's promise, which 0.8's caller awaited later, has no v2 form, since Zero
+            // awaits every async call where it is made.
+            let sync_caller = self.inline_subject == Some(false);
+            if passes_request && callee_async && sync_caller && self.returned_here(e.span) {
+                return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
+            }
+            if !sync_caller && self.returned_here(e.span) {
                 self.edits.push((
                     Span {
                         end: e.span.start,
@@ -2257,19 +2416,44 @@ impl Rewrite<'_> {
                     "await ".into(),
                 ));
             }
-            for (position, a) in args.iter().enumerate() {
+            let requests: Vec<(usize, Span)> = args
+                .iter()
+                .enumerate()
+                .filter_map(|(i, a)| match a {
+                    ArrEl::Item(x) if self.is_request_expr(x) => Some((i, x.span)),
+                    _ => None,
+                })
+                .collect();
+            if requests.len() > 1 {
+                return Err(fail(&pointer(&pointer(self.at, "request"), "value"), REQUEST_API));
+            }
+            let request = requests.first().map(|(i, _)| *i);
+            let mut contexts: Vec<(Option<usize>, Span)> = args
+                .iter()
+                .enumerate()
+                .filter_map(|(i, a)| match a {
+                    ArrEl::Item(x) if self.is_ctx_expr(x) => Some((Some(i), x.span)),
+                    _ => None,
+                })
+                .collect();
+            if contexts.is_empty() {
+                contexts.extend(requests.first().map(|(_, span)| (None, *span)));
+            }
+            for (ctx, span) in contexts {
+                self.calls.push(CtxCall {
+                    function: function.clone(),
+                    position: (ctx, request),
+                    writes: self.writes,
+                    sends: self.sends,
+                    span,
+                    gate: None,
+                });
+            }
+            for a in args {
                 match a {
-                    ArrEl::Item(x) if self.is_ctx_expr(x) => {
-                        self.calls.push(CtxCall {
-                            function: function.clone(),
-                            position,
-                            writes: self.writes,
-                            sends: self.sends,
-                            span: x.span,
-                            gate: None,
-                        });
-                        self.edits.push((x.span, "__z08ctx".into()));
-                    }
+                    ArrEl::Item(x) if self.is_ctx_expr(x) => self.edits.push((x.span, "__z08ctx".into())),
+                    // The route request keeps its name; the helper's parameter becomes a RouteRequest.
+                    ArrEl::Item(x) if self.is_request_expr(x) => {}
                     a => self.arr(a)?,
                 }
             }
@@ -2501,13 +2685,17 @@ impl Rewrite<'_> {
                 {
                     return Err(fail(self.at, "shadowed context or reserved catch binding"));
                 }
-                for ss in [Some(block), handler.as_ref(), finalizer.as_ref()]
-                    .into_iter()
-                    .flatten()
-                {
-                    for s in ss {
-                        self.stmt(s)?;
-                    }
+                // The block is protected by a catch or finally, the catch block by a finally.
+                for (ss, protected) in [
+                    (Some(block), handler.is_some() || finalizer.is_some()),
+                    (handler.as_ref(), finalizer.is_some()),
+                    (finalizer.as_ref(), false),
+                ] {
+                    let Some(ss) = ss else { continue };
+                    self.protected_try += u32::from(protected);
+                    let walked = ss.iter().try_for_each(|s| self.stmt(s));
+                    self.protected_try -= u32::from(protected);
+                    walked?;
                 }
             }
             Stmt::Switch { disc, cases, .. } => {
@@ -2685,16 +2873,48 @@ impl Rewrite<'_> {
         let req = self.request.expect("request");
         let is_req = |e: &Expr| matches!(&e.kind, E::Ident(n) if n == req);
         let at = pointer(self.at, "request");
-        let refuse = |what: &str| -> Result<bool, Failure> {
-            Err(fail(
-                &pointer(&at, what),
-                "this request API has no v2 route equivalent; port it explicitly",
-            ))
-        };
+        let refuse = |what: &str| -> Result<bool, Failure> { Err(fail(&pointer(&at, what), REQUEST_API)) };
         let (inner, awaited) = match &e.kind {
             E::Await(inner) => (inner.as_ref(), true),
             _ => (e, false),
         };
+        // `req.json().catch(fn)`: 0.8's json() rejected on invalid JSON and `fn` answered instead;
+        // text() never rejected, so its catch never ran.
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &inner.kind
+            && let E::Member {
+                obj: read,
+                prop,
+                optional: false,
+                ..
+            } = &callee.kind
+            && prop == "catch"
+            && let Some(body) = body_read(read, req)
+        {
+            let [ArrEl::Item(handler @ Expr { kind: E::Func(f), .. })] = args.as_slice() else {
+                return refuse(&format!("{body}.catch"));
+            };
+            if f.is_async || f.params.len() > 1 || !awaited && !self.returned_unprotected(e.span) {
+                return refuse(&format!("{body}.catch"));
+            }
+            let text = if body == "json" {
+                let handler = self.render(handler)?;
+                self.helpers.push(JSON_OR.into());
+                format!("__z08JsonOr({req}.body, {handler})")
+            } else {
+                format!("__z08ReadText({req}.body)")
+            };
+            if body == "text" {
+                self.helpers.push(READ_TEXT.into());
+            }
+            self.edits
+                .push((e.span, if awaited { format!("(await {text})") } else { text }));
+            return Ok(true);
+        }
         if let E::Call {
             callee,
             args,
@@ -2713,6 +2933,17 @@ impl Rewrite<'_> {
                     ("text", true, true) => format!("{req}.body"),
                     ("json", true, true) => {
                         format!("(JSON.parse({req}.body === \"\" ? \"null\" : {req}.body) as unknown)")
+                    }
+                    // Returned unawaited: the promise 0.8 awaited, which the return now awaits. A
+                    // promise held anywhere else has no v2 form (Zero awaits every async call).
+                    ("text" | "json", true, false) if !self.returned_unprotected(e.span) => return refuse(prop),
+                    ("text", true, false) => {
+                        self.helpers.push(READ_TEXT.into());
+                        format!("__z08ReadText({req}.body)")
+                    }
+                    ("json", true, false) => {
+                        self.helpers.push(READ_JSON.into());
+                        format!("__z08ReadJson({req}.body)")
                     }
                     _ => return refuse(prop),
                 };
@@ -2769,6 +3000,9 @@ impl Rewrite<'_> {
             return match prop.as_str() {
                 // Uppercase on both sides.
                 "method" => Ok(true),
+                // 0.8's URL: https, the normalized host and the URI with share-link secrets
+                // redacted, which v2 builds the same way (Zero\Wp\HttpRoutes::url).
+                "url" => Ok(true),
                 other => refuse(other),
             };
         }

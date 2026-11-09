@@ -162,21 +162,26 @@ final class UserMeta
         $controller = is_array($handler['callback'] ?? null) ? ($handler['callback'][0] ?? null) : null;
         // A member is created and deleted by Zero's pipeline (create/delete rules, validation, hooks,
         // referential actions), after core's own permission check, in core's response shape.
+        // Multisite users belong to the network (wpmu signup, add_user_to_blog, remove from blog): core's.
+        if (is_multisite()) {
+            $controller = null;
+        }
         if ($controller instanceof \WP_REST_Users_Controller && $request->get_method() === 'DELETE') {
             return $id > 0 ? self::remove($id, $request, $controller) : $result;
         }
         if ($controller instanceof \WP_REST_Users_Controller && !isset($m[1])) {
             return self::create($request, $controller);
         }
-        if ($request->get_method() === 'DELETE' || $id === 0) {
+        if ($request->get_method() === 'DELETE' || $id === 0 || !$controller instanceof \WP_REST_Users_Controller) {
             return $result;
         }
         $meta = PostMeta::input($request);
         $fields = is_array($meta) ? array_intersect_key($meta, self::fields()) : [];
-        // The member's email, name, password and role are the users kind's fields too: an update applies
-        // them with Zero's update (rules, field rules, hooks) like every other member field, never core alone.
+        // The member's email, name and role are the users kind's fields too: an update applies them with
+        // Zero's update (rules, field rules, hooks) like every other member field, never core alone. A
+        // password stays core's (it re-issues the login cookie and notifies the account holder).
         $core = [];
-        foreach (['email', 'name', 'password'] as $param) {
+        foreach (['email', 'name'] as $param) {
             if ($request->has_param($param) && $request->get_param($param) !== null) {
                 $core[$param] = $request->get_param($param);
             }
@@ -185,13 +190,16 @@ final class UserMeta
         // and the member's ladder role follows its capabilities (WpUserStore::syncRole).
         $roles = $request->get_param('roles');
         if (is_array($roles) && count($roles) === 1 && ($role = WpUserStore::zeroRole((string) reset($roles))) !== null) {
+            if (is_wp_error($denied = self::checkRoles($controller, $id, $roles))) {
+                return $denied;
+            }
             $core['role'] = $role;
         }
         if ($fields === [] && $core === []) {
             return $result;
         }
         $request->set_param('meta', array_diff_key((array) $request->get_param('meta'), $fields));
-        foreach (['email' => 'email', 'name' => 'name', 'password' => 'password', 'role' => 'roles'] as $col => $param) {
+        foreach (['email' => 'email', 'name' => 'name', 'role' => 'roles'] as $col => $param) {
             if (array_key_exists($col, $core)) {
                 unset($request[$param]);
             }
@@ -240,6 +248,9 @@ final class UserMeta
         }
         $roles = $request->get_param('roles');
         if (is_array($roles) && $roles !== []) {
+            if (is_wp_error($denied = self::checkRoles($controller, 0, $roles))) {
+                return $denied;
+            }
             $data['role'] = count($roles) === 1 ? WpUserStore::zeroRole((string) reset($roles)) : null;
             if ($data['role'] === null) {
                 return new \WP_Error('zero_invalid_input', 'A member has one of the roles Zero knows', ['status' => 422, 'pointer' => '/role']);
@@ -248,31 +259,48 @@ final class UserMeta
         try {
             $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
 
-            $response = $plugin->db()->transaction(function () use ($plugin, $collection, $data, $viewer, $request, $controller, $meta): mixed {
+            $user = $plugin->db()->transaction(function () use ($plugin, $collection, $data, $viewer, $request, $controller, $meta): \WP_User {
                 $id = (int) $plugin->db()->insert($collection, $data, true, $viewer)[0]['id'];
                 $login = $request->get_param('username');
                 if (is_string($login) && $login !== '') {
                     WpUserStore::setLogin($plugin->connection(), $id, $login);
                 }
-                foreach (['username', 'email', 'name', 'password', 'roles'] as $param) {
-                    unset($request[$param]);
+                // The rest of core's create_item, as it runs after wp_insert_user: its hooks (creating),
+                // other plugins' registered meta, additional fields.
+                $user = get_user_by('id', $id) ?: throw new \LogicException("User $id vanished");
+                do_action('rest_insert_user', $user, $request, true);
+                $others = is_array($meta) ? array_diff_key($meta, self::fields()) : [];
+                if ($others !== []) {
+                    $fields = (fn () => $this->meta)->call($controller);
+                    $done = $fields->update_value($others, $id);
+                    if (is_wp_error($done)) {
+                        throw self::failure($done);
+                    }
                 }
-                $request->set_param('meta', is_array($meta) ? array_diff_key($meta, self::fields()) : []);
-                $request->set_param('id', $id);
-                $response = $controller->update_item($request);
-                if (is_wp_error($response) || $response->get_status() >= 400) {
-                    throw self::failure($response); // the member Zero created rolls back with it
+                $user = get_user_by('id', $id);
+                $done = (fn ($u, $r) => $this->update_additional_fields_for_object($u, $r))->call($controller, $user, $request);
+                if (is_wp_error($done)) {
+                    throw self::failure($done); // the member Zero created rolls back with it
                 }
+                do_action('rest_after_insert_user', $user, $request, true);
 
-                return $response;
+                return $user;
             });
         } catch (HttpError | \Zero\JsError $e) {
             return CoreAccess::error(self::problem($e));
         }
+        $request->set_param('context', 'edit');
+        $response = rest_ensure_response($controller->prepare_item_for_response($user, $request));
         $response->set_status(201);
-        $response->header('Location', rest_url('wp/v2/users/' . (int) $request['id']));
+        $response->header('Location', rest_url(sprintf('%s/%s/%d', 'wp/v2', 'users', $user->ID)));
 
         return $response;
+    }
+
+    /** Core's own role check (the role exists, is editable by the caller, no self-demotion from edit_users). */
+    private static function checkRoles(\WP_REST_Users_Controller $controller, int $id, array $roles): true|\WP_Error
+    {
+        return (fn (int $id, array $roles) => $this->check_role_update($id, $roles))->call($controller, $id, $roles);
     }
 
     /**

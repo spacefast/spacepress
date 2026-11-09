@@ -197,7 +197,13 @@ final class WpUserStore implements Store
             throw new \Zero\HttpError(409, 'unique_violation', 'Sorry, that username already exists!', '/username');
         }
         $wpdb = $db->wpdb();
-        $db->run("UPDATE `{$wpdb->users}` SET user_login = ?, user_nicename = ? WHERE ID = ?", [$login, sanitize_title(mb_substr($login, 0, 50)), $id]);
+        // An author slug unique among users, with core's own `-2` suffixes (wp_insert_user's rule).
+        $base = mb_substr(sanitize_title($login), 0, 50);
+        $nicename = $base;
+        for ($n = 2; $db->run("SELECT ID FROM `{$wpdb->users}` WHERE user_nicename = ? AND ID <> ? LIMIT 1", [$nicename, $id]) !== []; $n++) {
+            $nicename = mb_substr($base, 0, 49 - strlen((string) $n)) . '-' . $n;
+        }
+        $db->run("UPDATE `{$wpdb->users}` SET user_login = ?, user_nicename = ? WHERE ID = ?", [$login, $nicename, $id]);
         clean_user_cache($id);
     }
 

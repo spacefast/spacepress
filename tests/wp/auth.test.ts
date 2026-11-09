@@ -892,3 +892,32 @@ test("core users meta writes never leave a transaction behind: late errors and t
   `));
   assert.deepEqual(out, [["refused late", 5, true], ["hook threw", 5, true, false], [200, 8]]);
 });
+
+test("core users updates through Zero keep core's role check and password path", () => {
+  const sub = harness.users.subscriber.id;
+  const out = JSON.parse(wp("eval", `
+    wp_set_current_user(1);
+    // An admin can't demote themselves out of edit_users: core's own check runs before Zero's update.
+    $demote = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $demote->set_body_params(['roles' => ['subscriber']]);
+    $demoted = rest_do_request($demote);
+    // A password change stays core's (cookie re-issue, notice): the hash changes; member fields go to Zero.
+    $before = get_userdata(${sub})->user_pass;
+    $pass = new WP_REST_Request('POST', '/wp/v2/users/${sub}');
+    $pass->set_body_params(['password' => 'another long password 2', 'meta' => ['points' => 4]]);
+    $changed = rest_do_request($pass);
+    clean_user_cache(${sub});
+    $refused = get_userdata(${sub})->user_pass !== $before;
+    // The member themself: the update rule covers their row, so both the password and the field save.
+    wp_set_current_user(${sub});
+    $own = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $own->set_body_params(['password' => 'another long password 2', 'meta' => ['points' => 4]]);
+    $saved = rest_do_request($own);
+    clean_user_cache(${sub});
+    $ok = wp_check_password('another long password 2', get_userdata(${sub})->user_pass, ${sub});
+    wp_set_password('zero-test-subscriber', ${sub});
+    wp_set_current_user(1);
+    echo wp_json_encode([$demoted->get_status(), $demoted->get_data()['code'] ?? null, array_values(wp_get_current_user()->roles), $changed->get_status(), $refused, $saved->get_status(), $ok, $saved->get_data()['meta']['points'] ?? null]);
+  `));
+  assert.deepEqual(out, [403, "rest_user_invalid_role", ["administrator"], 404, false, 200, true, 4]);
+});

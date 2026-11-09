@@ -2,9 +2,9 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 //
 // Localization (§7.3): `tours` is a post-backed localized collection (Polylang owns language +
-// group) that also syncs with Markdown files (lane C), `phrases` a `table()` one (Zero's own
+// group) that also syncs with Markdown files (lane C), `phrases` a `table()` one (First's own
 // translationGroup column).
-import { action, collection, db, id, integer, richText, select, slug, text, table } from "zero";
+import { action, collection, db, id, integer, richText, select, slug, text, table } from "first";
 
 export const tours = collection({
   id: id(),

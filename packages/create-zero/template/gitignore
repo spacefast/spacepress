@@ -1,9 +1,0 @@
-node_modules/
-.zero/
-.env
-.env.*
-!.env.example
-.DS_Store
-*.log
-
-# Keep zero/_generated/migrations, zero/client and zero.gen.ts in version control.

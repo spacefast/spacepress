@@ -1,8 +1,8 @@
 # The examples
 
-The pantry, blog and site examples commit `zero/client/` and `zero/_generated/migrations/`
-as produced by `zero build`, so a fresh build changes nothing. The showcase
-builds its disposable app under `.zero/showcase/`, leaving its sources unchanged.
+The pantry, blog and site examples commit `first/client/` and `first/_generated/migrations/`
+as produced by `first build`, so a fresh build changes nothing. The showcase
+builds its disposable app under `.first/showcase/`, leaving its sources unchanged.
 
 | Example | What it shows |
 | --- | --- |
@@ -10,9 +10,9 @@ builds its disposable app under `.zero/showcase/`, leaving its sources unchanged
 | `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | [`examples/subscriptions/`](../examples/subscriptions/README.md) | Owner-scoped subscription tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA, with current gaps documented. [Connect an agent](agents.md). |
-| [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and Zero Admin; owner-scoped actions and an Action Scheduler shopping list, with current build and hosting blockers documented |
-| [`examples/home-maintenance/`](../examples/home-maintenance/README.md) | Private home systems, recurring tasks, work costs, and overdue jobs using wp-admin, SCF, and Zero Admin |
-| [`examples/stuff-drawer/`](../examples/stuff-drawer/README.md) | Personal inventory and lending log in wp-admin, SCF and Zero Admin; owner filters, agent abilities and overdue stamps, with main's current gaps documented |
+| [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and First Admin; owner-scoped actions and an Action Scheduler shopping list, with current build and hosting blockers documented |
+| [`examples/home-maintenance/`](../examples/home-maintenance/README.md) | Private home systems, recurring tasks, work costs, and overdue jobs using wp-admin, SCF, and First Admin |
+| [`examples/stuff-drawer/`](../examples/stuff-drawer/README.md) | Personal inventory and lending log in wp-admin, SCF and First Admin; owner filters, agent abilities and overdue stamps, with main's current gaps documented |
 | [`examples/drive-locker/`](../examples/drive-locker/README.md) | Owner-scoped drive inventory, health trends, Action Scheduler, typed React SPA and capacity reports; main runtime and publication gaps are documented |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
@@ -31,7 +31,7 @@ It includes options-backed site settings, English/German content, image sizes, p
 handouts, a queued activity job and a pinned Classic Editor dependency. Webhooks read
 `KITCHEN_WEBHOOK_URL` and `KITCHEN_WEBHOOK_SECRET` from the server environment.
 
-Run a normal example without Docker using `zero dev examples/pantry` or the
+Run a normal example without Docker using `first dev examples/pantry` or the
 blog commands below. Node 22+ and npm are required; WordPress Studio supplies
 PHP, WordPress and SQLite.
 
@@ -49,7 +49,7 @@ that:
   only shows up for published posts.
 - **Sync:** posts sync with `content/posts/*.md`, and two sample posts are
   committed.
-- **Members:** readers sign in as `members` through the zero-identity screens.
+- **Members:** readers sign in as `members` through the first-identity screens.
 - **Media:** every image gets a 600×400 `card` crop, and slide decks are
   private files (`posts.deck`).
 - **Jobs and webhooks:** a reader's comment queues `notifyEditors`, and every
@@ -58,27 +58,27 @@ that:
 
 Build it, turn the generated client into browser JS, build again so the
 plugin ships that page, then start the persistent Studio site and
-register the page with zero-identity:
+register the page with first-identity:
 
 ```sh
-./target/release/zero build examples/blog
+./target/release/first build examples/blog
 node examples/blog/build-client.mjs
-./target/release/zero build examples/blog        # ships public/client/ with the plugin
-./target/release/zero dev examples/blog --no-watch
-./target/release/zero wp --site examples/blog zero identity app add --name=Blog --id=app_blog \
-  --redirect=http://localhost:8787/wp-content/plugins/zero-app-blog/public/ --origin=http://localhost:8787
-./target/release/zero wp --site examples/blog user application-password create admin zero-sync --porcelain
+./target/release/first build examples/blog        # ships public/client/ with the plugin
+./target/release/first dev examples/blog --no-watch
+./target/release/first wp --site examples/blog first identity app add --name=Blog --id=app_blog \
+  --redirect=http://localhost:8787/wp-content/plugins/first-app-blog/public/ --origin=http://localhost:8787
+./target/release/first wp --site examples/blog user application-password create admin first-sync --porcelain
 ```
 
 These commands assume Studio printed `http://localhost:8787`; substitute its
 actual URL in the registration and sync commands if different. The page is at
-`http://localhost:8787/wp-content/plugins/zero-app-blog/public/`.
-Its Sign in button goes through the zero-identity screens; it switches between
+`http://localhost:8787/wp-content/plugins/first-app-blog/public/`.
+Its Sign in button goes through the first-identity screens; it switches between
 English and German and takes comments. Send its committed posts to the site with
-`ZERO_APP_PASSWORD=admin:<application password> zero sync examples/blog`,
-using the password created above. Stop it with `zero dev stop examples/blog`;
+`FIRST_APP_PASSWORD=admin:<application password> first sync examples/blog`,
+using the password created above. Stop it with `first dev stop examples/blog`;
 the next start retains its content and uploads. Omit `--no-watch` to keep
-Zero watching and rebuilding sources in the foreground.
+First watching and rebuilding sources in the foreground.
 
 ## Suites
 
@@ -94,5 +94,5 @@ tests/system/run.sh            # examples/site on WordPress, a site migration, t
 1. `examples/site`, installed as a site owner would and walked through the
    whole journey, then upgraded, deactivated and reinstalled.
 2. A site built with an earlier Zero, moved over as
-   [migrating from Zero](migrating-from-zero.md) describes.
+   [migrating from First](migrating-from-zero.md) describes.
 3. `examples/blog`, whose committed Markdown posts sync in.

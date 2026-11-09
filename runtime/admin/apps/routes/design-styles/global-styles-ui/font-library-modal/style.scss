@@ -5,7 +5,7 @@
 // Ensures that the footer is always visible when the modal content is scrollable.
 $footer-height: 70px;
 
-.zero-admin-font-library-modal {
+.first-admin-font-library-modal {
 	// Force width to override upstream @wordpress/editor modal styles.
 	// Temporary until font library is extracted from upstream components.
 	width: 65vw !important;

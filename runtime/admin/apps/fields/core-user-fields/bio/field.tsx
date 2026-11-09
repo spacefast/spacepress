@@ -1,6 +1,6 @@
-import { TextareaControl } from '@zero-admin/design-system';
+import { TextareaControl } from '@first-admin/design-system';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< User > > = {
 	getValue: ( { item } ) => item.description || '',

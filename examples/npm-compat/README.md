@@ -1,6 +1,6 @@
 # npm source compatibility probes
 
-Run actual pinned npm library algorithms through Zero and compare the generated
+Run actual pinned npm library algorithms through First and compare the generated
 PHP action's JSON result to Node executing the installed package. Every route
 must compile, run, and match Node. Unsupported libraries produce `ISSUES` and exit 1.
 The package lock includes tarball integrity; lifecycle scripts are unnecessary.
@@ -8,28 +8,28 @@ The package lock includes tarball integrity; lifecycle scripts are unnecessary.
 ```sh
 cd examples/npm-compat
 npm ci --ignore-scripts --no-audit --no-fund
-ZERO_BIN=/absolute/path/to/zero npm run verify
+FIRST_BIN=/absolute/path/to/first npm run verify
 # Collect a matrix while allowing known unsupported packages:
-ZERO_BIN=/absolute/path/to/zero npm run verify -- --report-only
+FIRST_BIN=/absolute/path/to/first npm run verify -- --report-only
 # Independent scratch directory, or one library during development:
-ZERO_BIN=/absolute/path/to/zero npm run verify -- --isolated --only clsx
+FIRST_BIN=/absolute/path/to/first npm run verify -- --isolated --only clsx
 ```
 
-The `app/zero.config.ts` example exposes `POST /actions/link` with `slug` and
+The `app/first.config.ts` example exposes `POST /actions/link` with `slug` and
 `title` text inputs. It uses the installed url-join, just-template and escape-html
-packages in a real Zero action. See [the compatibility guide](../../docs/npm-compatibility.md)
+packages in a real First action. See [the compatibility guide](../../docs/npm-compatibility.md)
 for build, local WordPress and request instructions. URL joining covers array and
 variadic forms, protocol/query normalization, mutation, empty input and a thrown
 TypeError. Templates cover nested/repeated keys, missing/falsy values and Unicode.
 
 Concurrent workers can install the lockfile in their own npm directory and set
 `NPM_COMPAT_NODE_MODULES=/absolute/path/to/node_modules` with `--isolated`.
-`ZERO_WP_PLUGIN_CACHE` can select an independent plugin cache. Original source
+`FIRST_WP_PLUGIN_CACHE` can select an independent plugin cache. Original source
 hashes must match `provenance.json`; changed installed bytes fail verification.
 The verifier executes a private compiler snapshot, so another build cannot
 replace the binary between routes.
 
-`ZERO_BIN` defaults to this checkout's `target/debug/zero`. PHP CLI needs the
+`FIRST_BIN` defaults to this checkout's `target/debug/first`. PHP CLI needs the
 runtime's normal extensions, including mbstring. No WordPress site, database,
 network request, or JavaScript process participates in the PHP execution.
 `run-php.php` loads the generated runtime and calls the generated action handler.
@@ -39,7 +39,7 @@ combines url-join + just-template + escape-html for application links,
 combines clsx + escape-html + just-capitalize, and separately combines safeDiv
 from `@thi.ng/math` with upper from `@thi.ng/strings`. Cloning checks mutation
 isolation and Set, Map, Date and RegExp values constructed by a raw JavaScript
-fixture, imported into the TypeScript caller. Formatting covers zero/negative values and invalid input; string
+fixture, imported into the TypeScript caller. Formatting covers first/negative values and invalid input; string
 cases include empty strings, Unicode, quotes, and HTML metacharacters.
 
 Each library has separate routes:
@@ -54,7 +54,7 @@ Each library has separate routes:
   strings case functions use string parameters from `FnS` in the package's
   `api.d.ts`. is-number uses `unknown`, retaining its runtime input checks.
 - `typed-installed`: the typed copy is exported by a temporary installed package
-  under `@zero-npm-compat/*`, with an exact `exports.import` pointing to its TS
+  under `@first-npm-compat/*`, with an exact `exports.import` pointing to its TS
   file. This proves package resolution separately from a package's original JS
   typing. These temporary packages are adapters, not published upstream versions.
 
@@ -67,7 +67,7 @@ for all exports in either package, nor automatic declaration-file hydration.
 its raw JS probe retains the actual clone implementation.
 `ts-dedent` supplies an actual published `src/index.ts` probe of its callable
 string form. Repeated array/interpolation calls still encounter a located typing
-refusal; tagged-template syntax is outside Zero's subset. See the guide for the
+refusal; tagged-template syntax is outside First's subset. See the guide for the
 remaining coercion, sparse-array and borrowed-method boundaries.
 
 All raw compiler diagnostics, exact Node results, PHP stdout/stderr, source byte

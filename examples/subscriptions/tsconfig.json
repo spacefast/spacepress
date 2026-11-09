@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022", "lib": ["ES2022"], "module": "ESNext",
     "moduleResolution": "bundler", "strict": true, "noEmit": true,
-    "types": [], "paths": { "zero": ["../../types/zero/index.d.ts"] }
+    "types": [], "paths": { "first": ["../../types/first/index.d.ts"] }
   },
-  "include": ["zero.config.ts", "zero.gen.ts", "lib/**/*.ts"]
+  "include": ["first.config.ts", "first.gen.ts", "lib/**/*.ts"]
 }

@@ -1,4 +1,4 @@
-import { db, HttpError, jobs, type HookCtx } from "zero";
+import { db, HttpError, jobs, type HookCtx } from "first";
 
 export const DAY_MS = 86_400_000;
 export const WINDOW_DAYS = 14;

@@ -1,4 +1,4 @@
-//! The evaluated schema: plain data produced by running `zero.config.ts` at
+//! The evaluated schema: plain data produced by running `first.config.ts` at
 //! build time. Migrations, schema.php, the typed client, and generated types
 //! all derive from it.
 

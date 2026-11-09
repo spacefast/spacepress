@@ -57,7 +57,7 @@ pub(super) fn posts(value: &Value, entries: &mut Vec<Entry>) -> Result<String, F
         return Err(fail(
             &pointer(at, "sync"),
             format!(
-                "{}: 0.8 rebuilt the posts from their content files on publish; v2 syncs collections with `sync` in zero.config.ts",
+                "{}: 0.8 rebuilt the posts from their content files on publish; v2 syncs collections with `sync` in first.config.ts",
                 super::omitted::SYNC
             ),
         ));

@@ -2,9 +2,9 @@
 	"name": "core-post-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/lazy-editor": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/lazy-editor": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/block-editor": "catalog:",
 		"@wordpress/blocks": "catalog:",
 		"@wordpress/components": "catalog:",

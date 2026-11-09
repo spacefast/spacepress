@@ -5,10 +5,10 @@
     for (const button of controls) button.setAttribute('aria-pressed', String(button.dataset.theme === theme));
   }
   let preference = 'system';
-  try { preference = localStorage.getItem('zero-publication-theme') ?? 'system'; } catch {}
+  try { preference = localStorage.getItem('first-publication-theme') ?? 'system'; } catch {}
   apply(['light', 'dark', 'system'].includes(preference) ? preference : 'system');
   for (const button of controls) button.addEventListener('click', () => {
     apply(button.dataset.theme);
-    try { localStorage.setItem('zero-publication-theme', button.dataset.theme); } catch {}
+    try { localStorage.setItem('first-publication-theme', button.dataset.theme); } catch {}
   });
 })();

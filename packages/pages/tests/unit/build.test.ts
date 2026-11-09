@@ -5,21 +5,21 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { withBlockApi } from "@spacefast/zero-blocks/compiler";
+import { withBlockApi } from "@spacefast/first-blocks/compiler";
 
 import { buildPages, installPlugin, type Manifest } from "../../src/build.ts";
 import { routeId, routeKey } from "../../src/routes.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const example = path.resolve(here, "../../../../examples/full-site");
-const scratch = await mkdtemp(path.join(tmpdir(), "zero-pages-test-"));
+const scratch = await mkdtemp(path.join(tmpdir(), "first-pages-test-"));
 after(() => rm(scratch, { recursive: true, force: true }));
 
 let counter = 0;
 /** A disposable copy of the full-site example (sources and its compiled schema), with files replaced. */
 async function project(files: Record<string, string | null> = {}): Promise<string> {
   const root = path.join(scratch, `p${counter++}`);
-  for (const entry of ["zero.config.ts", "pages", "components", "islands", "styles", "zero/client", "zero/_generated/migrations"]) {
+  for (const entry of ["first.config.ts", "pages", "components", "islands", "styles", "first/client", "first/_generated/migrations"]) {
     await cp(path.join(example, entry), path.join(root, entry), { recursive: true });
   }
   for (const [file, contents] of Object.entries(files)) {
@@ -34,7 +34,7 @@ async function project(files: Record<string, string | null> = {}): Promise<strin
 }
 
 const out = (root: string): string => path.join(root, ".out");
-const plugin = (root: string): string => path.join(out(root), "plugins/zero-pages-fullsite");
+const plugin = (root: string): string => path.join(out(root), "plugins/first-pages-fullsite");
 const manifestOf = async (root: string): Promise<Manifest> => JSON.parse(await readFile(path.join(plugin(root), "manifest.json"), "utf8")) as Manifest;
 const brief = (d: { code: string; loc?: { file: string; line: number; column: number } }, root: string) =>
   ({ code: d.code, at: d.loc === undefined ? null : `${path.relative(root, d.loc.file)}:${d.loc.line}:${d.loc.column}` });
@@ -66,7 +66,7 @@ test("the full-site example builds every route to block markup the editor parses
     const blocks = flatten(await parse(await readFile(path.join(plugin(root), route.template), "utf8")));
     assert.ok(blocks.length > 0);
     // Region blocks are registered only on the server; every core block must be valid as saved.
-    assert.deepEqual(blocks.filter((b) => !b.name.startsWith("zero-pages/") && !b.isValid).map((b) => b.name), []);
+    assert.deepEqual(blocks.filter((b) => !b.name.startsWith("first-pages/") && !b.isValid).map((b) => b.name), []);
   }
   // Static pages carry their own body for the hidden Page; item routes use the item's post.
   const about = manifest.routes.find((r) => r.pattern === "/about")!;
@@ -100,7 +100,7 @@ test("dynamic data becomes viewer-bound queries, loops, conditions and tokens, n
   // The browser module keeps its one runtime import external: WordPress provides it.
   assert.match(await readFile(path.join(plugin(root), "assets", island[0]!), "utf8"), /from\s*"@wordpress\/interactivity"/);
 
-  const fallbacks = await project({ [NOTE_PAGE]: `import { collectionPage, orElse, Show } from "@spacefast/zero-pages";
+  const fallbacks = await project({ [NOTE_PAGE]: `import { collectionPage, orElse, Show } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export function load({ content, item }) {
   return { match: content.query.notes.findFirst({ where: { dek: orElse(orElse(item.dek, "fallback"), "second") } }) };
@@ -118,7 +118,7 @@ export default function Note({ item }) { return <Show when={orElse(orElse(item.d
     path: ["item", "dek"], mode: "child", fallback: "first",
   });
 
-  const nonRows = await project({ [NOTE_PAGE]: `import { collectionPage, count } from "@spacefast/zero-pages";
+  const nonRows = await project({ [NOTE_PAGE]: `import { collectionPage, count } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export default function Note({ item }) { return <p>{count(item.title)}</p>; }
 ` });
@@ -127,7 +127,7 @@ export default function Note({ item }) { return <p>{count(item.title)}</p>; }
   assert.equal(invalidCount.diagnostics.some((diagnostic) => diagnostic.code === "dynamic_value"), true);
 
   const namedFields = ["kind", "then", "$$typeof", "toString", "valueOf", "toJSON"];
-  const protocols = await project({ [NOTE_PAGE]: `import { collectionPage } from "@spacefast/zero-pages";
+  const protocols = await project({ [NOTE_PAGE]: `import { collectionPage } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export function load({ content, item }) {
   return { then: item.then, selected: content.query.notes.findFirst({ where: { kind: item.kind, then: item.then, $$typeof: item.$$typeof } }) };
@@ -136,7 +136,7 @@ export default function Note({ item, then, selected }) {
   return <><p>{item.kind}{then}{item.$$typeof}{item.toString}{item.valueOf}{item.toJSON}</p><p>{selected.kind}</p></>;
 }
 ` });
-  const snapshotFile = path.join(protocols, "zero/_generated/migrations/snapshot.json");
+  const snapshotFile = path.join(protocols, "first/_generated/migrations/snapshot.json");
   const snapshot = JSON.parse(await readFile(snapshotFile, "utf8"));
   for (const name of namedFields) snapshot.tables.notes.columns[name] = { type: "text" };
   await writeFile(snapshotFile, JSON.stringify(snapshot));
@@ -159,7 +159,7 @@ test("CSS modules become hashed class names, global CSS and file imports become 
   const about = manifest.routes.find((r) => r.pattern === "/about")!;
   const css = await readFile(path.join(plugin(root), show.css[0]!), "utf8");
   assert.match(css, /\.note_note\s*\{/);
-  assert.match(css, /body\.zero-pages/);
+  assert.match(css, /body\.first-pages/);
   assert.match(await readFile(path.join(plugin(root), show.template), "utf8"), /"className":"note_note"/);
   const assets = await readdir(path.join(plugin(root), "assets"));
   assert.ok(assets.some((f) => /^compass-[A-Z0-9]+\.svg$/.test(f)));
@@ -186,7 +186,7 @@ async function refusal(file: string, contents: string): Promise<{ root: string; 
 }
 
 test("a branch on request data is refused at its location and the previous output stays", async () => {
-  const { diagnostics, kept } = await refusal(NOTE_PAGE, `import { collectionPage, type CollectionPageProps } from "@spacefast/zero-pages";
+  const { diagnostics, kept } = await refusal(NOTE_PAGE, `import { collectionPage, type CollectionPageProps } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export default function Note({ item }: CollectionPageProps<typeof page>) {
   return <h1>{item.dek ? item.title : "Untitled"}</h1>;
@@ -230,7 +230,7 @@ export default function Note({ item }: CollectionPageProps<typeof page>) {
     ['function Label({ length: size }) { return size; } return <h1><Label {...`${item.title}`} /></h1>;', "dynamic_operator"],
   ];
   for (const [body, code] of cases) {
-    await writeFile(path.join(root, NOTE_PAGE), `import { collectionPage } from "@spacefast/zero-pages";
+    await writeFile(path.join(root, NOTE_PAGE), `import { collectionPage } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export default function Note({ item }) { ${body} }
 `);
@@ -241,7 +241,7 @@ export default function Note({ item }) { ${body} }
   }
 
   // A query result passed under an arbitrary prop name is still request data.
-  await writeFile(path.join(root, NOTE_PAGE), `import { collectionPage } from "@spacefast/zero-pages";
+  await writeFile(path.join(root, NOTE_PAGE), `import { collectionPage } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export function load({ content: viewerContent }) { return { found: viewerContent.query.notes.findFirst() }; }
 export default function Note({ found }) { return <h1>{found.dek ? "present" : "empty"}</h1>; }
@@ -253,7 +253,7 @@ export default function Note({ found }) { return <h1>{found.dek ? "present" : "e
 
   // Literal and immutable primitive const conditions are safe, and imported
   // helper aliases keep the documented per-request escape hatches usable.
-  await writeFile(path.join(root, NOTE_PAGE), `import { collectionPage as routeFor, orElse as fallback } from "@spacefast/zero-pages";
+  await writeFile(path.join(root, NOTE_PAGE), `import { collectionPage as routeFor, orElse as fallback } from "@spacefast/first-pages";
 export const page = routeFor("notes");
 const enabled = true;
 const label = "notes";
@@ -269,7 +269,7 @@ export default function Note({ item }) {
   const labelSource = 'export default function Label({ value }) { return <p>{value ? "present" : "missing"}</p>; }';
   const external = path.join(scratch, "external-label.tsx");
   await writeFile(external, labelSource);
-  const externalPage = (specifier: string) => `import { collectionPage } from "@spacefast/zero-pages";
+  const externalPage = (specifier: string) => `import { collectionPage } from "@spacefast/first-pages";
 import Label from ${JSON.stringify(specifier)};
 export const page = collectionPage("notes");
 export default function Note({ item }) { return <Label value={item.dek} />; }
@@ -293,7 +293,7 @@ export default function Note({ item }) { return <Label value={item.dek} />; }
 });
 
 test("a typo in a field is refused with the field's line and a suggestion", async () => {
-  const root = await project({ [NOTE_PAGE]: `import { collectionPage, type CollectionPageProps } from "@spacefast/zero-pages";
+  const root = await project({ [NOTE_PAGE]: `import { collectionPage, type CollectionPageProps } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export default function Note({ item }: CollectionPageProps<typeof page>) {
   // @ts-expect-error the field does not exist
@@ -302,7 +302,7 @@ export default function Note({ item }: CollectionPageProps<typeof page>) {
 ` });
   const result = await buildPages({ project: root, out: out(root) });
   assert.deepEqual(result.diagnostics.map((d) => brief(d, root)), [{ code: "unknown_field", at: `${NOTE_PAGE}:5:20` }]);
-  const missingLink = await refusal("pages/about/page.tsx", `import { link } from "@spacefast/zero-pages";
+  const missingLink = await refusal("pages/about/page.tsx", `import { link } from "@spacefast/first-pages";
 export default function About() { return <a href={link("/missing")}>Missing</a>; }
 `);
   assert.deepEqual(missingLink.diagnostics.map((diagnostic) => diagnostic.code), ["unknown_route"]);
@@ -318,7 +318,7 @@ test("per-request values are refused where PHP could not escape them or where th
     ["rich_text", `<RichText value={orElse(item.body, "fallback")} />`, "5:5"],
   ];
   for (const [code, jsx, at] of cases) {
-    const root = await project({ [NOTE_PAGE]: `import { collectionPage, RichText, orElse, type CollectionPageProps } from "@spacefast/zero-pages";
+    const root = await project({ [NOTE_PAGE]: `import { collectionPage, RichText, orElse, type CollectionPageProps } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export default function Note({ item }: CollectionPageProps<typeof page>) {
   return (
@@ -332,7 +332,7 @@ export default function Note({ item }: CollectionPageProps<typeof page>) {
 });
 
 test("the trusted db, async components and build-time clocks are refused before any page code runs", async () => {
-  const root = await project({ "pages/about/page.tsx": `import { db } from "zero";
+  const root = await project({ "pages/about/page.tsx": `import { db } from "first";
 export default async function About() {
   const now = Date.now();
   return <p>{String(now)}</p>;
@@ -363,13 +363,13 @@ test("route shapes the release cannot serve are refused, not approximated", asyn
 });
 
 test("a second item route for one collection and an item route over a table are refused", async () => {
-  const twice = await project({ "pages/n/[slug]/page.tsx": `import { collectionPage } from "@spacefast/zero-pages";
+  const twice = await project({ "pages/n/[slug]/page.tsx": `import { collectionPage } from "@spacefast/first-pages";
 export const page = collectionPage("notes");
 export default () => <p>x</p>;
 ` });
   const result = await buildPages({ project: twice, out: out(twice) });
   assert.deepEqual(result.diagnostics.map((d) => brief(d, twice)), [{ code: "not_routable", at: "pages/notes/[slug]/page.tsx:1:1" }]);
-  const table = await project({ "pages/c/[slug]/page.tsx": `import { collectionPage } from "@spacefast/zero-pages";
+  const table = await project({ "pages/c/[slug]/page.tsx": `import { collectionPage } from "@spacefast/first-pages";
 export const page = collectionPage("cheers");
 export default () => <p>x</p>;
 ` });
@@ -378,7 +378,7 @@ export default () => <p>x</p>;
 });
 
 test("island children are escaped HTML and event-handler attributes are refused", async () => {
-  const root = await project({ "pages/about/page.tsx": `import { Island } from "@spacefast/zero-pages";
+  const root = await project({ "pages/about/page.tsx": `import { Island } from "@spacefast/first-pages";
 export default function About() {
   return (
     <Island namespace="fullsite/cheer" module="../../islands/cheer.client.ts">
@@ -397,7 +397,7 @@ export default function About() {
   assert.deepEqual(shared.routes.filter((route) => route.modules.includes("fullsite/cheer")).map((route) => route.pattern).sort(), ["/about", "/notes/[]"]);
 
   await writeFile(path.join(root, "islands/alternative.client.ts"), "export const alternative = true;\n");
-  await writeFile(path.join(root, "pages/about/page.tsx"), `import { Island } from "@spacefast/zero-pages";
+  await writeFile(path.join(root, "pages/about/page.tsx"), `import { Island } from "@spacefast/first-pages";
 export default function About() {
   return <Island namespace="fullsite/cheer" module="../../islands/alternative.client.ts"><p>Alternative</p></Island>;
 }
@@ -407,7 +407,7 @@ export default function About() {
   assert.equal(conflict.diagnostics.some((diagnostic) => diagnostic.code === "island"), true);
   assert.equal((await manifestOf(root)).digest, shared.digest);
 
-  const handler = await project({ "pages/about/page.tsx": `import { Island } from "@spacefast/zero-pages";
+  const handler = await project({ "pages/about/page.tsx": `import { Island } from "@spacefast/first-pages";
 export default function About() {
   return (
     <Island namespace="fullsite/cheer" module="../../islands/cheer.client.ts">
@@ -434,8 +434,8 @@ test("the render artifact holds the plugin's files and its inputs, and installin
   const root = await project();
   const result = await buildPages({ project: root, out: out(root) });
   assert.equal(result.ok, true);
-  const artifact = JSON.parse(await readFile(path.join(root, "zero/pages.json"), "utf8")) as { format: string; manifest: string; files: Record<string, string>; inputs: Record<string, string> };
-  assert.equal(artifact.format, "zero.pages.v1");
+  const artifact = JSON.parse(await readFile(path.join(root, "first/pages.json"), "utf8")) as { format: string; manifest: string; files: Record<string, string>; inputs: Record<string, string> };
+  assert.equal(artifact.format, "first.pages.v1");
   assert.equal(artifact.manifest, await readFile(path.join(plugin(root), "manifest.json"), "utf8"));
   for (const [name, contents] of Object.entries(artifact.files)) {
     assert.deepEqual(await readFile(path.join(plugin(root), name)), Buffer.from(contents, "base64"), name);
@@ -446,12 +446,12 @@ test("the render artifact holds the plugin's files and its inputs, and installin
   }
   assert.equal(Object.keys(artifact.inputs).some((input) => input.includes("node_modules") || input.startsWith("..")), false);
   // Imported JSON is inlined into the render, so it is an input too.
-  const withJson = await project({ "pages/about/facts.json": '{"motto":"Field first"}\n', "pages/about/page.tsx": (await readFile(path.join(example, "pages/about/page.tsx"), "utf8")).replace('import type { Metadata } from "@spacefast/zero-pages";', 'import type { Metadata } from "@spacefast/zero-pages";\nimport facts from "./facts.json";').replace("<h1>About</h1>", "<h1>{facts.motto}</h1>") });
+  const withJson = await project({ "pages/about/facts.json": '{"motto":"Field first"}\n', "pages/about/page.tsx": (await readFile(path.join(example, "pages/about/page.tsx"), "utf8")).replace('import type { Metadata } from "@spacefast/first-pages";', 'import type { Metadata } from "@spacefast/first-pages";\nimport facts from "./facts.json";').replace("<h1>About</h1>", "<h1>{facts.motto}</h1>") });
   assert.equal((await buildPages({ project: withJson, out: out(withJson) })).ok, true);
-  const jsonArtifact = JSON.parse(await readFile(path.join(withJson, "zero/pages.json"), "utf8")) as { inputs: Record<string, string> };
+  const jsonArtifact = JSON.parse(await readFile(path.join(withJson, "first/pages.json"), "utf8")) as { inputs: Record<string, string> };
   assert.match(jsonArtifact.inputs["pages/about/facts.json"] ?? "", /^[0-9a-f]{64}$/);
   const again = path.join(scratch, `reinstall-${counter++}`);
-  await installPlugin(again, await readFile(path.join(root, "zero/pages.json"), "utf8"));
+  await installPlugin(again, await readFile(path.join(root, "first/pages.json"), "utf8"));
   const tree = async (dir: string): Promise<string[]> => (await readdir(dir, { recursive: true })).map(String).sort();
-  assert.deepEqual(await tree(path.join(again, "plugins/zero-pages-fullsite")), await tree(plugin(root)));
+  assert.deepEqual(await tree(path.join(again, "plugins/first-pages-fullsite")), await tree(plugin(root)));
 });

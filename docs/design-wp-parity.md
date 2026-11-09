@@ -1,4 +1,4 @@
-# Zero: WordPress parity — design contract
+# First: WordPress parity — design contract
 
 Authoring uses explicit `collections`, `tables` and `users` registries; see
 [the current config API](config-api.md#collections-tables-and-user-projections).
@@ -25,7 +25,7 @@ description), §6.3 (one row), §9.1/9.2 (postmeta tests, harness `sql`), §10
 unchanged.
 
 Conventions: "both targets" = standalone PHP+SQLite app and the WordPress
-plugin. "Rejected" = `zero check`/`zero build` fails with `file:line:col` and a
+plugin. "Rejected" = `first check`/`first build` fails with `file:line:col` and a
 fix, on **both** targets unless stated: the config is target-independent, so a
 config that can't build for WP doesn't build at all.
 
@@ -35,25 +35,25 @@ config that can't build for WP doesn't build at all.
 
 | Area | Decision |
 |---|---|
-| Targets | `zero build --target standalone\|wp`. One `zero.config.ts`, one runtime pipeline, three stores: `SqliteStore`, `WpTableStore`, `WpPostStore`. |
-| WP content collections | One **custom post type per collection** (`zero_<table>`), not native `post` + taxonomy (§4.1 says why). Fields are SCF fields with meta key `zero_<column>`. |
-| WP reads | Post-backed collections are read from `wp_posts` + `wp_postmeta` directly: no duplicate data, no index table. One `Sql` compiler serves all stores through a `Source` mapping (column → SQL expression + join); on post-backed collections each filtered/ordered meta column is one `LEFT JOIN wp_postmeta`, typed via `CAST(NULLIF(meta_value,''))`. `table()` definitions are real `{prefix}zero_<table>` tables and remain the fast path. |
+| Targets | `first build --target standalone\|wp`. One `first.config.ts`, one runtime pipeline, three stores: `SqliteStore`, `WpTableStore`, `WpPostStore`. |
+| WP content collections | One **custom post type per collection** (`first_<table>`), not native `post` + taxonomy (§4.1 says why). Fields are SCF fields with meta key `first_<column>`. |
+| WP reads | Post-backed collections are read from `wp_posts` + `wp_postmeta` directly: no duplicate data, no index table. One `Sql` compiler serves all stores through a `Source` mapping (column → SQL expression + join); on post-backed collections each filtered/ordered meta column is one `LEFT JOIN wp_postmeta`, typed via `CAST(NULLIF(meta_value,''))`. `table()` definitions are real `{prefix}first_<table>` tables and remain the fast path. |
 | Drafts | `drafts` is always `true` for `collection()` and defaults to `false` for `table()`. Adds `status` (`draft\|published\|scheduled`) and `publishedAt`. API-created rows default to `published`. Sub-editor readers only see `published` unless the read rule is a function. |
 | Access | Payload-style `access: { read, create, update, delete }` = `boolean \| "anyone" \| "authenticated" \| Role \| (ctx) => boolean \| Filter`. Defaults: `read: "anyone"`, writes and actions `"editor"`. Hooks and `db` are trusted. |
-| Identity | WP: whatever WP REST authenticates (cookie+nonce, application passwords). Standalone: bearer tokens in `__zero_tokens`, minted by the CLI, with a role. Four roles: `subscriber < author < editor < admin`. |
-| Revisions | In on both targets. WP-native for post-backed; `__zero_revisions` table for everything else. `GET /{c}/{id}/revisions`, restore runs the update pipeline. |
+| Identity | WP: whatever WP REST authenticates (cookie+nonce, application passwords). Standalone: bearer tokens in `__first_tokens`, minted by the CLI, with a role. Four roles: `subscriber < author < editor < admin`. |
+| Revisions | In on both targets. WP-native for post-backed; `__first_revisions` table for everything else. `GET /{c}/{id}/revisions`, restore runs the update pipeline. |
 | Scheduling | `status: "scheduled"` + future `publishedAt`. WP: `future` + cron. Standalone: lazy promotion at request start + `publish-due` CLI. No hooks fire on promotion on either target. |
-| Media | Built-in `media` collection on both targets (`__zero_media` + `public/uploads` standalone; attachments on WP). `media()` columns hold ids and populate **in place** with `with`. |
-| Globals | `global(name, fields, options)`. Standalone `__zero_globals`; WP SCF options page with `post_id = zero_global_<name>`. |
-| REST | Same routes and shapes; prefix `/api` standalone, `/wp-json/zero/v1` on WP. |
-| Client | `zero build` writes a dependency-free `zero/client/index.ts` (generated interfaces + embedded runtime). Not the `"zero"` types package. |
+| Media | Built-in `media` collection on both targets (`__first_media` + `public/uploads` standalone; attachments on WP). `media()` columns hold ids and populate **in place** with `with`. |
+| Globals | `global(name, fields, options)`. Standalone `__first_globals`; WP SCF options page with `post_id = first_global_<name>`. |
+| REST | Same routes and shapes; prefix `/api` standalone, `/wp-json/first/v1` on WP. |
+| Client | `first build` writes a dependency-free `first/client/index.ts` (generated interfaces + embedded runtime). Not the `"first"` types package. |
 | schema.php | Version 2, §2. Compiler emits all WP identifiers (post type, meta keys, SCF keys); the runtime derives nothing. |
 
 ---
 
 ## 1. Config API v1 additions (TypeScript surface)
 
-Everything below is exported from `"zero"`. Existing builders, modifiers,
+Everything below is exported from `"first"`. Existing builders, modifiers,
 `defineRelations`, hooks, actions, `db` keep their current shape and names.
 
 ### 1.1 New column builders
@@ -175,7 +175,7 @@ Rejections (both targets): using `collection()` and no title designation ("add a
 `title` not a notNull text; `content` not richText; a collection named `media`,
 `globals`, `actions`, `me`, `_schema` (reserved); a table name longer than 15
 characters for `collection()` ("WordPress post types are limited to 20
-characters and Zero prefixes `zero_`"); more than one `slug()` column; a
+characters and First prefixes `first_`"); more than one `slug()` column; a
 `slug({ source })` naming a column that isn't text; `drafts: false` with
 `collection()`; a user column named `status` or `publishedAt` on a drafts
 collection ("reserved: drafts add these").
@@ -191,7 +191,7 @@ export declare function global<const TName extends string, TCols extends FieldsC
 
 // defineConfig gains `globals` and `name`:
 export interface ConfigInput<...> {
-  /** Project name: plugin slug (`zero-<name>`), wp-admin menu, client docs. Default: project directory name. */
+  /** Project name: plugin slug (`first-<name>`), wp-admin menu, client docs. Default: project directory name. */
   name?: string;
   /** Default build target when `--target` isn't passed. Default "standalone". */
   target?: "standalone" | "wp";
@@ -266,7 +266,7 @@ itself when it wants that for anonymous readers (the blog example shows this).
 Who gets checked: REST/typed client and the WP REST routes always; hooks and
 actions calling `db` never (trusted, every status visible, no implied status
 filter); CLI never. wp-admin editing is governed by WordPress capabilities, not
-Zero access rules (§5.1).
+First access rules (§5.1).
 
 ### 1.7 What hooks, validators and actions see
 
@@ -287,11 +287,11 @@ Rows seen by hooks and by `db` include `status`/`publishedAt` on drafts
 collections and are never status-filtered. Writes from hooks run the full
 pipeline (defaults, validation, nested hooks) but no access check.
 
-Editor saves on WP (wp-admin, core `/wp/v2/zero_<table>`): `.validate`,
+Editor saves on WP (wp-admin, core `/wp/v2/first_<table>`): `.validate`,
 `.min/.max/.pattern` run via SCF validation (blocking, with the message); after
 the save, `afterCreate`/`afterUpdate`/`afterDelete` run with the synced row
 and `ctx.user` = the editing WP user. `beforeCreate`/`beforeUpdate` do **not**
-run on editor saves (the post is already saved when Zero learns about it);
+run on editor saves (the post is already saved when First learns about it);
 `slug({ source })` derivation is done by WP's own slug box there.
 
 ### 1.8 Target behaviour matrix
@@ -300,21 +300,21 @@ run on editor saves (the post is already saved when Zero learns about it);
 |---|---|---|---|
 | email/url/slug | TEXT, validated | SCF email/url; slug = post_name | VARCHAR(191)/LONGTEXT, validated |
 | richText | TEXT verbatim | post_content (designated) or SCF wysiwyg; `wp_kses_post` unless `unfiltered_html` | LONGTEXT verbatim |
-| media/mediaList | id(s) into `__zero_media` | SCF image/file/gallery, attachment ids | BIGINT id(s) of attachments |
+| media/mediaList | id(s) into `__first_media` | SCF image/file/gallery, attachment ids | BIGINT id(s) of attachments |
 | select multiple, group, repeater, blocks | TEXT JSON | SCF select(multiple)/group/repeater/flexible_content meta (SCF's own layout), normalised to JSON on read | LONGTEXT JSON |
 | drafts | real columns, lazy promotion | post_status/post_date_gmt + cron | real columns, lazy promotion |
-| revisions | `__zero_revisions` | WP revisions (+SCF meta) | `{prefix}zero__revisions` |
+| revisions | `__first_revisions` | WP revisions (+SCF meta) | `{prefix}first__revisions` |
 | `.validate` | pipeline | pipeline + `acf/validate_value` | pipeline |
-| access | pipeline | pipeline (Zero REST only) | pipeline |
-| globals | `__zero_globals` | SCF options page | SCF options page |
+| access | pipeline | pipeline (First REST only) | pipeline |
+| globals | `__first_globals` | SCF options page | SCF options page |
 
-### 1.9 The blog example (`examples/blog/zero.config.ts`)
+### 1.9 The blog example (`examples/blog/first.config.ts`)
 
 ```ts
 import {
   collection, table, global, id, text, integer, boolean, timestamp, richText, media, slug, select,
   repeater, group, blocks, email, url, defineRelations, defineConfig, action, db, HttpError,
-} from "zero";
+} from "first";
 
 export const authors = collection({
   id: id(),
@@ -436,7 +436,7 @@ via `db.update`.)
 
 ## 2. schema.php v2
 
-`zero/app/schema.php` returns one array. The runtime refuses any other
+`first/app/schema.php` returns one array. The runtime refuses any other
 `version` (`Schema::load` throws `RuntimeException("schema.php version 2 required")`).
 Keys are always present (empty arrays, `null`, or `false` rather than absent)
 except where marked *optional*. Order of collections/columns = config order.
@@ -496,12 +496,12 @@ return [
       ],
       'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
       'wp' => [                            // present on both targets (harmless on standalone); null when editor = false
-        'postType' => 'zero_posts',
-        'groupKey' => 'group_zero_posts',
-        'metaPrefix' => 'zero_',           // meta key = metaPrefix . column
-        'fieldKeyPrefix' => 'field_zero_posts_',   // field key = prefix . column (sub: prefix . column . '_' . sub; blocks layout: prefix . column . '_' . layout . '_' . sub)
+        'postType' => 'first_posts',
+        'groupKey' => 'group_first_posts',
+        'metaPrefix' => 'first_',           // meta key = metaPrefix . column
+        'fieldKeyPrefix' => 'field_first_posts_',   // field key = prefix . column (sub: prefix . column . '_' . sub; blocks layout: prefix . column . '_' . layout . '_' . sub)
       ],
-      'table' => null,                     // physical table without the WP prefix for editor:false collections ('zero_comments'); null when post-backed (storage is wp_posts/wp_postmeta); standalone uses the collection name and ignores this
+      'table' => null,                     // physical table without the WP prefix for editor:false collections ('first_comments'); null when post-backed (storage is wp_posts/wp_postmeta); standalone uses the collection name and ignores this
     ],
   ],
   'globals' => [
@@ -509,7 +509,7 @@ return [
       'label' => 'Site settings',
       'fields' => [ /* column shape, same codecs */ ],
       'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']],
-      'wp' => ['postId' => 'zero_global_settings', 'menuSlug' => 'zero-global-settings', 'groupKey' => 'group_zero_global_settings', 'fieldKeyPrefix' => 'field_zero_global_settings_', 'optionPrefix' => 'zero_global_settings_'],
+      'wp' => ['postId' => 'first_global_settings', 'menuSlug' => 'first-global-settings', 'groupKey' => 'group_first_global_settings', 'fieldKeyPrefix' => 'field_first_global_settings_', 'optionPrefix' => 'first_global_settings_'],
     ],
   ],
   'actions' => [
@@ -529,7 +529,7 @@ keys minus `primaryKey/autoIncrement/unique/references/onUpdate/system`.
 `type` values: `integer real text boolean timestamp date json email url slug richText media mediaList select group repeater blocks`.
 `select` without `multiple` is never emitted (it compiles to `text` + `enum`).
 
-Compiled function calling conventions (functions.php, namespace `ZeroApp`):
+Compiled function calling conventions (functions.php, namespace `FirstApp`):
 
 | slot | call | return |
 |---|---|---|
@@ -550,15 +550,15 @@ names (`fn` → `true`), `hooks`, `beforeCreateFills`, and `wp` identifiers.
 ### 3.1 Shape
 
 ```
-runtime/Zero/
+runtime/First/
   bootstrap.php  Schema.php  Js.php  RegExp.php  JsError.php  HttpError.php   (as today)
   App.php        HTTP routing, problem documents, CLI; target-agnostic
   Db.php         the ONE pipeline: validate, defaults, hooks, access, drafts, revisions, `with`; calls a Store
-  Store.php      interface Zero\Store (§3.2)
+  Store.php      interface First\Store (§3.2)
   Sql.php        Drizzle-filter → SQL compiler, parameterised, with a Dialect (sqlite | mysql)
-  Auth.php       interface Zero\Auth (§5): resolves the request to a User
-  Identity.php   standalone Auth: __zero_tokens
-  Media.php      standalone media: __zero_media + public/uploads
+  Auth.php       interface First\Auth (§5): resolves the request to a User
+  Identity.php   standalone Auth: __first_tokens
+  Media.php      standalone media: __first_media + public/uploads
   Migrator.php   SQLite migrations (as today)
   Store/SqliteStore.php
   Wp/            owned by W (§4.9): WpPostStore.php, WpTableStore.php, WpAuth.php, WpMedia.php, Scf.php, Rest.php, Plugin.php, Migrator.php
@@ -568,10 +568,10 @@ runtime/Zero/
 Standalone `index.php` builds `SqliteStore`+`Identity`+`Media`; the WP plugin
 builds `Wp\*`. `App` and `Db` never check `target` except to pass it in `ctx`.
 
-### 3.2 `Zero\Store` (frozen first; P and W implement it independently)
+### 3.2 `First\Store` (frozen first; P and W implement it independently)
 
 ```php
-namespace Zero;
+namespace First;
 
 interface Store
 {
@@ -602,7 +602,7 @@ interface Store
      * How Sql reads this collection: the base table, its primary-key expression, and one ColumnRef per
      * column. SqliteStore/WpTableStore return a plain table where every ColumnRef is `<alias>.<col>`;
      * WpPostStore returns wp_posts with core columns as expressions and meta columns as joins (§3.5.1).
-     * System tables ('__zero_revisions', '__zero_tokens', '__zero_globals', '__zero_media') are plain.
+     * System tables ('__first_revisions', '__first_tokens', '__first_globals', '__first_media') are plain.
      */
     public function source(string $collection): Source;
 
@@ -626,7 +626,7 @@ final class Dialect   // value object; Sql uses it
         public readonly string $name,            // 'sqlite' | 'mysql'
         public readonly string $quoteOpen,       // '"' | '`'
         public readonly string $quoteClose,
-        public readonly string $likeFn,          // sqlite: 'zero_like(%s, ?, %d)'; mysql: '%s LIKE ? COLLATE utf8mb4_bin' / 'utf8mb4_0900_ai_ci' chosen by Sql for ci
+        public readonly string $likeFn,          // sqlite: 'first_like(%s, ?, %d)'; mysql: '%s LIKE ? COLLATE utf8mb4_bin' / 'utf8mb4_0900_ai_ci' chosen by Sql for ci
         public readonly bool $windowFunctions,   // both true (SQLite ≥3.25, MariaDB ≥10.2)
     ) {}
 }
@@ -634,8 +634,8 @@ final class Dialect   // value object; Sql uses it
 final class Source
 {
     public function __construct(
-        public readonly string $table,                 // quoted, prefixed: '"posts"' | '`wp_zero_comments`' | '`wp_posts`'
-        public readonly string $baseWhere,             // '' for plain tables; "{a}.post_type = 'zero_posts' AND {a}.post_status <> 'trash' AND {a}.post_status <> 'auto-draft'" for posts
+        public readonly string $table,                 // quoted, prefixed: '"posts"' | '`wp_first_comments`' | '`wp_posts`'
+        public readonly string $baseWhere,             // '' for plain tables; "{a}.post_type = 'first_posts' AND {a}.post_status <> 'trash' AND {a}.post_status <> 'auto-draft'" for posts
         /** @var array<string, ColumnRef> keyed by column name */
         public readonly array $columns,
     ) {}
@@ -647,7 +647,7 @@ final class ColumnRef
         /** SQL expression yielding the STORAGE-form value; '{a}' is replaced by the base alias, '{j}' by this column's join alias. */
         public readonly string $expr,                  // '{a}."name"' | '{a}.post_title' | 'NULLIF({j}.meta_value, \'\')'
         /** Join emitted once per (query alias, column) when the column is filtered/ordered/selected; '' when none. */
-        public readonly string $join,                  // "LEFT JOIN `wp_postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = 'zero_authorId'"
+        public readonly string $join,                  // "LEFT JOIN `wp_postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = 'first_authorId'"
         /** Comparison expression for typed operators; '' = use expr. */
         public readonly string $cmpExpr,               // 'CAST(NULLIF({j}.meta_value, \'\') AS SIGNED)'
         /** 'scalar' | 'serialized-list' | 'json' — decides which operators Sql allows (§3.5). */
@@ -710,7 +710,7 @@ runs that editor saves trigger on WP (§4.9). Exceeding → 500 `hook_recursion`
 Transactions: one `Store::transaction` per HTTP request / CLI command / WP REST
 request / editor save hook. On WP both stores use `$wpdb->query('START TRANSACTION')`
 … `COMMIT`/`ROLLBACK` — InnoDB only; the plugin activation checks that
-`wp_posts`, `wp_postmeta` and every `zero_*` table report `ENGINE=InnoDB` and
+`wp_posts`, `wp_postmeta` and every `first_*` table report `ENGINE=InnoDB` and
 refuses to activate otherwise.
 Post-backed writes (`wp_insert_post`, `update_field`) happen inside that
 transaction too, so a hook throwing after a `wp_insert_post` rolls the post
@@ -765,7 +765,7 @@ Operators, by `ColumnRef::kind`:
 
 - `scalar` (every type except the JSON-valued ones): the full v1 operator set.
   `eq/ne/gt/gte/lt/lte/in/notIn` compare `cmpExpr` (or `expr`) against
-  encoded params. `like/ilike/notLike/notIlike`: SQLite keeps `zero_like()`;
+  encoded params. `like/ilike/notLike/notIlike`: SQLite keeps `first_like()`;
   MySQL emits `expr LIKE ? ESCAPE '\\'` with `COLLATE utf8mb4_bin` (like) or
   the server's case-insensitive collation (`utf8mb4_0900_ai_ci` on MySQL 8,
   `utf8mb4_unicode_ci` on MariaDB; `Dialect` carries the choice from
@@ -798,11 +798,11 @@ error with the same text, so the differential test and runtime agree.
 ### 3.5.1 Post-backed `Source` (WpPostStore)
 
 Base: `` `wp_posts` {a} ``, `baseWhere`
-`{a}.post_type = 'zero_<table>' AND {a}.post_status NOT IN ('trash', 'auto-draft', 'inherit')`.
+`{a}.post_type = 'first_<table>' AND {a}.post_status NOT IN ('trash', 'auto-draft', 'inherit')`.
 Every column maps as follows; `M(key)` stands for
 `LEFT JOIN wp_postmeta {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = 'key'`
 and `V` for `NULLIF({j}.meta_value, '')` (SCF writes `''` for an empty
-optional field; Zero reads both "no row" and `''` as `null`, so `isNull`
+optional field; First reads both "no row" and `''` as `null`, so `isNull`
 covers both and the two are indistinguishable by design).
 
 | column | `expr` (storage form) | `join` | `cmpExpr` | kind |
@@ -813,12 +813,12 @@ covers both and the two are indistinguishable by design).
 | slug column | `{a}.post_name` | — | same | scalar |
 | `status` | `CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END` | — | same | scalar |
 | `publishedAt` | `CASE WHEN {a}.post_date_gmt = '0000-00-00 00:00:00' THEN NULL ELSE DATE_FORMAT({a}.post_date_gmt, '%Y-%m-%dT%H:%i:%s.000Z') END` | — | `NULLIF({a}.post_date_gmt, '0000-00-00 00:00:00')` with params converted to `Y-m-d H:i:s` UTC by `Sql` for this column | scalar |
-| integer, media, references | `V` | `M(zero_<col>)` | `CAST(V AS SIGNED)` | scalar |
+| integer, media, references | `V` | `M(first_<col>)` | `CAST(V AS SIGNED)` | scalar |
 | real | `V` | `M` | `CAST(V AS DECIMAL(30,10))` | scalar |
 | boolean | `V` (`'1'`/`'0'`) | `M` | `V` compared to `'1'`/`'0'` | scalar |
 | text, email, url, richText (SCF) | `V` | `M` | `V` (strings; `like` on `{j}.meta_value`) | scalar |
 | text enum / select single | `V` | `M` | `V` | scalar |
-| timestamp (SCF `date_time_picker`; Zero stores UTC `Y-m-d H:i:s` in meta, converting the site-tz picker value in `acf/update_value`, §4.3) | `CONCAT(REPLACE(V, ' ', 'T'), '.000Z')` | `M` | `V` (params converted to `Y-m-d H:i:s` UTC) | scalar |
+| timestamp (SCF `date_time_picker`; First stores UTC `Y-m-d H:i:s` in meta, converting the site-tz picker value in `acf/update_value`, §4.3) | `CONCAT(REPLACE(V, ' ', 'T'), '.000Z')` | `M` | `V` (params converted to `Y-m-d H:i:s` UTC) | scalar |
 | date (SCF `date_picker`, stored `Ymd`) | `DATE_FORMAT(STR_TO_DATE(V, '%Y%m%d'), '%Y-%m-%d')` | `M` | `V` (params converted to `Ymd`) | scalar |
 | json (SCF textarea) | `V` | `M` | — | json |
 | mediaList, select multiple (SCF serialized array) | `V` (runtime normalises `a:2:{...}` → JSON in `WpPostStore::select` post-processing, so `Schema::decode` sees JSON) | `M` | `{j}.meta_value` (for `has` LIKE) | serialized-list |
@@ -826,7 +826,7 @@ covers both and the two are indistinguishable by design).
 
 `WpPostStore::select` therefore does: run the compiled SQL (one round trip,
 rows in storage form for every scalar/list column), then for each row call
-`get_field('zero_<col>', $id, false)` for group/repeater/blocks columns and
+`get_field('first_<col>', $id, false)` for group/repeater/blocks columns and
 JSON-encode them. That is N extra cached-meta lookups only when the
 collection has such columns; `update_meta_cache` is primed with one
 `_prime_post_caches()` call for the page of IDs, so it is 1 + 1 queries per
@@ -842,14 +842,14 @@ collection costs one `LEFT JOIN wp_postmeta` per referenced column; core
 indexes `post_id` and `meta_key(191)` but **not** `meta_value`, so a
 `WHERE meta_value = ?` over a large post type is a scan of that key's rows —
 **large filtered lists on post-backed collections are O(postmeta for that
-key)**. Zero adds **no** meta indexes in this pass (`meta_value` is LONGTEXT;
+key)**. First adds **no** meta indexes in this pass (`meta_value` is LONGTEXT;
 a prefix index would need a schema change to core tables, which plugins must
 not make). Core-column filters (`id`, title, slug, `status`, `publishedAt`)
 use `wp_posts` indexes (`type_status_date`, `post_name`) and are fast.
 `table()` definitions are real tables with real indexes and FKs and are
 the fast path for anything query-heavy. Build-time hint (R, cheap): when a
 post-backed collection has a `unique()` or `references()` on a meta column,
-or `.references()` from another collection targets a post-backed one, `zero
+or `.references()` from another collection targets a post-backed one, `first
 build` prints `hint: "<table>.<col>" is filtered through postmeta on WordPress; use table() for SQL data if this list grows large`
 once per build (not an error; silenced with `--quiet`).
 
@@ -867,7 +867,7 @@ call `Store::globalRead/globalWrite`.
 
 ### 4.1 Collections → post types
 
-One registered post type for each `collection()` definition: `zero_<table>`
+One registered post type for each `collection()` definition: `first_<table>`
 (≤20 chars, enforced at build). Not the original `post` + `zero_collection`
 taxonomy design, for three concrete reasons: (1) per-collection admin menus,
 labels and capabilities come free with a CPT and are what wp-admin users expect
@@ -877,12 +877,12 @@ share one wp.cloud site across Spaces, which is not a constraint here; (3) core
 `tax_query` on every read. Registration:
 
 ```php
-register_post_type('zero_posts', [
+register_post_type('first_posts', [
   'label' => 'Posts', 'labels' => [...],
   'public' => false, 'show_ui' => true, 'show_in_menu' => true, 'show_in_rest' => true,
-  'rest_base' => 'zero_posts', 'menu_icon' => 'dashicons-database',
+  'rest_base' => 'first_posts', 'menu_icon' => 'dashicons-database',
   'supports' => array_values(array_filter(['title', $content !== null ? 'editor' : null, 'revisions', 'author'])),
-  'capability_type' => ['zero_posts', 'zero_posts'], 'map_meta_cap' => true,
+  'capability_type' => ['first_posts', 'first_posts'], 'map_meta_cap' => true,
   'hierarchical' => false, 'has_archive' => false, 'rewrite' => false, 'query_var' => false,
 ]);
 ```
@@ -893,13 +893,13 @@ all; `author` gets `edit_/publish_/delete_` own; `subscriber` nothing. The
 
 ### 4.2 Custom tables (`table()`) and where post-backed data lives
 
-Post-backed collections have **no Zero table**: the row is the `wp_posts` row
+Post-backed collections have **no First table**: the row is the `wp_posts` row
 plus its `wp_postmeta` rows (SCF layout), read through the §3.5.1 mapping and
 written through `wp_insert_post`/`wp_update_post` + `update_field`. There is
 no duplicate copy and nothing to resync; what wp-admin saved is what
-`/zero/v1` reads, in the same request.
+`/first/v1` reads, in the same request.
 
-`table()` definitions are real tables `{prefix}zero_<table>` with all
+`table()` definitions are real tables `{prefix}first_<table>` with all
 columns in the §3.4 storage form, created by `Wp\Migrator`. They are the fast
 path (indexes, FKs, UNIQUE) and the right choice for anything query-heavy
 (comments, logs, reactions, carts).
@@ -917,21 +917,21 @@ Column DDL (`Wp\Migrator`, MySQL dialect; `dbDelta`-compatible):
 | date | `CHAR(10)` |
 | references | `FOREIGN KEY ... ON DELETE <action>` — **only** when both sides are `table()`; cross-kind and post↔post references are checked by `Db` (existence on write, `set null`/`cascade` emulated in `Db::delete` — same code path on every store, so FK actions are pipeline-level semantics with the SQL FK as an extra guard) |
 
-Migrations for `table()` tables (and the `zero__*` system tables) are
-generated by the compiler as `zero/migrations/wp/NNNN_<name>.sql` (MySQL dialect, same snapshot
+Migrations for `table()` tables (and the `first__*` system tables) are
+generated by the compiler as `first/migrations/wp/NNNN_<name>.sql` (MySQL dialect, same snapshot
 diff as SQLite, `ALTER TABLE` for additive changes, no rebuilds), applied by
-`Wp\Migrator` on activation and on `admin_init` when `get_option('zero_blog_schema')`
-≠ the built schema hash, recorded in `{prefix}zero__migrations`.
+`Wp\Migrator` on activation and on `admin_init` when `get_option('first_blog_schema')`
+≠ the built schema hash, recorded in `{prefix}first__migrations`.
 
 ### 4.3 Field types → SCF
 
 Field group per post-backed collection, registered on `acf/init` priority 5
-via `acf_add_local_field_group`, `key` = `group_zero_<table>`, location
-`post_type == zero_<table>`, `show_in_rest => 1`. The title- and
-content-designated columns are **not** SCF fields. Field `name` = `zero_<col>`
-(meta key), `key` = `field_zero_<table>_<col>`.
+via `acf_add_local_field_group`, `key` = `group_first_<table>`, location
+`post_type == first_<table>`, `show_in_rest => 1`. The title- and
+content-designated columns are **not** SCF fields. Field `name` = `first_<col>`
+(meta key), `key` = `field_first_<table>_<col>`.
 
-| Zero | SCF `type` | settings | stored (postmeta `zero_<col>`) | read via (`WpPostStore::select`) | decoded |
+| First | SCF `type` | settings | stored (postmeta `first_<col>`) | read via (`WpPostStore::select`) | decoded |
 |---|---|---|---|---|---|
 | text | `text` / `textarea` (multiline) | `maxlength` = rules.max | string | SQL (§3.5.1) | string |
 | text enum / select single | `select` | `choices`, `allow_null` = !notNull, `return_format: value`, `ui: 1` | string | | string |
@@ -948,40 +948,40 @@ content-designated columns are **not** SCF fields. Field `name` = `zero_<col>`
 | media (any) | `file` | `return_format: id` | | | int |
 | mediaList | `gallery` | `return_format: id` | serialized ids | | JSON list |
 | json | `textarea` | `rows: 8`, validated as JSON | JSON text | | decoded |
-| integer `.references(posts.id)` | `post_object` | `post_type: [zero_<target>]`, `return_format: id`, `allow_null` | id | | int |
+| integer `.references(posts.id)` | `post_object` | `post_type: [first_<target>]`, `return_format: id`, `allow_null` | id | | int |
 | integer `.references(<editor:false>.id)` | `number` | instructions "ID of a <label>" | id | | int |
-| group | `group` | `sub_fields`, `layout: block` | `zero_<col>_<sub>` meta per sub-field (SCF layout) | `get_field` after the query | JSON object |
-| repeater | `repeater` | `sub_fields`, `min/max` = rules, `layout: table`, `button_label` | `zero_<col>` = count, `zero_<col>_<i>_<sub>` | `get_field` after the query | JSON list |
-| blocks | `flexible_content` | `layouts` keyed by layout key, each `name` = layout, `sub_fields` | `zero_<col>` = serialized layout list, `zero_<col>_<i>_<sub>` | `get_field` after the query; each row's `acf_fc_layout` → `layout` | JSON list |
+| group | `group` | `sub_fields`, `layout: block` | `first_<col>_<sub>` meta per sub-field (SCF layout) | `get_field` after the query | JSON object |
+| repeater | `repeater` | `sub_fields`, `min/max` = rules, `layout: table`, `button_label` | `first_<col>` = count, `first_<col>_<i>_<sub>` | `get_field` after the query | JSON list |
+| blocks | `flexible_content` | `layouts` keyed by layout key, each `name` = layout, `sub_fields` | `first_<col>` = serialized layout list, `first_<col>_<i>_<sub>` | `get_field` after the query; each row's `acf_fc_layout` → `layout` | JSON list |
 
 Validation parity: `Scf::registerFilters()` adds `acf/validate_value/key=<field key>`
-for every Zero field, which runs `Schema::encode` + rules on the posted value
+for every First field, which runs `Schema::encode` + rules on the posted value
 (`$input` decoded by field) and returns the message string on failure — so
 wp-admin shows the same message the API would. `acf/update_value` for `json`
 normalizes to canonical JSON; `acf/load_value` for timestamp fields converts
-to UTC ISO. All three filters live in `runtime/Zero/Wp/Scf.php`.
+to UTC ISO. All three filters live in `runtime/First/Wp/Scf.php`.
 
 ### 4.4 Core post columns
 
-| Zero | WP |
+| First | WP |
 |---|---|
 | `id` | `ID` |
 | title column | `post_title` |
 | content column (richText) | `post_content` (block markup or HTML, as given; read back via `get_post()->post_content`; **not** `the_content` filters) |
-| slug column | `post_name` (Zero validates its pattern; WP's `wp_unique_post_slug` is bypassed by passing the final value) |
-| `status` | `post_status`: `draft→draft`, `published→publish`, `scheduled→future`; reads (the §3.5.1 `CASE`): `publish→published`, `future→scheduled`, `draft/pending/private→draft`; `trash`/`auto-draft`/`inherit` rows are excluded by `baseWhere` (a `delete` through Zero calls `wp_delete_post($id, true)`) |
+| slug column | `post_name` (First validates its pattern; WP's `wp_unique_post_slug` is bypassed by passing the final value) |
+| `status` | `post_status`: `draft→draft`, `published→publish`, `scheduled→future`; reads (the §3.5.1 `CASE`): `publish→published`, `future→scheduled`, `draft/pending/private→draft`; `trash`/`auto-draft`/`inherit` rows are excluded by `baseWhere` (a `delete` through First calls `wp_delete_post($id, true)`) |
 | `publishedAt` | `post_date_gmt` (and `post_date` in site tz); null for drafts ↔ `0000-00-00 00:00:00`; read/compared via the §3.5.1 expressions |
-| `createdAt`/`updatedAt` user columns | ordinary meta (Zero's values), NOT `post_date`/`post_modified` |
-| author | `post_author` = `ctx.user.id` on create via Zero; untouched otherwise |
+| `createdAt`/`updatedAt` user columns | ordinary meta (First's values), NOT `post_date`/`post_modified` |
+| author | `post_author` = `ctx.user.id` on create via First; untouched otherwise |
 
 ### 4.5 Globals → options pages
 
-`acf_add_options_page(['page_title' => label, 'menu_slug' => 'zero-global-<name>', 'post_id' => 'zero_global_<name>', 'capability' => 'edit_others_posts', 'show_in_rest' => true, 'parent_slug' => 'zero-blog'])`
-plus a field group `group_zero_global_<name>` located `options_page == zero-global-<name>`.
-Values live in options `zero_global_<name>_<field>` (SCF's `{post_id}_{name}`
-convention). `WpTableStore::globalRead` reads with `get_field($name, 'zero_global_<name>')`
+`acf_add_options_page(['page_title' => label, 'menu_slug' => 'first-global-<name>', 'post_id' => 'first_global_<name>', 'capability' => 'edit_others_posts', 'show_in_rest' => true, 'parent_slug' => 'first-blog'])`
+plus a field group `group_first_global_<name>` located `options_page == first-global-<name>`.
+Values live in options `first_global_<name>_<field>` (SCF's `{post_id}_{name}`
+convention). `WpTableStore::globalRead` reads with `get_field($name, 'first_global_<name>')`
 per field (so repeater/group meta layouts decode via SCF); `globalWrite` uses
-`update_field`. The plugin registers a top-level menu `zero-blog` ("Blog")
+`update_field`. The plugin registers a top-level menu `first-blog` ("Blog")
 that holds the globals pages; collections keep their own menus.
 
 ### 4.6 Media
@@ -1004,7 +1004,7 @@ it (pipeline-level, both targets: `Db` runs `update` with `{ col: null }` /
 the filtered list for every row matched by `{ col: id }` or `{ col: { has: id } }`
 through the normal `Sql` path, so hooks and revisions apply).
 
-Standalone: `__zero_media(id, filename, mime, size, width, height, alt, path, createdAt)`,
+Standalone: `__first_media(id, filename, mime, size, width, height, alt, path, createdAt)`,
 files under `<appRoot>/public/uploads/YYYY/MM/<uuid>.<ext>`, `url` =
 `/uploads/...` relative; `width/height` via `getimagesize` (gd present).
 
@@ -1019,17 +1019,17 @@ reads the revision row and runs the **update pipeline** with it as the patch
 (so hooks, rules, and access apply; WP `wp_restore_post_revision` is not
 called — the update produces a new revision anyway).
 
-Custom tables and standalone: `{prefix}zero__revisions(id, collection, pk, at, userId, row LONGTEXT)` /
-`__zero_revisions` with the same columns; a row is written after every
+Custom tables and standalone: `{prefix}first__revisions(id, collection, pk, at, userId, row LONGTEXT)` /
+`__first_revisions` with the same columns; a row is written after every
 successful update (the **previous** state, like WP) and on create (the initial
 state), keep-all. Trimming is out of this pass.
 
 ### 4.8 REST routes
 
-Standalone prefix `/api`; WP prefix `/wp-json/zero/v1`. **Everything after the
+Standalone prefix `/api`; WP prefix `/wp-json/first/v1`. **Everything after the
 prefix is identical**, including problem documents (WP routes bypass
 `WP_Error` shapes: the handler returns a `WP_REST_Response` whose body is the
-Zero problem/`{data}` and sets `Content-Type` itself).
+First problem/`{data}` and sets `Content-Type` itself).
 
 | Method + path | Notes |
 |---|---|
@@ -1047,37 +1047,37 @@ Zero problem/`{data}` and sets `Content-Type` itself).
 New problem codes: `unauthenticated` 401, `forbidden` 403, `payload_too_large` 413.
 Status filter shorthand aside, query parameters are exactly v1.
 
-Core `/wp/v2/zero_<table>` stays enabled (Gutenberg needs it) and is governed
-by WP capabilities only. The typed client and docs point at `/zero/v1` only.
+Core `/wp/v2/first_<table>` stays enabled (Gutenberg needs it) and is governed
+by WP capabilities only. The typed client and docs point at `/first/v1` only.
 
 ### 4.9 Plugin bootstrap
 
-Build output (`.zero/wp/zero-blog/`, zipped as `zero-blog.zip`):
+Build output (`.first/wp/first-blog/`, zipped as `first-blog.zip`):
 
 ```
-zero-blog/
-  zero-blog.php            main file: header, constants, require runtime/bootstrap.php, new Zero\Wp\Plugin(__DIR__)
-  zero/runtime/*.php       shared runtime (same bytes as standalone)
-  zero/runtime/Wp/*.php
-  zero/app/schema.php      target => 'wp'
-  zero/app/functions.php
-  zero/app/migrations/*.sql   MySQL dialect
+first-blog/
+  first-blog.php            main file: header, constants, require runtime/bootstrap.php, new First\Wp\Plugin(__DIR__)
+  first/runtime/*.php       shared runtime (same bytes as standalone)
+  first/runtime/Wp/*.php
+  first/app/schema.php      target => 'wp'
+  first/app/functions.php
+  first/app/migrations/*.sql   MySQL dialect
   vendor/                  empty; no Composer
 ```
 
-`Zero\Wp\Plugin::__construct` wires, in order:
+`First\Wp\Plugin::__construct` wires, in order:
 
 | hook | work |
 |---|---|
-| `register_activation_hook` | require `wp-admin/includes/upgrade.php`; `Wp\Migrator::migrate()` (creates `table()` tables + `zero__*` system tables; InnoDB check on them and on `wp_posts`/`wp_postmeta`); grant capabilities; `flush_rewrite_rules` not needed (no rewrite) |
+| `register_activation_hook` | require `wp-admin/includes/upgrade.php`; `Wp\Migrator::migrate()` (creates `table()` tables + `first__*` system tables; InnoDB check on them and on `wp_posts`/`wp_postmeta`); grant capabilities; `flush_rewrite_rules` not needed (no rewrite) |
 | `plugins_loaded` | abort with an admin notice if SCF (`class ACF`) is missing or `< 6.9.7`, or WP `< 6.7` |
 | `init` (10) | `register_post_type` for every post-backed collection; `App::boot($dir, new WpPostStore+WpTableStore composite, new WpAuth, new WpMedia)` |
 | `acf/init` (5) | `Scf::registerGroups()`: field groups + options pages + validate/update/load filters |
-| `rest_api_init` | `Rest::register()`: `register_rest_route('zero/v1', '/(?P<path>.*)', ['methods' => 'GET,POST,PATCH,DELETE,OPTIONS', 'permission_callback' => '__return_true', 'callback' => [Rest, 'dispatch']])` — one catch-all route that hands `(method, path, query, body)` to `App::handle()`; Zero's own access rules decide. |
-| `acf/save_post` (20) | editor hooks: `Db::afterEditorSave($collection, $postId, $previousRow)` runs `afterCreate` (new post) or `afterUpdate` (with `$previousRow` captured on `pre_post_update` through a normal `Db::findFirst`) using the row re-read through `WpPostStore::select`, `ctx.user` = `wp_get_current_user()` mapped, inside one transaction. A static re-entrancy flag skips posts that Zero itself is inserting/updating in this request (their hooks already ran in the pipeline). |
-| `before_delete_post` / `deleted_post` | if the post belongs to a Zero collection and Zero isn't the deleter: `beforeDelete($row)` on `before_delete_post`, `afterDelete($row)` on `deleted_post`; pipeline-emulated FK actions (§4.2) run from `afterDelete` the same way `Db::delete` does |
+| `rest_api_init` | `Rest::register()`: `register_rest_route('first/v1', '/(?P<path>.*)', ['methods' => 'GET,POST,PATCH,DELETE,OPTIONS', 'permission_callback' => '__return_true', 'callback' => [Rest, 'dispatch']])` — one catch-all route that hands `(method, path, query, body)` to `App::handle()`; First's own access rules decide. |
+| `acf/save_post` (20) | editor hooks: `Db::afterEditorSave($collection, $postId, $previousRow)` runs `afterCreate` (new post) or `afterUpdate` (with `$previousRow` captured on `pre_post_update` through a normal `Db::findFirst`) using the row re-read through `WpPostStore::select`, `ctx.user` = `wp_get_current_user()` mapped, inside one transaction. A static re-entrancy flag skips posts that First itself is inserting/updating in this request (their hooks already ran in the pipeline). |
+| `before_delete_post` / `deleted_post` | if the post belongs to a First collection and First isn't the deleter: `beforeDelete($row)` on `before_delete_post`, `afterDelete($row)` on `deleted_post`; pipeline-emulated FK actions (§4.2) run from `afterDelete` the same way `Db::delete` does |
 | `transition_post_status` (`future`→`publish`) | nothing: the §3.5.1 `CASE` reads the new status directly (no hooks: §6.3) |
-| `admin_menu` | top-level "Blog" menu (`zero-blog`) for globals |
+| `admin_menu` | top-level "Blog" menu (`first-blog`) for globals |
 | `admin_init` | re-run `Wp\Migrator::migrate()` when the schema hash option differs (plugin updated by upload) |
 
 `WpPostStore` and `WpTableStore` are two classes; `Wp\CompositeStore` routes
@@ -1102,7 +1102,7 @@ Role rules compare on the ladder (`"author"` admits author, editor, admin).
 
 WP mapping (`Wp\WpAuth::resolve()`): the user WordPress authenticated for the
 REST request (`wp_get_current_user()` after core's cookie+nonce or Application
-Password handling; Zero adds nothing) → `id` = `ID`, `name` = `display_name`,
+Password handling; First adds nothing) → `id` = `ID`, `name` = `display_name`,
 `role` from capabilities: `manage_options` → admin; `edit_others_posts` →
 editor; `publish_posts` or `edit_posts` → author; any other logged-in user →
 subscriber. Unauthenticated → `null`. A cookie without a valid `X-WP-Nonce` is
@@ -1110,12 +1110,12 @@ anonymous, as in core.
 
 ### 5.2 Standalone: bearer tokens
 
-Table `__zero_tokens(id INTEGER PK, name TEXT NOT NULL, role TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, createdAt TEXT NOT NULL, lastUsedAt TEXT, revokedAt TEXT)`
-and `__zero_users(id INTEGER PK, name TEXT NOT NULL UNIQUE, role TEXT NOT NULL, passwordHash TEXT, createdAt TEXT NOT NULL)`.
+Table `__first_tokens(id INTEGER PK, name TEXT NOT NULL, role TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, createdAt TEXT NOT NULL, lastUsedAt TEXT, revokedAt TEXT)`
+and `__first_users(id INTEGER PK, name TEXT NOT NULL UNIQUE, role TEXT NOT NULL, passwordHash TEXT, createdAt TEXT NOT NULL)`.
 A token belongs to a user (`userId` column; FK). `Authorization: Bearer zt_<40 base62>`;
 stored as `hash = sha256(token)`; the plaintext is shown once.
 
-CLI (`php zero/bin/zero.php ...`, also `zero users …`/`zero tokens …` wrappers in the Rust CLI that shell out):
+CLI (`php first/bin/first.php ...`, also `first users …`/`first tokens …` wrappers in the Rust CLI that shell out):
 
 ```
 user add <name> --role admin|editor|author|subscriber [--password]   → {data: {id, name, role}}
@@ -1168,11 +1168,11 @@ by clock drift — promotion handles it.
 
 | target | mechanism |
 |---|---|
-| standalone, WP `table()` | **Lazy promotion**: `App::handle`/`cli` call `Store::promoteDue($collection, now)` for every drafts collection at the start of each request/command (one cheap `UPDATE` per collection); plus `php zero/bin/zero.php publish-due` for cron. |
+| standalone, WP `table()` | **Lazy promotion**: `App::handle`/`cli` call `Store::promoteDue($collection, now)` for every drafts collection at the start of each request/command (one cheap `UPDATE` per collection); plus `php first/bin/first.php publish-due` for cron. |
 | WP `collection()` | `post_status = future` + WP cron (`publish_future_post`); reads see the new status immediately through the §3.5.1 `CASE`. |
 
 Promotion fires **no hooks and writes no revision** on either target
-(parity: WP cron doesn't run Zero hooks). Teams that need "on publish" logic
+(parity: WP cron doesn't run First hooks). Teams that need "on publish" logic
 use `afterUpdate` and compare `previous.status`, which fires for explicit
 status changes via the API or editor.
 
@@ -1186,12 +1186,12 @@ row.
 
 ## 7. Typed client
 
-`zero build` writes `zero/client/index.ts` (both targets, same file apart from
+`first build` writes `first/client/index.ts` (both targets, same file apart from
 the default base path) — self-contained, zero dependencies, `fetch`-based,
 usable in any TS/JS frontend via copy or path import. It is **not** the
-`"zero"` types package (that package types `zero.config.ts` and is build-time
+`"first"` types package (that package types `first.config.ts` and is build-time
 only); the client embeds generated interfaces derived from the schema, so a
-frontend never needs `zero.config.ts` or the `"zero"` module.
+frontend never needs `first.config.ts` or the `"first"` module.
 
 ```ts
 // Generated. Shapes for the blog example:
@@ -1205,7 +1205,7 @@ export interface Media { id: number; url: string; mime: string; size: number; wi
 export interface User { id: number; name: string; role: "subscriber" | "author" | "editor" | "admin" }
 
 export interface ClientOptions {
-  /** Base URL including the prefix: "https://x.test/api" or "https://x.test/wp-json/zero/v1". Default: "/api" (standalone build) or "/wp-json/zero/v1" (wp build). */
+  /** Base URL including the prefix: "https://x.test/api" or "https://x.test/wp-json/first/v1". Default: "/api" (standalone build) or "/wp-json/first/v1" (wp build). */
   url?: string;
   /** Standalone bearer token. */
   token?: string;
@@ -1236,7 +1236,7 @@ export interface CollectionClient<Row, Insert, Patch, With, Filter, Order> {
   revisions: { list(id: number): Promise<RevisionSummary[]>; get(id: number, rid: number): Promise<Row>; restore(id: number, rid: number): Promise<Row> };
 }
 
-export class ZeroError extends Error {   // thrown for every non-2xx; fields = the problem document
+export class FirstError extends Error {   // thrown for every non-2xx; fields = the problem document
   readonly status: number; readonly code: string; readonly detail: string; readonly pointer?: string; readonly title: string;
 }
 ```
@@ -1245,50 +1245,50 @@ Wire mapping: `list` → `GET /{c}?where=<json>&orderBy=name,-createdAt&limit&of
 `with` is sent as JSON when any entry is an object, comma list otherwise.
 `RowWith` attaches `one` → row|null, `many` → row[], `media` columns →
 `Media | null` when requested. Filter/Order/With types are generated per
-collection from the same rules as `types/zero` (operators table, relation
-keys, `has` on list columns). Network/JSON failures throw `ZeroError` with
+collection from the same rules as `types/first` (operators table, relation
+keys, `has` on list columns). Network/JSON failures throw `FirstError` with
 `status: 0, code: "network"`.
 
-Generated alongside: `zero/client/README.md` (one screen: import, create
+Generated alongside: `first/client/README.md` (one screen: import, create
 client, three calls) — owned by T, template in `runtime/client/` embedded by
 the Rust binary like the PHP runtime. The Rust side (R) only emits the
-interface section (`zero/client/types.ts`) and copies the runtime file
-(`zero/client/index.ts` re-exports `./types` and the runtime); the runtime
+interface section (`first/client/types.ts`) and copies the runtime file
+(`first/client/index.ts` re-exports `./types` and the runtime); the runtime
 file is handwritten TS by T, free of schema knowledge except a generated
 `const SCHEMA = {...}` descriptor (collection → relations/media columns/actions/globals)
-emitted by R as `zero/client/schema.ts`.
+emitted by R as `first/client/schema.ts`.
 
 ---
 
 ## 8. Build output and CLI
 
 ```
-zero build [dir] [--target standalone|wp] [--out <dir>]   default target: `target` in zero.config.ts (`defineConfig({ target })`, default "standalone")
-zero check [dir]                                           evaluates + compiles; emits nothing; runs both targets' rejection rules
-zero dev [dir] [--port n]                                  standalone: php -S as today
-zero dev [dir] --wp [--port n]                             builds the plugin, boots tests/wp-style docker (WP+MariaDB+SCF), installs the plugin, prints URL + admin creds; rebuilds + re-copies the plugin on config change
-zero users|tokens …                                        standalone: shells to zero/bin/zero.php (§5.2)
+first build [dir] [--target standalone|wp] [--out <dir>]   default target: `target` in first.config.ts (`defineConfig({ target })`, default "standalone")
+first check [dir]                                           evaluates + compiles; emits nothing; runs both targets' rejection rules
+first dev [dir] [--port n]                                  standalone: php -S as today
+first dev [dir] --wp [--port n]                             builds the plugin, boots tests/wp-style docker (WP+MariaDB+SCF), installs the plugin, prints URL + admin creds; rebuilds + re-copies the plugin on config change
+zero users|tokens …                                        standalone: shells to first/bin/first.php (§5.2)
 ```
 
 Output layout:
 
 ```
 <project>/
-  zero.config.ts  zero.gen.ts                      (as today)
-  zero/migrations/sqlite/NNNN_*.sql + snapshot.json   (moved from zero/migrations/; `zero build` migrates the old location once)
-  zero/migrations/wp/NNNN_*.sql + snapshot.json
-  zero/client/{index.ts, types.ts, schema.ts, README.md}
-  .zero/app/...                                    standalone (as today + data/, public/uploads/)
-  .zero/wp/zero-<name>/...  and  .zero/wp/zero-<name>.zip
+  first.config.ts  first.gen.ts                      (as today)
+  first/migrations/sqlite/NNNN_*.sql + snapshot.json   (moved from first/migrations/; `first build` migrates the old location once)
+  first/migrations/wp/NNNN_*.sql + snapshot.json
+  first/client/{index.ts, types.ts, schema.ts, README.md}
+  .first/app/...                                    standalone (as today + data/, public/uploads/)
+  .first/wp/first-<name>/...  and  .first/wp/first-<name>.zip
 ```
 
 Both migration sets are generated on **every** build regardless of `--target`
 (so a repo building standalone still commits WP migrations and vice versa; the
-snapshot is shared). `--target` picks what lands in `.zero/` and `schema.php`'s
+snapshot is shared). `--target` picks what lands in `.first/` and `schema.php`'s
 `target`.
 
-`zero dev --wp` requires docker; it reuses `tests/wp/harness.sh` (§9.2) with
-`ZERO_WP_PLUGIN=<built dir>`.
+`first dev --wp` requires docker; it reuses `tests/wp/harness.sh` (§9.2) with
+`FIRST_WP_PLUGIN=<built dir>`.
 
 ---
 
@@ -1310,12 +1310,12 @@ adding, no `sleep`, no `.only`.
 | Standalone tokens: CLI mint, bearer resolves role, revoked token anonymous, `/auth/token` | PHP | `tests/php/auth_test.php` (P) |
 | Sql compiler per dialect: `has`, like/ilike collation, JSON rejects, window partition | pure PHP, both dialects (`Dialect` objects; MySQL SQL text asserted, executed only in WP suite) | `tests/php/sql_test.php` (P writes; W may add MySQL-executed cases in `tests/wp/`) |
 | WP: plugin activates, tables created InnoDB, CPT + field groups registered, options pages exist | WP e2e via WP-CLI in docker | `tests/wp/plugin.test.ts` (W) |
-| WP: full REST parity — the **same** scenario script runs against standalone and WP | cross-target e2e | `tests/e2e/blog-scenario.ts` (T writes the scenario as a function of `createClient`; run by `tests/e2e/standalone.test.ts` (P) and `tests/wp/rest.test.ts` (W)). Covers: anonymous sees published only; author creates draft, can't publish others'; editor schedules; promotion (standalone: time travel via `ZERO_NOW` env; WP: `wp cron event run --due-now` after setting `post_date_gmt` in the past via WP-CLI); revisions list/restore; media upload + `with`; globals; action access; problem documents identical (`code`, `status`, `pointer`). |
-| WP: editor-side parity — a post saved through core `/wp/v2/zero_posts` with `acf` fields shows up in `/zero/v1/posts` with decoded fields in the same request, `afterUpdate` ran, invalid value rejected with Zero's message; a core-side status change (`wp post update --post_status=draft`) is visible without any sync | WP e2e | `tests/wp/editor.test.ts` (W) |
+| WP: full REST parity — the **same** scenario script runs against standalone and WP | cross-target e2e | `tests/e2e/blog-scenario.ts` (T writes the scenario as a function of `createClient`; run by `tests/e2e/standalone.test.ts` (P) and `tests/wp/rest.test.ts` (W)). Covers: anonymous sees published only; author creates draft, can't publish others'; editor schedules; promotion (standalone: time travel via `FIRST_NOW` env; WP: `wp cron event run --due-now` after setting `post_date_gmt` in the past via WP-CLI); revisions list/restore; media upload + `with`; globals; action access; problem documents identical (`code`, `status`, `pointer`). |
+| WP: editor-side parity — a post saved through core `/wp/v2/first_posts` with `acf` fields shows up in `/first/v1/posts` with decoded fields in the same request, `afterUpdate` ran, invalid value rejected with First's message; a core-side status change (`wp post update --post_status=draft`) is visible without any sync | WP e2e | `tests/wp/editor.test.ts` (W) |
 | WP: `editor:false` table, FK, unique → 409 with pointer | WP e2e | `tests/wp/tables.test.ts` (W) |
 | WP: postmeta filter compilation executed for real — every operator in §3.5 on each post-backed column kind (typed CAST ordering of integers/reals/dates, boolean, `isNull` for missing and `''` meta, `has` on gallery/select-multiple, rejected operators → 400 with the shared message, `unique()` on meta → 409, relation filter and `with` across post↔table) | WP e2e against MariaDB | `tests/wp/postmeta.test.ts` (W). The SQL text itself is pinned in P's `tests/php/sql_test.php` with a hand-built post `Source` fixture. |
 | Typed client types: `@ts-expect-error` set over the generated `types.ts` | tsc | `examples/blog/client-tests/negative.ts` (T) |
-| `"zero"` types: new builders, `AccessRule`, `global`, hook ctx | tsc | `types/zero/tests/*.ts` extended (T) |
+| `"first"` types: new builders, `AccessRule`, `global`, hook ctx | tsc | `types/first/tests/*.ts` extended (T) |
 
 Not re-proven at e2e: codec edge cases, filter grammar, hook recursion — those
 stay in `tests/php`.
@@ -1327,13 +1327,13 @@ The harness (parent-provided, W extends) must expose:
 ```
 tests/wp/harness.sh up [--plugin <dir>]   boots WP 7.1.x + MariaDB 11.4 + SCF 6.9.7 (cached zip), installs the plugin dir (copied into wp-content/plugins), activates it,
                                           creates users admin/editor/author/subscriber with application passwords, and prints ONE JSON line:
-                                          {"url":"http://127.0.0.1:<port>","wp":"7.1.2","scf":"6.9.7","users":{"admin":{"id":1,"appPassword":"xxxx xxxx ..."},"editor":{...},"author":{...},"subscriber":{...}},"container":"zero-wp-<id>"}
+                                          {"url":"http://127.0.0.1:<port>","wp":"7.1.2","scf":"6.9.7","users":{"admin":{"id":1,"appPassword":"xxxx xxxx ..."},"editor":{...},"author":{...},"subscriber":{...}},"container":"first-wp-<id>"}
 tests/wp/harness.sh wp <args...>          runs WP-CLI inside the container (e.g. `wp cron event run --due-now`, `wp post update`)
-tests/wp/harness.sh sql "<query>"         runs a query in MariaDB (postmeta/custom-table assertions, e.g. that a Zero create wrote exactly the expected meta rows)
+tests/wp/harness.sh sql "<query>"         runs a query in MariaDB (postmeta/custom-table assertions, e.g. that a First create wrote exactly the expected meta rows)
 tests/wp/harness.sh down
 ```
 
-Env: `ZERO_WP_URL`, `ZERO_WP_ADMIN_APP_PASSWORD` etc. are also exported by
+Env: `FIRST_WP_URL`, `FIRST_WP_ADMIN_APP_PASSWORD` etc. are also exported by
 `up --env` for shells. Tests are Node 22 `.ts` (type-stripped) using
 `node:test`, driven by the generated client with
 `headers: { Authorization: "Basic " + btoa("admin:" + appPassword) }`. A
@@ -1361,7 +1361,7 @@ are this document; changes to it go through the parent.
    `tests/fixtures/blog.functions.php`) within the first iteration, generated
    by hand if the compiler isn't there yet. P and W code against those files,
    not against the compiler.
-3. P publishes `runtime/Zero/Store.php`, `Dialect.php`, `Sql.php` and
+3. P publishes `runtime/First/Store.php`, `Dialect.php`, `Sql.php` and
    `Schema.php` codecs early (they are mostly mechanical) so W's stores
    implement a real interface; until then W codes to this doc's signatures.
    W and P never share a file: W's stores are consumed by `App`/`Db` only
@@ -1376,21 +1376,21 @@ Deliverables: builders/modifiers/options/globals/access/`target`/`name` in
 `Rules`, nested fields, `Access`, `Global`, flags); compile `access` fns,
 `.validate` fns, hook/action `ctx` parameter; type-checker knows `status`/`publishedAt`,
 `ctx`, nested field types, `has`; `schema_php.rs` v2; `migrate.rs` dual
-dialect + `zero/migrations/{sqlite,wp}`; `zero/client/{types,schema}.ts`
+dialect + `first/migrations/{sqlite,wp}`; `first/client/{types,schema}.ts`
 emission; `--target`, `dev --wp`, `users/tokens` passthrough; embed
-`runtime/Zero/Wp/*`, `runtime/wp-plugin/*`, `runtime/client/*`; every §1
+`runtime/First/Wp/*`, `runtime/wp-plugin/*`, `runtime/client/*`; every §1
 rejection.
 Acceptance: `cargo test` green including the blog golden and new rejections;
-differential cases for access/validate pass; `zero build examples/blog --target wp`
+differential cases for access/validate pass; `first build examples/blog --target wp`
 produces the §4.9 layout and `php -l` passes.
 
-### (P) Shared runtime + SQLite + standalone auth — `runtime/Zero/` (not `Wp/`), `runtime/bin/`, `tests/php/`, `tests/e2e/standalone.test.ts`
+### (P) Shared runtime + SQLite + standalone auth — `runtime/First/` (not `Wp/`), `runtime/bin/`, `tests/php/`, `tests/e2e/standalone.test.ts`
 
 Deliverables: `Store.php`, `Dialect.php`, `Sql.php`, `Store/SqliteStore.php`,
 `Auth.php`, `Identity.php`, `Media.php`, `Db.php` pipeline (§3.3), `Schema.php`
 codecs (§3.4), `App.php` routes (§4.8) + viewer + lazy promotion + multipart,
 CLI commands (§5.2, `publish-due`), system tables created by `SqliteStore`
-on boot (`__zero_tokens/_users/_revisions/_globals/_media`); `Source`/`ColumnRef`
+on boot (`__first_tokens/_users/_revisions/_globals/_media`); `Source`/`ColumnRef`
 value objects and the §3.5 operator matrix in `Sql`, including the
 `serialized-list` LIKE form and `json` rejections, pinned by `tests/php/sql_test.php`
 against both a plain `Source` and a hand-built post-backed `Source` fixture
@@ -1399,7 +1399,7 @@ Acceptance: `tests/php/run.sh` green (db, schema, sql, auth suites);
 `tests/e2e/standalone.test.ts` green against `php -S` with the blog example
 built from R's fixtures.
 
-### (W) WP stores + plugin + SCF — `runtime/Zero/Wp/`, `runtime/wp-plugin/`, `tests/wp/`
+### (W) WP stores + plugin + SCF — `runtime/First/Wp/`, `runtime/wp-plugin/`, `tests/wp/`
 
 Deliverables: `WpPostStore`, `WpTableStore`, `CompositeStore`, `WpAuth`,
 `WpMedia`, `Scf` (groups, options pages, filters), `Rest` (catch-all route),
@@ -1411,16 +1411,16 @@ subcommands, user creation), `tests/wp/*.test.ts`, `tests/wp/run.sh`.
 Acceptance: `tests/wp/run.sh` green: plugin, tables, editor, postmeta, rest
 (the shared scenario) suites.
 
-### (T) Types + client + examples — `types/zero/`, `runtime/client/`, `examples/`, `tests/e2e/blog-scenario.ts`, `examples/blog/client-tests/`
+### (T) Types + client + examples — `types/first/`, `runtime/client/`, `examples/`, `tests/e2e/blog-scenario.ts`, `examples/blog/client-tests/`
 
-Deliverables: `index.d.ts` additions (§1, exact surface), `types/zero/tests`
+Deliverables: `index.d.ts` additions (§1, exact surface), `types/first/tests`
 extensions; the client runtime (`runtime/client/index.ts`, `README.md`
 template) implementing §7 against the generated `types.ts`/`schema.ts`;
 `examples/blog` (config, `public/` minimal HTML page that uses the client,
 hook bodies); the cross-target scenario function; the pantry example updated
 (`title: "name"` or `table()` — pantry becomes `table()`
 everywhere, it is an app not a CMS).
-Acceptance: `tsc -p types/zero/tests` and `tsc -p examples/blog/client-tests`
+Acceptance: `tsc -p types/first/tests` and `tsc -p examples/blog/client-tests`
 green; the scenario passes on P's standalone lane (T runs it locally with P's
 runtime once P lands; until then against a hand-written `php -S` stub is not
 required — the scenario is pure client code).
@@ -1442,7 +1442,7 @@ required — the scenario is pure client code).
    on multi-value fields is a serialized-substring LIKE; `group/repeater/blocks`
    can't be filtered on. One `Sql` compiler still covers every store through a
    per-column `Source` mapping. `table()` is the documented fast path and
-   `zero build` hints at it.
+   `first build` hints at it.
 3. **API-created rows default to `published`**, not `draft` (an app posting a
    row expects it to exist). wp-admin's own default (draft) still applies to
    editor-created posts.
@@ -1456,8 +1456,8 @@ required — the scenario is pure client code).
    configurable this pass.
 8. **Standalone auth = users + bearer tokens + optional password login**, no
    cookies, no rate limiting.
-9. **Core `/wp/v2/zero_*` stays enabled** (Gutenberg needs it); it is governed
-   by WP capabilities, not Zero access rules. The typed client never uses it.
+9. **Core `/wp/v2/first_*` stays enabled** (Gutenberg needs it); it is governed
+   by WP capabilities, not First access rules. The typed client never uses it.
 10. **Unique text requires `.max(≤191)`** (MySQL index limit) on both targets,
     for one config.
 11. **`drafts: false` with `collection()` rejected**; WP posts always have a
@@ -1465,11 +1465,11 @@ required — the scenario is pure client code).
 12. **FK actions are emulated in the pipeline** on every store (SQL FKs only
     where both sides are custom tables) so cross-kind references behave the
     same.
-13. **No meta indexes added, timestamps stored in UTC in meta.** Zero never
+13. **No meta indexes added, timestamps stored in UTC in meta.** First never
     alters core tables; the price is the scan in item 2. Storing SCF
     `date_time_picker` values as UTC (converted in `acf/update_value`/`load_value`)
     is what makes `publishedAt`-style comparisons on meta timestamps correct in
-    SQL; it deviates from SCF's default site-tz storage only for Zero fields.
+    SQL; it deviates from SCF's default site-tz storage only for First fields.
 
 Deliberately out of this pass: i18n/translatable fields, field-level access,
 `userProjection()` definitions, Sanity-style conditional

@@ -18,7 +18,7 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'image/' ) ) {
 		return {
 			type: 'image',
-			label: __( 'Image', 'zero-admin' ),
+			label: __( 'Image', 'first-admin' ),
 			icon: image,
 		};
 	}
@@ -26,7 +26,7 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'video/' ) ) {
 		return {
 			type: 'video',
-			label: __( 'Video', 'zero-admin' ),
+			label: __( 'Video', 'first-admin' ),
 			icon: video,
 		};
 	}
@@ -34,14 +34,14 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'audio/' ) ) {
 		return {
 			type: 'audio',
-			label: __( 'Audio', 'zero-admin' ),
+			label: __( 'Audio', 'first-admin' ),
 			icon: audio,
 		};
 	}
 
 	return {
 		type: 'application',
-		label: __( 'Application', 'zero-admin' ),
+		label: __( 'Application', 'first-admin' ),
 		icon: file,
 	};
 }

@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-const site = process.env.ZERO_SITE?.replace(/\/$/, '');
-const auth = process.env.ZERO_AUTH;
-const otherAuth = process.env.ZERO_OTHER_AUTH;
+const site = process.env.FIRST_SITE?.replace(/\/$/, '');
+const auth = process.env.FIRST_AUTH;
+const otherAuth = process.env.FIRST_OTHER_AUTH;
 
-assert.ok(site, 'Set ZERO_SITE to the WordPress site URL.');
-assert.ok(auth, 'Set ZERO_AUTH to username:application-password.');
-assert.ok(['http:', 'https:'].includes(new URL(site).protocol), 'ZERO_SITE must use HTTP or HTTPS.');
-assert.equal(new URL(site).username, '', 'Keep credentials in ZERO_AUTH, not ZERO_SITE.');
-assert.equal(new URL(site).password, '', 'Keep credentials in ZERO_AUTH, not ZERO_SITE.');
+assert.ok(site, 'Set FIRST_SITE to the WordPress site URL.');
+assert.ok(auth, 'Set FIRST_AUTH to username:application-password.');
+assert.ok(['http:', 'https:'].includes(new URL(site).protocol), 'FIRST_SITE must use HTTP or HTTPS.');
+assert.equal(new URL(site).username, '', 'Keep credentials in FIRST_AUTH, not FIRST_SITE.');
+assert.equal(new URL(site).password, '', 'Keep credentials in FIRST_AUTH, not FIRST_SITE.');
 
-const api = '/wp-json/zero/v1';
+const api = '/wp-json/first/v1';
 
 async function request(path, { method = 'GET', body, credential = auth, key } = {}) {
   const headers = { accept: 'application/json' };
@@ -32,8 +32,8 @@ async function request(path, { method = 'GET', body, credential = auth, key } = 
   } catch {
     throw new Error(`${method} ${path}: HTTP ${response.status}, expected JSON; received ${text.slice(0, 1000)}`);
   }
-  const command = `curl ${credential ? '-u "$ZERO_AUTH" ' : ''}-X ${method} '${site}${path}'${key ? ` -H 'Idempotency-Key: ${key}'` : ''}${body === undefined ? '' : ` -H 'Content-Type: application/json' --data '${JSON.stringify(body)}'`}`;
-  console.log(command.replace('"$ZERO_AUTH"', credential === otherAuth && otherAuth ? '"$ZERO_OTHER_AUTH"' : '"$ZERO_AUTH"'));
+  const command = `curl ${credential ? '-u "$FIRST_AUTH" ' : ''}-X ${method} '${site}${path}'${key ? ` -H 'Idempotency-Key: ${key}'` : ''}${body === undefined ? '' : ` -H 'Content-Type: application/json' --data '${JSON.stringify(body)}'`}`;
+  console.log(command.replace('"$FIRST_AUTH"', credential === otherAuth && otherAuth ? '"$FIRST_OTHER_AUTH"' : '"$FIRST_AUTH"'));
   console.log(JSON.stringify({ status: response.status, body: json }));
   return { status: response.status, body: json };
 }
@@ -41,7 +41,7 @@ async function request(path, { method = 'GET', body, credential = auth, key } = 
 async function success(path, options = {}) {
   const result = await request(path, options);
   assert.ok(result.status >= 200 && result.status < 300, `${options.method ?? 'GET'} ${path}: HTTP ${result.status}`);
-  assert.ok(Object.hasOwn(result.body, 'data'), `${path}: missing Zero response data`);
+  assert.ok(Object.hasOwn(result.body, 'data'), `${path}: missing First response data`);
   return result.body.data;
 }
 
@@ -151,7 +151,7 @@ if (otherAuth) {
   assert.equal((await read('pets', pet.id)).name, 'Miso');
   assert.equal((await read('stock', stock.id)).gramsLeft, 20);
 } else {
-  console.log('Second-user isolation checks not run. Set ZERO_OTHER_AUTH to enable them.');
+  console.log('Second-user isolation checks not run. Set FIRST_OTHER_AUTH to enable them.');
 }
 
 console.log(JSON.stringify({ verified: true, ownerId, petId: pet.id, foodId: food.id, stockId: stock.id, vetNoteId: note.id, feedingId: fed.feeding.id }));

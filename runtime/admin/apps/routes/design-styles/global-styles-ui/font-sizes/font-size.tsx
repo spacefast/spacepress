@@ -1,10 +1,10 @@
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import type {
 	TypographyPreset,
 	FluidTypographySettings,
 	FontSize,
 	FluidTypographyConfig,
-} from '@zero-admin/global-styles-engine';
+} from '@first-admin/global-styles-engine';
 import { __, sprintf } from '@wordpress/i18n';
 import {
 	__experimentalSpacer as Spacer,
@@ -160,7 +160,7 @@ function FontSize() {
 						title={ fontSize.name }
 						description={ sprintf(
 							/* translators: %s: font size preset name. */
-							__( 'Manage the font size %s.', 'zero-admin' ),
+							__( 'Manage the font size %s.', 'first-admin' ),
 							fontSize.name
 						) }
 					/>
@@ -179,7 +179,7 @@ function FontSize() {
 												icon={ moreVertical }
 												label={ __(
 													'Font size options',
-													'zero-admin'
+													'first-admin'
 												) }
 											/>
 										}
@@ -189,14 +189,14 @@ function FontSize() {
 											onClick={ toggleRenameDialog }
 										>
 											<Menu.ItemLabel>
-												{ __( 'Rename', 'zero-admin' ) }
+												{ __( 'Rename', 'first-admin' ) }
 											</Menu.ItemLabel>
 										</Menu.Item>
 										<Menu.Item
 											onClick={ toggleDeleteConfirm }
 										>
 											<Menu.ItemLabel>
-												{ __( 'Delete', 'zero-admin' ) }
+												{ __( 'Delete', 'first-admin' ) }
 											</Menu.ItemLabel>
 										</Menu.Item>
 									</Menu.Popover>
@@ -218,7 +218,7 @@ function FontSize() {
 							</FlexItem>
 
 							<SizeControl
-								label={ __( 'Size', 'zero-admin' ) }
+								label={ __( 'Size', 'first-admin' ) }
 								value={
 									! isCustomFluid && fontSize.size
 										? String( fontSize.size )
@@ -229,10 +229,10 @@ function FontSize() {
 							/>
 
 							<ToggleControl
-								label={ __( 'Fluid typography', 'zero-admin' ) }
+								label={ __( 'Fluid typography', 'first-admin' ) }
 								help={ __(
 									'Scale the font size dynamically to fit the screen or viewport.',
-									'zero-admin'
+									'first-admin'
 								) }
 								checked={ isFluid }
 								onChange={ handleFluidChange }
@@ -243,11 +243,11 @@ function FontSize() {
 								<ToggleControl
 									label={ __(
 										'Custom fluid values',
-										'zero-admin'
+										'first-admin'
 									) }
 									help={ __(
 										'Set custom min and max values for the fluid font size.',
-										'zero-admin'
+										'first-admin'
 									) }
 									checked={ isCustomFluid }
 									onChange={ handleCustomFluidValues }
@@ -258,7 +258,7 @@ function FontSize() {
 							{ isCustomFluid && (
 								<>
 									<SizeControl
-										label={ __( 'Minimum', 'zero-admin' ) }
+										label={ __( 'Minimum', 'first-admin' ) }
 										value={
 											typeof fontSize?.fluid === 'object'
 												? fontSize.fluid?.min
@@ -267,7 +267,7 @@ function FontSize() {
 										onChange={ handleMinChange }
 									/>
 									<SizeControl
-										label={ __( 'Maximum', 'zero-admin' ) }
+										label={ __( 'Maximum', 'first-admin' ) }
 										value={
 											typeof fontSize?.fluid === 'object'
 												? fontSize.fluid?.max

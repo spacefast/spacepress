@@ -1,13 +1,13 @@
 # Migrate a CMS config
 
-`zero migrate config` imports declarative schemas from EmDash, Payload and
-Sanity. It writes a new `zero.config.ts`; it never overwrites the source or an
+`first migrate config` imports declarative schemas from EmDash, Payload and
+Sanity. It writes a new `first.config.ts`; it never overwrites the source or an
 existing destination. `--from zero` reads an earlier Zero's capsule config; see
-[migrating from Zero](migrating-from-zero.md#the-original-capsule-config).
+[migrating from First](migrating-from-zero.md#the-original-capsule-config).
 
 ```sh
-zero migrate config --from payload payload.config.ts --out migrated/zero.config.ts
-zero build migrated
+first migrate config --from payload payload.config.ts --out migrated/first.config.ts
+first build migrated
 ```
 
 Use `--from emdash`, `payload` or `sanity`. Input can be a JSON schema
@@ -20,7 +20,7 @@ The importer parses TypeScript with Rust. It recognizes named imports of
 Payload's `buildConfig`, Sanity's `defineConfig`/`defineType`/`defineField`/
 `defineArrayMember`. Aliases, constants, literal objects/arrays and type
 assertions work. CMS packages are never loaded. A JSON export must retain the
-source declarations: `JSON.stringify` can erase callbacks before Zero sees them,
+source declarations: `JSON.stringify` can erase callbacks before First sees them,
 so a serialized executable config does not establish compatibility. Relative modules, spreads,
 computed properties, executable statements and arbitrary helper calls require
 a declarative export or a manual port. JSON and TypeScript duplicate keys fail.
@@ -54,7 +54,7 @@ values reject only `""`, as EmDash does for every required field. Payload text b
 generated validators that count UTF-16 code units, so a supplementary Unicode
 character counts as two. A Payload `text` or `textarea` without `maxLength`
 receives Payload's default `defaultMaxTextLength` of 40000. These validators preserve the source constraint rather
-than using Zero's Unicode-character count for text `.max()`.
+than using First's Unicode-character count for text `.max()`.
 
 Field labels are preserved with `.ui({ label })` for the supported scalar
 mappings. Sanity field `title`/`description` map to
@@ -71,14 +71,14 @@ need to review publishing behavior. Import does not adopt existing WordPress
 post types.
 
 EmDash URL fields are refused because their relative, `mailto:` and `tel:` URL
-policy differs from Zero's absolute HTTP(S) URL field. Sanity URI fields are also
-refused: Zero's URL validator cannot preserve Sanity's scheme/credential and
+policy differs from First's absolute HTTP(S) URL field. Sanity URI fields are also
+refused: First's URL validator cannot preserve Sanity's scheme/credential and
 empty-value policy. Payload email fields keep Payload's own address pattern on
-top of Zero's `email()` check, so quoted local parts and `[127.0.0.1]` address
-literals stay rejected. Zero's `email()` also applies PHP's address check, which
+top of First's `email()` check, so quoted local parts and `[127.0.0.1]` address
+literals stay rejected. First's `email()` also applies PHP's address check, which
 rejects a local part over 64 characters or a label over 63 that Payload accepted;
 each Payload email field is reported for that review. Optional Payload email fields also carry a specific
-review entry because Zero rejects empty strings that Payload accepts;
+review entry because First rejects empty strings that Payload accepts;
 null/absence remain nullable. Port or normalize that behavior before deployment.
 
 Payload `date` fields become `timestamp()`, which accepts ISO 8601 text and
@@ -89,7 +89,7 @@ EmDash and Sanity `datetime` fields become `timestamp()`, which accepts exactly
 `YYYY-MM-DD`, or `YYYY-MM-DDTHH:MM[:SS[.fraction]]` with `Z` or `±HH:MM`, with
 real calendar and clock values (no February 30, no `24:00`) and UTC years
 0000-9999, or epoch milliseconds. It stores UTC, so values sort and filter as
-times; Zero keeps milliseconds (finer fractions are truncated) and WordPress
+times; First keeps milliseconds (finer fractions are truncated) and WordPress
 post-backed collections keep whole seconds. Both sources stored the text as
 given. Each field's report states the grammar and what changed: EmDash refused
 a date alone and epoch milliseconds; Sanity accepted many other ISO 8601
@@ -102,7 +102,7 @@ The importer, compiled handlers and storage round trip retain those objects;
 numeric property names alone do not cause a default to be refused.
 
 Unspecified REST permissions are emitted as `false` for read/create/update/
-delete, rather than inheriting Zero's public-read default. Literal Payload
+delete, rather than inheriting First's public-read default. Literal Payload
 boolean access rules override the corresponding denials. Configure access before deployment. This is a reported change, not a
 claim that the source CMS's authentication model has been migrated.
 

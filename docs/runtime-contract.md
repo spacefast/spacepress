@@ -1,55 +1,55 @@
-# Zero PHP runtime contract
+# First PHP runtime contract
 
-The Rust compiler (`zero build`) emits WordPress plugins. Everything that runs
-at request time is PHP: a hand-written runtime library (`runtime/Zero/*.php`,
+The Rust compiler (`first build`) emits WordPress plugins. Everything that runs
+at request time is PHP: a hand-written runtime library (`runtime/First/*.php`,
 copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
 Requirements (`Platform::problems()` is the one statement of them; activation
-and `zero doctor` both apply it): WordPress 7.1+ on PHP 8.2+ with the
+and `first doctor` both apply it): WordPress 7.1+ on PHP 8.2+ with the
 `mbstring`, `json` and `gd` extensions (`sodium` for the identity bundle);
-MySQL 8.0+ or MariaDB 10.11+ with every Zero table InnoDB, or SQLite through
+MySQL 8.0+ or MariaDB 10.11+ with every First table InnoDB, or SQLite through
 SQLite Database Integration 3.1.2+; the pinned platform plugins Secure Custom
 Fields, Action Scheduler and MCP Adapter at the versions in
 `Platform::PLUGINS`, plus Polylang when the app is localized. Composer runs
 only at maintainer time; prefixed third-party libraries ship under
 `vendor-prefixed/`. See `dependencies.md` for their locks and regeneration.
-Every Zero file starts with `declare(strict_types=1);`. Namespace `Zero`.
+Every First file starts with `declare(strict_types=1);`. Namespace `First`.
 
 ## Build output layout
 
 ```
-<out>/                                 (default: <project>/.zero/wp-content)
-  zero-manifest.json                   versions, runtime series, platform requirements, dependency checksums
-  plugins/zero-runtime/
-    zero-runtime.php                   plugin header; boots Wp\Plugin
-    zero/*.php                         this library, copied verbatim
-    zero/vendor-prefixed/**            bundled, isolated PHP dependencies
-  plugins/zero-identity/               optional identity bundle (passkeys, sessions, tokens)
-  plugins/zero-app-<name>/
-    zero-app-<name>.php                plugin header
-    zero/app/schema.php                generated: `return [...]` schema metadata
-    zero/app/functions.php             generated: compiled hooks, actions, helpers (namespace ZeroApp)
-    zero/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
+<out>/                                 (default: <project>/.first/wp-content)
+  first-manifest.json                   versions, runtime series, platform requirements, dependency checksums
+  plugins/first-runtime/
+    first-runtime.php                   plugin header; boots Wp\Plugin
+    first/*.php                         this library, copied verbatim
+    first/vendor-prefixed/**            bundled, isolated PHP dependencies
+  plugins/first-identity/               optional identity bundle (passkeys, sessions, tokens)
+  plugins/first-app-<name>/
+    first-app-<name>.php                plugin header
+    first/app/schema.php                generated: `return [...]` schema metadata
+    first/app/functions.php             generated: compiled hooks, actions, helpers (namespace FirstApp)
+    first/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
     public/...                         copied from <project>/public if present
   *.zip                                the same plugins, packaged
 ```
 
-`zero/bootstrap.php` eagerly loads `Db.php` (for the `Zero\db()` function),
-registers an autoloader for `Zero\*` from its own directory, and registers the
+`first/bootstrap.php` eagerly loads `Db.php` (for the `First\db()` function),
+registers an autoloader for `First\*` from its own directory, and registers the
 ordered feature modules through `Features::register()` (once per process).
 It preserves the site's numeric precision and PHP diagnostic settings.
 `Json::encode` scopes round-tripping native JSON precision to one encoding and
 restores the host setting even on failure. `Js::numStr` and JavaScript JSON
 serialization own their numeric spelling independently of PHP's ini precision.
 The bundled Composer loader and its autoloaded function files load on the first
-`Zero\Vendor\*` or `Zero_Vendor_*` class use. Ordinary requests do not load the
+`First\Vendor\*` or `First_Vendor_*` class use. Ordinary requests do not load the
 optional Markdown, merge or S3 dependencies. Both scoped namespace and global
 class names use the same authoritative Composer map. HTML parsing and block
 parsing/serialization are WordPress core's (`WP_HTML_*`, `parse_blocks`,
 `serialize_blocks`); the bundle carries no copy.
 
-The signing key for private-file URLs is the `zero_runtime_secret` option,
+The signing key for private-file URLs is the `first_runtime_secret` option,
 minted on activation.
 
 The app's schema is the authoritative runtime series check; the runtime
@@ -60,7 +60,7 @@ versions, `scf`, `actionScheduler`, `mcpAdapter`, `polylang`, `identity`,
 `imageCdn`, and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`zero doctor [--site URL]` (bearer token in `ZERO_TOKEN`) checks this data against the same
+`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php
@@ -89,7 +89,7 @@ return [
         // kind 'many': target rows whose `to` column equals this row's `from` column.
         // (for locations.items: from => 'id', to => 'locationId')
       ],
-      // Names of functions in functions.php (namespace ZeroApp). Absent = no hook.
+      // Names of functions in functions.php (namespace FirstApp). Absent = no hook.
       'hooks' => ['beforeCreate' => 'items__beforeCreate', 'afterUpdate' => 'items__afterUpdate'],
       'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
     ],
@@ -107,8 +107,8 @@ Column keys are also the SQL column names (always double-quoted in SQL).
 
 ## functions.php
 
-Generated. `namespace ZeroApp;`. Contains plain PHP functions. The runtime
-calls them by the names in schema.php (prefix `\ZeroApp\`):
+Generated. `namespace FirstApp;`. Contains plain PHP functions. The runtime
+calls them by the names in schema.php (prefix `\FirstApp\`):
 
 | Compiled callback | Call | Return handling |
 |---|---|---|
@@ -152,7 +152,7 @@ not a blanket refusal of writes into array elements.
 
 ## Compiled classes
 
-Generated class methods are plain `ZeroApp` functions with an explicit first
+Generated class methods are plain `FirstApp` functions with an explicit first
 receiver argument. They use `JsObject` handles for instances, so aliases,
 closures, member mutations and strict identity use the existing object model.
 `JsObject::$class` is readonly descriptor metadata; only `JsObject::$p` contains
@@ -186,14 +186,14 @@ instance identity recursively at the wire boundary.
 Viewer-bound reads exclude password-protected WordPress records before filters,
 projections, pagination and relation matching. Locked item reads return 404;
 list and Ability reads omit the row. This boundary covers native core REST as
-well as Zero. An explicit viewer with native `edit_post` capability or a valid
+well as First. An explicit viewer with native `edit_post` capability or a valid
 WordPress post-password cookie can read the record. Trusted server reads with
 no viewer retain their existing authority.
 
 Native core REST GET/HEAD requests also accept their `password` parameter.
 That proof is scoped to the collection and explicit viewer, accepts only rows
 with the matching password, and is suspended/restored across nested requests.
-It does not authorize a later Zero request or borrow the ambient user's rights.
+It does not authorize a later First request or borrow the ambient user's rights.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
@@ -283,7 +283,7 @@ even if an application hook catches its exception. Attempting the outer commit
 rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
 the outer operation fail and retry the complete unit of work. Two things are outside that guarantee: an
 `afterCommit` callback runs after the commit, so its failure propagates without
-undoing the request; and `wp zero migrate` records each DDL statement as it
+undoing the request; and `wp first migrate` records each DDL statement as it
 succeeds (MySQL DDL commits implicitly), so a later statement's failure leaves
 the earlier ones applied and recorded (see Migrations).
 Transactions run concurrently, so a read whose result the transaction then
@@ -321,7 +321,7 @@ final class Db {
   public function update(string $collection, array $set, array $where, bool $returning = false): ?array;
   public function delete(string $collection, array $where, bool $returning = false): ?array;
 }
-function db(): Db;   // namespace Zero, in Db.php, returns Db::instance()
+function db(): Db;   // namespace First, in Db.php, returns Db::instance()
 ```
 
 `insert` `$values`: one row (assoc array) or a list of rows. With
@@ -403,7 +403,7 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   immediately. Nested transactions join without savepoints. A callback that
   throws propagates after commit, without rollback cleanup or callback replay.
 - `Realtime\Module` collects `onWritten` per transaction while a `Publisher` is
-  registered or `zero_realtime_changes` has a listener, and emits one id-only
+  registered or `first_realtime_changes` has a listener, and emits one id-only
   notice after the outermost commit (see [Live updates](realtime.md)). Rollback
   discards the batch. Publishers run in order; one that throws is logged.
 - `route(prefix, handler)` receives `(method, fullDecodedSegments, query,
@@ -430,7 +430,7 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   feature consumes/normalizes its options; unknown remaining options fail normal
   query validation.
 - `cli(command, handler)` receives `(argsWithoutCommand, flags)` inside the
-  canonical `wp zero` transaction and receipts.
+  canonical `wp first` transaction and receipts.
 - `schemaDescribe(fn)` transforms the public schema description.
 
 `SystemTables::register(name, statements)` assigns one owner per table. The
@@ -478,11 +478,11 @@ operation or replace an already-started response.
 
 `App::boot(string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media): App`
 uses the validated schema passed by the WordPress registry and requires
-`zero/app/functions.php`; the plugin passes
+`first/app/functions.php`; the plugin passes
 its store, authentication and media services, and migrates on activation and
 on the first request after an update (`Wp\Plugin`).
 
-Routes, under `/wp-json/zero/v1` (everything else → 404 problem):
+Routes, under `/wp-json/first/v1` (everything else → 404 problem):
 
 | Method + path | Behavior | Success |
 |---|---|---|
@@ -511,22 +511,22 @@ Status mapping: `invalid_input` 422, `invalid_query` 400, `invalid_json`
 400, `not_found` 404, `method_not_allowed` 405, `unique_violation` 409,
 `reference_violation` 409, `rejected` 422 (any `JsError` thrown by user
 code: `detail` = its message), `HttpError` → its own status/code, anything
-else → 500 `internal` (detail = message only when env `ZERO_DEBUG=1`,
+else → 500 `internal` (detail = message only when env `FIRST_DEBUG=1`,
 always logged to `error_log`).
 
 JSON responses are encoded with `Js::jsonStringify` (so integral floats
 print without `.0`).
 
-## CLI (`wp zero`)
+## CLI (`wp first`)
 
 ```
-wp zero migrate [--mark-applied <id>:<n>]
-wp zero publish-due
-wp zero action <name> [json]
-wp zero find <collection> [opts-json]
-wp zero insert <collection> <json>
-wp zero update <collection> <where-json> <set-json>
-wp zero delete <collection> <where-json>
+wp first migrate [--mark-applied <id>:<n>]
+wp first publish-due
+wp first action <name> [json]
+wp first find <collection> [opts-json]
+wp first insert <collection> <json>
+wp first update <collection> <where-json> <set-json>
+wp first delete <collection> <where-json>
 ```
 
 Prints `{"data": ...}` on success (exit 0) or `{"error": {problem}}` (exit 1)
@@ -537,10 +537,10 @@ post-backed collections are scheduled by WordPress itself.
 
 ## Migrations
 
-`Wp\Migrator` applies the app plugin's `zero/app/migrations/NNNN_<name>.sql`
+`Wp\Migrator` applies the app plugin's `first/app/migrations/NNNN_<name>.sql`
 files (MySQL dialect, `{prefix}` replaced by `$wpdb->prefix`) in filename
 order. Statements are separated by a line `--> statement-breakpoint`. The
-compiler's `-- zero-adopt` statement metadata makes the migrator validate existing
+compiler's `-- first-adopt` statement metadata makes the migrator validate existing
 primary/unique index names and foreign-key definitions before recording adoption.
 Integer columns must match the declared BIGINT signedness, so later generated
 foreign keys cannot silently assume a different physical key type.
@@ -548,15 +548,15 @@ Unmanaged indexes are retained. The
 shared migration path checks existing tables before DDL or ledger writes, and
 checks the resulting tables before marking the app current. Non-InnoDB or
 non-utf8mb4 tables refuse activation, first-request upgrades and CLI migration;
-failed upgrades keep Zero unavailable until the storage is corrected. The
-ledger is `{prefix}zero__migrations(app, id, applied_at)`, keyed by app so two
+failed upgrades keep First unavailable until the storage is corrected. The
+ledger is `{prefix}first__migrations(app, id, applied_at)`, keyed by app so two
 plugins' `0001_init` files stay apart. MySQL DDL commits implicitly, so every
 statement that succeeds is recorded as `<id>:<n>` before the next one runs;
 once a file completes its own id is recorded and the step rows are removed. A
 file that failed half way resumes at the failing statement. A statement that
 committed without its marker fails on the retry ("already exists") until the
-operator records it with `wp zero migrate --mark-applied <id>:<n>`. Writers
-(first request, activation, `wp zero migrate`) serialize on `Connection::locked`.
+operator records it with `wp first migrate --mark-applied <id>:<n>`. Writers
+(first request, activation, `wp first migrate`) serialize on `Connection::locked`.
 
 ## Errors
 
@@ -564,7 +564,7 @@ operator records it with `wp zero migrate --mark-applied <id>:<n>`. Writers
 class JsError extends \Exception {      // what `throw new Error(msg)` compiles to
   public function __construct(string $message, public readonly string $jsName = 'Error');
 }
-class HttpError extends \Exception {    // `throw new HttpError(404, "not_found", "...")` from `zero`
+class HttpError extends \Exception {    // `throw new HttpError(404, "not_found", "...")` from `first`
   public function __construct(public readonly int $status, public readonly string $errorCode, string $message, public readonly ?string $pointer = null);
 }
 ```
@@ -590,7 +590,7 @@ and calls through erased dynamic receivers; typed class dispatch stays supported
 Own data fields continue to take precedence over inherited methods.
 
 Built-in overloads and phase arity are owned by `src/builtins.rs`. Its generated
-`runtime/Zero/Builtins.php` guards checked JavaScript dispatch; regenerate with
+`runtime/First/Builtins.php` guards checked JavaScript dispatch; regenerate with
 `UPDATE_BUILTINS=1 cargo test --lib builtins::tests`. The normal Rust suite
 checks freshness. Type/coercion guards remain at their language boundary.
 JSON parsing/serialization and Error instances are runtime-only. The evaluator
@@ -675,9 +675,9 @@ large and adjacent-to-half boundaries.
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
 `int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` = PHP `null`; explicit `undefined` = `JsUndefined::Value`;
-arrays are `Zero\JsArray`, plain objects are `Zero\JsObject`, both handles
+arrays are `First\JsArray`, plain objects are `First\JsObject`, both handles
 with identity; class instances are `JsObject` handles with a non-enumerable
-`JsClass` descriptor; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
+`JsClass` descriptor; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `First\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
@@ -798,13 +798,13 @@ Conversions:
 - `str(mixed $v): string` — `String(v)`. null → `"null"`, bools → `"true"/"false"`, numbers → `numStr`, list → elements `str`'d joined by `,` with null as `""`, assoc → `"[object Object]"`, `RegExp` → `/src/flags`.
 - `numStr(int|float $n): string` — `Number.prototype.toString()`: `NaN`, `Infinity`, `-Infinity`, `-0` → `"0"`, integral values below 1e21 without exponent, shortest round-trip digits (including adjacent decimal candidates at binary rounding boundaries), exponent form `1e+21`, `1.5e-7` exactly where JS uses it (≥ 1e21 or < 1e-6).
 - `toNumber(mixed $v): int|float` — `Number(v)`: null → 0, bool → 0/1, string trimmed of JS whitespace: `""` → 0, decimal, `0x`/`0o`/`0b` prefixes, `Infinity`/`-Infinity`, otherwise NAN. Safe integers (|n| ≤ 2^53) return int, larger values float.
-- `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So Zero ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
+- `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So First ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
 - `bitwise(string $operator, mixed $a, mixed $b): int` — compiled `&`, `|`, `^`, `<<`, `>>`, `>>>` and their compound assignments. Both operands go through `toNumber` (objects with the number hint), then ToInt32; the left side of `>>>` uses ToUint32. Shift counts are ToUint32 masked to five bits, so a negative count or a count of 32 or more wraps as in JavaScript. The result is a signed 32-bit int, or an unsigned one for `>>>`. `bitNot(mixed $a): int` is `~a`. Checked JavaScript reaches both through `dynamicBinary`.
 - `hasProperty(mixed $key, mixed $object): bool` — compiled `key in object`. A primitive or undefined right side throws `TypeError` with JavaScript's message. The key goes through ToPropertyKey; own properties are checked, then the value's fixed prototype chain: class methods (instances) or statics and static methods (classes), the built-in prototype names of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then `Object.prototype`. Null-prototype objects see only own keys. Arrays are dense, so an index is present exactly when it is below the length. `arguments` and `caller` are inherited by every function; `prototype` presence on a closure throws, because PHP closures don't record whether they were arrows, and so does `stack` on an error.
 - `delete(mixed $object, mixed $key): bool` — compiled `delete object[key]` in strict mode. Null and undefined receivers throw `TypeError`. Own object keys are removed without reordering the others; the result is true, also for absent and inherited keys. Arrays are dense: an in-range index throws `RangeError` (typed code refuses it at build time) rather than leaving a hole, while named array properties and indexes past the end are removed like object keys. `arguments` indexes are removable slots. Non-configurable properties throw JavaScript's `TypeError` (`Cannot delete property 'length' of [object Array]`): array and string `length`, in-range string indexes, regex `lastIndex`, class and function `prototype`, `arguments.callee`, Math constants. Class statics, `arguments.length` and an error's own `message` (reads then fall back to the inherited empty message) are removable; class methods and other modeled built-in own properties throw an explicit unsupported `TypeError`. Frozen arrays (a tagged template's strings) refuse deletion of their elements.
 - `receiverFunction(\Closure $method): \Closure` wraps a compiled function that reads `this` (its receiver is the first PHP parameter). Called plainly it receives undefined; method calls, `call` and `apply` pass the receiver through the checked dispatcher, as for class methods.
 - `templateStrings(string $site, array $cooked, array $raw): JsArray` — a tagged template's first argument: the cooked strings (undefined where an escape is invalid) with a `raw` property. `$site` names the call site, so every call of one site receives the same array. Both arrays are frozen (`JsArray::$frozen`): index and `length` writes and every mutating method throw `TypeError` through `Js::writable`. `templateRaw(JsArray $strings): JsArray` reads `raw` from a typed `TemplateStringsArray`. `stringRaw(mixed $template, mixed ...$substitutions): string` is `String.raw`.
-- `Zero\JsBigInt` is a JavaScript BigInt: immutable, sign plus base-10^7 limbs, pure PHP. `JsBigInt::literal($digits)` is a compiled literal and `JsBigInt::of($value)` is `BigInt(value)`. Operators reach it through `dynamicBinary`, `neg`, `bitNot`, `add`/`sub`/`mul`/`pow`: arithmetic needs two BigInts (else `TypeError`), relational and loose equality compare mathematically with numbers and numeric strings, `strictEq` compares values. `typeOf` is `bigint`, `truthy` is false only for `0n`, `str` gives decimal digits, `toNumber` throws (ToNumber), `number()` (the `Number()` call) gives the nearest double, and JSON serialization throws.
+- `First\JsBigInt` is a JavaScript BigInt: immutable, sign plus base-10^7 limbs, pure PHP. `JsBigInt::literal($digits)` is a compiled literal and `JsBigInt::of($value)` is `BigInt(value)`. Operators reach it through `dynamicBinary`, `neg`, `bitNot`, `add`/`sub`/`mul`/`pow`: arithmetic needs two BigInts (else `TypeError`), relational and loose equality compare mathematically with numbers and numeric strings, `strictEq` compares values. `typeOf` is `bigint`, `truthy` is false only for `0n`, `str` gives decimal digits, `toNumber` throws (ToNumber), `number()` (the `Number()` call) gives the nearest double, and JSON serialization throws.
 - `Seam` owns conversions between compiled handles and schema-shaped runtime arrays: Db inputs/results, callback contexts, validators, generators, action/job inputs, Sync envelopes and ability inputs/outputs. User `json()` leaves remain handles in runtime rows. Write inputs detach them from compiled locals; each callback receives a fresh graph. Validator `value` aliases its full path in `ctx.data`; a before-hook's `data`/`patch` aliases `ctx.data` and is read back when no replacement is returned. Native `Extensions` callbacks keep array contracts. A string in a schema callback slot names compiled code; native callbacks use non-string callables.
 - Objects enumerate canonical array-index keys in ascending order, then other keys in insertion order (`ownKeys`). Empty objects encode as `{}` and empty arrays as `[]`, including nested JSON and numeric-keyed objects.
 - Array length assignment applies ToUint32 and ToNumber separately, including both object-conversion effects, before validating the new length.
@@ -834,7 +834,7 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `strIndex(string $s, int|float $i): string|JsUndefined` — numeric bracket access; fractional, negative and non-finite indexes name no character.
 - `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups undefined) or null; global → list of all matches or null.
 
-Every runtime and emitted `mb_*` call passes explicit encodings; Zero never
+Every runtime and emitted `mb_*` call passes explicit encodings; First never
 depends on `mb_internal_encoding()`.
 
 Computed object keys evaluate before their values; computed fields and map spreads
@@ -914,15 +914,15 @@ Misc:
 - `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC). Time requires a complete date and T separator; offsets require a colon. Invalid calendar components produce NAN; unsupported syntax throws RangeError. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; legacy/non-ISO syntax is refused explicitly (`10/30/2026` throws RangeError). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
 - `uuid(): string` — RFC 4122 v4.
 - `random(): float` — `[0, 1)`.
-- `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[zero] ` prefix.
+- `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[first] ` prefix.
 
 ## TypeScript type normalization
 
-Zero uses OXC 0.152.0 to parse TypeScript and keeps its annotations and source
+First uses OXC 0.152.0 to parse TypeScript and keeps its annotations and source
 locations in the typed IR. The native and browser/WASM compilers run the same
 normalizer before PHP emission. These are type operations, not a JavaScript
 engine or a replacement for TypeScript's complete checker. Check authoring
-code with strict TypeScript as well as `zero check`.
+code with strict TypeScript as well as `first check`.
 
 | Surface | Support | Boundary |
 |---|---|---|
@@ -965,7 +965,7 @@ PHP compilation and generated backend query types retain the authored
 null/undefined domain after model expansion. Public client types apply JSON
 serialization rules after that expansion.
 
-The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)
+The executable [strict fixture](../tests/fixtures/type-semantics/first.config.ts)
 imports its generic interfaces from a separate module. Its `typeReport` action
 with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`
 emits this PHP/JSON result:
@@ -1054,9 +1054,9 @@ phpass, SHA-crypt, and PHP Argon2. Over-budget profiles are never generated or
 verified; supported profiles remain even when their last user upgrades.
 
 Legacy importers can detect the registration capability with
-`is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])` and call
-`\Zero\Identity\Accounts::rememberPasswordHash(string $hash): void` after a raw
-user import. The `zero_identity_password_profiles` option remains an associative
+`is_callable([\First\Identity\Accounts::class, 'rememberPasswordHash'])` and call
+`\First\Identity\Accounts::rememberPasswordHash(string $hash): void` after a raw
+user import. The `first_identity_password_profiles` option remains an associative
 map from algorithm/cost profile keys to independent random-password hash strings.
 Registration merges into that map using the importer's existing database
 transaction. Importers must include the option in their rollback cache cleanup.

@@ -1,4 +1,4 @@
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 import { __unstableStripHTML as stripHTML } from '@wordpress/dom';
 import type { Comment } from '@wordpress/core-data';
 

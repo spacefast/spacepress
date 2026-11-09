@@ -24,8 +24,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "src/wordpress/catalog.json"
-# The generated half of types/zero/wordpress.d.ts, between these markers.
-TYPES = ROOT / "types/zero/wordpress.d.ts"
+# The generated half of types/first/wordpress.d.ts, between these markers.
+TYPES = ROOT / "types/first/wordpress.d.ts"
 BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 
@@ -268,7 +268,7 @@ def render():
 
 
 def render_types(catalog):
-    """The catalog as declarations: class views and the hook map, for types/zero/wordpress.d.ts."""
+    """The catalog as declarations: class views and the hook map, for types/first/wordpress.d.ts."""
     lines = [BEGIN]
     for cls, fields in catalog["classes"].items():
         lines.append(f"/** A read-only view of `{cls}` as a hook handler receives it. */")

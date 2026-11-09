@@ -4,12 +4,12 @@ import { tours } from "../../tour/stops.ts";
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
-<Page title="Tour" description="A walk through Zero's examples: each piece of a zero.config.ts next to what zero build turns it into.">
+<Page title="Tour" description="A walk through First's examples: each piece of a first.config.ts next to what first build turns it into.">
   <main class="prose">
     <h1>The tour</h1>
     <p class="lede">
       Each page walks through one of the examples committed in the repository, a piece of its
-      <code>zero.config.ts</code> next to what <code>zero build</code> turned it into. The outputs are produced
+      <code>first.config.ts</code> next to what <code>first build</code> turned it into. The outputs are produced
       when this site is built, by the same compiler that runs in your browser on the front page.
     </p>
     {tours.map((tour) => (

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { useNavigate, useParams, useSearch } from '@wordpress/route';
 import { Button, Notice, Spinner } from '@wordpress/components';
-import { Page, RouterLink, useDocumentChanges } from '@zero-admin/admin-toolkit';
-import { DataViews, type Field, type View } from '@zero-admin/dataviews';
+import { Page, RouterLink, useDocumentChanges } from '@first-admin/admin-toolkit';
+import { DataViews, type Field, type View } from '@first-admin/dataviews';
 import {
 	EditingObjects,
 	allowed,
@@ -52,7 +52,7 @@ export function Overview() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="zero-schema-cards">
+				<div className="first-schema-cards">
 					{Object.values(state.value.collections)
 						.filter((c) => bootstrap().readable.includes(c.name))
 						.map((c) => (
@@ -267,7 +267,7 @@ export function DocumentForm({
 	}, [savedResult, onSaved, sharedChanges]);
 	return (
 		<form
-			className="zero-schema-form"
+			className="first-schema-form"
 			onSubmit={(e) => {
 				e.preventDefault();
 				if (disabled || busy || !drafts.valid) return;
@@ -332,7 +332,7 @@ export function NewDocument() {
 			title={`New ${c.label}`}
 			breadcrumbs={
 				<RouterLink
-					className="zero-schema-back"
+					className="first-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -385,7 +385,7 @@ export function PlainDocument() {
 			title={`Edit ${c.label}`}
 			breadcrumbs={
 				<RouterLink
-					className="zero-schema-back"
+					className="first-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -413,7 +413,7 @@ export function Globals() {
 				Object.entries(s.globals).map(async ([name, g]) => {
 					try {
 						await apiFetch({
-							path: `/zero/v1/globals/${encodeURIComponent(name)}`,
+							path: `/first/v1/globals/${encodeURIComponent(name)}`,
 						});
 						return { name, label: g.label };
 					} catch (e: unknown) {
@@ -433,7 +433,7 @@ export function Globals() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="zero-schema-cards">
+				<div className="first-schema-cards">
 					{state.value.map((g) => (
 						<article key={g.name}>
 							<h2>
@@ -456,7 +456,7 @@ export function GlobalDocument() {
 			row: object(
 				unwrap(
 					await apiFetch({
-						path: `/zero/v1/globals/${encodeURIComponent(name)}`,
+						path: `/first/v1/globals/${encodeURIComponent(name)}`,
 					})
 				)
 			),
@@ -481,7 +481,7 @@ export function GlobalDocument() {
 					object(
 						unwrap(
 							await apiFetch({
-								path: `/zero/v1/globals/${encodeURIComponent(name)}`,
+								path: `/first/v1/globals/${encodeURIComponent(name)}`,
 								method: 'PATCH',
 								data: changes,
 							})

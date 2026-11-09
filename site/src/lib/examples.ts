@@ -1,5 +1,5 @@
 // The committed examples, compiled at site build time with the same browser build of the compiler
-// visitors run (public/zero.wasm). The tour shows pieces of a config beside pieces of what the compiler
+// visitors run (public/first.wasm). The tour shows pieces of a config beside pieces of what the compiler
 // made of it, and both come from here, so a page can never show an output the compiler would not emit.
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -23,13 +23,13 @@ export interface Example {
 
 /**
  * Every file of an example a config can import (build output and the blog's web page left out),
- * plus the committed abilities lock, the one compiler input under `zero/`.
+ * plus the committed abilities lock, the one compiler input under `first/`.
  */
 export function sources(dir: string): Request["files"] {
-  const skip = new Set(["zero", ".zero", "node_modules", "zero.gen.ts", "public", "client-tests", "content"]);
+  const skip = new Set(["first", ".first", "node_modules", "first.gen.ts", "public", "client-tests", "content"]);
   const files: Request["files"] = {};
-  const lock = path.join(dir, "zero/abilities.json");
-  if (existsSync(lock)) files["zero/abilities.json"] = readFileSync(lock, "utf8");
+  const lock = path.join(dir, "first/abilities.json");
+  if (existsSync(lock)) files["first/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
       if (skip.has(name)) continue;
@@ -46,7 +46,7 @@ export function sources(dir: string): Request["files"] {
 let compiler: Promise<Compiler> | undefined;
 
 export async function example(name: ExampleName): Promise<Example> {
-  compiler ??= Compiler.load(readFileSync(path.join(site, "public/zero.wasm")));
+  compiler ??= Compiler.load(readFileSync(path.join(site, "public/first.wasm")));
   const files = sources(path.join(repo, "examples", name));
   const { check, output } = (await compiler).compile({ name, files, previous: null });
   if (!output) {

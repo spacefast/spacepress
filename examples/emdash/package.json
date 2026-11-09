@@ -1,5 +1,5 @@
 {
-  "name": "zero-emdash-examples",
+  "name": "first-emdash-examples",
   "private": true,
   "type": "module",
   "scripts": { "test": "node test.mjs" },

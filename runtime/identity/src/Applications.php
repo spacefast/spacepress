@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 /** Registered OIDC applications: public clients with one exact callback and its origin. */
 final class Applications
@@ -28,8 +28,8 @@ final class Applications
             ? ($parts["scheme"] ?? "") . "://" . ($parts["host"] ?? "") . (isset($parts["port"]) ? ":" . $parts["port"] : "")
             : "";
         $local =
-            defined("ZERO_IDENTITY_DEV_HTTP") &&
-            ZERO_IDENTITY_DEV_HTTP &&
+            defined("FIRST_IDENTITY_DEV_HTTP") &&
+            FIRST_IDENTITY_DEV_HTTP &&
             in_array($parts["host"] ?? "", ["localhost", "127.0.0.1", "app.identity.localhost"], true);
         if (
             !is_array($parts) ||

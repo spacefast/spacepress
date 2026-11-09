@@ -1,4 +1,4 @@
-import type { View } from '@zero-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 import { TabEmptyState, type TabEmptyStateProps } from './tab-empty-state';
 import './style.scss';
 

@@ -3,8 +3,8 @@
 //
 // Lane B (field access + conditional fields, phase 2 §4): a post-backed collection whose columns
 // carry `.access` and `.showIf`, linked to a `table()` table with an admin-only column.
-import { boolean, collection, email, group, id, integer, text, table } from "zero";
-import { posts } from "../../../fixtures/blog/zero.config.ts";
+import { boolean, collection, email, group, id, integer, text, table } from "first";
+import { posts } from "../../../fixtures/blog/first.config.ts";
 
 export const fieldTeams = table({
   id: id(),

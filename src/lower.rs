@@ -1,4 +1,4 @@
-//! Lowers oxc's TypeScript AST into Zero's IR, enforcing the supported subset.
+//! Lowers oxc's TypeScript AST into First's IR, enforcing the supported subset.
 //! Every construct outside the subset is a build error that names the construct
 //! and says what to write instead.
 
@@ -46,7 +46,7 @@ impl Lowerer {
     }
 
     fn unsupported<T>(&self, s: oxc_span::Span, what: &str, help: &str) -> Result<T> {
-        let mut d = Diag::new(self.sp(s), format!("Zero code doesn't support {what}")).code(
+        let mut d = Diag::new(self.sp(s), format!("First code doesn't support {what}")).code(
             if what.contains("class") || self.class_context.get() {
                 crate::diag::Code::Classes
             } else {

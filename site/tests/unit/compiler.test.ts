@@ -7,22 +7,22 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 import { Compiler, type Compiled, type Request } from "../../src/lib/compiler.ts";
-import { repo, zeroBinary, wasmPath } from "./helpers.ts";
+import { repo, firstBinary, wasmPath } from "./helpers.ts";
 
 /**
  * Every file under a project except build output (symlinks not followed), as the browser would hold
- * it. Of `zero/`, only the abilities and plugin locks are compiler inputs; the rest is build
+ * it. Of `first/`, only the abilities and plugin locks are compiler inputs; the rest is build
  * output. A fixture's `node_modules` holds the plugin packages under test, so it travels too.
  */
 function sources(dir: string): Request["files"] {
   const files: Request["files"] = {};
-  for (const input of ["zero/abilities.json", "zero/plugins.lock.json"]) {
+  for (const input of ["first/abilities.json", "first/plugins.lock.json"]) {
     const lock = path.join(dir, input);
     if (statSync(lock, { throwIfNoEntry: false })?.isFile()) files[input] = readFileSync(lock, "utf8");
   }
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
-      if (name === "zero" || name === ".zero" || name === "zero.gen.ts") continue;
+      if (name === "first" || name === ".first" || name === "first.gen.ts") continue;
       const rel = sub ? `${sub}/${name}` : name;
       const full = path.join(dir, rel);
       const stat = lstatSync(full);
@@ -37,9 +37,9 @@ function sources(dir: string): Request["files"] {
 /** Whether this run refuses plugin grants beyond the lock, as the command line does under CI. */
 const frozen = Boolean(process.env.CI) && process.env.CI !== "false";
 
-/** `zero check --json`'s one line, as printed. */
+/** `first check --json`'s one line, as printed. */
 function nativeCheck(dir: string): string {
-  const run = spawnSync(zeroBinary(), ["check", "--json", dir], { encoding: "utf8" });
+  const run = spawnSync(firstBinary(), ["check", "--json", dir], { encoding: "utf8" });
   assert.equal(run.stderr, "", run.stderr);
   return run.stdout.trimEnd();
 }
@@ -64,20 +64,20 @@ test("a config that builds on the command line builds in the browser, to the sam
   assert.equal(envelope, nativeCheck(dir));
   assert.ok(output);
   // A first build: everything is one init migration, from the same snapshot the example commits.
-  assert.deepEqual(output.snapshot, JSON.parse(readFileSync(path.join(dir, "zero/_generated/migrations/snapshot.json"), "utf8")));
+  assert.deepEqual(output.snapshot, JSON.parse(readFileSync(path.join(dir, "first/_generated/migrations/snapshot.json"), "utf8")));
   assert.deepEqual(output.migrations.map(([name]) => name), ["0001_init.sql"]);
-  assert.equal(output.client["types.ts"], readFileSync(path.join(dir, "zero/client/types.ts"), "utf8"));
-  assert.equal(output.client["schema.ts"], readFileSync(path.join(dir, "zero/client/schema.ts"), "utf8"));
-  assert.equal(output.genTs, readFileSync(path.join(dir, "zero.gen.ts"), "utf8"));
+  assert.equal(output.client["types.ts"], readFileSync(path.join(dir, "first/client/types.ts"), "utf8"));
+  assert.equal(output.client["schema.ts"], readFileSync(path.join(dir, "first/client/schema.ts"), "utf8"));
+  assert.equal(output.genTs, readFileSync(path.join(dir, "first.gen.ts"), "utf8"));
   // Class lowering and inference run through this same core in both environments.
   const classDir = path.join(repo, "tests/differential");
-  const classFiles = { "zero.config.ts": readFileSync(path.join(classDir, "classes.ts"), "utf8") };
-  const className = `zero-classes-${process.pid}`;
+  const classFiles = { "first.config.ts": readFileSync(path.join(classDir, "classes.ts"), "utf8") };
+  const className = `first-classes-${process.pid}`;
   const classProject = path.join("/tmp", className);
   mkdirSync(classProject, { recursive: true });
   try {
     // Native check takes a project, while the browser holds the identical source in memory.
-    writeFileSync(path.join(classProject, "zero.config.ts"), classFiles["zero.config.ts"]);
+    writeFileSync(path.join(classProject, "first.config.ts"), classFiles["first.config.ts"]);
     const classes = browserCheck({ name: `tmp/${className}`, files: classFiles, previous: null });
     assert.equal(classes.envelope, nativeCheck(classProject));
     assert.equal(classes.check.ok, true);
@@ -89,12 +89,12 @@ test("a config that builds on the command line builds in the browser, to the sam
 
 test("the previous snapshot and migration files drive the next migration like they do on disk", () => {
   const dir = path.join(repo, "examples/pantry");
-  const previous = JSON.parse(readFileSync(path.join(dir, "zero/_generated/migrations/snapshot.json"), "utf8"));
-  const migrationFiles = readdirSync(path.join(dir, "zero/_generated/migrations"));
+  const previous = JSON.parse(readFileSync(path.join(dir, "first/_generated/migrations/snapshot.json"), "utf8"));
+  const migrationFiles = readdirSync(path.join(dir, "first/_generated/migrations"));
   const unchanged = compiler.compile({ name: "pantry", files: sources(dir), previous, migrationFiles });
   assert.deepEqual(unchanged.output?.migrations, []);
   const files = sources(dir);
-  files["zero.config.ts"] = files["zero.config.ts"]!.replace("expiresOn: date(),", "expiresOn: date(),\n  note: text(),");
+  files["first.config.ts"] = files["first.config.ts"]!.replace("expiresOn: date(),", "expiresOn: date(),\n  note: text(),");
   const changed = compiler.compile({ name: "pantry", files, previous, migrationFiles });
   assert.deepEqual(
     changed.output?.migrations.map(([name, sql]) => [name, /ALTER TABLE/.test(sql)]),
@@ -104,7 +104,7 @@ test("the previous snapshot and migration files drive the next migration like th
 
 test("without a snapshot the migration files still number the next one, like on disk", () => {
   const dir = path.join(repo, "examples/pantry");
-  const migrationFiles = readdirSync(path.join(dir, "zero/_generated/migrations"));
+  const migrationFiles = readdirSync(path.join(dir, "first/_generated/migrations"));
   const { output } = compiler.compile({ name: "pantry", files: sources(dir), previous: null, migrationFiles });
   assert.deepEqual(output?.migrations.map(([name]) => name), ["0003_update.sql"]);
 });
@@ -127,7 +127,7 @@ function hasSymlink(dir: string): boolean {
 test("every refused fixture is refused with the command line's envelope", async (t) => {
   const fixtures = path.join(repo, "tests/fixtures");
   const refused = readdirSync(fixtures).filter(
-    (name) => name.startsWith("reject-") && statSync(path.join(fixtures, name, "zero.config.ts"), { throwIfNoEntry: false }),
+    (name) => name.startsWith("reject-") && statSync(path.join(fixtures, name, "first.config.ts"), { throwIfNoEntry: false }),
   );
   assert.ok(refused.length > 20, `only ${refused.length} fixtures`);
   for (const name of refused) {
@@ -147,9 +147,9 @@ test("every refused fixture is refused with the command line's envelope", async 
   }
 });
 
-test("a project without zero.config.ts is the command line's diagnostic", () => {
+test("a project without first.config.ts is the command line's diagnostic", () => {
   // The browser's project lives at /<name>, so the native check runs on a directory by that path.
-  const name = `zero-site-test-${process.pid}`;
+  const name = `first-site-test-${process.pid}`;
   const dir = path.join("/tmp", name);
   mkdirSync(dir, { recursive: true });
   try {
@@ -166,7 +166,7 @@ test("a project without zero.config.ts is the command line's diagnostic", () => 
 // differential oracle owns PHP execution of the language constructs.
 test("finite type algebra preserves native outputs and strict client boundaries in WASM", () => {
   const fixture = path.join(repo, "tests/fixtures/type-semantics");
-  const name = `zero-type-semantics-${process.pid}`;
+  const name = `first-type-semantics-${process.pid}`;
   const dir = path.join("/tmp", name);
   mkdirSync(dir, { recursive: true });
   try {
@@ -178,18 +178,18 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     assert.equal(envelope, nativeCheck(dir));
     assert.equal(check.ok, true);
     assert.ok(output);
-    const built = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    const built = spawnSync(firstBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(built.status, 0, built.stderr);
-    const plugins = path.join(dir, ".zero/wp-content/plugins");
-    const app = readdirSync(plugins).find((name) => name.startsWith("zero-app-"));
+    const plugins = path.join(dir, ".first/wp-content/plugins");
+    const app = readdirSync(plugins).find((name) => name.startsWith("first-app-"));
     assert.ok(app);
-    assert.equal(output.functionsPhp, readFileSync(path.join(plugins, app, "zero/app/functions.php"), "utf8"));
+    assert.equal(output.functionsPhp, readFileSync(path.join(plugins, app, "first/app/functions.php"), "utf8"));
     for (const [name, text] of Object.entries(output.client)) {
-      assert.equal(text, readFileSync(path.join(dir, "zero/client", name), "utf8"));
+      assert.equal(text, readFileSync(path.join(dir, "first/client", name), "utf8"));
     }
     const typed = spawnSync(process.execPath, [tsc, "-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(typed.status, 0, typed.stdout + typed.stderr);
-    const wire = spawnSync("php", ["-r", String.raw`require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$out=[];foreach(['wireUndefinedTuple','wireUndefinedObject','wireDestructuredObject'] as $name){$fn='\ZeroApp\\'.$schema['actions'][$name]['handler'];$out[]=\Zero\Seam::toWire($fn());}echo json_encode($out);`, path.join(plugins, "zero-runtime/zero/bootstrap.php"), path.join(plugins, app, "zero/app")], { encoding: "utf8" });
+    const wire = spawnSync("php", ["-r", String.raw`require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$out=[];foreach(['wireUndefinedTuple','wireUndefinedObject','wireDestructuredObject'] as $name){$fn='\FirstApp\\'.$schema['actions'][$name]['handler'];$out[]=\First\Seam::toWire($fn());}echo json_encode($out);`, path.join(plugins, "first-runtime/first/bootstrap.php"), path.join(plugins, app, "first/app")], { encoding: "utf8" });
     assert.equal(wire.status, 0, wire.stderr);
     assert.equal(wire.stderr, "");
     assert.deepEqual(JSON.parse(wire.stdout), JSON.parse(JSON.stringify([[undefined], { x: undefined }, { x: undefined }])));
@@ -197,7 +197,7 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
     // Backend queries and wire types retain the authored null/undefined domains.
-    const storedSource = `import { table, group, json, text, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
+    const storedSource = `import { table, group, json, text, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "first";
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
 class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
@@ -222,13 +222,13 @@ export default defineConfig({ tables: { documents, source }, users: { members },
   const row = await db.query.documents.findFirst();
   return !row ? null : memberName + sourceTitle + new InsertedView(inserted).read() + new InsertedView(translated).read() + new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read() + new TranslationView(row.translation).read();
 } }) } });`;
-    writeFileSync(path.join(dir, "zero.config.ts"), storedSource);
-    const stored = browserCheck({ name, files: { "zero.config.ts": storedSource } });
+    writeFileSync(path.join(dir, "first.config.ts"), storedSource);
+    const stored = browserCheck({ name, files: { "first.config.ts": storedSource } });
     assert.equal(stored.envelope, nativeCheck(dir));
     assert.equal(stored.check.ok, true, stored.envelope);
-    const storedBuild = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    const storedBuild = spawnSync(firstBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(storedBuild.status, 0, storedBuild.stderr);
-    writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
+    writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./first/client/types";
 const wire: Document["payload"] = { title: "wire", state: undefined, items: [{ label: undefined }] };
 // @ts-expect-error optional string values do not admit null
 const invalidWire: Document["payload"] = { title: "wire", items: [{ label: null }] };
@@ -237,33 +237,33 @@ const inserted: Document["inserted"] = { body: wire, label: "second" };
 const translated: Document["inserted"] = { body: wire, translationOf: 1 };
 void selected; void inserted; void invalidWire;`);
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
-      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] } },
-      include: ["zero.config.ts", "zero.gen.ts", "stored-client.ts"],
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { first: [path.join(repo, "types/first/index.d.ts")] } },
+      include: ["first.config.ts", "first.gen.ts", "stored-client.ts"],
     }));
     const storedTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(storedTypes.status, 0, storedTypes.stdout + storedTypes.stderr);
 
-    const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+    const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "first";
 type Payload = InferSelectModel<typeof source>;
 const source = table({ body: json().$type<Payload>() });
 export default defineConfig({ tables: { source } });`;
-    writeFileSync(path.join(dir, "zero.config.ts"), recursiveModel);
-    const recursive = browserCheck({ name, files: { "zero.config.ts": recursiveModel } });
+    writeFileSync(path.join(dir, "first.config.ts"), recursiveModel);
+    const recursive = browserCheck({ name, files: { "first.config.ts": recursiveModel } });
     assert.equal(recursive.envelope, nativeCheck(dir));
     assert.equal(recursive.check.ok, false);
     assert.match(recursive.check.diagnostics[0]?.message ?? "", /recursive JSON model annotations/);
-    assert.equal(recursive.check.diagnostics[0]?.location?.file, "zero.config.ts");
+    assert.equal(recursive.check.diagnostics[0]?.location?.file, "first.config.ts");
 
     const modelTables = Array.from({ length: 15 }, (_, i) => `const model${i} = table({ left: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull(), right: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull() });`).join("\n");
-    const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+    const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "first";
 ${modelTables}
 export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `model${i}`).reverse().join(", ")} } });`;
-    writeFileSync(path.join(dir, "zero.config.ts"), modelExpansion);
-    const expandedModel = browserCheck({ name, files: { "zero.config.ts": modelExpansion } });
+    writeFileSync(path.join(dir, "first.config.ts"), modelExpansion);
+    const expandedModel = browserCheck({ name, files: { "first.config.ts": modelExpansion } });
     assert.equal(expandedModel.envelope, nativeCheck(dir));
     assert.equal(expandedModel.check.ok, false);
     assert.match(expandedModel.check.diagnostics[0]?.message ?? "", /type expansion.*16384-step limit/);
-    assert.equal(expandedModel.check.diagnostics[0]?.location?.file, "zero.config.ts");
+    assert.equal(expandedModel.check.diagnostics[0]?.location?.file, "first.config.ts");
     const modelTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(modelTypes.status, 0, modelTypes.stdout + modelTypes.stderr);
 
@@ -272,7 +272,7 @@ export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `
     const aliases = Array.from({ length: 30 }, (_, i) => `type A${i} = ${i === 29 ? "string" : `A${i + 1}`};`).join("\n");
     const nestedType = "Box<".repeat(75) + "C" + ">".repeat(75);
     const nestedValue = "{ value: ".repeat(75) + "new C()" + " }".repeat(75);
-    const budgetSource = (prime: boolean) => `import { action, defineConfig } from "zero";
+    const budgetSource = (prime: boolean) => `import { action, defineConfig } from "first";
 type Box<T> = { value: T };
 ${aliases}
 class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
@@ -281,13 +281,13 @@ export default defineConfig({ tables: {}, actions: { run: action({ input: {}, ha
   const x: ${nestedType} = ${nestedValue}; return x;
 } }) } });`;
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
-      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] }, skipLibCheck: true },
-      include: ["zero.config.ts"],
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { first: [path.join(repo, "types/first/index.d.ts")] }, skipLibCheck: true },
+      include: ["first.config.ts"],
     }));
     for (const prime of [false, true]) {
       const source = budgetSource(prime);
-      writeFileSync(path.join(dir, "zero.config.ts"), source);
-      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      writeFileSync(path.join(dir, "first.config.ts"), source);
+      const result = browserCheck({ name, files: { "first.config.ts": source } });
       assert.equal(result.envelope, nativeCheck(dir));
       assert.equal(result.check.ok, true, result.envelope);
       assert.ok(result.output);
@@ -318,13 +318,13 @@ export default defineConfig({ tables: {}, actions: { run: action({ input: {}, ha
         error: /type expansion.*16384-step limit/,
       },
     ]) {
-      const source = `import { action, defineConfig } from "zero";
+      const source = `import { action, defineConfig } from "first";
 type Expanded = ${probe.parts.join(" & ")};
 export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
   const x: Expanded = { ${probe.value} }; return x;
 } }) } });`;
-      writeFileSync(path.join(dir, "zero.config.ts"), source);
-      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      writeFileSync(path.join(dir, "first.config.ts"), source);
+      const result = browserCheck({ name, files: { "first.config.ts": source } });
       assert.equal(result.envelope, nativeCheck(dir));
       assert.equal(result.check.ok, probe.error === null, result.envelope);
       if (probe.error === null) {
@@ -332,7 +332,7 @@ export default defineConfig({ tables: {}, actions: { run: action({ input: {}, ha
       } else {
         assert.equal(result.output, null);
         assert.match(result.check.diagnostics[0]?.message ?? "", probe.error);
-        assert.equal(result.check.diagnostics[0]?.location?.file, "zero.config.ts");
+        assert.equal(result.check.diagnostics[0]?.location?.file, "first.config.ts");
       }
       const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
       assert.equal(strict.status, 0, strict.stdout + strict.stderr);
@@ -380,7 +380,7 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
   }
   vectors.forEach(addVector);
   files["helper.js"] = javascript.join("\n");
-  files["zero.config.ts"] = `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});`;
+  files["first.config.ts"] = `import { action, defineConfig } from 'first';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});`;
   const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
   mkdirSync(dir, { recursive: true });
   try {
@@ -389,9 +389,9 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
     assert.equal(envelope, nativeCheck(dir));
     assert.equal(check.ok, true);
     assert.ok(output);
-    const built = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    const built = spawnSync(firstBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(built.status, 0, built.stderr);
-    const app = path.join(dir, ".zero/wp-content/plugins/zero-app-builtinparity/zero/app");
+    const app = path.join(dir, ".first/wp-content/plugins/first-app-builtinparity/first/app");
     assert.equal(output.functionsPhp, readFileSync(path.join(app, "functions.php"), "utf8"));
     assert.equal(output.schemaPhp, readFileSync(path.join(app, "schema.php"), "utf8"));
   } finally {

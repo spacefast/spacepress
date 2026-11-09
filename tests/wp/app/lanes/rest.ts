@@ -1,9 +1,9 @@
 // Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
 // export into the app and fails the build if a key collides with the shared app or another lane.
 //
-// Lane R (core `/wp/v2` under Zero's rules): an admin-only collection, one whose read rule is a
+// Lane R (core `/wp/v2` under First's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { blocks, collection, db, group, HttpError, id, integer, json, repeater, richText, slug, text, table } from "zero";
+import { blocks, collection, db, group, HttpError, id, integer, json, repeater, richText, slug, text, table } from "first";
 
 export const vault = collection({ id: id(), title: text().notNull(), code: text() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });

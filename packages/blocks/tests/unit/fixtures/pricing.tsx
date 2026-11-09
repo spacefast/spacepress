@@ -1,4 +1,4 @@
-import { Block } from "@spacefast/zero-blocks";
+import { Block } from "@spacefast/first-blocks";
 import { plans } from "./plans.ts";
 
 /** Imports, a loop and a component, all run at build time. */

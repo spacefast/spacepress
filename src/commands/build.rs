@@ -7,11 +7,11 @@ use std::process::ExitCode;
 
 /// Runs the whole pipeline in memory.
 fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
-    let entry = project.join("zero.config.ts");
+    let entry = project.join("first.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
             Span::NONE,
-            format!("no zero.config.ts in {}", project.display()),
+            format!("no first.config.ts in {}", project.display()),
         ));
     }
     let program = loader::load(&entry)?;
@@ -103,7 +103,7 @@ fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     file.write_all(content.as_ref())
 }
 
-/// Writes migrations, the snapshot, zero.gen.ts and the typed client into the project (committed).
+/// Writes migrations, the snapshot, first.gen.ts and the typed client into the project (committed).
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
@@ -115,14 +115,14 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
             serde_json::to_string_pretty(&built.snapshot)? + "\n",
         )?;
     }
-    write(&project.join("zero.gen.ts"), &built.gen_ts)?;
+    write(&project.join("first.gen.ts"), &built.gen_ts)?;
     if let Some(lock) = &built.plugin_lock {
         write(
             &project.join(crate::plugins::LOCK_PATH),
             serde_json::to_string_pretty(lock)? + "\n",
         )?;
     }
-    let client_dir = project.join("zero").join("client");
+    let client_dir = project.join("first").join("client");
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
     }
@@ -179,7 +179,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
         root.file_name()
             .ok_or_else(|| std::io::Error::other("output needs a directory name"))?,
     );
-    if project.starts_with(&root) || project.join("zero").starts_with(&root) {
+    if project.starts_with(&root) || project.join("first").starts_with(&root) {
         return Err(std::io::Error::other(
             "wp-content output cannot contain the project or its dependency lock",
         ));
@@ -199,12 +199,12 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
             .map_err(|e| std::io::Error::other(format!("cannot acquire build lock {}: {e}", path.display())))?;
         Ok(Guard(path, file))
     }
-    let lock = project.join("zero/wp-plugins.lock.json");
+    let lock = project.join("first/wp-plugins.lock.json");
     std::fs::create_dir_all(lock.parent().unwrap())?;
     // Serialize the project lockfile and publication to a shared output root.
-    let _project_guard = guard(project.join("zero/.wp-plugins.build.lock"))?;
+    let _project_guard = guard(project.join("first/.wp-plugins.build.lock"))?;
     let _output_guard = guard(parent.join(format!(
-        ".{}.zero-build.lock",
+        ".{}.first-build.lock",
         root.file_name().unwrap().to_string_lossy()
     )))?;
     let prepared = wp_plugins::Prepared::acquire(&plan, &lock, &platform::cache(project))?;
@@ -221,18 +221,18 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     prepared.install_into(&stage.join("plugins"))?;
     let plugins = stage.join("plugins");
     let mut generated = vec![
-        "zero-runtime".to_string(),
-        "zero-identity".to_string(),
-        format!("zero-app-{}", built.schema.name),
+        "first-runtime".to_string(),
+        "first-identity".to_string(),
+        format!("first-app-{}", built.schema.name),
     ];
     if built.schema.admin {
-        generated.push("zero-admin".to_string());
+        generated.push("first-admin".to_string());
     }
     // Admin is also owned here when its opt-in is removed.
     for slug in generated
         .iter()
         .map(String::as_str)
-        .chain((!built.schema.admin).then_some("zero-admin"))
+        .chain((!built.schema.admin).then_some("first-admin"))
     {
         let directory = plugins.join(slug);
         if directory.exists() {
@@ -249,7 +249,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
         let directory = plugins.join(&slug);
         php_lint_tree(&directory)?;
         zip_plugin(&directory)?;
-        let version = if slug.starts_with("zero-app-") {
+        let version = if slug.starts_with("first-app-") {
             format!(
                 "{}+{}",
                 env!("CARGO_PKG_VERSION"),
@@ -272,9 +272,9 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
         .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
         .collect();
     write(
-        &stage.join("zero-manifest.json"),
+        &stage.join("first-manifest.json"),
         serde_json::to_string_pretty(
-            &serde_json::json!({"zero":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales}),
+            &serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales}),
         )? + "\n",
     )?;
     super::deploy::write_metadata(&stage, built)?;
@@ -300,7 +300,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
         }
         return Err(e.error);
     }
-    let legacy = project.join(".zero/wp");
+    let legacy = project.join(".first/wp");
     if !root.starts_with(&legacy) && legacy.is_dir() {
         std::fs::remove_dir_all(legacy)?;
     }
@@ -326,7 +326,7 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
 }
 
 fn check_json(project: &Path, frozen: bool) -> ExitCode {
-    let (diagnostics, plugins) = match loader::load_all(&project.join("zero.config.ts")) {
+    let (diagnostics, plugins) = match loader::load_all(&project.join("first.config.ts")) {
         Err(diagnostics) => (diagnostics, None),
         Ok(program) => match build_program(project, &program, frozen) {
             Ok(built) => (Vec::new(), Some(built.plugin_report)),
@@ -407,14 +407,14 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("error: couldn't write migrations or the client: {e}");
         return ExitCode::from(1);
     }
-    // A project that syncs commits its sync bases, and nothing else under .zero (design §5.4).
+    // A project that syncs commits its sync bases, and nothing else under .first (design §5.4).
     if built.schema.collections.values().any(|c| c.sync.is_some())
         && let Err(e) = crate::sync::git::ignore_build_output(&project)
     {
         eprintln!("error: {e}");
         return ExitCode::from(1);
     }
-    let root = args.out.clone().unwrap_or_else(|| project.join(".zero/wp-content"));
+    let root = args.out.clone().unwrap_or_else(|| project.join(".first/wp-content"));
     let out = match emit_wp_content(&project, &root, &built) {
         Ok(directory) => directory,
         Err(error) => {
@@ -479,7 +479,7 @@ mod tests {
         assert!(
             error
                 .message
-                .starts_with("can't read zero/_generated/migrations/snapshot.json: "),
+                .starts_with("can't read first/_generated/migrations/snapshot.json: "),
             "{}",
             error.message
         );
@@ -510,10 +510,10 @@ mod tests {
     #[test]
     fn a_ledger_still_at_the_old_path_is_refused_not_built_as_a_first_build() {
         let project = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(project.path().join("zero/migrations")).unwrap();
-        std::fs::write(project.path().join("zero/migrations/snapshot.json"), "{}").unwrap();
+        std::fs::create_dir_all(project.path().join("first/migrations")).unwrap();
+        std::fs::write(project.path().join("first/migrations/snapshot.json"), "{}").unwrap();
         let error = read_previous(project.path()).unwrap_err();
-        assert_eq!(error.message, "zero/migrations/ moved to zero/_generated/migrations/");
+        assert_eq!(error.message, "first/migrations/ moved to first/_generated/migrations/");
     }
 
     #[test]

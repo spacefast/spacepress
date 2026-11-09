@@ -1,7 +1,7 @@
 import {
   boolean, collection, date, defineRelations, integer, media, real, richText,
   table, text, timestamp, type AccessCtx,
-} from "zero";
+} from "first";
 
 export function owned(ctx: AccessCtx) {
   return ctx.user && ctx.user.role !== "guest" ? { ownerId: ctx.user.id } : false;

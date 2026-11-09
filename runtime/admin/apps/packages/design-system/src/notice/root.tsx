@@ -69,7 +69,7 @@ function useSpokenMessage(
  * and provides options and actions related to the message tone.
  *
  * ```jsx
- * import { Notice } from '@zero-admin/design-system';
+ * import { Notice } from '@first-admin/design-system';
  *
  * function MyComponent() {
  * 	return (

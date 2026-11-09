@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
-use Zero\Identity\Providers\OidcClient;
+use First\Identity\Providers\OidcClient;
 
 final class Providers
 {
@@ -14,21 +14,21 @@ final class Providers
         private Sessions $sessions,
     ) {}
     /**
-     * Google is the one built-in provider; sites add others through `zero_identity_providers`:
+     * Google is the one built-in provider; sites add others through `first_identity_providers`:
      * `issuer`, `client_id`, `secret` (empty for a public client), optional `discovery` entries
      * that override the issuer's discovery document, and `alg` (`RS256` default, or `EdDSA`).
      */
     public static function config(): array
     {
         $providers = [];
-        if (defined("ZERO_IDENTITY_GOOGLE_CLIENT_ID")) {
+        if (defined("FIRST_IDENTITY_GOOGLE_CLIENT_ID")) {
             $providers["google"] = [
                 "issuer" => "https://accounts.google.com",
-                "client_id" => ZERO_IDENTITY_GOOGLE_CLIENT_ID,
-                "secret" => defined("ZERO_IDENTITY_GOOGLE_CLIENT_SECRET") ? ZERO_IDENTITY_GOOGLE_CLIENT_SECRET : "",
+                "client_id" => FIRST_IDENTITY_GOOGLE_CLIENT_ID,
+                "secret" => defined("FIRST_IDENTITY_GOOGLE_CLIENT_SECRET") ? FIRST_IDENTITY_GOOGLE_CLIENT_SECRET : "",
             ];
         }
-        return apply_filters("zero_identity_providers", $providers);
+        return apply_filters("first_identity_providers", $providers);
     }
     public function client(string $name): OidcClient
     {

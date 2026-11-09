@@ -5,12 +5,12 @@ declare(strict_types=1);
 /*
  * Private file buckets on WordPress (phase 2 §7.2), in-process through App::handle (tests/php/wp.php):
  * accept/maxBytes, the owner rule, signed download URLs, `file` columns, rollback. The site's php -S
- * answers the private-files probe (the router denies /wp-content/uploads/zero-private/, as the
+ * answers the private-files probe (the router denies /wp-content/uploads/first-private/, as the
  * .htaccess does under Apache), so uploads are open.
  */
 
-use Zero\App;
-use Zero\Wp\WpFiles;
+use First\App;
+use First\Wp\WpFiles;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -42,18 +42,18 @@ $schema = [
 // A before-hook that swaps in a file id: the column check must see the final value.
 $functions = <<<'PHP'
     <?php
-    namespace ZeroApp;
-    function talks__beforeCreate(\Zero\JsObject $data): \Zero\JsObject
+    namespace FirstApp;
+    function talks__beforeCreate(\First\JsObject $data): \First\JsObject
     {
-        return ($data->p['title'] ?? '') === 'hooked' ? new \Zero\JsObject(['deck' => 999999] + $data->p) : $data;
+        return ($data->p['title'] ?? '') === 'hooked' ? new \First\JsObject(['deck' => 999999] + $data->p) : $data;
     }
     /** A hook that pins the deck: deleting the file must not leave it dangling. */
-    function talks__beforeUpdate(\Zero\JsObject $patch, \Zero\JsObject $existing): \Zero\JsObject
+    function talks__beforeUpdate(\First\JsObject $patch, \First\JsObject $existing): \First\JsObject
     {
         // 'pinned' keeps deck on every update; 'restore' puts deck back while backup is being nulled.
         return match (true) {
-            $existing->p['title'] === 'pinned' => new \Zero\JsObject(['deck' => $existing->p['deck']] + $patch->p),
-            $existing->p['title'] === 'restore' && array_key_exists('backup', $patch->p) => new \Zero\JsObject(['deck' => $existing->p['backup']] + $patch->p),
+            $existing->p['title'] === 'pinned' => new \First\JsObject(['deck' => $existing->p['deck']] + $patch->p),
+            $existing->p['title'] === 'restore' && array_key_exists('backup', $patch->p) => new \First\JsObject(['deck' => $existing->p['backup']] + $patch->p),
             default => $patch,
         };
     }
@@ -88,9 +88,9 @@ $upload = static function (string $bucket, string $bytes, string $name, ?string 
 $download = static function (string $url) use ($wp): array {
     $parts = parse_url($url);
     parse_str($parts['query'] ?? '', $query);
-    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/zero/v1#', '', $parts['path']), '', null, [], $query);
+    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/first/v1#', '', $parts['path']), '', null, [], $query);
     ob_start();
-    \Zero\Response::emit($payload);
+    \First\Response::emit($payload);
 
     return [$status, $headers, (string) ob_get_clean()];
 };
@@ -105,8 +105,8 @@ isProblem('unknown bucket', $upload('nope', 'x', 'a.txt', 'alice'), 404, 'not_fo
 [$s, $deck] = $upload('decks', "Slide one\n", "Q3 \"plan\"/é.txt", 'alice');
 eq('201 row: sniffed mime, owner = uploader, no storage path', [$s, $deck['bucket'], $deck['filename'], $deck['mime'], $deck['size'], $deck['ownerId'], array_key_exists('path', $deck)],
     [201, 'decks', 'é.txt', 'text/plain', 10, $wp->userId('alice'), false]);
-check('bytes live under uploads/zero-private/<app>/<bucket>, behind the deny rules, never in the media library',
-    count(glob("$private/*")) === 1 && is_file(WpFiles::root() . '/.htaccess') && array_diff(scandir($wp->uploads()), ['.', '..', 'zero-private']) === [], glob("$private/*"));
+check('bytes live under uploads/first-private/<app>/<bucket>, behind the deny rules, never in the media library',
+    count(glob("$private/*")) === 1 && is_file(WpFiles::root() . '/.htaccess') && array_diff(scandir($wp->uploads()), ['.', '..', 'first-private']) === [], glob("$private/*"));
 $deckFile = glob("$private/*")[0];
 
 // ================================================================ signed downloads
@@ -120,11 +120,11 @@ $path = "/files/decks/{$deck['id']}/download";
 isProblem('forged signature', call('GET', $path, query: ['exp' => $q['exp'], 'sig' => str_repeat('0', 64)]), 403, 'forbidden');
 isProblem('signature of another file', call('GET', "/files/decks/999/download", query: $q), 403, 'forbidden');
 isProblem('an extended exp invalidates the signature', call('GET', $path, query: ['exp' => (string) ((int) $q['exp'] + 1), 'sig' => $q['sig']]), 403, 'forbidden');
-putenv('ZERO_NOW=' . (((int) $q['exp'] + 1) * 1000));
+putenv('FIRST_NOW=' . (((int) $q['exp'] + 1) * 1000));
 isProblem('expired url', call('GET', $path, query: $q), 403, 'forbidden');
-putenv('ZERO_NOW=' . (((int) $q['exp'] - 600) * 1000));
+putenv('FIRST_NOW=' . (((int) $q['exp'] - 600) * 1000));
 isProblem('exp more than 300 s ahead is refused even when signed', call('GET', $path, query: $q), 403, 'forbidden');
-putenv('ZERO_NOW');
+putenv('FIRST_NOW');
 
 // ================================================================ owner rule
 
@@ -154,16 +154,16 @@ $before = glob("$private/*");
 $tmp = tempnam(sys_get_temp_dir(), 'zf');
 file_put_contents($tmp, 'rolled back');
 try {
-    \Zero\db()->transaction(static function () use ($tmp): void {
-        \Zero\Media\Files::upload('decks', $tmp, 'r.txt', null);
+    \First\db()->transaction(static function () use ($tmp): void {
+        \First\Media\Files::upload('decks', $tmp, 'r.txt', null);
         throw new \RuntimeException('roll back');
     });
 } catch (\RuntimeException) {
 }
 eq('a rolled-back upload leaves no bytes behind', glob("$private/*"), $before);
 try {
-    \Zero\db()->transaction(static function () use ($deck): void {
-        \Zero\Media\Files::delete('decks', $deck['id'], null);
+    \First\db()->transaction(static function () use ($deck): void {
+        \First\Media\Files::delete('decks', $deck['id'], null);
         throw new \RuntimeException('roll back');
     });
 } catch (\RuntimeException) {

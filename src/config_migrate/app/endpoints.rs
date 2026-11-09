@@ -30,7 +30,7 @@ pub(super) const RESERVED: &[&str] = &[
     "trackback",
     "robots.txt",
     "favicon.ico",
-    "zero-admin",
+    "first-admin",
     "auth",
     ".well-known",
     "__spacefast",

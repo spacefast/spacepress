@@ -1,13 +1,13 @@
 // Syntax highlighting for every code surface: Pierre's diffs highlighter (Shiki with its JavaScript
 // regex engine) and its light theme. The tour and the docs highlight at build time; the playground
-// highlights in the browser as it edits and compiles. Zero sources are TypeScript.
+// highlights in the browser as it edits and compiles. First sources are TypeScript.
 import type { Element, ElementContent, Root } from "hast";
 import { getFiletypeFromFileName, getSharedHighlighter, hastToHtml, renderTokenLines } from "@pierre/diffs";
 import { visit } from "unist-util-visit";
 
 const theme = "pierre-light";
 
-/** The Shiki language for a file name: `zero.config.ts` is TypeScript, `schema.php` is PHP. */
+/** The Shiki language for a file name: `first.config.ts` is TypeScript, `schema.php` is PHP. */
 export function languageOf(file: string): string {
   return getFiletypeFromFileName(file);
 }

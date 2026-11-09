@@ -2,28 +2,28 @@
 
 declare(strict_types=1);
 
-namespace Zero\Pages;
+namespace First\Pages;
 
 /**
  * Route table, hidden code-owned WordPress Pages, URL matching and permalinks.
  *
- * Static routes are WordPress Pages that Zero creates and owns: their ID is
+ * Static routes are WordPress Pages that First creates and owns: their ID is
  * the identity menus, SEO plugins and canonical URLs use. Each Page carries
- * `_zero_pages_app` and `_zero_pages_route` (the route ID), and the mapping
+ * `_first_pages_app` and `_first_pages_route` (the route ID), and the mapping
  * (app, route ID) → post ID lives in one autoloaded option so lookups never
  * scan post meta. Publication, metadata and this map commit atomically.
  * Item routes map to the collection's existing posts.
  *
  * Matching is explicit and static-first: an exact static pattern wins over an
  * item route's `[param]`, and the collection cannot store a slug a static
- * sibling uses (enforced at Zero's write seam and at core's
- * `wp_insert_post_data`, so REST, wp-admin and Zero CRUD all refuse it).
+ * sibling uses (enforced at First's write seam and at core's
+ * `wp_insert_post_data`, so REST, wp-admin and First CRUD all refuse it).
  */
 final class Routes
 {
-    public const META_APP = '_zero_pages_app';
-    public const META_ROUTE = '_zero_pages_route';
-    public const META_DIGEST = '_zero_pages_digest';
+    public const META_APP = '_first_pages_app';
+    public const META_ROUTE = '_first_pages_route';
+    public const META_DIGEST = '_first_pages_digest';
 
     /** @var array<string, array<string, mixed>> pattern → route */
     private array $static = [];
@@ -54,7 +54,7 @@ final class Routes
 
     private function option(): string
     {
-        return 'zero_pages_' . $this->manifest['app'];
+        return 'first_pages_' . $this->manifest['app'];
     }
 
     public function reconciliationError(): ?string
@@ -238,12 +238,12 @@ final class Routes
             delete_option($this->option() . '_error');
             return;
         }
-        $connection = \Zero\Wp\Runtime::plugin()?->connection();
+        $connection = \First\Wp\Runtime::plugin()?->connection();
         // Do not release the publication lock while an enclosing transaction is still open.
         if ($connection === null || $connection->inTransaction()) {
             return;
         }
-        $lock = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':' . $this->manifest['app']), 0, 40);
+        $lock = 'first-pages:' . substr(hash('sha256', $connection->prefix() . ':' . $this->manifest['app']), 0, 40);
         $entered = false;
         try {
             $connection->locked($lock, 0, function () use ($directory, $connection, &$entered): void {
@@ -268,7 +268,7 @@ final class Routes
             });
             delete_option($this->option() . '_error');
         } catch (\Throwable $error) {
-            if (!$entered && $error instanceof \Zero\Wp\LockBusy) {
+            if (!$entered && $error instanceof \First\Wp\LockBusy) {
                 return;
             }
             update_option($this->option() . '_error', $error->getMessage(), false);
@@ -276,7 +276,7 @@ final class Routes
     }
 
     /** Page publication, ownership and routing must all survive or all roll back. */
-    private function reconcilePages(string $directory, \Zero\Wp\Connection $connection): void
+    private function reconcilePages(string $directory, \First\Wp\Connection $connection): void
     {
         $pages = $this->pages();
         $wanted = [];
@@ -303,7 +303,7 @@ final class Routes
                 'post_status' => 'publish',
                 'post_title' => (string) $route['title'],
                 'post_content' => wp_slash($body),
-                'post_name' => $route['pattern'] === '/' ? 'zero-home-' . substr((string) $route['key'], 0, 8) : basename((string) $route['pattern']),
+                'post_name' => $route['pattern'] === '/' ? 'first-home-' . substr((string) $route['key'], 0, 8) : basename((string) $route['pattern']),
                 'post_parent' => 0,
                 'comment_status' => 'closed',
                 'ping_status' => 'closed',
@@ -331,7 +331,7 @@ final class Routes
         foreach ($pages as $routeId => $id) {
             if (!in_array($routeId, $routeIds, true) && get_post($id) instanceof \WP_Post) {
                 $connection->touchPost($id);
-                update_post_meta($id, '_zero_pages_retired', gmdate('c'));
+                update_post_meta($id, '_first_pages_retired', gmdate('c'));
                 wp_trash_post($id);
                 $remaining = get_post($id);
                 if ($remaining instanceof \WP_Post && $remaining->post_status !== 'trash') {
@@ -347,7 +347,7 @@ final class Routes
         }
     }
 
-    private function storeOption(\Zero\Wp\Connection $connection, string $name, array|string $value): void
+    private function storeOption(\First\Wp\Connection $connection, string $name, array|string $value): void
     {
         $connection->touchOption($name);
         if (!update_option($name, $value, true)) {

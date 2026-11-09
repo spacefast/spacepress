@@ -1,4 +1,4 @@
-import type { DashboardWidgetType } from '@zero-admin/dashboard';
+import type { DashboardWidgetType } from '@first-admin/dashboard';
 import { __ } from '@wordpress/i18n';
 
 type QuickStatsWidgetType = {
@@ -10,20 +10,20 @@ const widget: Omit<
 	'render_module'
 > = {
 	name: 'core/quick-stats',
-	title: __( 'Quick Stats (example data)', 'zero-admin' ),
+	title: __( 'Quick Stats (example data)', 'first-admin' ),
 	info: __(
 		'This widget displays key metrics and statistics for the current time range.',
-		'zero-admin'
+		'first-admin'
 	),
 	attributes: [
 		{
 			id: 'timeRange',
 			type: 'text',
-			label: __( 'Time Range', 'zero-admin' ),
+			label: __( 'Time Range', 'first-admin' ),
 			elements: [
-				{ value: 'today', label: __( 'Today', 'zero-admin' ) },
-				{ value: 'week', label: __( 'This Week', 'zero-admin' ) },
-				{ value: 'month', label: __( 'This Month', 'zero-admin' ) },
+				{ value: 'today', label: __( 'Today', 'first-admin' ) },
+				{ value: 'week', label: __( 'This Week', 'first-admin' ) },
+				{ value: 'month', label: __( 'This Month', 'first-admin' ) },
 			],
 		},
 	],

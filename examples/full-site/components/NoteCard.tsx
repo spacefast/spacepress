@@ -1,4 +1,4 @@
-import { Show, type DynamicRow } from "@spacefast/zero-pages";
+import { Show, type DynamicRow } from "@spacefast/first-pages";
 
 /** One note in a listing. Works for any query over notes: fields are per-request values. */
 export function NoteCard({ note }: { note: DynamicRow<"notes"> }) {

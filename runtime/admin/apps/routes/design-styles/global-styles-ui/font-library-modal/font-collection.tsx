@@ -1,5 +1,5 @@
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { Select, SelectControl, Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { Select, SelectControl, Stack } from '@first-admin/design-system';
 import {
 	useContext,
 	useEffect,
@@ -47,7 +47,7 @@ import type { FontFace, FontFamily } from './types';
 
 const DEFAULT_CATEGORY = {
 	slug: 'all',
-	name: _x( 'All', 'font categories', 'zero-admin' ),
+	name: _x( 'All', 'font categories', 'first-admin' ),
 };
 
 const LOCAL_STORAGE_ITEM = 'wp-font-library-google-fonts-permission';
@@ -228,7 +228,7 @@ function FontCollection( { slug }: { slug: string } ) {
 				type: 'error',
 				message: __(
 					'Error installing the fonts, could not be downloaded.',
-					'zero-admin'
+					'first-admin'
 				),
 			} );
 			return;
@@ -240,7 +240,7 @@ function FontCollection( { slug }: { slug: string } ) {
 				type: 'success',
 				message: __(
 					'Fonts were installed successfully.',
-					'zero-admin'
+					'first-admin'
 				),
 			} );
 		} catch ( error ) {
@@ -279,7 +279,7 @@ function FontCollection( { slug }: { slug: string } ) {
 		return (
 			<DropdownMenu
 				icon={ moreVertical }
-				label={ __( 'Actions', 'zero-admin' ) }
+				label={ __( 'Actions', 'first-admin' ) }
 				popoverProps={ {
 					position: 'bottom left',
 				} }
@@ -287,7 +287,7 @@ function FontCollection( { slug }: { slug: string } ) {
 					{
 						title: __(
 							'Revoke access to Google Fonts',
-							'zero-admin'
+							'first-admin'
 						),
 						onClick: revokeAccess,
 					},
@@ -325,16 +325,16 @@ function FontCollection( { slug }: { slug: string } ) {
 									value={ filters.search }
 									placeholder={ __(
 										'Font name…',
-										'zero-admin'
+										'first-admin'
 									) }
-									label={ __( 'Search', 'zero-admin' ) }
+									label={ __( 'Search', 'first-admin' ) }
 									onChange={ debouncedUpdateSearchInput }
 									__nextHasNoMarginBottom
 									hideLabelFromVision={ false }
 								/>
 								<SelectControl
 									className="font-library-modal__category-select"
-									label={ __( 'Category', 'zero-admin' ) }
+									label={ __( 'Category', 'first-admin' ) }
 									items={ categories.map( ( category ) => ( {
 										label: category.name,
 										value: category.slug,
@@ -354,7 +354,7 @@ function FontCollection( { slug }: { slug: string } ) {
 									<Text>
 										{ __(
 											'No fonts found. Try with a different search term.',
-											'zero-admin'
+											'first-admin'
 										) }
 									</Text>
 								) }
@@ -405,12 +405,12 @@ function FontCollection( { slug }: { slug: string } ) {
 										setSelectedFont( null );
 										setNotice( null );
 									} }
-									label={ __( 'Back', 'zero-admin' ) }
+									label={ __( 'Back', 'first-admin' ) }
 								/>
 								<Heading
 									level={ 2 }
 									size={ 13 }
-									className="zero-admin-global-styles-header"
+									className="first-admin-global-styles-header"
 								>
 									{ selectedFont?.name }
 								</Heading>
@@ -431,13 +431,13 @@ function FontCollection( { slug }: { slug: string } ) {
 							<Text>
 								{ __(
 									'Select font variants to install.',
-									'zero-admin'
+									'first-admin'
 								) }
 							</Text>
 							<Spacer margin={ 4 } />
 							<CheckboxControl
 								className="font-library-modal__select-all"
-								label={ __( 'Select all', 'zero-admin' ) }
+								label={ __( 'Select all', 'first-admin' ) }
 								checked={ isSelectAllChecked }
 								onChange={ toggleSelectAll }
 								indeterminate={ isIndeterminate }
@@ -499,7 +499,7 @@ function FontCollection( { slug }: { slug: string } ) {
 								}
 								accessibleWhenDisabled
 							>
-								{ __( 'Install', 'zero-admin' ) }
+								{ __( 'Install', 'first-admin' ) }
 							</Button>
 						</Flex>
 					) }
@@ -523,7 +523,7 @@ function FontCollection( { slug }: { slug: string } ) {
 										_x(
 											'<div>Page</div>%1$s<div>of %2$d</div>',
 											'paging',
-											'zero-admin'
+											'first-admin'
 										),
 										'<CurrentPage />',
 										totalPages
@@ -543,7 +543,7 @@ function FontCollection( { slug }: { slug: string } ) {
 												<Select.Trigger
 													aria-label={ __(
 														'Current page',
-														'zero-admin'
+														'first-admin'
 													) }
 													size="small"
 													variant="minimal"
@@ -580,7 +580,7 @@ function FontCollection( { slug }: { slug: string } ) {
 									accessibleWhenDisabled
 									label={ __(
 										'Previous page',
-										'zero-admin'
+										'first-admin'
 									) }
 									icon={ isRTL() ? next : previous }
 									showTooltip
@@ -591,7 +591,7 @@ function FontCollection( { slug }: { slug: string } ) {
 									onClick={ () => setPage( page + 1 ) }
 									disabled={ page === totalPages }
 									accessibleWhenDisabled
-									label={ __( 'Next page', 'zero-admin' ) }
+									label={ __( 'Next page', 'first-admin' ) }
 									icon={ isRTL() ? previous : next }
 									showTooltip
 									size="compact"

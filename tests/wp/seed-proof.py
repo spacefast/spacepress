@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 
-app, zero, harness = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+app, first, harness = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 site = json.loads((app / 'harness.json').read_text())
 golden = json.loads((Path(__file__).parent / '../fixtures/sync-file-uid.json').read_text())
 uid = next(c['uid'] for c in golden if c['collection'] == 'posts' and c['basename'] == 'hello.md')
@@ -23,13 +23,13 @@ def wp(*args, success=True):
 
 
 def rows(collection):
-    return wp('zero', 'find', collection, '{}')['data']
+    return wp('first', 'find', collection, '{}')['data']
 
 
 def seed(directory, dry=False, success=True):
-    run(harness, 'compose', 'exec', '-T', 'cli', 'rm', '-rf', '/tmp/zero-seed')
-    run(harness, 'compose', 'cp', str(directory), 'cli:/tmp/zero-seed')
-    return wp('zero', 'seed', '--records=/tmp/zero-seed', *(['--dry-run'] if dry else []), success=success)
+    run(harness, 'compose', 'exec', '-T', 'cli', 'rm', '-rf', '/tmp/first-seed')
+    run(harness, 'compose', 'cp', str(directory), 'cli:/tmp/first-seed')
+    return wp('first', 'seed', '--records=/tmp/first-seed', *(['--dry-run'] if dry else []), success=success)
 
 
 def counts(receipt, collection, **expected):
@@ -52,9 +52,9 @@ counts(seed(app / 'compiled-2/seed'), 'posts', unchanged=1)
 assert rows('posts') == [post], 'republishing preserves the only record'
 
 # Start with the original uid-less file, then let the actual sync command adopt the seeded record.
-run(zero, 'sync', str(app / 'project'), '--site', site['url'], '--only', 'posts', '--no-commit', '--json',
-    env={'ZERO_APP_PASSWORD': 'editor:' + site['users']['editor']['appPassword']})
-assert rows('posts') == [post], 'zero sync after publish creates no duplicate or update'
+run(first, 'sync', str(app / 'project'), '--site', site['url'], '--only', 'posts', '--no-commit', '--json',
+    env={'FIRST_APP_PASSWORD': 'editor:' + site['users']['editor']['appPassword']})
+assert rows('posts') == [post], 'first sync after publish creates no duplicate or update'
 assert f'uid: {uid}' in (app / 'project/content/posts/hello.md').read_text()
 counts(seed(first), 'posts', unchanged=1)
 
@@ -68,8 +68,8 @@ for path in first.glob('*.json'):
 receipt = seed(changed)
 counts(receipt, 'posts', skipped_existing=1)
 counts(receipt, 'locked', updated=1)
-assert receipt['warnings'][0]['code'] == 'zero_seed_skipped_existing'
-assert 'zero sync' in receipt['warnings'][0]['detail']
+assert receipt['warnings'][0]['code'] == 'first_seed_skipped_existing'
+assert 'first sync' in receipt['warnings'][0]['detail']
 assert rows('posts') == [post]
 assert 'Changed by a later publish.' in rows('locked')[0]['body']
 assert rows('locked')[0]['id'] == locked['id']

@@ -1,8 +1,8 @@
 {
-	"name": "zero-admin",
+	"name": "first-admin",
 	"version": "1.0.0",
 	"private": true,
-	"description": "Zero Admin: the optional admin screens for Zero apps on WordPress.",
+	"description": "First Admin: the optional admin screens for First apps on WordPress.",
 	"license": "GPL-2.0-or-later",
 	"type": "module",
 	"packageManager": "pnpm@10.16.0",
@@ -14,9 +14,9 @@
 	"dependencies": {
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/core-data": "catalog:",
-		"@zero-admin/dataviews": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/theme": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/theme": "workspace:*",
 		"clsx": "catalog:",
 		"dequal": "catalog:",
 		"react": "catalog:"
@@ -35,7 +35,7 @@
 		"@wordpress/browserslist-config": "catalog:",
 		"@wordpress/jest-console": "catalog:",
 		"@wordpress/jest-preset-default": "catalog:",
-		"@zero-admin/wp-build": "workspace:*",
+		"@first-admin/wp-build": "workspace:*",
 		"babel-jest": "catalog:",
 		"jest": "catalog:",
 		"jest-environment-jsdom": "catalog:",

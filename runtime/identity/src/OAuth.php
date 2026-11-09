@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
-use Zero\Identity\Protocol\AuthCode;
-use Zero\Identity\Protocol\OAuthError;
+use First\Identity\Protocol\AuthCode;
+use First\Identity\Protocol\OAuthError;
 
 /**
  * The OpenID Connect issuer: authorization code + PKCE (S256, public clients only), refresh token
@@ -224,12 +224,12 @@ final class OAuth
 
     /**
      * Mint a session + token pair for a WordPress user without a browser flow (guests, §6.2).
-     * Only the Zero runtime may call it, and only after it has loaded.
+     * Only the First runtime may call it, and only after it has loaded.
      */
     public function issueForUser(int $uid, string $clientId): array
     {
-        if (!did_action("zero_runtime_loaded")) {
-            throw new \LogicException("issueForUser is reserved for the Zero runtime");
+        if (!did_action("first_runtime_loaded")) {
+            throw new \LogicException("issueForUser is reserved for the First runtime");
         }
         return $this->db->transaction(function () use ($uid, $clientId) {
             if (!$this->client($clientId)) {
@@ -356,7 +356,7 @@ final class OAuth
     public function handoff(string $access): string
     {
         $token = $this->access($access) ?? throw new Failure("invalid_token", "The access token is invalid or revoked.", 401);
-        if (!in_array("zero_guest", (array) get_userdata($token["uid"])?->roles, true)) {
+        if (!in_array("first_guest", (array) get_userdata($token["uid"])?->roles, true)) {
             throw new Failure("not_guest", "Only guest accounts use a handoff.", 403);
         }
         $secret = Security::token();
@@ -386,7 +386,7 @@ final class OAuth
                 $challenge["session_id"],
                 $uid,
             );
-            if (!$live || !in_array("zero_guest", (array) get_userdata($uid)?->roles, true)) {
+            if (!$live || !in_array("first_guest", (array) get_userdata($uid)?->roles, true)) {
                 throw new Failure("invalid_challenge", "The code is incorrect, used, or expired.");
             }
             return Plugin::$sessions->create($uid);

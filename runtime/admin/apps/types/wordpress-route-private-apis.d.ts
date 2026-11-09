@@ -1,5 +1,5 @@
 import type { AnyRouter } from '@wordpress/route';
-import type { PrivateApiToken } from '@zero-admin/private-apis';
+import type { PrivateApiToken } from '@first-admin/private-apis';
 import type { ComponentType, ReactNode } from 'react';
 
 /**

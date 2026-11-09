@@ -1,5 +1,5 @@
 // Regenerates content-model.php with the original Zero compiler. Needs a checkout of the original
-// monorepo (packages/zero-compile at 0.8.1): `ZERO_ORIGINAL=<checkout> bun tests/wp/legacy/capture.ts`.
+// monorepo (packages/first-compile at 0.8.1): `ZERO_ORIGINAL=<checkout> bun tests/wp/legacy/capture.ts`.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

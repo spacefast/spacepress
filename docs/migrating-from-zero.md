@@ -18,16 +18,16 @@ becomes.
 
 On Spacefast, a publish from the CLI runs this conversion on its own and ships
 as v2 when nothing is refused ([coexistence](spec/coexistence.md)). To preview
-the candidate first, run `zero migrate app --from zero-0.8 … --dry-run`
+the candidate first, run `first migrate app --from zero-0.8 … --dry-run`
 ([below](#convert-source-locally-for-review)). The hosted operation in the next section
-(`sf zero migrate --space`, `migrateSpaceZero`, `POST
-/v1/spaces/{id}/zero/migration`) hasn't shipped yet. For a standalone WordPress
+(`sf first migrate --space`, `migrateSpaceZero`, `POST
+/v1/spaces/{id}/first/migration`) hasn't shipped yet. For a standalone WordPress
 site, use the config and in-place data commands later in this guide. Both paths
 report unsupported behavior with pointers.
 
 ## Migrate a Spacefast app
 
-**Not shipped yet.** `sf zero migrate --space`, `migrateSpaceZero` and the
+**Not shipped yet.** `sf first migrate --space`, `migrateSpaceZero` and the
 migration route below don't exist on Spacefast today.
 
 Use this procedure for a user's Spacefast 0.8 app. The hosted operation converts
@@ -56,12 +56,12 @@ standalone in-place commands later in this guide target a different deployment.
 3. Request the conversion report without changing the Space:
 
    ```sh
-   sf zero migrate --space spc_example --dry-run --json
+   sf first migrate --space spc_example --dry-run --json
    ```
 
    The same operation is available through the MCP catalog tool
    `migrateSpaceZero` with the Space ID and `dryRun: true`, or
-   `POST /v1/spaces/spc_example/zero/migration` with `{ "dryRun": true }`.
+   `POST /v1/spaces/spc_example/first/migration` with `{ "dryRun": true }`.
    Read every `errors` pointer and `review` entry. A dry run stops after source
    conversion and makes no publication or data changes.
 4. Resolve refusals and check the candidate's access rules. Conversion denies
@@ -72,14 +72,14 @@ standalone in-place commands later in this guide target a different deployment.
 5. Start the real operation:
 
    ```sh
-   sf zero migrate --space spc_example --json
+   sf first migrate --space spc_example --json
    ```
 
    The operation advances through `precheck`, `convert`, `fence`, `publish`,
    `data`, and `commit`. During the fence, other publishes are refused. The
    host compiles and initializes the candidate, then copies the source Space's
    data into its v2 prefix. Google provider credentials become managed
-   `ZERO_IDENTITY_GOOGLE_CLIENT_ID` and `ZERO_IDENTITY_GOOGLE_CLIENT_SECRET`
+   `FIRST_IDENTITY_GOOGLE_CLIENT_ID` and `FIRST_IDENTITY_GOOGLE_CLIENT_SECRET`
    values; the host exposes them as identity constants. Preserve these values
    without printing them or adding them to the repository.
 6. Wait until the report says `done` and the Space reports `zero.generation`
@@ -96,7 +96,7 @@ A completed table group has a durable receipt, so retrying cannot overwrite
 subsequent v2 edits. The source rows remain unchanged.
 
 After commit, 0.8 publish, promotion, and rollback are refused. Old immutable
-0.8 URLs return `410 zero_legacy_retired` and identify the live hostname. An
+0.8 URLs return `410 first_legacy_retired` and identify the live hostname. An
 older v2 version still shares the latest database schema; code rollback does
 not restore the database.
 
@@ -105,16 +105,16 @@ not restore the database.
 To inspect a candidate, run:
 
 ```sh
-sf zero migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example --dry-run --json
-sf zero migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example
-sf zero check ./candidate
+sf first migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example --dry-run --json
+sf first migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example
+sf first check ./candidate
 ```
 
 Add `--users` when Space Users is enabled without a capsule `auth` declaration.
 Each destination must be new. A dry run writes no candidate. Keep all generated
 source, the adoption snapshot, and `connector-roles.json` together. A candidate
 you publish by hand is a normal v2 publish, and on a legacy Space that is refused
-with `zero_migration_required`. Publish the 0.8 app instead, and the publish
+with `first_migration_required`. Publish the 0.8 app instead, and the publish
 converts it.
 
 ### Copy data under the host's migration lock
@@ -126,8 +126,8 @@ prefix from the exact Space ID, then pass both prefixes explicitly:
 ```sh
 space_id=spc_example
 target_prefix="$(SPACE_ID="$space_id" python3 -c 'import hashlib,os; print("sfz_"+hashlib.sha256(os.environ["SPACE_ID"].encode()).hexdigest()[:24]+"_")')"
-wp zero migrate-spacefast --space="$space_id" --source-prefix=wp_ --target-prefix="$target_prefix" --dry-run
-wp zero migrate-spacefast --space="$space_id" --source-prefix=wp_ --target-prefix="$target_prefix"
+wp first migrate-spacefast --space="$space_id" --source-prefix=wp_ --target-prefix="$target_prefix" --dry-run
+wp first migrate-spacefast --space="$space_id" --source-prefix=wp_ --target-prefix="$target_prefix"
 ```
 
 Run these inside the host's scoped bootstrap, with publication fenced. The
@@ -143,8 +143,8 @@ binding; this command copies database rows, not file bytes. Existing app SQL
 tables use the source converter's `existingTable` adoption and are not copied.
 
 Each of the `posts`, `users`, and `sessions` groups has its own transaction and
-receipt in `<target-prefix>zero_spacefast_migrations`. A conflicting row refuses
-the group with `zero_spacefast_conflict` and rolls that group back. Earlier
+receipt in `<target-prefix>first_spacefast_migrations`. A conflicting row refuses
+the group with `first_spacefast_conflict` and rolls that group back. Earlier
 groups remain committed and are skipped on retry. On a completed rerun, each
 group reports `copied: 0` and `status: "already-migrated"`. Keep the receipts.
 Each receipt holds a digest of the source rows its group copied. `--verify`
@@ -159,19 +159,19 @@ count-based digest, so they keep verifying while the source is unchanged.
 For a capsule with application tables and handlers, use the app migrator:
 
 ```sh
-zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_example --dry-run --json
-zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_example
-zero check ./migrated-app
+first migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_example --dry-run --json
+first migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_example
+first check ./migrated-app
 ```
 
 A capsule with a schema needs a table mode, set by one of two flags:
 
 - `--space <id>` adopts the published Space's existing 0.8 tables
   (`sf_<space>_<table>_<hash>`). The first migration is
-  `zero/_generated/migrations/0001_adopt.sql`.
+  `first/_generated/migrations/0001_adopt.sql`.
 - `--fresh` declares plain v2 tables and creates them empty. Use it for a Space
   that has no 0.8 tables yet. The first migration is
-  `zero/_generated/migrations/0001_init.sql`, and no rows are copied.
+  `first/_generated/migrations/0001_init.sql`, and no rows are copied.
 
 The two flags exclude each other. With neither, the schema is refused with
 `Z08_SPACE_REQUIRED`. The browser build takes the same choice as
@@ -227,10 +227,10 @@ Everything else gets a `Z08_OMITTED_*` error:
 | `Z08_OMITTED_PUBLIC` | A file in the 0.8 project's `public/`, which 0.8 served at `/public/...`; v2 serves `public/` at the site root. |
 | `Z08_OMITTED_REDIRECTS` | `_redirects` and `_headers` rule files. Move redirects into `sf.jsonc` `redirects`, which carries over; port rewrites and headers to v2 routes. |
 | `Z08_OMITTED_SERVE` | `rewrites`, `headers`, `listing`, `fallback`, `serve` and `inject` in `sf.jsonc`. The engine checks a rewrite's path, and compiles a listing, against 0.8 pages only, so on v2 a catch-all rewrite or a root listing would take over the app's URLs; header rules reach only static files, not v2's WordPress-rendered pages. Move rewrites and headers into v2 routes. |
-| `Z08_OMITTED_CONFIG` | An `sf.jsonc` key the v2 app doesn't reproduce the same way, and `theme.json`, which 0.8 turned into the pages' `theme.css`. That covers `meta`, `theme`, `templates`, `superpowers`, `collab` and `markdownNegotiation`; path rules, because the app's data URLs move from 0.8's `/__zero/*` to v2's `/wp-json/zero/v1/*` (`cache`, `firewall`, and `access` with path patterns); `crons`, which on v2 doesn't send `CRON_SECRET`; `sell`, whose product file and paid assets would become public files; and the Space settings `network`, `dataSources` and `defaultDataSource`, which the file can't set. Set these again on the v2 Space. The keys that apply the same way travel unchanged in the candidate's `sf.jsonc`: `redirects` when every source is exactly `/` or starts with a plain literal segment that WordPress, Zero and the candidate don't use, `cleanUrls`, `index`, `analytics`, `system`, `build`, `placement`, and `access` as `"public"`. A redirect source counts as used when its first segment holds `:` or `*`, starts with `wp-`, is one WordPress or Zero reserves, or is a folder the candidate serves files from (`app/`, `zero/`, a converted client's stylesheet folders and the carried static files): on v2 those answer the app, while 0.8 kept its own files out of the redirect stage. |
+| `Z08_OMITTED_CONFIG` | An `sf.jsonc` key the v2 app doesn't reproduce the same way, and `theme.json`, which 0.8 turned into the pages' `theme.css`. That covers `meta`, `theme`, `templates`, `superpowers`, `collab` and `markdownNegotiation`; path rules, because the app's data URLs move from 0.8's `/__zero/*` to v2's `/wp-json/first/v1/*` (`cache`, `firewall`, and `access` with path patterns); `crons`, which on v2 doesn't send `CRON_SECRET`; `sell`, whose product file and paid assets would become public files; and the Space settings `network`, `dataSources` and `defaultDataSource`, which the file can't set. Set these again on the v2 Space. The keys that apply the same way travel unchanged in the candidate's `sf.jsonc`: `redirects` when every source is exactly `/` or starts with a plain literal segment that WordPress, Zero and the candidate don't use, `cleanUrls`, `index`, `analytics`, `system`, `build`, `placement`, and `access` as `"public"`. A redirect source counts as used when its first segment holds `:` or `*`, starts with `wp-`, is one WordPress or Zero reserves, or is a folder the candidate serves files from (`app/`, `first/`, a converted client's stylesheet folders and the carried static files): on v2 those answer the app, while 0.8 kept its own files out of the redirect stage. |
 | `Z08_OMITTED_UNVERIFIED_CONFIG` | With `--manifest`, a Space config or `theme.json` the finalize manifest doesn't record. |
 | `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
-| `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/`, `.wrangler/`, `.vercel/`, `.netlify/`, `.turbo/`, `.cache/`, `.zero/`, `.gitignore` and `_routes.json` at any depth, and OS metadata are skipped without an error, as 0.8 never published them. |
+| `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/`, `.wrangler/`, `.vercel/`, `.netlify/`, `.turbo/`, `.cache/`, `.first/`, `.gitignore` and `_routes.json` at any depth, and OS metadata are skipped without an error, as 0.8 never published them. |
 | `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |
 | `Z08_OMITTED_POSTS` | Files under `content/posts/`: 0.8 rebuilt them into the Space's posts on every publish. |
 | `Z08_OMITTED_SYNC` | Content sync of native posts. |
@@ -259,7 +259,7 @@ Each error has this shape:
   `tests/compatibility/registry.json`.
 - `file`, `line` and `column` locate the refusal in the 0.8 source. The file is
   relative to the capsule, the line is 1-based, and the column counts UTF-16
-  code units, as `zero check --json` does. A refusal with no narrower location
+  code units, as `first check --json` does. A refusal with no narrower location
   points at the start of its file.
 - `feature` names the 0.8 feature, `v2` its v2 equivalent, and `fix` is one line
   on what to change.
@@ -267,11 +267,11 @@ Each error has this shape:
 Compiler failures point to the generated source and refuse the whole candidate.
 A `written` candidate can still contain review entries. It is not a live deployment.
 
-The command writes compiler-readable TypeScript, `zero/_generated/migrations/0001_adopt.sql`,
-and `zero/_generated/migrations/snapshot.json`. It does not connect to a database. The SQL
+The command writes compiler-readable TypeScript, `first/_generated/migrations/0001_adopt.sql`,
+and `first/_generated/migrations/snapshot.json`. It does not connect to a database. The SQL
 checks that the existing table and columns exist and creates v2's revisions
 system table. It does not copy rows, rename columns, or convert column types.
-`zero build` accepts this snapshot without generating a second initial migration.
+`first build` accepts this snapshot without generating a second initial migration.
 If a physical table or column is absent, activation fails at that check. The
 WordPress migrator also checks any declared primary key, unique index and foreign
 key against the names and definitions assumed by the snapshot. A different name
@@ -305,16 +305,16 @@ and rich-text body. Spacefast's data migration copies the fenced native rows
 into that collection with their IDs, authors, dates and revisions intact. Legacy
 sync declarations are dropped with a review hint; hosted edits do not rebuild
 static frontends. Custom native post fields need an explicit port. Other content
-collections use `zero migrate-legacy` and their content-model release on standalone
+collections use `first migrate-legacy` and their content-model release on standalone
 WordPress. Do not activate a candidate before its data migration succeeds.
 
 An `auth` declaration adds a `members` user projection with a required unique
 email and display name.
 Use `--users` when the Space has Space Users enabled. `auth.requireSignIn`
-becomes a zero-identity signed-in gate on actions and routes. The portable
+becomes a first-identity signed-in gate on actions and routes. The portable
 `ctx.user` supplies signed-in/guest flags and display names. With `--users`,
 `ctx.auth.userId` reads each member's Space Users subject (`usr_…`), which
-`wp zero migrate-spacefast` copies into a hidden `spacefastSubject` member
+`wp first migrate-spacefast` copies into a hidden `spacefastSubject` member
 column, so rows owned by a subject keep their owner. Users created after
 migration answer `wp:<id>`. Without Space Users, principal IDs, auth methods
 and upgrade callbacks are refused. Standalone sessions,
@@ -337,7 +337,7 @@ Endpoints become [routes](config-api.md#http-routes) with 0.8's result rules
 becomes a keyset read with the same order and result shape; old cursors are
 refused, so clients restart from the first page. `ctx.env` reads `env()` and
 `ctx.log` writes to the PHP error log. Static pages and a static client
-`Layout` become TSX pages; run `zero-pages build` before publishing.
+`Layout` become TSX pages; run `first-pages build` before publishing.
 Interactive pages, layouts, islands, other context services, dynamic database
 builders, optional-field ranges, npm imports and executable schema factories
 require an explicit port. Row IDs above JavaScript's safe integer
@@ -345,10 +345,10 @@ range also require a port; generated ID lookups refuse them. Compiled finalize
 payloads, including the monorepo's `zero-all-features` fixture, are not capsule
 source and are refused. No sources are inferred from those bundles.
 
-For local WordPress installation, `zero build ./migrated-app` emits PHP plugins.
+For local WordPress installation, `first build ./migrated-app` emits PHP plugins.
 For Spacefast publication, use `sf publish` or the hosted MCP publish tool.
 The CLI uploads captured app and vendor bundles. Hosted MCP can upload raw
-source using only relative imports and `zero`. The embedded server compiler emits
+source using only relative imports and `first`. The embedded server compiler emits
 PHP at finalize. Migration never requires uploading generated PHP. Published
 versions share the current database schema, so forward migrations can break older
 code; the command adds no schema versioning or down migrations. Spacefast owns
@@ -365,13 +365,13 @@ unique-index name, then adopts and removes the correctly named index.
 ## Retire imported Spacefast sessions
 
 Spacefast's cross-prefix migration marks each imported session in
-`<target-prefix>zero_identity_legacy_sessions`. Only marked rows can use the
+`<target-prefix>first_identity_legacy_sessions`. Only marked rows can use the
 0.8 HMAC lookup. A successful match replaces the hash with v2's domain-prefixed
 SHA-256 and clears the marker in one statement. The original expiry stays fixed.
 Logout and revocation also reject imported sessions before their first upgrade.
 
 Keep the original `wp_salt('auth')` while imported sessions remain valid. Enable
-`zero_identity_session_cookie_aliases` only inside the migrated Space's scope.
+`first_identity_session_cookie_aliases` only inside the migrated Space's scope.
 The host uses `['__Host-sfi_session']`; successful alias authentication issues
 `zi_session` with the same expiry. Never log the cookie or provider secrets.
 
@@ -398,12 +398,12 @@ receipts so old migration operations cannot copy sessions again.
 ## 1. Convert the config
 
 ```sh
-zero migrate config --from zero capsule.ts --out app/zero.config.ts
+first migrate config --from zero capsule.ts --out app/first.config.ts
 ```
 
 The report (JSON on stdout) lists every mapping and every review item. Each
 collection keeps its authored key and becomes a WordPress post type with a
-canonical storage name: `stockItems` becomes `zero_stock_items`. The site
+canonical storage name: `stockItems` becomes `first_stock_items`. The site
 migration resolves release IDs through those authored keys, including relation
 targets; do not set a mixed-case `storageName` to match the old release. Each
 field becomes a column:
@@ -437,11 +437,11 @@ collection, for example:
 ## 3. Build and activate
 
 ```sh
-zero build app
+first build app
 ```
 
-Deactivate the original runtime, upload `app/.zero/wp-content/plugins/`, and
-activate the dependencies, then `zero-runtime`, then `zero-app-<name>`. The new
+Deactivate the original runtime, upload `app/.first/wp-content/plugins/`, and
+activate the dependencies, then `first-runtime`, then `first-app-<name>`. The new
 post types exist now, but your content is still tagged with the original
 `zero_collection` taxonomy, so they're empty.
 
@@ -457,14 +457,14 @@ record and field if one is missing.
 ## 4. Dry run
 
 ```sh
-zero migrate-legacy - --dry-run --site @original < content-model.php
+first migrate-legacy - --dry-run --site @original < content-model.php
 ```
 
-`zero migrate-legacy` runs `wp zero migrate-legacy` on the site `--site` picks.
+`first migrate-legacy` runs `wp first migrate-legacy` on the site `--site` picks.
 `@original` is a WP-CLI alias in your `wp-cli.yml` (`ssh: host/path`, or a
 local `path:`); WP-CLI reaches the site. The release is sent on stdin, so the
 file stays on your machine. Without `--site`, the command targets the current
-project's WordPress Studio site created by `zero dev`. This selects a target;
+project's WordPress Studio site created by `first dev`. This selects a target;
 it does not import an existing site or its database into Studio. Use an alias
 to migrate the original site in place.
 
@@ -476,12 +476,12 @@ No content is written: the dry run plans inside a transaction and rolls it back.
 ## 5. Migrate
 
 ```sh
-zero migrate-legacy - --site @original < content-model.php
+first migrate-legacy - --site @original < content-model.php
 ```
 
 Each record keeps its post id, so references, media ids, comments and links
-stay valid. Its post type becomes `zero_<name>`, and every
-`_zero_<collection>_<field>` value is rewritten as the new `zero_<column>`
+stay valid. Its post type becomes `first_<name>`, and every
+`_zero_<collection>_<field>` value is rewritten as the new `first_<column>`
 field. Status, publish dates, scheduled times and authors are the post row's
 own and don't change. A column you added in step 2 starts at its default. Revisions keep their author and date, and gain the
 record's field values, so restoring one changes the title the way it did before.
@@ -506,13 +506,13 @@ members of the new app, register a `userProjection()` in `users` (see
 `docs/config-api.md`), build and activate it, then run:
 
 ```sh
-wp zero migrate-legacy-users --space=<id> --dry-run
-wp zero migrate-legacy-users --space=<id>
+wp first migrate-legacy-users --space=<id> --dry-run
+wp first migrate-legacy-users --space=<id>
 ```
 
-Activate zero-identity first: the command carries each account's state into
+Activate first-identity first: the command carries each account's state into
 it. Each app user keeps their WordPress id, password and role. Their verified
-primary email becomes the member's email and their zero-identity email, and
+primary email becomes the member's email and their first-identity email, and
 their account status carries over, so a user suspended on the original platform
 stays suspended (and one already suspended or erased in the new app stays so).
 The member collection's own columns start at their defaults (a column without
@@ -571,7 +571,7 @@ before activating an app.
 
 | 0.8 capability | v2 migration behavior | Limit or required review |
 | --- | --- | --- |
-| Spacefast project root | Accepts `server/index.ts`, optional `sf.jsonc`, and `content/`; produces `zero.config.ts` and migration metadata | Resolve every refusal and review entry before publication |
+| Spacefast project root | Accepts `server/index.ts`, optional `sf.jsonc`, and `content/`; produces `first.config.ts` and migration metadata | Resolve every refusal and review entry before publication |
 | Application SQL tables | Adopts original physical tables with `existingTable`, preserving IDs and storage types | Requires the exact Space ID and expected columns, indexes, and foreign keys; IDs above JavaScript's safe integer range need a port |
 | Typed queries, mutations, and actions | Converts supported handlers, static DB/index calls and `paginate()` into named v2 actions; `ctx.env` and `ctx.log` map | Update clients to v2 input, response, error, and route contracts; dynamic builders and other context services are refused |
 | Native posts | A posts declaration or `content/posts/` adds a post-backed `posts` collection; scoped data copy preserves IDs, native body, authors, dates, and revisions | Custom native fields need a port; legacy sync declarations are dropped with a review hint |
@@ -584,11 +584,11 @@ before activating an app.
 | REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | HEAD/OPTIONS, a `:splat` that is not last, writing GETs, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
-| Client app without pages | The 0.8 SPA (`client/index.tsx` exporting `App`, no `pages/`) becomes static files in `public/`, served by v2 as they are. Each module is compiled to a browser module; `@spacefast/zero/client` resolves to a generated bridge, `public/zero/client.js`, that keeps the 0.8 hooks (`useQuery`, `useMutation`, `useAction`, `usePaginatedQuery`, `createClient`, `useAuth`, `signOut`, `Router`, `Routes`, `Route`, `Link`, `navigate`) and runs each call as the converted v2 action at `/wp-json/zero/v1/actions/<name>`; Preact and the React names resolve to a vendored Preact | Reads refresh after this browser's own writes and on focus, not on other visitors' writes. Kit, charts, client storage, 0.8 sign-in, connector state and npm packages are refused with `Z08_CLIENT_*` codes at the import. The browser compiler (WebAssembly) has no TypeScript-to-browser compiler, so it refuses a client app with `Z08_CLIENT_NATIVE`; convert it with the native CLI |
-| Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `zero-pages build` and commit `zero/pages.json`. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over |
-| Content sync | Local `zero sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
+| Client app without pages | The 0.8 SPA (`client/index.tsx` exporting `App`, no `pages/`) becomes static files in `public/`, served by v2 as they are. Each module is compiled to a browser module; `@spacefast/zero/client` resolves to a generated bridge, `public/first/client.js`, that keeps the 0.8 hooks (`useQuery`, `useMutation`, `useAction`, `usePaginatedQuery`, `createClient`, `useAuth`, `signOut`, `Router`, `Routes`, `Route`, `Link`, `navigate`) and runs each call as the converted v2 action at `/wp-json/first/v1/actions/<name>`; Preact and the React names resolve to a vendored Preact | Reads refresh after this browser's own writes and on focus, not on other visitors' writes. Kit, charts, client storage, 0.8 sign-in, connector state and npm packages are refused with `Z08_CLIENT_*` codes at the import. The browser compiler (WebAssembly) has no TypeScript-to-browser compiler, so it refuses a client app with `Z08_CLIENT_NATIVE`; convert it with the native CLI |
+| Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `first-pages build` and commit `first/pages.json`. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over |
+| Content sync | Local `first sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |
-| Publication and rollback | Spacefast migration commits a one-way transition to v2 | 0.8 publication and promotion are refused after commit; immutable 0.8 URLs return `410 zero_legacy_retired`; older v2 code still shares the latest schema |
+| Publication and rollback | Spacefast migration commits a one-way transition to v2 | 0.8 publication and promotion are refused after commit; immutable 0.8 URLs return `410 first_legacy_retired`; older v2 code still shares the latest schema |
 
 The hosted operation runs through `precheck`, `convert`, `fence`, `publish`,
 `data`, and `commit`. After data copy starts, recovery retries forward while the
@@ -597,22 +597,22 @@ Space stays fenced.
 ### Pages, layouts and islands
 
 The original runtime served `pages/`, `layouts/`, `_pages/` system pages and
-`client/` islands (hydrated through a `zero/component` block) itself, with
+`client/` islands (hydrated through a `first/component` block) itself, with
 `ZERO_DYNAMIC_BLOCKS` choosing between it and WordPress. v2 has no second
 renderer: WordPress serves every page. Port each page and layout to a
 [TSX page](pages.md) under `pages/` (`page.tsx`, `layout.tsx`, `not-found.tsx`)
 and each island to `<Island>` with an Interactivity API module. Item routes read
 the migrated collection's posts as the visitor. `_pages/` system pages have no
 counterpart; the host's own error pages replace them. Render with
-`zero-pages build` and commit `zero/pages.json` before publishing.
+`first-pages build` and commit `first/pages.json` before publishing.
 
 ### Standalone WordPress commands
 
-`zero migrate app --from zero-0.8` converts supported application source and
-emits adoption SQL. It does not connect to a database. `zero migrate config
---from zero` imports supported content declarations, while `zero migrate-legacy`
+`first migrate app --from zero-0.8` converts supported application source and
+emits adoption SQL. It does not connect to a database. `first migrate config
+--from zero` imports supported content declarations, while `first migrate-legacy`
 uses the original content-model release to migrate records in place.
-`wp zero migrate-legacy-users` carries app users into a user projection.
+`wp first migrate-legacy-users` carries app users into a user projection.
 
 These commands do not provide Spacefast's publication fence, cross-prefix
 copy, managed provider configuration, or generation transition. Follow the
@@ -622,7 +622,7 @@ automatic downgrade.
 
 ### The original capsule config
 
-`zero migrate config --from zero` reads the original `@spacefast/zero` capsule
+`first migrate config --from zero` reads the original `@spacefast/zero` capsule
 API (0.8.1): one TypeScript module whose default export is
 `capsule({ collections: ... })` from `@spacefast/zero/server`. It maps content
 `text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`), `media`
@@ -637,8 +637,8 @@ native `posts`, `pages` and `media` declarations, and the capsule's `schema`
 tables, queries, mutations, actions, endpoints, pages, auth, connectors, sync
 bindings and favicon declarations. An old capsule with `queries` fails instead
 of producing a config with those handlers removed. For a site built with the
-original Zero, `zero migrate-legacy` then moves the content; application tables
-and handlers go through [`zero migrate app --from zero-0.8`](#application-source-migration).
+original Zero, `first migrate-legacy` then moves the content; application tables
+and handlers go through [`first migrate app --from zero-0.8`](#application-source-migration).
 
 ### Executable acceptance
 

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use Zero\Identity\{DB, Schema};
+use First\Identity\{DB, Schema};
 
 $prefix = trim(fgets(STDIN));
 $connection = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);

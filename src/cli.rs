@@ -1,6 +1,6 @@
-//! The `zero` command line: one table (`runtime/Zero/Cli/commands.json`, also read by `wp zero help`)
-//! lists every command. "build" commands run here; "site" commands forward to `wp zero <command>`
-//! on the site `--site` picks, and `zero wp <args>` forwards any WP-CLI command
+//! The `first` command line: one table (`runtime/First/Cli/commands.json`, also read by `wp first help`)
+//! lists every command. "build" commands run here; "site" commands forward to `wp first <command>`
+//! on the site `--site` picks, and `first wp <args>` forwards any WP-CLI command
 //! (docs/decisions/2026-11-07-one-cli.md).
 
 use serde_json::Value;
@@ -23,7 +23,7 @@ pub struct Args {
     pub(crate) frozen: bool,
 }
 
-const COMMANDS: &str = include_str!("../runtime/Zero/Cli/commands.json");
+const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
 
 struct Entry {
     name: String,
@@ -33,7 +33,7 @@ struct Entry {
 }
 
 fn table() -> Vec<Entry> {
-    let table: Value = serde_json::from_str(COMMANDS).expect("runtime/Zero/Cli/commands.json is JSON");
+    let table: Value = serde_json::from_str(COMMANDS).expect("runtime/First/Cli/commands.json is JSON");
     let mut entries = Vec::new();
     for group in ["build", "site"] {
         for row in table[group].as_array().expect("command group") {
@@ -48,16 +48,16 @@ fn table() -> Vec<Entry> {
     entries
 }
 
-/// `zero help`: the commands by group, one line each.
+/// `first help`: the commands by group, one line each.
 pub fn help() -> String {
     let entries = table();
     let width = entries.iter().map(|e| e.name.len()).max().unwrap_or(0);
-    let mut out = String::from("usage: zero <command> [options]\n");
+    let mut out = String::from("usage: first <command> [options]\n");
     for (group, title) in [
         ("build", "Build (runs here, on the project's files)"),
         (
             "site",
-            "Site (runs as `wp zero <command>`; --site <dir | workspace | @alias>, default: this project's dev site)",
+            "Site (runs as `wp first <command>`; --site <dir | workspace | @alias>, default: this project's dev site)",
         ),
     ] {
         out.push_str(&format!("\n{title}:\n"));
@@ -65,16 +65,16 @@ pub fn help() -> String {
             out.push_str(&format!("  {:width$}  {}\n", e.name, e.summary));
         }
     }
-    out.push_str("\nzero help <command> shows its arguments. Credentials come from ZERO_APP_PASSWORD or ZERO_TOKEN.\n");
+    out.push_str("\nzero help <command> shows its arguments. Credentials come from FIRST_APP_PASSWORD or FIRST_TOKEN.\n");
     out
 }
 
-/// `usage: zero <name> <args>` for every table row whose name starts with `name`.
+/// `usage: first <name> <args>` for every table row whose name starts with `name`.
 fn usage(name: &str) -> Option<String> {
     let lines: Vec<String> = table()
         .into_iter()
         .filter(|e| e.name == name || e.name.starts_with(&format!("{name} ")))
-        .map(|e| format!("usage: zero {} {}", e.name, e.args).trim_end().to_string())
+        .map(|e| format!("usage: first {} {}", e.name, e.args).trim_end().to_string())
         .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
@@ -171,7 +171,7 @@ pub fn main() -> ExitCode {
         "deploy" if rest.first().is_some_and(|mode| mode == "wp") => {
             eprintln!(
                 "{}",
-                usage_error("wp", "WP-CLI on a workspace is zero wp --site <workspace> <args>")
+                usage_error("wp", "WP-CLI on a workspace is first wp --site <workspace> <args>")
             );
             ExitCode::from(2)
         }
@@ -195,7 +195,7 @@ pub fn main() -> ExitCode {
             let mut rest = rest;
             exit(crate::commands::site::take_site(&mut rest).and_then(|site| {
                 if rest.is_empty() {
-                    return Err(usage_error("wp", "zero wp needs WP-CLI arguments"));
+                    return Err(usage_error("wp", "first wp needs WP-CLI arguments"));
                 }
                 Ok(crate::commands::site::forward(site.as_deref(), &rest))
             }))
@@ -204,7 +204,7 @@ pub fn main() -> ExitCode {
             Some(entry) if entry.group == "site" => {
                 let mut rest = rest;
                 exit(crate::commands::site::take_site(&mut rest).map(|site| {
-                    let mut args = vec!["zero".to_string(), command.clone()];
+                    let mut args = vec!["first".to_string(), command.clone()];
                     args.extend(rest);
                     crate::commands::site::forward(site.as_deref(), &args)
                 }))

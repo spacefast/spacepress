@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
-use Zero\Identity\Vendor\Webauthn\{
+use First\Identity\Vendor\Webauthn\{
     PublicKeyCredentialCreationOptions,
     PublicKeyCredentialRequestOptions,
     PublicKeyCredentialRpEntity,
@@ -21,20 +21,20 @@ use Zero\Identity\Vendor\Webauthn\{
 
 final class Passkeys
 {
-    private \Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface $serializer;
-    private \Zero\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory $factory;
+    private \First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface $serializer;
+    private \First\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory $factory;
     private string $host;
     public function __construct(private DB $db, private Security $security)
     {
-        $manager = new \Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager(
+        $manager = new \First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager(
             [
-                new \Zero\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport(),
+                new \First\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport(),
             ],
         );
-        $this->serializer = (new \Zero\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory(
+        $this->serializer = (new \First\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory(
             $manager,
         ))->create();
-        $this->factory = new \Zero\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory();
+        $this->factory = new \First\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory();
         $this->factory->setAllowedOrigins([untrailingslashit(home_url())]);
         $this->host = wp_parse_url(home_url(), PHP_URL_HOST);
     }

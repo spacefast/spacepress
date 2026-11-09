@@ -1,7 +1,7 @@
 import { __ } from '@wordpress/i18n';
 import type { Attachment, Updatable } from '@wordpress/core-data';
-import { TextareaControl } from '@zero-admin/design-system';
-import type { Field } from '@zero-admin/dataviews';
+import { TextareaControl } from '@first-admin/design-system';
+import type { Field } from '@first-admin/dataviews';
 import { getRawContent } from '../utils/get-raw-content';
 
 export const fieldExtensions: Partial< Field< Updatable< Attachment > > > = {

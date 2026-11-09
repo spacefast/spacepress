@@ -15,7 +15,7 @@ export default function DashboardWidgetHeader( {
 	return (
 		<Stack
 			direction="column"
-			className="zero-admin-dashboard-widget__header"
+			className="first-admin-dashboard-widget__header"
 			render={ <header /> }
 		>
 			<Stack direction="row" gap="sm" align="center">
@@ -24,7 +24,7 @@ export default function DashboardWidgetHeader( {
 				) }
 
 				{ widgetType.title && (
-					<h3 className="zero-admin-dashboard-widget__title">
+					<h3 className="first-admin-dashboard-widget__title">
 						{ widgetType.title }
 					</h3>
 				) }
@@ -35,7 +35,7 @@ export default function DashboardWidgetHeader( {
 			</Stack>
 
 			{ widgetType.description && (
-				<div className="zero-admin-dashboard-widget__description">
+				<div className="first-admin-dashboard-widget__description">
 					{ widgetType.description }
 				</div>
 			) }

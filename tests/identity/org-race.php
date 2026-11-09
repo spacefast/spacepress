@@ -4,7 +4,7 @@
 // the organization lock it must see the committed demotion and refuse, leaving one owner.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use Zero\Identity\{Plugin, Security, Organizations};
+use First\Identity\{Plugin, Security, Organizations};
 
 ob_start();
 $db = Plugin::$db;

@@ -6,7 +6,7 @@ import { __ } from '@wordpress/i18n';
 import type {
 	GlobalStylesConfig,
 	StyleVariation,
-} from '@zero-admin/global-styles-engine';
+} from '@first-admin/global-styles-engine';
 import PreviewStyles from './preview-styles';
 import Variation from './variations/variation';
 import { GlobalStylesContext } from './context';
@@ -49,7 +49,7 @@ function StyleVariationsContainer( {
 	const themeVariations = useMemo( () => {
 		const withEmptyVariation: StyleVariation[] = [
 			{
-				title: __( 'Default', 'zero-admin' ),
+				title: __( 'Default', 'first-admin' ),
 				settings: {},
 				styles: {},
 			},
@@ -122,7 +122,7 @@ function StyleVariationsContainer( {
 	return (
 		<Grid
 			columns={ 2 }
-			className="zero-admin-global-styles-style-variations-container"
+			className="first-admin-global-styles-style-variations-container"
 			gap={ gap }
 		>
 			{ themeVariations.map(

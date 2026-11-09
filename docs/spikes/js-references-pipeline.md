@@ -59,10 +59,10 @@ own Cargo target directories. In each repository root:
 ```sh
 export CARGO_TARGET_DIR="$PWD/target"
 cargo build --locked
-mkdir -p .zero/refs-pipeline
-cp docs/spikes/js-references-pipeline.config.ts .zero/refs-pipeline/zero.config.ts
-target/debug/zero build .zero/refs-pipeline --quiet
-php docs/spikes/js-references-pipeline.php "$PWD/.zero/refs-pipeline/.zero/wp-content"
+mkdir -p .first/refs-pipeline
+cp docs/spikes/js-references-pipeline.config.ts .first/refs-pipeline/first.config.ts
+target/debug/first build .first/refs-pipeline --quiet
+php docs/spikes/js-references-pipeline.php "$PWD/.first/refs-pipeline/.first/wp-content"
 ```
 
 The fixture and PHP runner are introduced by the switch: copy both unchanged

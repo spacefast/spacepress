@@ -273,7 +273,7 @@ pub fn render(config: &Value, ev: &Evaluator<'_>, schema: &Schema, span: Span) -
     }
     Ok(format!(
         r#"
-\add_filter('zero_services_config', static function (array $config): array {{
+\add_filter('first_services_config', static function (array $config): array {{
     $authored = {};
     foreach (['forms', 'search', 'products'] as $key) {{
         if (isset($authored[$key])) {{

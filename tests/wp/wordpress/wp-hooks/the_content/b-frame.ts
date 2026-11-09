@@ -1,1 +1,1 @@
-export default (content: string) => '<div class="zero-frame">' + content + "</div>";
+export default (content: string) => '<div class="first-frame">' + content + "</div>";

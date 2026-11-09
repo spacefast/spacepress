@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import type { User } from "../../zero/client/index.ts";
-import { allRows, choice, driveKinds, errorMessage, field, gb, numberField, placeKinds, statuses, today, zero, type Capacity, type Content, type Drive, type Place, type Reading } from "./api.ts";
+import type { User } from "../../first/client/index.ts";
+import { allRows, choice, driveKinds, errorMessage, field, gb, numberField, placeKinds, statuses, today, first, type Capacity, type Content, type Drive, type Place, type Reading } from "./api.ts";
 
 type Remote<T> = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; value: T };
 type Tab = "search" | "places" | "capacity" | "add";
@@ -47,10 +47,10 @@ export function App() {
     async function start() {
       const params = new URLSearchParams(location.search);
       if (params.has("code") || params.has("error")) {
-        try { await zero.auth.handleCallback(); }
+        try { await first.auth.handleCallback(); }
         finally { history.replaceState(null, "", location.pathname + location.hash); }
       }
-      const user = await zero.auth.me();
+      const user = await first.auth.me();
       if (current) setAuth({ kind: "ready", value: user });
     }
     start().catch((error: unknown) => { if (current) setAuth({ kind: "error", message: errorMessage(error) }); });
@@ -59,12 +59,12 @@ export function App() {
 
   async function signIn() {
     setAuthError(""); setBusy(true);
-    try { await zero.auth.signIn({ returnTo: location.origin + location.pathname }); }
+    try { await first.auth.signIn({ returnTo: location.origin + location.pathname }); }
     catch (error) { setAuthError(errorMessage(error)); setBusy(false); }
   }
   async function signOut() {
     setAuthError(""); setBusy(true);
-    try { await zero.auth.signOut(); setAuth({ kind: "ready", value: null }); }
+    try { await first.auth.signOut(); setAuth({ kind: "ready", value: null }); }
     catch (error) { setAuthError(errorMessage(error)); }
     finally { setBusy(false); }
   }
@@ -84,8 +84,8 @@ function Locker({ user }: { user: User }) {
   const [screen, setScreen] = useState<Screen>("search");
   const loadInventory = useCallback(async () => {
     const [drives, places] = await Promise.all([
-      allRows((page) => zero.drives.list({ ...page, orderBy: { label: "asc", id: "asc" } })),
-      allRows((page) => zero.places.list({ ...page, orderBy: { name: "asc", id: "asc" } })),
+      allRows((page) => first.drives.list({ ...page, orderBy: { label: "asc", id: "asc" } })),
+      allRows((page) => first.places.list({ ...page, orderBy: { name: "asc", id: "asc" } })),
     ]);
     return { drives, places };
   }, []);
@@ -128,7 +128,7 @@ function Search({ drives, places, name, openDrive, addDrive }: { drives: Drive[]
     if (!query.trim()) { setMatches({ kind: "ready", value: drives }); return; }
     setMatches({ kind: "loading" });
     const timer = setTimeout(() => {
-      zero.actions.whereIs({ query: query.trim() }).then((rows) => {
+      first.actions.whereIs({ query: query.trim() }).then((rows) => {
         if (current) setMatches({ kind: "ready", value: rows.map((row) => row.drive) });
       }).catch((error: unknown) => { if (current) setMatches({ kind: "error", message: errorMessage(error) }); });
     }, 220);
@@ -153,7 +153,7 @@ function Places({ drives, places, openDrive, onSaved }: { drives: Drive[]; place
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     setBusy(true); setError("");
-    try { await zero.places.create({ name: field(form, "name"), kind: choice(field(form, "kind"), placeKinds) }); setAdding(false); onSaved(); }
+    try { await first.places.create({ name: field(form, "name"), kind: choice(field(form, "kind"), placeKinds) }); setAdding(false); onSaved(); }
     catch (failure) { setError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
@@ -174,7 +174,7 @@ function AddDrive({ places, onSaved }: { places: Place[]; onSaved: (drive: Drive
     event.preventDefault(); const form = new FormData(event.currentTarget);
     setBusy(true); setError("");
     try {
-      const drive = await zero.drives.create({
+      const drive = await first.drives.create({
         label: field(form, "label"), model: field(form, "model"), serial: field(form, "serial"),
         kind: choice(field(form, "kind"), driveKinds), capacityGb: numberField(form, "capacityGb"),
         interface: field(form, "interface"), status: choice(field(form, "status"), statuses),
@@ -206,9 +206,9 @@ function Sparkline({ readings, metric, label, unit }: { readings: Reading[]; met
 function DriveDetail({ driveId, places, back, onChanged }: { driveId: number; places: Place[]; back: () => void; onChanged: () => void }) {
   const load = useCallback(async () => {
     const [drive, readings, contents] = await Promise.all([
-      zero.drives.get(driveId),
-      allRows((page) => zero.healthReadings.list({ ...page, where: { driveId }, orderBy: { readOn: "asc", id: "asc" } })),
-      allRows((page) => zero.contents.list({ ...page, where: { driveId }, orderBy: { id: "asc" } })),
+      first.drives.get(driveId),
+      allRows((page) => first.healthReadings.list({ ...page, where: { driveId }, orderBy: { readOn: "asc", id: "asc" } })),
+      allRows((page) => first.contents.list({ ...page, where: { driveId }, orderBy: { id: "asc" } })),
     ]);
     return { drive, readings, contents };
   }, [driveId]);
@@ -227,7 +227,7 @@ function DriveDetail({ driveId, places, back, onChanged }: { driveId: number; pl
     event.preventDefault(); const form = new FormData(event.currentTarget);
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await zero.actions.logHealth({ driveId, readOn: field(form, "readOn"), powerOnHours: numberField(form, "powerOnHours"), wearPercent: numberField(form, "wearPercent"), reallocatedSectors: numberField(form, "reallocatedSectors"), tempC: numberField(form, "tempC") });
+      const result = await first.actions.logHealth({ driveId, readOn: field(form, "readOn"), powerOnHours: numberField(form, "powerOnHours"), wearPercent: numberField(form, "wearPercent"), reallocatedSectors: numberField(form, "reallocatedSectors"), tempC: numberField(form, "tempC") });
       setMessage(result.verdict === "replace" ? "Replace this drive. Back up its contents and plan a replacement." : result.verdict === "watch" ? "Reading saved. Watch this drive and check it again soon." : result.verdict === "ok" ? "Reading saved. The trend looks OK." : `Reading saved. Verdict: ${result.verdict}.`);
       reload(); onChanged();
     } catch (failure) { setError(errorMessage(failure)); }
@@ -243,14 +243,14 @@ function DriveDetail({ driveId, places, back, onChanged }: { driveId: number; pl
     {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
     {drive.replacementNeededAt && <Notice error>Marked for replacement on {new Date(drive.replacementNeededAt).toLocaleDateString()}. Back up its contents before moving data.</Notice>}
     <section className="panel"><dl className="drive-facts"><div><dt>Serial</dt><dd className="mono">{drive.serial}</dd></div><div><dt>Interface</dt><dd>{drive.interface}</dd></div><div><dt>Purchased</dt><dd>{drive.purchasedOn ?? "Not recorded"}</dd></div><div><dt>Warranty ends</dt><dd>{drive.warrantyUntil ?? "Not recorded"}</dd></div></dl>
-      <label className="move-label">Stored in<select aria-label="Stored in" value={drive.placeId ?? ""} disabled={busy} onChange={(event) => { const placeId = event.target.value ? Number(event.target.value) : null; void mutate(() => zero.drives.update(driveId, { placeId }), "Place updated."); }}><option value="">No place assigned</option>{places.map((place) => <option key={place.id} value={place.id}>{place.name}</option>)}</select></label>
+      <label className="move-label">Stored in<select aria-label="Stored in" value={drive.placeId ?? ""} disabled={busy} onChange={(event) => { const placeId = event.target.value ? Number(event.target.value) : null; void mutate(() => first.drives.update(driveId, { placeId }), "Place updated."); }}><option value="">No place assigned</option>{places.map((place) => <option key={place.id} value={place.id}>{place.name}</option>)}</select></label>
       {drive.tags.length > 0 && <div className="tag-list">{drive.tags.map((tag, index) => <span key={`${tag}-${index}`}>#{tag}</span>)}</div>}{drive.notes && <p className="notes">{drive.notes}</p>}
     </section>
     <section><div className="section-heading"><h2>Health trend</h2><span className="muted">{readings.length} readings</span></div><div className="chart-grid"><Sparkline readings={readings} metric="wearPercent" label="Wear used" unit="%" /><Sparkline readings={readings} metric="tempC" label="Temperature" unit="°C" /></div>{latest && <p className="hint">Latest reading: {latest.powerOnHours.toLocaleString()} power-on hours · {latest.reallocatedSectors} reallocated sectors</p>}</section>
     <form className="panel form-stack" onSubmit={(event) => void logReading(event)}><h2>Log a reading</h2><label>Read on<input type="date" name="readOn" defaultValue={today()} min={latest ? new Date(Date.parse(latest.readOn) + 86_400_000).toISOString().slice(0, 10) : undefined} required /></label><div className="form-row"><label>Power-on hours<input name="powerOnHours" type="number" inputMode="numeric" min="0" step="1" defaultValue={latest?.powerOnHours ?? 0} required /></label><label>Wear used, %<input name="wearPercent" type="number" inputMode="decimal" min="0" max="100" step="0.1" defaultValue={latest?.wearPercent ?? 0} required /></label></div><div className="form-row"><label>Reallocated sectors<input name="reallocatedSectors" type="number" inputMode="numeric" min="0" step="1" defaultValue={latest?.reallocatedSectors ?? 0} required /></label><label>Temperature, °C<input name="tempC" type="number" inputMode="decimal" min="-40" max="150" step="0.1" defaultValue={latest?.tempC ?? 30} required /></label></div><p className="hint">Wear means percentage of the drive's lifetime used. Readings must be on a later day than the previous reading. Enter 0 for counters your drive does not report.</p><button className="primary wide" disabled={busy}>{busy ? "Saving…" : "Save reading & check trend"}</button></form>
     <Contents driveId={driveId} contents={contents} capacityGb={drive.capacityGb} onSaved={reload} />
     {readings.length > 0 && <details className="panel"><summary>Reading history</summary><ol className="reading-history">{[...readings].reverse().map((reading) => <li key={reading.id}><strong>{reading.readOn}</strong><span>{reading.wearPercent}% wear · {reading.tempC}°C</span><span>{reading.powerOnHours.toLocaleString()} hours · {reading.reallocatedSectors} sectors</span></li>)}</ol></details>}
-    {drive.status !== "retired" && <section className="retire-section">{retiring ? <><p>Retire this drive? Its history and contents stay in the locker.</p><div className="button-row"><button className="danger" disabled={busy} onClick={() => void mutate(async () => { await zero.actions.retire({ driveId }); setRetiring(false); }, "Drive retired.")}>Yes, retire drive</button><button className="secondary" onClick={() => setRetiring(false)}>Cancel</button></div></> : <button className="quiet" onClick={() => setRetiring(true)}>Retire this drive</button>}</section>}
+    {drive.status !== "retired" && <section className="retire-section">{retiring ? <><p>Retire this drive? Its history and contents stay in the locker.</p><div className="button-row"><button className="danger" disabled={busy} onClick={() => void mutate(async () => { await first.actions.retire({ driveId }); setRetiring(false); }, "Drive retired.")}>Yes, retire drive</button><button className="secondary" onClick={() => setRetiring(false)}>Cancel</button></div></> : <button className="quiet" onClick={() => setRetiring(true)}>Retire this drive</button>}</section>}
   </>;
 }
 
@@ -259,7 +259,7 @@ function Contents({ driveId, contents, capacityGb, onSaved }: { driveId: number;
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = event.currentTarget; const values = new FormData(form);
     setBusy(true); setError("");
-    try { await zero.contents.create({ driveId, description: field(values, "description"), usedGb: numberField(values, "usedGb"), lastBackupOn: field(values, "lastBackupOn") || null }); form.reset(); onSaved(); }
+    try { await first.contents.create({ driveId, description: field(values, "description"), usedGb: numberField(values, "usedGb"), lastBackupOn: field(values, "lastBackupOn") || null }); form.reset(); onSaved(); }
     catch (failure) { setError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
@@ -275,10 +275,10 @@ function CapacityBar({ name, totalGb, usedGb, freeGb }: { name: string; totalGb:
 }
 
 function CapacityReport({ openDrive }: { openDrive: (id: number) => void }) {
-  const load = useCallback(() => zero.actions.capacityReport({}), []);
+  const load = useCallback(() => first.actions.capacityReport({}), []);
   const { result, reload } = useRemote<Capacity>(load);
   const [days, setDays] = useState(30);
-  const loadWarranty = useCallback(() => zero.actions.warrantyExpiring({ days }), [days]);
+  const loadWarranty = useCallback(() => first.actions.warrantyExpiring({ days }), [days]);
   const warranties = useRemote(loadWarranty);
   return <><div className="page-heading"><p className="eyebrow">ROOM TO GROW</p><h1>Capacity.</h1><p>Recorded space, across your locker.</p></div>
     {result.kind === "loading" ? <Loading /> : result.kind === "error" ? <><Notice error>{result.message}</Notice><button className="secondary" onClick={reload}>Try again</button></> : <>

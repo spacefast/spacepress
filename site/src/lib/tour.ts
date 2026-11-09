@@ -21,19 +21,19 @@ export function artifactText(example: Example, artifact: Artifact): { label: str
   const { output } = example;
   switch (artifact) {
     case "schema.php":
-      return { label: "zero/app/schema.php", lang: "php", text: output.schemaPhp };
+      return { label: "first/app/schema.php", lang: "php", text: output.schemaPhp };
     case "functions.php":
-      return { label: "zero/app/functions.php", lang: "php", text: output.functionsPhp };
+      return { label: "first/app/functions.php", lang: "php", text: output.functionsPhp };
     case "migration": {
       const [name, sql] = output.migrations[0] ?? ["0001_init.sql", ""];
-      return { label: `zero/_generated/migrations/${name}`, lang: "sql", text: sql };
+      return { label: `first/_generated/migrations/${name}`, lang: "sql", text: sql };
     }
     case "types.ts":
-      return { label: "zero/client/types.ts", lang: "ts", text: output.client["types.ts"] ?? "" };
+      return { label: "first/client/types.ts", lang: "ts", text: output.client["types.ts"] ?? "" };
     case "schema.ts":
-      return { label: "zero/client/schema.ts", lang: "ts", text: output.client["schema.ts"] ?? "" };
-    case "zero.gen.ts":
-      return { label: "zero.gen.ts", lang: "ts", text: output.genTs };
+      return { label: "first/client/schema.ts", lang: "ts", text: output.client["schema.ts"] ?? "" };
+    case "first.gen.ts":
+      return { label: "first.gen.ts", lang: "ts", text: output.genTs };
   }
 }
 

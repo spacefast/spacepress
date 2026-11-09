@@ -42,7 +42,7 @@ impl Problem {
 }
 
 impl Client {
-    /// `site` is the site's URL (scheme, host and an optional path prefix); `/wp-json/zero/v1` is
+    /// `site` is the site's URL (scheme, host and an optional path prefix); `/wp-json/first/v1` is
     /// appended to its path unless the path already ends in it. A query or fragment is refused: the
     /// endpoint paths are appended to the URL's path, so neither has a place to go.
     pub fn new(site: &str, credential: Credential) -> Result<Client, String> {
@@ -65,8 +65,8 @@ impl Client {
             .into();
         let mut url = url;
         let path = url.path().trim_end_matches('/').to_string();
-        if !path.ends_with("/wp-json/zero/v1") {
-            url.set_path(&format!("{path}/wp-json/zero/v1"));
+        if !path.ends_with("/wp-json/first/v1") {
+            url.set_path(&format!("{path}/wp-json/first/v1"));
         } else {
             url.set_path(&path);
         }
@@ -110,7 +110,7 @@ impl Client {
         if status >= 300 {
             return Err(Problem { status, body: parsed });
         }
-        // A success is always `{ data }`; anything else is not a Zero site and must not read as "empty".
+        // A success is always `{ data }`; anything else is not a First site and must not read as "empty".
         match parsed.get("data") {
             Some(data) => Ok(data.clone()),
             None => Err(invalid("without a data envelope".into())),
@@ -147,14 +147,14 @@ mod tests {
 
     #[test]
     fn the_rest_prefix_joins_the_sites_path_and_is_never_doubled() {
-        assert_eq!(base("https://x.test").unwrap(), "https://x.test/wp-json/zero/v1");
+        assert_eq!(base("https://x.test").unwrap(), "https://x.test/wp-json/first/v1");
         assert_eq!(
             base("https://x.test/blog/").unwrap(),
-            "https://x.test/blog/wp-json/zero/v1"
+            "https://x.test/blog/wp-json/first/v1"
         );
         assert_eq!(
-            base("https://x.test/blog/wp-json/zero/v1/").unwrap(),
-            "https://x.test/blog/wp-json/zero/v1"
+            base("https://x.test/blog/wp-json/first/v1/").unwrap(),
+            "https://x.test/blog/wp-json/first/v1"
         );
     }
 
@@ -162,7 +162,7 @@ mod tests {
     fn a_site_with_a_query_fragment_or_credentials_is_refused() {
         for site in [
             "https://x.test/#section",
-            "https://x.test/?rest_route=/zero/v1",
+            "https://x.test/?rest_route=/first/v1",
             "https://user@x.test",
             "ftp://x.test",
         ] {

@@ -2,7 +2,7 @@ node_modules/
 dist/
 .astro/
 # Built by scripts/build-wasm.mjs from ../src (cargo, wasm32-unknown-unknown).
-public/zero.wasm
+public/first.wasm
 # Playwright
 test-results/
 playwright-report/

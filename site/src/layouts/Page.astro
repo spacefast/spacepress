@@ -19,13 +19,13 @@ const sections = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title === "Zero" ? title : `${title} · Zero`}</title>
+    <title>{title === "First" ? title : `${title} · First`}</title>
     <meta name="description" content={description} />
     <link rel="icon" href={`data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#111"/><text x="16" y="23" font-family="ui-monospace,monospace" font-size="20" font-weight="700" text-anchor="middle" fill="#fff">0</text></svg>')}`} />
   </head>
   <body>
     <header class="top">
-      <a class="brand" href={`${base}/`}>Zero</a>
+      <a class="brand" href={`${base}/`}>First</a>
       <nav aria-label="Sections">
         {sections.map((s) => <a href={s.href} aria-current={here === s.href || here.startsWith(`${s.href}/`) ? "page" : undefined}>{s.label}</a>)}
         <a href="https://github.com/spacefast/zero">GitHub</a>
@@ -33,7 +33,7 @@ const sections = [
     </header>
     <slot />
     <footer class="bottom">
-      <p>Zero is MIT licensed; what runs inside WordPress is GPL-2.0-or-later. <a href="https://spacefast.com">Spacefast</a>.</p>
+      <p>First is MIT licensed; what runs inside WordPress is GPL-2.0-or-later. <a href="https://spacefast.com">Spacefast</a>.</p>
     </footer>
   </body>
 </html>

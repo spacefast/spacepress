@@ -25,11 +25,11 @@ It does not approve every unrelated deletion or default in #55.
 
 ## The smallest app
 
-`zero.config.ts` alone remains a complete backend. Every additional directory
+`first.config.ts` alone remains a complete backend. Every additional directory
 below is optional. Names and storage choices appear once:
 
 ```ts
-import { collection, table, text, integer, richText, slug, defineConfig, defineRelations } from "zero";
+import { collection, table, text, integer, richText, slug, defineConfig, defineRelations } from "first";
 
 // A WordPress content type: editor, post identity and editorial lifecycle.
 export const products = collection({
@@ -74,7 +74,7 @@ Both kinds can appear on either side of a relation. One-to-one and one-to-many
 use the existing cardinality declarations; many-to-many uses an explicit join
 table and its relations. An inverse relation does not add a second writable
 copy of the foreign key. Ambiguous reverse relations require an explicit
-selection. Cross-kind references use logical Zero IDs, not unchecked native
+selection. Cross-kind references use logical First IDs, not unchecked native
 post IDs. Backend validation must reject an ID for the wrong content type.
 
 The generated client keeps the existing flat resource vocabulary:
@@ -115,7 +115,7 @@ retains target row access, field masking and appropriate nullable/omitted
 relation types. Trusted server `db` and viewer-bound reads keep their existing
 different authority contracts. SQL joins, filters and pagination must not leak
 denied target rows. An SQL foreign-key declaration alone cannot provide
-referential integrity against shared `wp_posts`; Zero must validate the target
+referential integrity against shared `wp_posts`; First must validate the target
 kind and implement the declared delete behavior at its write boundary.
 
 ## Files and stateless app replicas
@@ -164,8 +164,8 @@ redaction through their existing test owners.
 
 ```text
 shop/
-├── zero.config.ts             # required: content, tables, access and backend behavior
-├── zero.gen.ts                # generated editor types; never hand-edit
+├── first.config.ts             # required: content, tables, access and backend behavior
+├── first.gen.ts                # generated editor types; never hand-edit
 ├── tsconfig.json
 ├── lib/                      # ordinary imported TS; no discovery conventions
 │   └── pricing.ts
@@ -191,12 +191,12 @@ shop/
 ├── agents/                   # optional instruction files, referenced by agent declarations
 │   └── editor.md
 ├── content/products/         # optional collection file sync
-├── zero/
+├── first/
 │   ├── client/               # generated typed HTTP client
 │   ├── migrations/           # reviewed database migrations
-│   ├── abilities.json        # optional: abilities locked by `zero abilities pull`
+│   ├── abilities.json        # optional: abilities locked by `first abilities pull`
 │   └── wp-plugins.lock.json  # pinned plugin artifacts
-└── .zero/                    # generated build/staging output
+└── .first/                    # generated build/staging output
 ```
 
 Do not require a folder per collection, service classes, a route handler per
@@ -226,7 +226,7 @@ islands remain later work.
 
 Use the existing OXC parser/AST family as the frontend. The crate registry was
 checked on 2026-11-02: matching `oxc_semantic`, `oxc_ast_visit` and
-`oxc_transformer` 0.152.0 are MIT and require Rust 1.96, matching Zero's pin.
+`oxc_transformer` 0.152.0 are MIT and require Rust 1.96, matching First's pin.
 Their latest releases were 0.156.0; upgrade the family together only for a
 demonstrated need. These crates were assessed, not added or runtime-qualified
 by this document.
@@ -235,8 +235,8 @@ by this document.
 |---|---|
 | Parse and source locations | Existing OXC parser, allocator, AST and spans |
 | Scope and references | Evaluate matching OXC semantic analysis/visitors before writing more scope walkers |
-| TS-only syntax | Reuse appropriate transforms when they preserve declarations, types and source provenance needed by Zero |
-| PHP lowering | Zero's typed IR, effect/reachability analysis and emitter |
+| TS-only syntax | Reuse appropriate transforms when they preserve declarations, types and source provenance needed by First |
+| PHP lowering | First's typed IR, effect/reachability analysis and emitter |
 | JS runtime semantics | Existing handle/runtime library, extended against Node behavior |
 | Editor and generated-client types | Schema-derived declarations and strict TypeScript checks |
 | Browser compiler | Same compiler core; compare native and WASM results |
@@ -264,7 +264,7 @@ project's complete emitter is compatible.
 
 ## Native providers and automated setup
 
-Selected direction: expose typed Zero capabilities backed by maintained PHP
+Selected direction: expose typed First capabilities backed by maintained PHP
 libraries and WordPress plugins where they fit. Keep expanding compilation for
 authored TypeScript; importing an npm package does not by itself make that
 package compatible with PHP. Avoid porting a library when a maintained native
@@ -281,7 +281,7 @@ For each supported integration, define its typed inputs/results, effects,
 authority and target requirements. Access analysis must still distinguish a
 pure helper from database writes or network effects. A WordPress-only provider
 must produce a located diagnostic on an unsupported target. An installed plugin
-is not evidence that its operations obey Zero's row access or field masking;
+is not evidence that its operations obey First's row access or field masking;
 the adapter must retain those boundaries.
 
 Dependency acquisition, installation, activation, configuration and readiness

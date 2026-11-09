@@ -1,6 +1,6 @@
 # Deployment preflight and offline recovery
 
-`zero build` produces an artifact. Publishing it to a running WordPress site is
+`first build` produces an artifact. Publishing it to a running WordPress site is
 a separate operation. This adapter inspects artifacts and runs **offline local
 WordPress workspaces** for backup and recovery qualification. It never serves
 traffic, replaces PHP on a running site, adopts an existing Studio installation,
@@ -9,20 +9,20 @@ or provisions a host.
 Inspect a build with the installed CLI:
 
 ```sh
-zero deploy inspect --artifact ./app/.zero/wp-content
+first deploy inspect --artifact ./app/.first/wp-content
 ```
 
 All commands emit one JSON `{ data }` or `{ error }` receipt. `--json` is accepted
 for scripts; receipts are always JSON. Failures exit 1. Requires a POSIX system and CLI PHP 8.2+
 with SQLite3 and ZipArchive. `php -m` lists extensions. The binary uses
-`php` on PATH, or `ZERO_DEPLOY_PHP` when a particular PHP binary is needed.
+`php` on PATH, or `FIRST_DEPLOY_PHP` when a particular PHP binary is needed.
 
 ## Inspect a build before deployment
 
 ```sh
-zero deploy inspect \
-  --artifact ./candidate/.zero/wp-content \
-  --baseline ./previous/.zero/wp-content
+first deploy inspect \
+  --artifact ./candidate/.first/wp-content \
+  --baseline ./previous/.first/wp-content
 ```
 
 The report includes a SHA-256 inventory digest, total bytes and file count,
@@ -38,7 +38,7 @@ that a change preserves data. A changed/removed applied migration is reported as
 pending changes against the destination's native migration ledger. Preflight
 never applies SQL or invokes WordPress or uploaded PHP.
 
-`environment` reports generated literal `Zero\Env::get('NAME')` calls and
+`environment` reports generated literal `First\Env::get('NAME')` calls and
 `['env' => 'NAME']` descriptors, with values always `[redacted]`. Presence means
 present in this inspection process's environment. It does not prove presence on
 any PHP worker. WordPress configuration constants, dynamically constructed
@@ -52,7 +52,7 @@ ownership claim, or authorization to install the artifact.
 ## Publish capability boundary
 
 ```sh
-zero deploy publish --artifact ./app/.zero/wp-content
+first deploy publish --artifact ./app/.first/wp-content
 ```
 
 This command **refuses** with `host_capability_missing` and attaches the concrete
@@ -74,32 +74,32 @@ rollback and production recovery remain unsupported. See the
 Start with trusted unpacked WordPress core, SQLite Database Integration, a trusted
 WP-CLI phar, and a built artifact. Copying upstream files preserves their license
 and copyright notices. The qualified combination is WordPress 7.1.4, SQLite
-Database Integration 3.1.2 and WP-CLI 2.12.0. Zero app activation still enforces
+Database Integration 3.1.2 and WP-CLI 2.12.0. First app activation still enforces
 its own platform requirements.
 
 For example, use native WP-CLI to obtain a fresh core tree and verify it:
 
 ```sh
-mkdir -m 700 /tmp/zero-local-recovery
+mkdir -m 700 /tmp/first-local-recovery
 php /path/to/wp-cli.phar core download \
-  --version=7.1.4 --path=/tmp/zero-local-recovery/wordpress
+  --version=7.1.4 --path=/tmp/first-local-recovery/wordpress
 php /path/to/wp-cli.phar core verify-checksums \
-  --version=7.1.4 --path=/tmp/zero-local-recovery/wordpress
+  --version=7.1.4 --path=/tmp/first-local-recovery/wordpress
 ```
 
 Obtain the SQLite plugin from the official WordPress.org release archive
 `https://downloads.wordpress.org/plugin/sqlite-database-integration.3.1.2.zip`,
 verify its provenance under your normal dependency policy, and unpack it to
-`/tmp/zero-local-recovery/sqlite-database-integration`. Keep the downloaded
+`/tmp/first-local-recovery/sqlite-database-integration`. Keep the downloaded
 sources read-only to this workflow. Then:
 
 ```sh
-zero deploy init \
-  --workspace /tmp/zero-local-recovery/original \
-  --wordpress /tmp/zero-local-recovery/wordpress \
-  --sqlite /tmp/zero-local-recovery/sqlite-database-integration \
+first deploy init \
+  --workspace /tmp/first-local-recovery/original \
+  --wordpress /tmp/first-local-recovery/wordpress \
+  --sqlite /tmp/first-local-recovery/sqlite-database-integration \
   --wp-cli /path/to/wp-cli.phar \
-  --artifact ./app/.zero/wp-content
+  --artifact ./app/.first/wp-content
 ```
 
 The destination must not exist. This creates private local files, config salts,
@@ -108,7 +108,7 @@ password is in the workspace's restricted `credentials.json`, never the JSON
 receipt. The original sources are not changed. `--artifact` is optional; when
 present, only this **fresh** site receives its plugin files. Native WP-CLI
 activates dependencies, runtime, identity and app in fresh bootstraps. Plugin
-dependency validation and Zero migrations stay with their existing native
+dependency validation and First migrations stay with their existing native
 owners. Nothing is staged onto an existing site.
 
 Every supported invocation acquires the workspace lock and waits for its WP-CLI
@@ -129,17 +129,17 @@ and multisite administration are outside its scope.
 ## Native content and diagnostics
 
 ```sh
-zero wp --site /tmp/zero-local-recovery/original \
+first wp --site /tmp/first-local-recovery/original \
   post create --post_title='Recovery example' --post_status=publish
-zero deploy status --workspace /tmp/zero-local-recovery/original
+first deploy status --workspace /tmp/first-local-recovery/original
 ```
 
-`zero wp --site <workspace>` (and any site command, such as `zero jobs list --site <workspace>`) runs through this adapter: the receipt returns a private `resultFile`. Read that file locally
+`first wp --site <workspace>` (and any site command, such as `first jobs list --site <workspace>`) runs through this adapter: the receipt returns a private `resultFile`. Read that file locally
 to inspect WP-CLI results. Native stdout/stderr can contain data or secrets;
 neither is copied to public receipts. PHP subprocesses have a 120-second budget.
 `status` reads SQLite without booting application PHP. It reports integrity,
 content/user counts, native applied migration IDs, pending/partial migration
-state, Zero jobs and Action Scheduler state counts, and redacted failure counts.
+state, First jobs and Action Scheduler state counts, and redacted failure counts.
 It adds no queue, scheduler, worker loop, database schema or publish journal.
 
 An interrupted or failed native command leaves an uncertain operation record.
@@ -152,21 +152,21 @@ for inspection, never silently adopted or deleted.
 ## Back up and restore to another isolated workspace
 
 ```sh
-zero deploy backup \
-  --workspace /tmp/zero-local-recovery/original \
-  --output /tmp/zero-local-recovery/recovery.zip
+first deploy backup \
+  --workspace /tmp/first-local-recovery/original \
+  --output /tmp/first-local-recovery/recovery.zip
 
-zero deploy restore \
-  --archive /tmp/zero-local-recovery/recovery.zip \
-  --workspace /tmp/zero-local-recovery/restored \
+first deploy restore \
+  --archive /tmp/first-local-recovery/recovery.zip \
+  --workspace /tmp/first-local-recovery/restored \
   --wp-cli /path/to/wp-cli.phar
 
-zero wp --site /tmp/zero-local-recovery/restored \
+first wp --site /tmp/first-local-recovery/restored \
   post list --format=json
 ```
 
 The backup owns the full managed WordPress tree: SQLite's backup-API snapshot,
-plugins, core, config, local WordPress media and Zero's local private files.
+plugins, core, config, local WordPress media and First's local private files.
 It includes installed code and configuration metadata, file SHA-256s and native
 diagnostics. Process environment values and external services are not included.
 The archive deliberately contains secrets, including config salts and identity
@@ -204,28 +204,28 @@ workflow until a dedicated adapter is qualified.
 ## Verify and clean up
 
 ```sh
-ZERO_DEPLOY_BIN="$PWD/target/debug/zero" node --test scripts/deploy/artifact.test.mjs
+FIRST_DEPLOY_BIN="$PWD/target/debug/first" node --test scripts/deploy/artifact.test.mjs
 
-ZERO_DEPLOY_TEST_WORDPRESS=/tmp/zero-local-recovery/wordpress \
-ZERO_DEPLOY_TEST_SQLITE=/tmp/zero-local-recovery/sqlite-database-integration \
-ZERO_DEPLOY_TEST_WP_CLI=/path/to/wp-cli.phar \
-ZERO_DEPLOY_TEST_ARTIFACT=/path/to/built-blog/wp-content \
+FIRST_DEPLOY_TEST_WORDPRESS=/tmp/first-local-recovery/wordpress \
+FIRST_DEPLOY_TEST_SQLITE=/tmp/first-local-recovery/sqlite-database-integration \
+FIRST_DEPLOY_TEST_WP_CLI=/path/to/wp-cli.phar \
+FIRST_DEPLOY_TEST_ARTIFACT=/path/to/built-blog/wp-content \
 node --test scripts/deploy/wordpress.test.mjs
 ```
 
 The WordPress suite downloads pinned upstream sources and builds the blog fixture
-with `ZERO_BIN` (default: `target/debug/zero`). The environment overrides above
-reuse trusted local sources and a built artifact. Set `ZERO_DEPLOY_BIN` to the
-Zero binary to exercise the embedded adapter through the integrated CLI; without
+with `FIRST_BIN` (default: `target/debug/first`). The environment overrides above
+reuse trusted local sources and a built artifact. Set `FIRST_DEPLOY_BIN` to the
+First binary to exercise the embedded adapter through the integrated CLI; without
 it, the suites run the same PHP entry point directly. It creates isolated sites,
-seeds native and Zero content, media and identity, restores a backup, checks
+seeds native and First content, media and identity, restores a backup, checks
 password/session/signing-key continuity through native PHP, and proves clone
 independence, refusal and recovery behavior. It removes only its own random
 temporary directory, including secret archives. It fails when prerequisites are
-missing. Optional `ZERO_DEPLOY_TEST_EVIDENCE` retains restricted failure logs in
+missing. Optional `FIRST_DEPLOY_TEST_EVIDENCE` retains restricted failure logs in
 that directory; it never retains site databases.
 
 For the manual example, no process needs stopping. After inspecting the exact
-paths, remove only `/tmp/zero-local-recovery/original`,
-`/tmp/zero-local-recovery/restored` and `/tmp/zero-local-recovery/recovery.zip`
+paths, remove only `/tmp/first-local-recovery/original`,
+`/tmp/first-local-recovery/restored` and `/tmp/first-local-recovery/recovery.zip`
 when no longer needed. The adapter has no generic destructive cleanup command.

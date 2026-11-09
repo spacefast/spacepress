@@ -2361,9 +2361,9 @@ impl Graph {
     }
 }
 
-/// Debug builds only: `ZERO_DEBUG_EFFECTS=<file>` appends every solved [`Effects`] to `<file>`
+/// Debug builds only: `FIRST_DEBUG_EFFECTS=<file>` appends every solved [`Effects`] to `<file>`
 /// in a stable sorted text form, so a change to the solver can be checked against the old
-/// result program by program. `ZERO_DEBUG_EFFECTS_WORK=<file>` appends one
+/// result program by program. `FIRST_DEBUG_EFFECTS_WORK=<file>` appends one
 /// `projections=<n> facts=<n>` line per solve instead. Release builds never read either.
 #[cfg(debug_assertions)]
 fn debug_dump(effects: &Effects, projections: u64) {
@@ -2376,7 +2376,7 @@ fn debug_dump(effects: &Effects, projections: u64) {
             .open(path)
             .expect("the effects debug file is writable")
     };
-    if let Some(path) = std::env::var_os("ZERO_DEBUG_EFFECTS_WORK") {
+    if let Some(path) = std::env::var_os("FIRST_DEBUG_EFFECTS_WORK") {
         let places = |map: &HashMap<Span, Places>| map.values().map(IndexSet::len).sum::<usize>();
         let paths = |map: &HashMap<Span, HashSet<Vec<Step>>>| map.values().map(HashSet::len).sum::<usize>();
         let facts = places(&effects.capture_writes)
@@ -2390,7 +2390,7 @@ fn debug_dump(effects: &Effects, projections: u64) {
             + paths(&effects.binding_writes);
         writeln!(append(&path), "projections={projections} facts={facts}").unwrap();
     }
-    let Some(path) = std::env::var_os("ZERO_DEBUG_EFFECTS") else {
+    let Some(path) = std::env::var_os("FIRST_DEBUG_EFFECTS") else {
         return;
     };
     let span = |s: &Span| format!("{}:{}-{}", s.file, s.start, s.end);

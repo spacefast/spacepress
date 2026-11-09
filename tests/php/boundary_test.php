@@ -69,7 +69,7 @@ run('example');
 PHP), ['use function shell_exec', 'use function proc_open']);
 
 $root = realpath(__DIR__ . '/../../runtime');
-$offline = 'Zero/Deployment/Local.php';
+$offline = 'First/Deployment/Local.php';
 $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 foreach ($files as $file) {
     if (!$file->isFile() || $file->getExtension() !== 'php') {
@@ -83,5 +83,5 @@ foreach ($files as $file) {
         && preg_match('/^\\\\?(?:FFI|V8Js|V8\\\\Isolate|Wasmer|Wasmtime)(?:\\\\|$)/i', $token[1]));
     eq($relative . ' has no foreign engine bridge', array_values($engines), []);
 }
-check('unused terminal diagnostics are absent', !is_file($root . '/Zero/vendor-prefixed/wp-php-toolkit/merge/functions.php'));
+check('unused terminal diagnostics are absent', !is_file($root . '/First/vendor-prefixed/wp-php-toolkit/merge/functions.php'));
 finish('boundary');

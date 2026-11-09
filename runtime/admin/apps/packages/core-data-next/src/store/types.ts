@@ -4,7 +4,7 @@ import type {
 	SupportedLayouts,
 	Form,
 	Filter,
-} from '@zero-admin/dataviews';
+} from '@first-admin/dataviews';
 
 export interface FieldDefinition {
 	type: string;

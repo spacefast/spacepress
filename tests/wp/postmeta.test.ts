@@ -19,8 +19,8 @@ before(async () => {
   ];
   for (const r of rows) ids[r.title[0]] = (await ok("POST", "/events", { as: "editor", body: r })).id;
   // An event with no `seats` meta row at all (as wp-admin leaves a never-saved field) next to C's ''.
-  sql(`DELETE FROM wp_postmeta WHERE post_id = ${ids.A} AND meta_key = 'zero_price'`);
-  sql(`UPDATE wp_postmeta SET meta_value = '' WHERE post_id = ${ids.C} AND meta_key = 'zero_startsAt'`);
+  sql(`DELETE FROM wp_postmeta WHERE post_id = ${ids.A} AND meta_key = 'first_price'`);
+  sql(`UPDATE wp_postmeta SET meta_value = '' WHERE post_id = ${ids.C} AND meta_key = 'first_startsAt'`);
 });
 
 const titles = async (where: object, extra: object = {}) =>
@@ -45,9 +45,9 @@ test("typed comparisons and ordering on meta columns", async () => {
     { seats: 9, price: null, open: true, day: "2026-01-09", startsAt: "2026-01-09T08:00:00.000Z", kinds: ["talk"] },
   );
   // Storage forms SCF expects: Ymd dates, UTC "Y-m-d H:i:s", "1"/"0", serialized arrays.
-  const meta = Object.fromEntries(sql(`SELECT meta_key AS k, meta_value AS v FROM wp_postmeta WHERE post_id = ${ids.B} AND meta_key LIKE 'zero\\_%'`).map((r) => [r.k, r.v]));
+  const meta = Object.fromEntries(sql(`SELECT meta_key AS k, meta_value AS v FROM wp_postmeta WHERE post_id = ${ids.B} AND meta_key LIKE 'first\\_%'`).map((r) => [r.k, r.v]));
   assert.deepEqual(
-    [meta.zero_day, meta.zero_startsAt, meta.zero_open, meta.zero_kinds],
+    [meta.first_day, meta.first_startsAt, meta.first_open, meta.first_kinds],
     ["20260201", "2026-02-01 18:30:00", "0", 'a:2:{i:0;s:4:"talk";i:1;s:8:"workshop";}'],
   );
 });
@@ -74,7 +74,7 @@ test("a json() meta value keeps {} apart from [] on WordPress", async () => {
   const e = await ok("POST", "/events", { as: "editor", body: { title: `Json ${run}`, extra: { a: {}, b: [] } } });
   assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { a: {}, b: [] });
   const patch = { id: e.id, patch: { extra: { c: {} } } };
-  wp("zero", "run", "blog/events-update", `--input=${JSON.stringify(patch)}`, "--user=editor");
+  wp("first", "run", "blog/events-update", `--input=${JSON.stringify(patch)}`, "--user=editor");
   assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { c: {} });
   await ok("PATCH", `/events/${e.id}`, { as: "editor", body: { extra: { "1": 1, "0": 2 } } });
   assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { "0": 2, "1": 1 });

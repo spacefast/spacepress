@@ -2,11 +2,11 @@
 //! Integration plugin translates it on SQLite sites).
 //!
 //! Each build compares the evaluated schema with the last snapshot
-//! (`zero/_generated/migrations/snapshot.json`, committed with the project) and
+//! (`first/_generated/migrations/snapshot.json`, committed with the project) and
 //! writes the next numbered migration beside it.
 //!
-//! Only `table()` definitions get a table, `{prefix}zero_<table>`, plus
-//! the `{prefix}zero__revisions` system table. Post-backed collections live in
+//! Only `table()` definitions get a table, `{prefix}first_<table>`, plus
+//! the `{prefix}first__revisions` system table. Post-backed collections live in
 //! `wp_posts`/`wp_postmeta` and get no table. Changes are `ALTER TABLE`
 //! (add/modify/drop), never rebuilds. Foreign keys exist only when both sides
 //! are custom tables (§4.2). `{prefix}` is the WordPress table prefix,
@@ -17,7 +17,7 @@ use serde_json::{Value as Json, json};
 
 pub const BREAKPOINT: &str = "--> statement-breakpoint";
 /// Snapshot key of the revisions system table.
-const REVISIONS: &str = "zero__revisions";
+const REVISIONS: &str = "first__revisions";
 
 fn q(ident: &str) -> String {
     format!("`{}`", ident.replace('`', "``"))
@@ -30,7 +30,7 @@ fn table(t: &str, tables: &Map) -> String {
     if t == REVISIONS {
         format!("`{{prefix}}{t}`")
     } else {
-        format!("`{{prefix}}zero_{t}`")
+        format!("`{{prefix}}first_{t}`")
     }
 }
 
@@ -231,7 +231,7 @@ fn fk_sql(t: &str, name: &str, c: &Json, tables: &Map) -> Option<String> {
 
 fn fk_name(t: &str, col: &str) -> String {
     // MySQL identifiers are limited to 64 characters.
-    let n = format!("zero_{t}_{col}_fk");
+    let n = format!("first_{t}_{col}_fk");
     n.chars().take(64).collect()
 }
 
@@ -308,7 +308,7 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
                 let target_name = tables[target]["existingTable"]
                     .as_str()
                     .map(str::to_owned)
-                    .unwrap_or_else(|| format!("{{prefix}}zero_{target}"));
+                    .unwrap_or_else(|| format!("{{prefix}}first_{target}"));
                 Some(json!({ "name": fk_name(t, name), "column": name, "table": target_name,
                 "target": r["column"], "onDelete": r["onDelete"].as_str().unwrap_or("restrict").to_uppercase(),
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
@@ -317,7 +317,7 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
         let adoption = json!({ "table": def["existingTable"], "indexes": expected_indexes,
             "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
-            "-- zero-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
+            "-- first-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
             cols.keys().map(|n| q(n)).collect::<Vec<_>>().join(", "),
             table(t, tables)
         );
@@ -562,13 +562,13 @@ mod tests {
                 .position(|s| s.starts_with(&format!("CREATE TABLE `{{prefix}}{table}`")))
                 .unwrap_or_else(|| panic!("no table {table} in {first:?}"))
         };
-        assert!(at("zero_locations") < at("zero_items"), "{first:?}");
+        assert!(at("first_locations") < at("first_items"), "{first:?}");
         assert_eq!(first.len(), 3, "{first:?}");
-        at("zero__revisions");
-        let items = &first[at("zero_items")];
+        at("first__revisions");
+        let items = &first[at("first_items")];
         assert!(items.contains("`locationId` BIGINT UNSIGNED"), "{items}");
         assert!(
-            items.contains("FOREIGN KEY (`locationId`) REFERENCES `{prefix}zero_locations` (`id`) ON DELETE SET NULL"),
+            items.contains("FOREIGN KEY (`locationId`) REFERENCES `{prefix}first_locations` (`id`) ON DELETE SET NULL"),
             "{items}"
         );
 
@@ -577,14 +577,14 @@ mod tests {
         v2["tables"]["items"]["columns"]["note"] = col("text");
         assert_eq!(
             plan(&v1, &v2),
-            vec!["ALTER TABLE `{prefix}zero_items` ADD COLUMN `note` LONGTEXT;".to_string()]
+            vec!["ALTER TABLE `{prefix}first_items` ADD COLUMN `note` LONGTEXT;".to_string()]
         );
         assert!(preservation_problems(&v1, &v2).is_empty());
         let mut v3 = v2.clone();
         v3["tables"]["items"]["columns"]["note"]["notNull"] = json!(true);
         assert_eq!(
             plan(&v2, &v3),
-            vec!["ALTER TABLE `{prefix}zero_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()]
+            vec!["ALTER TABLE `{prefix}first_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()]
         );
         assert_eq!(preservation_problems(&v2, &v3), vec!["changes field items.note"]);
         assert_eq!(
@@ -626,9 +626,9 @@ mod tests {
         assert_eq!(
             plan(&v3, &v4),
             vec![
-                "ALTER TABLE `{prefix}zero_items` DROP FOREIGN KEY `zero_items_locationId_fk`;".to_string(),
-                "ALTER TABLE `{prefix}zero_items` DROP COLUMN `note`;".to_string(),
-                "DROP TABLE `{prefix}zero_locations`;".to_string(),
+                "ALTER TABLE `{prefix}first_items` DROP FOREIGN KEY `first_items_locationId_fk`;".to_string(),
+                "ALTER TABLE `{prefix}first_items` DROP COLUMN `note`;".to_string(),
+                "DROP TABLE `{prefix}first_locations`;".to_string(),
             ]
         );
         assert_eq!(
@@ -683,9 +683,9 @@ mod tests {
         assert_eq!(
             plan(&v1, &v2),
             vec![
-                "ALTER TABLE `{prefix}zero_pages` ADD COLUMN `locale` VARCHAR(191) DEFAULT 'en' NOT NULL;".to_string(),
-                "ALTER TABLE `{prefix}zero_pages` ADD COLUMN `translationGroup` VARCHAR(36);".to_string(),
-                "ALTER TABLE `{prefix}zero_pages` ADD UNIQUE KEY `translationGroup_locale` (`translationGroup`, `locale`);".to_string(),
+                "ALTER TABLE `{prefix}first_pages` ADD COLUMN `locale` VARCHAR(191) DEFAULT 'en' NOT NULL;".to_string(),
+                "ALTER TABLE `{prefix}first_pages` ADD COLUMN `translationGroup` VARCHAR(36);".to_string(),
+                "ALTER TABLE `{prefix}first_pages` ADD UNIQUE KEY `translationGroup_locale` (`translationGroup`, `locale`);".to_string(),
             ]
         );
     }

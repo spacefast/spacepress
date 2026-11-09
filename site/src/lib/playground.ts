@@ -119,12 +119,12 @@ const compile = () => {
     }
     const selected = generatedFile.value;
     outputs = {
-      "zero/app/functions.php": output.functionsPhp,
-      "zero/app/schema.php": output.schemaPhp,
-      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`zero/_generated/migrations/${name}`, sql])),
-      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`zero/client/${name}`, text])),
-      "zero.gen.ts": output.genTs,
-      "zero/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
+      "first/app/functions.php": output.functionsPhp,
+      "first/app/schema.php": output.schemaPhp,
+      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`first/_generated/migrations/${name}`, sql])),
+      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`first/client/${name}`, text])),
+      "first.gen.ts": output.genTs,
+      "first/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
     };
     updateFileMenu(selected);
     status.dataset.state = "ok";
@@ -150,8 +150,8 @@ const loadExample = () => {
   drafts.set(example.value, files);
   exampleDescription.textContent = playgroundExamples.find(({ name }) => name === example.value)?.description ?? "";
   const paths = Object.keys(files).sort((a, b) => {
-    if (a === "zero.config.ts") return -1;
-    if (b === "zero.config.ts") return 1;
+    if (a === "first.config.ts") return -1;
+    if (b === "first.config.ts") return 1;
     return a.localeCompare(b);
   });
   sourceFile.replaceChildren(...paths.map((name) => new Option(name, name)));

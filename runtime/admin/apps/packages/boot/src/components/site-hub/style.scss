@@ -1,6 +1,6 @@
 @use "@wordpress/base-styles/variables";
 
-.zero-admin-site-hub {
+.first-admin-site-hub {
 	position: sticky;
 	top: 0;
 	background-color: var( --wpds-color-bg-surface-neutral-weak );
@@ -12,11 +12,11 @@
 	flex-shrink: 0; // Prevent flex parent from shrinking this element.
 }
 
-.zero-admin-site-hub__actions {
+.first-admin-site-hub__actions {
 	flex-shrink: 0;
 }
 
-.zero-admin-site-hub__title {
+.first-admin-site-hub__title {
 	display: flex;
 	align-items: center;
 
@@ -51,7 +51,7 @@
 	}
 }
 
-.zero-admin-site-hub__title-text {
+.first-admin-site-hub__title-text {
 	color: var( --wpds-color-fg-content-neutral );
 	font-size: variables.$font-size-medium;
 	font-weight: 500;
@@ -60,7 +60,7 @@
 	white-space: nowrap;
 }
 
-.zero-admin-site-hub__url {
+.first-admin-site-hub__url {
 	color: var( --wpds-color-fg-content-neutral-weak );
 	font-size: variables.$font-size-small;
 	overflow: hidden;

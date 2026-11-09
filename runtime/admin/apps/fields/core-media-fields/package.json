@@ -2,8 +2,8 @@
 	"name": "core-media-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/compose": "catalog:",
 		"@wordpress/core-data": "catalog:",

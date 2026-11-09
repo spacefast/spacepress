@@ -16,8 +16,8 @@ const build = spawnSync(
 );
 if (build.status !== 0) process.exit(build.status ?? 1);
 
-const built = path.join(target, "wasm32-unknown-unknown", "wasm", "zero.wasm");
-const served = path.join(site, "public", "zero.wasm");
+const built = path.join(target, "wasm32-unknown-unknown", "wasm", "first.wasm");
+const served = path.join(site, "public", "first.wasm");
 mkdirSync(path.dirname(served), { recursive: true });
 copyFileSync(built, served);
 console.log(`${path.relative(repo, served)}: ${(statSync(served).size / 1024 / 1024).toFixed(1)} MiB`);

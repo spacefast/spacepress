@@ -1,7 +1,7 @@
 // Lane M2: an original Zero (0.8) Space's app users moved into the new app's user projection
 // collection (design §6.2), against real WordPress. users-run.sh seeded them through the ORIGINAL
 // identity plugin with the new app inactive (or replayed the rows it wrote), then activated the
-// members app and zero-identity.
+// members app and first-identity.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
@@ -15,10 +15,10 @@ const { ada, bo, cy, other } = site.ids;
 const migrate = (...flags: string[]) => JSON.parse(wpTry("zero", "migrate-legacy-users", "--space=legacy-space", ...flags));
 const member = (id: number) => JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id } }))).data[0] ?? null;
 const meta = () => sql("SELECT user_id, meta_key, meta_value FROM wp_usermeta ORDER BY umeta_id");
-const identity = () => sql("SELECT wp_user_id, status FROM wp_zero_identity_accounts ORDER BY wp_user_id");
+const identity = () => sql("SELECT wp_user_id, status FROM wp_first_identity_accounts ORDER BY wp_user_id");
 /** Whether WpAuth refuses this user as suspended (what every Zero channel checks). */
 const suspended = (id: number) =>
-  JSON.parse(wpTry("eval", `wp_set_current_user(${id}); try { \\Zero\\Wp\\WpAuth::current(); echo 'false'; } catch (\\Zero\\HttpError $e) { echo json_encode($e->errorCode === 'suspended'); }`));
+  JSON.parse(wpTry("eval", `wp_set_current_user(${id}); try { \\First\\Wp\\WpAuth::current(); echo 'false'; } catch (\\First\\HttpError $e) { echo json_encode($e->errorCode === 'suspended'); }`));
 const harnessSh = join(dirname(fileURLToPath(import.meta.url)), "..", "harness.sh");
 
 /** A harness.sh process the test drives; every wait fails on early exit or a deadline. */
@@ -84,20 +84,20 @@ before(() => {
   passwordsBefore = passwords();
 });
 
-test("before the move, zero-identity knows nothing of the app users, so a suspended one is not enforced", () => {
+test("before the move, first-identity knows nothing of the app users, so a suspended one is not enforced", () => {
   // Activating the app already made every WordPress user a member with defaults (§6.2); what the
   // new app can't see is the original account state, kept in the original identity tables.
-  assert.deepEqual(sql(`SELECT wp_user_id FROM wp_zero_identity_accounts WHERE wp_user_id IN (${ada}, ${bo}, ${cy})`), []);
+  assert.deepEqual(sql(`SELECT wp_user_id FROM wp_first_identity_accounts WHERE wp_user_id IN (${ada}, ${bo}, ${cy})`), []);
   assert.equal(suspended(cy), false);
 });
 
-test("an inactive zero-identity refuses the run, though its tables remain", () => {
-  wp("plugin", "deactivate", "zero-identity");
+test("an inactive first-identity refuses the run, though its tables remain", () => {
+  wp("plugin", "deactivate", "first-identity");
   try {
     const r = migrate("--dry-run");
     assert.deepEqual([r.error.code, r.error.pointer], ["legacy_unmappable", ""]);
   } finally {
-    wp("plugin", "activate", "zero-identity");
+    wp("plugin", "activate", "first-identity");
   }
 });
 
@@ -108,26 +108,26 @@ test("a dry run lists the Space's app users and writes nothing", () => {
 });
 
 test("a failure after writes have begun rolls every user back, WordPress's caches included", () => {
-  // The last user's zero-identity account insert fails inside MariaDB, after the first two moved.
-  wp("eval", `$GLOBALS['wpdb']->query("CREATE TRIGGER zero_legacy_users_fail BEFORE INSERT ON wp_zero_identity_accounts FOR EACH ROW IF NEW.wp_user_id = ${cy} THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected'; END IF") || exit(1);`);
+  // The last user's first-identity account insert fails inside MariaDB, after the first two moved.
+  wp("eval", `$GLOBALS['wpdb']->query("CREATE TRIGGER first_legacy_users_fail BEFORE INSERT ON wp_first_identity_accounts FOR EACH ROW IF NEW.wp_user_id = ${cy} THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected'; END IF") || exit(1);`);
   try {
     const before = [meta(), identity()];
     assert.equal(migrate().error.status, 500);
     assert.deepEqual([meta(), identity()], before);
   } finally {
-    sql("DROP TRIGGER zero_legacy_users_fail");
+    sql("DROP TRIGGER first_legacy_users_fail");
   }
   // The object cache lives per request here, so prove it in one process: code that reads a moved
   // user inside the same transaction warms the cache with the new email; when the transaction then
   // rolls back, that process must read the old email again.
   const inProcess = JSON.parse(wp("eval", `
-    $plugin = \\Zero\\Wp\\Runtime::plugin();
+    $plugin = \\First\\Wp\\Runtime::plugin();
     $plugin->app();
     $GLOBALS['wpdb']->update($GLOBALS['wpdb']->users, ['user_email' => 'old-ada@example.test'], ['ID' => ${ada}]);
     clean_user_cache(${ada});
     try {
       $plugin->connection()->transaction(static function () use ($plugin) {
-        (new \\Zero\\Wp\\Legacy\\Users($plugin->connection(), $plugin->schema))->run('legacy-space', false);
+        (new \\First\\Wp\\Legacy\\Users($plugin->connection(), $plugin->schema))->run('legacy-space', false);
         get_userdata(${ada});
         throw new \\RuntimeException('a later step failed');
       });
@@ -146,15 +146,15 @@ test("generated unique values the database holds equal refuse the run, which wri
   // unique check uses.
   const before = [meta(), identity()];
   const r = JSON.parse(wp("eval", `
-    eval('namespace ZeroApp; function legacy_case_code() { static $n = 0; return $n++ % 2 ? "invitea" : "InviteA"; }');
-    $plugin = \\Zero\\Wp\\Runtime::plugin();
+    eval('namespace FirstApp; function legacy_case_code() { static $n = 0; return $n++ % 2 ? "invitea" : "InviteA"; }');
+    $plugin = \\First\\Wp\\Runtime::plugin();
     $plugin->app();
-    $raw = require $plugin->dir . '/zero/app/schema.php';
+    $raw = require $plugin->dir . '/first/app/schema.php';
     $raw['collections']['members']['columns']['code'] = ['type' => 'text', 'unique' => true, 'rules' => ['max' => 191], 'default' => ['fn' => 'legacy_case_code']];
     try {
-      $plugin->connection()->transaction(static fn () => (new \\Zero\\Wp\\Legacy\\Users($plugin->connection(), new \\Zero\\Schema($raw)))->run('legacy-space', false));
+      $plugin->connection()->transaction(static fn () => (new \\First\\Wp\\Legacy\\Users($plugin->connection(), new \\First\\Schema($raw)))->run('legacy-space', false));
       echo json_encode('moved');
-    } catch (\\Zero\\HttpError $e) {
+    } catch (\\First\\HttpError $e) {
       echo json_encode([$e->status, $e->errorCode, $e->pointer, $e->getMessage()]);
     }
   `));
@@ -162,18 +162,18 @@ test("generated unique values the database holds equal refuse the run, which wri
   assert.deepEqual([meta(), identity()], before);
 });
 
-test("app users get zero-identity accounts with their verified email, and stay members", () => {
+test("app users get first-identity accounts with their verified email, and stay members", () => {
   // Since activation Ada changed her WordPress email, lost a member field and gained a bio: the move
   // restores the address the original account verified and the declared defaults, and a column
   // without a default starts empty (the row its validators saw).
   sql(`UPDATE wp_users SET user_email = 'ada-new@example.test' WHERE ID = ${ada}`);
-  sql(`DELETE FROM wp_usermeta WHERE user_id = ${ada} AND meta_key = 'zero_plan'`);
-  sql(`INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (${ada}, 'zero_bio', 'set since')`);
+  sql(`DELETE FROM wp_usermeta WHERE user_id = ${ada} AND meta_key = 'first_plan'`);
+  sql(`INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (${ada}, 'first_bio', 'set since')`);
   wp("cache", "flush");
   assert.deepEqual([member(ada).email, member(ada).plan ?? null, member(ada).bio], ["ada-new@example.test", null, "set since"]);
   assert.deepEqual(migrate().data.users, [ada, bo, cy]);
   assert.deepEqual(
-    sql(`SELECT a.wp_user_id, a.status, e.normalized, e.verified_at > 0 AS verified FROM wp_zero_identity_accounts a JOIN wp_zero_identity_emails e ON e.id = a.primary_email_id WHERE a.wp_user_id IN (${ada}, ${bo}) ORDER BY a.wp_user_id`),
+    sql(`SELECT a.wp_user_id, a.status, e.normalized, e.verified_at > 0 AS verified FROM wp_first_identity_accounts a JOIN wp_first_identity_emails e ON e.id = a.primary_email_id WHERE a.wp_user_id IN (${ada}, ${bo}) ORDER BY a.wp_user_id`),
     [
       { wp_user_id: String(ada), status: "active", normalized: "ada@example.test", verified: "1" },
       { wp_user_id: String(bo), status: "active", normalized: "bo@example.test", verified: "1" },
@@ -185,8 +185,8 @@ test("app users get zero-identity accounts with their verified email, and stay m
   );
   // Defaults land in the forms WpUserStore and SCF keep, and read back as the declared values.
   assert.deepEqual(
-    Object.fromEntries(sql(`SELECT meta_key, meta_value FROM wp_usermeta WHERE user_id = ${ada} AND meta_key IN ('zero_newsletter', 'zero_joinedOn', 'zero_welcomedAt', 'zero_topics')`).map((r) => [r.meta_key, r.meta_value])),
-    { zero_newsletter: "1", zero_joinedOn: "20260301", zero_welcomedAt: "2026-03-01 10:00:00", zero_topics: 'a:2:{i:0;s:4:"news";i:1;s:6:"events";}' },
+    Object.fromEntries(sql(`SELECT meta_key, meta_value FROM wp_usermeta WHERE user_id = ${ada} AND meta_key IN ('first_newsletter', 'first_joinedOn', 'first_welcomedAt', 'first_topics')`).map((r) => [r.meta_key, r.meta_value])),
+    { first_newsletter: "1", first_joinedOn: "20260301", first_welcomedAt: "2026-03-01 10:00:00", first_topics: 'a:2:{i:0;s:4:"news";i:1;s:6:"events";}' },
   );
   const ada_ = member(ada);
   assert.deepEqual([ada_.newsletter, ada_.joinedOn, ada_.welcomedAt, ada_.topics, ada_.bio], [true, "2026-03-01", "2026-03-01T10:00:00.000Z", ["news", "events"], null]);
@@ -195,12 +195,12 @@ test("app users get zero-identity accounts with their verified email, and stay m
   // Passwords (and so existing sign-ins) are untouched.
   assert.deepEqual(passwords(), passwordsBefore);
   // Another Space's app user is not this app's to claim.
-  assert.deepEqual(sql(`SELECT wp_user_id FROM wp_zero_identity_accounts WHERE wp_user_id = ${other}`), []);
+  assert.deepEqual(sql(`SELECT wp_user_id FROM wp_first_identity_accounts WHERE wp_user_id = ${other}`), []);
   assert.deepEqual(sql(`SELECT meta_key FROM wp_usermeta WHERE user_id = ${other} AND meta_key = '_zero_legacy_member'`), []);
 });
 
 test("a suspended original account stays suspended in the new app", () => {
-  assert.deepEqual(sql(`SELECT status FROM wp_zero_identity_accounts WHERE wp_user_id = ${cy}`), [{ status: "suspended" }]);
+  assert.deepEqual(sql(`SELECT status FROM wp_first_identity_accounts WHERE wp_user_id = ${cy}`), [{ status: "suspended" }]);
   // WpAuth refuses it on every channel: here, WordPress acting as that user.
   assert.equal(suspended(cy), true);
   assert.equal(suspended(ada), false);
@@ -215,29 +215,29 @@ const appUser = (login: string) => {
   return id;
 };
 
-test("a suspension zero-identity holds is never lifted by the move, even one committed mid-run", async () => {
+test("a suspension first-identity holds is never lifted by the move, even one committed mid-run", async () => {
   // Dee was suspended in the new app after activation, though active on the original platform.
   const dee = appUser("dee");
-  sql(`INSERT INTO wp_zero_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${dee}, NULL, 'suspended', 0)`);
+  sql(`INSERT INTO wp_first_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${dee}, NULL, 'suspended', 0)`);
   // Fay is suspended by another connection that commits only after the move planned her as active.
   const fay = appUser("fay");
-  const r = await race(`$wpdb->query("INSERT INTO wp_zero_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${fay}, NULL, 'suspended', 0)");`, "SELECT status FROM `wp_zero_identity_accounts`");
+  const r = await race(`$wpdb->query("INSERT INTO wp_first_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${fay}, NULL, 'suspended', 0)");`, "SELECT status FROM `wp_first_identity_accounts`");
   assert.deepEqual(r.data.users, [dee, fay]);
-  assert.deepEqual(sql(`SELECT status FROM wp_zero_identity_accounts WHERE wp_user_id IN (${dee}, ${fay}) ORDER BY wp_user_id`), [{ status: "suspended" }, { status: "suspended" }]);
+  assert.deepEqual(sql(`SELECT status FROM wp_first_identity_accounts WHERE wp_user_id IN (${dee}, ${fay}) ORDER BY wp_user_id`), [{ status: "suspended" }, { status: "suspended" }]);
   assert.deepEqual([suspended(dee), suspended(fay)], [true, true]);
 });
 
-test("an account zero-identity erased stays erased", () => {
+test("an account first-identity erased stays erased", () => {
   const gus = appUser("gus");
-  sql(`INSERT INTO wp_zero_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${gus}, NULL, 'deletion_requested', 0)`);
+  sql(`INSERT INTO wp_first_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${gus}, NULL, 'deletion_requested', 0)`);
   wp("zero", "identity", "erase", String(gus));
   const user = () => sql(`SELECT user_email, display_name FROM wp_users WHERE ID = ${gus}`);
   const erased = user();
   assert.deepEqual(erased, [{ user_email: "", display_name: "Deleted account" }]);
   assert.deepEqual(migrate().data, { dryRun: false, collection: "members", users: [], skipped: [{ id: gus, reason: "deleted account" }] });
   assert.deepEqual(user(), erased);
-  assert.deepEqual(sql(`SELECT status, primary_email_id IS NULL AS noEmail FROM wp_zero_identity_accounts WHERE wp_user_id = ${gus}`), [{ status: "deleted", noEmail: "1" }]);
-  assert.deepEqual(sql(`SELECT normalized FROM wp_zero_identity_emails WHERE wp_user_id = ${gus}`), []);
+  assert.deepEqual(sql(`SELECT status, primary_email_id IS NULL AS noEmail FROM wp_first_identity_accounts WHERE wp_user_id = ${gus}`), [{ status: "deleted", noEmail: "1" }]);
+  assert.deepEqual(sql(`SELECT normalized FROM wp_first_identity_emails WHERE wp_user_id = ${gus}`), []);
 });
 
 test("an email another user holds refuses the run, even one claimed mid-run", async () => {

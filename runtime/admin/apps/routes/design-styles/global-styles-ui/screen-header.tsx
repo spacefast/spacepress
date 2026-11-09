@@ -28,12 +28,12 @@ export function ScreenHeader( {
 						<Navigator.BackButton
 							icon={ isRTL() ? chevronRight : chevronLeft }
 							size="small"
-							label={ __( 'Back', 'zero-admin' ) }
+							label={ __( 'Back', 'first-admin' ) }
 							onClick={ onBack }
 						/>
 						<Spacer>
 							<Heading
-								className="zero-admin-global-styles-header"
+								className="first-admin-global-styles-header"
 								level={ 2 }
 								size={ 13 }
 							>
@@ -44,7 +44,7 @@ export function ScreenHeader( {
 				</Spacer>
 			</View>
 			{ description && (
-				<p className="zero-admin-global-styles-header__description">
+				<p className="first-admin-global-styles-header__description">
 					{ description }
 				</p>
 			) }

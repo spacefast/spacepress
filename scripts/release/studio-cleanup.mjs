@@ -29,7 +29,7 @@ async function request(socketPath, payload) {
 
 // Pinned Studio 2.1.1 IPC, used only to close the test's own daemon after CLI site deletion.
 export async function stopOwnedDaemon(work) {
-  if (!resolve(work).startsWith('/tmp/zero-framework-setup-')) throw new Error('Refusing daemon cleanup outside the owned setup test root.');
+  if (!resolve(work).startsWith('/tmp/first-framework-setup-')) throw new Error('Refusing daemon cleanup outside the owned setup test root.');
   const directory = join(work, 'studio-daemon');
   const socket = join(directory, 'daemon.sock');
   try { await access(socket); }

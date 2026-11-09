@@ -1,4 +1,4 @@
-// Untyped JavaScript for tests/differential/language/bitwise.ts: these run through Zero's checked
+// Untyped JavaScript for tests/differential/language/bitwise.ts: these run through First's checked
 // JavaScript dispatch rather than typed TypeScript compilation.
 
 function show(values) {

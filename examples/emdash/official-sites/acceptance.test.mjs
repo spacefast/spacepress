@@ -9,16 +9,16 @@ import { chromium, expect } from '@playwright/test';
 import { parseHTML, DOMParser } from 'linkedom';
 import { cleanup, makeProject, root, start, wp, command } from './local.mjs';
 
-const evidence = await mkdtemp(join(tmpdir(), 'zero-official-full-app-'));
+const evidence = await mkdtemp(join(tmpdir(), 'first-official-full-app-'));
 console.log(`Official source acceptance evidence: ${evidence}`);
 const save = (name, data) => writeFile(join(evidence, name), typeof data === 'string' ? data : JSON.stringify(data,null,2));
 const modes = process.env.OFFICIAL_TEMPLATE ? [process.env.OFFICIAL_TEMPLATE] : ['blank','starter','blog'];
 if (modes.some(mode => !['blank','starter','blog'].includes(mode))) throw new Error('OFFICIAL_TEMPLATE must be blank, starter or blog.');
 execFileSync(process.execPath, [join(root,'build.mjs'), ...modes], { stdio: 'inherit', timeout: 180000 });
 
-// This owns only the new seam: original Astro source ↔ migrated native Zero data.
+// This owns only the new seam: original Astro source ↔ migrated native First data.
 // Existing native collection/SCF/compiler suites own their internal behavior.
-test('pinned official Astro blank, starter and blog run against compiled native Zero backends', { timeout: 1200000 }, async t => {
+test('pinned official Astro blank, starter and blog run against compiled native First backends', { timeout: 1200000 }, async t => {
   const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const summary = [];
@@ -52,7 +52,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
       const { document } = parseHTML(home);
       assert.equal(document.querySelector('h1').textContent, 'Welcome to EmDash');
       assert.equal(document.querySelector('main a').getAttribute('href'), '/_emdash/admin');
-      const schema = await rest('zero/v1/_schema', { auth: false });
+      const schema = await rest('first/v1/_schema', { auth: false });
       assert.equal(schema.runtime.wp.database.kind, 'sqlite');
       const redirect = await fetch(`${frontend}/_emdash/admin`, { redirect: 'manual' });
       assert.equal(redirect.status, 302);
@@ -66,7 +66,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
       await page.getByRole('link', { name: 'admin panel' }).click();
       await expect(page.locator('#user_login')).toBeVisible();
       await page.locator('#user_login').fill('admin');
-      await page.locator('#user_pass').fill('zero-test-admin');
+      await page.locator('#user_pass').fill('first-test-admin');
       await page.locator('#wp-submit').click();
       await page.waitForURL(/\/wp-admin\//);
       await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
@@ -103,9 +103,9 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     const title = `Official ${mode} observatory`;
     console.log(`${mode}: official seed routes and native media passed`);
     const bodyText = 'Native WordPress blocks now power the official Astro frontend.';
-    await rest(`wp/v2/zero_posts/${first.id}`, { method:'POST', body: { title,
+    await rest(`wp/v2/first_posts/${first.id}`, { method:'POST', body: { title,
       content: `<!-- wp:heading --><h2 class="wp-block-heading">Saved native heading</h2><!-- /wp:heading --><!-- wp:paragraph --><p>${bodyText}</p><!-- /wp:paragraph -->`,
-      acf: { zero_excerpt: 'Saved through native SCF.', zero_seoTitle: 'Official source SEO title', zero_seoDescription: 'Saved native metadata.' } } });
+      acf: { first_excerpt: 'Saved through native SCF.', first_seoTitle: 'Official source SEO title', first_seoDescription: 'Saved native metadata.' } } });
     const edited = await html(`/posts/${first.slug}`);
     assert.ok(edited.includes(bodyText));
     assert.ok((await html('/posts')).includes('Saved through native SCF.'));
@@ -118,7 +118,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     await save(`${mode}-native-edit.html`,edited);
 
     console.log(`${mode}: native edit and live search passed`);
-    const draft = await rest('wp/v2/zero_posts', { method:'POST', body: { title:'Unpublished migration draft',slug:`${mode}-private-source`,status:'draft',content:'Private original source draft.' } });
+    const draft = await rest('wp/v2/first_posts', { method:'POST', body: { title:'Unpublished migration draft',slug:`${mode}-private-source`,status:'draft',content:'Private original source draft.' } });
     await html(`/posts/${mode}-private-source`,404);
     assert.equal((await html('/posts')).includes('Unpublished migration draft'),false);
     const preview = await wp(project,'eval',`echo get_preview_post_link(${draft.id});`);
@@ -127,12 +127,12 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     const draftHtml = await html(previewUrl.pathname + previewUrl.search);
     assert.ok(draftHtml.includes('Private original source draft.'));
     await html(`${previewUrl.pathname}?preview=forged`,404);
-    await rest(`wp/v2/zero_posts/${draft.id}`,{method:'POST',body:{status:'publish',password:'disposable-test-reader',acf:{zero_excerpt:'Protected content marker'}}});
+    await rest(`wp/v2/first_posts/${draft.id}`,{method:'POST',body:{status:'publish',password:'disposable-test-reader',acf:{first_excerpt:'Protected content marker'}}});
     await html(`/posts/${mode}-private-source`,404);
     assert.equal((await html('/posts')).includes('Protected content marker'),false);
 
     console.log(`${mode}: signed draft preview and privacy passed`);
-    const reading = await rest('zero/v1/actions/readingTime',{method:'POST',auth:false,body:{content:'word '.repeat(201) + '漢'.repeat(501)}});
+    const reading = await rest('first/v1/actions/readingTime',{method:'POST',auth:false,body:{content:'word '.repeat(201) + '漢'.repeat(501)}});
     assert.deepEqual(reading,{minutes:3});
 
     if (mode === 'blog') {
@@ -143,7 +143,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
       assert.ok([...parsed.querySelectorAll('item title')].some(item => item.textContent === title));
       assert.equal(feed.includes('Unpublished migration draft'),false);
       await save('blog-rss.xml',feed);
-      await wp(project,'eval','for($i=0;$i<15;$i++){wp_insert_post(["post_type"=>"zero_posts","post_status"=>"publish","post_title"=>"Native pagination boundary ".$i,"post_name"=>"boundary-".$i,"post_date"=>"2001-01-01 00:00:00"]);}');
+      await wp(project,'eval','for($i=0;$i<15;$i++){wp_insert_post(["post_type"=>"first_posts","post_status"=>"publish","post_title"=>"Native pagination boundary ".$i,"post_name"=>"boundary-".$i,"post_date"=>"2001-01-01 00:00:00"]);}');
       const { document: archive } = parseHTML(await html('/posts'));
       const next = archive.querySelector('nav[aria-label="Pagination"] a[href*="cursor="]');
       assert.ok(next,'The official Pagination component exposes a next cursor.');
@@ -185,9 +185,9 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({path:join(evidence,`${mode}-desktop.png`),fullPage:true});
     await page.goto(`${frontend}/`);
-    const liveInput=page.locator('zero-live-search input').first();
+    const liveInput=page.locator('first-live-search input').first();
     await liveInput.fill(title);
-    const liveLink=page.locator('zero-live-search [data-results] a').filter({hasText:title}).first();
+    const liveLink=page.locator('first-live-search [data-results] a').filter({hasText:title}).first();
     await expect(liveLink).toBeVisible();
     await liveLink.click();
     await expect(page.locator('h1')).toHaveText(title);
@@ -197,10 +197,10 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     await page.screenshot({path:join(evidence,`${mode}-mobile.png`),fullPage:true});
     await page.goto(`${backend}/wp-login.php`);
     await page.locator('#user_login').fill('admin');
-    await page.locator('#user_pass').fill('zero-test-admin');
+    await page.locator('#user_pass').fill('first-test-admin');
     await page.locator('#wp-submit').click();
     await page.waitForURL(/\/wp-admin\//);
-    await page.goto(`${backend}/wp-admin/edit.php?post_type=zero_posts`);
+    await page.goto(`${backend}/wp-admin/edit.php?post_type=first_posts`);
     const row=page.locator(`#post-${first.id}`);
     await row.hover();
     await row.locator('button.editinline').click();
@@ -209,8 +209,8 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     await editor.locator('button.save').click();
     await expect(page.locator(`#post-${first.id} .row-title`)).toHaveText(`Browser saved ${mode} source`);
     if (mode === 'blog') {
-      await page.goto(`${backend}/wp-admin/themes.php?page=zero-official-widgets`);
-      await page.locator('textarea[name="zero_official_widgets[1][widgets][0][text]"]').fill('A native Appearance widget edit reaches the official footer.');
+      await page.goto(`${backend}/wp-admin/themes.php?page=first-official-widgets`);
+      await page.locator('textarea[name="first_official_widgets[1][widgets][0][text]"]').fill('A native Appearance widget edit reaches the official footer.');
       await page.getByRole('button',{name:'Save Changes',exact:true}).click();
     }
     await page.goto(`${frontend}/posts/${first.slug}`);

@@ -1,4 +1,4 @@
-import { SelectControl } from '@zero-admin/design-system';
+import { SelectControl } from '@first-admin/design-system';
 import { useCallback, useMemo } from '@wordpress/element';
 import { __, _x } from '@wordpress/i18n';
 import type { AspectRatioComponentProps, AspectRatio } from './types';
@@ -40,7 +40,7 @@ export default function AspectRatioSelect( {
 
 	return (
 		<SelectControl
-			label={ __( 'Aspect ratio', 'zero-admin' ) }
+			label={ __( 'Aspect ratio', 'first-admin' ) }
 			value={ aspectRatio?.slug }
 			items={ aspectRatioOptions }
 			// @ts-expect-error TODO: Value can be null.

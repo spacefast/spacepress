@@ -4,7 +4,7 @@
 //!
 //! A 0.8 Zero publish served the project root as static content, minus the capsule's own source
 //! (`client/`, `server/`, `shared/`, `pages/` and source code anywhere), repository files, its
-//! config and the platform's ignore list (zero-compile's `isZeroPublicStaticPath`). Those static
+//! config and the platform's ignore list (first-compile's `isZeroPublicStaticPath`). Those static
 //! files that v2 can serve unchanged are carried into the candidate's `public/`, which v2 serves at
 //! the same URLs. The rest are refused here with what replaces them.
 use super::super::{Failure, fail, pointer};
@@ -46,7 +46,7 @@ static OS_METADATA_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(OS_METADA
 /// content, and nearly every local checkout has one, so they are skipped without an error.
 const SKIPPED_DIRECTORIES: &[&str] = &[".git", ".hg", ".svn", "node_modules", ".spacefast", ".stattic"];
 /// Directories 0.8 never published beyond the deny list (publish-policy's `IGNORED_SEGMENTS`).
-const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".zero"];
+const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".first"];
 /// publish-policy's `publishPathIgnored` beyond its segment lists: Next's build cache and the
 /// CLI's own temporary and lock files, at any depth (matched on the lowercased path).
 const IGNORED_PATH_PATTERN: &str = r"(?:^|/)\.next/cache(?:/|$)|(?:^|/)\.spacefast-(?:[0-9a-f-]{36}\.(?:tmp(?:\.mjs)?|rollback|retired)|[0-9a-f]{24}\.lock)$";
@@ -54,7 +54,7 @@ static IGNORED_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(IGNORED_PATH_
 /// publish-policy's `IGNORED_EXACT_PATHS` that the deny list doesn't already cover: 0.8 dropped
 /// a path when any lowercased segment equals one, at any depth.
 const IGNORED_EXACT_SEGMENTS: &[&str] = &[".gitignore", "_routes.json"];
-/// zero-compile's `CAPSULE_TSCONFIG_FILE`.
+/// first-compile's `CAPSULE_TSCONFIG_FILE`.
 static TSCONFIG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^tsconfig(?:\.[^/]+)?\.json$").expect("tsconfig"));
 // The paths 0.8's publish kept out as the runtime's own (`runtimeOwnedPaths`, the
 // `static_runtime_control_path_not_supported` paths of publish-policy's `staticUploadPathViolation`)
@@ -64,7 +64,7 @@ const STATIC_RUNTIME_CONTROL_SEGMENT_PREFIXES: &[&str] = &["__spacefast", "__sta
 const STATIC_RUNTIME_ROOT_SEGMENTS: &[&str] = &["__sf", "__span", "__zero"];
 const STATIC_RUNTIME_CONTROL_PATHS: &[&str] = &[".well-known/spacefast-runtime", ".well-known/stattic-runtime"];
 const STATIC_RUNTIME_CONTROL_PREFIXES: &[&str] = &[
-    ".zero-compiled",
+    ".first-compiled",
     ".spacefast/storage",
     ".spacefast/engine",
     ".stattic/storage",
@@ -109,9 +109,9 @@ const REPOSITORY_FILES: &[&str] = &[
     "package.json",
 ];
 const REPOSITORY_ROOTS: &[&str] = &[".github", "test", "tests", "tools"];
-/// zero-compile's `ZERO_SOURCE_CODE_EXTENSIONS`.
+/// first-compile's `ZERO_SOURCE_CODE_EXTENSIONS`.
 const CODE: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
-/// zero-compile's `TYPESCRIPT_SOURCE_FILE`, never served wherever it is.
+/// first-compile's `TYPESCRIPT_SOURCE_FILE`, never served wherever it is.
 const TYPESCRIPT: &[&str] = &["ts", "tsx", "mts", "cts"];
 /// The rule files 0.8 compiled into routing instead of serving. The candidate doesn't carry them:
 /// in public/ they would publish at the root, which this converter hasn't shown to apply the same.
@@ -125,7 +125,7 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
 ///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php). Only
 ///   when no rule can reach a URL the v2 app answers that 0.8 kept out of the redirect stage:
-///   WordPress's and Zero's paths (v2's `/wp-json/zero/v1/*` isn't reserved from redirects as 0.8's
+///   WordPress's and Zero's paths (v2's `/wp-json/first/v1/*` isn't reserved from redirects as 0.8's
 ///   data URLs were) and the folders the candidate serves (see `redirect_reaches_app`).
 /// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
 /// - `analytics`, `system`: frozen from the file config whatever the runtime.
@@ -135,7 +135,7 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 ///   `/wp-json` lane enforces it through the same access engine (see `carries`).
 ///
 /// Every other key is refused. Path rules don't survive the move, because the app's data URLs
-/// move from 0.8's `/__zero/*` to v2's `/wp-json/zero/v1/*`: so `access` path patterns, `cache`
+/// move from 0.8's `/__zero/*` to v2's `/wp-json/first/v1/*`: so `access` path patterns, `cache`
 /// and `firewall` are refused, as are `crons` (no `CRON_SECRET` on v2) and `sell` (its product file
 /// and paid assets would be swept into public/).
 pub(super) const PLATFORM_KEYS: &[&str] = &[
@@ -172,7 +172,7 @@ pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<St
 /// - a first segment WordPress or Zero owns (`endpoints::RESERVED`, `wp-json` among them), or one
 ///   starting with `wp-` (WordPress's own entry points);
 /// - a first segment the candidate serves files under (`served`, from its public/ tree: the
-///   converted client's `app/`, `zero/` and stylesheet folders, and the carried static files).
+///   converted client's `app/`, `first/` and stylesheet folders, and the carried static files).
 ///
 /// The last one is read from what the candidate writes, so it covers every folder the converter
 /// adds. A carried static file keeps its 0.8 path and was a table entry on 0.8 too, so a rule
@@ -258,7 +258,7 @@ fn policy(relative: &str) -> Policy {
     Policy::Keep
 }
 
-/// Whether 0.8 served `relative` as static content (zero-compile's `isZeroPublicStaticPath`).
+/// Whether 0.8 served `relative` as static content (first-compile's `isZeroPublicStaticPath`).
 fn served(relative: &str) -> bool {
     let root = relative.split('/').next().unwrap_or("");
     let extension = Path::new(relative).extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -513,7 +513,7 @@ pub(super) fn sweep(
     let mut client_reported = false;
     let mut posts_reported = false;
     // 0.8 built a client with no pages as the whole site and generated its index.html, shadowing
-    // the author's (zero-compile's `standaloneClient`). The client is `runtime.client` wherever it
+    // the author's (first-compile's `standaloneClient`). The client is `runtime.client` wherever it
     // lives, as the client conversion resolves it.
     let client_app = client_entry.is_some()
         && !files
@@ -541,7 +541,7 @@ pub(super) fn sweep(
             }
             continue;
         }
-        // zero-compile's ZERO_STRUCTURAL_COLLECTIONS: without a declared `collections.posts`, 0.8
+        // first-compile's ZERO_STRUCTURAL_COLLECTIONS: without a declared `collections.posts`, 0.8
         // rebuilt content/posts/ into the Space's native posts on every publish (and also served the
         // files). The candidate adopts the existing post rows but doesn't rebuild them, so its posts
         // would stop following these files. A declared `posts` collection had no such default:
@@ -690,7 +690,7 @@ mod tests {
             // Any wp- first segment is WordPress territory, so even an unknown one is refused.
             ("/wp-jsonx/a", true),
             ("/wp-json/*", true),
-            ("/WP-JSON/zero", true),
+            ("/WP-JSON/first", true),
             ("/*", true),
             ("/:lang/*", true),
             ("/a*", true),
@@ -700,11 +700,11 @@ mod tests {
             ("/w:x", true),
             // The converted client app's modules and runtime live under these on v2.
             ("/app/*", true),
-            ("/zero/client.js", true),
+            ("/first/client.js", true),
             // WordPress and Zero own these first segments on v2.
             ("/wp-admin/*", true),
             ("/wp-content/uploads/*", true),
-            ("/zero-admin", true),
+            ("/first-admin", true),
             ("/apps/old", false),
             // Any folder the candidate serves, read from its public/ tree, and WordPress's wp-*.
             ("/client/*", true),

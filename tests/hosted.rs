@@ -14,8 +14,8 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let project = work.path().join("app");
     write(
         &project,
-        "zero.config.ts",
-        "import { defineConfig, action, global, text } from 'zero'; import { message } from './src/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
+        "first.config.ts",
+        "import { defineConfig, action, global, text } from 'first'; import { message } from './src/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
     );
     write(&project, "src/message.ts", "export const message = 'v1';");
     write(
@@ -31,34 +31,34 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(&project, "public/logo.svg", "<svg/>");
     write(
         &project,
-        "zero/_generated/migrations/0001_adopt.sql",
+        "first/_generated/migrations/0001_adopt.sql",
         "SELECT 'archived only';",
     );
     write(
         &project,
-        "zero/_generated/migrations/snapshot.json",
+        "first/_generated/migrations/snapshot.json",
         r#"{"version":2,"tables":{}}"#,
     );
     write(&project, "unrelated.ts", "this is not an input");
     let first = work.path().join("first");
-    let sources = zero::bundle::sources(&project, &first).unwrap();
-    let vendor = fs::read(first.join("vendor.zero.json")).unwrap();
-    let captured: zero::bundle::SourceBundle = serde_json::from_slice(&vendor).unwrap();
+    let sources = first::bundle::sources(&project, &first).unwrap();
+    let vendor = fs::read(first.join("vendor.first.json")).unwrap();
+    let captured: first::bundle::SourceBundle = serde_json::from_slice(&vendor).unwrap();
     assert!(captured.files.contains_key("node_modules/shared/index.js"));
-    let app: zero::bundle::SourceBundle =
-        serde_json::from_slice(&fs::read(first.join("app.zero.json")).unwrap()).unwrap();
+    let app: first::bundle::SourceBundle =
+        serde_json::from_slice(&fs::read(first.join("app.first.json")).unwrap()).unwrap();
     assert!(!app.files.contains_key("unrelated.ts"));
     write(&project, "src/message.ts", "export const message = 'v2';");
     let second = work.path().join("second");
-    let later = zero::bundle::sources(&project, &second).unwrap();
+    let later = first::bundle::sources(&project, &second).unwrap();
     assert_eq!(sources.vendor_sha256, later.vendor_sha256);
     assert_ne!(sources.app_sha256, later.app_sha256);
-    assert_eq!(vendor, fs::read(second.join("vendor.zero.json")).unwrap());
+    assert_eq!(vendor, fs::read(second.join("vendor.first.json")).unwrap());
     fs::remove_dir_all(&project).unwrap();
     let compiled_first = work.path().join("compiled-first");
     let compiled_second = work.path().join("compiled-second");
-    let manifest = zero::bundle::compile(&first, &compiled_first, &first, None).unwrap();
-    assert_eq!(manifest["compiler"], zero::bundle::VERSION);
+    let manifest = first::bundle::compile(&first, &compiled_first, &first, None).unwrap();
+    assert_eq!(manifest["compiler"], first::bundle::VERSION);
     assert_eq!(
         fs::read_to_string(compiled_first.join("source-migrations/0001_adopt.sql")).unwrap(),
         "SELECT 'archived only';"
@@ -67,19 +67,19 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
         fs::read_to_string(compiled_first.join("source-migrations/snapshot.json")).unwrap(),
         r#"{"version":2,"tables":{}}"#
     );
-    // A capture taken by an older compiler keeps its ledger under `zero/migrations/`; recompiling
+    // A capture taken by an older compiler keeps its ledger under `first/migrations/`; recompiling
     // it with this one still archives those files.
     let older = work.path().join("older");
     fs::create_dir(&older).unwrap();
-    fs::copy(first.join("vendor.zero.json"), older.join("vendor.zero.json")).unwrap();
-    let mut app: serde_json::Value = serde_json::from_slice(&fs::read(first.join("app.zero.json")).unwrap()).unwrap();
+    fs::copy(first.join("vendor.first.json"), older.join("vendor.first.json")).unwrap();
+    let mut app: serde_json::Value = serde_json::from_slice(&fs::read(first.join("app.first.json")).unwrap()).unwrap();
     let files = app["files"].as_object_mut().unwrap();
     for name in ["0001_adopt.sql", "snapshot.json"] {
-        let text = files.remove(&format!("zero/_generated/migrations/{name}")).unwrap();
-        files.insert(format!("zero/migrations/{name}"), text);
+        let text = files.remove(&format!("first/_generated/migrations/{name}")).unwrap();
+        files.insert(format!("first/migrations/{name}"), text);
     }
     let app = serde_json::to_vec(&app).unwrap();
-    fs::write(older.join("app.zero.json"), &app).unwrap();
+    fs::write(older.join("app.first.json"), &app).unwrap();
     let mut manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(first.join("manifest.json")).unwrap()).unwrap();
     manifest["app_sha256"] = {
@@ -92,14 +92,14 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     };
     fs::write(older.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
     let compiled_older = work.path().join("compiled-older");
-    zero::bundle::compile(&older, &compiled_older, &older, None).unwrap();
+    first::bundle::compile(&older, &compiled_older, &older, None).unwrap();
     assert_eq!(
         fs::read_to_string(compiled_older.join("source-migrations/0001_adopt.sql")).unwrap(),
         "SELECT 'archived only';"
     );
-    let path = "plugins/zero-app-app/zero/app/functions.php";
+    let path = "plugins/first-app-app/first/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
-    let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_zero"))
+    let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_first"))
         .arg("compile-sources")
         .arg(&second)
         .arg(&compiled_second)
@@ -114,7 +114,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     );
     assert_ne!(before, fs::read(compiled_second.join(path)).unwrap());
     assert_eq!(before, fs::read(compiled_first.join(path)).unwrap());
-    assert!(zero::bundle::compile(&second, &compiled_first, &second, None).is_err());
+    assert!(first::bundle::compile(&second, &compiled_first, &second, None).is_err());
     let client_before = fs::read(compiled_first.join("client/client.js")).unwrap();
     assert!(client_before.len() > 1000);
     assert!(fs::metadata(compiled_first.join("client/client.d.ts")).unwrap().len() > 1000);
@@ -153,11 +153,11 @@ void label; void version;
         String::from_utf8_lossy(&types.stdout),
         String::from_utf8_lossy(&types.stderr)
     );
-    fs::write(second.join("vendor.zero.json"), b"{}").unwrap();
-    let error = zero::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
+    fs::write(second.join("vendor.first.json"), b"{}").unwrap();
+    let error = first::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
     assert!(error.message.contains("hash mismatch"));
     assert_eq!(
-        fs::read(compiled_first.join("plugins/zero-app-app/public/logo.svg")).unwrap(),
+        fs::read(compiled_first.join("plugins/first-app-app/public/logo.svg")).unwrap(),
         b"<svg/>"
     );
 }
@@ -168,19 +168,19 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     let project = work.path().join("app");
     write(
         &project,
-        "zero.config.ts",
-        "import { defineConfig } from 'zero'; export default defineConfig({});",
+        "first.config.ts",
+        "import { defineConfig } from 'first'; export default defineConfig({});",
     );
     write(&project, "public/nested/unsafe.PHP", "<?php echo 'no';");
     let upload = work.path().join("upload");
-    assert!(zero::bundle::sources(&project, &upload).is_err());
+    assert!(first::bundle::sources(&project, &upload).is_err());
     assert!(!upload.exists());
     fs::remove_dir_all(project.join("public")).unwrap();
     let bundle = work.path().join("bundle");
-    zero::bundle::sources(&project, &bundle).unwrap();
+    first::bundle::sources(&project, &bundle).unwrap();
     write(&bundle, "public/nested/unsafe.PHP", "<?php echo 'no';");
     let output = work.path().join("compiled");
-    assert!(zero::bundle::compile(&bundle, &output, &bundle, None).is_err());
+    assert!(first::bundle::compile(&bundle, &output, &bundle, None).is_err());
     assert!(!output.exists());
     fs::remove_dir_all(bundle.join("public")).unwrap();
     #[cfg(unix)]
@@ -188,39 +188,39 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
         fs::create_dir(bundle.join("public")).unwrap();
         write(work.path(), "outside.txt", "private");
         std::os::unix::fs::symlink(work.path().join("outside.txt"), bundle.join("public/linked.txt")).unwrap();
-        assert!(zero::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(first::bundle::compile(&bundle, &output, &bundle, None).is_err());
         assert!(!output.exists());
         fs::remove_dir_all(bundle.join("public")).unwrap();
         std::os::unix::fs::symlink(&project, bundle.join("public")).unwrap();
-        assert!(zero::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(first::bundle::compile(&bundle, &output, &bundle, None).is_err());
         assert!(!output.exists());
         write(work.path(), "outside.ts", "export const value = 1;");
         std::os::unix::fs::symlink(work.path().join("outside.ts"), project.join("outside.ts")).unwrap();
         write(
             &project,
-            "zero.config.ts",
-            "import { defineConfig } from 'zero'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
+            "first.config.ts",
+            "import { defineConfig } from 'first'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
         );
-        assert!(zero::bundle::sources(&project, &work.path().join("escape")).is_err());
+        assert!(first::bundle::sources(&project, &work.path().join("escape")).is_err());
     }
 }
 
-/// A hosted compile types `abilities.call` from the captured `zero/abilities.json`: the bundle's
+/// A hosted compile types `abilities.call` from the captured `first/abilities.json`: the bundle's
 /// file system is rooted at its own module directory, not at the app's name.
 #[test]
 fn captured_ability_lock_types_hosted_calls() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("calls");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/abilities-call");
-    for file in ["zero.config.ts", "zero/abilities.json"] {
+    for file in ["first.config.ts", "first/abilities.json"] {
         write(&project, file, &fs::read_to_string(fixture.join(file)).unwrap());
     }
     let bundle = work.path().join("bundle");
-    zero::bundle::sources(&project, &bundle).unwrap();
+    first::bundle::sources(&project, &bundle).unwrap();
     fs::remove_dir_all(&project).unwrap();
     // Without the lock the call is `unknown ability \`acme/site-info\``, so compiling is the proof.
     let compiled = work.path().join("compiled");
-    if let Err(e) = zero::bundle::compile(&bundle, &compiled, &bundle, None) {
+    if let Err(e) = first::bundle::compile(&bundle, &compiled, &bundle, None) {
         panic!("{}", e.message);
     }
 }

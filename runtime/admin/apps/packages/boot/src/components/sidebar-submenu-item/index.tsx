@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Icon } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
 import { FlexBlock } from '@wordpress/components';
 import { isRTL } from '@wordpress/i18n';
 import { chevronRightSmall, chevronLeftSmall } from '@wordpress/icons';

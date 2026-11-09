@@ -8,8 +8,8 @@
     "noEmit": true,
     "types": [],
     "paths": {
-      "zero": ["../../types/zero/index.d.ts"]
+      "first": ["../../types/first/index.d.ts"]
     }
   },
-  "include": ["zero.config.ts", "zero.gen.ts"]
+  "include": ["first.config.ts", "first.gen.ts"]
 }

@@ -8,7 +8,7 @@
  * returns plain data: content trees, metadata, and the tokens, regions and
  * queries PHP will evaluate per request.
  */
-import { toContentNodes } from "@spacefast/zero-blocks/jsx-runtime";
+import { toContentNodes } from "@spacefast/first-blocks/jsx-runtime";
 
 import { content } from "./index.ts";
 import {

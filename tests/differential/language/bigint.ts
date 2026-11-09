@@ -1,9 +1,9 @@
-// BigInt, which live Zero 0.8 apps use (zero#138 census) for exact large ids, money in minor
+// BigInt, which live Zero 0.8 apps use (first#138 census) for exact large ids, money in minor
 // units and 64-bit hashes. Every action runs under Node and as compiled PHP; the JSON results must
 // be byte-identical. BigInts can't be JSON-serialized, so results are spelled out as strings.
 // `bigint-helpers.mjs` runs the same operations untyped. Exact arithmetic on random operands is
 // also checked against Node in tests/php/bigint_test.php.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import { bigintUntyped } from "./bigint-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
@@ -59,8 +59,8 @@ function errors(): string[] {
 
 /** `0n` is falsy, so `b || fallback` keeps both types; a stored big integer converts as its double. */
 function edges(): string[] {
-  const zero = 0n as bigint;
-  const fallback = zero || "fallback";
+  const first = 0n as bigint;
+  const fallback = first || "fallback";
   const big = 9007199254740993 as number;
   return [String(fallback), typeof fallback, String(BigInt(big)), (255n).toString(undefined)];
 }

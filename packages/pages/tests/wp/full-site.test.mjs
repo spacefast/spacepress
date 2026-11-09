@@ -1,9 +1,9 @@
-// Native acceptance for optional TSX pages: a fresh WordPress 7.1 + SQLite site from `zero dev`
-// (WordPress Studio, no Docker), the full-site example built by `zero build` and `zero-pages build`,
+// Native acceptance for optional TSX pages: a fresh WordPress 7.1 + SQLite site from `first dev`
+// (WordPress Studio, no Docker), the full-site example built by `first build` and `first-pages build`,
 // checked over HTTP and in a real browser. Everything it creates lives under one temp directory
 // and one Studio site, both removed at the end.
 //
-//   ZERO_BIN=<zero binary> [ZERO_PAGES_CHROMIUM=<chrome-headless-shell>] node --test tests/wp/full-site.test.mjs
+//   FIRST_BIN=<first binary> [FIRST_PAGES_CHROMIUM=<chrome-headless-shell>] node --test tests/wp/full-site.test.mjs
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -22,13 +22,13 @@ const exec = promisify(execFile);
 const here = fileURLToPath(new URL('.', import.meta.url));
 const repo = resolve(here, '../../../..');
 const example = join(repo, 'examples/full-site');
-const zero = resolve(process.env.ZERO_BIN ?? join(repo, 'target/debug/zero'));
+const first = resolve(process.env.FIRST_BIN ?? join(repo, 'target/debug/first'));
 
 async function chromiumPath() {
-  if (process.env.ZERO_PAGES_CHROMIUM) return process.env.ZERO_PAGES_CHROMIUM;
+  if (process.env.FIRST_PAGES_CHROMIUM) return process.env.FIRST_PAGES_CHROMIUM;
   const cache = join(homedir(), '.cache/ms-playwright');
   const shells = (await readdir(cache)).filter((name) => name.startsWith('chromium_headless_shell-')).sort().reverse();
-  if (shells.length === 0) throw new Error('Set ZERO_PAGES_CHROMIUM to a chrome-headless-shell executable.');
+  if (shells.length === 0) throw new Error('Set FIRST_PAGES_CHROMIUM to a chrome-headless-shell executable.');
   return join(cache, shells[0], 'chrome-headless-shell-linux64/chrome-headless-shell');
 }
 
@@ -40,16 +40,16 @@ async function freePort() {
   return port;
 }
 
-const run = async (args) => (await exec(zero, args, { timeout: 600000, maxBuffer: 16 * 1024 * 1024 })).stdout.trim();
+const run = async (args) => (await exec(first, args, { timeout: 600000, maxBuffer: 16 * 1024 * 1024 })).stdout.trim();
 
 test('TSX pages serve a full site from native WordPress with viewer-bound data', { timeout: 900000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'zero-pages-native-'));
+  const root = await mkdtemp(join(tmpdir(), 'first-pages-native-'));
   const project = join(root, 'site');
-  const content = join(project, '.zero/wp-content');
-  for (const entry of ['zero.config.ts', 'pages', 'components', 'islands', 'styles']) {
+  const content = join(project, '.first/wp-content');
+  for (const entry of ['first.config.ts', 'pages', 'components', 'islands', 'styles']) {
     await cp(join(example, entry), join(project, entry), { recursive: true });
   }
-  const config = join(project, 'zero.config.ts');
+  const config = join(project, 'first.config.ts');
   await writeFile(config, (await readFile(config, 'utf8'))
     .replace('title: text().notNull().min(1).max(120),', 'title: text().notNull().min(1).max(120),\n  kind: text(),\n  then: text(),')
     .replace('body: richText(),', 'body: richText().access({ read: (ctx) => ctx.user?.role === "admin" || ctx.data.slug !== "masked-body" }),')
@@ -64,7 +64,7 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
       <p className="fallback-query">{fallbackNote.title}</p>
       <p className="schema-probes">{item.kind} | {then}</p>
       <RichText value={item.body} />`));
-  const site = join(project, '.zero/dev/wordpress');
+  const site = join(project, '.first/dev/wordpress');
   let browser;
   t.after(async () => {
     const failures = [];
@@ -88,7 +88,7 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
   const wp = (...args) => run(['wp', '--site', project, ...args]);
   const built = await buildPages({ project, out: content });
   assert.deepEqual(built.diagnostics.filter((d) => d.severity === 'error'), []);
-  const pagesPlugin = join(content, 'plugins/zero-pages-fullsite');
+  const pagesPlugin = join(content, 'plugins/first-pages-fullsite');
   const pagesTree = async (directory) => {
     const files = {};
     for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -99,41 +99,41 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
   const pagesBefore = await pagesTree(pagesPlugin);
   await run(['build', project]);
   assert.deepEqual(await pagesTree(pagesPlugin), pagesBefore, 'backend rebuild preserves the real Pages plugin byte for byte');
-  await cp(join(content, 'plugins/zero-pages-fullsite'), join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
-  await wp('plugin', 'activate', 'zero-pages-fullsite');
+  await cp(join(content, 'plugins/first-pages-fullsite'), join(site, 'wp-content/plugins/first-pages-fullsite'), { recursive: true });
+  await wp('plugin', 'activate', 'first-pages-fullsite');
   await mkdir(join(site, 'wp-content/mu-plugins'), { recursive: true });
-  await writeFile(join(site, 'wp-content/mu-plugins/zero-pages-test-context.php'), `<?php
+  await writeFile(join(site, 'wp-content/mu-plugins/first-pages-test-context.php'), `<?php
 add_action('wp_head', static function (): void {
     $context = ['id' => get_the_ID(), 'queried' => get_queried_object_id(), 'notFound' => is_404(), 'singular' => is_singular(), 'type' => get_post_type(), 'title' => get_the_title()];
-    echo '<meta name="zero-pages-test-context" content="' . esc_attr(base64_encode(wp_json_encode($context))) . '">';
-    echo '<meta name="zero-pages-test-body" content="' . esc_attr(base64_encode(wp_json_encode(['content' => get_the_content(), 'excerpt' => get_the_excerpt()]))) . '">';
+    echo '<meta name="first-pages-test-context" content="' . esc_attr(base64_encode(wp_json_encode($context))) . '">';
+    echo '<meta name="first-pages-test-body" content="' . esc_attr(base64_encode(wp_json_encode(['content' => get_the_content(), 'excerpt' => get_the_excerpt()]))) . '">';
 });
-add_shortcode('zero_pages_test_context', static fn (): string => '<p class="zero-pages-test-context">' . get_the_ID() . ':' . esc_html(get_the_title()) . '</p>');
+add_shortcode('first_pages_test_context', static fn (): string => '<p class="first-pages-test-context">' . get_the_ID() . ':' . esc_html(get_the_title()) . '</p>');
 add_filter('wp_insert_post_empty_content', static function (bool $empty, array $data): bool {
-    return $empty || (get_option('zero_pages_test_fail_write') && ($data['post_type'] ?? '') === 'page' && ($data['post_name'] ?? '') === 'about');
+    return $empty || (get_option('first_pages_test_fail_write') && ($data['post_type'] ?? '') === 'page' && ($data['post_name'] ?? '') === 'about');
 }, 10, 2);
 add_action('wp_after_insert_post', static function (int $id, WP_Post $post): void {
     if ($post->post_type === 'page' && $post->post_name === 'contact') {
-        if (get_option('zero_pages_test_interrupt') === 'exit') exit(73);
-        if (get_option('zero_pages_test_interrupt') === 'post') throw new RuntimeException('Interrupted after publication');
+        if (get_option('first_pages_test_interrupt') === 'exit') exit(73);
+        if (get_option('first_pages_test_interrupt') === 'post') throw new RuntimeException('Interrupted after publication');
     }
 }, 10, 2);
 add_action('added_post_meta', static function (int $metaId, int $postId, string $key): void {
-    if ($key === '_zero_pages_app' && get_post($postId)->post_name === 'contact' && get_option('zero_pages_test_interrupt') === 'meta') {
+    if ($key === '_first_pages_app' && get_post($postId)->post_name === 'contact' && get_option('first_pages_test_interrupt') === 'meta') {
         throw new RuntimeException('Interrupted during ownership');
     }
 }, 10, 3);
 add_action('updated_option', static function (string $name): void {
-    if ($name === 'zero_pages_fullsite' && get_option('zero_pages_test_interrupt') === 'map') {
+    if ($name === 'first_pages_fullsite' && get_option('first_pages_test_interrupt') === 'map') {
         throw new RuntimeException('Interrupted after route mapping');
     }
 });
 add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
-    return get_option('zero_pages_test_refuse_retirement') && $post->post_name === 'contact' ? false : $trash;
+    return get_option('first_pages_test_refuse_retirement') && $post->post_name === 'contact' ? false : $trash;
 }, 10, 2);
 `);
 
-  const password = (await wp('user', 'application-password', 'create', 'admin', 'zero-pages-acceptance', '--porcelain')).split('\n').at(-1);
+  const password = (await wp('user', 'application-password', 'create', 'admin', 'first-pages-acceptance', '--porcelain')).split('\n').at(-1);
   const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
   async function api(path, { method = 'GET', body, auth = true } = {}) {
     const response = await fetch(`${base}${path}`, {
@@ -149,25 +149,25 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
     return { status: response.status, headers: response.headers, html: await response.text() };
   }
   function postContext(html) {
-    const encoded = /<meta name="zero-pages-test-context" content="([^"]+)">/.exec(html)?.[1];
+    const encoded = /<meta name="first-pages-test-context" content="([^"]+)">/.exec(html)?.[1];
     assert.equal(typeof encoded, 'string', 'wp_head observed a routed post context');
     return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
   }
 
-  const published = await api('/wp-json/zero/v1/notes', { method: 'POST', body: {
+  const published = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
     title: 'First light', slug: 'first-light', dek: 'Dawn on the <ridge> & beyond', status: 'published',
-    body: '<!-- wp:paragraph --><p>The body of the <em>first</em> note.</p><!-- /wp:paragraph --><!-- wp:post-title {"isLink":true} /--><!-- wp:shortcode -->[zero_pages_test_context]<!-- /wp:shortcode -->',
+    body: '<!-- wp:paragraph --><p>The body of the <em>first</em> note.</p><!-- /wp:paragraph --><!-- wp:post-title {"isLink":true} /--><!-- wp:shortcode -->[first_pages_test_context]<!-- /wp:shortcode -->',
     deskNotes: 'Desk-only remark',
     kind: 'Field report', then: 'Next observation',
   } });
   assert.equal(published.status, 201, JSON.stringify(published.body));
   const note = published.body.data;
-  const draft = await api('/wp-json/zero/v1/notes', { method: 'POST', body: { title: 'Unfinished draft', slug: 'unfinished', dek: 'not yet', status: 'draft' } });
+  const draft = await api('/wp-json/first/v1/notes', { method: 'POST', body: { title: 'Unfinished draft', slug: 'unfinished', dek: 'not yet', status: 'draft' } });
   assert.equal(draft.status, 201, JSON.stringify(draft.body));
   // A value that tries to be markup, block syntax or a placeholder stays text everywhere it is shown.
-  const hostile = await api('/wp-json/zero/v1/notes', { method: 'POST', body: {
-    title: '<img src=x onerror=alert(1)> <!-- wp:zero-pages/show {"region":"s1"} --> \u{E000}v1\u{E001}', slug: 'hostile', status: 'published',
-    body: '<!-- wp:zero-pages/show {"region":"s2"} --><p>smuggled region</p><!-- /wp:zero-pages/show --><!-- wp:paragraph --><p>Stored \u{E000}v1\u{E001} text</p><!-- /wp:paragraph -->',
+  const hostile = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
+    title: '<img src=x onerror=alert(1)> <!-- wp:first-pages/show {"region":"s1"} --> \u{E000}v1\u{E001}', slug: 'hostile', status: 'published',
+    body: '<!-- wp:first-pages/show {"region":"s2"} --><p>smuggled region</p><!-- /wp:first-pages/show --><!-- wp:paragraph --><p>Stored \u{E000}v1\u{E001} text</p><!-- /wp:paragraph -->',
   } });
   assert.equal(hostile.status, 201, JSON.stringify(hostile.body));
   // 2. Anonymous HTTP: root, about, list, detail; layout, assets, metadata, masking, no shared caching.
@@ -186,7 +186,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match(about.html, new RegExp(`<link rel="canonical" href="${base}/about/">`));
   const css = /href='([^']+\/assets\/page-[0-9a-f]+\.css)'/.exec(about.html)?.[1];
   assert.ok(css, 'route stylesheet is enqueued');
-  assert.match(await (await fetch(css)).text(), /body\.zero-pages/);
+  assert.match(await (await fetch(css)).text(), /body\.first-pages/);
   const svg = /src="([^"]+\/assets\/compass-[A-Z0-9]+\.svg)"/.exec(about.html)?.[1];
   assert.ok(svg, 'imported file asset is served from the plugin');
   assert.equal((await fetch(svg)).status, 200);
@@ -209,15 +209,15 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match(detail.html, /class="[^"]*fallback-truthy[^"]*">Truthy fallback<\/p>/);
   assert.doesNotMatch(detail.html, /class="[^"]*fallback-equals[^"]*"/);
   assert.match(detail.html, /class="[^"]*fallback-query[^"]*">First light<\/p>/, 'query options keep a nonempty field instead of its fallback');
-  assert.deepEqual(postContext(detail.html), { id: note.id, queried: note.id, notFound: false, singular: true, type: 'zero_notes', title: 'First light' });
+  assert.deepEqual(postContext(detail.html), { id: note.id, queried: note.id, notFound: false, singular: true, type: 'first_notes', title: 'First light' });
   assert.match(detail.html, new RegExp(`<h2 class="wp-block-post-title"><a href="${base}/notes/first-light/"[^>]*>First light</a></h2>`), 'native post-title block uses the routed item and its claimed permalink');
-  assert.match(detail.html, new RegExp(`<p class="zero-pages-test-context">${note.id}:First light</p>`), 'shortcodes use the routed item');
+  assert.match(detail.html, new RegExp(`<p class="first-pages-test-context">${note.id}:First light</p>`), 'shortcodes use the routed item');
 
-  const fallbackMatch = await api('/wp-json/zero/v1/notes', { method: 'POST', body: {
+  const fallbackMatch = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
     title: 'Matched default summary', slug: 'default-summary', dek: 'Fallback query sentinel', status: 'published',
   } });
   assert.equal(fallbackMatch.status, 201, JSON.stringify(fallbackMatch.body));
-  const masked = await api('/wp-json/zero/v1/notes', { method: 'POST', body: {
+  const masked = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
     title: 'Masked body', slug: 'masked-body', status: 'published',
     body: '<!-- wp:paragraph --><p>Private body must stay hidden.</p><!-- /wp:paragraph -->',
   } });
@@ -228,7 +228,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match(maskedPage.html, /class="[^"]*fallback-truthy[^"]*">Truthy fallback<\/p>/);
   assert.match(maskedPage.html, /class="[^"]*fallback-equals[^"]*">Default summary<\/p>/, 'Show uses the fallback for a null field');
   assert.match(maskedPage.html, /class="[^"]*fallback-query[^"]*">Matched default summary<\/p>/, 'query options bind the fallback for a null field');
-  const nativeBody = /<meta name="zero-pages-test-body" content="([^"]+)">/.exec(maskedPage.html)?.[1];
+  const nativeBody = /<meta name="first-pages-test-body" content="([^"]+)">/.exec(maskedPage.html)?.[1];
   assert.equal(typeof nativeBody, 'string', 'native head hook read the visitor-projected post');
   assert.deepEqual(JSON.parse(Buffer.from(nativeBody, 'base64').toString('utf8')), { content: '', excerpt: '' });
 
@@ -243,7 +243,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   // A WordPress session issued by another integration must still obey identity suspension.
   const suspendedId = Number(await wp('user', 'create', 'pages-suspended', 'pages-suspended@example.test', '--role=subscriber', '--porcelain'));
   assert.equal(Number.isInteger(suspendedId) && suspendedId > 0, true);
-  await wp('zero', 'identity', 'suspend', String(suspendedId));
+  await wp('first', 'identity', 'suspend', String(suspendedId));
   const suspendedCookie = await wp('eval', `echo LOGGED_IN_COOKIE . '=' . wp_generate_auth_cookie(${suspendedId}, time() + 300, 'logged_in');`);
   const denied = await page('/about/', { cookie: suspendedCookie });
   assert.equal(denied.status, 404, 'a resolved suspended account cannot view a managed route');
@@ -254,7 +254,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
 
   const escaped = await page('/notes/hostile/');
   assert.equal(escaped.status, 200);
-  assert.match(escaped.html, /<h1 class="wp-block-heading">&lt;img src=x onerror=alert\(1\)&gt; &lt;!-- wp:zero-pages\/show \{&quot;region&quot;:&quot;s1&quot;\} --&gt; v1<\/h1>/);
+  assert.match(escaped.html, /<h1 class="wp-block-heading">&lt;img src=x onerror=alert\(1\)&gt; &lt;!-- wp:first-pages\/show \{&quot;region&quot;:&quot;s1&quot;\} --&gt; v1<\/h1>/);
   assert.doesNotMatch(escaped.html, /<img src=x/);
   // Stored rich text cannot run a page region or read page data through a placeholder.
   assert.match(escaped.html, /<p[^>]*>Stored  text<\/p>/);
@@ -266,17 +266,17 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   // Static first: /notes/featured is the static page, and no note can take its slug through any write path.
   const featured = await page('/notes/featured/');
   assert.match(featured.html, /<title>Featured · Field Notes<\/title>/);
-  const reserved = await api('/wp-json/zero/v1/notes', { method: 'POST', body: { title: 'Featured', slug: 'featured', status: 'published' } });
+  const reserved = await api('/wp-json/first/v1/notes', { method: 'POST', body: { title: 'Featured', slug: 'featured', status: 'published' } });
   assert.deepEqual([reserved.status, reserved.body.code], [409, 'reserved_slug']);
-  const core = await api('/wp-json/wp/v2/zero_notes', { method: 'POST', body: { title: 'Featured via core', slug: 'featured', status: 'publish' } });
+  const core = await api('/wp-json/wp/v2/first_notes', { method: 'POST', body: { title: 'Featured via core', slug: 'featured', status: 'publish' } });
   assert.equal(core.status, 201, JSON.stringify(core.body));
   assert.notEqual(core.body.slug, 'featured');
 
-  // 3. Signed in: drafts and staff-only fields appear for staff, as Zero's rules say.
+  // 3. Signed in: drafts and staff-only fields appear for staff, as First's rules say.
   const login = await fetch(`${base}/wp-login.php`, {
     method: 'POST', redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'wordpress_test_cookie=WP+Cookie+check' },
-    body: 'log=admin&pwd=zero-test-admin&wp-submit=Log+In&testcookie=1',
+    body: 'log=admin&pwd=first-test-admin&wp-submit=Log+In&testcookie=1',
   });
   const cookie = login.headers.getSetCookie().map((entry) => entry.split(';')[0]).join('; ');
   const staffDraft = await page('/notes/unfinished/', { cookie });
@@ -285,7 +285,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match((await page('/notes/first-light/', { cookie })).html, /Desk-only remark/);
 
   // 4. Hidden, code-owned Pages: public identity, no editing surface.
-  const owned = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  const owned = JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json'));
   const aboutId = owned.pages['p:2f61626f7574'];
   assert.deepEqual(postContext(featured.html), { id: owned.pages['u:notes.featured'], queried: owned.pages['u:notes.featured'], notFound: false, singular: true, type: 'page', title: 'Featured' });
   assert.deepEqual(postContext(about.html), { id: aboutId, queried: aboutId, notFound: false, singular: true, type: 'page', title: 'About' });
@@ -314,7 +314,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match((await page('/notes/first-light/')).html, /<h1 class="wp-block-heading">First light<\/h1>/, 'the item route resumes after the native Page is removed');
 
   // 5. A native content edit (core REST, as the editor would save) is visible publicly on the next request.
-  const edited = await api(`/wp-json/wp/v2/zero_notes/${note.id}`, { method: 'POST', body: { title: 'First light, revised' } });
+  const edited = await api(`/wp-json/wp/v2/first_notes/${note.id}`, { method: 'POST', body: { title: 'First light, revised' } });
   assert.equal(edited.status, 200, JSON.stringify(edited.body));
   assert.match((await page('/notes/first-light/')).html, /<h1 class="wp-block-heading">First light, revised<\/h1>/);
   assert.match((await page('/notes/')).html, /First light, revised/);
@@ -335,42 +335,42 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.equal(await tab.locator('.fallback-empty').count(), 0, 'an empty stored string remains false instead of using the fallback');
   assert.equal(await tab.evaluate(() => getComputedStyle(document.querySelector('.cheer button')).backgroundColor), 'rgb(31, 77, 58)');
   assert.deepEqual(consoleErrors, []);
-  const cheers = await api('/wp-json/zero/v1/cheers', { auth: false });
+  const cheers = await api('/wp-json/first/v1/cheers', { auth: false });
   assert.deepEqual(cheers.body.data.map((row) => [row.noteId, row.count]), [[note.id, 1]]);
 
   // 7. Rebuild after a code change: same Page IDs, edits to content kept, new code served.
   // An ordinary Page already owns /contact: the new route must not take it over.
   const contactId = Number(await wp('post', 'create', '--post_type=page', '--post_status=publish', '--post_title=Contact us', '--post_name=contact', '--porcelain'));
   await mkdir(join(project, 'pages/contact'));
-  await writeFile(join(project, 'pages/contact/page.tsx'), 'export default function Contact() {\n  return <h1>Zero contact</h1>;\n}\n');
+  await writeFile(join(project, 'pages/contact/page.tsx'), 'export default function Contact() {\n  return <h1>First contact</h1>;\n}\n');
   const aboutSource = join(project, 'pages/about/page.tsx');
   await writeFile(aboutSource, (await readFile(aboutSource, 'utf8')).replace('<h1>About</h1>', '<h1>About this site</h1>'));
   const rebuilt = await buildPages({ project, out: content });
   assert.equal(rebuilt.ok, true);
-  await wp('option', 'update', 'zero_pages_test_fail_write', '1');
-  await rm(join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
-  await cp(join(content, 'plugins/zero-pages-fullsite'), join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
+  await wp('option', 'update', 'first_pages_test_fail_write', '1');
+  await rm(join(site, 'wp-content/plugins/first-pages-fullsite'), { recursive: true });
+  await cp(join(content, 'plugins/first-pages-fullsite'), join(site, 'wp-content/plugins/first-pages-fullsite'), { recursive: true });
   assert.equal((await page('/about/')).status, 200, 'a managed Page write failure does not abort init');
-  const failedState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  const failedState = JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json'));
   assert.equal(failedState.digest, owned.digest, 'a failed reconciliation does not commit the new digest');
   assert.deepEqual(failedState.pages, owned.pages);
   assert.deepEqual(failedState.conflicts, []);
   const contactDuringFailure = await page('/contact/');
   assert.equal(contactDuringFailure.status, 200);
   assert.match(contactDuringFailure.html, /Contact us/);
-  assert.doesNotMatch(contactDuringFailure.html, /Zero contact/, 'a new route cannot claim native content while reconciliation is incomplete');
-  assert.match(await wp('option', 'get', 'zero_pages_fullsite_error'), /Cannot write the Page for \/about:/);
-  assert.equal(await wp('eval', 'echo get_option("zero_pages_lock_fullsite", false) === false ? "released" : "held";'), 'released');
+  assert.doesNotMatch(contactDuringFailure.html, /First contact/, 'a new route cannot claim native content while reconciliation is incomplete');
+  assert.match(await wp('option', 'get', 'first_pages_fullsite_error'), /Cannot write the Page for \/about:/);
+  assert.equal(await wp('eval', 'echo get_option("first_pages_lock_fullsite", false) === false ? "released" : "held";'), 'released');
   const nativeDuringFailure = await api('/wp-json/wp/v2/types/page', { auth: false });
   assert.equal(nativeDuringFailure.status, 200);
   assert.equal(nativeDuringFailure.body.slug, 'page', 'unrelated WordPress REST remains usable');
   const errorNotice = await wp('eval', 'wp_set_current_user(1); do_action("admin_notices");');
-  assert.match(errorNotice, /Zero pages could not update its managed Pages/);
+  assert.match(errorNotice, /First pages could not update its managed Pages/);
   assert.match(errorNotice, /Cannot write the Page for \/about:/);
-  await wp('option', 'delete', 'zero_pages_test_fail_write');
+  await wp('option', 'delete', 'first_pages_test_fail_write');
   assert.match((await page('/about/')).html, /<h1 class="wp-block-heading">About this site<\/h1>/);
-  assert.equal(await wp('eval', 'echo get_option("zero_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared', 'successful retry clears the persisted notice');
-  const after = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  assert.equal(await wp('eval', 'echo get_option("first_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared', 'successful retry clears the persisted notice');
+  const after = JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json'));
   assert.deepEqual(Object.fromEntries(Object.entries(after.pages)), owned.pages);
   assert.notEqual(after.digest, owned.digest);
   assert.match(await wp('post', 'get', String(aboutId), '--field=post_content'), /About this site/);
@@ -379,32 +379,32 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   const contact = await page('/contact/');
   assert.equal(contact.status, 200);
   assert.match(contact.html, /Contact us/);
-  assert.doesNotMatch(contact.html, /Zero contact/);
+  assert.doesNotMatch(contact.html, /First contact/);
   assert.deepEqual(after.conflicts, ['/contact']);
   // Force rollback after publication, halfway through ownership, and after caching the new route map.
-  await wp('option', 'update', 'zero_pages_test_interrupt', 'post');
+  await wp('option', 'update', 'first_pages_test_interrupt', 'post');
   await wp('post', 'delete', String(contactId), '--force');
-  await wp('--skip-plugins=zero-pages-fullsite', 'option', 'update', 'zero_pages_test_interrupt', 'exit');
-  // `zero wp` passes WP-CLI's own exit status through (#149); a PHP exit mid-publication fails the command.
+  await wp('--skip-plugins=first-pages-fullsite', 'option', 'update', 'first_pages_test_interrupt', 'exit');
+  // `first wp` passes WP-CLI's own exit status through (#149); a PHP exit mid-publication fails the command.
   await assert.rejects(wp('eval', 'echo "unexpected completion";'), (error) => error.code !== 0 && !String(error.stdout).includes('unexpected completion'), 'an actual PHP exit interrupts publication');
-  const aborted = JSON.parse(await wp('--skip-plugins=zero-pages-fullsite', 'eval', `global $wpdb;
+  const aborted = JSON.parse(await wp('--skip-plugins=first-pages-fullsite', 'eval', `global $wpdb;
     echo wp_json_encode([
-      'state' => get_option('zero_pages_fullsite'),
+      'state' => get_option('first_pages_fullsite'),
       'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
     ]);`));
   assert.deepEqual(aborted.state, after, 'an abruptly ended process cannot commit a partial route map');
   assert.deepEqual(aborted.posts, [], 'an abruptly ended process leaves no published orphan');
   for (const phase of ['post', 'meta', 'map']) {
-    await wp('--skip-plugins=zero-pages-fullsite', 'option', 'update', 'zero_pages_test_interrupt', phase);
+    await wp('--skip-plugins=first-pages-fullsite', 'option', 'update', 'first_pages_test_interrupt', phase);
     const interrupted = await page('/contact/');
     assert.equal(interrupted.status, 404, `${phase}: the rolled-back Page is not publicly reachable`);
-    assert.doesNotMatch(interrupted.html, /Zero contact/);
+    assert.doesNotMatch(interrupted.html, /First contact/);
     const rollback = JSON.parse(await wp('eval', `global $wpdb;
       echo wp_json_encode([
-        'state' => get_option('zero_pages_fullsite'),
+        'state' => get_option('first_pages_fullsite'),
         'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
-        'error' => get_option('zero_pages_fullsite_error'),
-        'transaction' => \\Zero\\Wp\\Runtime::plugin()->connection()->inTransaction(),
+        'error' => get_option('first_pages_fullsite_error'),
+        'transaction' => \\First\\Wp\\Runtime::plugin()->connection()->inTransaction(),
       ]);`));
     assert.deepEqual(rollback.state, after, `${phase}: the route map and cached options roll back together`);
     assert.deepEqual(rollback.posts, [], `${phase}: no orphaned Page remains in the database`);
@@ -414,26 +414,26 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   }
 
   // A held connection lock excludes another reconciler even when no option lease exists.
-  const excluded = JSON.parse(await wp('--skip-plugins=zero-pages-fullsite', 'eval', `
-    require WP_PLUGIN_DIR . '/zero-pages-fullsite/zero-pages-fullsite.php';
-    $connection = \\Zero\\Wp\\Runtime::plugin()->connection();
-    $name = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':fullsite'), 0, 40);
+  const excluded = JSON.parse(await wp('--skip-plugins=first-pages-fullsite', 'eval', `
+    require WP_PLUGIN_DIR . '/first-pages-fullsite/first-pages-fullsite.php';
+    $connection = \\First\\Wp\\Runtime::plugin()->connection();
+    $name = 'first-pages:' . substr(hash('sha256', $connection->prefix() . ':fullsite'), 0, 40);
     $connection->locked($name, 0, static function (): void {
-      delete_option('zero_pages_test_interrupt');
-      $priorError = get_option('zero_pages_fullsite_error', false);
-      \\Zero\\Pages\\Plugin::instance()->reconcile();
-      $preservedError = get_option('zero_pages_fullsite_error', false);
-      delete_option('zero_pages_fullsite_error');
-      \\Zero\\Pages\\Plugin::instance()->reconcile();
+      delete_option('first_pages_test_interrupt');
+      $priorError = get_option('first_pages_fullsite_error', false);
+      \\First\\Pages\\Plugin::instance()->reconcile();
+      $preservedError = get_option('first_pages_fullsite_error', false);
+      delete_option('first_pages_fullsite_error');
+      \\First\\Pages\\Plugin::instance()->reconcile();
       global $wpdb;
       echo wp_json_encode([
-        'state' => get_option('zero_pages_fullsite'),
+        'state' => get_option('first_pages_fullsite'),
         'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
         'priorError' => $priorError,
         'preservedError' => $preservedError,
-        'newError' => get_option('zero_pages_fullsite_error', false),
+        'newError' => get_option('first_pages_fullsite_error', false),
       ]);
-      update_option('zero_pages_test_interrupt', 'map');
+      update_option('first_pages_test_interrupt', 'map');
     });`));
   assert.deepEqual(excluded.state, after, 'a competing reconciler cannot change the route map');
   assert.deepEqual(excluded.posts, [], 'a competing reconciler cannot publish a duplicate Page');
@@ -442,25 +442,25 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.equal(excluded.newError, false, 'lock contention without a prior failure creates no error notice');
 
   // A real filesystem failure before the callback must still produce an administrator notice.
-  const unavailable = JSON.parse(await wp('--skip-plugins=zero-pages-fullsite', 'eval', `
-    require WP_PLUGIN_DIR . '/zero-pages-fullsite/zero-pages-fullsite.php';
-    $connection = \\Zero\\Wp\\Runtime::plugin()->connection();
-    $name = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':fullsite'), 0, 40);
+  const unavailable = JSON.parse(await wp('--skip-plugins=first-pages-fullsite', 'eval', `
+    require WP_PLUGIN_DIR . '/first-pages-fullsite/first-pages-fullsite.php';
+    $connection = \\First\\Wp\\Runtime::plugin()->connection();
+    $name = 'first-pages:' . substr(hash('sha256', $connection->prefix() . ':fullsite'), 0, 40);
     $file = (defined('DB_PATH') ? (string) DB_PATH : (string) (DB_DIR . '/' . DB_FILE)) . '.' . substr(hash('sha256', $name), 0, 16) . '.lock';
     if (!rename($file, $file . '.test-backup')) throw new RuntimeException('Cannot prepare lock failure');
     try {
       if (!mkdir($file)) throw new RuntimeException('Cannot block lock file');
-      delete_option('zero_pages_test_interrupt');
-      @\\Zero\\Pages\\Plugin::instance()->reconcile();
+      delete_option('first_pages_test_interrupt');
+      @\\First\\Pages\\Plugin::instance()->reconcile();
       wp_set_current_user(1);
       ob_start();
       do_action('admin_notices');
       $notice = ob_get_clean();
       global $wpdb;
       echo wp_json_encode([
-        'state' => get_option('zero_pages_fullsite'),
+        'state' => get_option('first_pages_fullsite'),
         'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
-        'error' => get_option('zero_pages_fullsite_error', false),
+        'error' => get_option('first_pages_fullsite_error', false),
         'notice' => $notice,
       ]);
     } finally {
@@ -470,17 +470,17 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.deepEqual(unavailable.state, after, 'lock acquisition failure preserves the previous route map');
   assert.deepEqual(unavailable.posts, [], 'lock acquisition failure publishes no orphaned Page');
   assert.match(unavailable.error, /cannot open lock file/);
-  assert.match(unavailable.notice, /Zero pages could not update its managed Pages/);
+  assert.match(unavailable.notice, /First pages could not update its managed Pages/);
   assert.match(unavailable.notice, /cannot open lock file/);
 
   const recovered = await page('/contact/');
   assert.equal(recovered.status, 200);
-  assert.match(recovered.html, /Zero contact/, 'removing conflicting native content makes the code route available without another build');
-  const recoveredState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  assert.match(recovered.html, /First contact/, 'removing conflicting native content makes the code route available without another build');
+  const recoveredState = JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json'));
   assert.equal(recoveredState.digest, after.digest);
   assert.deepEqual(recoveredState.conflicts, []);
   assert.equal(postContext(recovered.html).queried, recoveredState.pages['p:2f636f6e74616374']);
-  assert.equal(await wp('eval', 'echo get_option("zero_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared');
+  assert.equal(await wp('eval', 'echo get_option("first_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared');
   assert.equal(await wp('eval', `global $wpdb; echo $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'");`), '1', 'retry publishes exactly one Page after the lock is released');
   assert.equal((await api(`/wp-json/wp/v2/pages/${recoveredState.pages['p:2f636f6e74616374']}`, { method: 'POST', body: { title: 'Try to edit recovered Page' } })).status, 403);
 
@@ -492,7 +492,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match(nativeFront.html, /Native front remains in charge/);
   assert.doesNotMatch(nativeFront.html, /<h1 class="wp-block-heading">Notes from the field<\/h1>/);
   assert.equal(Number(await wp('option', 'get', 'page_on_front')), nativeFrontId);
-  const frontState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  const frontState = JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json'));
   assert.equal(frontState.digest, recoveredState.digest);
   assert.deepEqual(frontState.conflicts, ['/']);
   const homeId = owned.pages['u:home'];
@@ -505,31 +505,31 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match(restoredHome.html, /<h1 class="wp-block-heading">Notes from the field<\/h1>/);
   assert.equal(postContext(restoredHome.html).queried, homeId, 'clearing the conflict reuses the original Page identity');
   assert.equal(Number(await wp('option', 'get', 'page_on_front')), homeId);
-  assert.deepEqual(JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json')).pages, recoveredState.pages);
+  assert.deepEqual(JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json')).pages, recoveredState.pages);
   assert.equal(await wp('post', 'get', String(nativeFrontId), '--field=post_status'), 'publish');
 
   // A refused retirement retains ownership and retries until WordPress actually trashes the Page.
-  const beforeRetirement = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  const beforeRetirement = JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json'));
   await rm(join(project, 'pages/contact'), { recursive: true });
   assert.equal((await buildPages({ project, out: content })).ok, true);
-  await wp('option', 'update', 'zero_pages_test_refuse_retirement', '1');
-  await rm(join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
-  await cp(join(content, 'plugins/zero-pages-fullsite'), join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
+  await wp('option', 'update', 'first_pages_test_refuse_retirement', '1');
+  await rm(join(site, 'wp-content/plugins/first-pages-fullsite'), { recursive: true });
+  await cp(join(content, 'plugins/first-pages-fullsite'), join(site, 'wp-content/plugins/first-pages-fullsite'), { recursive: true });
   assert.equal((await page('/about/')).status, 200);
-  assert.deepEqual(JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json')), beforeRetirement, 'a refused retirement retains the previous digest and ownership map');
+  assert.deepEqual(JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json')), beforeRetirement, 'a refused retirement retains the previous digest and ownership map');
   const retainedId = recoveredState.pages['p:2f636f6e74616374'];
   assert.equal(await wp('post', 'get', String(retainedId), '--field=post_status'), 'publish');
-  assert.equal(await wp('eval', `echo get_post_meta(${retainedId}, '_zero_pages_retired', true);`), '', 'the retirement marker rolls back with the refused trash');
+  assert.equal(await wp('eval', `echo get_post_meta(${retainedId}, '_first_pages_retired', true);`), '', 'the retirement marker rolls back with the refused trash');
   assert.equal((await api(`/wp-json/wp/v2/pages/${retainedId}`, { method: 'POST', body: { title: 'Try to edit unretired Page' } })).status, 403);
   const retainedList = await api('/wp-json/wp/v2/pages?context=edit&per_page=100');
   assert.equal(retainedList.body.some((post) => post.id === retainedId), false, 'the retained Page stays hidden from editing');
-  assert.match(await wp('option', 'get', 'zero_pages_fullsite_error'), /Cannot retire managed Page/);
-  await wp('--skip-plugins=zero-pages-fullsite', 'option', 'delete', 'zero_pages_test_refuse_retirement');
+  assert.match(await wp('option', 'get', 'first_pages_fullsite_error'), /Cannot retire managed Page/);
+  await wp('--skip-plugins=first-pages-fullsite', 'option', 'delete', 'first_pages_test_refuse_retirement');
   assert.equal((await page('/about/')).status, 200);
-  const retiredState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  const retiredState = JSON.parse(await wp('option', 'get', 'first_pages_fullsite', '--format=json'));
   assert.equal(Object.hasOwn(retiredState.pages, 'p:2f636f6e74616374'), false);
   assert.equal(await wp('post', 'get', String(recoveredState.pages['p:2f636f6e74616374']), '--field=post_status'), 'trash');
-  assert.equal(await wp('eval', 'echo get_option("zero_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared', 'successful retirement clears the failure notice');
+  assert.equal(await wp('eval', 'echo get_option("first_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared', 'successful retirement clears the failure notice');
 
   // 8. A refused rebuild leaves the installed site and the previous build untouched.
   await writeFile(join(project, 'pages/about/page.tsx'), `export default function About({ item }: { item: { dek: string } }) {

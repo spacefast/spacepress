@@ -14,23 +14,23 @@ $pipes = [];
 $siteDirectory = null;
 $report = [];
 try {
-    putenv('ZERO_SERVICES_RATE_SECRET=' . bin2hex(random_bytes(32)));
+    putenv('FIRST_SERVICES_RATE_SECRET=' . bin2hex(random_bytes(32)));
     putenv('APP_SERVICES_RECIPIENT=ts-inbox@example.test');
     putenv('APP_SERVICES_SENDER=ts-sender@example.test');
-    putenv('ZERO_SERVICES_STRIPE_SECRET');
-    putenv('ZERO_SERVICES_STRIPE_WEBHOOK_SECRET');
+    putenv('FIRST_SERVICES_STRIPE_SECRET');
+    putenv('FIRST_SERVICES_STRIPE_WEBHOOK_SECRET');
     $wp = wpSite('ts-services', ['wpContent' => $content]);
     $siteDirectory = $wp->dir;
     $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
     // A classic plugin can add named entries before the generated filter; authored entries win whole.
-    add_filter('zero_services_config', static fn (array $config): array => array_replace($config, [
+    add_filter('first_services_config', static fn (array $config): array => array_replace($config, [
         'forms' => ['classic' => ['fields' => ['message' => ['type' => 'text']], 'recipientEnv' => 'APP_SERVICES_RECIPIENT', 'senderEnv' => 'APP_SERVICES_SENDER']],
         'search' => ['service_posts' => ['title', 'discarded']],
         'products' => ['classic' => ['name' => 'Native product', 'amount' => 500, 'currency' => 'usd'], 'workshop' => ['amount' => 1]],
         'classicOption' => true,
     ]), 5);
-    $config = \Zero\Services\Module::config();
+    $config = \First\Services\Module::config();
     eq('generated entries preserve classic plugin config and replace named entries atomically', [
         array_keys($config['forms']), array_keys($config['products']), $config['search'], $config['classicOption'],
         $config['products']['workshop'], $config['checkoutReturnUrl'],
@@ -41,12 +41,12 @@ try {
         'APP_SERVICES_RECIPIENT', 'APP_SERVICES_SENDER',
     ]);
     $override = static function (array $config): array { $config['forms']['contact']['limit'] = 7; return $config; };
-    add_filter('zero_services_config', $override, 20);
-    eq('a deliberate later native filter can override authored configuration', \Zero\Services\Module::config()['forms']['contact']['limit'], 7);
-    remove_filter('zero_services_config', $override, 20);
+    add_filter('first_services_config', $override, 20);
+    eq('a deliberate later native filter can override authored configuration', \First\Services\Module::config()['forms']['contact']['limit'], 7);
+    remove_filter('first_services_config', $override, 20);
 
     // Run the generated PHP schema and the real public schema endpoint, rather than inspecting source.
-    $privateSchema = require $wp->content . '/plugins/zero-app-services-ts/zero/app/schema.php';
+    $privateSchema = require $wp->content . '/plugins/first-app-services-ts/first/app/schema.php';
     [$schemaStatus, $publicSchema] = $wp->call('GET', '/_schema');
     eq('service configuration stays outside both runtime and public schemas', [
         array_key_exists('services', $privateSchema), $schemaStatus, array_key_exists('services', $publicSchema),
@@ -56,11 +56,11 @@ try {
         [1 => ['pipe', 'w'], 2 => ['file', $evidence . '/smtp.log', 'a']], $pipes);
     if (!is_resource($sink)) throw new RuntimeException('Cannot start local SMTP sink');
     $ready = json_decode(fgets($pipes[1]), true, 8, JSON_THROW_ON_ERROR);
-    putenv('ZERO_SERVICES_SMTP_HOST=127.0.0.1');
-    putenv('ZERO_SERVICES_SMTP_PORT=' . $ready['port']);
-    putenv('ZERO_SERVICES_SMTP_ENCRYPTION=');
-    putenv('ZERO_SERVICES_SMTP_USER=');
-    putenv('ZERO_SERVICES_SMTP_PASSWORD=');
+    putenv('FIRST_SERVICES_SMTP_HOST=127.0.0.1');
+    putenv('FIRST_SERVICES_SMTP_PORT=' . $ready['port']);
+    putenv('FIRST_SERVICES_SMTP_ENCRYPTION=');
+    putenv('FIRST_SERVICES_SMTP_USER=');
+    putenv('FIRST_SERVICES_SMTP_PASSWORD=');
     remove_all_filters('pre_wp_mail');
 
     $values = ['email' => 'visitor@example.test', 'message' => 'Hello from TypeScript service configuration.', 'guests' => 2, 'updates' => true];
@@ -86,7 +86,7 @@ try {
     ]]);
     // Product emission is checked above. Leave provider credentials absent and never enqueue a charge.
     [$checkoutStatus, $checkout] = $wp->call('POST', '/services/checkout', ['product' => 'workshop'], headers: ['Idempotency-Key' => 'unconfigured']);
-    eq('configured checkout fails closed without deployment credentials', [$checkoutStatus, $checkout['code'], (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}zero__services_orders')], [503, 'service_unconfigured', 0]);
+    eq('configured checkout fails closed without deployment credentials', [$checkoutStatus, $checkout['code'], (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__services_orders')], [503, 'service_unconfigured', 0]);
     $report = ['submission' => $receipt, 'delivery' => $delivered['delivery'], 'search' => $search, 'checkoutStatus' => $checkoutStatus, 'smtp' => $ready];
 } finally {
     if (isset($GLOBALS['phpmailer'])) $GLOBALS['phpmailer']->smtpClose();

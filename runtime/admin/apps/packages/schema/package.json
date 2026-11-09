@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/schema",
+	"name": "@first-admin/schema",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -12,10 +12,10 @@
 		"@wordpress/api-fetch": "catalog:",
 		"@wordpress/components": "catalog:",
 		"@wordpress/route": "catalog:",
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"react": "catalog:",
 		"@wordpress/data": "catalog:",
-		"@zero-admin/attachment-importer": "workspace:*"
+		"@first-admin/attachment-importer": "workspace:*"
 	}
 }

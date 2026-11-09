@@ -15,8 +15,8 @@ use std::{
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const APP_FILE: &str = "app.zero.json";
-pub const VENDOR_FILE: &str = "vendor.zero.json";
+pub const APP_FILE: &str = "app.first.json";
+pub const VENDOR_FILE: &str = "vendor.first.json";
 pub const MANIFEST_FILE: &str = "manifest.json";
 
 /// Original compiler inputs, not JavaScript bundler output. Paths retain module identity.
@@ -125,7 +125,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
         fs: fs.clone(),
         packages,
     });
-    let program = loader::load_from(recording.clone(), &project.join("zero.config.ts")).map_err(|mut d| d.remove(0))?;
+    let program = loader::load_from(recording.clone(), &project.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
     let built = pipeline::build(&project, &program, || Ok(pipeline::Previous::none()), |_| None)?;
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure(
@@ -174,7 +174,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     let app = serde_json::to_string(&app).map_err(|e| failure(e.to_string()))?;
     let vendor = serde_json::to_string(&vendor).map_err(|e| failure(e.to_string()))?;
     let manifest = Manifest {
-        format: "zero.source-bundle.v1".into(),
+        format: "first.source-bundle.v1".into(),
         name: built.schema.name.clone(),
         app_sha256: hash(app.as_bytes()),
         vendor_sha256: hash(vendor.as_bytes()),
@@ -393,7 +393,7 @@ pub fn compile(
 pub(crate) struct Compiled {
     pub manifest: serde_json::Value,
     pub name: String,
-    /// The app has an auth collection, so it mounts `zero-identity`.
+    /// The app has an auth collection, so it mounts `first-identity`.
     pub identity: bool,
     pub admin: bool,
     pub pages: Option<String>,
@@ -411,7 +411,7 @@ pub(crate) fn compile_tree(
 ) -> Result<Compiled, Diag> {
     let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
-    if manifest.format != "zero.source-bundle.v1"
+    if manifest.format != "first.source-bundle.v1"
         || manifest.name.is_empty()
         || !manifest
             .name
@@ -471,7 +471,7 @@ pub(crate) fn compile_tree(
         root: root.clone(),
         sources,
     });
-    let program = loader::load_from(fs.clone(), &root.join("zero.config.ts")).map_err(|mut d| d.remove(0))?;
+    let program = loader::load_from(fs.clone(), &root.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
     let snapshot = previous
         .map(|p| {
             std::fs::read(p.join("snapshot.json"))
@@ -596,13 +596,13 @@ pub(crate) fn compile_tree(
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
-    // The app's zero.config.ts routes and TSX pages, so the host can tell which of its URLs outside
+    // The app's first.config.ts routes and TSX pages, so the host can tell which of its URLs outside
     // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the pages
     // plugin's assets/ are the host's own and not listed. Both lists use the route path grammar: a
     // leading `/`, no trailing slash except `/`, literal segments, `:name` for one segment and a
     // final `*name` for one or more. A host matching against them should:
     // - trim one trailing `/` from the request path first (pages canonicalize `/about/` to `/about`);
-    // - treat HEAD as GET, as Zero\App::routeFor does;
+    // - treat HEAD as GET, as First\App::routeFor does;
     // - hand over any request whose path matches an entry, whatever its method, so a known path with
     //   the wrong method gets the runtime's 405 rather than the host's 404.
     // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
@@ -624,8 +624,8 @@ pub(crate) fn compile_tree(
         .unwrap_or_default();
     page_paths.sort();
     page_paths.dedup();
-    let manifest = serde_json::json!({"format":"zero.hosted.v1", "compiler":VERSION, "app":built.schema.name,
-        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("zero-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths, "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+    let manifest = serde_json::json!({"format":"first.hosted.v1", "compiler":VERSION, "app":built.schema.name,
+        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("first-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths, "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -635,7 +635,7 @@ pub(crate) fn compile_tree(
         manifest,
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
-        pages: pages.as_ref().map(|p| format!("zero-pages-{}", p.app)),
+        pages: pages.as_ref().map(|p| format!("first-pages-{}", p.app)),
         name: built.schema.name,
     })
 }
@@ -644,7 +644,7 @@ pub(crate) fn compile_tree(
 pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     let result = match args {
         [project, flag, output] if flag == "--out" => sources(Path::new(project), Path::new(output)).map(|_| ()),
-        _ => Err(failure("usage: zero sources <project> --out <new-directory>")),
+        _ => Err(failure("usage: first sources <project> --out <new-directory>")),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -655,7 +655,7 @@ pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     }
 }
 
-/// `zero compile-to-store <sources> <store> <assets> [previous-build]`: prints the build receipt.
+/// `first compile-to-store <sources> <store> <assets> [previous-build]`: prints the build receipt.
 #[cfg(feature = "cli")]
 pub(crate) fn compile_to_store_cli(args: &[String]) -> std::process::ExitCode {
     let result = match args {
@@ -666,7 +666,7 @@ pub(crate) fn compile_to_store_cli(args: &[String]) -> std::process::ExitCode {
             crate::store::compile_to_store(Path::new(source), Path::new(root), Path::new(assets), Some(previous))
         }
         _ => Err(failure(
-            "usage: zero compile-to-store <sources> <store> <assets> [previous-build]",
+            "usage: first compile-to-store <sources> <store> <assets> [previous-build]",
         )),
     };
     match result {
@@ -696,7 +696,7 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             Some(Path::new(previous)),
         ),
         _ => Err(failure(
-            "usage: zero compile-sources <sources> <new-output> <assets> [previous-output]",
+            "usage: first compile-sources <sources> <new-output> <assets> [previous-output]",
         )),
     };
     match result {

@@ -9,7 +9,7 @@ import {
   text,
   type CollectionHooks,
   type InferSelectModel,
-} from "zero";
+} from "first";
 import { stories } from "./stories";
 
 export const locations = table(

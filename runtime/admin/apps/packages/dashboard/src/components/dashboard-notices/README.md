@@ -5,7 +5,7 @@ A system for displaying informational messages at the top of the dashboard. Noti
 ## Quick Start
 
 ```typescript
-import { registerDashboardNotice } from '@zero-admin/boot';
+import { registerDashboardNotice } from '@first-admin/boot';
 import { executeAbility } from '@wordpress/abilities';
 import { __ } from '@wordpress/i18n';
 
@@ -19,7 +19,7 @@ export function init() {
 				id: 'start-setup',
 				label: __( 'Start Setup', 'my-plugin' ),
 				onClick: () =>
-					executeAbility( 'zero-admin/navigate', {
+					executeAbility( 'first-admin/navigate', {
 						path: '/my-plugin/setup',
 					} ),
 			},
@@ -125,7 +125,7 @@ plugins/your-plugin-next/
 		".": "./src/index.ts"
 	},
 	"dependencies": {
-		"@zero-admin/boot": "workspace:*",
+		"@first-admin/boot": "workspace:*",
 		"@wordpress/abilities": "next",
 		"@wordpress/i18n": "next"
 	}
@@ -142,7 +142,7 @@ Required flags:
 **src/index.ts:**
 
 ```typescript
-import { registerDashboardNotice } from '@zero-admin/boot';
+import { registerDashboardNotice } from '@first-admin/boot';
 import { executeAbility } from '@wordpress/abilities';
 import { __ } from '@wordpress/i18n';
 
@@ -157,7 +157,7 @@ export function init() {
 				id: 'configure-now',
 				label: __( 'Configure Now', 'my-plugin' ),
 				onClick: () =>
-					executeAbility( 'zero-admin/navigate', {
+					executeAbility( 'first-admin/navigate', {
 						path: '/my-plugin/settings',
 					} ),
 			},
@@ -217,7 +217,7 @@ Registers a new dashboard notice. If a notice with the same `id` exists, it repl
 Removes a notice from the dashboard.
 
 ```typescript
-import { unregisterDashboardNotice } from '@zero-admin/boot';
+import { unregisterDashboardNotice } from '@first-admin/boot';
 
 unregisterDashboardNotice( 'my-plugin-notice' );
 ```
@@ -227,7 +227,7 @@ unregisterDashboardNotice( 'my-plugin-notice' );
 Updates properties of an existing notice.
 
 ```typescript
-import { updateDashboardNotice } from '@zero-admin/boot';
+import { updateDashboardNotice } from '@first-admin/boot';
 
 updateDashboardNotice( 'my-plugin-notice', {
 	status: 'success',
@@ -237,20 +237,20 @@ updateDashboardNotice( 'my-plugin-notice', {
 
 ### Navigation from Notices
 
-To navigate from notice action buttons, use the `zero-admin/navigate` ability:
+To navigate from notice action buttons, use the `first-admin/navigate` ability:
 
 ```typescript
 import { executeAbility } from '@wordpress/abilities';
 
 // Simple navigation
 onClick: () =>
-	executeAbility( 'zero-admin/navigate', {
+	executeAbility( 'first-admin/navigate', {
 		path: '/my-plugin/settings',
 	} );
 
 // With query parameters
 onClick: () =>
-	executeAbility( 'zero-admin/navigate', {
+	executeAbility( 'first-admin/navigate', {
 		path: '/my-plugin/settings',
 		search: { tab: 'advanced' },
 	} );
@@ -261,7 +261,7 @@ onClick: () =>
 Real-world implementation showing reactive notices with data dependencies:
 
 ```typescript
-import { registerDashboardNotice } from '@zero-admin/boot';
+import { registerDashboardNotice } from '@first-admin/boot';
 import { executeAbility } from '@wordpress/abilities';
 import { __ } from '@wordpress/i18n';
 import { select } from '@wordpress/data';
@@ -308,7 +308,7 @@ export function init() {
 					'woocommerce-paypal-payments'
 				),
 				onClick: () =>
-					executeAbility( 'zero-admin/navigate', {
+					executeAbility( 'first-admin/navigate', {
 						path: '/woocommerce/settings/payments/paypal',
 					} ),
 			},
@@ -411,7 +411,7 @@ registerDashboardNotice( {
 
     ```typescript
     message: __( 'Message text', 'my-plugin' ); // Correct
-    message: __( 'Message text', 'zero-admin' ); // Wrong
+    message: __( 'Message text', 'first-admin' ); // Wrong
     ```
 
 ## Troubleshooting
@@ -432,7 +432,7 @@ registerDashboardNotice( {
 
 **Action button doesn't navigate:**
 
--   Use `executeAbility('zero-admin/navigate', { path: '...' })`
+-   Use `executeAbility('first-admin/navigate', { path: '...' })`
 -   Import `executeAbility` from `@wordpress/abilities`
 -   Check console for navigation errors
 -   Verify route path is correct

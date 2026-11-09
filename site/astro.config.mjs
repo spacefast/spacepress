@@ -9,7 +9,7 @@ import { remarkRepoLinks } from "./src/lib/links.ts";
 const base = process.env.SITE_BASE ?? "/";
 
 export default defineConfig({
-  site: process.env.SITE_URL ?? "https://zero.spacefast.com",
+  site: process.env.SITE_URL ?? "https://first.spacefast.com",
   base,
   output: "static",
   trailingSlash: "ignore",

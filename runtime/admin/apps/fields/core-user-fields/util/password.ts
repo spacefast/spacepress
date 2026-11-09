@@ -76,31 +76,31 @@ export const estimatePasswordStrength = (
 		case -1:
 			return {
 				score: -1,
-				label: __( 'Unknown', 'zero-admin' ),
+				label: __( 'Unknown', 'first-admin' ),
 				color: '#dc3232',
 			};
 		case 2:
 			return {
 				score: 2,
-				label: __( 'Weak', 'zero-admin' ),
+				label: __( 'Weak', 'first-admin' ),
 				color: '#dc3232',
 			};
 		case 3:
 			return {
 				score: 3,
-				label: __( 'Good', 'zero-admin' ),
+				label: __( 'Good', 'first-admin' ),
 				color: '#f56e28',
 			};
 		case 4:
 			return {
 				score: 4,
-				label: __( 'Strong', 'zero-admin' ),
+				label: __( 'Strong', 'first-admin' ),
 				color: '#46b450',
 			};
 		default:
 			return {
 				score: 0,
-				label: __( 'Short', 'zero-admin' ),
+				label: __( 'Short', 'first-admin' ),
 				color: '#dc3232',
 			};
 	}

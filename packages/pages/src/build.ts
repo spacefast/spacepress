@@ -1,23 +1,23 @@
 /**
- * `zero-pages build`: `pages/**` to a WordPress plugin beside the app's own.
+ * `first-pages build`: `pages/**` to a WordPress plugin beside the app's own.
  *
  * Steps, each one only when the previous produced no error:
  *
- * 1. Read the app's schema from `zero build` output (`zero/client/schema.ts`
- *    and `zero/_generated/migrations/snapshot.json`); pages never execute
- *    `zero.config.ts`.
+ * 1. Read the app's schema from `first build` output (`first/client/schema.ts`
+ *    and `first/_generated/migrations/snapshot.json`); pages never execute
+ *    `first.config.ts`.
  * 2. Discover routes, layouts and `not-found.tsx` (routes.ts).
  * 3. Bundle each route with esbuild and check every project file in its
  *    import graph (check.ts) before any of it runs.
  * 4. Execute each route once with symbolic request data (render.ts) and
- *    serialize its document with Zero Blocks' pinned serializer.
+ *    serialize its document with First Blocks' pinned serializer.
  * 5. Bundle CSS, file assets and island client modules into hashed files.
- * 6. Write the render artifact, `zero/pages.json`: the manifest bytes, every
+ * 6. Write the render artifact, `first/pages.json`: the manifest bytes, every
  *    template, body and asset, the schema the pages were rendered against and
- *    a hash of each text input. It holds no PHP. `zero sources` captures it and
+ *    a hash of each text input. It holds no PHP. `first sources` captures it and
  *    the host compiler (`compile-sources`) validates it and emits the same
  *    plugin from it, so a hosted app needs no JavaScript on the server.
- * 7. Write `plugins/zero-pages-<app>/` from that artifact to a sibling temp
+ * 7. Write `plugins/first-pages-<app>/` from that artifact to a sibling temp
  *    directory and swap it in. On any error nothing is written and the
  *    previous output stays.
  */
@@ -28,8 +28,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { mapToBlocks, serializeBlocks } from "@spacefast/zero-blocks/compiler";
-import type { BlockNode, ContentNode } from "@spacefast/zero-blocks";
+import { mapToBlocks, serializeBlocks } from "@spacefast/first-blocks/compiler";
+import type { BlockNode, ContentNode } from "@spacefast/first-blocks";
 import { build as esbuild, type Metafile, type OutputFile, type Plugin } from "esbuild";
 
 import { checkSource } from "./check.ts";
@@ -40,19 +40,19 @@ import { ASSET_TOKEN, TOKEN_END, TOKEN_START, type BuildInput, type CollectionIn
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
-/** The plugin's PHP: `wp/` in a packed package, `runtime/pages/` (which the Zero compiler embeds) in a checkout. */
+/** The plugin's PHP: `wp/` in a packed package, `runtime/pages/` (which the First compiler embeds) in a checkout. */
 const wpRuntime = async (): Promise<string> => {
   const packed = path.join(packageRoot, "wp");
   return (await exists(packed)) ? packed : path.resolve(packageRoot, "../../runtime/pages");
 };
 const moduleExtension = path.extname(fileURLToPath(import.meta.url));
-const blocksRoot = path.dirname(fileURLToPath(import.meta.resolve("@spacefast/zero-blocks/package.json")));
-const SELF = /^@spacefast\/zero-pages(?:\/(jsx-runtime|jsx-dev-runtime))?$/;
+const blocksRoot = path.dirname(fileURLToPath(import.meta.resolve("@spacefast/first-blocks/package.json")));
+const SELF = /^@spacefast\/first-pages(?:\/(jsx-runtime|jsx-dev-runtime))?$/;
 
 export interface BuildOptions {
-  /** The Zero project directory (holds zero.config.ts and pages/). */
+  /** The First project directory (holds first.config.ts and pages/). */
   project: string;
-  /** The wp-content directory to write `plugins/zero-pages-<app>/` into. */
+  /** The wp-content directory to write `plugins/first-pages-<app>/` into. */
   out: string;
 }
 
@@ -63,20 +63,20 @@ export interface BuildResult {
   diagnostics: PagesDiagnostic[];
   plugin?: string;
   manifest?: Manifest;
-  /** The project's `zero/pages.json`. */
+  /** The project's `first/pages.json`. */
   artifact?: string;
 }
 
 /**
- * `zero/pages.json`: everything the plugin needs except its PHP, which the
- * installer (this package, or Zero's host compiler) supplies itself.
+ * `first/pages.json`: everything the plugin needs except its PHP, which the
+ * installer (this package, or First's host compiler) supplies itself.
  * `manifest` is the exact text of the plugin's manifest.json; `files` are
  * base64, keyed by their path inside the plugin.
  */
 export interface Artifact {
-  format: "zero.pages.v1";
+  format: "first.pages.v1";
   app: string;
-  /** The compiled schema the pages were rendered against, as read from `zero build` output. */
+  /** The compiled schema the pages were rendered against, as read from `first build` output. */
   schema: AppSchema;
   /** Project-relative text inputs (routes, layouts, components, islands, CSS) → SHA-256 of their bytes. */
   inputs: Record<string, string>;
@@ -84,7 +84,7 @@ export interface Artifact {
   files: Record<string, string>;
 }
 
-export const ARTIFACT_FILE = "zero/pages.json";
+export const ARTIFACT_FILE = "first/pages.json";
 
 export interface ManifestRoute {
   id: string;
@@ -137,14 +137,14 @@ export interface AppSchema {
 }
 
 async function loadSchema(project: string): Promise<AppSchema | PagesDiagnostic> {
-  const clientFile = path.join(project, "zero/client/schema.ts");
-  const snapshotFile = path.join(project, "zero/_generated/migrations/snapshot.json");
+  const clientFile = path.join(project, "first/client/schema.ts");
+  const snapshotFile = path.join(project, "first/_generated/migrations/snapshot.json");
   if (!(await exists(clientFile)) || !(await exists(snapshotFile))) {
-    return error("config", "Pages build from the app's compiled schema; run `zero build` first.", path.join(project, "zero.config.ts"));
+    return error("config", "Pages build from the app's compiled schema; run `first build` first.", path.join(project, "first.config.ts"));
   }
   const client = await readFile(clientFile, "utf8");
   const match = /export const SCHEMA = (\{[\s\S]*\}) as const;/.exec(client);
-  if (match === null) return error("config", "zero/client/schema.ts is not the shape `zero build` writes; rebuild the app.", clientFile);
+  if (match === null) return error("config", "first/client/schema.ts is not the shape `first build` writes; rebuild the app.", clientFile);
   const described = JSON.parse(match[1]!) as { name: string; collections: Record<string, unknown>; actions: string[] };
   const snapshot = JSON.parse(await readFile(snapshotFile, "utf8")) as {
     tables: Record<string, { editor?: boolean; columns: Record<string, { type: string }> }>;
@@ -154,7 +154,7 @@ async function loadSchema(project: string): Promise<AppSchema | PagesDiagnostic>
   for (const name of Object.keys(described.collections)) {
     const table = snapshot.tables[name];
     if (table === undefined) {
-      return error("config", `"${name}" is stored under another physical name; pages do not support renamed storage bindings yet.`, path.join(project, "zero.config.ts"));
+      return error("config", `"${name}" is stored under another physical name; pages do not support renamed storage bindings yet.`, path.join(project, "first.config.ts"));
     }
     const columns: CollectionInfo["columns"] = {};
     let slug: string | null = null;
@@ -163,8 +163,8 @@ async function loadSchema(project: string): Promise<AppSchema | PagesDiagnostic>
       if (def.type === "slug") slug = column;
     }
     schema[name] = { editor: table.editor === true, slug, columns };
-    // Zero's WordPress post type for a collection: `zero_<physical name>`, as the app plugin registers it.
-    if (table.editor === true) postTypes[name] = `zero_${name}`;
+    // First's WordPress post type for a collection: `first_<physical name>`, as the app plugin registers it.
+    if (table.editor === true) postTypes[name] = `first_${name}`;
   }
   return { app: described.name, schema, postTypes, actions: [...described.actions] };
 }
@@ -174,14 +174,14 @@ async function loadSchema(project: string): Promise<AppSchema | PagesDiagnostic>
 
 function pagesPlugin(): Plugin {
   return {
-    name: "zero-pages",
+    name: "first-pages",
     setup(b) {
       b.onResolve({ filter: SELF }, (args) => {
         const sub = SELF.exec(args.path)?.[1];
         return { path: path.join(here, `${sub === undefined ? "index" : "jsx-runtime"}${moduleExtension}`) };
       });
-      b.onResolve({ filter: /^zero$/ }, () => ({
-        errors: [{ text: 'Pages cannot import runtime values from "zero" or execute zero.config.ts; import types only, and name collections as strings (collectionPage("notes")).' }],
+      b.onResolve({ filter: /^first$/ }, () => ({
+        errors: [{ text: 'Pages cannot import runtime values from "first" or execute first.config.ts; import types only, and name collections as strings (collectionPage("notes")).' }],
       }));
     },
   };
@@ -202,7 +202,7 @@ const FILE_LOADERS = Object.fromEntries([".svg", ".png", ".jpg", ".jpeg", ".gif"
 async function bundleRoute(root: string, entry: string, scratch: string): Promise<Bundle | PagesDiagnostic[]> {
   try {
     const result = await esbuild({
-      stdin: { contents: entry, resolveDir: root, sourcefile: "zero-pages-route.ts", loader: "ts" },
+      stdin: { contents: entry, resolveDir: root, sourcefile: "first-pages-route.ts", loader: "ts" },
       absWorkingDir: root,
       bundle: true,
       format: "esm",
@@ -212,9 +212,9 @@ async function bundleRoute(root: string, entry: string, scratch: string): Promis
       target: "es2023",
       jsx: "automatic",
       jsxDev: true,
-      jsxImportSource: "@spacefast/zero-pages",
+      jsxImportSource: "@spacefast/first-pages",
       tsconfigRaw: {},
-      define: { "globalThis.__zeroBlocksSourceRoot": JSON.stringify(root) },
+      define: { "globalThis.__firstBlocksSourceRoot": JSON.stringify(root) },
       loader: FILE_LOADERS,
       publicPath: ASSET_TOKEN,
       assetNames: "[name]-[hash]",
@@ -254,7 +254,7 @@ function projectInputs(root: string, metafile: Metafile): string[] {
   return Object.keys(metafile.inputs)
     .map((input) => path.resolve(root, input))
     .filter((file) => !file.startsWith(`${packageRoot}${path.sep}`) && !file.startsWith(`${blocksRoot}${path.sep}`)
-      && path.basename(file) !== "zero-pages-route.ts" && /\.(?:[cm]?[jt]sx?)$/.test(file));
+      && path.basename(file) !== "first-pages-route.ts" && /\.(?:[cm]?[jt]sx?)$/.test(file));
 }
 
 /** Every text an esbuild route or island bundle can inline: code, CSS, JSON and imported SVG. */
@@ -265,7 +265,7 @@ function projectTexts(root: string, metafile: Metafile): string[] {
   return Object.keys(metafile.inputs)
     .map((input) => path.resolve(root, input))
     .filter((file) => file.startsWith(`${root}${path.sep}`) && !file.startsWith(`${packageRoot}${path.sep}`) && !file.startsWith(`${blocksRoot}${path.sep}`)
-      && path.basename(file) !== "zero-pages-route.ts" && TEXT_INPUT.test(file));
+      && path.basename(file) !== "first-pages-route.ts" && TEXT_INPUT.test(file));
 }
 
 // ---------------------------------------------------------------------------
@@ -317,19 +317,19 @@ function failureDiagnostic(failure: unknown, fallbackFile: string, bundle: strin
 
 declare global {
   // eslint-disable-next-line no-var
-  var __zeroPagesBuild: BuildInput | undefined;
+  var __firstPagesBuild: BuildInput | undefined;
 }
 
 async function importRoute<T>(code: string, scratch: string, phase: string, input: BuildInput, run: (module: Record<string, unknown>) => Promise<T>): Promise<T> {
   const file = path.join(scratch, `route-${phase}.mjs`);
   await writeFile(file, code);
   // The registry reads this once, while the module evaluates; each route and phase gets a fresh module.
-  globalThis.__zeroPagesBuild = input;
+  globalThis.__firstPagesBuild = input;
   try {
     const module = (await import(pathToFileURL(file).href)) as Record<string, unknown>;
     return await run(module);
   } finally {
-    globalThis.__zeroPagesBuild = undefined;
+    globalThis.__firstPagesBuild = undefined;
   }
 }
 
@@ -413,7 +413,7 @@ async function serialize(nodes: unknown[]): Promise<{ markup: string; diagnostic
   const serialized = await serializeBlocks(mapped.blocks as BlockNode[]);
   // Region blocks are this package's own, registered server-side; Blocks rightly cannot check them.
   const diagnostics = [...mappedDiagnostics, ...(serialized.diagnostics as PagesDiagnostic[])]
-    .filter((d) => !(d.code === "unverified_block" && d.message.startsWith("zero-pages/")));
+    .filter((d) => !(d.code === "unverified_block" && d.message.startsWith("first-pages/")));
   return { markup: serialized.markup, diagnostics };
 }
 
@@ -431,7 +431,7 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
   if (found.routes.length === 0) diagnostics.push(error("route_shape", "pages/ has no page.tsx.", pagesDir));
   if (hasErrors(diagnostics)) return { ok: false, pages: true, diagnostics };
 
-  const scratch = path.join(tmpdir(), `zero-pages-${randomUUID()}`);
+  const scratch = path.join(tmpdir(), `first-pages-${randomUUID()}`);
   await mkdir(scratch, { recursive: true });
   try {
     // Bundle and check everything before executing anything.
@@ -501,7 +501,7 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
         diagnostics.push(failureDiagnostic(failure, unit.route.file, path.join(unit.dir, "route-render.mjs"), unit.bundle.map, unit.dir, project));
         continue;
       }
-      const id = unit.notFound ? "zero:not-found" : routeId(unit.route.pattern, rendered.explicitId);
+      const id = unit.notFound ? "first:not-found" : routeId(unit.route.pattern, rendered.explicitId);
       const previous = ids.get(id);
       if (previous !== undefined) {
         diagnostics.push(error("route_id", `Route ID ${id} is also used by ${previous}.`, unit.route.file));
@@ -588,7 +588,7 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
     const inputs: Record<string, string> = {};
     for (const file of [...textInputs].sort()) inputs[path.relative(project, file).split(path.sep).join("/")] = sha(await readFile(file));
     const artifact: Artifact = {
-      format: "zero.pages.v1",
+      format: "first.pages.v1",
       app: app.app,
       schema: app,
       inputs: Object.fromEntries(Object.entries(inputs).sort(([a], [b]) => (a < b ? -1 : 1))),
@@ -596,7 +596,7 @@ export async function buildPages(options: BuildOptions): Promise<BuildResult> {
       files: Object.fromEntries([...files].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, contents]) => [name, Buffer.from(contents).toString("base64")])),
     };
     const text = `${JSON.stringify(artifact, null, 2)}\n`;
-    await mkdir(path.join(project, "zero"), { recursive: true });
+    await mkdir(path.join(project, "first"), { recursive: true });
     await writeFile(path.join(project, ARTIFACT_FILE), text);
     const plugin = await installPlugin(options.out, text);
     return { ok: true, pages: true, diagnostics, plugin, manifest, artifact: text };
@@ -638,12 +638,12 @@ function pluginFiles(manifest: Manifest, assets: Assets): Map<string, string | U
 }
 
 /**
- * Write `plugins/zero-pages-<app>/` from an artifact's text. Zero's host
+ * Write `plugins/first-pages-<app>/` from an artifact's text. First's host
  * compiler writes the same bytes from the same artifact (src/pages.rs).
  */
 export async function installPlugin(out: string, artifactText: string): Promise<string> {
   const artifact = JSON.parse(artifactText) as Artifact;
-  const slug = `zero-pages-${artifact.app}`;
+  const slug = `first-pages-${artifact.app}`;
   const plugins = path.join(path.resolve(out), "plugins");
   await mkdir(plugins, { recursive: true });
   const target = path.join(plugins, slug);
@@ -651,7 +651,7 @@ export async function installPlugin(out: string, artifactText: string): Promise<
   await mkdir(stage);
   try {
     for (const directory of ["templates", "content", "assets"]) await mkdir(path.join(stage, directory));
-    await cp(await wpRuntime(), path.join(stage, "zero-pages"), { recursive: true });
+    await cp(await wpRuntime(), path.join(stage, "first-pages"), { recursive: true });
     for (const [name, contents] of Object.entries(artifact.files)) await writeFile(path.join(stage, name), Buffer.from(contents, "base64"));
     await writeFile(path.join(stage, "manifest.json"), artifact.manifest);
     await writeFile(path.join(stage, `${slug}.php`), bootstrap(artifact.app));
@@ -675,16 +675,16 @@ function bootstrap(app: string): string {
   const label = app.replace(/[^a-z0-9-]/g, "");
   return `<?php
 /**
- * Plugin Name: ${label} pages (Zero)
- * Description: TSX pages compiled by @spacefast/zero-pages: routes, layouts and regions rendered by WordPress.
+ * Plugin Name: ${label} pages (First)
+ * Description: TSX pages compiled by @spacefast/first-pages: routes, layouts and regions rendered by WordPress.
  * Requires at least: 7.1
  * Requires PHP: 8.2
- * Requires Plugins: zero-runtime, zero-app-${label}
+ * Requires Plugins: first-runtime, first-app-${label}
  * License: GPL-2.0-or-later
  */
 declare(strict_types=1);
 defined('ABSPATH') || exit;
-require_once __DIR__ . '/zero-pages/bootstrap.php';
-\\Zero\\Pages\\Plugin::boot(__FILE__, ${JSON.stringify(label).replace(/"/g, "'")});
+require_once __DIR__ . '/first-pages/bootstrap.php';
+\\First\\Pages\\Plugin::boot(__FILE__, ${JSON.stringify(label).replace(/"/g, "'")});
 `;
 }

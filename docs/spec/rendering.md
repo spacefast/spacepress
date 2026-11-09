@@ -1,4 +1,4 @@
-# Rendering, interactivity and caching (`zero/app/`)
+# Rendering, interactivity and caching (`first/app/`)
 
 Owner: one workstream. The TSX → PHP renderer and the TSX →
 Interactivity compiler are gated on the spike in [tsx-to-php.md](tsx-to-php.md).
@@ -14,7 +14,7 @@ Decisions (2026-11-08):
 
 ## 1. Routing: what we took from whom
 
-| | Next.js App Router | TanStack Router/Start | Vite ecosystem (vite-plugin-pages, Remix/RR7, SvelteKit, Astro) | **Zero** |
+| | Next.js App Router | TanStack Router/Start | Vite ecosystem (vite-plugin-pages, Remix/RR7, SvelteKit, Astro) | **First** |
 |---|---|---|---|---|
 | Layout | folders, one name per role (`page`, `layout`, `route`) | flat dot files or folders, `__root.tsx`, `route.tsx` | folders (`+page`, `[slug].astro`) or flat (`posts.$id.tsx`) | **folders, Next names** (`page`, `layout`, `not-found`, `error`, `route`) |
 | Params | `[slug]`, `[...rest]`, `[[...opt]]` | `$postId`, `$` splat, `{-$opt}` | mostly `[slug]` | **`[slug]`, `[...rest]`, `[[...opt]]`**. Brackets are what most frameworks use and what agents write by default |
@@ -27,14 +27,14 @@ Decisions (2026-11-08):
 | Head | `metadata` / `generateMetadata` | `head()` | `<svelte:head>`, frontmatter | **`metadata` object or function** |
 | Middleware | `middleware.ts` | route and handler middleware | hooks | **`layout.tsx` may export `guard`** (§2) |
 
-So Zero uses Next's file names because agents write them most reliably. From
+So First uses Next's file names because agents write them most reliably. From
 TanStack it takes typed links, typed search params and page+handler in one
 file. From React Router 7 and SvelteKit it takes forms that work without JavaScript.
 
 ## 2. Files
 
 ```text
-zero/app/
+first/app/
 ├── layout.tsx                    # root layout: <html>, <head>, router region
 ├── page.tsx                      # /
 ├── not-found.tsx                 # unclaimed URLs when app/ owns the front end
@@ -59,9 +59,9 @@ zero/app/
 ## 3. A page
 
 ```tsx
-// zero/app/blog/[year]/[slug]/page.tsx
+// first/app/blog/[year]/[slug]/page.tsx
 import { likes } from "zero:db";
-import { Content, Comments, Link, type PageProps } from "zero/app";
+import { Content, Comments, Link, type PageProps } from "first/app";
 import LikeButton from "../../../../components/LikeButton";
 
 export const metadata = ({ item }: PageProps<"posts">) => ({ title: item.title, description: item.excerpt });
@@ -86,12 +86,12 @@ Server components are ordinary async functions that compile to PHP. `&&`,
 
 ## 4. Interactivity: all in on the Interactivity API
 
-**Every** interactive behavior in Zero compiles to the WordPress Interactivity API:
+**Every** interactive behavior in First compiles to the WordPress Interactivity API:
 - client components;
 - forms;
 - navigation;
 - live updates;
-- Zero's built-in components (`<Comments>`, sign-in, search).
+- First's built-in components (`<Comments>`, sign-in, search).
 
 That gives one runtime, about 11 kB, which WordPress already ships and which
 core blocks and plugins share. There is no React or Preact bundle of our own
@@ -100,9 +100,9 @@ and no second hydration model.
 ### 4.1 Client components
 
 ```tsx
-// zero/components/LikeButton.tsx
+// first/components/LikeButton.tsx
 "use client";
-import { useState } from "zero/client";
+import { useState } from "first/client";
 import { like } from "../server/posts";
 
 export default function LikeButton({ postId, count: initial }: { postId: number; count: number }) {
@@ -121,10 +121,10 @@ The compiler produces:
 
 1. **Server HTML (PHP)** with real values and directives, so the page is
    correct before JavaScript loads:
-   `<button data-wp-interactive="zero/LikeButton" data-wp-context='{"postId":42,"count":7,"busy":false}' data-wp-bind--disabled="context.busy" data-wp-on--click="actions.click">♥ <span data-wp-text="state.label">7 likes</span></button>`
+   `<button data-wp-interactive="first/LikeButton" data-wp-context='{"postId":42,"count":7,"busy":false}' data-wp-bind--disabled="context.busy" data-wp-on--click="actions.click">♥ <span data-wp-text="state.label">7 likes</span></button>`
 2. **A store module (JS)**, registered as a script module and loaded only on
    pages that use the component:
-   `store("zero/LikeButton", { state: { get label() { … } }, actions: { *click() { … } } })`.
+   `store("first/LikeButton", { state: { get label() { … } }, actions: { *click() { … } } })`.
 3. **Derived values compiled to PHP too** (`wp_interactivity_state` closures),
    so step 1 can print "7 likes". Parity between the PHP and JS output is tested ([tsx-to-php.md](tsx-to-php.md)).
 
@@ -192,7 +192,7 @@ core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
 ### 4.4 Live data over Cast
 
 This already exists on main (monorepo #5152, zero #128):
-1. A committed write fires `zero_realtime_changes` with ids only.
+1. A committed write fires `first_realtime_changes` with ids only.
 2. The control plane broadcasts `zero.changes` into the Space's Cast room.
 3. `/__spacefast/client.js` holds one socket per page.
 4. The client re-runs its own query through the normal API, so a viewer only
@@ -227,7 +227,7 @@ TSX subset, so they are examples as well as product.
   never share a cache entry with the HTML. Batcache keys on the URL; it varies on
   `Accept` only for JSON-only clients (wpcom `wp-content/advanced-cache.php`),
   and it answers before page code runs. So `Vary: Accept` on the response is not
-  enough. Zero's early hook (the engine's pre-WordPress lane, before
+  enough. First's early hook (the engine's pre-WordPress lane, before
   `advanced-cache.php` loads) sees `Accept: text/markdown` and answers it
   before any cache lookup:
   - it serves the prebuilt `.md` file when there is one;
@@ -247,8 +247,8 @@ TSX subset, so they are examples as well as product.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
   Code pages render from their compiled output, and static pages are prebuilt.
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
-- In WordPress-rendered mode, Zero serves markdown for every kind URL.
-- Backend-only sites: `GET /__zero/api/v1/posts/<id>?format=md` (or the core route with `?format=md`).
+- In WordPress-rendered mode, First serves markdown for every kind URL.
+- Backend-only sites: `GET /__first/api/v1/posts/<id>?format=md` (or the core route with `?format=md`).
 
 ## 6. Caching
 
@@ -257,9 +257,9 @@ The plan is to use WP Cloud's existing stack:
 - the edge cache;
 - URL purges.
 
-Zero's job is to tell those layers what each page is and to purge the right
+First's job is to tell those layers what each page is and to purge the right
 URLs. This covers pages WordPress serves. A frontend hosted elsewhere, such as
-Astro, owns its own cache; Zero only sends it the webhook (04).
+Astro, owns its own cache; First only sends it the webhook (04).
 
 Already on main in the runtime:
 - `runtime/engine/shared/purge.php` sends durable, per-host purge records to
@@ -277,7 +277,7 @@ Already on main in the runtime:
 | only content any visitor can read | **cacheable**: Batcache stores it, and the edge caches with `public, s-maxage=<window>, max-age=0, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
 | anything viewer-dependent | `private, no-store`; still fast, because the shell has no viewer data when the viewer part is a client component |
 
-`zero check --json` prints each route's policy and the reason.
+`first check --json` prints each route's policy and the reason.
 
 ### 6.2 Purges by URL
 
@@ -285,14 +285,14 @@ Already on main in the runtime:
   compiler knows the queries, so the runtime only collects ids. These are
   stored as a URL → reads index in the object cache, with a database copy so
   eviction can't lose it.
-- On every committed write, Zero computes the affected URLs:
+- On every committed write, First computes the affected URLs:
   - the item's own `url` and its old URL if the slug changed;
   - every indexed page that read that id, or listed that kind;
   - the item's term archives, author archive, home, feeds, the sitemap, and each URL's `.md` twin.
 - The URLs go into the existing durable purge records, as one purge obligation
   in the same transaction as the write. It is retried until the gateway accepts it.
 - Batcache entries for those URLs are deleted in the same step.
-- **Query variants:** Zero purges each URL plus every query variant its index
+- **Query variants:** First purges each URL plus every query variant its index
   saw (`?page=2`, typed `search` params). Unknown variants fall back to the
   `s-maxage` window. A purge that touches more than N URLs, or a kind-wide
   change such as a schema deploy or a settings change, becomes the existing whole-host purge.
@@ -319,7 +319,7 @@ Already on main in the runtime:
   when none is given. Our runtime sends only `wp_domain` today; URL purges add
   `purge_uris` to the same durable records. No URL-count limit is enforced.
 - **Batcache:** stores a URL on its second hit within two minutes, reads only
-  `max-age`, ignores tracking params in its key. Public Zero pages stay in
+  `max-age`, ignores tracking params in its key. Public First pages stay in
   Batcache; viewer-dependent ones call `batcache_cancel()`, as the WordPress
   lanes already do.
 - Still open: the edge TTL ceiling, which only sets the fallback window.
@@ -344,7 +344,7 @@ Already on main in the runtime:
   - region navigation.
 - Agents: markdown twins and `llms.txt`.
 - Modes and fallbacks:
-  - a 404 in Zero-owned mode;
+  - a 404 in First-owned mode;
   - WordPress rendering a kind URL that has no page.
 - Caching:
   - a cache hit (Batcache, then edge) after the first request;

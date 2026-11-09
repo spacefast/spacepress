@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/route-attachment",
+	"name": "@first-admin/route-attachment",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -12,12 +12,12 @@
 		}
 	},
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/core-data-next": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/fields-next": "workspace:*",
-		"@zero-admin/image-cropper": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/core-data-next": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/fields-next": "workspace:*",
+		"@first-admin/image-cropper": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/commands": "catalog:",
 		"@wordpress/components": "catalog:",
@@ -35,7 +35,7 @@
 		"@wordpress/route": "catalog:",
 		"@wordpress/ui": "catalog:",
 		"clsx": "catalog:",
-		"@zero-admin/schema": "workspace:*"
+		"@first-admin/schema": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

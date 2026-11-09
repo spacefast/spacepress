@@ -8,7 +8,7 @@ import {
   repeater,
   richText,
   text,
-} from "zero";
+} from "first";
 
 export const stories = collection(
   {

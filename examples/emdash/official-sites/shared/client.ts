@@ -28,13 +28,13 @@ const siteSchema = z.object({
   widgets: z.array(z.object({ name: z.string(), widgets: z.array(z.looseObject({ type: z.string(), title: z.string().optional(), componentId: z.string().optional(), content: z.array(blockSchema).optional(), props: z.record(z.string(), z.unknown()).optional() })) })),
 });
 export function backendUrl() {
-  const value = process.env.ZERO_BACKEND_URL;
-  if (!value) throw new Error('ZERO_BACKEND_URL must name the owned native Studio backend.');
+  const value = process.env.FIRST_BACKEND_URL;
+  if (!value) throw new Error('FIRST_BACKEND_URL must name the owned native Studio backend.');
   return value.replace(/\/$/, '');
 }
 async function native<T>(path: string, schema: z.ZodType<T>, cookie?: string): Promise<T> {
-  const response = await fetch(`${backendUrl()}/wp-json/zero-official/v1/${path}`, { signal: AbortSignal.timeout(30000), cache: 'no-store', headers: cookie ? { cookie } : undefined });
-  if (!response.ok) throw new Error(`Native Zero read failed (${response.status}): ${path}`);
+  const response = await fetch(`${backendUrl()}/wp-json/first-official/v1/${path}`, { signal: AbortSignal.timeout(30000), cache: 'no-store', headers: cookie ? { cookie } : undefined });
+  if (!response.ok) throw new Error(`Native First read failed (${response.status}): ${path}`);
   const value: unknown = await response.json();
   return schema.parse(value);
 }
@@ -72,7 +72,7 @@ export async function getTermsForEntries(collection: 'posts' | 'pages', ids: str
 export function decodeSlug(slug: string | undefined) {
   try { return slug ? decodeURIComponent(slug) : undefined; } catch { return undefined; }
 }
-export const getI18nConfig = () => ({ defaultLocale: process.env.ZERO_LOCALE ?? 'en' });
+export const getI18nConfig = () => ({ defaultLocale: process.env.FIRST_LOCALE ?? 'en' });
 export function getSeoMeta(entry: z.infer<typeof entrySchema>, options: { siteTitle: string; siteUrl: string; path: string; defaultOgImage?: string }) {
   const title = entry.data.seoTitle || entry.data.title;
   const description = entry.data.seoDescription || entry.data.excerpt;

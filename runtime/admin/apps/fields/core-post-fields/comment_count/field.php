@@ -2,12 +2,12 @@
 /**
  * Comment count field definition for core post fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Comments', 'zero-admin' ),
+	'label'         => __( 'Comments', 'first-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

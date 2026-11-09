@@ -7,11 +7,11 @@ frontend at `http://127.0.0.1:5196/`. No staging or production deployment exists
 ## Native compilation and frontend build
 
 ```text
-$ ./target/release/zero check examples/drive-locker --frozen --json
-{"schema":"zero-diagnostics","version":1,"compilerVersion":"0.3.0","ok":true,"offsetEncoding":"utf-8","positionEncoding":"utf-16","diagnostics":[],"groups":[]}
+$ ./target/release/first check examples/drive-locker --frozen --json
+{"schema":"first-diagnostics","version":1,"compilerVersion":"0.3.0","ok":true,"offsetEncoding":"utf-8","positionEncoding":"utf-16","diagnostics":[],"groups":[]}
 
-$ ./target/release/zero build examples/drive-locker --frozen
-built 0 collections, 4 tables, 1 user projections, 0 globals, 8 hooks, 5 actions -> .zero/wp-content
+$ ./target/release/first build examples/drive-locker --frozen
+built 0 collections, 4 tables, 1 user projections, 0 globals, 8 hooks, 5 actions -> .first/wp-content
 
 $ tsc -p examples/drive-locker
 exit 0
@@ -22,7 +22,7 @@ vite build
 exit 0
 
 $ node examples/drive-locker/prepare-publish.mjs
-Prepared .zero/publish with config, lib, migrations and built public assets only.
+Prepared .first/publish with config, lib, migrations and built public assets only.
 ```
 
 The compiler counts come from the emitted build summary: collections and
@@ -31,7 +31,7 @@ hooks count both registered hook functions for each of the four tables, and
 actions count the `actions` registry. Compiler errors are
 `check.json.diagnostics.filter(d => d.severity === 'error').length = 0`.
 
-`zero build` emitted the committed client, schema registration, SQL migration,
+`first build` emitted the committed client, schema registration, SQL migration,
 snapshot and pinned WordPress plugin lock. The build directory and SPA bundle
 are ignored. They contain no source changes to shared compiler/runtime code.
 
@@ -64,11 +64,11 @@ that drive CRUD works. The normal verifier without `--probe-main` fails on
 that creation refusal.
 
 The actual MCP initialize request returns HTTP 200 with server name
-`Drive-locker` and instructions `Zero app drive-locker`. The
+`Drive-locker` and instructions `First app drive-locker`. The
 [ability names](abilities.json) were emitted by:
 
 ```sh
-./target/release/zero abilities --site examples/drive-locker
+./target/release/first abilities --site examples/drive-locker
 ```
 
 ## Browser
@@ -101,13 +101,13 @@ keyboard focus styles are in `web/src/style.css`.
 
 ## Publication
 
-The installed `spacefast/0.8.0` CLI refused `sf zero check --help` because the
+The installed `spacefast/0.8.0` CLI refused `sf first check --help` because the
 command is absent. Native preflight succeeded separately. Publication used
 an allowlisted staging tree, with no WordPress database, cache, dependencies or
 credentials among the inputs:
 
 ```sh
-sf publish examples/drive-locker/.zero/publish \
+sf publish examples/drive-locker/.first/publish \
 	--team team_3f222eb89f634980a2552a38fbdc70ba \
 	--access team --name 'Drive Locker' --slug drive-locker --json --wait
 ```

@@ -5,7 +5,7 @@ import { compileContent } from "./compiler/content.ts";
 import { formatDiagnostic, hasErrors } from "./diagnostics.ts";
 
 const USAGE = `usage:
-  zero-blocks content <file.tsx> [--out <file.html>] [--json] [--verbose]
+  first-blocks content <file.tsx> [--out <file.html>] [--json] [--verbose]
 
 Compile one TSX file to Gutenberg block markup. Errors are reported with
 file:line:column and exit 1; nothing is written on error.`;

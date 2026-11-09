@@ -1,9 +1,9 @@
-// Core /wp/v2/zero_* under Zero's access rules (lane R): the block editor keeps its REST routes, but
-// they answer exactly what /zero/v1 would. Fixtures: tests/wp/app/lanes/rest.ts (vault: admin-only;
+// Core /wp/v2/first_* under First's access rules (lane R): the block editor keeps its REST routes, but
+// they answer exactly what /first/v1 would. Fixtures: tests/wp/app/lanes/rest.ts (vault: admin-only;
 // ledger: owners read and edit their own rows; payroll: anyone reads, salary admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { api, core, harness, http, ok, run, wp, zero } from "./env.ts";
+import { api, core, harness, http, ok, run, wp, first } from "./env.ts";
 
 let vaultId: number;
 let mine: number;
@@ -12,86 +12,86 @@ let payId: number;
 const author = harness.users.author.id;
 
 before(() => {
-  vaultId = zero("insert", "vault", JSON.stringify({ title: `Vault ${run}`, code: "1234" }))[0].id;
-  [mine, theirs] = zero("insert", "ledger", JSON.stringify([{ title: `Mine ${run}`, ownerId: author }, { title: `Theirs ${run}`, ownerId: author + 1000 }])).map((r: any) => r.id);
-  payId = zero("insert", "payroll", JSON.stringify({ title: `Pay ${run}`, salary: "90k" }))[0].id;
+  vaultId = first("insert", "vault", JSON.stringify({ title: `Vault ${run}`, code: "1234" }))[0].id;
+  [mine, theirs] = first("insert", "ledger", JSON.stringify([{ title: `Mine ${run}`, ownerId: author }, { title: `Theirs ${run}`, ownerId: author + 1000 }])).map((r: any) => r.id);
+  payId = first("insert", "payroll", JSON.stringify({ title: `Pay ${run}`, salary: "90k" }))[0].id;
 });
 
 const ids = (r: { json: any }) => r.json.map((p: any) => p.id).sort((a: number, b: number) => a - b);
 
 test("reads answer the read rule: denied, filtered, or whole", async () => {
-  const anonList = await http("GET", `${core}/zero_vault`);
+  const anonList = await http("GET", `${core}/first_vault`);
   assert.deepEqual([anonList.status, anonList.json.code], [401, "unauthenticated"], "an admin-only collection is refused, not listed");
-  assert.equal((await http("GET", `${core}/zero_vault/${vaultId}`)).status, 401);
-  assert.equal((await http("GET", `${core}/zero_vault/${vaultId}`, { as: "editor" })).status, 403);
-  const admin = await http("GET", `${core}/zero_vault/${vaultId}`, { as: "admin" });
-  assert.deepEqual([admin.status, admin.json.acf.zero_code], [200, "1234"]);
+  assert.equal((await http("GET", `${core}/first_vault/${vaultId}`)).status, 401);
+  assert.equal((await http("GET", `${core}/first_vault/${vaultId}`, { as: "editor" })).status, 403);
+  const admin = await http("GET", `${core}/first_vault/${vaultId}`, { as: "admin" });
+  assert.deepEqual([admin.status, admin.json.acf.first_code], [200, "1234"]);
 
-  // A filtering rule: the author's list holds her row only, and the other row is 404 as on /zero/v1.
-  const listed = await http("GET", `${core}/zero_ledger?per_page=100&search=${run}`, { as: "author" });
+  // A filtering rule: the author's list holds her row only, and the other row is 404 as on /first/v1.
+  const listed = await http("GET", `${core}/first_ledger?per_page=100&search=${run}`, { as: "author" });
   assert.deepEqual([ids(listed), listed.type.startsWith("application/json")], [[mine], true]);
-  assert.equal(Number((await fetch(`${core}/zero_ledger?search=${run}`, { headers: { Authorization: "Basic " + btoa(`author:${harness.users.author.appPassword}`) } })).headers.get("x-wp-total")), 1, "the total counts only her rows");
-  assert.equal((await http("GET", `${core}/zero_ledger/${theirs}`, { as: "author" })).status, 404);
-  assert.deepEqual(ids(await http("GET", `${core}/zero_ledger?per_page=100&search=${run}`, { as: "editor" })), [mine, theirs]);
+  assert.equal(Number((await fetch(`${core}/first_ledger?search=${run}`, { headers: { Authorization: "Basic " + btoa(`author:${harness.users.author.appPassword}`) } })).headers.get("x-wp-total")), 1, "the total counts only her rows");
+  assert.equal((await http("GET", `${core}/first_ledger/${theirs}`, { as: "author" })).status, 404);
+  assert.deepEqual(ids(await http("GET", `${core}/first_ledger?per_page=100&search=${run}`, { as: "editor" })), [mine, theirs]);
 });
 
 test("every response drops the fields the viewer can't read", async () => {
-  const anon = await http("GET", `${core}/zero_payroll/${payId}`);
+  const anon = await http("GET", `${core}/first_payroll/${payId}`);
   assert.equal(anon.status, 200);
-  assert.deepEqual(Object.keys(anon.json.acf).filter((k) => k.startsWith("zero_salary")), [], "salary and its _source are gone");
+  assert.deepEqual(Object.keys(anon.json.acf).filter((k) => k.startsWith("first_salary")), [], "salary and its _source are gone");
   assert.equal(anon.json.title.rendered, `Pay ${run}`);
-  const listed = (await http("GET", `${core}/zero_payroll?search=${run}`, { as: "editor" })).json[0];
-  assert.equal("zero_salary" in listed.acf, false, "lists and the edit context too");
-  assert.equal((await http("GET", `${core}/zero_payroll/${payId}?context=edit`, { as: "editor" })).json.acf.zero_salary, undefined);
-  assert.equal((await http("GET", `${core}/zero_payroll/${payId}`, { as: "admin" })).json.acf.zero_salary, "90k");
+  const listed = (await http("GET", `${core}/first_payroll?search=${run}`, { as: "editor" })).json[0];
+  assert.equal("first_salary" in listed.acf, false, "lists and the edit context too");
+  assert.equal((await http("GET", `${core}/first_payroll/${payId}?context=edit`, { as: "editor" })).json.acf.first_salary, undefined);
+  assert.equal((await http("GET", `${core}/first_payroll/${payId}`, { as: "admin" })).json.acf.first_salary, "90k");
 });
 
-test("writes need Zero's create/update rules, not role capabilities", async () => {
-  const count = () => Number(wp("post", "list", "--post_type=zero_vault", "--post_status=any", "--format=count"));
+test("writes need First's create/update rules, not role capabilities", async () => {
+  const count = () => Number(wp("post", "list", "--post_type=first_vault", "--post_status=any", "--format=count"));
   const before = count();
-  const authorCreate = await http("POST", `${core}/zero_vault`, { as: "author", body: { title: "x", status: "publish" } });
+  const authorCreate = await http("POST", `${core}/first_vault`, { as: "author", body: { title: "x", status: "publish" } });
   assert.equal(authorCreate.status, 403, JSON.stringify(authorCreate.json));
-  assert.equal((await http("POST", `${core}/zero_vault/${vaultId}`, { as: "editor", body: { title: "y" } })).status, 403);
-  assert.equal((await http("DELETE", `${core}/zero_vault/${vaultId}`, { as: "editor" })).status, 403);
+  assert.equal((await http("POST", `${core}/first_vault/${vaultId}`, { as: "editor", body: { title: "y" } })).status, 403);
+  assert.equal((await http("DELETE", `${core}/first_vault/${vaultId}`, { as: "editor" })).status, 403);
   assert.equal(count(), before, "nothing was created");
-  const adminCreate = await http("POST", `${core}/zero_vault`, { as: "admin", body: { title: `Admin ${run}`, status: "publish" } });
+  const adminCreate = await http("POST", `${core}/first_vault`, { as: "admin", body: { title: `Admin ${run}`, status: "publish" } });
   assert.equal(adminCreate.status, 201, JSON.stringify(adminCreate.json));
 
   // An owner-filtered update rule: her row yes, another's no; a subscriber may not create at all.
-  const own = await http("POST", `${core}/zero_ledger/${mine}`, { as: "author", body: { title: `Mine ${run} edited` } });
+  const own = await http("POST", `${core}/first_ledger/${mine}`, { as: "author", body: { title: `Mine ${run} edited` } });
   assert.equal(own.status, 200, JSON.stringify(own.json));
-  assert.equal((await http("POST", `${core}/zero_ledger/${theirs}`, { as: "author", body: { title: "stolen" } })).status, 403);
-  assert.equal((await http("POST", `${core}/zero_ledger`, { as: "subscriber", body: { title: "s", status: "publish" } })).status, 403);
+  assert.equal((await http("POST", `${core}/first_ledger/${theirs}`, { as: "author", body: { title: "stolen" } })).status, 403);
+  assert.equal((await http("POST", `${core}/first_ledger`, { as: "subscriber", body: { title: "s", status: "publish" } })).status, 403);
   assert.equal((await ok("GET", `/ledger/${mine}`, { as: "editor" })).title, `Mine ${run} edited`);
 });
 
 test("hidden fields need an explicit update rule, including nested fields", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Guarded ${run}`, salary: "secret", managerId: mine, notes: { open: "visible", sealed: "secret" }, entries: [{ open: "visible", sealed: "secret" }], policy: { gate: "locked", value: "old" }, writeOnly: "old" }))[0].id;
+  const id = first("insert", "payroll", JSON.stringify({ title: `Guarded ${run}`, salary: "secret", managerId: mine, notes: { open: "visible", sealed: "secret" }, entries: [{ open: "visible", sealed: "secret" }], policy: { gate: "locked", value: "old" }, writeOnly: "old" }))[0].id;
   const top = await http("PATCH", `${api}/payroll/${id}`, { as: "editor", body: { managerId: theirs } });
   assert.deepEqual([top.status, top.json.pointer], [403, "/managerId"]);
   const nested = await http("PATCH", `${api}/payroll/${id}`, { as: "editor", body: { notes: { sealed: "changed" } } });
   assert.deepEqual([nested.status, nested.json.pointer], [403, "/notes/sealed"]);
   const cleared = await http("PATCH", `${api}/payroll/${id}`, { as: "editor", body: { entries: [] } });
   assert.deepEqual([cleared.status, cleared.json.pointer], [403, "/entries/0"]);
-  const emptyId = zero("insert", "payroll", JSON.stringify({ title: `Empty ${run}` }))[0].id;
+  const emptyId = first("insert", "payroll", JSON.stringify({ title: `Empty ${run}` }))[0].id;
   const newNested = await http("PATCH", `${api}/payroll/${emptyId}`, { as: "editor", body: { notes: { sealed: "changed" } } });
   assert.deepEqual([newNested.status, newNested.json.pointer], [403, "/notes/sealed"]);
   const newItem = await http("PATCH", `${api}/payroll/${emptyId}`, { as: "editor", body: { entries: [{ sealed: "changed" }] } });
   assert.deepEqual([newItem.status, newItem.json.pointer], [403, "/entries/0/sealed"]);
   const newLayout = await http("PATCH", `${api}/payroll/${emptyId}`, { as: "editor", body: { sections: [{ layout: "private", sealed: "changed" }] } });
   assert.deepEqual([newLayout.status, newLayout.json.pointer], [403, "/sections/0/sealed"]);
-  const coreNested = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { sealed: "changed" } } } });
+  const coreNested = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_notes: { sealed: "changed" } } } });
   assert.deepEqual([coreNested.status, coreNested.json.data.pointer], [403, "/notes/sealed"]);
   const visible = await ok("PATCH", `/payroll/${id}`, { as: "editor", body: { notes: { open: "edited" }, writeOnly: "new" } });
   assert.deepEqual(visible.notes, { open: "edited" });
   assert.equal("writeOnly" in visible, false);
-  const policy = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_policy: { value: "new" } } } });
+  const policy = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_policy: { value: "new" } } } });
   assert.deepEqual([policy.status, policy.json.data.pointer], [403, "/policy/value"], "the rule sees the saved sibling, even when it was omitted from the input");
-  zero("update", "payroll", JSON.stringify({ id: emptyId }), JSON.stringify({ notes: { open: "visible", sealed: null } }));
-  const clearNull = await http("POST", `${core}/zero_payroll/${emptyId}`, { as: "editor", body: { acf: { zero_notes: null } } });
-  const clearSecret = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: null } } });
+  first("update", "payroll", JSON.stringify({ id: emptyId }), JSON.stringify({ notes: { open: "visible", sealed: null } }));
+  const clearNull = await http("POST", `${core}/first_payroll/${emptyId}`, { as: "editor", body: { acf: { first_notes: null } } });
+  const clearSecret = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_notes: null } } });
   assert.deepEqual([clearNull.status, clearNull.json.data.pointer, clearSecret.status, clearSecret.json.data.pointer], [403, "/notes", 403, "/notes"]);
-  const coreVisible = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { open: "edited in core" } } } });
+  const coreVisible = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_notes: { open: "edited in core" } } } });
   assert.equal(coreVisible.status, 200, JSON.stringify(coreVisible.json));
   const stored = await ok("GET", `/payroll/${id}`, { as: "admin" });
   assert.deepEqual([stored.managerId, stored.notes, stored.writeOnly], [mine, { open: "edited in core", sealed: "secret" }, "new"]);
@@ -99,104 +99,104 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
   // A second Db shares WordPress storage but owns different field policy. Both its read and write
   // must use that schema, then restore the booted app's Db even when the operation throws.
   const scoped = JSON.parse(wp("eval", `
-    $app = \\Zero\\Wp\\Plugin::instance()->db();
-    \\Zero\\Db::setInstance($app);
+    $app = \\First\\Wp\\Plugin::instance()->db();
+    \\First\\Db::setInstance($app);
     $spec = $app->schema()->collection('payroll');
     $spec['columns']['title']['access']['read'] = ['allow' => false];
-    eval('namespace ZeroApp; function secondary_scope_rule($ctx) { return \\\\Zero\\\\db()->schema()->hasCollection("scope_marker"); } function secondary_scope_default() { return \\\\Zero\\\\db()->schema()->hasCollection("scope_marker") ? "secondary" : "booted"; }');
+    eval('namespace FirstApp; function secondary_scope_rule($ctx) { return \\\\First\\\\db()->schema()->hasCollection("scope_marker"); } function secondary_scope_default() { return \\\\First\\\\db()->schema()->hasCollection("scope_marker") ? "secondary" : "booted"; }');
     $spec['access']['read'] = $spec['access']['update'] = ['fn' => 'secondary_scope_rule'];
     $settings = $app->schema()->global('settings');
     $settings['access'] = ['read' => ['fn' => 'secondary_scope_rule'], 'update' => ['fn' => 'secondary_scope_rule']];
-    $schema = new \\Zero\\Schema(['collections' => ['payroll' => $spec, 'scope_marker' => $spec], 'globals' => [
+    $schema = new \\First\\Schema(['collections' => ['payroll' => $spec, 'scope_marker' => $spec], 'globals' => [
       'settings' => $settings,
-      'secondary_global' => ['fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'secondary_scope_default']]], 'access' => $settings['access'], 'wp' => ['postId' => 'zero_secondary_global', 'fieldKeyPrefix' => 'field_zero_secondary_global_']],
+      'secondary_global' => ['fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'secondary_scope_default']]], 'access' => $settings['access'], 'wp' => ['postId' => 'first_secondary_global', 'fieldKeyPrefix' => 'field_first_secondary_global_']],
     ]]);
-    $store = \\Zero\\Wp\\CompositeStore::create($schema, \\Zero\\Wp\\Plugin::instance()->connection());
-    $db = new \\Zero\\Db($store, $schema, $app->media(), 'wp');
-    $viewer = new \\Zero\\Viewer(['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $store = \\First\\Wp\\CompositeStore::create($schema, \\First\\Wp\\Plugin::instance()->connection());
+    $db = new \\First\\Db($store, $schema, $app->media(), 'wp');
+    $viewer = new \\First\\Viewer(['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'wp');
     $row = $db->findFirst('payroll', ['where' => ['id' => ${id}]], $viewer);
     try { $db->update('payroll', ['title' => 'overwritten'], ['id' => ${id}], true, $viewer); }
-    catch (\\Zero\\HttpError $error) { $status = $error->status; }
-    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts): void {
-      if ($collection === 'payroll' && !\\Zero\\db()->schema()->hasCollection('scope_marker')) throw new RuntimeException('wrong query Db');
+    catch (\\First\\HttpError $error) { $status = $error->status; }
+    \\First\\Extensions::beforeRead(static function (string $collection, array &$opts): void {
+      if ($collection === 'payroll' && !\\First\\db()->schema()->hasCollection('scope_marker')) throw new RuntimeException('wrong query Db');
     });
     $permissions = [$db->permits('payroll', 'read', ${id}, $viewer), $db->permittedKeys('payroll', 'update', $viewer)];
     $captured = $db->editorRow('payroll', ${id});
     $revisions = $db->revisions('payroll', ${id}, $viewer);
     $global = $db->globalGet('secondary_global', $viewer);
     $settings = $db->globalUpdate('settings', ['postsPerPage' => 12], $viewer);
-    echo wp_json_encode([array_key_exists('title', $row), $status ?? null, \\Zero\\db() === $app, $permissions, $captured['id'], count($revisions) > 0, $global['name'], $settings['postsPerPage']]);
+    echo wp_json_encode([array_key_exists('title', $row), $status ?? null, \\First\\db() === $app, $permissions, $captured['id'], count($revisions) > 0, $global['name'], $settings['postsPerPage']]);
   `));
   assert.deepEqual(scoped, [false, 403, true, [true, null], id, true, "secondary", 12]);
   const coreScoped = JSON.parse(wp("eval", `
     wp_set_current_user(${harness.users.editor.id});
-    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $app = \\First\\Wp\\Plugin::instance()->db();
     $spec = $app->schema()->collection('payroll');
     unset($spec['columns']['salary']['access']);
-    $schema = new \\Zero\\Schema(['collections' => ['payroll' => $spec]]);
-    $other = new \\Zero\\Db($app->store(), $schema, $app->media(), 'wp');
+    $schema = new \\First\\Schema(['collections' => ['payroll' => $spec]]);
+    $other = new \\First\\Db($app->store(), $schema, $app->media(), 'wp');
     $result = [];
     try {
       $other->transaction(static function () use ($other, &$result) {
-        $read = rest_do_request('/wp/v2/zero_payroll/${id}');
-        $result[] = array_key_exists('zero_salary', $read->get_data()['acf']);
-        $write = new WP_REST_Request('POST', '/wp/v2/zero_payroll/${id}');
-        $write->set_param('acf', ['zero_salary' => 'overwritten']);
+        $read = rest_do_request('/wp/v2/first_payroll/${id}');
+        $result[] = array_key_exists('first_salary', $read->get_data()['acf']);
+        $write = new WP_REST_Request('POST', '/wp/v2/first_payroll/${id}');
+        $write->set_param('acf', ['first_salary' => 'overwritten']);
         try { rest_do_request($write); }
-        catch (\\Zero\\HttpError $error) {
+        catch (\\First\\HttpError $error) {
           $result[] = $error->status;
-          $result[] = \\Zero\\db() === $other;
+          $result[] = \\First\\db() === $other;
           throw $error;
         }
       });
-    } catch (\\Zero\\HttpError) {}
+    } catch (\\First\\HttpError) {}
     echo wp_json_encode($result);
   `));
   assert.deepEqual(coreScoped, [false, 403, true], "the plugin retains its own policy inside another Db's transaction");
   assert.equal((await ok("GET", `/payroll/${id}`, { as: "admin" })).salary, "secret");
   const deferred = JSON.parse(wp("eval", `
-    $app = \\Zero\\Wp\\Plugin::instance()->db();
-    $other = new \\Zero\\Db($app->store(), new \\Zero\\Schema(['collections' => []]), $app->media(), 'wp');
+    $app = \\First\\Wp\\Plugin::instance()->db();
+    $other = new \\First\\Db($app->store(), new \\First\\Schema(['collections' => []]), $app->media(), 'wp');
     $committed = [];
     $other->transaction(function () use ($app, &$committed) {
       $app->transaction(function () use (&$committed) {
-        \\Zero\\Extensions::afterCommit(function () use (&$committed) {
-          $committed[] = \\Zero\\db()->schema()->hasCollection('ledger');
+        \\First\\Extensions::afterCommit(function () use (&$committed) {
+          $committed[] = \\First\\db()->schema()->hasCollection('ledger');
         });
       });
     });
-    echo wp_json_encode([$committed, \\Zero\\db() === $app]);
+    echo wp_json_encode([$committed, \\First\\db() === $app]);
   `));
   assert.deepEqual(deferred, [[true], true], "deferred callbacks retain the registering Db across a shared transaction");
 
   const referenceScope = JSON.parse(wp("eval", `
-    $db = \\Zero\\Wp\\Plugin::instance()->db();
-    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $db = \\First\\Wp\\Plugin::instance()->db();
+    $viewer = new \\First\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
     $target = $db->insert('oracle_rows', ['title' => 'Extension target', 'ownerId' => $viewer->user['id']], true)[0];
-    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\Zero\\Viewer $viewer): void {
+    \\First\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\First\\Viewer $viewer): void {
       if ($collection === 'oracle_rows' && ($viewer?->user['role'] ?? null) === 'editor') {
         $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
       }
     });
     try { $db->insert('oracle_refs', ['title' => 'Extension reference', 'rowId' => $target['id']], false, $viewer); }
-    catch (\\Zero\\HttpError $error) { $status = $error->status; $code = $error->errorCode; }
+    catch (\\First\\HttpError $error) { $status = $error->status; $code = $error->errorCode; }
     echo wp_json_encode([$status ?? null, $code ?? null, $db->findMany('oracle_refs', ['where' => ['title' => 'Extension reference']])]);
   `));
   assert.deepEqual(referenceScope, [409, "reference_violation", []], "reference checks retain the viewer for query extensions and persist no hidden link");
 
   const constraintScope = JSON.parse(wp("eval", `
-    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $app = \\First\\Wp\\Plugin::instance()->db();
     $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows', 'key_roots', 'key_links']));
     foreach ($specs as &$spec) { $spec['access']['read'] = ['allow' => true]; }
     unset($spec);
-    $db = new \\Zero\\Db($app->store(), new \\Zero\\Schema(['collections' => $specs]), $app->media(), 'wp');
-    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $db = new \\First\\Db($app->store(), new \\First\\Schema(['collections' => $specs]), $app->media(), 'wp');
+    $viewer = new \\First\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
     $code = 'extension-' . bin2hex(random_bytes(8));
     $hidden = $db->insert('oracle_rows', ['title' => $code, 'code' => $code], true)[0];
     $base = random_int(1000000000, 1900000000);
     $parents = $db->insert('key_roots', [['code' => $base], ['code' => $base + 1]], true);
     $db->insert('key_links', ['rootCode' => $base]);
-    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\Zero\\Viewer $viewer): void {
+    \\First\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\First\\Viewer $viewer): void {
       if ($viewer !== null && isset($opts['where']) && in_array($collection, ['oracle_rows', 'key_links'], true)) {
         $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
       }
@@ -204,15 +204,15 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
     $result = [];
     foreach ([$code, $code . '-free'] as $candidate) {
       try { $db->insert('oracle_rows', ['title' => $code . '-probe', 'code' => $candidate], false, $viewer); $result[] = null; }
-      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
     }
     try { $db->update('oracle_rows', ['code' => $code], ['id' => $hidden['id']], false, null, $viewer); $result[] = null; }
-    catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
     foreach ($parents as $parent) {
       try { $db->delete('key_roots', ['id' => $parent['id']], false, $viewer); $result[] = null; }
-      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
       try { $db->update('key_roots', ['code' => $parent['code'] + 10], ['id' => $parent['id']], false, $viewer); $result[] = null; }
-      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
     }
     $result[] = count($db->findMany('oracle_rows', ['where' => ['title' => $code . '-probe']]));
     $result[] = array_column($db->findMany('key_roots', ['where' => ['id' => ['in' => array_column($parents, 'id')]], 'orderBy' => ['id' => 'asc']]), 'code') === [$base, $base + 1];
@@ -221,16 +221,16 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
 
 
   const transformScope = JSON.parse(wp("eval", `
-    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $app = \\First\\Wp\\Plugin::instance()->db();
     $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows', 'oracle_refs', 'oracle_sync']));
     foreach ($specs as &$spec) { $spec['access']['read'] = ['allow' => true]; }
     unset($spec);
-    $db = new \\Zero\\Db($app->store(), new \\Zero\\Schema(['collections' => $specs]), $app->media(), 'wp');
-    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $db = new \\First\\Db($app->store(), new \\First\\Schema(['collections' => $specs]), $app->media(), 'wp');
+    $viewer = new \\First\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
     $code = 'transform-' . bin2hex(random_bytes(8));
     $hidden = $db->insert('oracle_rows', ['title' => $code, 'code' => $code], true)[0];
     $visible = $db->insert('oracle_rows', ['title' => $code . '-visible', 'code' => $code . '-visible', 'publicBadge' => random_int(1000000, 9000000)], true)[0];
-    \\Zero\\Extensions::onRead(static function (array $rows, string $collection, ?\\Zero\\Viewer $viewer) use ($hidden): array {
+    \\First\\Extensions::onRead(static function (array $rows, string $collection, ?\\First\\Viewer $viewer) use ($hidden): array {
       return $collection === 'oracle_rows' && $viewer !== null
         ? array_map(static fn (array $row): array => array_diff_key($row, ['code' => true, 'publicBadge' => true]),
           array_values(array_filter($rows, static fn (array $row): bool => $row['id'] !== $hidden['id']))) : $rows;
@@ -238,20 +238,20 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
     $result = [];
     foreach ([$code . '-visible', $code . '-free'] as $candidate) {
       try { $db->insert('oracle_rows', ['title' => $code . '-probe', 'code' => $candidate], false, $viewer); $result[] = null; }
-      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
     }
     foreach ([$hidden['id'], 2147483647] as $target) {
       try { $db->insert('oracle_refs', ['title' => $code . '-probe', 'rowId' => $target], false, $viewer); $result[] = null; }
-      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
     }
     $result[] = $db->findMany('oracle_refs', ['where' => ['title' => $code . '-probe']]);
     $db->insert('oracle_refs', ['title' => $code . '-visible', 'rowId' => $visible['id']], false, $viewer);
     $result[] = count($db->findMany('oracle_refs', ['where' => ['title' => $code . '-visible']]));
     foreach ([$visible['uid'], 'zr_00000000000000000000'] as $uid) {
       try {
-        $db->current(static fn () => \\Zero\\Sync\\Wire::decode('oracle_sync', ['fields' => ['publicBadgeId' => $uid]], viewer: $viewer));
+        $db->current(static fn () => \\First\\Sync\\Wire::decode('oracle_sync', ['fields' => ['publicBadgeId' => $uid]], viewer: $viewer));
         $result[] = null;
-      } catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      } catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
     }
     echo wp_json_encode($result);
   `));
@@ -276,7 +276,7 @@ async function adminSession(role: "editor" | "author" | "admin") {
   const res = await fetch(`${harness.url}/wp-login.php`, {
     method: "POST", redirect: "manual",
     headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
-    body: new URLSearchParams({ log: role, pwd: `zero-test-${role}`, testcookie: "1" }),
+    body: new URLSearchParams({ log: role, pwd: `first-test-${role}`, testcookie: "1" }),
   });
   const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
   const get = (path: string) => fetch(`${harness.url}/wp-admin/${path}`, { headers: { cookie }, redirect: "manual" });
@@ -289,7 +289,7 @@ async function adminSession(role: "editor" | "author" | "admin") {
     const hidden = (name: string) => html.match(new RegExp(`name=["']${name.replace(/[[\]]/g, "\\$&")}["'][^>]*value=["']([^"']*)`))?.[1] ?? "";
     const body = new URLSearchParams({
       _wpnonce: hidden("_wpnonce"), _acf_nonce: hidden("_acf_nonce"), _acf_post_id: String(id), _acf_screen: "post",
-      action: "editpost", post_ID: String(id), post_type: "zero_gated", post_status: "publish", ...fields,
+      action: "editpost", post_ID: String(id), post_type: "first_gated", post_status: "publish", ...fields,
     });
     return fetch(`${harness.url}/wp-admin/post.php`, { method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body, redirect: "manual" });
   };
@@ -297,55 +297,55 @@ async function adminSession(role: "editor" | "author" | "admin") {
 }
 
 test("a data-dependent create rule decides on the request's data, not before it", async () => {
-  const allowed = await http("POST", `${core}/zero_gated`, { as: "author", body: { title: `Open ${run}`, status: "publish", acf: { zero_level: "open" } } });
+  const allowed = await http("POST", `${core}/first_gated`, { as: "author", body: { title: `Open ${run}`, status: "publish", acf: { first_level: "open" } } });
   assert.equal(allowed.status, 201, JSON.stringify(allowed.json));
-  const refused = await http("POST", `${core}/zero_gated`, { as: "author", body: { title: `Locked ${run}`, status: "publish", acf: { zero_level: "locked" } } });
+  const refused = await http("POST", `${core}/first_gated`, { as: "author", body: { title: `Locked ${run}`, status: "publish", acf: { first_level: "locked" } } });
   assert.deepEqual([refused.status, refused.json.code], [403, "forbidden"]);
-  assert.equal(wp("post", "list", "--post_type=zero_gated", "--post_status=any", `--title=Locked ${run}`, "--format=count"), "0", "the refused create left no post");
+  assert.equal(wp("post", "list", "--post_type=first_gated", "--post_status=any", `--title=Locked ${run}`, "--format=count"), "0", "the refused create left no post");
 });
 
 test("a wp-admin form save is refused when the collection rule refuses its data, and saves nothing", async () => {
-  const id = zero("insert", "gated", JSON.stringify({ title: `Form ${run}`, level: "open" }))[0].id;
+  const id = first("insert", "gated", JSON.stringify({ title: `Form ${run}`, level: "open" }))[0].id;
   const editor = await adminSession("editor");
-  const refused = await editor.save(id, { post_title: `Form ${run}`, "acf[field_zero_gated_level]": "locked" });
+  const refused = await editor.save(id, { post_title: `Form ${run}`, "acf[field_first_gated_level]": "locked" });
   assert.equal(refused.status, 403);
-  assert.equal(zero("find", "gated", JSON.stringify({ where: { id } }))[0].level, "open", "the refused save rolled back");
-  const ok = await editor.save(id, { post_title: `Form ${run} edited`, "acf[field_zero_gated_level]": "open" });
+  assert.equal(first("find", "gated", JSON.stringify({ where: { id } }))[0].level, "open", "the refused save rolled back");
+  const ok = await editor.save(id, { post_title: `Form ${run} edited`, "acf[field_first_gated_level]": "open" });
   assert.equal(ok.status, 302, "an allowed save redirects back to the editor");
-  assert.equal(zero("find", "gated", JSON.stringify({ where: { id } }))[0].title, `Form ${run} edited`);
+  assert.equal(first("find", "gated", JSON.stringify({ where: { id } }))[0].title, `Form ${run} edited`);
 });
 
 test("nested field rules hold in wp-admin: the form hides the group, a save can't set the sub-field", async () => {
-  const id = zero("insert", "gated", JSON.stringify({ title: `Nested ${run}`, notes: { open: "o", sealed: "s" } }))[0].id;
+  const id = first("insert", "gated", JSON.stringify({ title: `Nested ${run}`, notes: { open: "o", sealed: "s" } }))[0].id;
   const editor = await adminSession("editor");
   const form = await (await editor.get(`post.php?post=${id}&action=edit&classic-editor`)).text();
-  assert.equal(form.includes("field_zero_gated_notes_sealed"), false, "the group holding a hidden sub-field isn't rendered");
-  const res = await editor.save(id, { post_title: `Nested ${run}`, "acf[field_zero_gated_notes][field_zero_gated_notes_sealed]": "forged" });
+  assert.equal(form.includes("field_first_gated_notes_sealed"), false, "the group holding a hidden sub-field isn't rendered");
+  const res = await editor.save(id, { post_title: `Nested ${run}`, "acf[field_first_gated_notes][field_first_gated_notes_sealed]": "forged" });
   assert.equal(res.status, 403);
-  assert.deepEqual(zero("find", "gated", JSON.stringify({ where: { id } }))[0].notes, { open: "o", sealed: "s" });
+  assert.deepEqual(first("find", "gated", JSON.stringify({ where: { id } }))[0].notes, { open: "o", sealed: "s" });
 });
 
 test("acf selector aliases can't smuggle a value past the field rules", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Alias ${run}`, salary: "1", notes: { open: "o", sealed: "s" } }))[0].id;
-  const res = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_salary: "1", field_zero_payroll_salary: "999" } } });
+  const id = first("insert", "payroll", JSON.stringify({ title: `Alias ${run}`, salary: "1", notes: { open: "o", sealed: "s" } }))[0].id;
+  const res = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_salary: "1", field_first_payroll_salary: "999" } } });
   assert.equal(res.status, 403, JSON.stringify(res.json));
-  assert.equal(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1");
-  const equal = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { sealed: "s" }, field_zero_payroll_notes: { open: "changed" } } } });
-  const other = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { sealed: "guess" }, field_zero_payroll_notes: { open: "changed" } } } });
+  assert.equal(first("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1");
+  const equal = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_notes: { sealed: "s" }, field_first_payroll_notes: { open: "changed" } } } });
+  const other = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_notes: { sealed: "guess" }, field_first_payroll_notes: { open: "changed" } } } });
   assert.deepEqual([equal.status, equal.json.data.pointer, other.status, other.json.data.pointer], [403, "/notes", 403, "/notes"]);
-  assert.deepEqual(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].notes, { open: "o", sealed: "s" });
+  assert.deepEqual(first("find", "payroll", JSON.stringify({ where: { id } }))[0].notes, { open: "o", sealed: "s" });
 
 });
 
 test("Add New works for a user the create rule allows: the auto-draft opens and saves", async () => {
   const editor = await adminSession("author");
-  const page = await editor.get("post-new.php?post_type=zero_ledger");
+  const page = await editor.get("post-new.php?post_type=first_ledger");
   assert.equal(page.status, 200);
   const draftId = Number((await page.text()).match(/name=["']post_ID["'][^>]*value=["'](\d+)/)?.[1]);
-  const loaded = await http("GET", `${core}/zero_ledger/${draftId}?context=edit`, { as: "author" });
+  const loaded = await http("GET", `${core}/first_ledger/${draftId}?context=edit`, { as: "author" });
   assert.equal(loaded.status, 200, JSON.stringify(loaded.json));
-  assert.equal((await http("GET", `${core}/zero_ledger/${draftId}?context=edit`, { as: "editor" })).status, 403, "the editor bootstrap is its author's, not anyone's");
-  const saved = await http("POST", `${core}/zero_ledger/${draftId}`, { as: "author", body: { title: `New ${run}`, status: "publish", acf: { zero_ownerId: harness.users.author.id } } });
+  assert.equal((await http("GET", `${core}/first_ledger/${draftId}?context=edit`, { as: "editor" })).status, 403, "the editor bootstrap is its author's, not anyone's");
+  const saved = await http("POST", `${core}/first_ledger/${draftId}`, { as: "author", body: { title: `New ${run}`, status: "publish", acf: { first_ownerId: harness.users.author.id } } });
   assert.equal(saved.status, 200, JSON.stringify(saved.json));
   assert.equal((await ok("GET", `/ledger/${draftId}`, { as: "author" })).title, `New ${run}`);
 });
@@ -353,125 +353,125 @@ test("Add New works for a user the create rule allows: the auto-draft opens and 
 test("a revision is stripped by its own snapshot, not by the live row", async () => {
   // The bonus is visible to the row's owner. Owned by someone else when revision 1 was taken, by the
   // author now: she may read today's bonus, not the one the earlier snapshot held.
-  const id = zero("insert", "ledger", JSON.stringify({ title: `Bonus ${run}`, ownerId: author + 1, bonus: "then" }))[0].id;
-  zero("update", "ledger", JSON.stringify({ id }), JSON.stringify({ ownerId: author, bonus: "now" }));
-  const revs = await http("GET", `${core}/zero_ledger/${id}/revisions`, { as: "author" });
+  const id = first("insert", "ledger", JSON.stringify({ title: `Bonus ${run}`, ownerId: author + 1, bonus: "then" }))[0].id;
+  first("update", "ledger", JSON.stringify({ id }), JSON.stringify({ ownerId: author, bonus: "now" }));
+  const revs = await http("GET", `${core}/first_ledger/${id}/revisions`, { as: "author" });
   assert.equal(revs.status, 200, JSON.stringify(revs.json));
-  const bonuses = revs.json.map((r: any) => r.acf?.zero_bonus ?? "hidden").sort();
+  const bonuses = revs.json.map((r: any) => r.acf?.first_bonus ?? "hidden").sort();
   assert.deepEqual(bonuses, ["hidden", "now"]);
-  const editor = (await http("GET", `${core}/zero_ledger/${id}/revisions`, { as: "editor" })).json.map((r: any) => r.acf.zero_bonus).sort();
+  const editor = (await http("GET", `${core}/first_ledger/${id}/revisions`, { as: "editor" })).json.map((r: any) => r.acf.first_bonus).sort();
   assert.deepEqual(editor, ["now", "then"], "an editor reads both");
 });
 
 test("a trashed post fails closed: fields that may be hidden stay hidden", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Trash ${run}`, salary: "77k" }))[0].id;
-  assert.equal((await http("DELETE", `${core}/zero_payroll/${id}`, { as: "editor" })).status, 200);
-  const trashed = await http("GET", `${core}/zero_payroll/${id}?context=edit`, { as: "editor" });
+  const id = first("insert", "payroll", JSON.stringify({ title: `Trash ${run}`, salary: "77k" }))[0].id;
+  assert.equal((await http("DELETE", `${core}/first_payroll/${id}`, { as: "editor" })).status, 200);
+  const trashed = await http("GET", `${core}/first_payroll/${id}?context=edit`, { as: "editor" });
   assert.equal(trashed.status, 200, JSON.stringify(trashed.json));
-  assert.deepEqual([trashed.json.title.raw, "zero_salary" in trashed.json.acf], [`Trash ${run}`, false]);
+  assert.deepEqual([trashed.json.title.raw, "first_salary" in trashed.json.acf], [`Trash ${run}`, false]);
 });
 
 test("a hidden reference leaves no link to embed, on the row and on its revisions", async () => {
-  const target = zero("insert", "ledger", JSON.stringify({ title: `Target ${run}`, ownerId: author }))[0].id;
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Managed ${run}`, managerId: target }))[0].id;
-  await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { title: `Managed ${run} v2` } });
+  const target = first("insert", "ledger", JSON.stringify({ title: `Target ${run}`, ownerId: author }))[0].id;
+  const id = first("insert", "payroll", JSON.stringify({ title: `Managed ${run}`, managerId: target }))[0].id;
+  await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { title: `Managed ${run} v2` } });
   const links = async (path: string, as?: "editor" | "admin") => JSON.stringify((await http("GET", `${core}/${path}`, { as })).json);
-  assert.match(await links(`zero_payroll/${id}`, "admin"), /acf:post/, "the admin sees the reference's link");
-  assert.doesNotMatch(await links(`zero_payroll/${id}?_embed=1`), /acf:post|Target /);
-  assert.doesNotMatch(await links(`zero_payroll/${id}/revisions?_embed=1`, "editor"), /acf:post|Target /);
+  assert.match(await links(`first_payroll/${id}`, "admin"), /acf:post/, "the admin sees the reference's link");
+  assert.doesNotMatch(await links(`first_payroll/${id}?_embed=1`), /acf:post|Target /);
+  assert.doesNotMatch(await links(`first_payroll/${id}/revisions?_embed=1`, "editor"), /acf:post|Target /);
 });
 
 test("search and slug can't probe a column hidden from the viewer", async () => {
-  zero("insert", "dossier", JSON.stringify({ title: `Dossier ${run}`, body: `<p>codeword-${run}</p>` }));
-  const search = await http("GET", `${core}/zero_dossier?search=codeword-${run}`);
+  first("insert", "dossier", JSON.stringify({ title: `Dossier ${run}`, body: `<p>codeword-${run}</p>` }));
+  const search = await http("GET", `${core}/first_dossier?search=codeword-${run}`);
   assert.deepEqual([search.status, search.json.code], [403, "forbidden"]);
-  assert.equal((await http("GET", `${core}/zero_dossier?search=0&search_columns=post_content`)).status, 403, `"0" is a search too`);
-  assert.equal((await http("GET", `${core}/zero_dossier?search=Dossier%20${run}&search_columns=post_title`)).json.length, 1, "a title search is fine");
-  assert.equal((await http("GET", `${core}/zero_dossier?slug=dossier-${run}`)).status, 403);
-  assert.equal((await http("GET", `${core}/zero_dossier?search=codeword-${run}`, { as: "admin" })).json.length, 1);
-  const item = (await http("GET", `${core}/zero_dossier?search=Dossier%20${run}&search_columns=post_title`)).json[0];
+  assert.equal((await http("GET", `${core}/first_dossier?search=0&search_columns=post_content`)).status, 403, `"0" is a search too`);
+  assert.equal((await http("GET", `${core}/first_dossier?search=Dossier%20${run}&search_columns=post_title`)).json.length, 1, "a title search is fine");
+  assert.equal((await http("GET", `${core}/first_dossier?slug=dossier-${run}`)).status, 403);
+  assert.equal((await http("GET", `${core}/first_dossier?search=codeword-${run}`, { as: "admin" })).json.length, 1);
+  const item = (await http("GET", `${core}/first_dossier?search=Dossier%20${run}&search_columns=post_title`)).json[0];
   assert.deepEqual(["content" in item, "slug" in item], [false, false], "content and slug are dropped from the item");
 });
 
 test("a field the viewer can't read refuses its unchanged value too, so no value can be probed", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Probe ${run}`, salary: "55k" }))[0].id;
-  const right = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_salary: "55k" } } });
-  const wrong = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_salary: "nope" } } });
+  const id = first("insert", "payroll", JSON.stringify({ title: `Probe ${run}`, salary: "55k" }))[0].id;
+  const right = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_salary: "55k" } } });
+  const wrong = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { acf: { first_salary: "nope" } } });
   assert.deepEqual([right.status, wrong.status, right.json.data?.pointer], [403, 403, "/salary"]);
 });
 
 test("a data-dependent update filter must match the row as it was: no taking over another's row", async () => {
-  const theirs = zero("insert", "claims", JSON.stringify({ title: `Claim ${run}`, ownerId: author + 1000 }))[0].id;
-  const mine = zero("insert", "claims", JSON.stringify({ title: `Mine ${run}`, ownerId: author }))[0].id;
-  const takeover = await http("POST", `${core}/zero_claims/${theirs}`, { as: "author", body: { acf: { zero_ownerId: author } } });
+  const theirs = first("insert", "claims", JSON.stringify({ title: `Claim ${run}`, ownerId: author + 1000 }))[0].id;
+  const mine = first("insert", "claims", JSON.stringify({ title: `Mine ${run}`, ownerId: author }))[0].id;
+  const takeover = await http("POST", `${core}/first_claims/${theirs}`, { as: "author", body: { acf: { first_ownerId: author } } });
   assert.equal(takeover.status, 403, JSON.stringify(takeover.json));
-  assert.equal(zero("find", "claims", JSON.stringify({ where: { id: theirs } }))[0].ownerId, author + 1000);
-  const own = await http("POST", `${core}/zero_claims/${mine}`, { as: "author", body: { title: `Mine ${run} edited` } });
+  assert.equal(first("find", "claims", JSON.stringify({ where: { id: theirs } }))[0].ownerId, author + 1000);
+  const own = await http("POST", `${core}/first_claims/${mine}`, { as: "author", body: { title: `Mine ${run} edited` } });
   assert.equal(own.status, 200, JSON.stringify(own.json));
   const invalid = await http("PATCH", `${api}/claims/${mine}`, { as: "author", body: { unexpected: {} } });
   assert.deepEqual([invalid.status, invalid.json.code, invalid.json.pointer], [422, "invalid_input", "/unexpected"]);
   assert.equal(wp("eval", `wp_set_current_user(${author}); var_export(current_user_can('edit_post', ${mine}));`), "false", "edit_post (revisions, wp-admin) stays strict");
-  const jsonId = zero("insert", "claims", JSON.stringify({ title: `JSON cover ${run}`, meta: {} }))[0].id;
+  const jsonId = first("insert", "claims", JSON.stringify({ title: `JSON cover ${run}`, meta: {} }))[0].id;
   const editor = await adminSession("admin");
-  const allowed = await editor.save(jsonId, { post_title: `JSON cover ${run} edited`, post_type: "zero_claims" });
+  const allowed = await editor.save(jsonId, { post_title: `JSON cover ${run} edited`, post_type: "first_claims" });
   assert.equal(allowed.status, 302);
-  assert.equal(zero("find", "claims", JSON.stringify({ where: { id: jsonId } }))[0].title, `JSON cover ${run} edited`);
-  const refused = await editor.save(jsonId, { post_title: "restricted", post_type: "zero_claims" });
+  assert.equal(first("find", "claims", JSON.stringify({ where: { id: jsonId } }))[0].title, `JSON cover ${run} edited`);
+  const refused = await editor.save(jsonId, { post_title: "restricted", post_type: "first_claims" });
   assert.equal(refused.status, 403, "a filter for [] cannot reuse authorization from a filter for {}");
-  assert.equal(zero("find", "claims", JSON.stringify({ where: { id: jsonId } }))[0].title, `JSON cover ${run} edited`);
+  assert.equal(first("find", "claims", JSON.stringify({ where: { id: jsonId } }))[0].title, `JSON cover ${run} edited`);
 
 });
 
-test("wp-admin's Custom Fields box can't write a Zero column", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Meta ${run}`, salary: "1" }))[0].id;
+test("wp-admin's Custom Fields box can't write a First column", async () => {
+  const id = first("insert", "payroll", JSON.stringify({ title: `Meta ${run}`, salary: "1" }))[0].id;
   const editor = await adminSession("editor");
-  const res = await editor.save(id, { post_title: `Meta ${run}`, post_type: "zero_payroll", metakeyinput: "zero_salary", metavalue: "999" });
+  const res = await editor.save(id, { post_title: `Meta ${run}`, post_type: "first_payroll", metakeyinput: "first_salary", metavalue: "999" });
   assert.equal(res.status, 302, "the rest of the save goes through");
-  assert.equal(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1", "the protected meta key was ignored");
+  assert.equal(first("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1", "the protected meta key was ignored");
 });
 
 test("the classic editor neither shows nor erases content hidden from the editor", async () => {
-  const id = zero("insert", "dossier", JSON.stringify({ title: `Native ${run}`, body: `<p>classified-${run} C:\\notes</p>` }))[0].id;
+  const id = first("insert", "dossier", JSON.stringify({ title: `Native ${run}`, body: `<p>classified-${run} C:\\notes</p>` }))[0].id;
   const editor = await adminSession("editor");
   const page = await editor.get(`post.php?post=${id}&action=edit&classic-editor`);
   assert.equal(page.status, 200);
   const form = await page.text();
   assert.ok(form.includes(`Native ${run}`), "the edit screen loaded the post");
   assert.equal(form.includes(`classified-${run}`), false, "the hidden content isn't in the page");
-  const saved = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: "" });
+  const saved = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "first_dossier", content: "" });
   assert.equal(saved.status, 302);
-  const row = zero("find", "dossier", JSON.stringify({ where: { id } }))[0];
+  const row = first("find", "dossier", JSON.stringify({ where: { id } }))[0];
   assert.deepEqual([row.title, row.body], [`Native ${run} retitled`, `<p>classified-${run} C:\\notes</p>`], "the blank control left the stored content alone, byte for byte");
   // A non-blank value for the hidden content is a write: refused the same, right guess or wrong.
-  const right = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: `<p>classified-${run} C:\\notes</p>` });
-  const wrong = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: "<p>guess</p>" });
+  const right = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "first_dossier", content: `<p>classified-${run} C:\\notes</p>` });
+  const wrong = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "first_dossier", content: "<p>guess</p>" });
   assert.deepEqual([right.status, wrong.status], [403, 403]);
   for (const occupied of [false, true]) {
     const slug = `form-slug-probe-${occupied}-${run}`;
-    const draft = await http("POST", `${core}/zero_dossier`, { as: "admin", body: { title: "Form slug probe", slug, status: "draft" } });
+    const draft = await http("POST", `${core}/first_dossier`, { as: "admin", body: { title: "Form slug probe", slug, status: "draft" } });
     assert.equal(draft.status, 201, JSON.stringify(draft.json));
     if (occupied) {
-      assert.equal((await http("POST", `${core}/zero_dossier`, { as: "admin", body: { title: "Occupied form slug", slug, status: "publish" } })).status, 201);
+      assert.equal((await http("POST", `${core}/first_dossier`, { as: "admin", body: { title: "Occupied form slug", slug, status: "publish" } })).status, 201);
     }
-    const publish = await editor.save(draft.json.id, { post_type: "zero_dossier", post_status: "publish" });
+    const publish = await editor.save(draft.json.id, { post_type: "first_dossier", post_status: "publish" });
     assert.equal(publish.status, 403);
     assert.match(await publish.text(), /You can.*set slug/);
-    assert.equal(zero("find", "dossier", JSON.stringify({ where: { id: draft.json.id } }))[0].status, "draft");
+    assert.equal(first("find", "dossier", JSON.stringify({ where: { id: draft.json.id } }))[0].status, "draft");
   }
 });
 
 test("wp-admin's list search doesn't read content hidden from the viewer", async () => {
-  zero("insert", "dossier", JSON.stringify({ title: `Listed ${run}`, body: `<p>listword-${run}</p>` }));
+  first("insert", "dossier", JSON.stringify({ title: `Listed ${run}`, body: `<p>listword-${run}</p>` }));
   const editor = await adminSession("editor");
-  const byContent = await editor.get(`edit.php?post_type=zero_dossier&s=listword-${run}`);
+  const byContent = await editor.get(`edit.php?post_type=first_dossier&s=listword-${run}`);
   assert.equal(byContent.status, 200);
   assert.equal((await byContent.text()).includes(`Listed ${run}`), false);
-  assert.ok((await (await editor.get(`edit.php?post_type=zero_dossier&s=Listed%20${run}`)).text()).includes(`Listed ${run}`), "a title search still finds it");
+  assert.ok((await (await editor.get(`edit.php?post_type=first_dossier&s=Listed%20${run}`)).text()).includes(`Listed ${run}`), "a title search still finds it");
 });
 
 test("wp-admin's revision diffs leave out fields hidden from the viewer", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Diff ${run}`, salary: "1k" }))[0].id;
-  zero("update", "payroll", JSON.stringify({ id }), JSON.stringify({ salary: "2k", title: `Diff ${run} v2` }));
+  const id = first("insert", "payroll", JSON.stringify({ title: `Diff ${run}`, salary: "1k" }))[0].id;
+  first("update", "payroll", JSON.stringify({ id }), JSON.stringify({ salary: "2k", title: `Diff ${run} v2` }));
   const [older, newer] = JSON.parse(wp("eval", `echo wp_json_encode(array_keys(wp_get_post_revisions(${id}, ['order' => 'ASC'])));`));
   // The revisions screen loads its diffs through admin-ajax, the request SCF adds its field rows to.
   const diffs = async (role: "editor" | "admin") => {
@@ -482,15 +482,15 @@ test("wp-admin's revision diffs leave out fields hidden from the viewer", async 
     assert.equal(body.success, true, JSON.stringify(body));
     return body.data[0].fields.map((f: any) => f.id);
   };
-  assert.ok((await diffs("admin")).includes("zero_salary"), "the admin's diff compares the salary");
+  assert.ok((await diffs("admin")).includes("first_salary"), "the admin's diff compares the salary");
   const editor = await diffs("editor");
   assert.ok(editor.includes("post_title"));
-  assert.deepEqual(editor.filter((f: string) => f.startsWith("zero_salary")), [], "the editor's doesn't");
+  assert.deepEqual(editor.filter((f: string) => f.startsWith("first_salary")), [], "the editor's doesn't");
 });
 
 test("restoring a hidden group is refused independently of whether its saved value matches", async () => {
-  const id = zero("insert", "gated", JSON.stringify({ title: `Restore ${run}`, notes: { open: "old", sealed: "secret" } }))[0].id;
-  zero("update", "gated", JSON.stringify({ id }), JSON.stringify({ title: `Restore ${run} v2`, notes: { open: "new", sealed: "secret" } }));
+  const id = first("insert", "gated", JSON.stringify({ title: `Restore ${run}`, notes: { open: "old", sealed: "secret" } }))[0].id;
+  first("update", "gated", JSON.stringify({ id }), JSON.stringify({ title: `Restore ${run} v2`, notes: { open: "new", sealed: "secret" } }));
   const [revision] = JSON.parse(wp("eval", `echo wp_json_encode(array_keys(wp_get_post_revisions(${id}, ['order' => 'ASC'])));`));
   const editor = await adminSession("editor");
   const html = await (await editor.get(`revision.php?revision=${revision}`)).text();
@@ -498,28 +498,28 @@ test("restoring a hidden group is refused independently of whether its saved val
   assert.ok(match, "WordPress supplies the restore URL and its session nonce");
   const restore = JSON.parse(match[1]).replace(/^.*\/wp-admin\//, "");
   assert.equal((await editor.get(restore)).status, 403, "matching hidden value");
-  zero("update", "gated", JSON.stringify({ id }), JSON.stringify({ notes: { open: "new", sealed: "different" } }));
+  first("update", "gated", JSON.stringify({ id }), JSON.stringify({ notes: { open: "new", sealed: "different" } }));
   assert.equal((await editor.get(restore)).status, 403, "different hidden value");
-  assert.deepEqual(zero("find", "gated", JSON.stringify({ where: { id } }))[0].notes, { open: "new", sealed: "different" });
+  assert.deepEqual(first("find", "gated", JSON.stringify({ where: { id } }))[0].notes, { open: "new", sealed: "different" });
 });
 
 test("autosaving one's own draft returns it without the fields hidden from the author of the save", async () => {
-  const created = await http("POST", `${core}/zero_dossier`, { as: "admin", body: { author: harness.users.editor.id, title: `Draft ${run}`, status: "draft", content: `<p>draftword-${run}</p>` } });
+  const created = await http("POST", `${core}/first_dossier`, { as: "admin", body: { author: harness.users.editor.id, title: `Draft ${run}`, status: "draft", content: `<p>draftword-${run}</p>` } });
   assert.equal(created.status, 201, JSON.stringify(created.json));
-  const autosaved = await http("POST", `${core}/zero_dossier/${created.json.id}/autosaves`, { as: "editor", body: { title: `Draft ${run} autosaved`, content: `<p>draftword-${run}</p>` } });
+  const autosaved = await http("POST", `${core}/first_dossier/${created.json.id}/autosaves`, { as: "editor", body: { title: `Draft ${run} autosaved`, content: `<p>draftword-${run}</p>` } });
   assert.equal(autosaved.status, 200, JSON.stringify(autosaved.json));
   assert.equal(JSON.stringify(autosaved.json).includes(`draftword-${run}`), false);
 });
 
 test("a REST save inside an open transaction that fails after writing aborts the transaction", () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Nested ${run}` }))[0].id;
+  const id = first("insert", "payroll", JSON.stringify({ title: `Nested ${run}` }))[0].id;
   const out = JSON.parse(wp("eval", `
-    add_action('rest_api_init', static fn () => register_rest_field('zero_payroll', 'zfail', ['update_callback' => static fn () => new WP_Error('nope', 'refused late', ['status' => 400]), 'schema' => ['type' => 'string']]));
+    add_action('rest_api_init', static fn () => register_rest_field('first_payroll', 'zfail', ['update_callback' => static fn () => new WP_Error('nope', 'refused late', ['status' => 400]), 'schema' => ['type' => 'string']]));
     wp_set_current_user(get_user_by('login', 'editor')->ID);
-    $request = new WP_REST_Request('POST', '/wp/v2/zero_payroll/${id}');
+    $request = new WP_REST_Request('POST', '/wp/v2/first_payroll/${id}');
     $request->set_body_params(['title' => 'Half done', 'zfail' => 'x']);
     try {
-      \\Zero\\Wp\\Plugin::instance()->db()->transaction(static fn () => rest_do_request($request));
+      \\First\\Wp\\Plugin::instance()->db()->transaction(static fn () => rest_do_request($request));
       $caught = null;
     } catch (Throwable $e) { $caught = $e->getMessage(); }
     clean_post_cache(${id});
@@ -528,41 +528,41 @@ test("a REST save inside an open transaction that fails after writing aborts the
   assert.deepEqual(out, ["refused late", `Nested ${run}`]);
 });
 
-test("a save interrupted before Zero's after hooks run commits nothing", () => {
-  // A wp_after_insert_post callback before Zero's (priority 20) throws and its caller catches it.
+test("a save interrupted before First's after hooks run commits nothing", () => {
+  // A wp_after_insert_post callback before First's (priority 20) throws and its caller catches it.
   const out = wp("eval", `
     wp_set_current_user(get_user_by('login', 'editor')->ID);
     add_action('wp_after_insert_post', static function () { throw new RuntimeException('interrupted'); }, 10);
-    try { wp_insert_post(['post_type' => 'zero_payroll', 'post_title' => 'Cut ${run}', 'post_status' => 'publish'], true); } catch (Throwable $e) {}
-    \\Zero\\Wp\\EditorSave::shutdown();
-    echo (int) (new WP_Query(['post_type' => 'zero_payroll', 'title' => 'Cut ${run}', 'post_status' => 'any', 'fields' => 'ids']))->found_posts;
+    try { wp_insert_post(['post_type' => 'first_payroll', 'post_title' => 'Cut ${run}', 'post_status' => 'publish'], true); } catch (Throwable $e) {}
+    \\First\\Wp\\EditorSave::shutdown();
+    echo (int) (new WP_Query(['post_type' => 'first_payroll', 'title' => 'Cut ${run}', 'post_status' => 'any', 'fields' => 'ids']))->found_posts;
   `);
   assert.equal(out, "0");
 });
 
 test("protected visibility is batched and cached before core pagination", () => {
   const result: unknown = JSON.parse(wp("eval", `
-    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    $db = \\First\\Wp\\Plugin::instance()->db();
     wp_set_current_user(0);
-    $anon = new \\Zero\\Viewer(null);
+    $anon = new \\First\\Viewer(null);
     $ids = [];
     try {
       for ($i = 0; $i < 40; $i++) {
-        $ids[] = wp_insert_post(['post_type' => 'zero_payroll', 'post_title' => 'Protected batch', 'post_status' => 'publish', 'post_password' => 'secret']);
+        $ids[] = wp_insert_post(['post_type' => 'first_payroll', 'post_title' => 'Protected batch', 'post_status' => 'publish', 'post_password' => 'secret']);
       }
       $public = $db->insert('payroll', ['title' => 'Public batch'], true)[0]['id'];
       $ids[] = $public;
       wp_cache_flush();
-      \\Zero\\Wp\\CoreAccess::flush();
+      \\First\\Wp\\CoreAccess::flush();
       global $wpdb;
       $before = $wpdb->num_queries;
       $rows = $db->findMany('payroll', ['where' => ['id' => ['in' => $ids]], 'orderBy' => ['id' => 'asc'], 'limit' => 1], $anon);
       $queries = $wpdb->num_queries - $before;
       wp_cache_flush();
-      \\Zero\\Wp\\CoreAccess::flush();
-      $editor = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+      \\First\\Wp\\CoreAccess::flush();
+      $editor = new \\First\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
       $failLookup = static fn ($sql) => preg_match('/^\\s*SELECT\\b/i', $sql) && str_contains($sql, $wpdb->posts)
-        ? 'SELECT * FROM zero_missing_post_storage' : $sql;
+        ? 'SELECT * FROM first_missing_post_storage' : $sql;
       add_filter('query', $failLookup);
       $suppressed = $wpdb->suppress_errors(true);
       $refusals = [];
@@ -571,7 +571,7 @@ test("protected visibility is batched and cached before core pagination", () => 
           try {
             $answer = $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $viewer);
             $refusals[] = $answer === null ? 'hidden' : 'allowed';
-          } catch (\\Zero\\HttpError $e) {
+          } catch (\\First\\HttpError $e) {
             $refusals[] = [$e->status, $e->errorCode];
           }
         }
@@ -583,10 +583,10 @@ test("protected visibility is batched and cached before core pagination", () => 
         $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $anon),
         $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $editor)['id'] === $ids[0]
       ];
-      $request = new WP_REST_Request('GET', '/wp/v2/zero_payroll');
+      $request = new WP_REST_Request('GET', '/wp/v2/first_payroll');
       $request->set_query_params(['include' => $ids, 'per_page' => 1, 'order' => 'asc', 'orderby' => 'id']);
       $native = rest_do_request($request);
-      $hidden = rest_do_request(new WP_REST_Request('GET', '/wp/v2/zero_payroll/' . $ids[0]));
+      $hidden = rest_do_request(new WP_REST_Request('GET', '/wp/v2/first_payroll/' . $ids[0]));
       $request->set_param('password', 'secret');
       $unlocked = rest_do_request($request);
       $exactPasswords = [];

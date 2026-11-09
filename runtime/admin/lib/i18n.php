@@ -1,14 +1,14 @@
 <?php
 /**
- * Adding support for i18n of script modules in Zero Admin
+ * Adding support for i18n of script modules in First Admin
  *
- * @package ZeroAdmin
+ * @package FirstAdmin
  */
 
 /**
  * Prints the import map with translations and scopes.
  */
-function zero_admin_print_import_map() {
+function first_admin_print_import_map() {
 	// Too many useful methods in `WP_Script_Modules` are private, we need to work around that.
 	$script_modules        = wp_script_modules();
 	$reflection            = new ReflectionClass( $script_modules );
@@ -25,10 +25,10 @@ function zero_admin_print_import_map() {
 	foreach ( $import_map['imports'] as $module_id => $module_url ) {
 		// Register a dummy script with the module's relative path as src.
 		// phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
-		wp_register_script( 'zero-admin-translations', $module_url, array(), null, false );
+		wp_register_script( 'first-admin-translations', $module_url, array(), null, false );
 
 		// Set script translations for this module.
-		wp_set_script_translations( 'zero-admin-translations', 'zero-admin', plugin_dir_path( __FILE__ ) . 'languages' );
+		wp_set_script_translations( 'first-admin-translations', 'first-admin', plugin_dir_path( __FILE__ ) . 'languages' );
 
 		// Intercept loading the translations for this module. The module relative path will be used to find the right JSON chunk file.
 		$intercept_translation_file = function ( $translations, $file ) use ( &$translation_files, $module_url ) {
@@ -39,11 +39,11 @@ function zero_admin_print_import_map() {
 		};
 
 		add_filter( 'load_script_translations', $intercept_translation_file, 10, 2 );
-		wp_scripts()->print_translations( 'zero-admin-translations' );
+		wp_scripts()->print_translations( 'first-admin-translations' );
 		remove_filter( 'load_script_translations', $intercept_translation_file );
 
 		// Deregister the dummy script.
-		wp_deregister_script( 'zero-admin-translations' );
+		wp_deregister_script( 'first-admin-translations' );
 	}
 
 	// Initialize scopes if it doesn't exist.
@@ -62,9 +62,9 @@ function zero_admin_print_import_map() {
 		// Create the JavaScript code for loading translations.
 		$translation_code = <<<JS
 import translations from '$file_url' with { type: 'json' };
-const localeData = translations.locale_data['zero-admin'] || translations.locale_data.messages;
-localeData[''].domain = 'zero-admin';
-wp.i18n.setLocaleData( localeData, 'zero-admin' );
+const localeData = translations.locale_data['first-admin'] || translations.locale_data.messages;
+localeData[''].domain = 'first-admin';
+wp.i18n.setLocaleData( localeData, 'first-admin' );
 JS;
 
 		// Create a data URL with the translation loading code.

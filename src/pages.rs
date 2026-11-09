@@ -1,16 +1,16 @@
-//! Hosted TSX pages: the `zero/pages.json` render artifact.
+//! Hosted TSX pages: the `first/pages.json` render artifact.
 //!
-//! `zero-pages build` (Node) runs page modules once and serializes them with WordPress's own block
+//! `first-pages build` (Node) runs page modules once and serializes them with WordPress's own block
 //! code; a hosting box has no JavaScript, so that render cannot happen there. The build therefore
-//! writes its result as data, `zero/pages.json`: the plugin manifest, every template, body and
+//! writes its result as data, `first/pages.json`: the plugin manifest, every template, body and
 //! asset, the compiled schema the pages were rendered against, and a SHA-256 of each authored text
 //! input. It holds no PHP.
 //!
 //! Capture ([`check`] from [`crate::bundle::capture`]) takes the artifact and every input it names
 //! into the app bundle, refusing it when an input, a route file or the schema changed after the
 //! render. The host compiler runs the same check over the captured bundle and then [`emit`]s
-//! `zero-pages-<app>/`: the artifact's files plus the pages runtime embedded from `runtime/pages/`,
-//! byte for byte what `zero-pages build` installs.
+//! `first-pages-<app>/`: the artifact's files plus the pages runtime embedded from `runtime/pages/`,
+//! byte for byte what `first-pages build` installs.
 
 use crate::{
     diag::{Code, Diag, Span},
@@ -24,14 +24,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const ARTIFACT: &str = "zero/pages.json";
-const FORMAT: &str = "zero.pages.v1";
+pub const ARTIFACT: &str = "first/pages.json";
+const FORMAT: &str = "first.pages.v1";
 /// Decoded plugin files; the source bundle as a whole is bounded separately by the host.
 const MAX_BYTES: usize = 16 * 1024 * 1024;
 const ASSET_EXTENSIONS: &[&str] = &[
     "css", "js", "svg", "png", "jpg", "jpeg", "gif", "webp", "avif", "woff", "woff2",
 ];
-/// First URL segments WordPress or Zero own (`packages/pages/src/routes.ts`).
+/// First URL segments WordPress or First own (`packages/pages/src/routes.ts`).
 pub const RESERVED_FIRST: &[&str] = &[
     "wp-admin",
     "wp-content",
@@ -53,7 +53,7 @@ pub const RESERVED_FIRST: &[&str] = &[
     "trackback",
     "robots.txt",
     "favicon.ico",
-    "zero-admin",
+    "first-admin",
     "auth",
 ];
 const ROUTE_FILES: &[&str] = &["page.tsx", "layout.tsx", "not-found.tsx"];
@@ -81,11 +81,11 @@ pub struct Pages {
 fn stale(message: impl Into<String>) -> Diag {
     Diag::new(Span::NONE, message)
         .code(Code::SourceNeedsLocalCapture)
-        .help("run `zero build` and then `zero-pages build` in the project, then capture or publish again")
+        .help("run `first build` and then `first-pages build` in the project, then capture or publish again")
 }
 
 fn invalid(message: impl Into<String>) -> Diag {
-    Diag::new(Span::NONE, format!("invalid zero/pages.json: {}", message.into()))
+    Diag::new(Span::NONE, format!("invalid first/pages.json: {}", message.into()))
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -93,7 +93,7 @@ fn sha256(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// What `zero-pages build` reads from `zero build` output (`loadSchema` in packages/pages/src/build.ts),
+/// What `first-pages build` reads from `first build` output (`loadSchema` in packages/pages/src/build.ts),
 /// derived from the compiled schema instead: the pages must have been rendered against exactly this.
 pub fn expected_schema(built: &Built) -> Value {
     let mut collections = serde_json::Map::new();
@@ -118,7 +118,7 @@ pub fn expected_schema(built: &Built) -> Value {
             json!({ "editor": editor, "slug": slug, "columns": columns }),
         );
         if editor {
-            post_types.insert(c.key.clone(), Value::String(format!("zero_{}", c.key)));
+            post_types.insert(c.key.clone(), Value::String(format!("first_{}", c.key)));
         }
     }
     json!({
@@ -164,7 +164,7 @@ pub fn check(fs: &dyn Fs, root: &Path, built: &Built) -> Result<Option<Pages>, D
     let path: PathBuf = root.join(ARTIFACT);
     if !fs.is_file(&path) {
         return Err(stale(
-            "pages/ has no render artifact (zero/pages.json); the host cannot run JavaScript to render TSX pages",
+            "pages/ has no render artifact (first/pages.json); the host cannot run JavaScript to render TSX pages",
         ));
     }
     let text = fs.read_to_string(&path).map_err(|e| invalid(e.to_string()))?;
@@ -174,23 +174,23 @@ pub fn check(fs: &dyn Fs, root: &Path, built: &Built) -> Result<Option<Pages>, D
     }
     if artifact.app != built.schema.name {
         return Err(stale(format!(
-            "zero/pages.json was rendered for app \"{}\", not \"{}\"",
+            "first/pages.json was rendered for app \"{}\", not \"{}\"",
             artifact.app, built.schema.name
         )));
     }
     if artifact.schema != expected_schema(built) {
         return Err(stale(
-            "zero/pages.json was rendered against a different schema than zero.config.ts compiles to",
+            "first/pages.json was rendered against a different schema than first.config.ts compiles to",
         ));
     }
     for (input, hash) in &artifact.inputs {
         crate::bundle::check_input(input)?;
         let source = fs
             .read_to_string(&root.join(input))
-            .map_err(|_| stale(format!("zero/pages.json is stale: its input {input} is missing")))?;
+            .map_err(|_| stale(format!("first/pages.json is stale: its input {input} is missing")))?;
         if sha256(source.as_bytes()) != *hash {
             return Err(stale(format!(
-                "zero/pages.json is stale: {input} changed after `zero-pages build`"
+                "first/pages.json is stale: {input} changed after `first-pages build`"
             )));
         }
     }
@@ -198,7 +198,7 @@ pub fn check(fs: &dyn Fs, root: &Path, built: &Built) -> Result<Option<Pages>, D
     route_files(fs, root, &pages_dir, &mut routes)?;
     if let Some(missing) = routes.iter().find(|file| !artifact.inputs.contains_key(*file)) {
         return Err(stale(format!(
-            "zero/pages.json is stale: {missing} was added after `zero-pages build`"
+            "first/pages.json is stale: {missing} was added after `first-pages build`"
         )));
     }
     let pages = validate(artifact)?;
@@ -298,7 +298,7 @@ fn validate(artifact: Artifact) -> Result<Pages, Diag> {
     let mut patterns = Vec::new();
     for (route, not_found) in routes {
         let pattern = route["pattern"].as_str().unwrap_or_default();
-        if not_found != (route["id"] == "zero:not-found")
+        if not_found != (route["id"] == "first:not-found")
             || (not_found && (pattern != "/404" || !route["param"].is_null()))
         {
             return Err(invalid(format!(
@@ -435,27 +435,27 @@ fn base64_decode(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// The plugin header `zero-pages build` writes (`bootstrap` in packages/pages/src/build.ts).
+/// The plugin header `first-pages build` writes (`bootstrap` in packages/pages/src/build.ts).
 #[cfg(feature = "host")]
 fn bootstrap(app: &str) -> String {
     format!(
-        "<?php\n/**\n * Plugin Name: {app} pages (Zero)\n * Description: TSX pages compiled by @spacefast/zero-pages: routes, layouts and regions rendered by WordPress.\n * Requires at least: 7.1\n * Requires PHP: 8.2\n * Requires Plugins: zero-runtime, zero-app-{app}\n * License: GPL-2.0-or-later\n */\ndeclare(strict_types=1);\ndefined('ABSPATH') || exit;\nrequire_once __DIR__ . '/zero-pages/bootstrap.php';\n\\Zero\\Pages\\Plugin::boot(__FILE__, '{app}');\n"
+        "<?php\n/**\n * Plugin Name: {app} pages (First)\n * Description: TSX pages compiled by @spacefast/first-pages: routes, layouts and regions rendered by WordPress.\n * Requires at least: 7.1\n * Requires PHP: 8.2\n * Requires Plugins: first-runtime, first-app-{app}\n * License: GPL-2.0-or-later\n */\ndeclare(strict_types=1);\ndefined('ABSPATH') || exit;\nrequire_once __DIR__ . '/first-pages/bootstrap.php';\n\\First\\Pages\\Plugin::boot(__FILE__, '{app}');\n"
     )
 }
 
-/// Write `plugins/zero-pages-<app>/`; the directory must not exist yet.
+/// Write `plugins/first-pages-<app>/`; the directory must not exist yet.
 #[cfg(feature = "host")]
 pub fn emit(plugins: &Path, pages: &Pages) -> std::io::Result<PathBuf> {
-    let slug = format!("zero-pages-{}", pages.app);
+    let slug = format!("first-pages-{}", pages.app);
     let directory = plugins.join(&slug);
     std::fs::create_dir(&directory)?;
-    for sub in ["templates", "content", "assets", "zero-pages"] {
+    for sub in ["templates", "content", "assets", "first-pages"] {
         std::fs::create_dir(directory.join(sub))?;
     }
     let mut runtime = 0;
     for (rel, bytes) in crate::runtime_files::FILES {
         if let Some(rest) = rel.strip_prefix("pages/") {
-            crate::emit::write(&directory.join("zero-pages").join(rest), bytes)?;
+            crate::emit::write(&directory.join("first-pages").join(rest), bytes)?;
             runtime += 1;
         }
     }
@@ -502,7 +502,7 @@ mod tests {
             "assets/x.php",
             "assets/../x.css",
             "assets/.htaccess",
-            "zero-pages/Plugin.php",
+            "first-pages/Plugin.php",
             "templates/x.html",
             "manifest.json",
             "assets/a/b.css",

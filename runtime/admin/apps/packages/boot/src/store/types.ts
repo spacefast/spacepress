@@ -4,7 +4,7 @@ import type {
 	Dashboard,
 	DashboardWidget,
 	RegisteredDashboardWidgetType,
-} from '@zero-admin/dashboard';
+} from '@first-admin/dashboard';
 
 interface RouteSurfaces {
 	// `content` is the main surface of the route, where the primary content is displayed (TanStack Router's `Outlet`).
@@ -247,7 +247,7 @@ export interface DashboardContext {
 
 /**
  * Type definition for the store selectors.
- * Used to provide type safety when using useSelect with the zero-admin store.
+ * Used to provide type safety when using useSelect with the first-admin store.
  */
 export interface StoreSelectors {
 	getDashboardWidgetTypes: () => RegisteredDashboardWidgetType[];

@@ -66,7 +66,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             Ty::Class(id)
         };
-        Ok(Out::atom(format!("\\ZeroApp\\{}()", self.classes[&id].name), ty))
+        Ok(Out::atom(format!("\\FirstApp\\{}()", self.classes[&id].name), ty))
     }
 
     fn class_parameter(&mut self, p: &Param, module: usize) -> Result<Ty> {
@@ -376,7 +376,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .iter()
                 .any(|(name, is_static, _)| !is_static && name.starts_with('#'))
         {
-            field_body.push_str("    $__zero_class->brand($__zero_this);\n");
+            field_body.push_str("    $__first_class->brand($__first_this);\n");
         }
         let receiver_ty = |instance: &Ty| if javascript { Ty::Dynamic } else { instance.clone() };
         for field in c.fields.iter().filter(|f| !f.is_static) {
@@ -404,22 +404,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             "field initializer does not match its inferred type; annotate the field",
                         );
                     }
-                    format!("\\ZeroApp\\{helper}($__zero_this)")
+                    format!("\\FirstApp\\{helper}($__first_this)")
                 }
-                None => "\\Zero\\Js::undefined()".into(),
+                None => "\\First\\Js::undefined()".into(),
             };
             if field.name.starts_with('#') {
                 field_body.push_str(&format!(
-                    "    $__zero_class->privateDefine($__zero_this, {}, {value});\n",
+                    "    $__first_class->privateDefine($__first_this, {}, {value});\n",
                     php_str(&field.name)
                 ));
             } else {
-                field_body.push_str(&format!("    $__zero_this->p[{}] = {value};\n", php_str(&field.name)));
+                field_body.push_str(&format!("    $__first_this->p[{}] = {value};\n", php_str(&field.name)));
             }
         }
         writeln!(
             self.output,
-            "function {fields_name}(\\Zero\\JsObject $__zero_this, \\Zero\\JsClass $__zero_class)\n{{\n{field_body}}}\n"
+            "function {fields_name}(\\First\\JsObject $__first_this, \\First\\JsClass $__first_class)\n{{\n{field_body}}}\n"
         )
         .unwrap();
         let ctor = if let Some(f) = &c.constructor {
@@ -435,7 +435,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 None,
                 no_db,
             )?;
-            format!("\\Closure::fromCallable({})", php_str(&format!("\\ZeroApp\\{helper}")))
+            format!("\\Closure::fromCallable({})", php_str(&format!("\\FirstApp\\{helper}")))
         } else {
             "null".into()
         };
@@ -486,7 +486,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             }
-            let callable = format!("\\Closure::fromCallable({})", php_str(&format!("\\ZeroApp\\{helper}")));
+            let callable = format!("\\Closure::fromCallable({})", php_str(&format!("\\FirstApp\\{helper}")));
             let slot = accessor_entries[accessor.is_static as usize]
                 .entry(accessor.name.clone())
                 .or_insert(("null".into(), "null".into()));
@@ -537,7 +537,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let entry = format!(
                 "{} => \\Closure::fromCallable({})",
                 php_str(member),
-                php_str(&format!("\\ZeroApp\\{helper}"))
+                php_str(&format!("\\FirstApp\\{helper}"))
             );
             match (*is_static, member.starts_with('#')) {
                 (true, false) => static_methods.push(entry),
@@ -556,11 +556,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         let parent_php = match (parent, class.builtin_base) {
-            (Some(id), _) => format!("\\ZeroApp\\{}()", self.classes[&id].name),
-            (None, Some(builtin)) => format!("\\Zero\\JsClass::builtin({})", php_str(builtin)),
+            (Some(id), _) => format!("\\FirstApp\\{}()", self.classes[&id].name),
+            (None, Some(builtin)) => format!("\\First\\JsClass::builtin({})", php_str(builtin)),
             (None, None) => "null".into(),
         };
-        writeln!(self.output, "function {name}(): \\Zero\\JsClass\n{{\n    static $class;\n    return $class ??= new \\Zero\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}]);\n}}\n", php_str(&format!("\\ZeroApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
+        writeln!(self.output, "function {name}(): \\First\\JsClass\n{{\n    static $class;\n    return $class ??= new \\First\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}]);\n}}\n", php_str(&format!("\\FirstApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
         Ok(id)
     }
 
@@ -571,14 +571,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.class_access_guard(span)?;
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\ZeroApp\\{}()->construct(...({argv})->a)", info.name),
+                format!("\\FirstApp\\{}()->construct(...({argv})->a)", info.name),
                 Ty::Dynamic,
             ));
         }
         let arguments = self.checked_class_args(&info.constructor, args, span)?;
         self.class_access_guard(span)?;
         Ok(Out::atom(
-            format!("\\ZeroApp\\{}()->construct({})", info.name, arguments.join(", ")),
+            format!("\\FirstApp\\{}()->construct({})", info.name, arguments.join(", ")),
             info.instance,
         ))
     }
@@ -643,14 +643,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if is_static {
                     format!("{}->get({})", receiver.wrapped(), php_str(prop))
                 } else {
-                    format!("\\Zero\\Js::dynamicGet({}, {})", receiver.php, php_str(prop))
+                    format!("\\First\\Js::dynamicGet({}, {})", receiver.php, php_str(prop))
                 },
                 accessor.ty.clone(),
             ));
         }
         if !is_static && let Some(ty) = self.error_member(&receiver.ty, prop) {
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicGet({}, {})", receiver.php, php_str(prop)),
+                format!("\\First\\Js::dynamicGet({}, {})", receiver.php, php_str(prop)),
                 ty,
             ));
         }
@@ -665,7 +665,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let php = if is_static {
             format!("{}->get({})", receiver.wrapped(), php_str(prop))
         } else {
-            format!("\\Zero\\Js::dataGet({}, {})", receiver.php, php_str(prop))
+            format!("\\First\\Js::dataGet({}, {})", receiver.php, php_str(prop))
         };
         Ok(Out::atom(
             php,
@@ -697,7 +697,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.class_access_guard(span)?;
         let Ty::Fn(_, ret) = signature else { unreachable!() };
         let php = format!(
-            "\\Zero\\JsClass::invoke({}, {}, [{}], {})",
+            "\\First\\JsClass::invoke({}, {}, [{}], {})",
             receiver.php,
             php_str(member),
             argv.join(", "),
@@ -744,7 +744,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if name == ":fields" {
             return Ok(Some(Out::atom(
                 format!(
-                    "\\ZeroApp\\{}({}, \\ZeroApp\\{}())",
+                    "\\FirstApp\\{}({}, \\FirstApp\\{}())",
                     self.classes[&id].fields, receiver.php, self.classes[&id].name
                 ),
                 Ty::Null,
@@ -754,7 +754,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Some(Out::atom(
                 format!(
-                    "\\Zero\\JsClass::builtin({})->initialize({}, ({argv})->a)",
+                    "\\First\\JsClass::builtin({})->initialize({}, ({argv})->a)",
                     php_str(builtin),
                     receiver.php
                 ),
@@ -769,14 +769,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if self.classes[&id].javascript {
             let argv = self.javascript_args(args)?;
             return Ok(Some(Out::atom(
-                format!("\\ZeroApp\\{}()->initialize({}, ({argv})->a)", info.name, receiver.php),
+                format!("\\FirstApp\\{}()->initialize({}, ({argv})->a)", info.name, receiver.php),
                 Ty::Null,
             )));
         }
         let argv = self.checked_class_args(&info.constructor, args, span)?;
         Ok(Some(Out::atom(
             format!(
-                "\\ZeroApp\\{}()->initialize({}, [{}])",
+                "\\FirstApp\\{}()->initialize({}, [{}])",
                 info.name,
                 receiver.php,
                 argv.join(", ")
@@ -811,7 +811,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
                 format!(
-                    "\\ZeroApp\\{}()->invokeOn({}, {}, ({argv})->a, {})",
+                    "\\FirstApp\\{}()->invokeOn({}, {}, ({argv})->a, {})",
                     self.classes[&id].name,
                     recv.php,
                     php_str(member),
@@ -827,7 +827,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Fn(_, ret) = signature else { unreachable!() };
         Ok(Out::atom(
             format!(
-                "\\ZeroApp\\{}()->invokeOn({}, {}, [{}], {})",
+                "\\FirstApp\\{}()->invokeOn({}, {}, [{}], {})",
                 self.classes[&id].name,
                 recv.php,
                 php_str(member),
@@ -856,7 +856,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         .iter()
                         .find_map(|s| info.privates.get(&(*s, name.to_string())).cloned())
                         .unwrap_or(Ty::Dynamic);
-                    return Ok((format!("\\ZeroApp\\{}()", info.name), ty, id));
+                    return Ok((format!("\\FirstApp\\{}()", info.name), ty, id));
                 }
             }
             scope = current.parent.clone();
@@ -885,7 +885,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let tmp = self.tmp_var();
             return Ok(Out::atom(
                 format!(
-                    "(\\Zero\\Js::isNullish({tmp} = {}) ? \\Zero\\Js::undefined() : {})",
+                    "(\\First\\Js::isNullish({tmp} = {}) ? \\First\\Js::undefined() : {})",
                     receiver.php,
                     read(&tmp)
                 ),
@@ -956,7 +956,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let tmp = self.tmp_var();
             return Ok(Out::atom(
                 format!(
-                    "(\\Zero\\Js::isNullish({tmp} = {}) ? \\Zero\\Js::undefined() : {})",
+                    "(\\First\\Js::isNullish({tmp} = {}) ? \\First\\Js::undefined() : {})",
                     receiver.php,
                     call(&tmp)
                 ),
@@ -1005,7 +1005,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         );
         let tmp = self.tmp_var();
         Ok(Out::atom(
-            format!("(({tmp} = \\ZeroApp\\{found}) === \\Zero\\JsClass::absent() ? \\Zero\\Js::undefined() : {tmp})"),
+            format!("(({tmp} = \\FirstApp\\{found}) === \\First\\JsClass::absent() ? \\First\\Js::undefined() : {tmp})"),
             ty,
         ))
     }

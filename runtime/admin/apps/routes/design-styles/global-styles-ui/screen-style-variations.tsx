@@ -7,17 +7,17 @@ function ScreenStyleVariations() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Browse styles', 'zero-admin' ) }
+				title={ __( 'Browse styles', 'first-admin' ) }
 				description={ __(
 					'Choose a variation to change the look of the site.',
-					'zero-admin'
+					'first-admin'
 				) }
 			/>
 
 			<Card
 				size="small"
 				isBorderless
-				className="zero-admin-global-styles-screen-style-variations"
+				className="first-admin-global-styles-screen-style-variations"
 			>
 				<CardBody>
 					<StyleVariationsContent />

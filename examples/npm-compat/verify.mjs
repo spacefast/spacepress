@@ -14,10 +14,10 @@ const { values: options } = parseArgs({ options: {
   isolated: { type: "boolean", default: false },
   only: { type: "string", multiple: true },
 } });
-const work = options.isolated ? await mkdtemp(path.join(tmpdir(), "zero-framework-compiler-npm-")) : path.join(root, ".work");
+const work = options.isolated ? await mkdtemp(path.join(tmpdir(), "first-framework-compiler-npm-")) : path.join(root, ".work");
 const modules = path.resolve(process.env.NPM_COMPAT_NODE_MODULES ?? path.join(root, "node_modules"));
-const compiler = path.resolve(process.env.ZERO_BIN ?? path.resolve(root, "../../target/debug/zero"));
-const zero = path.join(work, process.platform === "win32" ? "zero.exe" : "zero");
+const compiler = path.resolve(process.env.FIRST_BIN ?? path.resolve(root, "../../target/debug/first"));
+const first = path.join(work, process.platform === "win32" ? "first.exe" : "first");
 const run = (command, args) => {
   const result = spawnSync(command, args, {
     cwd: root,
@@ -60,7 +60,7 @@ function typedSource(probe, source) {
 }
 const importLine = (entry, specifier) =>
   `import ${entry.named ? "{" + entry.binding + "}" : entry.binding} from ${JSON.stringify(specifier)};`;
-const config = `import {action, defineConfig} from "zero";
+const config = `import {action, defineConfig} from "first";
 import {run} from "./run";
 export default defineConfig({name: "npm-compat", actions: {probe: action({access: "anyone", input: {}, handler: () => run()})}});
 `;
@@ -68,9 +68,9 @@ if (!options.isolated) await rm(work, { recursive: true, force: true });
 await mkdir(work, { recursive: true });
 await symlink(modules, path.join(work, "node_modules"), "dir");
 const binary = await readFile(compiler);
-await writeFile(zero, binary, { mode: 0o700 });
+await writeFile(first, binary, { mode: 0o700 });
 const provenance = JSON.parse(await readFile(path.join(root, "provenance.json"), "utf8"));
-const report = { compiler, snapshot: zero, binarySha256: hash(binary), packages: [], probes: [] };
+const report = { compiler, snapshot: first, binarySha256: hash(binary), packages: [], probes: [] };
 for (const probe of probes) {
   const packageRoot = path.join(modules, probe.name);
   const metadata = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
@@ -118,7 +118,7 @@ for (const probe of selected) {
     const directory = path.join(oracleDirectory, mode);
     await mkdir(directory, { recursive: true });
     if (probe.fixture) await writeFile(path.join(directory, "fixture.mjs"), probe.fixture);
-    await writeFile(path.join(directory, "zero.config.ts"), config);
+    await writeFile(path.join(directory, "first.config.ts"), config);
     const imports = [];
     for (const entry of libraries) {
       const source = await readFile(
@@ -135,7 +135,7 @@ for (const probe of selected) {
       let specifier = mode === "bare" ? (entry.specifier ?? entry.name) : "./" + filename;
       if (mode === "typed-installed") {
         const packageName =
-          "@zero-npm-compat/" + entry.name.replaceAll("/", "-").replaceAll("@", "");
+          "@first-npm-compat/" + entry.name.replaceAll("/", "-").replaceAll("@", "");
         const packageDirectory = path.join(directory, "node_modules", packageName);
         await mkdir(packageDirectory, { recursive: true });
         await writeFile(
@@ -153,7 +153,7 @@ for (const probe of selected) {
       imports.push(importLine(entry, specifier));
     }
     await writeFile(path.join(directory, "run.ts"), imports.join("\n") + "\n" + functionSource);
-    const checked = run(zero, ["check", directory, "--json"]);
+    const checked = run(first, ["check", directory, "--json"]);
     const route = {
       mode,
       inputDirectory: directory,
@@ -170,7 +170,7 @@ for (const probe of selected) {
     }
     if (checked.status === 0) {
       const output = path.join(directory, `out-${mode}`);
-      route.build = run(zero, ["build", directory, "--out", output]);
+      route.build = run(first, ["build", directory, "--out", output]);
       if (route.build.status === 0) {
         route.php = run("php", [path.join(root, "run-php.php"), output]);
         if (route.php.status === 0) {
@@ -192,11 +192,11 @@ for (const probe of selected) {
           ? route.status
           : message.includes("CommonJS")
             ? "module-format"
-            : route.diagnostic?.diagnostics?.[0]?.code === "Z1003"
+            : route.diagnostic?.diagnostics?.[0]?.code === "F1003"
               ? "module-resolution"
               : message.includes("needs a type") || message.startsWith("unknown type")
                 ? "typing"
-                : message.includes("Zero code doesn't support")
+                : message.includes("First code doesn't support")
                   ? "language"
                   : "typing-or-runtime-capability";
     result.routes.push(route);

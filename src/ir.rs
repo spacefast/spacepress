@@ -1,4 +1,4 @@
-//! Zero's own intermediate form. oxc's arena AST is lowered into this once per
+//! First's own intermediate form. oxc's arena AST is lowered into this once per
 //! module (see `lower.rs`); both backends read it: the build-time evaluator
 //! (`eval.rs`) and the PHP compiler (`compile.rs`). Anything outside the
 //! supported subset is rejected during lowering, so neither backend has to

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 final class Schema
 {
@@ -71,11 +71,11 @@ final class Schema
         }
         $db->run(
             "INSERT INTO {$db->wp->options} (option_name,option_value,autoload) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE option_value=VALUES(option_value)",
-            "zero_identity_schema_version",
+            "first_identity_schema_version",
             (string) self::VERSION,
             "off",
         );
-        wp_cache_delete("zero_identity_schema_version", "options");
+        wp_cache_delete("first_identity_schema_version", "options");
         wp_cache_delete("alloptions", "options");
         wp_cache_delete("notoptions", "options");
     }

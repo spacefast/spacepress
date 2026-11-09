@@ -120,11 +120,11 @@ export interface BuildInput {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __zeroPagesBuild: BuildInput | undefined;
+  var __firstPagesBuild: BuildInput | undefined;
 }
 
 /** One per bundle: each route is bundled and imported separately, so each route starts empty. */
-export const registry = new Registry(globalThis.__zeroPagesBuild);
+export const registry = new Registry(globalThis.__firstPagesBuild);
 
 /** An error an author caused, with the code a diagnostic carries. */
 export class PagesError extends Error {
@@ -136,9 +136,9 @@ export class PagesError extends Error {
   }
 }
 
-const PATH = Symbol.for("@spacefast/zero-pages#path");
-const SHAPE = Symbol.for("@spacefast/zero-pages#shape");
-const FALLBACK = Symbol.for("@spacefast/zero-pages#fallback");
+const PATH = Symbol.for("@spacefast/first-pages#path");
+const SHAPE = Symbol.for("@spacefast/first-pages#shape");
+const FALLBACK = Symbol.for("@spacefast/first-pages#fallback");
 
 interface Target {
   [PATH]: PathSegment[];
@@ -323,10 +323,10 @@ export function shapeOf(value: unknown): Shape | undefined {
 }
 
 /** Block names the compiler turns into server-rendered regions. Never editor-inserted. */
-export const EACH_BLOCK = "zero-pages/each";
-export const SHOW_BLOCK = "zero-pages/show";
-export const ISLAND_BLOCK = "zero-pages/island";
-export const RICH_TEXT_BLOCK = "zero-pages/rich-text";
+export const EACH_BLOCK = "first-pages/each";
+export const SHOW_BLOCK = "first-pages/show";
+export const ISLAND_BLOCK = "first-pages/island";
+export const RICH_TEXT_BLOCK = "first-pages/rich-text";
 
 function loop(of: PathSegment[], collection: string, fn: (item: unknown, index: unknown) => unknown): unknown {
   registry.loops += 1;

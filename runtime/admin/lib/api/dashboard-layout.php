@@ -5,7 +5,7 @@
  * This file provides the API for setting up the dashboard widgets layout
  * in the Next Admin SPA.
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 /**
@@ -19,7 +19,7 @@
  * @param string $meta_key - Meta key.
  * @return mixed The extended value with third-party widgets.
  */
-function zero_admin_extend_user_metadata_layout( $pre, $user_id, $meta_key ) {
+function first_admin_extend_user_metadata_layout( $pre, $user_id, $meta_key ) {
 	global $wpdb;
 
 	$expected_key = $wpdb->get_blog_prefix() . 'persisted_preferences';
@@ -53,11 +53,11 @@ function zero_admin_extend_user_metadata_layout( $pre, $user_id, $meta_key ) {
 	 * @param array $committed - Current widgets from user preferences.
 	 * @return array Modified widgets with inStage flag.
 	 */
-	$extended = apply_filters( 'zero_admin_dashboard_widgets', $committed );
+	$extended = apply_filters( 'first_admin_dashboard_widgets', $committed );
 
 	$base['core/admin']['dashboardLayout'] = $extended;
 
 	return array( $base );
 }
 
-add_filter( 'get_user_metadata', 'zero_admin_extend_user_metadata_layout', 99, 3 );
+add_filter( 'get_user_metadata', 'first_admin_extend_user_metadata_layout', 99, 3 );

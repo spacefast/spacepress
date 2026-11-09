@@ -12,12 +12,12 @@ const runtime = Object.fromEntries(wordpressFiles.map(({ path: file }) => [file,
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
-<Page title="Playground" description="Edit a Zero config and see the complete generated PHP, SQL migrations and TypeScript client in your browser.">
-  <main class="playground" data-wasm={`${base}/zero.wasm`}>
+<Page title="Playground" description="Edit a First config and see the complete generated PHP, SQL migrations and TypeScript client in your browser.">
+  <main class="playground" data-wasm={`${base}/first.wasm`}>
     <div class="intro">
       <div>
         <h1>Config in. PHP out.</h1>
-        <p class="lede">Edit the source and see exactly what Zero generates. Everything compiles in your browser.</p>
+        <p class="lede">Edit the source and see exactly what First generates. Everything compiles in your browser.</p>
       </div>
       <div class="example-controls">
         <label for="example">Example</label>

@@ -1,6 +1,6 @@
 import { Button } from '@wordpress/ui';
-import type { Form } from '@zero-admin/dataviews';
-import { DataForm } from '@zero-admin/dataviews';
+import type { Form } from '@first-admin/dataviews';
+import { DataForm } from '@first-admin/dataviews';
 import { useDispatch, useSelect } from '@wordpress/data';
 import { store as coreStore, type Settings } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
@@ -59,11 +59,11 @@ export default function Form( { form }: { form: Form } ) {
 
 		setIsSuccess( true );
 	}
-	let saveButtonLabel: string = __( 'Save', 'zero-admin' );
+	let saveButtonLabel: string = __( 'Save', 'first-admin' );
 	if ( isSaving ) {
-		saveButtonLabel = __( 'Saving…', 'zero-admin' );
+		saveButtonLabel = __( 'Saving…', 'first-admin' );
 	} else if ( isSuccess && ! isDirty ) {
-		saveButtonLabel = __( 'Saved!', 'zero-admin' );
+		saveButtonLabel = __( 'Saved!', 'first-admin' );
 	}
 	return (
 		<form onSubmit={ onSubmit }>

@@ -8,9 +8,9 @@ async function signIn(): Promise<string> {
   const clientId = "app_migration_acceptance";
   const redirect = `${site}/migration-callback`;
   wp("zero", "identity", "app", "add", "--name=Migration acceptance", `--redirect=${redirect}`, `--origin=${site}`, `--id=${clientId}`);
-  const login = await fetch(`${site}/wp-json/zero-identity/v1/sign-in/password`, {
+  const login = await fetch(`${site}/wp-json/first-identity/v1/sign-in/password`, {
     method: "POST", headers: { "Content-Type": "application/json", Origin: site },
-    body: JSON.stringify({ login: "subscriber", password: "zero-test-subscriber" }),
+    body: JSON.stringify({ login: "subscriber", password: "first-test-subscriber" }),
   });
   assert.equal(login.status, 200);
   assert.deepEqual(await login.json(), { data: { kind: "signed_in" } });

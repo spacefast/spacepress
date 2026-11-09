@@ -7,7 +7,7 @@
     "strict": true,
     "noEmit": true,
     "types": [],
-    "paths": { "zero": ["../../types/zero/index.d.ts"] }
+    "paths": { "first": ["../../types/first/index.d.ts"] }
   },
-  "include": ["zero.config.ts", "zero.gen.ts", "lib/**/*.ts"]
+  "include": ["first.config.ts", "first.gen.ts", "lib/**/*.ts"]
 }

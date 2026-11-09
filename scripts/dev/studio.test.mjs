@@ -8,23 +8,23 @@ import { spawn } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 
 test('local site ownership refuses foreign directories, copied receipts and redirected state', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'zero-dev-ownership-'));
+  const root = await mkdtemp(join(tmpdir(), 'first-dev-ownership-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const project = join(root, 'project');
   await mkdir(project);
-  await mkdir(join(project, '.zero/dev'), { recursive: true });
-  await writeFile(join(project, '.zero/dev/important'), 'foreign data');
+  await mkdir(join(project, '.first/dev'), { recursive: true });
+  await writeFile(join(project, '.first/dev/important'), 'foreign data');
   await assert.rejects(ownedState(project, true), /Unowned development directory/);
-  assert.equal(await readFile(join(project, '.zero/dev/important'), 'utf8'), 'foreign data');
-  await rm(join(project, '.zero/dev'), { recursive: true });
+  assert.equal(await readFile(join(project, '.first/dev/important'), 'utf8'), 'foreign data');
+  await rm(join(project, '.first/dev'), { recursive: true });
   const managed = await ownedState(project, true);
-  assert.equal((await ownedState(project, false)).owner.site, join(project, '.zero/dev/wordpress'));
+  assert.equal((await ownedState(project, false)).owner.site, join(project, '.first/dev/wordpress'));
   const other = join(root, 'other');
-  await mkdir(join(other, '.zero/dev'), { recursive: true });
-  await writeFile(join(other, '.zero/dev/owner.json'), await readFile(managed.marker));
+  await mkdir(join(other, '.first/dev'), { recursive: true });
+  await writeFile(join(other, '.first/dev/owner.json'), await readFile(managed.marker));
   await assert.rejects(ownedState(other, true), /ownership does not match/);
-  await rm(join(other, '.zero/dev'), { recursive: true });
-  await symlink(managed.state, join(other, '.zero/dev'), 'junction');
+  await rm(join(other, '.first/dev'), { recursive: true });
+  await symlink(managed.state, join(other, '.first/dev'), 'junction');
   await assert.rejects(ownedState(other, true), /symbolic link/);
   const exited = spawn(process.execPath, ['-e', '']);
   await once(exited, 'exit');
@@ -32,39 +32,39 @@ test('local site ownership refuses foreign directories, copied receipts and redi
   const contenders = await Promise.allSettled([lock(managed.state), lock(managed.state)]);
   assert.equal(contenders.filter((attempt) => attempt.status === 'fulfilled').length, 1);
   assert.equal(JSON.parse(await readFile(join(managed.state, 'session.json'), 'utf8')).pid, process.pid);
-  await assert.rejects(lock(managed.state), /Another zero dev command/);
+  await assert.rejects(lock(managed.state), /Another first dev command/);
   await contenders.find((attempt) => attempt.status === 'fulfilled').value();
 });
 
 test('publishing replaces managed plugins while retaining extra plugins and refusing collisions before writes', async (t) => {
-  const project = await mkdtemp(join(tmpdir(), 'zero-dev-plugins-'));
+  const project = await mkdtemp(join(tmpdir(), 'first-dev-plugins-'));
   t.after(() => rm(project, { recursive: true, force: true }));
   const managed = await ownedState(project, true);
   const plugins = join(managed.owner.site, 'wp-content/plugins');
   await mkdir(join(plugins, 'extra'), { recursive: true });
   await writeFile(join(plugins, 'extra/extra.php'), 'user-installed');
   const content = join(project, 'artifact');
-  const source = join(content, 'plugins/zero-app-test');
+  const source = join(content, 'plugins/first-app-test');
   await mkdir(source, { recursive: true });
-  await writeFile(join(source, 'zero-app-test.php'), 'first build');
+  await writeFile(join(source, 'first-app-test.php'), 'first build');
   await writeFile(join(source, 'stale.php'), 'old');
-  const manifest = { app: 'test', plugins: { 'zero-app-test': '0.3' }, dependencies: [], locales: null };
-  await writeFile(join(content, 'zero-manifest.json'), JSON.stringify(manifest));
+  const manifest = { app: 'test', plugins: { 'first-app-test': '0.3' }, dependencies: [], locales: null };
+  await writeFile(join(content, 'first-manifest.json'), JSON.stringify(manifest));
   await publishPlugins(content, managed);
   await rm(join(source, 'stale.php'));
-  await writeFile(join(source, 'zero-app-test.php'), 'second build');
+  await writeFile(join(source, 'first-app-test.php'), 'second build');
   await publishPlugins(content, managed);
-  assert.equal(await readFile(join(plugins, 'zero-app-test/zero-app-test.php'), 'utf8'), 'second build');
-  await assert.rejects(readFile(join(plugins, 'zero-app-test/stale.php')), { code: 'ENOENT' });
+  assert.equal(await readFile(join(plugins, 'first-app-test/first-app-test.php'), 'utf8'), 'second build');
+  await assert.rejects(readFile(join(plugins, 'first-app-test/stale.php')), { code: 'ENOENT' });
   assert.equal(await readFile(join(plugins, 'extra/extra.php'), 'utf8'), 'user-installed');
-  await writeFile(join(source, 'zero-app-test.php'), 'must not be published');
-  await writeFile(join(content, 'zero-manifest.json'), JSON.stringify({ ...manifest, plugins: { ...manifest.plugins, extra: '1' } }));
-  await assert.rejects(publishPlugins(content, managed), /not managed by Zero/);
-  assert.equal(await readFile(join(plugins, 'zero-app-test/zero-app-test.php'), 'utf8'), 'second build');
+  await writeFile(join(source, 'first-app-test.php'), 'must not be published');
+  await writeFile(join(content, 'first-manifest.json'), JSON.stringify({ ...manifest, plugins: { ...manifest.plugins, extra: '1' } }));
+  await assert.rejects(publishPlugins(content, managed), /not managed by First/);
+  assert.equal(await readFile(join(plugins, 'first-app-test/first-app-test.php'), 'utf8'), 'second build');
 });
 
 test('watch inputs include imported TypeScript and public files without reacting to generated output', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'zero-dev-watch-'));
+  const root = await mkdtemp(join(tmpdir(), 'first-dev-watch-'));
   const project = join(root, 'project');
   let watcher;
   let observing = Promise.resolve();
@@ -76,10 +76,10 @@ test('watch inputs include imported TypeScript and public files without reacting
   await mkdir(project);
   await mkdir(join(project, 'lib'));
   await mkdir(join(project, 'public'));
-  await writeFile(join(project, 'zero.config.ts'), 'config');
+  await writeFile(join(project, 'first.config.ts'), 'config');
   await writeFile(join(project, 'lib/fields.ts'), 'first');
-  const plugins = join(project, '.zero/dev/wordpress/wp-content/plugins');
-  const generated = join(plugins, 'zero-app-watch');
+  const plugins = join(project, '.first/dev/wordpress/wp-content/plugins');
+  const generated = join(plugins, 'first-app-watch');
   await mkdir(join(generated, 'blocks/deep/assets'), { recursive: true });
   await writeFile(join(generated, 'blocks/deep/assets/generated.ts'), 'initial output');
   const first = await sourceDigest(project);
@@ -108,9 +108,9 @@ test('watch inputs include imported TypeScript and public files without reacting
   const second = await sourceDigest(project);
   assert.notEqual(second, first);
   await waitForDigest(second);
-  await writeFile(join(project, 'zero.gen.ts'), 'generated');
+  await writeFile(join(project, 'first.gen.ts'), 'generated');
   for (let build = 0; build < 16; build++) {
-    const staged = join(plugins, `.zero-app-watch-${build}`);
+    const staged = join(plugins, `.first-app-watch-${build}`);
     const previous = `${staged}.previous`;
     await mkdir(join(staged, 'blocks/deep/assets'), { recursive: true });
     await writeFile(join(staged, 'blocks/deep/assets/generated.ts'), `build ${build}`);
@@ -118,7 +118,7 @@ test('watch inputs include imported TypeScript and public files without reacting
     await rename(staged, generated);
     await rm(previous, { recursive: true });
   }
-  for (const ignored of ['.git', 'node_modules', 'zero']) {
+  for (const ignored of ['.git', 'node_modules', 'first']) {
     const directory = join(project, ignored, 'nested/generated');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'output.ts'), 'generated');

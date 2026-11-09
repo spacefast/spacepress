@@ -1,8 +1,8 @@
-// Destructuring assignment (not declaration), which live Zero 0.8 apps use (zero#138 census):
+// Destructuring assignment (not declaration), which live Zero 0.8 apps use (first#138 census):
 // swaps, reassigning several locals from a helper's tuple, and pulling fields into existing
 // variables or object fields. Every action runs under Node and as compiled PHP; the JSON results
 // must be byte-identical. `destructuring-assignment-helpers.mjs` runs the same shapes untyped.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import { destructuringUntyped } from "./destructuring-assignment-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

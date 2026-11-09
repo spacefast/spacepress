@@ -1,6 +1,6 @@
 @use "@wordpress/base-styles/variables";
 
-.zero-admin-dataviews__view-actions {
+.first-admin-dataviews__view-actions {
 	border-bottom: 1px solid var( --wpds-color-stroke-surface-neutral );
 	padding-inline: variables.$grid-unit * 2.5;
 	overflow-x: auto;
@@ -24,7 +24,7 @@
 	}
 }
 
-.zero-admin-dataviews-filters__container:not( :empty ) {
+.first-admin-dataviews-filters__container:not( :empty ) {
 	padding-inline: variables.$grid-unit * 2.5;
 	padding-block: variables.$grid-unit * 1.5;
 }

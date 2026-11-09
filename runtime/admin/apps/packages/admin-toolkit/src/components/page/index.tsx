@@ -54,7 +54,7 @@ function Page< Entity = unknown >( {
 	showSidebarToggle = true,
 	saveButton,
 }: PageProps< Entity > ) {
-	const classes = clsx( 'zero-admin-page', className );
+	const classes = clsx( 'first-admin-page', className );
 	const registry = useRegistry();
 
 	useEffect( () => {
@@ -97,7 +97,7 @@ function Page< Entity = unknown >( {
 				/>
 			) }
 			<div
-				className={ clsx( 'zero-admin-page__content', {
+				className={ clsx( 'first-admin-page__content', {
 					'has-padding': hasPadding,
 					'has-border': hasBorder,
 					'is-constrained': contentWidth === 'constrained',

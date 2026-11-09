@@ -1,6 +1,6 @@
 import { notFound } from '@wordpress/route';
-import { preloadFieldCollections } from '@zero-admin/core-data-next';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { preloadFieldCollections } from '@first-admin/core-data-next';
+import { unlock } from '@first-admin/admin-toolkit';
 import { store as coreStore } from '@wordpress/core-data';
 import { dispatch, resolveSelect } from '@wordpress/data';
 import { store as editorStore } from '@wordpress/editor';

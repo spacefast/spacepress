@@ -17,7 +17,7 @@ let dirtyEntityRecords: Array< {
 	key: string | number;
 } > = [];
 
-jest.mock( '@zero-admin/admin-toolkit', () => ( {
+jest.mock( '@first-admin/admin-toolkit', () => ( {
 	getNoticeFromSettledResults: (
 		...args: unknown[]
 	): ReturnType< typeof mockGetNoticeFromSettledResults > =>

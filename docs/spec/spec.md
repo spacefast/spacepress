@@ -1,4 +1,4 @@
-# Zero: the complete authoring surface
+# First: the complete authoring surface
 
 Canonical spec, 2026-11-08, third revision. Rendering, interactivity and
 caching are in [rendering.md](rendering.md). External frontends are in
@@ -10,10 +10,10 @@ from today's v2 API, with no aliases.
 
 ```text
 my-project/                  # the project root: your app, if you have one
-├── zero.config.ts           # always here; imports only from ./zero/** and npm packages
+├── first.config.ts           # always here; imports only from ./first/** and npm packages
 ├── package.json
-├── src/                     # e.g. Next.js, Astro, TanStack Start (optional; Zero never reads it)
-└── zero/                    # the Zero root
+├── src/                     # e.g. Next.js, Astro, TanStack Start (optional; First never reads it)
+└── first/                    # the First root
     ├── schema.ts            # convention: data (§2). Any file name works (§1.1)
     ├── server/              # convention: actions and jobs (§4)
     ├── app/                 # pages and HTTP routes (rendering.md)
@@ -21,46 +21,46 @@ my-project/                  # the project root: your app, if you have one
     ├── wp-hooks/            # WordPress actions/filters, one per hook name
     ├── content/             # markdown/JSON synced into kinds
     ├── public/              # static files, served as-is
-    ├── _generated/          # written by Zero, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json
-    └── dist/                # written by `zero build`, gitignored: the deployable output (§7)
+    ├── _generated/          # written by First, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json
+    └── dist/                # written by `first build`, gitignored: the deployable output (§7)
 ```
 
-- `zero dev`, `zero build` and `sf publish` start from the directory that holds
-  `zero.config.ts`. The Zero root is always `./zero`.
-- `zero.config.ts` resolves relative imports only inside `./zero/`. Anything
-  else, such as `../src/lib/x`, is build error `Z1210`. Package imports
-  (`"zero"`, Zero plugin packages) are allowed. That exception is my call;
+- `first dev`, `first build` and `sf publish` start from the directory that holds
+  `first.config.ts`. The First root is always `./first`.
+- `first.config.ts` resolves relative imports only inside `./first/`. Anything
+  else, such as `../src/lib/x`, is build error `F1210`. Package imports
+  (`"first"`, First plugin packages) are allowed. That exception is my call;
   the rule otherwise couldn't load `defineConfig`.
-- Code in `zero/` imports nothing from outside `zero/` except npm packages.
-  The app may import `zero/_generated/client`.
+- Code in `first/` imports nothing from outside `first/` except npm packages.
+  The app may import `first/_generated/client`.
 
 ### 1.1 No required file names
 
-Zero loads `zero.config.ts` and every `.ts` file under `zero/`, except the
+First loads `first.config.ts` and every `.ts` file under `first/`, except the
 folders that have their own meaning (`app/`, `components/`, `wp-hooks/`,
 `content/`, `public/`, `_generated/`, `dist/`). Every exported kind, action and
 job in those files is registered under its export name. File names and folders
 are up to you:
 
-- **One file:** a whole backend can live in `zero/index.ts`, with kinds,
+- **One file:** a whole backend can live in `first/index.ts`, with kinds,
   hooks, actions and jobs side by side.
-- **The convention** `zero init` writes and the docs use: `schema.ts` for
+- **The convention** `first init` writes and the docs use: `schema.ts` for
   kinds and `server/*.ts` for actions and jobs. When a project grows, split
   `schema.ts` into `schema/*.ts`.
 - **Moving code never changes the API.** Names come from exports, not paths,
   so moving `like` from `index.ts` to `server/posts.ts` keeps
   `zero.like()`, its endpoint and its Ability.
 - Export names are unique across the app: two exports named `like`, or an
-  action named like a kind, fail the build (`Z1221`) and name both files.
+  action named like a kind, fail the build (`F1221`) and name both files.
   Rename one, or set `action({ name: "posts.like" }, …)`.
 - An export that isn't a kind, action or job is ignored, so helper modules need
   no special place.
 - `app/`, `components/`, `wp-hooks/`, `content/` and `public/` are the only
-  folders whose names Zero reads.
+  folders whose names First reads.
 
 ```ts
-// zero/index.ts: a complete app in one file
-import { wp, table, ref, action, job } from "zero";
+// first/index.ts: a complete app in one file
+import { wp, table, ref, action, job } from "first";
 
 export const posts = wp.posts.extend({}, { url: "/blog/:slug", comments: true });
 export const likes = table({ post: ref(posts).onDelete("cascade") }, { access: { create: "subscriber", read: "anyone" } });
@@ -77,13 +77,13 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });
 
 ### 2.1 WordPress kinds are built in
 
-Every Zero site has these kinds without declaring anything. They are the real
-WordPress objects, so the theme, plugins, wp-admin, REST and Zero all see the
+Every First site has these kinds without declaring anything. They are the real
+WordPress objects, so the theme, plugins, wp-admin, REST and First all see the
 same rows.
 
 | Kind | WordPress | Always-present fields |
 |---|---|---|
-| `users` | `wp_users` + usermeta + Zero Identity | `id`, `email`, `name`, `username`, `roles`, `avatar`, `url`, `locale`, `createdAt` |
+| `users` | `wp_users` + usermeta + First Identity | `id`, `email`, `name`, `username`, `roles`, `avatar`, `url`, `locale`, `createdAt` |
 | `comments` | `wp_comments` + comment meta | `id`, `on` (the item), `parent`, `author` (user or null), `authorName`, `authorEmail`, `content`, `status`, `type`, `createdAt` |
 | `posts` | core `post` type | collection fields (§2.3) + `categories`, `tags`, `excerpt`, `featuredImage`, `sticky` |
 | `pages` | core `page` type | collection fields + `parent`, `order`, `template` |
@@ -97,14 +97,14 @@ Every kind, built-in or yours, is imported from one place:
 `_generated/db.d.ts`. Inside `schema.ts`, the base built-ins are on `wp`:
 
 ```ts
-import { wp, collection, table, taxonomy, text, select, integer, ref, media } from "zero";
+import { wp, collection, table, taxonomy, text, select, integer, ref, media } from "first";
 
 // Extend a built-in by exporting its name. Fields become meta; options compile to WordPress settings.
 export const users = wp.users.extend({
   plan: select(["free", "pro"]).default("free"),
   bio: text({ multiline: true }).optional(),
 }, {
-  signIn: ["email", "passkey", "google"],        // Zero Identity methods; Spacefast Access adds its own on Spacefast
+  signIn: ["email", "passkey", "google"],        // First Identity methods; Spacefast Access adds its own on Spacefast
   guests: true,                                  // anonymous visitors get a guest user on first write
   roles: { member: "subscriber", moderator: { from: "author", can: ["moderateComments"] } },
 });
@@ -126,13 +126,13 @@ export const likes = table({ post: ref(posts).onDelete("cascade") }).index(["pos
 ```
 
 An export named after a built-in must be that built-in's `.extend()`. Anything
-else fails the build (`Z1220`), so there is never a second users table or a
-`zero_posts` beside core `post`.
+else fails the build (`F1220`), so there is never a second users table or a
+`first_posts` beside core `post`.
 
 ### 2.2 Users
 
 - **One identity.** `users` is WordPress's own users table, so wp-admin,
-  plugins, Zero Identity, Spacefast Access and the typed client all share one
+  plugins, First Identity, Spacefast Access and the typed client all share one
   `id`. There are no projections and no copies.
 - **Sign-in** (`signIn`): methods are `email` (code), `password`, `passkey`,
   `google`, and any OIDC provider (`{ oidc: { issuer, clientId: env(…) } }`).
@@ -140,12 +140,12 @@ else fails the build (`Z1220`), so there is never a second users table or a
   On Spacefast, Spacefast Access adds Sign in with Spacefast and WordPress.com.
   It is additive and needs no config.
 - **Guests** (`guests: true`): the first rejected write creates a guest user.
-  Signing in later upgrades that same user id in place (Zero Identity's
+  Signing in later upgrades that same user id in place (First Identity's
   behavior), so nothing has to move.
 - **Roles**: the core ladder is `subscriber < contributor < author < editor < admin`.
   `roles` adds custom roles (`add_role`), each built from an existing one,
   optionally with extra capabilities. Every access rule accepts these names.
-- **Organizations** (`organizations: true`): exposes Zero Identity
+- **Organizations** (`organizations: true`): exposes First Identity
   organizations as the `orgs` kind (`name`, `members`, member `role`). Any kind
   can declare `org: ref(orgs)`, and the `"org"` access value then means "rows
   in an org I belong to".
@@ -165,7 +165,7 @@ else fails the build (`Z1220`), so there is never a second users table or a
   on any collection or built-in post kind. Defaults: signed-in users only,
   `moderation: "first-time"`, threaded to depth 3, never closed.
   This compiles to post type `comments` support plus per-type discussion
-  settings, which Zero enforces in its write path.
+  settings, which First enforces in its write path.
 - **One kind for all threads:** `comments` covers every commentable kind. `on`
   is the item and `parent` the reply. Filter with `comments.list({ where: { on: post.id, status: "approved" } })`.
 - **Comment types** for other threaded data: `wp.comments.type("review", fields, { on, access })`
@@ -177,7 +177,7 @@ else fails the build (`Z1220`), so there is never a second users table or a
 - **Access defaults:** anyone reads `approved`; the comment's author also sees
   their own `pending`; create follows the item's `comments` options, and the
   item must be readable and open; update/delete by the author within 15 minutes or `moderateComments`.
-- **Rendering:** `<Comments for={item} />` from `zero/app` renders the thread and an
+- **Rendering:** `<Comments for={item} />` from `first/app` renders the thread and an
   interactive form (rendering.md). In WordPress-rendered mode, the core
   comment blocks work unchanged.
 
@@ -220,7 +220,7 @@ Fields every kind gets:
 - Fields are **required** unless `.optional()` or `.default(v)`. On post kinds, a
   draft may be incomplete; required fields are checked at publish.
 - `.many()` makes a list (`select`, `media`, `file`, `ref`). A many-ref gets a
-  join table that Zero owns.
+  join table that First owns.
 - Constraints: `.unique()`, `.min()`, `.max()`, `.pattern()`, `.validate((v, ctx) => true | "message")`.
 - `.access({ read?, write? })` hides or locks a field. A hidden field is absent
   from results and can't be filtered or sorted on.
@@ -266,7 +266,7 @@ first term (`:topics.slug`), and `:path` for hierarchical kinds.
   `item.url`, canonical URLs, feeds, sitemaps and every WordPress-generated
   link all come from these filters, so they follow the pattern.
 - **Who renders it:** an `app/` route whose path matches the pattern renders
-  with Zero. Without one, WordPress renders through the template hierarchy. So
+  with First. Without one, WordPress renders through the template hierarchy. So
   a URL alone gives WordPress rendering, and adding a page takes it over.
 
 ### 2.8 Hooks
@@ -287,8 +287,8 @@ first term (`:topics.slug`), and `:path` for hierarchical kinds.
 
 - **Indexes** are inferred from refs, `.unique()`, `author`, and every
   `where`/`orderBy` key the compiler sees. Add compound ones with
-  `.index(fields, { unique? })`. `zero check --json` lists each index and why it exists.
-- **No migration files.** Zero generates the SQL and keeps a ledger in
+  `.index(fields, { unique? })`. `first check --json` lists each index and why it exists.
+- **No migration files.** First generates the SQL and keeps a ledger in
   `_generated/`. Deploy checks each change against live data:
   - Additive changes apply.
   - A new required field on rows that lack it fails with the count and the fix.
@@ -304,7 +304,7 @@ typed client, always as the current visitor:
 await posts.list({ where: { categories: { slug: "news" } }, orderBy: { publishedAt: "desc" }, limit: 10, with: { byline: true } });
 await posts.paginate({ where, limit: 20, cursor });          // { rows, cursor }
 await posts.get(42);  await posts.get({ slug: "hello" });  await posts.count({ where });
-await posts.list({ search: "zero" });
+await posts.list({ search: "first" });
 await comments.create({ on: post.id, content: "Nice", parent: 7 });
 await users.me();  await settings.get();  await menus.get("primary");
 ```
@@ -317,8 +317,8 @@ await users.me();  await settings.get();  await menus.get("primary");
 ## 3a. HTTP: core routes underneath, one clean facade on top
 
 **One implementation.** Each kind is served by the core REST route WordPress
-already has (`/wp/v2/posts`, `/wp/v2/comments`, `/wp/v2/users`, ...). Zero
-makes those routes enforce Zero's rules, as `runtime/Zero/Wp/CoreAccess.php`
+already has (`/wp/v2/posts`, `/wp/v2/comments`, `/wp/v2/users`, ...). First
+makes those routes enforce First's rules, as `runtime/First/Wp/CoreAccess.php`
 already does for collections:
 - access rules and field masks;
 - validation;
@@ -326,7 +326,7 @@ already does for collections:
 
 The block editor, wp-admin and other plugins keep working against them unchanged.
 
-**One clean shape: `/__zero/api/v1`.** It's a thin facade: every request is
+**One clean shape: `/__first/api/v1`.** It's a thin facade: every request is
 dispatched internally to the core route with `rest_do_request()`, and only the
 input and output are mapped. There is no second permission check, no second
 query path and no second write path, so the facade can't disagree with core.
@@ -336,21 +336,21 @@ pagination in headers.
 
 | Facade | Dispatched to | Mapping |
 |---|---|---|
-| `GET /__zero/api/v1/posts?where=…&with=…&limit=…&cursor=…` | `GET /wp/v2/posts` | Zero rows (`title`, `body`, fields flat, `status: "pending"`), `{ data, cursor }` |
-| `GET /__zero/api/v1/posts/42` (`/posts/slug:hello`) | `GET /wp/v2/posts/42` | one row; `?format=md` gives markdown |
-| `POST /__zero/api/v1/posts`, `PATCH …/42`, `DELETE …/42` | `POST /wp/v2/posts[/42]`, `DELETE` | Zero input → core input (`meta`, `status`) |
-| `/__zero/api/v1/<kind>` for every kind (comments, users, media, your collections, taxonomies, tables) | the matching core route; tables use the one new `wp/v2/<table>` controller | same |
-| `GET /__zero/api/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
-| `GET/PATCH /__zero/api/v1/settings`, `/__zero/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
-| `POST /__zero/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
-| `GET /__zero/api/v1` | `/wp-json` index + Abilities list | the app's schema: kinds, fields, actions (what `zero pull` reads) |
+| `GET /__first/api/v1/posts?where=…&with=…&limit=…&cursor=…` | `GET /wp/v2/posts` | First rows (`title`, `body`, fields flat, `status: "pending"`), `{ data, cursor }` |
+| `GET /__first/api/v1/posts/42` (`/posts/slug:hello`) | `GET /wp/v2/posts/42` | one row; `?format=md` gives markdown |
+| `POST /__first/api/v1/posts`, `PATCH …/42`, `DELETE …/42` | `POST /wp/v2/posts[/42]`, `DELETE` | First input → core input (`meta`, `status`) |
+| `/__first/api/v1/<kind>` for every kind (comments, users, media, your collections, taxonomies, tables) | the matching core route; tables use the one new `wp/v2/<table>` controller | same |
+| `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
+| `GET/PATCH /__first/api/v1/settings`, `/__first/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
+| `POST /__first/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
+| `GET /__first/api/v1` | `/wp-json` index + Abilities list | the app's schema: kinds, fields, actions (what `first pull` reads) |
 
 - **Errors:** RFC 9457 problem documents (`code`, `detail`, `pointer`), mapped
   from core's `WP_Error`.
 - **Auth:** what core accepts: the cookie with `X-WP-Nonce`, application
-  passwords, and Zero Identity bearer tokens.
+  passwords, and First Identity bearer tokens.
 - **Location:** the facade sits outside `/wp-json`, like `/__spacefast/`. It's
-  served by Zero's front-controller route, before the theme loads, so it costs
+  served by First's front-controller route, before the theme loads, so it costs
   one internal REST dispatch.
 - **Who uses which:**
   - the typed client, the framework adapters, `curl` and agents use the facade;
@@ -371,8 +371,8 @@ check, so a public action runs anonymously.
 ## 4. Server code
 
 ```ts
-// zero/server/posts.ts (any file under zero/ works) → zero.feature(), notifySubscribers.enqueue(...)
-import { action, job } from "zero";
+// first/server/posts.ts (any file under first/ works) → zero.feature(), notifySubscribers.enqueue(...)
+import { action, job } from "first";
 import { posts } from "zero:db";
 
 export const feature = action({ access: "editor" }, async ({ id }: { id: number }) => posts.update(id, { sticky: true }));
@@ -383,7 +383,7 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 - **`action`** takes its types from the handler signature. Options: `access`
   (default `editor`), `idempotent`, `readonly`, `signature`, `abilities`,
   `name`. Each action is an Ability `<app>/<name>` (core's run route and MCP),
-  `POST /__zero/api/v1/actions/<name>` on the facade (§3a), and a typed client
+  `POST /__first/api/v1/actions/<name>` on the facade (§3a), and a typed client
   method `zero.<name>()`. The name is the export name (§1.1). A `signature` action
   (an inbound webhook) is an `app/**/route.ts` instead, since its caller signs
   the raw body.
@@ -399,19 +399,19 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 | Setup | Public URLs |
 |---|---|
 | no `app/` (default) | WordPress renders with the block theme: post and term URLs, home, archives, search, comments |
-| `app/` exists | Zero owns the front end. `app/` routes render; kind URLs without a page fall back to the theme template; everything else gets `app/not-found.tsx` |
+| `app/` exists | First owns the front end. `app/` routes render; kind URLs without a page fall back to the theme template; everything else gets `app/not-found.tsx` |
 | `frontend: false` | backend only: no public HTML |
 | `frontend: "https://…"` | an external site renders (04). Front-end URLs, permalinks, previews and feeds point there |
 
-In every mode, wp-admin, login, Zero sign-in, `/wp-json`, Action Scheduler,
+In every mode, wp-admin, login, First sign-in, `/wp-json`, Action Scheduler,
 media, the markdown versions of pages and `llms.txt` keep working.
 
 ## 6. Config and the opinionated WordPress
 
 ```ts
-// zero.config.ts (project root)
-import { defineConfig, env } from "zero";
-import seo from "zero-plugin-seo";
+// first.config.ts (project root)
+import { defineConfig, env } from "first";
+import seo from "first-plugin-seo";
 
 export default defineConfig({
   name: "blog",
@@ -425,12 +425,12 @@ export default defineConfig({
 });
 ```
 
-Zero's release pins the WordPress it runs on. Users cannot remove any of the following.
+First's release pins the WordPress it runs on. Users cannot remove any of the following.
 
 - **Always installed:**
   - Secure Custom Fields, Action Scheduler, MCP Adapter, Akismet;
   - Two Factor (enforced per `mfa`);
-  - Zero's own plugins;
+  - First's own plugins;
   - Polylang when `locales` is set.
 - **Always disabled:**
   - XML-RPC, pingbacks and trackbacks, emoji scripts;
@@ -440,12 +440,12 @@ Zero's release pins the WordPress it runs on. Users cannot remove any of the fol
   - comments on kinds without `comments`;
   - the theme front end when `app/` or `frontend` takes over.
 - **Always configured:** pretty permalinks, the Space's timezone, the object
-  cache, Batcache and edge cache (rendering.md), and a block theme (Zero's
+  cache, Batcache and edge cache (rendering.md), and a block theme (First's
   minimal default when none is chosen).
 
-## 7. Build output (`zero/dist/`)
+## 7. Build output (`first/dist/`)
 
-`zero build` prebuilds everything that doesn't depend on the request:
+`first build` prebuilds everything that doesn't depend on the request:
 
 | Output | At request time |
 |---|---|
@@ -457,7 +457,7 @@ Zero's release pins the WordPress it runs on. Users cannot remove any of the fol
 | `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients only |
 
 Client bundling uses Rolldown. It is Rust, built on the same OXC family as
-Zero's parser, and powers Vite. That keeps the build free of Node, so it can
+First's parser, and powers Vite. That keeps the build free of Node, so it can
 run on a box or in wasm. Check its crate API before depending on it.
 
 ## 8. Deleted from the current v2 API
@@ -471,10 +471,10 @@ run on a box or in wasm. Check its crate API before depending on it.
 - **Server and client APIs:**
   - `jobs.x.enqueue`;
   - `db.query`, `db.insert`, `db.update` and `db.delete`;
-  - review of `zero/_generated/migrations/*.sql`;
-  - the generated `zero/client/` source.
-- **Pages:** the `zero_<name>` post types for kinds WordPress already has,
-  `@spacefast/zero-pages`, `zero/pages.json`, `load()`, `<Show>`, `orElse()`,
+  - review of `first/_generated/migrations/*.sql`;
+  - the generated `first/client/` source.
+- **Pages:** the `first_<name>` post types for kinds WordPress already has,
+  `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`, `orElse()`,
   `count()`, `collectionPage()` and `<Island>`.
 
 ## 9. Zero 0.8 and Lakebed → this

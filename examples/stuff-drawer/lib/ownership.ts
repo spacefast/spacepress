@@ -1,4 +1,4 @@
-import { HttpError, integer, type AccessCtx, type HookCtx } from "zero";
+import { HttpError, integer, type AccessCtx, type HookCtx } from "first";
 
 export const ownerId = integer().notNull().access({ create: false, update: false });
 

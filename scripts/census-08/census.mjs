@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Census of live Zero 0.8 Spaces against `zero migrate app --from zero-0.8`.
+// Census of live Zero 0.8 Spaces against `first migrate app --from zero-0.8`.
 //
 //   node scripts/census-08/census.mjs --data <dir> --zero <label>=<binary> [--zero ...]
 //        [--users] [--jobs N] [--json <summary.json>] [--per-space <detail.json>]
@@ -49,7 +49,7 @@ function loadTypeScript() {
 }
 
 function args(argv) {
-  const out = { zero: [], users: false, jobs: Math.max(1, Math.min(16, os.cpus().length)), data: null };
+  const out = { first: [], users: false, jobs: Math.max(1, Math.min(16, os.cpus().length)), data: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => {
@@ -102,7 +102,7 @@ const BRIDGED = new Set(["useQuery", "useMutation", "useAction", "usePaginatedQu
 const SIGN_IN = ["SignInWithGoogle", "SignInWithGravatar", "SignInWithSpacefast", "signInWithGoogle", "signInWithGravatar", "signInWithSpacefast", "getIdentity", "getCurrentUser", "retryAuth", "canAccessApp"];
 const CONNECTORS = ["useConnectorState", "useConnectorRoleState", "retryConnectorQueries"];
 // What the 0.8 import map answered (`platform()` in app/client.rs); anything else bare is a package.
-const PLATFORM = /^(?:@spacefast\/zero\/(?:client|kit|charts)|(?:@spacefast\/compat-lakebed|lakebed)\/client|preact(?:\/.*)?|react(?:\/.*)?|react-dom(?:\/.*)?|react-is|lucide-react|recharts)$/;
+const PLATFORM = /^(?:@spacefast\/first\/(?:client|kit|charts)|(?:@spacefast\/compat-lakebed|lakebed)\/client|preact(?:\/.*)?|react(?:\/.*)?|react-dom(?:\/.*)?|react-is|lucide-react|recharts)$/;
 
 // The labels match classify.mjs's client rules, so a census refusal and a converter refusal of the
 // same thing count as one reason.

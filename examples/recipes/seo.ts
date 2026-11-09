@@ -1,6 +1,6 @@
-import { group, text, type FieldUi } from "zero";
+import { group, text, type FieldUi } from "first";
 
-/** A fresh immutable field set on each call; composition runs in Zero's pure evaluator. */
+/** A fresh immutable field set on each call; composition runs in First's pure evaluator. */
 export function seoFields() {
   const titleUi: FieldUi = { label: "Search title", help: "Keep it concise.", width: 50 };
   return {

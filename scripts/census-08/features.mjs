@@ -1,7 +1,7 @@
 // The Zero 0.8 surface as census features: one entry per row of the capability table in
 // docs/zero-08-parity.md, plus the 0.8 SDK exports and engine routes that table did not list
 // (marked `added`). Sources: `@spacefast/zero` 0.8.1 (spacefast/monorepo
-// legacy/zero-0.8/packages/zero/src) and its compiler (legacy/zero-0.8/packages/zero-compile).
+// legacy/zero-0.8/packages/zero/src) and its compiler (legacy/zero-0.8/packages/first-compile).
 //
 // Each feature names the evidence that decides it:
 //   artifact  the finalize payload's artifact (schema, endpoints, pages, capabilities, auth)
@@ -104,7 +104,7 @@ export const FEATURES = [
   ["pages-param", "Pages and client", "`pages/[param].tsx`", "artifact", (f) => any(f.pages, (p) => (p.params ?? []).length > 0)],
   ["pages-document", "Pages and client", "`pages/*.md`, `pages/*.html` documents", "artifact", (f) => any(f.pages, (p) => p.render === "document" && /\.(md|html)$/.test(p.file))],
   ["pages-system", "Pages and client", "`_pages/` system pages (404, access gate)", "artifact", (f) => f.files.systemPages],
-  ["tailwind", "Pages and client", "Tailwind `zero.css`", "artifact", (f) => f.client.present],
+  ["tailwind", "Pages and client", "Tailwind `first.css`", "artifact", (f) => f.client.present],
   ["realtime", "Pages and client", "Live updates, realtime", "artifact", (f) => f.realtime],
   // The compiler's generated mount imports `Router` and `Pages` for every client-page app, so
   // they do not count; `Router` counts only in a client app without pages, which mounts itself.

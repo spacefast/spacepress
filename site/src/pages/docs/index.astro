@@ -19,7 +19,7 @@ const readme = readFileSync(path.join(repo, "README.md"), "utf8");
 const { code } = await processor.render(readme, { fileURL: new URL(`file://${path.join(repo, "README.md")}`) });
 ---
 
-<Page title="Docs" description="Zero's documentation: the README, the zero.config.ts API, the examples, plugins, identity, migration and the runtime contract.">
+<Page title="Docs" description="First's documentation: the README, the first.config.ts API, the examples, plugins, identity, migration and the runtime contract.">
   <main class="docs">
     <DocsNav current="" />
     <article class="doc" set:html={code} />

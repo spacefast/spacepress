@@ -1,4 +1,4 @@
-zero/
-zero.gen.ts
-.zero/*
-!.zero/sync-base.json
+first/
+first.gen.ts
+.first/*
+!.first/sync-base.json

@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { Icon } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
 import {
 	FlexBlock,
 	__experimentalItem as Item,
@@ -12,7 +12,7 @@ import {
 import { chevronDownSmall } from '@wordpress/icons';
 import { useReducedMotion } from '@wordpress/compose';
 import { useSelect } from '@wordpress/data';
-import { store as zeroAdminStore } from '../../store';
+import { store as firstAdminStore } from '../../store';
 import SidebarNavigationItem from '../sidebar-navigation-item';
 import { wrapIcon } from '../items';
 import MenuBadge from '../sidebar/menu-badge';
@@ -67,17 +67,17 @@ export default function SidebarDropdownItem( {
 	onToggle,
 }: SidebarDropdownItemProps ) {
 	const menuItems = useSelect(
-		( select ) => select( zeroAdminStore ).getMenuItems(),
+		( select ) => select( firstAdminStore ).getMenuItems(),
 		[]
 	);
 	const items = menuItems.filter( ( item ) => item.parent === id );
 	const disableMotion = useReducedMotion();
 	const childHasRealIcons = items.some( ( item ) => !! item.icon );
 	return (
-		<div className="zero-admin-sidebar-dropdown-item">
+		<div className="first-admin-sidebar-dropdown-item">
 			<Item
 				className={ clsx(
-					'zero-admin-sidebar-navigation-item',
+					'first-admin-sidebar-navigation-item',
 					className
 				) }
 				onClick={ ( e ) => {
@@ -100,7 +100,7 @@ export default function SidebarDropdownItem( {
 					<Icon
 						icon={ chevronDownSmall }
 						className={ clsx(
-							'zero-admin-sidebar-dropdown-item__chevron',
+							'first-admin-sidebar-dropdown-item__chevron',
 							{ 'is-up': isExpanded }
 						) }
 					/>
@@ -117,7 +117,7 @@ export default function SidebarDropdownItem( {
 							duration: disableMotion ? 0 : ANIMATION_DURATION,
 							ease: 'easeOut',
 						} }
-						className="zero-admin-sidebar-dropdown-item__children"
+						className="first-admin-sidebar-dropdown-item__children"
 						role="list"
 					>
 						{ items.map( ( item, index ) => (

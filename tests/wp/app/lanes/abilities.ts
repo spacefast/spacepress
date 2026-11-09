@@ -1,7 +1,7 @@
 // Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
 // export into the app and fails the build if a key collides with the shared app or another lane.
-import { action, db, group, json, repeater, text } from "zero";
-import { comments } from "../../../fixtures/blog/zero.config.ts";
+import { action, db, group, json, repeater, text } from "first";
+import { comments } from "../../../fixtures/blog/first.config.ts";
 
 export const collections = {  };
 export const tables = {  };
@@ -22,7 +22,7 @@ export const actions = {
       return input.info ? { meta: input.meta, info: input.info } : { meta: input.meta };
     },
   }),
-  /** Kept from agents (§7.1): an ability for PHP and `wp zero run`, absent from core REST and MCP. */
+  /** Kept from agents (§7.1): an ability for PHP and `wp first run`, absent from core REST and MCP. */
   agentNote: action({
     input: { note: text().notNull().max(200) },
     access: "editor",

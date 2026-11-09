@@ -1,5 +1,5 @@
 // Differential scenarios. verify.mjs imports this module under Node against the
-// installed files-sdk, and app/zero.config.ts compiles it to PHP; both outputs
+// installed files-sdk, and app/first.config.ts compiles it to PHP; both outputs
 // must be byte-identical JSON. Each scenario returns plain data only.
 // `lastModified` depends on the clock, so it is reported as its type.
 import { Files, FilesError } from "files-sdk";

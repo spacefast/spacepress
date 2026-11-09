@@ -8,7 +8,7 @@ import './style.scss';
  *
  * @example
  * ```tsx
- * import { WidgetLoadingOverlay } from '@zero-admin/dashboard';
+ * import { WidgetLoadingOverlay } from '@first-admin/dashboard';
  *
  * <WidgetLoadingOverlay />
  * ```

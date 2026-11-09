@@ -1,8 +1,8 @@
 import { registerAbility } from '@wordpress/abilities';
 import { select } from '@wordpress/data';
-import { store as agentContextStore } from '@zero-admin/ai-agent';
-import type { SitemapData } from '@zero-admin/ai-agent';
-import { store as zeroAdminStore } from '../store';
+import { store as agentContextStore } from '@first-admin/ai-agent';
+import type { SitemapData } from '@first-admin/ai-agent';
+import { store as firstAdminStore } from '../store';
 
 /**
  * Minimal router interface for navigation with cache invalidation.
@@ -54,7 +54,7 @@ function isInSitemap( path: string ): boolean {
  */
 function isKnownRoute( path: string ): boolean {
 	try {
-		const routes = select( zeroAdminStore ).getRoutes();
+		const routes = select( firstAdminStore ).getRoutes();
 		return routes.some( ( route: { path: string } ) => {
 			// Replace TanStack $param segments with a regex that matches any path segment
 			const pattern = route.path.replace( /\$\w+/g, '[^/]+' );
@@ -78,11 +78,11 @@ export function registerNavigationAbility( router: Router ): void {
 
 	try {
 		void registerAbility( {
-			name: 'zero-admin/navigate',
+			name: 'first-admin/navigate',
 			label: 'Navigate Admin Interface',
 			description:
 				'Navigate to a different page within the admin interface or to external dashboard pages',
-			category: 'zero-admin',
+			category: 'first-admin',
 			meta: {
 				instructions: `Use this tool to navigate users to different pages in the admin interface.
 

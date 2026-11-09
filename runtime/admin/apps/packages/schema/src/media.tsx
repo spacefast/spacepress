@@ -9,9 +9,9 @@ import {
 	TextControl,
 	TextareaControl,
 } from '@wordpress/components';
-import { Page, RouterLink, useDocumentChanges } from '@zero-admin/admin-toolkit';
-import { DataViews, type View, type Field } from '@zero-admin/dataviews';
-import { uploadAttachment } from '@zero-admin/attachment-importer';
+import { Page, RouterLink, useDocumentChanges } from '@first-admin/admin-toolkit';
+import { DataViews, type View, type Field } from '@first-admin/dataviews';
+import { uploadAttachment } from '@first-admin/attachment-importer';
 import { allowed, object, text, type Row } from './model';
 import { bootstrap, message, unwrap, useLoad } from './api';
 import { Loading } from './screens';
@@ -140,7 +140,7 @@ function focal(value: unknown): { x: number; y: number } {
 export function MediaDocument() {
 	const { id } = useParams({ from: '/media/$id' });
 	const state = useLoad(async () => {
-		const [core, zero] = await Promise.all([
+		const [core, first] = await Promise.all([
 			apiFetch({
 				path: `/wp/v2/media/${encodeURIComponent(id)}?context=edit`,
 			}).catch(() =>
@@ -148,15 +148,15 @@ export function MediaDocument() {
 					path: `/wp/v2/media/${encodeURIComponent(id)}?context=view`,
 				})
 			),
-			apiFetch({ path: `/zero/v1/media/${encodeURIComponent(id)}` }),
+			apiFetch({ path: `/first/v1/media/${encodeURIComponent(id)}` }),
 		]);
-		return { core: object(core), zero: object(unwrap(zero)) };
+		return { core: object(core), first: object(unwrap(first)) };
 	}, [id]);
 	return (
 		<Page
 			title="Media details"
 			breadcrumbs={
-				<RouterLink className="zero-schema-back" to="/media">
+				<RouterLink className="first-schema-back" to="/media">
 					Back to Media
 				</RouterLink>
 			}
@@ -169,15 +169,15 @@ export function MediaDocument() {
 					key={id}
 					id={id}
 					core={state.value.core}
-					zero={state.value.zero}
+					first={state.value.zero}
 				/>
 			)}
 		</Page>
 	);
 }
-function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
-	const [alt, setAlt] = useState(text(zero.alt) ?? ''),
-		[point, setPoint] = useState(focal(zero.focal));
+function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) {
+	const [alt, setAlt] = useState(text(first.alt) ?? ''),
+		[point, setPoint] = useState(focal(first.focal));
 	const [title, setTitle] = useState(
 			text(object(core.title).raw) ?? text(object(core.title).rendered) ?? ''
 		),
@@ -221,7 +221,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 		if (!canUpdate) throw new Error('Media cannot be edited.');
 		const snapshot = { alt, point };
 		await apiFetch({
-			path: `/zero/v1/media/${encodeURIComponent(id)}`,
+			path: `/first/v1/media/${encodeURIComponent(id)}`,
 			method: 'PATCH', data: { alt: snapshot.alt, focal: snapshot.point },
 		});
 		setMediaBaseline(snapshot);
@@ -250,7 +250,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 		void navigate({ to: '/media' }).catch((e: unknown) => setError(message(e)));
 	}, [deleted, sharedChanges, navigate]);
 	return (
-		<div className="zero-schema-form">
+		<div className="first-schema-form">
 			{error && (
 				<Notice status="error" isDismissible={false}>
 					{error}
@@ -263,7 +263,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 			)}
 			{text(core.media_type) === 'image' && (
 				<img
-					className="zero-schema-media-preview"
+					className="first-schema-media-preview"
 					src={text(core.source_url)}
 					alt={alt}
 				/>
@@ -298,7 +298,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 				</Button>
 			</form>
 			<form
-				className="zero-schema-caption-form"
+				className="first-schema-caption-form"
 				onSubmit={(e) => {
 					e.preventDefault();
 					void mutate(saveCaption, 'Caption and title saved.').catch(() => undefined);
@@ -327,7 +327,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 				</Button>
 			</form>
 			{canUpdate && (
-				<div className="zero-schema-caption-form">
+				<div className="first-schema-caption-form">
 					{confirming ? (
 						<>
 							<p>
@@ -340,7 +340,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 								onClick={() => {
 									void mutate(async () => {
 										await apiFetch({
-											path: `/zero/v1/media/${encodeURIComponent(id)}`,
+											path: `/first/v1/media/${encodeURIComponent(id)}`,
 											method: 'DELETE',
 										});
 										setDeleted(true);

@@ -1,12 +1,12 @@
 # WordPress plugin dependencies
 
-Declare additional plugins in `zero.config.ts`. Rust fetches and validates their
-archives during `zero build --target wp`; the deployed runtime stays PHP only.
-`zero check` validates declarations and the dependency graph without network I/O.
+Declare additional plugins in `first.config.ts`. Rust fetches and validates their
+archives during `first build --target wp`; the deployed runtime stays PHP only.
+`first check` validates declarations and the dependency graph without network I/O.
 Standalone builds validate the config but never acquire or emit these plugins.
 
 ```ts
-import { defineConfig } from "zero";
+import { defineConfig } from "first";
 
 export default defineConfig({
   name: "site",
@@ -18,13 +18,13 @@ export default defineConfig({
 });
 ```
 
-A runnable collection example is in `examples/wp-plugins/zero.config.ts`:
+A runnable collection example is in `examples/wp-plugins/first.config.ts`:
 
 ```sh
 cargo run -- build examples/wp-plugins
 ```
 
-Commit the generated `zero/wp-plugins.lock.json` with the config. For an exact
+Commit the generated `first/wp-plugins.lock.json` with the config. For an exact
 WordPress.org slug/version, the first successful build records the archive's
 SHA-256; this first acquisition trusts the HTTPS response from WordPress.org.
 Subsequent builds enforce that checksum even after deleting the download cache.
@@ -32,7 +32,7 @@ An authored `sha256` can pin the first acquisition too. Changing a version creat
 a new pin; replacing bytes at the same source/version fails. To intentionally
 repin that release, remove its lock entry and supply the new authored checksum.
 
-Required platform plugins are supplied by Zero through the same resolver; users
+Required platform plugins are supplied by First through the same resolver; users
 need not list them. The current pins are SCF 6.9.7, Action Scheduler 4.2.0, and MCP
 Adapter 0.7.1, plus Polylang 3.9 when `locales` is configured. Explicit overrides
 must satisfy the platform floor. `wp_plugins::version::at_least` owns comparison
@@ -42,18 +42,18 @@ zero differences are accepted (the Polylang 3.9 archive declares 3.9.0).
 
 ## Supported plugins
 
-Zero doesn't support every WordPress plugin. The plugins and version ranges the
-Zero team tests are listed in
+First doesn't support every WordPress plugin. The plugins and version ranges the
+First team tests are listed in
 [`src/wp_plugins/supported.json`](../src/wp_plugins/supported.json): a minimum
 version (inclusive) and an optional `below` bound (exclusive), compared with PHP
 `version_compare`. The platform pins above are always on that list.
 
-Any other plugin or version still installs. `zero check` and `zero build` print a
+Any other plugin or version still installs. `first check` and `first build` print a
 warning for it, and the wasm compiler returns the same text in
 `unsupportedPlugins`:
 
 ```text
-warning: plugin hello-dolly 1.7.2 is not supported by the Zero team. Zero installs it, but doesn't test it; Zero doesn't support every WordPress plugin. To ask for support, open an issue: https://github.com/spacefast/zero/issues
+warning: plugin hello-dolly 1.7.2 is not supported by the First team. First installs it, but doesn't test it; First doesn't support every WordPress plugin. To ask for support, open an issue: https://github.com/spacefast/zero/issues
 ```
 
 To get a plugin supported, open an issue with its slug, the version you need,
@@ -109,7 +109,7 @@ must be repackaged. Original plugin license/readme files are preserved.
 
 `requires: ["other-plugin"]` declares build dependencies by slug. Each dependency
 must have its own exact package entry or be supplied by the platform. A plugin's
-`Requires Plugins` header must be covered by this list. Zero neither guesses
+`Requires Plugins` header must be covered by this list. First neither guesses
 versions nor fetches undeclared transitive packages. Duplicate declarations,
 missing dependencies, cycles, and reserved `zero-*` identities fail. Metadata is
 ordered by dependency, then lexically for independent nodes; this is also usable
@@ -117,9 +117,9 @@ as a deployment activation order, though the build never activates plugins.
 
 ## Output and failure behavior
 
-WordPress builds use `.zero/wp-content` (`--out` selects
+WordPress builds use `.first/wp-content` (`--out` selects
 the content root), containing `plugins/<dependency>` alongside the generated app
-plugin. Acquired ZIPs live in `.zero/cache/plugins/<sha256>.zip`; locked archives
+plugin. Acquired ZIPs live in `.first/cache/plugins/<sha256>.zip`; locked archives
 can be reused offline. A corrupt cache entry fails rather than trusting or
 silently replacing it. The cache is disposable; the project lock is not.
 
@@ -143,7 +143,7 @@ crash-atomic deployment mechanism.
 
 ## Assembly integration
 
-`src/wp_plugins` is independent of generated Zero plugin layout:
+`src/wp_plugins` is independent of generated First plugin layout:
 
 ```text
 resolve(&Config, required: &[Plugin]) -> Plan
@@ -160,20 +160,20 @@ until copying finishes. The lock is `{version: 1, plugins: Dependency[]}` in sta
 dependency order. `treeSha256` hashes sorted relative paths, entry kinds, and file
 contents to detect changes before replacement; it is not a package signature.
 
-The canonical assembler owns `zero-manifest.json`, generated plugin ZIPs, and
+The canonical assembler owns `first-manifest.json`, generated plugin ZIPs, and
 `--out`. Its order is: supply exact platform pins; resolve; acquire every tree;
 copy existing output to private staging; install dependencies; emit/lint generated
-`zero-runtime`, `zero-identity`, `zero-app-<name>` and, with `admin: true`,
-`zero-admin`, plus their ZIPs; write its
+`first-runtime`, `first-identity`, `first-app-<name>` and, with `admin: true`,
+`first-admin`, plus their ZIPs; write its
 manifest using resolved metadata; publish; persist the project lock. Preserve
 unrelated plugins and serialize the project lock/output while publishing.
 
 Every WordPress build now uses this assembler, including configurations without
-`plugins`. The default output is `.zero/wp-content`; `--out` selects another
-wp-content root. `zero dev` synchronizes its managed plugins into the
+`plugins`. The default output is `.first/wp-content`; `--out` selects another
+wp-content root. `first dev` synchronizes its managed plugins into the
 project’s persistent WordPress Studio site, retaining unrelated installed plugins.
 Required platform pins come from `src/platform.rs`, checked against the PHP policy and
-the shared platform fixture. `ZERO_WP_PLUGIN_CACHE` can select a shared download
+the shared platform fixture. `FIRST_WP_PLUGIN_CACHE` can select a shared download
 cache; every cache hit is checked against its SHA-256 before extraction.
 
 The identity plugin is currently a tree-shape placeholder. Its presence in an
@@ -189,10 +189,10 @@ Research used the official WordPress Playground repository at
 - [`install-plugin.ts`](https://github.com/WordPress/wordpress-playground/blob/3e0088b5cb6c56f5bcd260f83f13097d48d0fcbb/packages/playground/blueprints/src/lib/steps/install-plugin.ts) and [`install-asset.ts`](https://github.com/WordPress/wordpress-playground/blob/3e0088b5cb6c56f5bcd260f83f13097d48d0fcbb/packages/playground/blueprints/src/lib/steps/install-asset.ts): acquire/stage, unwrap a single archive root, install under an explicit identity, ignore `__MACOSX` metadata, and handle collisions deliberately.
 - The current [v2 declaration](https://github.com/WordPress/wordpress-playground/blob/3e0088b5cb6c56f5bcd260f83f13097d48d0fcbb/packages/playground/blueprints/src/lib/v2/wep-1-blueprint-v2-schema/appendix-A-blueprint-v2-schema.ts) and [data sources](https://github.com/WordPress/wordpress-playground/blob/3e0088b5cb6c56f5bcd260f83f13097d48d0fcbb/packages/playground/blueprints/src/lib/v2/wep-1-blueprint-v2-schema/appendix-B-data-sources.ts): declarative plugin lists and explicit sources rather than a browser lifecycle.
 
-Zero supports this small resource/install subset, not full Blueprint documents.
+First supports this small resource/install subset, not full Blueprint documents.
 It rejects steps, activation options, themes, literal/VFS/Git resources, raw PHP
 plugins, database imports, browser networking features, Composer execution, and
-arbitrary PHP/shell commands. `requires` and the checksum lock are Zero's explicit
+arbitrary PHP/shell commands. `requires` and the checksum lock are First's explicit
 build dependency contract, not a claim that Blueprint installPlugin performs
 transitive dependency resolution.
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 final class Maintenance
 {
@@ -16,7 +16,7 @@ final class Maintenance
             );
         }
         $endpoints = [];
-        foreach (get_option("zero_identity_webhooks", []) as $endpoint) {
+        foreach (get_option("first_identity_webhooks", []) as $endpoint) {
             $endpoints[$endpoint["id"]] = $endpoint;
         }
         $pending = $this->db->rows(
@@ -56,9 +56,9 @@ final class Maintenance
                 "redirection" => 0,
                 "headers" => [
                     "Content-Type" => "application/json",
-                    "Zero-Signature" =>
+                    "First-Signature" =>
                         "t=" . $timestamp . ",v1=" . $signature,
-                    "Zero-Event-Id" => (string) $delivery["event_id"],
+                    "First-Event-Id" => (string) $delivery["event_id"],
                 ],
                 "body" => $body,
             ]);

@@ -1,9 +1,9 @@
-import { createClient, type ClientOptions } from "../../zero/client/index.ts";
-import type { Collections } from "../../zero/client/types.ts";
+import { createClient, type ClientOptions } from "../../first/client/index.ts";
+import type { Collections } from "../../first/client/types.ts";
 
 const page = new URL(window.location.pathname, window.location.origin);
 const options = {
-  url: "/wp-json/zero/v1",
+  url: "/wp-json/first/v1",
   auth: {
     clientId: import.meta.env.VITE_ZERO_APP_ID ?? "app_subscriptions",
     redirectUri: page.origin + page.pathname,
@@ -11,7 +11,7 @@ const options = {
   },
 } satisfies ClientOptions;
 
-export const zero = createClient(options);
+export const first = createClient(options);
 
 export function logRenewal(
   subscription: Pick<Collections["subscriptions"]["row"], "id" | "nextRenewal">,

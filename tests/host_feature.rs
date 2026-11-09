@@ -6,16 +6,16 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
     let work = tempfile::tempdir().unwrap();
     let host = work.path().join("host");
     let native = work.path().join("native");
-    zero::host::sources(Path::new("examples/pantry"), &host).unwrap();
-    zero::bundle::sources(Path::new("examples/pantry"), &native).unwrap();
-    for name in ["app.zero.json", "vendor.zero.json", "manifest.json"] {
+    first::host::sources(Path::new("examples/pantry"), &host).unwrap();
+    first::bundle::sources(Path::new("examples/pantry"), &native).unwrap();
+    for name in ["app.first.json", "vendor.first.json", "manifest.json"] {
         assert_eq!(fs::read(host.join(name)).unwrap(), fs::read(native.join(name)).unwrap());
     }
-    let result = zero::host::compile_sources(&host, &work.path().join("compiled"), &host, None).unwrap();
-    assert_eq!(result["format"], "zero.hosted.v1");
+    let result = first::host::compile_sources(&host, &work.path().join("compiled"), &host, None).unwrap();
+    assert_eq!(result["format"], "first.hosted.v1");
     assert!(
         work.path()
-            .join("compiled/plugins/zero-runtime/zero-runtime.php")
+            .join("compiled/plugins/first-runtime/first-runtime.php")
             .is_file()
     );
 }
@@ -24,21 +24,21 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
 fn host_capture_refuses_npm_before_resolution() {
     let work = tempfile::tempdir().unwrap();
     fs::write(
-        work.path().join("zero.config.ts"),
+        work.path().join("first.config.ts"),
         "import value from 'package-not-installed'; export default value;",
     )
     .unwrap();
-    let error = zero::host::sources(work.path(), &work.path().join("source"))
+    let error = first::host::sources(work.path(), &work.path().join("source"))
         .err()
         .unwrap();
-    assert_eq!(error.code, zero::diag::Code::SourceNeedsLocalCapture);
+    assert_eq!(error.code, first::diag::Code::SourceNeedsLocalCapture);
     assert!(!work.path().join("source").exists());
 }
 
 fn synced_project(root: &Path) {
     fs::create_dir_all(root.join("content/posts")).unwrap();
     fs::create_dir_all(root.join("content/items")).unwrap();
-    fs::write(root.join("zero.config.ts"), "import { defineConfig, collection, table, id, text, richText } from 'zero'; const posts = collection({ id: id(), title: text().notNull(), body: richText() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ id: id(), title: text() }, { sync: 'content/items/*.json' }); export default defineConfig({ collections: { posts }, tables: { items } });").unwrap();
+    fs::write(root.join("first.config.ts"), "import { defineConfig, collection, table, id, text, richText } from 'first'; const posts = collection({ id: id(), title: text().notNull(), body: richText() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ id: id(), title: text() }, { sync: 'content/items/*.json' }); export default defineConfig({ collections: { posts }, tables: { items } });").unwrap();
     fs::write(
         root.join("content/posts/hello.md"),
         "---\ntitle: Hello\n---\nA **seed**.\n",
@@ -58,10 +58,10 @@ fn host_capture_seeds_synced_files_after_the_original_is_removed() {
     let project = work.path().join("app");
     synced_project(&project);
     let source = work.path().join("source");
-    zero::host::sources(&project, &source).unwrap();
+    first::host::sources(&project, &source).unwrap();
     fs::remove_dir_all(&project).unwrap();
     let output = work.path().join("compiled");
-    zero::host::compile_sources(&source, &output, &source, None).unwrap();
+    first::host::compile_sources(&source, &output, &source, None).unwrap();
     let posts: serde_json::Value = serde_json::from_slice(&fs::read(output.join("seed/posts.json")).unwrap()).unwrap();
     assert_eq!(
         posts,
@@ -87,10 +87,10 @@ fn invalid_synced_front_matter_reports_its_file_and_line_before_emitting() {
     )
     .unwrap();
     let source = work.path().join("source");
-    zero::host::sources(&project, &source).unwrap();
+    first::host::sources(&project, &source).unwrap();
     let output = work.path().join("compiled");
-    let error = zero::host::compile_sources(&source, &output, &source, None).unwrap_err();
-    let rendered = zero::diag::render(&error, &source);
+    let error = first::host::compile_sources(&source, &output, &source, None).unwrap_err();
+    let rendered = first::diag::render(&error, &source);
     assert!(rendered.contains("content/posts/hello.md:3:1"), "{rendered}");
     assert!(rendered.contains("duplicate key `title`"), "{rendered}");
     assert!(!output.exists());
@@ -102,16 +102,16 @@ fn sync_capture_refuses_more_than_eight_mebibytes_and_escaping_files() {
     let project = work.path().join("app");
     synced_project(&project);
     fs::write(project.join("content/posts/large.md"), "x".repeat(8 * 1024 * 1024)).unwrap();
-    let error = zero::host::sources(&project, &work.path().join("too-large"))
+    let error = first::host::sources(&project, &work.path().join("too-large"))
         .err()
         .unwrap();
-    assert_eq!(error.code, zero::diag::Code::SyncFilesTooLarge);
+    assert_eq!(error.code, first::diag::Code::SyncFilesTooLarge);
     fs::remove_file(project.join("content/posts/large.md")).unwrap();
     #[cfg(unix)]
     {
         fs::write(work.path().join("outside.md"), "private").unwrap();
         std::os::unix::fs::symlink(work.path().join("outside.md"), project.join("content/posts/outside.md")).unwrap();
-        assert!(zero::host::sources(&project, &work.path().join("escape")).is_err());
+        assert!(first::host::sources(&project, &work.path().join("escape")).is_err());
     }
 }
 
@@ -120,7 +120,7 @@ fn copy_tree(from: &Path, to: &Path) {
     for entry in fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();
         let name = entry.file_name();
-        if name == ".zero" || name == "node_modules" {
+        if name == ".first" || name == "node_modules" {
             continue;
         }
         if entry.file_type().unwrap().is_dir() {
@@ -150,7 +150,7 @@ fn tree(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
     out
 }
 
-/// The committed render artifact of examples/full-site (`zero-pages build`) travels in the app bundle,
+/// The committed render artifact of examples/full-site (`first-pages build`) travels in the app bundle,
 /// and the host compiler turns it into the pages plugin without JavaScript, after the project is gone.
 #[test]
 fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
@@ -159,18 +159,18 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     copy_tree(Path::new("examples/full-site"), &project);
     let host = work.path().join("host");
     let native = work.path().join("native");
-    zero::host::sources(&project, &host).unwrap();
-    zero::bundle::sources(&project, &native).unwrap();
-    for name in ["app.zero.json", "vendor.zero.json", "manifest.json"] {
+    first::host::sources(&project, &host).unwrap();
+    first::bundle::sources(&project, &native).unwrap();
+    for name in ["app.first.json", "vendor.first.json", "manifest.json"] {
         assert_eq!(
             fs::read(host.join(name)).unwrap(),
             fs::read(native.join(name)).unwrap(),
             "{name}"
         );
     }
-    let app: serde_json::Value = serde_json::from_slice(&fs::read(host.join("app.zero.json")).unwrap()).unwrap();
+    let app: serde_json::Value = serde_json::from_slice(&fs::read(host.join("app.first.json")).unwrap()).unwrap();
     for file in [
-        "zero/pages.json",
+        "first/pages.json",
         "pages/notes/[slug]/page.tsx",
         "islands/cheer.client.ts",
         "styles/global.css",
@@ -180,8 +180,8 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     }
     fs::remove_dir_all(&project).unwrap();
     let compiled = work.path().join("compiled");
-    let manifest = zero::host::compile_sources(&host, &compiled, &host, None).unwrap();
-    assert_eq!(manifest["pages"], "zero-pages-fullsite");
+    let manifest = first::host::compile_sources(&host, &compiled, &host, None).unwrap();
+    assert_eq!(manifest["pages"], "first-pages-fullsite");
     // The URLs outside /wp-json the app answers, so the host can hand them to WordPress: each
     // route with its method, and each page (GET and HEAD) in the same path grammar.
     assert_eq!(
@@ -195,8 +195,8 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
         manifest["pagePaths"],
         serde_json::json!(["/", "/about", "/notes", "/notes/:item", "/notes/featured"])
     );
-    let plugin = tree(&compiled.join("plugins/zero-pages-fullsite"));
-    let artifact: serde_json::Value = serde_json::from_str(app["files"]["zero/pages.json"].as_str().unwrap()).unwrap();
+    let plugin = tree(&compiled.join("plugins/first-pages-fullsite"));
+    let artifact: serde_json::Value = serde_json::from_str(app["files"]["first/pages.json"].as_str().unwrap()).unwrap();
     assert_eq!(
         plugin["manifest.json"],
         artifact["manifest"].as_str().unwrap().as_bytes()
@@ -205,22 +205,22 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
         assert!(plugin.contains_key(name), "{name}");
     }
     for php in [
-        "zero-pages-fullsite.php",
-        "zero-pages/Plugin.php",
-        "zero-pages/Routes.php",
-        "zero-pages/Renderer.php",
-        "zero-pages/Request.php",
-        "zero-pages/bootstrap.php",
+        "first-pages-fullsite.php",
+        "first-pages/Plugin.php",
+        "first-pages/Routes.php",
+        "first-pages/Renderer.php",
+        "first-pages/Request.php",
+        "first-pages/bootstrap.php",
     ] {
         assert!(plugin.contains_key(php), "{php}");
     }
     assert_eq!(
-        plugin["zero-pages/Plugin.php"],
+        plugin["first-pages/Plugin.php"],
         fs::read("runtime/pages/Plugin.php").unwrap(),
         "the pages runtime is the embedded runtime/pages"
     );
     let schema =
-        String::from_utf8(fs::read(compiled.join("plugins/zero-app-fullsite/zero/app/schema.php")).unwrap()).unwrap();
+        String::from_utf8(fs::read(compiled.join("plugins/first-app-fullsite/first/app/schema.php")).unwrap()).unwrap();
     assert!(
         schema.contains("'feed' => ['method' => 'GET', 'path' => '/api/feed.json'"),
         "{schema}"
@@ -233,8 +233,8 @@ fn pages_project(work: &Path) -> std::path::PathBuf {
     project
 }
 
-fn refused(project: &Path, out: &Path) -> zero::diag::Diag {
-    zero::host::sources(project, out).err().expect("capture refuses")
+fn refused(project: &Path, out: &Path) -> first::diag::Diag {
+    first::host::sources(project, out).err().expect("capture refuses")
 }
 
 #[test]
@@ -245,7 +245,7 @@ fn a_stale_or_missing_render_artifact_is_refused_before_publishing() {
     let original = fs::read_to_string(&page).unwrap();
     fs::write(&page, original.replace("About", "About us")).unwrap();
     let error = refused(&project, &work.path().join("a"));
-    assert_eq!(error.code, zero::diag::Code::SourceNeedsLocalCapture);
+    assert_eq!(error.code, first::diag::Code::SourceNeedsLocalCapture);
     assert!(
         error.message.contains("pages/about/page.tsx changed"),
         "{}",
@@ -266,7 +266,7 @@ fn a_stale_or_missing_render_artifact_is_refused_before_publishing() {
     );
     fs::remove_dir_all(project.join("pages/contact")).unwrap();
 
-    let config = project.join("zero.config.ts");
+    let config = project.join("first.config.ts");
     let text = fs::read_to_string(&config).unwrap();
     fs::write(
         &config,
@@ -283,10 +283,10 @@ fn a_stale_or_missing_render_artifact_is_refused_before_publishing() {
     );
     fs::write(&config, text).unwrap();
 
-    fs::remove_file(project.join("zero/pages.json")).unwrap();
+    fs::remove_file(project.join("first/pages.json")).unwrap();
     assert_eq!(
         refused(&project, &work.path().join("d")).code,
-        zero::diag::Code::SourceNeedsLocalCapture
+        first::diag::Code::SourceNeedsLocalCapture
     );
     assert!(!work.path().join("d").exists());
 }
@@ -295,11 +295,11 @@ fn a_stale_or_missing_render_artifact_is_refused_before_publishing() {
 fn a_tampered_render_artifact_cannot_carry_php_or_escape_the_plugin() {
     let work = tempfile::tempdir().unwrap();
     let project = pages_project(work.path());
-    let path = project.join("zero/pages.json");
+    let path = project.join("first/pages.json");
     let original: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     for (name, contents) in [
         ("assets/x.php", "PD9waHA="),
-        ("zero-pages/Plugin.php", "PD9waHA="),
+        ("first-pages/Plugin.php", "PD9waHA="),
         ("assets/../../x.css", "eA=="),
         ("assets/a.css", "!!"),
     ] {
@@ -308,14 +308,14 @@ fn a_tampered_render_artifact_cannot_carry_php_or_escape_the_plugin() {
         fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
         let error = refused(&project, &work.path().join("out"));
         assert!(
-            error.message.contains("invalid zero/pages.json"),
+            error.message.contains("invalid first/pages.json"),
             "{name}: {}",
             error.message
         );
     }
     let mut artifact = original.clone();
     let mut manifest: serde_json::Value = serde_json::from_str(artifact["manifest"].as_str().unwrap()).unwrap();
-    manifest["routes"][0]["id"] = "zero:not-found".into();
+    manifest["routes"][0]["id"] = "first:not-found".into();
     manifest["routes"][0]["pattern"] = "/category/news".into();
     artifact["manifest"] = manifest.to_string().into();
     fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
@@ -341,11 +341,11 @@ fn routes_declare_one_method_and_a_path_that_wordpress_does_not_own() {
     let work = tempfile::tempdir().unwrap();
     let check = |routes: &str| {
         fs::write(
-            work.path().join("zero.config.ts"),
-            format!("import {{ defineConfig, route }} from 'zero'; export default defineConfig({{ name: 'r', routes: {{ {routes} }} }});"),
+            work.path().join("first.config.ts"),
+            format!("import {{ defineConfig, route }} from 'first'; export default defineConfig({{ name: 'r', routes: {{ {routes} }} }});"),
         )
         .unwrap();
-        zero::host::sources(work.path(), &work.path().join(format!("o{}", rand_suffix())))
+        first::host::sources(work.path(), &work.path().join(format!("o{}", rand_suffix())))
             .map(|_| ())
             .map_err(|e| e.message)
     };
@@ -396,7 +396,7 @@ fn rand_suffix() -> u64 {
 fn a_route_cannot_take_a_page_url() {
     let work = tempfile::tempdir().unwrap();
     let project = pages_project(work.path());
-    let config = project.join("zero.config.ts");
+    let config = project.join("first.config.ts");
     let text = fs::read_to_string(&config).unwrap();
     fs::write(
         &config,

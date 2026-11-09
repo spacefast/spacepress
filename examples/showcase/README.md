@@ -1,4 +1,4 @@
-# Try Zero
+# Try First
 
 From the repository root:
 
@@ -13,7 +13,7 @@ Open the printed showcase URL for the pantry tracker and original publication
 tour on the same page. The source tabs show the actual TypeScript and compiled
 PHP. The **Config lab** shows every config source file, including the pantry and
 story definitions. Edit a file and select **Compile preview** to run the real
-Zero compiler in a browser worker. Syntax highlighting and split/unified diffs
+First compiler in a browser worker. Syntax highlighting and split/unified diffs
 use the same locally bundled `@pierre/diffs` viewer as the website. Source changes
 are compared with source; generated PHP changes are compared with generated PHP.
 The output selector also exposes the schema, typed client and SQL migrations.
@@ -45,7 +45,7 @@ runs at a time. Editors can preview code, but only administrators can Apply.
 The rebuild service listens on a private Unix socket mounted into WordPress;
 there is no extra network port. It starts with the launcher and stops with
 `down`. Build requests, logs and prior artifacts are retained under
-`.zero/showcase/builds/`. If publication or a migration is interrupted, further
+`.first/showcase/builds/`. If publication or a migration is interrupted, further
 rebuilds stop for inspection rather than replaying uncertain database changes.
 The previous plugin is restored where possible, but database changes are never
 reversed automatically. Inspect that job's `job.json`, candidate migrations and
@@ -54,7 +54,7 @@ remove its recovery flag just to retry. The normal runtime migration recovery
 commands remain documented in the WordPress harness. The launcher also refuses
 to overwrite this evidence or stop a stack with an unresolved publication.
 
-Edit records in `/zero-admin/` or the classic WordPress admin’s **Pantry** menu,
+Edit records in `/first-admin/` or the classic WordPress admin’s **Pantry** menu,
 then refresh. The classic menu provides items, locations and the shopping list
 using the same generated client and server rules.
 
@@ -76,24 +76,24 @@ cooking notes** on either item, then follow the story. A separate details seed
 marker adds these examples once to existing demos without rewriting existing
 stock or story records. Subsequent starts preserve their edits and deletions.
 
-At the default address, open [the pantry](http://127.0.0.1:8860/wp-content/plugins/zero-app-showcase/public/#pantry)
-or [the classic stories](http://127.0.0.1:8860/wp-content/plugins/zero-app-showcase/public/#notebook).
+At the default address, open [the pantry](http://127.0.0.1:8860/wp-content/plugins/first-app-showcase/public/#pantry)
+or [the classic stories](http://127.0.0.1:8860/wp-content/plugins/first-app-showcase/public/#notebook).
 Use the printed origin instead when running on a different port or through
 Tailscale.
 
-The default showcase login is **admin** / **zero-test-admin**, with the full
+The default showcase login is **admin** / **first-test-admin**, with the full
 WordPress sidebar, plugin installation, SCF, Themes, Users, Tools and Settings.
 The public page links directly to those screens. Use **editor** /
-**zero-test-editor** when testing content-only permissions. The public page has
+**first-test-editor** when testing content-only permissions. The public page has
 a sign-in link to switch accounts. Extra plugins installed through WordPress
-survive launcher rebuilds; rebuilding refreshes Zero's generated plugins and
+survive launcher rebuilds; rebuilding refreshes First's generated plugins and
 pinned dependencies. `down` still removes this disposable site's database and
 uploads. Open `/wp-admin/plugins.php` for plugins and
-`/wp-admin/edit.php?post_type=acf-field-group` for SCF. Zero's generated SCF fields
+`/wp-admin/edit.php?post_type=acf-field-group` for SCF. First's generated SCF fields
 are code-owned and appear on the native story editor; create separate field
 groups in SCF. These are intentionally tracked disposable local credentials
 with no customer or production access. Application passwords stay in the ignored
-`.zero/showcase/receipt.json`; the public page contains none.
+`.first/showcase/receipt.json`; the public page contains none.
 
 The prerequisites are the repository's normal Rust, PHP (including GD), Node
 22.18+ with npm, Docker Compose, Bash 4+, Python, curl, sha256sum and rsync toolchain;
@@ -114,10 +114,10 @@ loopback server with Tailscale Serve:
 
 ```sh
 tailscale serve --bg --https=8443 http://127.0.0.1:8860
-ZERO_SHOWCASE_URL=https://your-machine.your-tailnet.ts.net:8443 node examples/showcase/run.mjs
+FIRST_SHOWCASE_URL=https://your-machine.your-tailnet.ts.net:8443 node examples/showcase/run.mjs
 ```
 
-Use the HTTPS address printed by Tailscale as `ZERO_SHOWCASE_URL`. The launcher
+Use the HTTPS address printed by Tailscale as `FIRST_SHOWCASE_URL`. The launcher
 saves that origin for future starts and configures WordPress images, login and
 editor links to use it. The hostname must be reachable from the demo machine
 and the computer viewing it. Serve shares only within your tailnet. To remove
@@ -148,11 +148,11 @@ report the record IDs that need attention. This is a smoke check, not a replacem
 for the existing compiler, native admin, migration and provider acceptance suites.
 
 All build output and the private copy of the test harness live under
-`.zero/showcase/`; existing example snapshots, test fixtures and other Docker
+`.first/showcase/`; existing example snapshots, test fixtures and other Docker
 stacks are untouched. Starting after `down` seeds a new database. The database
 uses the test harness's tmpfs: restarting its database container loses the data.
 The default Compose name is unique to its state directory. Use
-`ZERO_SHOWCASE_PROJECT` and `ZERO_SHOWCASE_PORT` on the first start to choose a
+`FIRST_SHOWCASE_PROJECT` and `FIRST_SHOWCASE_PORT` on the first start to choose a
 different name and port; they are saved for subsequent commands in that state
 directory. `down` removes
 the saved ownership and application-password receipt only after Compose cleanup
@@ -178,17 +178,17 @@ project. A saved project name alone is intentionally insufficient to adopt it.
 For a second disposable instance, select a different state directory and port:
 
 ```sh
-export ZERO_SHOWCASE_STATE_DIR=/tmp/zero-showcase-scratch
-ZERO_SHOWCASE_PORT=18860 node examples/showcase/run.mjs
+export FIRST_SHOWCASE_STATE_DIR=/tmp/first-showcase-scratch
+FIRST_SHOWCASE_PORT=18860 node examples/showcase/run.mjs
 node examples/showcase/run.mjs check
 node examples/showcase/run.mjs down
-unset ZERO_SHOWCASE_STATE_DIR
+unset FIRST_SHOWCASE_STATE_DIR
 ```
 
 The override applies to all three commands and resolves relative paths from the
 repository root. Each state directory gets a distinct default Compose project;
-you may also choose one with `ZERO_SHOWCASE_PROJECT`. Keep state outside Git or
-under the ignored `.zero/` directory: it contains disposable application
+you may also choose one with `FIRST_SHOWCASE_PROJECT`. Keep state outside Git or
+under the ignored `.first/` directory: it contains disposable application
 passwords. The printed check/stop commands include the selected state directory.
 Only that instance's resources are removed; build output and verified plugin
 downloads remain available for the next start.
@@ -197,7 +197,7 @@ This demo uses local disk media. S3 is covered separately by the existing real
 Garage lane:
 
 ```sh
-ZERO_WP_PROJECT=zero-showcase-s3 ZERO_WP_PORT=8862 ZERO_WP_REPLICA_PORT=8863 tests/wp/run.sh --s3
+FIRST_WP_PROJECT=first-showcase-s3 FIRST_WP_PORT=8862 FIRST_WP_REPLICA_PORT=8863 tests/wp/run.sh --s3
 ```
 
 The additive Apply policy and interrupted-job recovery have fast checks:

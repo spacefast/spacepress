@@ -1,4 +1,4 @@
-//! `.zero/sync-base.json` (design §5.4 step 1): the last record both sides agreed on, per site, per
+//! `.first/sync-base.json` (design §5.4 step 1): the last record both sides agreed on, per site, per
 //! collection, per uid. Written through a temp file and rename, never partially.
 
 use serde_json::{Map, Value, json};
@@ -11,7 +11,7 @@ pub struct Bases {
 
 impl Bases {
     pub fn load(project: &Path) -> Result<Bases, String> {
-        let path = project.join(".zero/sync-base.json");
+        let path = project.join(".first/sync-base.json");
         let doc = match std::fs::read(&path) {
             Ok(bytes) => {
                 let doc: Value = serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;

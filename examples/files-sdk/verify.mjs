@@ -1,8 +1,8 @@
 // Differential test: run every scenario in app/scenarios.mjs under Node against
-// the installed files-sdk, then through the PHP that Zero generates, and compare
+// the installed files-sdk, then through the PHP that First generates, and compare
 // the JSON output byte for byte.
 //
-//   ZERO_BIN=/abs/zero node verify.mjs [--expect-red] [--only <action>]
+//   FIRST_BIN=/abs/first node verify.mjs [--expect-red] [--only <action>]
 //
 // --expect-red keeps the exit code 0 while the probe is blocked or diverges, so
 // CI shows the state without blocking unrelated PRs. Remove the flag from CI in
@@ -21,11 +21,11 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const { values: options } = parseArgs({
   options: { "expect-red": { type: "boolean", default: false }, only: { type: "string", multiple: true } },
 });
-const zero = path.resolve(process.env.ZERO_BIN ?? path.join(root, "../../target/debug/zero"));
+const first = path.resolve(process.env.FIRST_BIN ?? path.join(root, "../../target/debug/first"));
 const work = path.join(root, ".work");
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-// The scenarios and their inputs. Keep in step with app/zero.config.ts.
+// The scenarios and their inputs. Keep in step with app/first.config.ts.
 const CASES = [
   { action: "probe", input: { key: "hello.txt", body: "hello" }, node: (i) => probe(i) },
   { action: "roundtrip", input: { key: "notes/é ü.txt", body: "héllo \"wörld\" <b>" }, node: (i) => scenarios.roundtrip(i.key, i.body) },
@@ -55,8 +55,8 @@ for (const file of installed) {
 if (installed.length !== pinned.size) throw new Error(`reached ${installed.length} files, provenance pins ${pinned.size}`);
 
 // 2. The diagnostic table for both variants.
-const measured = await measure(zero);
-console.log(table(measured, `zero ${measured.dist.compilerVersion}`));
+const measured = await measure(first);
+console.log(table(measured, `first ${measured.dist.compilerVersion}`));
 console.log("");
 
 // 3. Node against generated PHP, per action.
@@ -65,7 +65,7 @@ if (measured.dist.ok) {
   const out = path.join(work, "out");
   await rm(out, { recursive: true, force: true });
   await mkdir(work, { recursive: true });
-  const build = spawnSync(zero, ["build", path.join(root, "app"), "--out", out, "--quiet"], { encoding: "utf8" });
+  const build = spawnSync(first, ["build", path.join(root, "app"), "--out", out, "--quiet"], { encoding: "utf8" });
   if (build.status !== 0) outcomes.push({ action: "*", status: "build-error", detail: build.stderr.trim() });
   else
     for (const entry of CASES) {

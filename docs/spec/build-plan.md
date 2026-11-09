@@ -45,18 +45,18 @@ PR.
 
 **Exists:** `collection()`/`table()`, Drizzle builders, `defineConfig`
 registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
-(`src/eval.rs`, `src/extract.rs`), `zero.gen.ts`.
+(`src/eval.rs`, `src/extract.rs`), `first.gen.ts`.
 
 **Build:**
-- The `zero/` root, plus `zero.config.ts` at the project root with the import
-  fence (`Z1210`).
-- Load every `.ts` under `zero/` and register exports by name (`Z1221` on duplicates).
+- The `first/` root, plus `first.config.ts` at the project root with the import
+  fence (`F1210`).
+- Load every `.ts` under `first/` and register exports by name (`F1221` on duplicates).
 - Required by default and `.optional()`.
 - `ref()` with reverse relations and `onDelete` defaults; `.many()` join tables.
 - `taxonomy()` with `terms()`; `global()`; `files()`.
 - `.on()` hooks plus `afterPublish`; the implicit `author`; `"author"` / `"org"` access values.
 - Inferred title, content and labels.
-- Index inference from compiled queries, with `zero check --json` reasons.
+- Index inference from compiled queries, with `first check --json` reasons.
 - `_generated/db.d.ts` and the `zero:db` import.
 - One query API (`list`, `paginate`, `get`, `count`, `create`, `update`,
   `delete`, `.system`) replacing `db.query`/`db.insert`.
@@ -66,7 +66,7 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
 - the registries, `defineRelations` and `userProjection`;
 - `.notNull()`, `.references()`, `id()`, `$default`, `$onUpdate` and `real()`;
 - `db.*` and `jobs.x.enqueue`;
-- `zero.gen.ts` and the generated `zero/client/` source.
+- `first.gen.ts` and the generated `first/client/` source.
 
 **Done when:**
 - `examples/blog`, `pantry` and `full-site` are rewritten.
@@ -74,12 +74,12 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
 - The authoring rewrite produces no data migration.
 - The two-collection hook type test is in the TS suite.
 
-## 2. Core REST underneath, `/__zero/api/v1` facade on top
+## 2. Core REST underneath, `/__first/api/v1` facade on top
 
 **Exists:**
-- `runtime/Zero/Wp/Rest.php` serves `/wp-json/zero/v1/*` through a catch-all
+- `runtime/First/Wp/Rest.php` serves `/wp-json/first/v1/*` through a catch-all
   route, as a second implementation with its own queries and writes.
-- `CoreAccess.php` already applies Zero's rules to core `/wp/v2/zero_*`:
+- `CoreAccess.php` already applies First's rules to core `/wp/v2/first_*`:
   - capabilities through `map_meta_cap`;
   - read filtering and field stripping;
   - the wp-admin lists.
@@ -100,14 +100,14 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
   annotations from options), with input and output schemas from the TS
   signature, through core's run route.
 - **Errors:** move to core's `WP_Error` JSON.
-- **Facade:** `/__zero/api/v1/<kind>`, `/me`, `/actions/<name>` and `/` (the
+- **Facade:** `/__first/api/v1/<kind>`, `/me`, `/actions/<name>` and `/` (the
   schema). Each request is dispatched to the core route with `rest_do_request`,
-  and the facade only maps input and output: Zero row shapes, `{ data, cursor }`,
+  and the facade only maps input and output: First row shapes, `{ data, cursor }`,
   problem documents, and `?format=md`.
-- **Typed client and adapters** on the facade; `zero pull` reads `GET /__zero/api/v1`.
+- **Typed client and adapters** on the facade; `first pull` reads `GET /__first/api/v1`.
 
 **Delete:**
-- `Rest.php`'s own query and write path under `/zero/v1`, replaced by the
+- `Rest.php`'s own query and write path under `/first/v1`, replaced by the
   facade, which only maps and dispatches;
 - the revisions, `/media` and `/globals/*` implementations (core routes cover them).
 
@@ -122,7 +122,7 @@ the core route. The access suite proves the same denials on both:
 **Exists:**
 - `WpUserStore` and `WpPostStore`;
 - `userProjection`;
-- zero-identity (sign-in, guests, upgrade, organizations);
+- first-identity (sign-in, guests, upgrade, organizations);
 - SCF field groups.
 
 **Build:**
@@ -131,14 +131,14 @@ the core route. The access suite proves the same denials on both:
 - `wp.comments.type()`.
 - Users options: `signIn`, `guests`, `mfa`, `roles` (`add_role`) and `organizations` (the `orgs` kind).
 - `comments` options on kinds: guests, moderation, threading, auto-close.
-- `Z1220` for an export that shadows a built-in.
+- `F1220` for an export that shadows a built-in.
 
-**Done when:** EmDash `blog` runs on `wp.posts` instead of a `zero_posts`
+**Done when:** EmDash `blog` runs on `wp.posts` instead of a `first_posts`
 type, with comments, categories, tags and menus all core.
 
 ## 4. Deploy-time schema check
 
-**Exists:** the migration snapshot and numbered SQL, `-- zero-adopt`, and the migrator ledger.
+**Exists:** the migration snapshot and numbered SQL, `-- first-adopt`, and the migrator ledger.
 
 **Build:**
 - The ledger moves to `_generated/`.
@@ -156,7 +156,7 @@ type, with comments, categories, tags and menus all core.
 
 | Capability | Status |
 |---|---|
-| Expressions → PHP with JS semantics | **done**: `src/lower.rs`, `src/compile.rs`, `runtime/Zero/Js*.php` (29 files) |
+| Expressions → PHP with JS semantics | **done**: `src/lower.rs`, `src/compile.rs`, `runtime/First/Js*.php` (29 files) |
 | Node-vs-PHP parity harness | **done for values** (`tests/differential/`, `tests/compiler.rs:800`); no HTML cases yet |
 | Request-time escaping, island SSR (`wp_interactivity_process_directives`), routes, assets, `the_content` | **done**: `runtime/pages/Renderer.php`, `Plugin.php`, `Routes.php` |
 | Block serialization | **done**: `packages/blocks` (152 tests) |
@@ -174,7 +174,7 @@ serialization if a page wants block output.
 **Build:**
 - Replace the JSX refusal with IR nodes for elements, fragments, expression
   containers and component calls.
-- A PHP renderer that writes an escaping HTML buffer, with a `Zero\Html` child
+- A PHP renderer that writes an escaping HTML buffer, with a `First\Html` child
   helper on React rules: `null`/`false` render nothing, `0` renders `"0"`,
   arrays concatenate.
 - Async server components (blocking calls).
@@ -184,9 +184,9 @@ serialization if a page wants block output.
 - Node-vs-PHP HTML parity tests.
 
 **Delete after it lands:**
-- `packages/pages`'s `symbolic.ts`, the request-data refusals in `check.ts`, and `zero-pages build`;
+- `packages/pages`'s `symbolic.ts`, the request-data refusals in `check.ts`, and `first-pages build`;
 - Renderer.php's token and region machinery (keep its escaping policy, island SSR call and routes);
-- `zero/pages.json` and the capture checks in `src/pages.rs`;
+- `first/pages.json` and the capture checks in `src/pages.rs`;
 - `load()`, `<Show>`, `orElse()`, `count()` and `<Island>`;
 - `docs/design-pages-and-agents.md` §4.3's block-region output model, which this replaces.
 
@@ -225,7 +225,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
   POST plus a store); `<Link>` with the router region.
 - **Live data:** `<Live>` and `useLive` on the existing Cast live updates
   (monorepo #5152, zero #128).
-- **Zero's own components:** `<Comments>`, `<SignIn>`, `<Search>`, `<Pagination>` and `<Menu>`.
+- **First's own components:** `<Comments>`, `<SignIn>`, `<Search>`, `<Pagination>` and `<Menu>`.
 
 **Done when:** the browser tests in rendering.md §8 pass.
 
@@ -273,21 +273,21 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
 ## 10. Framework adapters
 
 **Build:**
-- **Packages:** `@zero/astro` (build-time and live loaders), `@zero/next`
-  (fetch with cache tags, a revalidate and draft handler) and `@zero/tanstack`
+- **Packages:** `@first/astro` (build-time and live loaders), `@first/next`
+  (fetch with cache tags, a revalidate and draft handler) and `@first/tanstack`
   (`queryOptions`, a TanStack DB collection over the change feed).
 - **Preview:** a single preview contract across all three.
 - **Webhooks:** carry tags and URLs.
 
-**Done when:** the EmDash `blog` Astro template runs on `@zero/astro` with no
+**Done when:** the EmDash `blog` Astro template runs on `@first/astro` with no
 bridge code, a Next.js 16 example picks up a wp-admin edit with no redeploy,
 and a TanStack list updates live.
 
 ## 11. Opinionated WordPress
 
-**Exists:** plugin pinning (`plugins.lock.json`), the SCF and Action Scheduler bundles, `zero-identity`.
+**Exists:** plugin pinning (`plugins.lock.json`), the SCF and Action Scheduler bundles, `first-identity`.
 
-**Build:** Zero's release installs and pins Secure Custom Fields, Action
+**Build:** First's release installs and pins Secure Custom Fields, Action
 Scheduler, the MCP Adapter, Akismet, Two Factor and (with `locales`) Polylang.
 It also hardens WordPress:
 - turns off XML-RPC, pings, emoji scripts, file editors, plugin and theme installs, core auto-updates and the Customizer;
@@ -302,11 +302,11 @@ On Spacefast, the box image and Spacefast Access do the parts that belong to the
 **Build:**
 - **Docs:** rewrite `docs/config-api.md`, `docs/pages.md`, the README and the site to match the spec.
 - **Examples:** port every example.
-- **0.8 migration:** `zero migrate app --from zero-0.8` emits this layout, and a
+- **0.8 migration:** `first migrate app --from zero-0.8` emits this layout, and a
   0.8 publish from the CLI, local MCP or a source build runs it. The census
   decides which 0.8 features get converted; anything else is a located refusal
   with a fix, and that publish stays on 0.8.
-- **Monorepo:** `sf zero`, MCP and the Spacefast publish path follow the new layout.
+- **Monorepo:** `sf first`, MCP and the Spacefast publish path follow the new layout.
 
 ## How fast
 

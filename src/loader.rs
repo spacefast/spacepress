@@ -1,4 +1,4 @@
-//! Finds, parses, and lowers every module reachable from `zero.config.ts`.
+//! Finds, parses, and lowers every module reachable from `first.config.ts`.
 //! Resolves local sources and installed source packages; never installs or executes package code.
 
 use crate::diag::{self, Diag, Result, Span};
@@ -11,14 +11,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-pub const ZERO_MODULE: &str = "zero";
+pub const FIRST_MODULE: &str = "first";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
 
 /// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
 /// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || crate::builtins::module(spec).is_some()
+    spec == FIRST_MODULE || spec == WORDPRESS_MODULE || crate::builtins::module(spec).is_some()
 }
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
@@ -132,7 +132,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     }
 }
 
-/// The WordPress hooks directory beside `zero.config.ts`.
+/// The WordPress hooks directory beside `first.config.ts`.
 pub const WP_HOOKS_DIR: &str = "wp-hooks";
 
 /// `wp-hooks/<hook>.ts` and `wp-hooks/<hook>/*.ts`, as `(hook, order, path)` sorted by hook, then by
@@ -292,7 +292,7 @@ fn parse(
     if source_type.is_jsx() {
         return Err(Diag::new(
             Span { file, start: 0, end: 0 },
-            "JSX files can't be part of a Zero config",
+            "JSX files can't be part of a First config",
         ));
     }
     let ret = Parser::new(&allocator, source, source_type)
@@ -1002,7 +1002,7 @@ fn resolve(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> 
 }
 
 /// `require("<spec>")` from a CommonJS source. The target must be CommonJS too: `require(esm)`
-/// returns a namespace object, which Zero doesn't model.
+/// returns a namespace object, which First doesn't model.
 fn resolve_require(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
     let target = resolve_with(fs, from, spec, span, Conditions::Require)?;
     let extension = target.extension().and_then(|extension| extension.to_str());
@@ -1082,7 +1082,7 @@ fn package_error(spec: &str, span: Span, reason: &str) -> Diag {
         .help(if spec.starts_with("node:") {
             "handlers run in PHP: use the global fetch, process.env.NAME and \"node:crypto\""
         } else {
-            "install a source package locally; its TypeScript, ESM, or static CommonJS source must fit Zero's PHP compiler subset"
+            "install a source package locally; its TypeScript, ESM, or static CommonJS source must fit First's PHP compiler subset"
         })
 }
 
@@ -1251,7 +1251,7 @@ mod tests {
     fn installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports() {
         let fs = memory(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import { value } from '@demo/helpers'; import { other } from '@demo/helpers/extra';",
             ),
             (
@@ -1279,7 +1279,7 @@ mod tests {
             ("/p/node_modules/shared/package.json", r#"{"module":"./index.mjs"}"#),
             ("/p/node_modules/shared/index.mjs", "export const value = 9;"),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let paths: Vec<_> = program
             .modules
             .iter()
@@ -1289,7 +1289,7 @@ mod tests {
         assert!(paths.contains(&"/p/node_modules/@demo/helpers/src/value.ts".to_string()));
         assert!(paths.contains(&"/p/node_modules/@demo/helpers/node_modules/shared/lib/index.js".to_string()));
         assert_eq!(
-            resolve(&*program.fs, Path::new("/p/zero.config.ts"), "shared", Span::NONE).unwrap(),
+            resolve(&*program.fs, Path::new("/p/first.config.ts"), "shared", Span::NONE).unwrap(),
             PathBuf::from("/p/node_modules/shared/index.mjs")
         );
         for (main, file) in [
@@ -1297,12 +1297,12 @@ mod tests {
             ("./dist/lib.umd", "/p/node_modules/pkg/dist/lib.umd/index.js"),
         ] {
             let fs = memory(&[
-                ("/p/zero.config.ts", ""),
+                ("/p/first.config.ts", ""),
                 ("/p/node_modules/pkg/package.json", &format!(r#"{{"main":"{main}"}}"#)),
                 (file, "export const value = 1;"),
             ]);
             assert_eq!(
-                resolve(&fs, Path::new("/p/zero.config.ts"), "pkg", Span::NONE).unwrap(),
+                resolve(&fs, Path::new("/p/first.config.ts"), "pkg", Span::NONE).unwrap(),
                 PathBuf::from(file)
             );
         }
@@ -1340,13 +1340,13 @@ mod tests {
             ),
         ] {
             let fs = memory(&[
-                ("/p/zero.config.ts", ""),
+                ("/p/first.config.ts", ""),
                 ("/p/node_modules/pkg/package.json", manifest),
                 ("/p/node_modules/pkg/source.ts", "export const value = 1;"),
                 ("/p/node_modules/pkg/source.js", "module.exports = 1;"),
                 ("/p/node_modules/pkg/source.d.ts", "export declare const value: number;"),
             ]);
-            let error = resolve(&fs, Path::new("/p/zero.config.ts"), spec, Span::NONE).unwrap_err();
+            let error = resolve(&fs, Path::new("/p/first.config.ts"), spec, Span::NONE).unwrap_err();
             assert!(error.message.contains(reason), "{manifest}: {error:?}");
         }
     }
@@ -1355,7 +1355,7 @@ mod tests {
     fn static_commonjs_function_exports_evaluate_with_their_lexical_environment() {
         let fs = memory(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import add from 'anonymous'; import multiply from './local.cjs'; import subtract from 'local'; export default [add(4), multiply(5), subtract(6)];",
             ),
             ("/p/node_modules/anonymous/package.json", "{}"),
@@ -1373,7 +1373,7 @@ mod tests {
                 "const subtract = function(arguments) { return arguments - 1; }; module.exports = subtract;",
             ),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let result = crate::eval::Evaluator::new(&program).run().unwrap();
         let crate::value::Value::Array(values) = result else {
             panic!("{result:?}");
@@ -1393,7 +1393,7 @@ mod tests {
 
     fn evaluate(files: &[(&str, &str)]) -> crate::value::Value {
         let program =
-            load_from(Rc::new(memory(files)), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+            load_from(Rc::new(memory(files)), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         crate::eval::Evaluator::new(&program)
             .run()
             .unwrap_or_else(|d| panic!("{d:?}"))
@@ -1427,7 +1427,7 @@ mod tests {
         // `exports` later, `module.exports = { … }`, and a module required twice.
         let result = evaluate(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import esm from 'pm'; import pm from './entry.cjs'; import { log } from 'pm/log'; export default [esm, pm.answer, pm.isMatch, log.join(','), pm.same];",
             ),
             (
@@ -1457,7 +1457,7 @@ mod tests {
     fn commonjs_named_exports_follow_static_assignments_like_node() {
         let result = evaluate(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import a, { x } from './a.cjs'; import b, { y } from './b.cjs'; import * as c from './c.cjs'; export default [a, x, b, y, c.default.z];",
             ),
             ("/p/a.cjs", "exports.x = 1; exports.default = 'ignored'; exports.x = 2;"),
@@ -1471,7 +1471,7 @@ mod tests {
     fn installed_typescript_erases_types_and_elides_type_only_imports_and_re_exports() {
         let fs = memory(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import { scale, Factor } from 'typed'; import { typeOnly } from './local'; export default [scale(2), typeOnly];",
             ),
             (
@@ -1495,7 +1495,7 @@ mod tests {
                 "import { Shape } from './types.js'; declare const brand: unique symbol; export function scale<T extends number>(this: void, value: T, by?: number): number { assert(value); return (value as number) * (by ?? 3)!; } function assert(value: unknown): asserts value is number {}",
             ),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let package: Vec<_> = program.modules.iter().filter(|m| m.dynamic).collect();
         assert_eq!(package.len(), 3);
         assert!(package.iter().any(|m| m.type_names.contains("Factor")));
@@ -1508,7 +1508,7 @@ mod tests {
         );
         let fs = memory(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import { scale } from 'typed'; export default scale(2);",
             ),
             (
@@ -1520,7 +1520,7 @@ mod tests {
                 "export function scale<T>(value: T & number, by?: number): number { return value * (by ?? 3); }",
             ),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let result = crate::eval::Evaluator::new(&program).run().unwrap();
         assert!(matches!(result, crate::value::Value::Num(n) if n == 6.0), "{result:?}");
     }
@@ -1532,7 +1532,7 @@ mod tests {
         // module-level arrows; replacing `module.exports` later doesn't change it.
         let result = evaluate(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import helpers from './helpers.cjs'; import replaced from './replaced.cjs'; export default [helpers.picked, helpers.same, helpers.fromArrow, replaced.thisKeys, replaced.isOriginal];",
             ),
             (
@@ -1553,7 +1553,7 @@ mod tests {
         // the argument, not the module's exports. Writes through it are ordinary local writes.
         let result = evaluate(&[
             (
-                "/p/zero.config.ts",
+                "/p/first.config.ts",
                 "import star from './star.cjs'; export default [star.copied, star.own, star.target.a, star.target.b, star.req];",
             ),
             (
@@ -1584,11 +1584,11 @@ mod tests {
             ),
         ] {
             let fs = memory(&[
-                ("/p/zero.config.ts", "import * as m from 'pkg'; export default m;"),
+                ("/p/first.config.ts", "import * as m from 'pkg'; export default m;"),
                 ("/p/node_modules/pkg/package.json", manifest),
                 (path, source),
             ]);
-            let diagnostics = load_from(Rc::new(fs), Path::new("/p/zero.config.ts"))
+            let diagnostics = load_from(Rc::new(fs), Path::new("/p/first.config.ts"))
                 .err()
                 .unwrap_or_else(|| panic!("accepted {path}: {source}"));
             assert!(
@@ -1714,7 +1714,7 @@ mod tests {
         ] {
             let target_path = format!("/p/node_modules/pkg/{target}");
             let fs = memory(&[
-                ("/p/zero.config.ts", "import fn from 'pkg'; export default fn;"),
+                ("/p/first.config.ts", "import fn from 'pkg'; export default fn;"),
                 ("/p/node_modules/pkg/package.json", manifest),
                 (&target_path, source),
                 ("/p/node_modules/pkg/x.js", "module.exports = 1;"),
@@ -1724,7 +1724,7 @@ mod tests {
                 ),
                 ("/p/node_modules/esm-only/index.js", "export default 1;"),
             ]);
-            let diagnostics = load_from(Rc::new(fs), Path::new("/p/zero.config.ts"))
+            let diagnostics = load_from(Rc::new(fs), Path::new("/p/first.config.ts"))
                 .err()
                 .unwrap_or_else(|| panic!("accepted {source}"));
             assert!(
@@ -1745,7 +1745,7 @@ mod tests {
         std::fs::write(temp.path().join("outside.ts"), "export const value = 1;").unwrap();
         std::fs::write(package.join("package.json"), r#"{"exports":"./source.ts"}"#).unwrap();
         std::os::unix::fs::symlink(temp.path().join("outside.ts"), package.join("source.ts")).unwrap();
-        let error = resolve(&Disk, &temp.path().join("zero.config.ts"), "pkg", Span::NONE).unwrap_err();
+        let error = resolve(&Disk, &temp.path().join("first.config.ts"), "pkg", Span::NONE).unwrap_err();
         assert!(error.message.contains("escapes its package"), "{error:?}");
     }
 }

@@ -1,19 +1,19 @@
 # Compiler diagnostics
 
-`zero check [project-dir] --json` compiles in memory and writes one JSON object
+`first check [project-dir] --json` compiles in memory and writes one JSON object
 to stdout. It writes no generated files, migrations or plugin downloads. Exit
 status is 0 for a successful check, 1 for a compiler diagnostic, and 2 for invalid
 CLI arguments. Argument errors remain human-readable on stderr.
 
 ```sh
-zero check examples/recipes --json
+first check examples/recipes --json
 python3 scripts/compiler-contracts.py --check
 ```
 
 The website's browser build of the compiler (`src/wasm.rs`) answers with the same
 envelope under `check`, so an editor, the command line and the site report one shape.
 
-The envelope has `schema: "zero-diagnostics"`, `version: 1`, `compilerVersion`,
+The envelope has `schema: "first-diagnostics"`, `version: 1`, `compilerVersion`,
 `ok`, `diagnostics` and `groups`. Both arrays are empty on success. Each
 diagnostic has a code, category, severity, message, optional help, location and
 group ID. Categories currently are `invalid-source`, `unsupported` and
@@ -41,22 +41,22 @@ prevents lowering that module, while other imports already discovered in valid
 modules can still be checked. Evaluation, extraction and PHP type checking still
 stop at their first error. This is not a complete tolerant TypeScript checker.
 
-The ordinary `zero check` keeps its terminal output and first-error behavior.
+The ordinary `first check` keeps its terminal output and first-error behavior.
 The JSON form also fails on unsupported constructs; a report containing blockers
 never exits successfully. It checks the WordPress compilation contract without requiring target flags. Nonfatal build hints are not currently included in the JSON
 format.
 
 ## Codes
 
-- `Z0001`: general configuration error.
-- `Z1001`: TypeScript syntax error.
-- `Z1002`: unsupported syntax/lowering operation.
-- `Z1003`: module/file resolution or read failure.
-- `Z2001`: pure evaluation failure.
-- `Z3001`: schema extraction failure.
-- `Z4001`: handler type checking or PHP compilation failure.
-- `Z1201`: a plugin package imports the app's modules or another plugin's package.
-- `Z4201`: a plugin's compiled code needs a capability its `zero/plugins.lock.json` entry doesn't grant.
+- `F0001`: general configuration error.
+- `F1001`: TypeScript syntax error.
+- `F1002`: unsupported syntax/lowering operation.
+- `F1003`: module/file resolution or read failure.
+- `F2001`: pure evaluation failure.
+- `F3001`: schema extraction failure.
+- `F4001`: handler type checking or PHP compilation failure.
+- `F1201`: a plugin package imports the app's modules or another plugin's package.
+- `F4201`: a plugin's compiled code needs a capability its `first/plugins.lock.json` entry doesn't grant.
 
 Specific, fixture-backed codes take precedence over phase codes. The growing
 [tested compatibility inventory](language-support.md) lists those codes and

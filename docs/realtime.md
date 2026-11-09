@@ -1,12 +1,12 @@
 # Live updates
 
-A page can keep a list current while other people write. Zero tells the page
+A page can keep a list current while other people write. First tells the page
 that something changed, and the page re-reads it through the normal API. The
 change notice carries no row data, so a viewer only ever sees rows its own read
 returns.
 
 ```ts
-import { createClient } from "./zero/client/index.ts";
+import { createClient } from "./first/client/index.ts";
 
 const zero = createClient();
 const stop = zero.todos.watch({ where: { done: false }, orderBy: { createdAt: "asc" } }, (todos) => render(todos));
@@ -16,7 +16,7 @@ const stop = zero.todos.watch({ where: { done: false }, orderBy: { createdAt: "a
 `watch(query, onRows, onError?)` runs `list(query)` at once. It runs it again
 after every committed write to that collection, or to a collection the query
 loads through `with`. Reads coalesce: a burst of notices during a read causes
-one more read, not one per notice. `onError` receives the `ZeroError` of a
+one more read, not one per notice. `onError` receives the `FirstError` of a
 failed read; watching continues.
 
 For reads a collection `watch` can't express, such as an action's result, a
@@ -24,7 +24,7 @@ For reads a collection `watch` can't express, such as an action's result, a
 read depends on:
 
 ```ts
-import { createClient, watch } from "./zero/client/index.ts";
+import { createClient, watch } from "./first/client/index.ts";
 
 const zero = createClient();
 watch(zero, ["todos"], () => zero.actions.openCount(), (count) => badge(count));
@@ -32,16 +32,16 @@ watch(zero, ["todos"], () => zero.actions.openCount(), (count) => badge(count));
 
 ## Transports
 
-Zero ships no realtime transport. Without one, watched reads poll every 30
+First ships no realtime transport. Without one, watched reads poll every 30
 seconds. A host delivers notices with a transport. While it is live, reads
 refresh on notices plus a slow safety poll.
 
 ```ts
-import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./zero/client/index.ts";
+import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./first/client/index.ts";
 
 const transport: RealtimeTransport = {
   connect(deliver, status) {
-    const socket = new WebSocket("wss://relay.example/zero");
+    const socket = new WebSocket("wss://relay.example/first");
     socket.onopen = () => status("live");
     socket.onclose = () => status("down");
     socket.onmessage = (event) => deliver(JSON.parse(event.data));
@@ -69,7 +69,7 @@ After a transaction commits, the runtime fires one WordPress action for the
 whole transaction:
 
 ```php
-add_action('zero_realtime_changes', static function (array $notice): void {
+add_action('first_realtime_changes', static function (array $notice): void {
     // ['id' => '…', 'at' => '2026-11-07T10:00:00.000Z', 'changes' => [
     //   ['collection' => 'todos', 'ops' => ['create', 'update'], 'ids' => [12, 13]],
     // ]]
@@ -86,7 +86,7 @@ as several notices. Notices never carry row values.
 A host can register a transport in PHP instead of hooking the action:
 
 ```php
-\Zero\Realtime\Module::publish(new class implements \Zero\Realtime\Publisher {
+\First\Realtime\Module::publish(new class implements \First\Realtime\Publisher {
     public function publish(array $notice): void { /* send it */ }
 });
 ```
@@ -98,7 +98,7 @@ publisher and no listener on the action, the runtime collects nothing.
 ### Shared rooms
 
 A host that sends one notice to every viewer of a site should call
-`\Zero\Realtime\Module::shared($notice)` first. It keeps ids only for
+`\First\Realtime\Module::shared($notice)` first. It keeps ids only for
 collections any visitor can list: read rule `anyone` and no drafts. For other
 collections `ids` becomes `null`, so a viewer learns that the collection
 changed, not which rows. Clients refresh the same way in both cases.

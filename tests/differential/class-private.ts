@@ -1,4 +1,4 @@
-import { defineConfig, action } from "zero";
+import { defineConfig, action } from "first";
 import { untypedPrivate, untypedClasses, untypedAccessors, untypedErrors } from "./class-private-lib.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

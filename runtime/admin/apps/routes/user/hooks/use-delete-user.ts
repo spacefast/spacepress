@@ -1,5 +1,5 @@
 import { Icon } from '@wordpress/ui';
-import { store as userDataStore } from '@zero-admin/user-data';
+import { store as userDataStore } from '@first-admin/user-data';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { select as wpSelect, useDispatch, useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
@@ -132,7 +132,7 @@ export function useDeleteUser( options: DeleteUserOptions = {} ) {
 						usersArray.length === 1
 							? sprintf(
 									/* translators: %s: user name or email */
-									__( '%s deleted.', 'zero-admin' ),
+									__( '%s deleted.', 'first-admin' ),
 									getUserDisplayName( usersArray[ 0 ] )
 							  )
 							: sprintf(
@@ -141,7 +141,7 @@ export function useDeleteUser( options: DeleteUserOptions = {} ) {
 										'%d user deleted.',
 										'%d users deleted.',
 										usersArray.length,
-										'zero-admin'
+										'first-admin'
 									),
 									usersArray.length
 							  );
@@ -191,7 +191,7 @@ export function useDeleteUser( options: DeleteUserOptions = {} ) {
 							if ( error?.data?.message ) {
 								return error.data.message;
 							}
-							return __( 'Unknown error', 'zero-admin' );
+							return __( 'Unknown error', 'first-admin' );
 						} );
 
 					const errorMessage =
@@ -199,7 +199,7 @@ export function useDeleteUser( options: DeleteUserOptions = {} ) {
 							? errors[ 0 ]
 							: __(
 									'An error occurred while deleting users.',
-									'zero-admin'
+									'first-admin'
 							  );
 					void createErrorNotice( errorMessage, {
 						type: 'snackbar',
@@ -234,7 +234,7 @@ export function useDeleteUser( options: DeleteUserOptions = {} ) {
 										firstError?.reason?.data?.message ||
 										__(
 											'Some users failed to delete',
-											'zero-admin'
+											'first-admin'
 										)
 							  );
 					/* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */

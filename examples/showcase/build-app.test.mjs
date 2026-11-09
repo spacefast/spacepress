@@ -39,16 +39,16 @@ test("Apply permits additions and rejects changes that endanger existing records
 test("Apply SQL permits only compiler-shaped additive statements", () => {
   assert.doesNotThrow(() =>
     assertAdditiveSql(
-      "CREATE TABLE `new_table` (`id` BIGINT);\n--> statement-breakpoint\nALTER TABLE `zero_items` ADD COLUMN `notes` LONGTEXT;",
+      "CREATE TABLE `new_table` (`id` BIGINT);\n--> statement-breakpoint\nALTER TABLE `first_items` ADD COLUMN `notes` LONGTEXT;",
     ),
   );
   for (const sql of [
-    "CREATE TABLE `bad` (`id` BIGINT); DELETE FROM `zero_items`;",
+    "CREATE TABLE `bad` (`id` BIGINT); DELETE FROM `first_items`;",
     "CREATE TABLE `bad` (`id` BIGINT) /*! SELECT 1 */;",
-    "DROP TABLE `zero_items`;",
-    "ALTER TABLE `zero_items` DROP COLUMN `name`;",
-    "ALTER TABLE `zero_items` ADD COLUMN `notes` TEXT; DELETE FROM `zero_items`;",
-    "UPDATE `zero_items` SET `name` = NULL;",
+    "DROP TABLE `first_items`;",
+    "ALTER TABLE `first_items` DROP COLUMN `name`;",
+    "ALTER TABLE `first_items` ADD COLUMN `notes` TEXT; DELETE FROM `first_items`;",
+    "UPDATE `first_items` SET `name` = NULL;",
   ])
     assert.throws(() => assertAdditiveSql(sql), /new tables and added columns/);
 });

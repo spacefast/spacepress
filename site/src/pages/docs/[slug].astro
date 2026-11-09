@@ -13,7 +13,7 @@ const { Content, headings } = await render(doc);
 const title = headings.find((h) => h.depth === 1)?.text ?? doc.id;
 ---
 
-<Page title={title} description={`${title}: Zero documentation.`}>
+<Page title={title} description={`${title}: First documentation.`}>
   <main class="docs">
     <DocsNav current={doc.id} />
     <article class="doc"><Content /></article>

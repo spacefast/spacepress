@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/user-profile",
+	"name": "@first-admin/user-profile",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -11,13 +11,13 @@
 		}
 	},
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/boot": "workspace:*",
-		"@zero-admin/core-data-next": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/views": "workspace:*",
-		"@zero-admin/telemetry": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/boot": "workspace:*",
+		"@first-admin/core-data-next": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/views": "workspace:*",
+		"@first-admin/telemetry": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

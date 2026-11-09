@@ -1,5 +1,5 @@
 import { Button } from '@wordpress/ui';
-import { Dialog } from '@zero-admin/design-system';
+import { Dialog } from '@first-admin/design-system';
 import { __ } from '@wordpress/i18n';
 
 interface RestoreDefaultsModalProps {
@@ -16,7 +16,7 @@ export function RestoreDefaultsModal( {
 	return (
 		<Dialog.Root
 			open={ isOpen }
-			title={ __( 'Restore default widgets?', 'zero-admin' ) }
+			title={ __( 'Restore default widgets?', 'first-admin' ) }
 		>
 			<Dialog.Popup>
 				<Dialog.Header>
@@ -26,17 +26,17 @@ export function RestoreDefaultsModal( {
 				<p>
 					{ __(
 						'All widgets will be reset to their default configuration. Any custom changes will be removed.',
-						'zero-admin'
+						'first-admin'
 					) }
 				</p>
 
 				<Dialog.Footer>
 					<Button variant="minimal" onClick={ onClose }>
-						{ __( 'Cancel', 'zero-admin' ) }
+						{ __( 'Cancel', 'first-admin' ) }
 					</Button>
 
 					<Dialog.Action onClick={ onConfirm }>
-						{ __( 'Restore defaults', 'zero-admin' ) }
+						{ __( 'Restore defaults', 'first-admin' ) }
 					</Dialog.Action>
 				</Dialog.Footer>
 			</Dialog.Popup>

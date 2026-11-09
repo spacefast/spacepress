@@ -1,9 +1,9 @@
-//! `zero sync` against a real WordPress site (design §5.7): a project is built with `zero build`,
+//! `first sync` against a real WordPress site (design §5.7): a project is built with `first build`,
 //! installed on a fresh WordPress-on-SQLite served by `php -S` (tests/php/wp.php serve), and synced
-//! with the `zero` binary over application passwords. Each step drives the CLI and checks the files,
+//! with the `first` binary over application passwords. Each step drives the CLI and checks the files,
 //! the site (over its API) and the exit code.
 
-// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `first` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 
 use std::io::{BufRead, Read, Write};
@@ -11,7 +11,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-const CONFIG: &str = r#"import { collection, id, integer, richText, select, slug, text, defineConfig , table} from "zero";
+const CONFIG: &str = r#"import { collection, id, integer, richText, select, slug, text, defineConfig , table} from "first";
 
 const people = table({
   id: id(),
@@ -126,7 +126,7 @@ struct Site {
     port: u16,
     /// The site's directory (its SQLite file lives below `content/database`).
     dir: PathBuf,
-    /// An editor's `user:application password`: the credential `zero sync` sends as Basic auth.
+    /// An editor's `user:application password`: the credential `first sync` sends as Basic auth.
     token: String,
     /// An author's credential: signed in, but the collections' update rule is "editor".
     author: String,
@@ -170,7 +170,7 @@ impl Site {
     fn sql(&self, statement: &str) {
         let out = Command::new("php")
             .args(["-d", "memory_limit=512M", "-r"])
-            .arg("require $argv[1]; wpLoad($argv[2]); \\Zero\\Wp\\Runtime::plugin()->connection()->run(str_replace('{prefix}', \\Zero\\Wp\\Runtime::plugin()->connection()->prefix(), $argv[3]));")
+            .arg("require $argv[1]; wpLoad($argv[2]); \\First\\Wp\\Runtime::plugin()->connection()->run(str_replace('{prefix}', \\First\\Wp\\Runtime::plugin()->connection()->prefix(), $argv[3]));")
             .arg(root().join("tests/php/wp.php"))
             .arg(&self.dir)
             .arg(statement)
@@ -213,7 +213,7 @@ fn http_call(
     let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
     let body = body.map(|b| b.to_string()).unwrap_or_default();
     let request = format!(
-        "{method} /wp-json/zero/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAuthorization: Basic {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} /wp-json/first/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAuthorization: Basic {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         base64(token.as_bytes()),
         body.len()
     );
@@ -245,8 +245,8 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
-fn zero() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_zero"))
+fn first() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_first"))
 }
 
 fn git(project: &Path, args: &[&str]) -> String {
@@ -262,11 +262,11 @@ fn git(project: &Path, args: &[&str]) -> String {
 fn setup() -> (PathBuf, Site) {
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let project = std::env::temp_dir().join(format!("zero-sync-{}-{n}", std::process::id()));
+    let project = std::env::temp_dir().join(format!("first-sync-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     std::fs::create_dir_all(project.join("content/notes")).unwrap();
-    std::fs::write(project.join("zero.config.ts"), CONFIG).unwrap();
-    let out = zero().arg("build").arg(&project).output().unwrap();
+    std::fs::write(project.join("first.config.ts"), CONFIG).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "build: {}", String::from_utf8_lossy(&out.stderr));
     // A fresh WordPress on SQLite with the built plugins active, served by php -S: one JSON line with
     // its url and the users' application passwords, then it serves until it's told to stop.
@@ -274,7 +274,7 @@ fn setup() -> (PathBuf, Site) {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join(".zero/wp-content"))
+        .arg(project.join(".first/wp-content"))
         .args(["ed=editor", "au=author", "root=admin"])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -321,11 +321,11 @@ fn setup() -> (PathBuf, Site) {
 }
 
 fn sync(project: &Path, site: &Site, extra: &[&str]) -> Output {
-    zero()
+    first()
         .arg("sync")
         .args(extra)
         .arg(project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--site", &site.url(), "--json"])
         .env("GIT_AUTHOR_NAME", "t")
         .env("GIT_AUTHOR_EMAIL", "t@example.test")
@@ -376,8 +376,8 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     // holding only what sync wrote.
     let ignore = read(&project, ".gitignore");
     assert!(
-        ignore.contains(".zero/*\n!.zero/sync-base.json\n"),
-        "zero build ignores .zero except the bases:\n{ignore}"
+        ignore.contains(".first/*\n!.first/sync-base.json\n"),
+        "first build ignores .first except the bases:\n{ignore}"
     );
     std::fs::write(project.join("unrelated.txt"), "not sync's").unwrap();
     let first = sync(&project, &site, &[]);
@@ -410,10 +410,10 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     );
     assert!(pulled.ends_with("---\nMade **online**.\n"), "{pulled}");
     let committed = git(&project, &["show", "--name-only", "--format=%s", "HEAD"]);
-    assert!(committed.starts_with("zero sync: "), "{committed}");
+    assert!(committed.starts_with("first sync: "), "{committed}");
     assert!(
         committed.contains("content/notes/hello.md")
-            && committed.contains(".zero/sync-base.json")
+            && committed.contains(".first/sync-base.json")
             && !committed.contains("unrelated.txt"),
         "{committed}"
     );
@@ -488,7 +488,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     assert_eq!(conflicted.status.code(), Some(0));
     let report = data(&conflicted);
     assert_eq!(report["conflicts"].as_array().unwrap().len(), 1, "{report}");
-    let conflict = read(&project, &format!(".zero/conflicts/{uid}.md"));
+    let conflict = read(&project, &format!(".first/conflicts/{uid}.md"));
     assert!(
         conflict.contains("# Fields: /fields/title")
             && conflict.contains("<<<<<<< files")
@@ -512,7 +512,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     let usage = sync(&project, &site, &["resolve", &uid, "--check"]);
     assert_eq!(usage.status.code(), Some(3), "resolve has no read-only mode");
     assert!(
-        project.join(format!(".zero/conflicts/{uid}.md")).exists(),
+        project.join(format!(".first/conflicts/{uid}.md")).exists(),
         "and wrote nothing"
     );
     let refused = sync(&project, &site, &["resolve", &uid]);
@@ -530,7 +530,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
         .map(|l| format!("{l}\n"))
         .collect();
     std::fs::write(
-        project.join(format!(".zero/conflicts/{uid}.md")),
+        project.join(format!(".first/conflicts/{uid}.md")),
         format!(
             "{header}{}",
             theirs.replace("title: Remote title", "title: Agreed title")
@@ -545,7 +545,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
         String::from_utf8_lossy(&resolved.stdout),
         String::from_utf8_lossy(&resolved.stderr)
     );
-    assert!(!project.join(format!(".zero/conflicts/{uid}.md")).exists());
+    assert!(!project.join(format!(".first/conflicts/{uid}.md")).exists());
     assert_eq!(
         site.rows("notes").into_iter().find(|r| r["id"] == id).unwrap()["title"],
         "Agreed title"
@@ -578,10 +578,10 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     assert!(!project.join("content/notes/from-the-site.md").exists());
 
     // A wrong credential is exit 4, before any file is read.
-    let denied = zero()
+    let denied = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", "nobody:nope")
+        .env("FIRST_APP_PASSWORD", "nobody:nope")
         .args(["--site", &site.url()])
         .output()
         .unwrap();
@@ -603,8 +603,8 @@ fn a_first_run_against_a_new_site_never_deletes() {
     )
     .unwrap();
     // Bases from another site: none of them apply to this one.
-    std::fs::create_dir_all(project.join(".zero")).unwrap();
-    std::fs::write(project.join(".zero/sync-base.json"), r#"{"version":1,"sites":{"some-other-site":{"notes":{"zr_0123456789abcdef0123":{"digest":"sha256:x","record":{}}}}}}"#).unwrap();
+    std::fs::create_dir_all(project.join(".first")).unwrap();
+    std::fs::write(project.join(".first/sync-base.json"), r#"{"version":1,"sites":{"some-other-site":{"notes":{"zr_0123456789abcdef0123":{"digest":"sha256:x","record":{}}}}}}"#).unwrap();
     let out = sync(&project, &site, &[]);
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
     assert!(project.join("content/notes/kept.md").exists());
@@ -742,10 +742,10 @@ fn access_refusals_exit_4_and_an_unreadable_directory_deletes_nothing() {
 
     // An author is signed in but may not sync (the update rule is "editor").
     let author = site.author.clone();
-    let denied = zero()
+    let denied = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &author)
+        .env("FIRST_APP_PASSWORD", &author)
         .args(["--only", "notes", "--site", &site.url()])
         .output()
         .unwrap();
@@ -1005,7 +1005,7 @@ fn an_edit_made_between_passes_is_not_overwritten() {
     let editor = site.as_user(&site.token);
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/players",
+        "/wp-json/first/v1/sync/players",
         move || {
             let (s, _) = editor.call(
                 "PATCH",
@@ -1016,10 +1016,10 @@ fn an_edit_made_between_passes_is_not_overwritten() {
         },
         edited.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1175,7 +1175,7 @@ fn a_file_edited_while_its_push_waits_is_planned_again() {
     let path = team_file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/players",
+        "/wp-json/first/v1/sync/players",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(
@@ -1186,10 +1186,10 @@ fn a_file_edited_while_its_push_waits_is_planned_again() {
         },
         edited.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1222,7 +1222,7 @@ fn creating_an_identity_counts_as_progress() {
     // create a row that references itself, so it's written straight into the site's table.
     let anchor = "zr_a0a0a0a0a0a0a0a0a0a0";
     site.sql(&format!(
-        "INSERT INTO {{prefix}}zero_rungs (id, nextId, headId, uid) VALUES (1000, 1000, NULL, '{anchor}')"
+        "INSERT INTO {{prefix}}first_rungs (id, nextId, headId, uid) VALUES (1000, 1000, NULL, '{anchor}')"
     ));
     // head A -> rung B -> rung C -> anchor, all required; B and C name A as their head (optional).
     //   first pass:  A can't be created (B missing), B can't (C missing); C's identity is created.
@@ -1305,7 +1305,7 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
         let path = team_file.clone();
         let proxy = proxy_acting_on_first(
             &site,
-            "/wp-json/zero/v1/sync/players",
+            "/wp-json/first/v1/sync/players",
             move || {
                 if delete {
                     std::fs::remove_file(&path).unwrap();
@@ -1320,10 +1320,10 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
             },
             edited.clone(),
         );
-        let out = zero()
+        let out = first()
             .arg("sync")
             .arg(&project)
-            .env("ZERO_APP_PASSWORD", &site.token)
+            .env("FIRST_APP_PASSWORD", &site.token)
             .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
             .output()
             .unwrap();
@@ -1333,7 +1333,7 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
         );
         let report = data_or_error(&out);
         let team_row = site.rows("teams").into_iter().find(|r| r["uid"] == team);
-        let base = std::fs::read_to_string(project.join(".zero/sync-base.json")).unwrap_or_default();
+        let base = std::fs::read_to_string(project.join(".first/sync-base.json")).unwrap_or_default();
         if delete {
             assert!(
                 team_row.is_none(),
@@ -1389,17 +1389,17 @@ fn a_file_edited_during_the_push_itself_is_not_overwritten() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/notes",
+        "/wp-json/first/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Typed during the push.")).unwrap();
         },
         edited.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1465,7 +1465,7 @@ fn hidden_content_round_trips_through_conflicts_resolve_and_trash() {
     assert_eq!(s, 200);
     let conflicted = sync(&project, &site, &["--only", "dossiers"]);
     let uid = made["data"]["uid"].as_str().unwrap().to_string();
-    let conflict_path = project.join(format!(".zero/conflicts/{uid}.md"));
+    let conflict_path = project.join(format!(".first/conflicts/{uid}.md"));
     assert!(
         conflict_path.exists(),
         "{}",
@@ -1545,14 +1545,14 @@ fn an_unreadable_file_never_trashes_its_provisional_identity() {
     let path = team_file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/players",
+        "/wp-json/first/v1/sync/players",
         move || std::fs::write(&path, "{ not json").unwrap(),
         edited.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1587,23 +1587,23 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/notes",
+        "/wp-json/first/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Typed during a plain push.")).unwrap();
         },
         edited.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
-    let base = std::fs::read_to_string(project.join(".zero/sync-base.json")).unwrap();
+    let base = std::fs::read_to_string(project.join(".first/sync-base.json")).unwrap();
     assert!(
         !base.contains("\"intro\""),
         "the base didn't move to the pushed record: {base}"
@@ -1627,7 +1627,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     assert_eq!(s, 200);
     let conflicted = sync(&project, &site, &["--only", "notes"]);
     let uid = site.rows("notes")[0]["uid"].as_str().unwrap().to_string();
-    let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+    let draft = project.join(format!(".first/conflicts/{uid}.md"));
     assert!(draft.exists(), "{}", String::from_utf8_lossy(&conflicted.stdout));
     let conflict = std::fs::read_to_string(&draft).unwrap();
     let header: String = conflict
@@ -1651,18 +1651,18 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let path = draft.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/notes",
+        "/wp-json/first/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
         },
         edited.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--site", &proxy, "--json"])
         .output()
         .unwrap();
@@ -1709,7 +1709,7 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
     );
     assert_eq!(s, 200);
     sync(&project, &site, &["--only", "notes"]);
-    let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+    let draft = project.join(format!(".first/conflicts/{uid}.md"));
     let conflict = std::fs::read_to_string(&draft).unwrap();
     let header: String = conflict
         .lines()
@@ -1739,18 +1739,18 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
     let path = draft.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/notes",
+        "/wp-json/first/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
         },
         edited.clone(),
     );
-    let first = zero()
+    let first = first()
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--site", &proxy])
         .output()
         .unwrap();
@@ -1792,14 +1792,14 @@ fn a_file_restored_while_the_site_is_read_is_not_trashed() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "GET /wp-json/zero/v1/sync/notes",
+        "GET /wp-json/first/v1/sync/notes",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1873,14 +1873,14 @@ fn a_file_restored_during_the_trash_request_comes_back_on_the_next_run() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/notes/trash",
+        "/wp-json/first/v1/sync/notes/trash",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1914,14 +1914,14 @@ fn an_unreadable_file_restored_mid_run_blocks_the_trash() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "GET /wp-json/zero/v1/sync/notes",
+        "GET /wp-json/first/v1/sync/notes",
         move || std::fs::write(&path, "---\ntitle: &broken\n---\n").unwrap(),
         restored.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1984,15 +1984,15 @@ fn a_failure_later_in_the_run_keeps_the_bases_already_moved() {
     let path = file.clone();
     let proxy = proxy_with_outage(
         &site,
-        "/wp-json/zero/v1/sync/notes/trash",
+        "/wp-json/first/v1/sync/notes/trash",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
-        Some("/wp-json/zero/v1/sync/snippets"),
+        Some("/wp-json/first/v1/sync/snippets"),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--only", "notes,snippets", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -2046,7 +2046,7 @@ fn a_delete_versus_edit_conflict_can_be_resolved_as_a_deletion_either_way() {
             assert_eq!(s, 200);
         }
         sync(&project, &site, &["--only", "notes"]);
-        let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+        let draft = project.join(format!(".first/conflicts/{uid}.md"));
         let conflict = std::fs::read_to_string(&draft).unwrap_or_else(|_| panic!("{case}: a conflict draft"));
         let header: String = conflict
             .lines()
@@ -2104,7 +2104,7 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
     );
     assert_eq!(s, 200);
     sync(&project, &site, &["--only", "notes"]);
-    let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+    let draft = project.join(format!(".first/conflicts/{uid}.md"));
     let conflict = std::fs::read_to_string(&draft).unwrap();
     let header: String = conflict
         .lines()
@@ -2116,18 +2116,18 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/zero/v1/sync/notes/trash",
+        "/wp-json/first/v1/sync/notes/trash",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Kept: typed during the delete.")).unwrap();
         },
         edited.clone(),
     );
-    let out = zero()
+    let out = first()
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .env("ZERO_APP_PASSWORD", &site.token)
+        .env("FIRST_APP_PASSWORD", &site.token)
         .args(["--site", &proxy])
         .output()
         .unwrap();

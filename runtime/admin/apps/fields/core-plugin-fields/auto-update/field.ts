@@ -1,11 +1,11 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< Plugin > > = {
 	getValue: ( { item }: { item: Plugin } ) => item.auto_update,
 	render: ( { item }: { item: Plugin } ) =>
 		item.auto_update
-			? __( 'Enabled', 'zero-admin' )
-			: __( 'Disabled', 'zero-admin' ),
+			? __( 'Enabled', 'first-admin' )
+			: __( 'Disabled', 'first-admin' ),
 };

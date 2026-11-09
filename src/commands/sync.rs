@@ -1,13 +1,13 @@
-//! `zero sync` (design §5.4).
+//! `first sync` (design §5.4).
 //!
 //! ```text
-//! zero sync [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]
-//! zero sync status [dir] --site …     what a sync would do; writes nothing
-//! zero sync resolve <uid> [dir] --site …
+//! first sync [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]
+//! first sync status [dir] --site …     what a sync would do; writes nothing
+//! first sync resolve <uid> [dir] --site …
 //! ```
 //!
-//! Without `--site`, the project's running dev site. The credential comes from the environment: `ZERO_APP_PASSWORD` (`user:application-password`) or
-//! `ZERO_TOKEN` (a bearer token from the identity plugin).
+//! Without `--site`, the project's running dev site. The credential comes from the environment: `FIRST_APP_PASSWORD` (`user:application-password`) or
+//! `FIRST_TOKEN` (a bearer token from the identity plugin).
 //!
 //! Exit codes: 0 ok, 1 failed, 2 changes pending or conflicts (`--check`), 3 usage, 4 auth.
 
@@ -18,7 +18,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: zero sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       credential: ZERO_APP_PASSWORD=<user:application-password> or ZERO_TOKEN=<bearer token>";
+const USAGE: &str = "usage: first sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       credential: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token>";
 
 struct Flags {
     mode: Mode,
@@ -66,7 +66,7 @@ fn parse(args: &[String]) -> Result<Flags, String> {
             "--check" => flags.check = true,
             "--no-commit" => flags.commit = false,
             "--json" => flags.json = true,
-            "--watch" => return Err("--watch is not available yet; run zero sync again, or from a scheduler".into()),
+            "--watch" => return Err("--watch is not available yet; run first sync again, or from a scheduler".into()),
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other => positional.push(other.to_string()),
         }
@@ -87,11 +87,11 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         return Err("too many arguments".into());
     }
     if flags.check && matches!(flags.mode, Mode::Resolve(_)) {
-        return Err("resolve writes both sides; it has no --check (zero sync --check shows the conflict)".into());
+        return Err("resolve writes both sides; it has no --check (first sync --check shows the conflict)".into());
     }
     let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
-    flags.credential = match (env("ZERO_APP_PASSWORD"), env("ZERO_TOKEN")) {
-        (Some(_), Some(_)) => return Err("set ZERO_APP_PASSWORD or ZERO_TOKEN, not both".into()),
+    flags.credential = match (env("FIRST_APP_PASSWORD"), env("FIRST_TOKEN")) {
+        (Some(_), Some(_)) => return Err("set FIRST_APP_PASSWORD or FIRST_TOKEN, not both".into()),
         (Some(password), None) => Some(Credential::AppPassword(password)),
         (None, Some(token)) => Some(Credential::Bearer(token)),
         (None, None) => None,
@@ -118,7 +118,7 @@ pub fn run(args: &[String]) -> ExitCode {
         },
     };
     let (Some(site), Some(credential)) = (site, flags.credential) else {
-        eprintln!("zero sync needs a credential in ZERO_APP_PASSWORD or ZERO_TOKEN\n{USAGE}");
+        eprintln!("first sync needs a credential in FIRST_APP_PASSWORD or FIRST_TOKEN\n{USAGE}");
         return ExitCode::from(3);
     };
     let project = flags.project.canonicalize().unwrap_or(flags.project.clone());
@@ -159,7 +159,7 @@ pub fn run(args: &[String]) -> ExitCode {
     if result.is_ok() && !check && flags.commit && !report.written.is_empty() {
         let paths = report.written.clone();
         let message = format!(
-            "zero sync: {} applied, {} conflicts",
+            "first sync: {} applied, {} conflicts",
             report.applied,
             report.conflicts.len()
         );

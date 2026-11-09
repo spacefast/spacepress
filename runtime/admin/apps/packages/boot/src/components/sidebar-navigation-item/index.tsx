@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { Icon } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
 import { FlexBlock, __experimentalItem as Item } from '@wordpress/components';
 import { arrowUpRight } from '@wordpress/icons';
 import RouterLinkItem from '../router-link-item';
@@ -74,7 +74,7 @@ export default function SidebarNavigationItem( {
 				target={ isExternal ? '_blank' : undefined }
 				rel={ isExternal ? 'noopener noreferrer' : undefined }
 				className={ clsx(
-					'zero-admin-sidebar-navigation-item',
+					'first-admin-sidebar-navigation-item',
 					className
 				) }
 			>
@@ -88,7 +88,7 @@ export default function SidebarNavigationItem( {
 		<RouterLinkItem
 			to={ to }
 			className={ clsx(
-				'zero-admin-sidebar-navigation-item',
+				'first-admin-sidebar-navigation-item',
 				className
 			) }
 		>

@@ -16,14 +16,14 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@spacefast/zero-pages",
+    "jsxImportSource": "@spacefast/first-pages",
     "baseUrl": ".",
     "paths": {
-      "zero": ["../../types/zero/index.d.ts"],
-      "@spacefast/zero-pages": ["./src/index.ts"],
-      "@spacefast/zero-pages/*": ["./src/*.ts"],
-      "@spacefast/zero-blocks": ["../blocks/src/index.ts"],
-      "@spacefast/zero-blocks/*": ["../blocks/src/*.ts"]
+      "first": ["../../types/first/index.d.ts"],
+      "@spacefast/first-pages": ["./src/index.ts"],
+      "@spacefast/first-pages/*": ["./src/*.ts"],
+      "@spacefast/first-blocks": ["../blocks/src/index.ts"],
+      "@spacefast/first-blocks/*": ["../blocks/src/*.ts"]
     }
   },
   "include": ["src", "tests/unit", "bin"]

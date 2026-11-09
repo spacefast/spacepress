@@ -1,8 +1,8 @@
 {
-  "name": "@spacefast/zero-site",
+  "name": "@spacefast/first-site",
   "private": true,
   "version": "0.0.0",
-  "description": "zero.dev: the Zero website, with the compiler running in the browser.",
+  "description": "first.dev: the First website, with the compiler running in the browser.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.9.1",

@@ -3,24 +3,24 @@
 declare(strict_types=1);
 
 /*
- * `php -S` router for a WpSite (tests/php/wp.php): what the production web server does for Zero.
- * Static files are served from the site; `/wp-content/uploads/zero-private/` is denied (the
+ * `php -S` router for a WpSite (tests/php/wp.php): what the production web server does for First.
+ * Static files are served from the site; `/wp-content/uploads/first-private/` is denied (the
  * private-files probe checks exactly that); `/wp-json/...` becomes a `rest_route` request; and
- * everything else runs WordPress's index.php. ZERO_TEST_SITE names the site directory.
+ * everything else runs WordPress's index.php. FIRST_TEST_SITE names the site directory.
  */
 
-$dir = getenv('ZERO_TEST_SITE') ?: throw new RuntimeException('ZERO_TEST_SITE is not set');
+$dir = getenv('FIRST_TEST_SITE') ?: throw new RuntimeException('FIRST_TEST_SITE is not set');
 $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
 $core = $site['core'];
 $path = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-if ($path === '/__zero_site') {
+if ($path === '/__first_site') {
     // Which site answers here: the harness checks this before trusting the port.
     header('Content-Type: text/plain');
     echo $dir;
     exit;
 }
-if (str_starts_with($path, '/wp-content/uploads/zero-private/')) {
+if (str_starts_with($path, '/wp-content/uploads/first-private/')) {
     http_response_code(403);
     exit;
 }

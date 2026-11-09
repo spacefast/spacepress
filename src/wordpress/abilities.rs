@@ -1,7 +1,7 @@
-//! WordPress abilities from `"php/wordpress"`: the committed lock `zero/abilities.json`, its JSON
+//! WordPress abilities from `"php/wordpress"`: the committed lock `first/abilities.json`, its JSON
 //! Schemas as compiler types and TypeScript, and the app's own abilities typed from the schema.
 //!
-//! The lock is written by `zero abilities pull` (src/commands/abilities.rs). Building reads only the
+//! The lock is written by `first abilities pull` (src/commands/abilities.rs). Building reads only the
 //! lock; nothing here touches the network.
 
 use crate::schema::{ColType, Schema};
@@ -33,7 +33,7 @@ pub fn own_inputs(schema: &Schema) -> BTreeMap<String, (Vec<String>, Vec<String>
 }
 
 /// Where the lock lives in a project.
-pub const LOCK: &str = "zero/abilities.json";
+pub const LOCK: &str = "first/abilities.json";
 
 /// One locked ability: what `GET /wp-abilities/v1/abilities` returned for it.
 #[derive(Debug, Clone)]
@@ -236,7 +236,7 @@ fn escape(key: &str) -> String {
 }
 
 /// The app's own abilities, typed from the schema: one entry per operation
-/// `runtime/Zero/Wp/Abilities/Register::build` registers, with the same names and input properties
+/// `runtime/First/Wp/Abilities/Register::build` registers, with the same names and input properties
 /// (`wordpress_own_abilities_match_the_registered_ones` in tests/compiler_contracts.rs runs both and
 /// compares them). Results the runtime publishes no output schema for are `unknown`.
 fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
@@ -447,7 +447,7 @@ pub fn kebab(name: &str) -> String {
     s
 }
 
-/// The `zero.gen.ts` block that types `abilities.call` for every catalog entry.
+/// The `first.gen.ts` block that types `abilities.call` for every catalog entry.
 pub fn gen_ts(catalog: &Catalog) -> String {
     if catalog.abilities.is_empty() {
         return String::new();

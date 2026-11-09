@@ -90,7 +90,7 @@ pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
         .replace("export function Layout(", "export default function Layout(")
         .replace(
             "import type { ComponentChildren } from \"preact\";",
-            "import type { LayoutProps } from \"@spacefast/zero-pages\";",
+            "import type { LayoutProps } from \"@spacefast/first-pages\";",
         )
         .replace(
             "{ children }: { children: ComponentChildren }",

@@ -1,6 +1,6 @@
 // Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
 // export into the app and fails the build if a key collides with the shared app or another lane.
-import { collection, file, files, group, id, text, table, media } from "zero";
+import { collection, file, files, group, id, text, table, media } from "first";
 
 /** A post-backed collection holding a private file, for `file({ bucket })` on WordPress. */
 export const talks = collection({

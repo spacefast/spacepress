@@ -5,7 +5,7 @@ export function normalizePageId(
 		return null;
 	}
 
-	// We also need to check if it's not zero (`'0'`).
+	// We also need to check if it's not first (`'0'`).
 	if ( Number( value ) === 0 ) {
 		return null;
 	}

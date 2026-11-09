@@ -2,16 +2,16 @@
 /**
  * Date field definition for core comments fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'          => 'date',
-	'header'        => __( 'Posted on', 'zero-admin' ),
-	'label'         => __( 'Date', 'zero-admin' ),
+	'header'        => __( 'Posted on', 'first-admin' ),
+	'label'         => __( 'Date', 'first-admin' ),
 	'enableSorting' => true,
 	'filterBy'      => array(
 		'operators' => array( 'on', 'beforeInc', 'afterInc', 'between' ),
 	),
-	'placeholder'   => __( 'No date', 'zero-admin' ),
+	'placeholder'   => __( 'No date', 'first-admin' ),
 );

@@ -1,6 +1,6 @@
 import clsx from 'clsx';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore, useEntityId } from '@wordpress/core-data';
 import MediaRenderer from '../media-renderer';
@@ -26,7 +26,7 @@ export default function MediaEditorCanvas() {
 
 	return (
 		<Stack
-			className={ clsx( 'zero-admin-media-details__content-container' ) }
+			className={ clsx( 'first-admin-media-details__content-container' ) }
 			direction="column"
 			justify="center"
 			align="center"

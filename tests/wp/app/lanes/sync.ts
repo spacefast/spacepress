@@ -4,7 +4,7 @@
 // Content sync (design §5): `guides` is a post-backed collection synced with Markdown files, and
 // `writers` gives it a uid'd reference target, so tests/wp/sync.test.ts covers bodies, references,
 // drafts and trash against real WordPress.
-import { collection, id, integer, richText, select, slug, text, HttpError } from "zero";
+import { collection, id, integer, richText, select, slug, text, HttpError } from "first";
 
 export const writers = collection({
   id: id(),

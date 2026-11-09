@@ -4,12 +4,12 @@ import { store as noticesStore } from '@wordpress/notices';
 import type { useRegistry } from '@wordpress/data';
 import type { RestAttachment } from '@wordpress/media-utils';
 
-/** Upload under Zero's rules, then read the native representation Gutenberg expects. */
+/** Upload under First's rules, then read the native representation Gutenberg expects. */
 export async function uploadAttachment(file: File): Promise<RestAttachment> {
 	const body = new FormData();
 	body.append('file', file);
 	const result: unknown = await apiFetch({
-		path: '/zero/v1/media',
+		path: '/first/v1/media',
 		method: 'POST',
 		body,
 	});

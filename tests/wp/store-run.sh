@@ -6,15 +6,15 @@
 # schema (rollback), and garbage collection removes only what the host's kept builds do not reference.
 # Assertions are on HTTP answers, receipts and the store's directories, never on source text.
 #
-#   ZERO_WP_PROJECT=zero-wp-store ZERO_WP_PORT=8901 tests/wp/store-run.sh
+#   FIRST_WP_PROJECT=first-wp-store FIRST_WP_PORT=8901 tests/wp/store-run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-zero="$target/debug/zero"
-export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-wp-store}"
-export ZERO_WP_PORT="${ZERO_WP_PORT:-8901}"
+first="$target/debug/first"
+export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-zero-wp-store}"
+export FIRST_WP_PORT="${FIRST_WP_PORT:-8901}"
 work="$(mktemp -d)"
 cleanup() { "$here/harness.sh" down; rm -rf "$work"; }
 trap cleanup EXIT
@@ -28,20 +28,20 @@ print(v if not isinstance(v,(dict,list,bool)) and v is not None else json.dumps(
 # The same app, two builds: only the action's returned label differs.
 for label in one two; do
   rsync -a --exclude host.php "$here/store/" "$work/$label/storelane/"
-  sed -i.bak "s/BUILD_LABEL/$label/" "$work/$label/storelane/zero.config.ts" && rm "$work/$label/storelane/zero.config.ts.bak"
-  "$zero" sources "$work/$label/storelane" --out "$work/$label/sources"
+  sed -i.bak "s/BUILD_LABEL/$label/" "$work/$label/storelane/first.config.ts" && rm "$work/$label/storelane/first.config.ts.bak"
+  "$first" sources "$work/$label/storelane" --out "$work/$label/sources"
 done
 # The harness installs the pinned platform plugins from a native build's lock; it never serves the build.
-"$zero" build "$work/one/storelane" --quiet >/dev/null
+"$first" build "$work/one/storelane" --quiet >/dev/null
 mkdir -p "$work/content/plugins"
-cp "$here/store/host.php" "$work/content/plugins/zero-store-host.php"
-cp "$work/one/storelane/.zero/wp-content/zero-manifest.json" "$work/content/"
-# The store lives in the bind-mounted plugins directory so the container sees it; ZERO_BUILD_STORE points at it.
-store="$work/content/plugins/zero-store"
+cp "$here/store/host.php" "$work/content/plugins/first-store-host.php"
+cp "$work/one/storelane/.first/wp-content/first-manifest.json" "$work/content/"
+# The store lives in the bind-mounted plugins directory so the container sees it; FIRST_BUILD_STORE points at it.
+store="$work/content/plugins/first-store"
 start=$(date +%s%N)
-first=$("$zero" compile-to-store "$work/one/sources" "$store" "$work/one/sources" | json build)
+first=$("$first" compile-to-store "$work/one/sources" "$store" "$work/one/sources" | json build)
 mid=$(date +%s%N)
-second=$("$zero" compile-to-store "$work/two/sources" "$store" "$work/two/sources" "$first" | json build)
+second=$("$first" compile-to-store "$work/two/sources" "$store" "$work/two/sources" "$first" | json build)
 end=$(date +%s%N)
 echo "compile: first $(( (mid - start) / 1000000 )) ms, second $(( (end - mid) / 1000000 )) ms"
 [[ $first != "$second" ]] || fail "different action code gives different builds"
@@ -54,16 +54,16 @@ runtime=$(ls "$store/runtime")
 # through the must-use loader, not as WordPress plugins.
 "$here/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
-"$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/zero-store-host.php /var/www/html/wp-content/mu-plugins/zero-store-host.php"
+"$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/first-store-host.php /var/www/html/wp-content/mu-plugins/first-store-host.php"
 
-action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-Zero-Build: $1" --data '{}' "$url/wp-json/zero/v1/actions/which"; }
+action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Build: $1" --data '{}' "$url/wp-json/first/v1/actions/which"; }
 # WP-CLI as the host: select the build before WordPress loads, then call the loader.
-host() { local build="$1"; shift; wp --exec="define('ZERO_TEST_BUILD', '$build');" eval "$@"; }
-root=/var/www/html/wp-content/plugins/zero-store
-initialize() { host "$1" "echo json_encode(Zero\\Loader\\Loader::initialize('$root', '$1'));"; }
-gc() { host "$1" "echo json_encode(Zero\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
+host() { local build="$1"; shift; wp --exec="define('FIRST_TEST_BUILD', '$build');" eval "$@"; }
+root=/var/www/html/wp-content/plugins/first-store
+initialize() { host "$1" "echo json_encode(First\\Loader\\Loader::initialize('$root', '$1'));"; }
+gc() { host "$1" "echo json_encode(First\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
 
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-Zero-Build: $first" --data '{}' "$url/wp-json/zero/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $first" --data '{}' "$url/wp-json/first/v1/actions/which")
 [[ $status == 404 ]] || fail "an uninitialized build is not served, got $status"
 ok "a build is not served before it initializes"
 
@@ -104,6 +104,6 @@ PY
 [[ $(gc "$first" "[\"$first\"]" false) == "$dry" ]] || fail "gc removes what the dry run listed"
 [[ $(ls "$store/app" | wc -l) -eq 1 && $(ls "$store/build" | wc -l) -eq 1 && $(ls "$store/runtime" | wc -l) -eq 1 ]] || fail "gc keeps the kept build's runtime and app"
 [[ $(action "$first" | json data.build) == one ]] || fail "the kept build still answers after gc"
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-Zero-Build: $second" --data '{}' "$url/wp-json/zero/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $second" --data '{}' "$url/wp-json/first/v1/actions/which")
 [[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"

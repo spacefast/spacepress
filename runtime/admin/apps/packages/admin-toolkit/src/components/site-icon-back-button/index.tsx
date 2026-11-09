@@ -1,4 +1,4 @@
-import { ThemeProvider } from '@zero-admin/theme';
+import { ThemeProvider } from '@first-admin/theme';
 import { __unstableMotion as motion } from '@wordpress/components';
 import { Icon, arrowUpLeft } from '@wordpress/icons';
 import { __ } from '@wordpress/i18n';
@@ -37,10 +37,10 @@ export default function SiteIconBackButton( { to }: { to: string } ) {
 				<SiteIconLink
 					to={ to }
 					isBackButton
-					aria-label={ __( 'Go back', 'zero-admin' ) }
+					aria-label={ __( 'Go back', 'first-admin' ) }
 				/>
 				<motion.div
-					className="zero-admin-site-icon-back-button__icon"
+					className="first-admin-site-icon-back-button__icon"
 					variants={ toggleHomeIconVariants }
 				>
 					<Icon icon={ arrowUpLeft } />

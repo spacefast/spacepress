@@ -1,4 +1,4 @@
-import { timestamp } from "zero";
+import { timestamp } from "first";
 
 export const UNITS = ["pcs", "g", "kg", "ml", "l"] as const;
 export const LOW_STOCK = 1;

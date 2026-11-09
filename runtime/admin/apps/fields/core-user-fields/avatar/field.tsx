@@ -3,7 +3,7 @@ import { BaseControl, Flex, Button } from '@wordpress/components';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore, type User } from '@wordpress/core-data';
 import { external } from '@wordpress/icons';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< User > > = {
 	getValue: ( { item } ) => item.avatar_urls?.[ '48' ] || '',
@@ -46,7 +46,7 @@ export const fieldExtensions: Partial< Field< User > > = {
 					isCurrentUser &&
 					__(
 						'Profile pictures are managed on Gravatar',
-						'zero-admin'
+						'first-admin'
 					)
 				}
 				__nextHasNoMarginBottom
@@ -75,7 +75,7 @@ export const fieldExtensions: Partial< Field< User > > = {
 							icon={ external }
 							iconPosition="right"
 						>
-							{ __( 'Edit on Gravatar', 'zero-admin' ) }
+							{ __( 'Edit on Gravatar', 'first-admin' ) }
 						</Button>
 					) }
 				</Flex>

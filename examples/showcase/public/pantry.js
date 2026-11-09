@@ -9,7 +9,7 @@ const node = (tag, className = "", text) => {
 };
 const request = (input, init = {}) =>
   fetch(input, { ...init, signal: AbortSignal.timeout(15000) });
-const publicClient = createClient({ url: "/wp-json/zero/v1", fetch: request });
+const publicClient = createClient({ url: "/wp-json/first/v1", fetch: request });
 let editorClient = null;
 let items = [];
 let shopping = [];
@@ -19,7 +19,7 @@ const expandedItems = new Set();
 
 function editLink(collection, id, label) {
   const link = node("a", "", label);
-  link.href = `/zero-admin/collections/${collection}/${encodeURIComponent(id)}`;
+  link.href = `/first-admin/collections/${collection}/${encodeURIComponent(id)}`;
   return link;
 }
 
@@ -34,7 +34,7 @@ async function session() {
     const nonce = (await response.text()).trim();
     if (response.ok && /^[a-zA-Z0-9]+$/.test(nonce) && nonce !== "0") {
       const client = createClient({
-        url: "/wp-json/zero/v1",
+        url: "/wp-json/first/v1",
         nonce,
         fetch: request,
       });
@@ -57,7 +57,7 @@ async function session() {
   text.append(
     login,
     document.createTextNode(
-      ", then refresh the pantry. Demo: admin / zero-test-admin.",
+      ", then refresh the pantry. Demo: admin / first-test-admin.",
     ),
   );
 }

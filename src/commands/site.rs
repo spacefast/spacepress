@@ -60,18 +60,18 @@ impl Site {
         };
         let status = command.status().map_err(|e| match self {
             Site::Alias(_) => format!("cannot run wp (WP-CLI) from PATH: {e}"),
-            _ => format!("zero needs Node.js 22+ and npm (npx) for the dev site: {e}"),
+            _ => format!("first needs Node.js 22+ and npm (npx) for the dev site: {e}"),
         })?;
         Ok(ExitCode::from(status.code().unwrap_or(1).clamp(0, 255) as u8))
     }
 }
 
-/// An offline deployment workspace (`zero deploy init`) carries its adapter's owner record.
+/// An offline deployment workspace (`first deploy init`) carries its adapter's owner record.
 fn is_workspace(dir: &Path) -> bool {
     std::fs::read(dir.join("owner.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .is_some_and(|owner| owner["adapter"] == "zero-offline-wordpress-v1")
+        .is_some_and(|owner| owner["adapter"] == "first-offline-wordpress-v1")
 }
 
 /// Run WP-CLI on the site and exit with its status; stdin, stdout and stderr are the caller's.

@@ -1,14 +1,14 @@
-# Disposable WordPress for Zero's WP-target tests. Not for production use.
+# Disposable WordPress for First's WP-target tests. Not for production use.
 # The DB credentials below are throwaway values for this local container only.
-name: ${ZERO_WP_PROJECT:-zero-wp-test}
+name: ${FIRST_WP_PROJECT:-zero-wp-test}
 services:
   db:
     image: mariadb:11.4
     environment:
-      MARIADB_ROOT_PASSWORD: zero-test-root
+      MARIADB_ROOT_PASSWORD: first-test-root
       MARIADB_DATABASE: wordpress
       MARIADB_USER: wordpress
-      MARIADB_PASSWORD: zero-test-db
+      MARIADB_PASSWORD: first-test-db
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 1s
@@ -21,16 +21,16 @@ services:
       db:
         condition: service_healthy
     environment:
-      APACHE_RUN_USER: "#${ZERO_WP_UID:-1000}"
-      APACHE_RUN_GROUP: "#${ZERO_WP_GID:-1000}"
+      APACHE_RUN_USER: "#${FIRST_WP_UID:-1000}"
+      APACHE_RUN_GROUP: "#${FIRST_WP_GID:-1000}"
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: zero-test-db
+      WORDPRESS_DB_PASSWORD: first-test-db
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('ZERO_IDENTITY_DEV_HTTP', true);
+        define('FIRST_IDENTITY_DEV_HTTP', true);
     healthcheck:
       test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
       interval: 1s
@@ -39,18 +39,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${ZERO_WP_PORT:-8790}:80"
+      - "${FIRST_WP_PORT:-8790}:80"
     volumes:
       - wp:/var/www/html
-      - ./cache:/zero-cache:ro
-      - ./mu-plugins:/zero-mu-plugins:ro
-      - ./php/zz-zero-tests.ini:/usr/local/etc/php/conf.d/zz-zero-tests.ini:ro
-      - ./apache/zz-zero-tests.conf:/etc/apache2/conf-enabled/zz-zero-tests.conf:ro
-      - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./cache:/first-cache:ro
+      - ./mu-plugins:/first-mu-plugins:ro
+      - ./php/zz-first-tests.ini:/usr/local/etc/php/conf.d/zz-first-tests.ini:ro
+      - ./apache/zz-first-tests.conf:/etc/apache2/conf-enabled/zz-first-tests.conf:ro
+      - ${FIRST_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
   # WP-CLI, kept running so `harness.sh wp` is an exec, not a container start.
   cli:
     image: wordpress:cli-php8.5
-    user: "${ZERO_WP_UID:-1000}:${ZERO_WP_GID:-1000}"
+    user: "${FIRST_WP_UID:-1000}:${FIRST_WP_GID:-1000}"
     depends_on: [wordpress]
     command: ["sleep", "infinity"]
     extra_hosts:
@@ -58,18 +58,18 @@ services:
     environment:
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: zero-test-db
+      WORDPRESS_DB_PASSWORD: first-test-db
       WORDPRESS_DB_NAME: wordpress
       # wp-config evaluates this per process, so WP-CLI needs the same constants as the web server.
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('ZERO_IDENTITY_DEV_HTTP', true);
+        define('FIRST_IDENTITY_DEV_HTTP', true);
     volumes:
       - wp:/var/www/html
-      - ./cache:/zero-cache:ro
-      - ./mu-plugins:/zero-mu-plugins:ro
-      - ./php/zz-zero-tests.ini:/usr/local/etc/php/conf.d/zz-zero-tests.ini:ro
-      - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./cache:/first-cache:ro
+      - ./mu-plugins:/first-mu-plugins:ro
+      - ./php/zz-first-tests.ini:/usr/local/etc/php/conf.d/zz-first-tests.ini:ro
+      - ${FIRST_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
 volumes:
   wp:

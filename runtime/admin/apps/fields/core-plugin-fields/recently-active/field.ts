@@ -1,6 +1,6 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< Plugin > > = {
 	getValue: ( { item }: { item: Plugin } ) =>
@@ -9,6 +9,6 @@ export const fieldExtensions: Partial< Field< Plugin > > = {
 		item.recently_active ?? false,
 	render: ( { item }: { item: Plugin } ) =>
 		item.recently_active
-			? __( 'Yes', 'zero-admin' )
-			: __( 'No', 'zero-admin' ),
+			? __( 'Yes', 'first-admin' )
+			: __( 'No', 'first-admin' ),
 };

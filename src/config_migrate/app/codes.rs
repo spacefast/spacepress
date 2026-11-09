@@ -1,4 +1,4 @@
-//! The diagnostic contract of `zero migrate app --json`: every refusal carries a stable `code`, the
+//! The diagnostic contract of `first migrate app --json`: every refusal carries a stable `code`, the
 //! 0.8 source position (`file`, 1-based `line`, UTF-16 `column`), the 0.8 `feature` it names, its
 //! `v2` equivalent and a one-line `fix`. A publish response shows these to the agent that ports the
 //! app, so codes never change meaning; a new refusal kind gets a new code. Every code is listed in
@@ -119,7 +119,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_OMITTED_CONFIG",
         feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall, crons or sell, or theme.json)",
-        v2: "zero.config.ts, the pages themselves or the Space's own settings",
+        v2: "first.config.ts, the pages themselves or the Space's own settings",
         fix: "Recreate what the setting did in v2, or remove it if the Space doesn't need it.",
         test: |_, r| r.starts_with(omitted::CONFIG),
         example: ("/sf.jsonc/theme", "the setting is not carried over: x"),
@@ -152,7 +152,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_OMITTED_POSTS",
         feature: "0.8 native posts content (content/posts/)",
         v2: "a posts collection with sync over the content files",
-        fix: "Declare a posts collection in zero.config.ts with `sync` over content/posts/, or keep the Space on 0.8.",
+        fix: "Declare a posts collection in first.config.ts with `sync` over content/posts/, or keep the Space on 0.8.",
         test: |_, r| r.starts_with(omitted::POSTS),
         example: ("/content/posts", "the posts content is not carried over: x"),
     },
@@ -160,7 +160,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_OMITTED_SYNC",
         feature: "content sync of native posts",
         v2: "sync on a v2 collection",
-        fix: "Declare the collection in zero.config.ts with `sync` over the content files.",
+        fix: "Declare the collection in first.config.ts with `sync` over the content files.",
         test: |_, r| r.starts_with(omitted::SYNC),
         example: ("/collections/posts/sync", "content sync is not carried over: x"),
     },
@@ -168,7 +168,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_STORAGE",
         feature: "0.8 client storage uploads",
-        v2: "v2 file buckets (files in zero.config.ts)",
+        v2: "v2 file buckets (files in first.config.ts)",
         fix: "Declare a file bucket and upload with client.files.<bucket>.upload from the generated v2 client.",
         test: |_, r| r.starts_with(client::TAG_STORAGE),
         example: ("/client/index.tsx", "0.8 client storage uploads: x"),
@@ -200,7 +200,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_SIGN_IN",
         feature: "0.8 client sign-in",
-        v2: "zero-identity sign-in (client.auth.signIn())",
+        v2: "first-identity sign-in (client.auth.signIn())",
         fix: "Replace the 0.8 sign-in calls with client.auth.signIn() from the generated v2 client.",
         test: |_, r| r.starts_with(client::TAG_SIGN_IN),
         example: ("/client/index.tsx", "0.8 client sign-in: x"),
@@ -208,7 +208,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_API",
         feature: "0.8 client API without a v2 bridge",
-        v2: "the generated v2 client in zero/client/",
+        v2: "the generated v2 client in first/client/",
         fix: "Port the call to the generated v2 client; the bridge covers the 0.8 hooks, useAuth, signOut and the router.",
         test: |_, r| r.starts_with(client::TAG_API),
         example: ("/client/index.tsx", "0.8 client API without a v2 bridge: x"),
@@ -272,8 +272,8 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_NATIVE",
         feature: "client app converted by the browser compiler",
-        v2: "zero migrate app from the native CLI",
-        fix: "Run zero migrate app --from zero-0.8 with the native CLI; it compiles the client into public/.",
+        v2: "first migrate app from the native CLI",
+        fix: "Run first migrate app --from zero-0.8 with the native CLI; it compiles the client into public/.",
         test: |_, r| r.starts_with(client::TAG_NATIVE),
         example: ("/client/index.tsx", "client app conversion outside the native CLI: x"),
     },
@@ -504,7 +504,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CTX_DB",
         feature: "ctx.db handle use",
-        v2: "db from \"zero\"",
+        v2: "db from \"first\"",
         fix: "Call ctx.db.<table> methods directly in the handler.",
         test: |p, r| p.contains("/ctx/db") && r.starts_with("unsupported context service"),
         example: (
@@ -515,7 +515,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CTX_SERVICE",
         feature: "ctx.{service}",
-        v2: "the matching \"zero\" export (db, mail, env, fetch) or a WordPress API",
+        v2: "the matching \"first\" export (db, mail, env, fetch) or a WordPress API",
         fix: "Port the service call to its v2 export, or drop it if v2 does the work.",
         test: |p, r| {
             p.contains("/ctx/")
@@ -569,7 +569,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_DB_ESCAPE",
         feature: "database handle stored or returned",
-        v2: "db from \"zero\", called where it is used",
+        v2: "db from \"first\", called where it is used",
         fix: "Call the table's methods where you use them instead of storing ctx.db.<table>.",
         test: |_, r| r.starts_with("database handles cannot escape"),
         example: ("/queries/q", "database handles cannot escape a handler"),
@@ -667,12 +667,12 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_AUTH_CALLBACK",
         feature: "auth callbacks and providers (onGuestUpgrade)",
-        v2: "zero-identity (docs/identity-api.md)",
-        fix: "Configure sign-in with zero-identity and move the callback's work into an action.",
+        v2: "first-identity (docs/identity-api.md)",
+        fix: "Configure sign-in with first-identity and move the callback's work into an action.",
         test: |p, _| p.starts_with("/auth/"),
         example: (
             "/auth/onGuestUpgrade",
-            "identity callbacks/providers need an explicit zero-identity migration",
+            "identity callbacks/providers need an explicit first-identity migration",
         ),
     },
     Rule {
@@ -689,8 +689,8 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_COLLECTIONS",
         feature: "collections or sync",
-        v2: "collections in zero.config.ts",
-        fix: "Declare the collection in zero.config.ts.",
+        v2: "collections in first.config.ts",
+        fix: "Declare the collection in first.config.ts.",
         test: |p, _| p.starts_with("/collections") || p.starts_with("/sync"),
         example: ("/collections/posts", "collection collides with a schema table"),
     },
@@ -739,8 +739,8 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_HOST_API",
         feature: "host API without a v2 counterpart",
-        v2: "the \"zero\" exports and the supported globals",
-        fix: "Replace the call with a \"zero\" export, or move it to the browser.",
+        v2: "the \"first\" exports and the supported globals",
+        fix: "Replace the call with a \"first\" export, or move it to the browser.",
         test: |_, r| r.contains("isn't available in Zero code"),
         example: (
             "",
@@ -750,7 +750,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_V2_COMPILE",
         feature: "converted code the v2 compiler refuses",
-        v2: "zero check on the candidate",
+        v2: "first check on the candidate",
         fix: "Fix the reported line in the 0.8 source so the converted app type-checks.",
         test: |_, r| r.starts_with("generated application refused by v2 compiler"),
         example: (
@@ -762,7 +762,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CAPSULE_FEATURE",
         feature: "capsule option without a v2 mapping",
         v2: "defineConfig options (docs/config-api.md)",
-        fix: "Remove the option or port what it does to zero.config.ts.",
+        fix: "Remove the option or port what it does to first.config.ts.",
         test: |_, r| {
             r.starts_with("unsupported capsule feature")
                 || r.contains("needs an explicit port")
@@ -787,7 +787,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_SOURCE_SHAPE",
         feature: "capsule source layout",
-        v2: "zero.config.ts with defineConfig",
+        v2: "first.config.ts with defineConfig",
         fix: "Keep one capsule({...}) default export in server/index.ts with imports and pure helpers.",
         test: |_, _| true,
         example: ("", "expected imports, pure helpers and one capsule default export"),

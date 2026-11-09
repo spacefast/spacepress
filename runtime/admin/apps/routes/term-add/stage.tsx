@@ -1,14 +1,14 @@
 import { useNavigate, useParams } from '@wordpress/route';
-import { Page } from '@zero-admin/admin-toolkit';
+import { Page } from '@first-admin/admin-toolkit';
 import { Button } from '@wordpress/ui';
-import { useTaxonomyTermFields } from '@zero-admin/fields-next';
-import { useViewConfig } from '@zero-admin/views';
+import { useTaxonomyTermFields } from '@first-admin/fields-next';
+import { useViewConfig } from '@first-admin/views';
 import {
 	DataForm,
 	useFormValidity,
 	type Field,
 	type Form,
-} from '@zero-admin/dataviews';
+} from '@first-admin/dataviews';
 import type { FormEvent } from 'react';
 import { useCallback, useMemo, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
@@ -110,7 +110,7 @@ export default function TermAddStage() {
 			createSuccessNotice(
 				sprintf(
 					// translators: %s is the name of the created term.
-					__( '"%s" created successfully.', 'zero-admin' ),
+					__( '"%s" created successfully.', 'first-admin' ),
 					createdTerm.name
 				),
 				{
@@ -167,7 +167,7 @@ export default function TermAddStage() {
 		taxonomyObject?.labels?.menu_name || taxonomyObject?.name || taxonomy;
 
 	const addLabel =
-		taxonomyObject?.labels?.add_new_item || __( 'Add New', 'zero-admin' );
+		taxonomyObject?.labels?.add_new_item || __( 'Add New', 'first-admin' );
 
 	if ( ! taxonomyObject || isFieldsLoading ) {
 		return null;
@@ -199,7 +199,7 @@ export default function TermAddStage() {
 					} }
 					disabled={ ! canSave }
 				>
-					{ __( 'Save', 'zero-admin' ) }
+					{ __( 'Save', 'first-admin' ) }
 				</Button>
 			}
 		>

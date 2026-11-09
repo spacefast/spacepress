@@ -1,0 +1,9 @@
+node_modules/
+.first/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# Keep first/_generated/migrations, first/client and first.gen.ts in version control.

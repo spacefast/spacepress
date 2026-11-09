@@ -1,7 +1,7 @@
-import { createClient, ZeroError, type Collections, type Actions } from "../../zero/client/index.ts";
+import { createClient, FirstError, type Collections, type Actions } from "../../first/client/index.ts";
 
-export const zero = createClient({
-  url: "/wp-json/zero/v1",
+export const first = createClient({
+  url: "/wp-json/first/v1",
   auth: {
     clientId: "app_drive_locker",
     redirectUri: location.origin + location.pathname,
@@ -25,7 +25,7 @@ export async function allRows<T>(read: (page: { limit: number; offset: number })
 }
 
 export function errorMessage(error: unknown): string {
-  return error instanceof ZeroError ? error.detail : error instanceof Error ? error.message : "Could not reach the server. Try again.";
+  return error instanceof FirstError ? error.detail : error instanceof Error ? error.message : "Could not reach the server. Try again.";
 }
 
 export function field(form: FormData, name: string): string {

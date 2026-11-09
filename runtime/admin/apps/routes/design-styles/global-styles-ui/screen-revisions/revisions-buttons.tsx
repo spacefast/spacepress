@@ -1,5 +1,5 @@
-import { unlock } from '@zero-admin/admin-toolkit';
-import type { GlobalStylesConfig } from '@zero-admin/global-styles-engine';
+import { unlock } from '@first-admin/admin-toolkit';
+import type { GlobalStylesConfig } from '@first-admin/global-styles-engine';
 import { __, sprintf } from '@wordpress/i18n';
 import { Button, Composite } from '@wordpress/components';
 import { dateI18n, getDate, humanTimeDiff, getSettings } from '@wordpress/date';
@@ -45,7 +45,7 @@ function ChangesSummary( { revision, previousRevision }: ChangesSummaryProps ) {
 	return (
 		<ul
 			data-testid="global-styles-revision-changes"
-			className="zero-admin-global-styles-screen-revisions__changes"
+			className="first-admin-global-styles-screen-revisions__changes"
 		>
 			{ changes.map( ( change ) => (
 				<li key={ change }>{ change }</li>
@@ -68,13 +68,13 @@ function getRevisionLabel(
 	areStylesEqual: boolean
 ): string {
 	if ( 'parent' === id ) {
-		return __( 'Reset the styles to the theme defaults', 'zero-admin' );
+		return __( 'Reset the styles to the theme defaults', 'first-admin' );
 	}
 
 	if ( 'unsaved' === id ) {
 		return sprintf(
 			/* translators: %s: author display name */
-			__( 'Unsaved changes by %s', 'zero-admin' ),
+			__( 'Unsaved changes by %s', 'first-admin' ),
 			authorDisplayName
 		);
 	}
@@ -84,14 +84,14 @@ function getRevisionLabel(
 				// translators: 1: author display name. 2: revision creation date.
 				__(
 					'Changes saved by %1$s on %2$s. This revision matches current editor styles.',
-					'zero-admin'
+					'first-admin'
 				),
 				authorDisplayName,
 				formattedModifiedDate
 		  )
 		: sprintf(
 				// translators: 1: author display name. 2: revision creation date.
-				__( 'Changes saved by %1$s on %2$s', 'zero-admin' ),
+				__( 'Changes saved by %1$s on %2$s', 'first-admin' ),
 				authorDisplayName,
 				formattedModifiedDate
 		  );
@@ -136,8 +136,8 @@ function RevisionsButtons( {
 	return (
 		<Composite
 			orientation="vertical"
-			className="zero-admin-global-styles-screen-revisions__revisions-list"
-			aria-label={ __( 'Global styles revisions list', 'zero-admin' ) }
+			className="first-admin-global-styles-screen-revisions__revisions-list"
+			aria-label={ __( 'Global styles revisions list', 'first-admin' ) }
 			role="listbox"
 		>
 			{ userRevisions.map( ( revision, index ) => {
@@ -146,7 +146,7 @@ function RevisionsButtons( {
 				// Unsaved changes are created by the current user.
 				const revisionAuthor = isUnsaved ? currentUser : author;
 				const authorDisplayName =
-					revisionAuthor?.name || __( 'User', 'zero-admin' );
+					revisionAuthor?.name || __( 'User', 'first-admin' );
 				const authorAvatar = revisionAuthor?.avatar_urls?.[ '48' ];
 				const isFirstItem = index === 0;
 				const isSelected = selectedRevisionId
@@ -170,7 +170,7 @@ function RevisionsButtons( {
 				return (
 					<Composite.Item
 						key={ id }
-						className="zero-admin-global-styles-screen-revisions__revision-item"
+						className="first-admin-global-styles-screen-revisions__revision-item"
 						aria-current={ isSelected }
 						role="option"
 						onKeyDown={ ( event ) => {
@@ -187,29 +187,29 @@ function RevisionsButtons( {
 						aria-label={ revisionLabel }
 						render={ <div /> }
 					>
-						<span className="zero-admin-global-styles-screen-revisions__revision-item-wrapper">
+						<span className="first-admin-global-styles-screen-revisions__revision-item-wrapper">
 							{ isReset ? (
-								<span className="zero-admin-global-styles-screen-revisions__description">
-									{ __( 'Default styles', 'zero-admin' ) }
-									<span className="zero-admin-global-styles-screen-revisions__meta">
+								<span className="first-admin-global-styles-screen-revisions__description">
+									{ __( 'Default styles', 'first-admin' ) }
+									<span className="first-admin-global-styles-screen-revisions__meta">
 										{ currentThemeName }
 									</span>
 								</span>
 							) : (
-								<span className="zero-admin-global-styles-screen-revisions__description">
+								<span className="first-admin-global-styles-screen-revisions__description">
 									{ isUnsaved ? (
-										<span className="zero-admin-global-styles-screen-revisions__date">
-											{ __( '(Unsaved)', 'zero-admin' ) }
+										<span className="first-admin-global-styles-screen-revisions__date">
+											{ __( '(Unsaved)', 'first-admin' ) }
 										</span>
 									) : (
 										<time
-											className="zero-admin-global-styles-screen-revisions__date"
+											className="first-admin-global-styles-screen-revisions__date"
 											dateTime={ modified }
 										>
 											{ displayDate }
 										</time>
 									) }
-									<span className="zero-admin-global-styles-screen-revisions__meta">
+									<span className="first-admin-global-styles-screen-revisions__meta">
 										<img
 											alt={ authorDisplayName }
 											src={ authorAvatar }
@@ -231,29 +231,29 @@ function RevisionsButtons( {
 						</span>
 						{ isSelected &&
 							( areStylesEqual ? (
-								<p className="zero-admin-global-styles-screen-revisions__applied-text">
+								<p className="first-admin-global-styles-screen-revisions__applied-text">
 									{ __(
 										'These styles are already applied to your site.',
-										'zero-admin'
+										'first-admin'
 									) }
 								</p>
 							) : (
 								<Button
 									size="compact"
 									variant="primary"
-									className="zero-admin-global-styles-screen-revisions__apply-button"
+									className="first-admin-global-styles-screen-revisions__apply-button"
 									onClick={ onApplyRevision }
 									aria-label={ __(
 										'Apply the selected revision to your site.',
-										'zero-admin'
+										'first-admin'
 									) }
 								>
 									{ isReset
 										? __(
 												'Reset to defaults',
-												'zero-admin'
+												'first-admin'
 										  )
-										: __( 'Apply', 'zero-admin' ) }
+										: __( 'Apply', 'first-admin' ) }
 								</Button>
 							) ) }
 					</Composite.Item>

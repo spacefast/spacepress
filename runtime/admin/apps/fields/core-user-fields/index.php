@@ -2,7 +2,7 @@
 /**
  * Core user fields collection - applies to user type
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(

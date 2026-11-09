@@ -1,17 +1,17 @@
-// The Zero compiler core in the browser: `zero.wasm` is `src/wasm.rs` built for
+// The First compiler core in the browser: `first.wasm` is `src/wasm.rs` built for
 // wasm32-unknown-unknown. One call compiles a whole config from memory; the diagnostics envelope is
-// the one `zero check --json` prints.
+// the one `first check --json` prints.
 
 export interface Request {
-  /** The project's name: the app plugin is `zero-app-<name>`. */
+  /** The project's name: the app plugin is `first-app-<name>`. */
   name: string;
-  /** Sources by project-relative path; `zero.config.ts` is the entry. */
+  /** Sources by project-relative path; `first.config.ts` is the entry. */
   files: Record<string, string>;
-  /** The last build's `zero/_generated/migrations/snapshot.json`, or null for a first build. */
+  /** The last build's `first/_generated/migrations/snapshot.json`, or null for a first build. */
   previous?: unknown;
-  /** The file names beside that snapshot; they number the next migration like `zero build` does. */
+  /** The file names beside that snapshot; they number the next migration like `first build` does. */
   migrationFiles?: string[];
-  /** Refuse plugin grants beyond `zero/plugins.lock.json` in `files`, like `zero check --frozen` and CI. */
+  /** Refuse plugin grants beyond `first/plugins.lock.json` in `files`, like `first check --frozen` and CI. */
   frozen?: boolean;
 }
 
@@ -35,9 +35,9 @@ export interface Diagnostic {
   group: string;
 }
 
-/** `zero check --json`'s envelope (docs/compiler-diagnostics.md). */
+/** `first check --json`'s envelope (docs/compiler-diagnostics.md). */
 export interface Envelope {
-  schema: "zero-diagnostics";
+  schema: "first-diagnostics";
   version: number;
   compilerVersion: string;
   ok: boolean;
@@ -68,9 +68,9 @@ export interface Compiled {
 
 interface Exports {
   memory: WebAssembly.Memory;
-  zero_alloc(len: number): number;
-  zero_compile(ptr: number, len: number): number;
-  zero_free(ptr: number, len: number): void;
+  first_alloc(len: number): number;
+  first_compile(ptr: number, len: number): number;
+  first_free(ptr: number, len: number): void;
 }
 
 export class Compiler {
@@ -97,18 +97,18 @@ export class Compiler {
     return parsed;
   }
 
-  /** The response as the compiler serialized it, for byte-for-byte comparison with `zero check --json`. */
+  /** The response as the compiler serialized it, for byte-for-byte comparison with `first check --json`. */
   compileToJson(request: Request): string {
-    const { memory, zero_alloc, zero_compile, zero_free } = this.#exports;
+    const { memory, first_alloc, first_compile, first_free } = this.#exports;
     const bytes = new TextEncoder().encode(JSON.stringify(request));
     // Pointers cross the boundary as i32; addresses past 2 GiB come back negative.
-    const input = zero_alloc(bytes.length) >>> 0;
+    const input = first_alloc(bytes.length) >>> 0;
     new Uint8Array(memory.buffer, input, bytes.length).set(bytes);
-    // zero_compile takes ownership of the request buffer.
-    const output = zero_compile(input, bytes.length) >>> 0;
+    // first_compile takes ownership of the request buffer.
+    const output = first_compile(input, bytes.length) >>> 0;
     const length = new DataView(memory.buffer, output, 4).getUint32(0, true);
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, output + 4, length));
-    zero_free(output, 4 + length);
+    first_free(output, 4 + length);
     return text;
   }
 }

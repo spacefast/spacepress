@@ -1,4 +1,4 @@
-// Builds the hosted (/identity) and admin screens of zero-identity into
+// Builds the hosted (/identity) and admin screens of first-identity into
 // ../build. Output is deterministic: the same sources and lockfile produce
 // byte-identical files. build/.manifest.json records a hash of every source
 // file under apps/ (node_modules excluded) so a check can tell whether the

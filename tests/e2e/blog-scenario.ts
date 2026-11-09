@@ -15,7 +15,7 @@
 // Each step is a `t.test` subtest when a node:test context is passed, so failures name the step.
 
 import assert from "node:assert/strict";
-import { ZeroError, type Client, type Media, type Post } from "../wp/app/zero/client/index.ts";
+import { FirstError, type Client, type Media, type Post } from "../wp/app/first/client/index.ts";
 
 export type ScenarioRole = "anonymous" | "subscriber" | "author" | "editor" | "admin";
 
@@ -31,15 +31,15 @@ interface Steps {
 
 const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-/** Runs `fn` and returns the ZeroError it throws; fails when it resolves or throws anything else. */
-async function rejects(fn: () => Promise<unknown>, expect: { status: number; code: string; pointer?: string }): Promise<ZeroError> {
+/** Runs `fn` and returns the FirstError it throws; fails when it resolves or throws anything else. */
+async function rejects(fn: () => Promise<unknown>, expect: { status: number; code: string; pointer?: string }): Promise<FirstError> {
   let thrown: unknown;
   try {
     await fn();
   } catch (e) {
     thrown = e;
   }
-  assert.ok(thrown instanceof ZeroError, `expected a ZeroError ${expect.status} ${expect.code}, got ${String(thrown)}`);
+  assert.ok(thrown instanceof FirstError, `expected a FirstError ${expect.status} ${expect.code}, got ${String(thrown)}`);
   assert.deepEqual(
     { status: thrown.status, code: thrown.code, pointer: thrown.pointer },
     { status: expect.status, code: expect.code, pointer: expect.pointer },

@@ -5,7 +5,7 @@ import type {
 	EnrichedMenuItem,
 	RelatedRoutes,
 	SitemapData,
-} from '@zero-admin/ai-agent';
+} from '@first-admin/ai-agent';
 import type { Route, FlatMenuItem } from '../store/types';
 
 const CORE_STORE = 'core';

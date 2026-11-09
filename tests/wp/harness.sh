@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Disposable WordPress 7.1 + MariaDB 11.4 + pinned platform plugins for Zero's WP target (design §9.2).
+# Disposable WordPress 7.1 + MariaDB 11.4 + pinned platform plugins for First's WP target (design §9.2).
 #
 #   harness.sh up --wp-content <dir> boot and activate the declared split plugins,
 #                                    create admin/editor/author/subscriber with application passwords;
@@ -12,32 +12,32 @@
 #                                    a fresh WordPress with users only: no plugin is installed or
 #                                    activated, so the caller installs an artifact as a site owner would
 #   harness.sh up --wp-content <dir> --platform
-#                                    install and activate only the manifest's platform dependencies; Zero
+#                                    install and activate only the manifest's platform dependencies; First
 #                                    itself arrives another way (the build store's must-use loader)
 #   harness.sh wp <args...>          WP-CLI inside the stack
 #   harness.sh sql "<query>"         run SQL in MariaDB; tab-separated rows with a header line
 #   harness.sh down                  remove containers and volumes
 #
-# ZERO_WP_PORT (default 8790) picks the host port and ZERO_WP_PROJECT (default zero-wp-test) the
+# FIRST_WP_PORT (default 8790) picks the host port and FIRST_WP_PROJECT (default first-wp-test) the
 # compose project, so several worktrees can each run their own stack at once. Credentials here are
 # throwaway values for this local container only and are tracked intentionally.
 set -euo pipefail
 caller="$PWD"   # relative --wp-content paths are the caller's, not this directory's
 cd "$(dirname "$0")"
-export ZERO_WP_PORT="${ZERO_WP_PORT:-8790}"
-export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-wp-test}"
+export FIRST_WP_PORT="${FIRST_WP_PORT:-8790}"
+export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-zero-wp-test}"
 # Compose lowercases and strips other characters, so distinct inputs could share one stack.
-[[ $ZERO_WP_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "ZERO_WP_PROJECT must match ^[a-z0-9][a-z0-9_-]*\$" >&2; exit 2; }
-export ZERO_WP_UID="$(id -u)" ZERO_WP_GID="$(id -g)"
+[[ $FIRST_WP_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "FIRST_WP_PROJECT must match ^[a-z0-9][a-z0-9_-]*\$" >&2; exit 2; }
+export FIRST_WP_UID="$(id -u)" FIRST_WP_GID="$(id -g)"
 STATE=.harness-state
 [[ -f $STATE ]] && source "$STATE"
-export ZERO_WP_CONTENT="${ZERO_WP_CONTENT:-$PWD/empty-wp-content}"
+export FIRST_WP_CONTENT="${FIRST_WP_CONTENT:-$PWD/empty-wp-content}"
 
 # -p wins over an inherited COMPOSE_PROJECT_NAME, which would otherwise merge stacks.
 compose() {
   local -a files=(-f compose.yml)
-  [[ ${ZERO_WP_S3:-0} != 1 ]] || files+=(-f compose.s3.yml)
-  docker compose -p "$ZERO_WP_PROJECT" "${files[@]}" "$@"
+  [[ ${FIRST_WP_S3:-0} != 1 ]] || files+=(-f compose.s3.yml)
+  docker compose -p "$FIRST_WP_PROJECT" "${files[@]}" "$@"
 }
 wp() { compose exec -T cli wp "$@"; }
 sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch -e "$1"; }
@@ -45,7 +45,7 @@ sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch 
 # Provider provisioning is separate from installing/activating the WordPress artifact.
 # Only the named disposable resources are owned here; a repeated setup retains their bytes.
 s3_setup() {
-  [[ ${ZERO_WP_S3:-0} == 1 ]] || { echo 's3-setup requires ZERO_WP_S3=1' >&2; exit 2; }
+  [[ ${FIRST_WP_S3:-0} == 1 ]] || { echo 's3-setup requires FIRST_WP_S3=1' >&2; exit 2; }
   local node layout_version
   layout_version=$(compose exec -T garage /garage json-api GetClusterLayout | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
   if [[ $layout_version == 0 ]]; then
@@ -53,17 +53,17 @@ s3_setup() {
     compose exec -T garage /garage layout assign -z test -c 1G "$node" >/dev/null
     compose exec -T garage /garage layout apply --version 1 >/dev/null
   fi
-  if ! compose exec -T garage /garage bucket info zero-uploads >/dev/null 2>&1; then
-    compose exec -T garage /garage bucket create zero-uploads >/dev/null
+  if ! compose exec -T garage /garage bucket info first-uploads >/dev/null 2>&1; then
+    compose exec -T garage /garage bucket create first-uploads >/dev/null
   fi
   if ! compose exec -T garage /garage key info GK111111111111111111111111 >/dev/null 2>&1; then
-    compose exec -T garage /garage key import --yes -n zero-test GK111111111111111111111111 1111111111111111111111111111111111111111111111111111111111111111 >/dev/null
+    compose exec -T garage /garage key import --yes -n first-test GK111111111111111111111111 1111111111111111111111111111111111111111111111111111111111111111 >/dev/null
   fi
-  compose exec -T garage /garage bucket allow --read --write --owner zero-uploads --key GK111111111111111111111111 >/dev/null
+  compose exec -T garage /garage bucket allow --read --write --owner first-uploads --key GK111111111111111111111111 >/dev/null
 }
 
 up() {
-  local content="${ZERO_WP_CONTENT}" env=0 bare=0 platform=0 subdir=""
+  local content="${FIRST_WP_CONTENT}" env=0 bare=0 platform=0 subdir=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --wp-content) content="$2"; shift 2 ;;
@@ -75,14 +75,14 @@ up() {
     esac
   done
   [[ $content == /* ]] || content="$caller/$content"
-  ZERO_WP_CONTENT="$(cd "$content" && pwd)"
-  export ZERO_WP_CONTENT
-  [[ $bare == 1 || -f $ZERO_WP_CONTENT/zero-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }
-  printf 'export ZERO_WP_CONTENT=%q\n' "$ZERO_WP_CONTENT" > "$STATE"
+  FIRST_WP_CONTENT="$(cd "$content" && pwd)"
+  export FIRST_WP_CONTENT
+  [[ $bare == 1 || -f $FIRST_WP_CONTENT/first-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }
+  printf 'export FIRST_WP_CONTENT=%q\n' "$FIRST_WP_CONTENT" > "$STATE"
   mkdir -p cache
   local slug version sha zip
   local -a pins=()
-  [[ $bare == 1 ]] || mapfile -t pins < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" ../fixtures/platform.json <<'PINS'
+  [[ $bare == 1 ]] || mapfile -t pins < <(python3 - "$FIRST_WP_CONTENT/first-manifest.json" ../fixtures/platform.json <<'PINS'
 import json,sys
 manifest=json.load(open(sys.argv[1])); platform=json.load(open(sys.argv[2]))
 for slug,spec in platform['plugins'].items():
@@ -103,9 +103,9 @@ PINS
     printf '%s  %s\n' "$sha" "$zip" | sha256sum -c --quiet
   done
 
-  local url="http://127.0.0.1:${ZERO_WP_PORT}"
+  local url="http://127.0.0.1:${FIRST_WP_PORT}"
   compose up -d --wait >/dev/null 2>&1 || compose up -d --wait
-  if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
+  if [[ ${FIRST_WP_S3:-0} == 1 ]]; then
     s3_setup
   fi
   if [[ -n $subdir ]]; then
@@ -120,66 +120,66 @@ PINS
     url="$url/$subdir"
   fi
   if ! wp core is-installed >/dev/null 2>&1; then
-    wp core install --url="$url" --title="Zero Test" --admin_user=admin --admin_password=zero-test-admin \
+    wp core install --url="$url" --title="First Test" --admin_user=admin --admin_password=first-test-admin \
       --admin_email=admin@example.test --skip-email >/dev/null
     wp rewrite structure '/%postname%/' >/dev/null
     for role in editor author subscriber; do
-      wp user create "$role" "$role@example.test" --role="$role" --display_name="${role^}" --user_pass="zero-test-$role" >/dev/null
+      wp user create "$role" "$role@example.test" --role="$role" --display_name="${role^}" --user_pass="first-test-$role" >/dev/null
     done
   fi
   local installed
   for pin in "${pins[@]}"; do
     read -r slug version sha <<< "$pin"
-    wp plugin is-installed "$slug" >/dev/null 2>&1 || wp plugin install "/zero-cache/$slug.$version.zip" >/dev/null
+    wp plugin is-installed "$slug" >/dev/null 2>&1 || wp plugin install "/first-cache/$slug.$version.zip" >/dev/null
     installed=$(wp plugin get "$slug" --field=version)
     php -r 'exit(version_compare($argv[1],$argv[2],">=") ? 0 : 1);' "$installed" "$version" || { echo "$slug $version+ required" >&2; exit 1; }
   done
   local app=null
-  [[ $bare == 1 || $platform == 1 ]] || app=$(python3 -c 'import json,sys; print(json.dumps("zero-app-"+json.load(open(sys.argv[1]))["app"]))' "$ZERO_WP_CONTENT/zero-manifest.json")
+  [[ $bare == 1 || $platform == 1 ]] || app=$(python3 -c 'import json,sys; print(json.dumps("first-app-"+json.load(open(sys.argv[1]))["app"]))' "$FIRST_WP_CONTENT/first-manifest.json")
   local -a activation=()
-  [[ $bare == 1 ]] || mapfile -t activation < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" "$platform" <<'ACTIVATE'
+  [[ $bare == 1 ]] || mapfile -t activation < <(python3 - "$FIRST_WP_CONTENT/first-manifest.json" "$platform" <<'ACTIVATE'
 import json,sys,os
 manifest=json.load(open(sys.argv[1]))
 for dependency in manifest['dependencies']: print(dependency['slug'])
 if sys.argv[2] == '1': sys.exit()
-print('zero-runtime')
-if 'zero-identity' in manifest['plugins']: print('zero-identity')
-print('zero-app-'+manifest['app'])
+print('first-runtime')
+if 'first-identity' in manifest['plugins']: print('first-identity')
+print('first-app-'+manifest['app'])
 # The optional admin registers only once the app has (plugins_loaded order), so it activates last.
-if 'zero-admin' in manifest['plugins']: print('zero-admin')
+if 'first-admin' in manifest['plugins']: print('first-admin')
 ACTIVATE
   )
   for slug in "${activation[@]}"; do wp plugin activate "$slug" >/dev/null; done
   # Test-only must-use plugins (outgoing mail kept on disk for sign-in codes).
-  wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); foreach (glob("/zero-mu-plugins/*.php") as $f) { copy($f, WPMU_PLUGIN_DIR . "/zero-harness-" . basename($f)); }' >/dev/null
+  wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); foreach (glob("/first-mu-plugins/*.php") as $f) { copy($f, WPMU_PLUGIN_DIR . "/first-harness-" . basename($f)); }' >/dev/null
 
   local identity=null
-  if wp plugin is-active zero-identity >/dev/null 2>&1; then
+  if wp plugin is-active first-identity >/dev/null 2>&1; then
     local application client_id
     origin="${url%%/[^/]*}"; [[ $url == */* ]] && origin="$(printf %s "$url" | sed -E 's#^(https?://[^/]+).*#\1#')"
-    application=$(wp zero identity app add --name='Zero development' --redirect="$url/auth/callback" --origin="$origin" --id=app_zero_dev)
+    application=$(wp first identity app add --name='First development' --redirect="$url/auth/callback" --origin="$origin" --id=app_zero_dev)
     client_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["id"])' <<< "$application")
     identity=$(python3 -c 'import json,sys; print(json.dumps({"clientId":sys.argv[1]}))' "$client_id")
-    [[ $env == 0 ]] || printf 'export ZERO_IDENTITY_CLIENT_ID=%q\n' "$client_id"
+    [[ $env == 0 ]] || printf 'export FIRST_IDENTITY_CLIENT_ID=%q\n' "$client_id"
   fi
 
   local users="" sep="" id pass
   for role in admin editor author subscriber; do
     id=$(wp user get "$role" --field=ID)
-    pass=$(wp user application-password create "$role" "zero-tests-$(date +%s%N)" --porcelain)
+    pass=$(wp user application-password create "$role" "first-tests-$(date +%s%N)" --porcelain)
     users+="$sep\"$role\":{\"id\":$id,\"appPassword\":\"$pass\"}"
     sep=","
     if [[ $env == 1 ]]; then
-      printf 'export ZERO_WP_%s_ID=%s\nexport ZERO_WP_%s_APP_PASSWORD=%q\n' "${role^^}" "$id" "${role^^}" "$pass"
+      printf 'export FIRST_WP_%s_ID=%s\nexport FIRST_WP_%s_APP_PASSWORD=%q\n' "${role^^}" "$id" "${role^^}" "$pass"
     fi
   done
   local version container
   version=$(wp core version)
   container=$(compose ps -q wordpress)
   if [[ $env == 1 ]]; then
-    printf 'export ZERO_WP_URL=%q\nexport ZERO_WP_VERSION=%q\n' "$url" "$version"
+    printf 'export FIRST_WP_URL=%q\nexport FIRST_WP_VERSION=%q\n' "$url" "$version"
   else
-    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":%s,"identity":%s,"users":{%s},"container":"zero-wp-%s"}\n' \
+    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":%s,"identity":%s,"users":{%s},"container":"first-wp-%s"}\n' \
       "$url" "$version" "$app" "$identity" "$users" "${container:0:12}"
   fi
 }
@@ -193,7 +193,7 @@ case "$cmd" in
   compose) compose "$@" ;;
   s3-setup) s3_setup ;;
   down)
-    if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
+    if [[ ${FIRST_WP_S3:-0} == 1 ]]; then
       compose --profile replica down -v --remove-orphans >/dev/null 2>&1
     else
       compose down -v --remove-orphans >/dev/null 2>&1

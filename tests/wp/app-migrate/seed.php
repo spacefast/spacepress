@@ -1,6 +1,6 @@
 <?php
-// DDL follows stattic-runtime-core/src/zero.rs zero_db_migration_statements,
-// scalar encodings follow zero-compile/src/runtime-host.ts rowFromDb.
+// DDL follows stattic-runtime-core/src/first.rs zero_db_migration_statements,
+// scalar encodings follow first-compile/src/runtime-host.ts rowFromDb.
 // Seed before activating either Zero plugin, as an existing Space would be.
 declare(strict_types=1);
 global $wpdb;

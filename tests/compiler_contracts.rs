@@ -1,6 +1,6 @@
 //! Executable joins between compatibility claims, diagnostics, authoring and PHP behavior.
 
-// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `first` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -11,12 +11,12 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn zero() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_zero"))
+fn first() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_first"))
 }
 
 fn checked(project: &Path) -> (Output, Value) {
-    let out = zero().args(["check", "--json"]).arg(project).output().unwrap();
+    let out = first().args(["check", "--json"]).arg(project).output().unwrap();
     let envelope = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
         panic!(
             "invalid JSON: {e}\n{}\n{}",
@@ -36,8 +36,8 @@ fn php(script: &str, args: &[&Path]) -> Value {
 }
 
 fn build_wp(project: &Path) -> PathBuf {
-    let output = project.join(".zero/wp-content");
-    let out = zero().arg("build").arg(project).output().unwrap();
+    let output = project.join(".first/wp-content");
+    let out = first().arg("build").arg(project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     output
 }
@@ -86,13 +86,13 @@ fn registered_refusals_have_live_codes_and_no_stale_fixture_links() {
 fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     let tmp = tempfile::tempdir().unwrap();
     let source = "import './a';\nimport './b';\n/*😀*/ abstract class First {}\nabstract class Second {}\nconst clock = Date.now();\n";
-    std::fs::write(tmp.path().join("zero.config.ts"), source).unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), source).unwrap();
     for name in ["a.ts", "b.ts"] {
         std::fs::write(tmp.path().join(name), "abstract class Imported {}\n").unwrap();
     }
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
-    assert_eq!(report["schema"], "zero-diagnostics");
+    assert_eq!(report["schema"], "first-diagnostics");
     assert_eq!(report["version"], 1);
     assert_eq!(report["offsetEncoding"], "utf-8");
     assert_eq!(report["positionEncoding"], "utf-16");
@@ -104,19 +104,19 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
             .as_array()
             .unwrap()
             .iter()
-            .all(|d| d["code"] == "Z1101")
+            .all(|d| d["code"] == "F1101")
     );
     let loc = &report["diagnostics"][0]["location"];
-    assert_eq!(loc["file"], "zero.config.ts");
+    assert_eq!(loc["file"], "first.config.ts");
     assert_eq!(loc["start"], source.find("abstract class First").unwrap());
     assert_eq!(loc["column"], "/*😀*/ ".encode_utf16().count() + 1);
     assert_eq!(loc["line"], 3);
     assert_eq!(report, checked(tmp.path()).1, "diagnostics must be deterministic");
-    assert!(!tmp.path().join("zero").exists());
-    assert!(!tmp.path().join(".zero").exists());
+    assert!(!tmp.path().join("first").exists());
+    assert!(!tmp.path().join(".first").exists());
     // A partially lowered program must never run the Date.now() declaration.
-    assert!(!report.to_string().contains("Z2101"));
-    let human = zero().arg("check").arg(tmp.path()).output().unwrap();
+    assert!(!report.to_string().contains("F2101"));
+    let human = first().arg("check").arg(tmp.path()).output().unwrap();
     assert_eq!(human.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&human.stderr).contains("abstract, ambient or generic classes"));
 }
@@ -124,7 +124,7 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
 #[test]
 fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    for file in ["zero.config.ts", "seo.ts"] {
+    for file in ["first.config.ts", "seo.ts"] {
         std::fs::copy(root().join("examples/recipes").join(file), tmp.path().join(file)).unwrap();
     }
     let (out, report) = checked(tmp.path());
@@ -138,7 +138,7 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
 #[test]
 fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations() {
     let tmp = tempfile::tempdir().unwrap();
-    let config = r#"import { collection, defineConfig, id, text, group, repeater, blocks, json } from "zero";
+    let config = r#"import { collection, defineConfig, id, text, group, repeater, blocks, json } from "first";
 const notes = collection({
   id: id(), title: text().notNull(),
   seo: group({ fields: { summary: text().ui({ label: "Display name", help: "<b>Plain text</b>", placeholder: "Jane", width: 50 }) } }).ui({ label: "SEO" }),
@@ -147,19 +147,19 @@ const notes = collection({
   metadata: json(),
 }, { title: "title" });
 export default defineConfig({ name: "presentation", collections: { notes } });"#;
-    std::fs::write(tmp.path().join("zero.config.ts"), config).unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), config).unwrap();
     let content = build_wp(tmp.path());
-    let schema = content.join("plugins/zero-app-presentation/zero/app/schema.php");
+    let schema = content.join("plugins/first-app-presentation/first/app/schema.php");
     let got = php(
         r#"
         require $argv[1];
-        $schema = \Zero\Schema::load($argv[2]);
+        $schema = \First\Schema::load($argv[2]);
         $columns = $schema->collection('notes')['columns'];
-        $field = \Zero\Wp\Scf::fieldFor($schema, 'field_seo', 'zero_seo', 'seo', $columns['seo'], []);
-        $json = \Zero\Wp\Scf::fieldFor($schema, 'field_metadata', 'zero_metadata', 'metadata', $columns['metadata'], []);
+        $field = \First\Wp\Scf::fieldFor($schema, 'field_seo', 'first_seo', 'seo', $columns['seo'], []);
+        $json = \First\Wp\Scf::fieldFor($schema, 'field_metadata', 'first_metadata', 'metadata', $columns['metadata'], []);
         echo json_encode(['columns' => $columns, 'public' => $schema->describe()['collections']['notes']['columns'], 'field' => $field, 'json' => $json]);
     "#,
-        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &schema],
+        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &schema],
     );
     let ui = json!({"label": "Display name", "help": "<b>Plain text</b>", "placeholder": "Jane", "width": 50});
     assert_eq!(got["columns"]["seo"]["fields"]["summary"]["ui"], ui);
@@ -180,10 +180,10 @@ export default defineConfig({ name: "presentation", collections: { notes } });"#
     assert_eq!(field["placeholder"], "Jane");
     assert_eq!(field["wrapper"]["width"], 50);
     assert_eq!(got["json"]["instructions"], "Enter valid JSON.");
-    let snapshot = tmp.path().join("zero/_generated/migrations/snapshot.json");
+    let snapshot = tmp.path().join("first/_generated/migrations/snapshot.json");
     let before = std::fs::read(&snapshot).unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
+        tmp.path().join("first.config.ts"),
         config.replace("width: 50", "width: 100"),
     )
     .unwrap();
@@ -194,7 +194,7 @@ export default defineConfig({ name: "presentation", collections: { notes } });"#
         "presentation changes cannot change storage"
     );
     assert_eq!(
-        std::fs::read_dir(tmp.path().join("zero/_generated/migrations"))
+        std::fs::read_dir(tmp.path().join("first/_generated/migrations"))
             .unwrap()
             .filter(|entry| entry.as_ref().unwrap().path().extension().is_some_and(|e| e == "sql"))
             .count(),
@@ -215,12 +215,12 @@ fn malformed_ui_is_rejected_including_unknown_keys_nulls_and_fractional_widths()
         "{ help: () => 'effect' }",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection({{ id: id(), title: text().ui({ui}) }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ notes }} }});"
+        std::fs::write(tmp.path().join("first.config.ts"), format!(
+            "import {{ collection, id, text, defineConfig }} from 'first'; const notes = collection({{ id: id(), title: text().ui({ui}) }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ notes }} }});"
         )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{ui}: {report}");
-        assert_eq!(report["diagnostics"][0]["code"], "Z3101", "{ui}: {report}");
+        assert_eq!(report["diagnostics"][0]["code"], "F3101", "{ui}: {report}");
     }
 }
 
@@ -233,33 +233,33 @@ fn uri_vectors_agree_in_node_pure_evaluation_and_generated_php() {
     assert!(node.status.success());
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
-import {{ collection, id, text, json, action, defineConfig }} from "zero";
+    std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
+import {{ collection, id, text, json, action, defineConfig }} from "first";
 const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 const notes = collection({{ id: id(), title: text().notNull(), result: json().default(encoded) }}, {{ title: "title" }});
 export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}) }} }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/zero-app-uri/zero/app");
+    let app = content.join("plugins/first-app-uri/first/app");
     let result = php(
         r#"
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\ZeroApp\\' . $schema['actions']['encode']['handler'];
-        echo \Zero\Js::jsonStringify([\Zero\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]);
+        $fn = '\\FirstApp\\' . $schema['actions']['encode']['handler'];
+        echo \First\Js::jsonStringify([\First\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]);
     "#,
-        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
     );
     assert_eq!(result, json!([expected, expected]));
     let invalid = php(
         r#"
         require $argv[1];
-        try { \Zero\Js::encodeURI("\xC0\xAF"); echo json_encode('accepted'); }
-        catch (\Zero\JsError $e) { echo json_encode($e->jsName); }
+        try { \First\Js::encodeURI("\xC0\xAF"); echo json_encode('accepted'); }
+        catch (\First\JsError $e) { echo json_encode($e->jsName); }
     "#,
-        &[&root().join("runtime/Zero/bootstrap.php")],
+        &[&root().join("runtime/First/bootstrap.php")],
     );
     assert_eq!(invalid, "URIError");
 }
@@ -274,21 +274,21 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
         "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {pending,cleared,late} from './timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {pending,cleared,late} from './timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
         $out=[];
         foreach (['pending','cleared','late'] as $a) {
-            $fn='\\ZeroApp\\'.$s['actions'][$a]['handler'];
-            try { $out[]=['ok', \Zero\Timers::run(fn() => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])))]; }
-            catch (\Zero\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
-            $out[]=\Zero\Timers::pending();
+            $fn='\\FirstApp\\'.$s['actions'][$a]['handler'];
+            try { $out[]=['ok', \First\Timers::run(fn() => $fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])))]; }
+            catch (\First\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
+            $out[]=\First\Timers::pending();
         }
         echo json_encode($out);"#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-timers/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-timers/first/app"),
         ],
     );
     assert_eq!(
@@ -312,23 +312,23 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
     // (due, creation) order, and refuses waits past the request budget.
     let order = php(
         r#"require $argv[1];
-        putenv('ZERO_NOW=1000'); putenv('ZERO_TIMER_BUDGET_MS=100');
+        putenv('FIRST_NOW=1000'); putenv('FIRST_TIMER_BUDGET_MS=100');
         $log=[];
-        \Zero\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
-        \Zero\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
-        \Zero\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
-        $signal = \Zero\JsAbortSignal::timeout(15);
-        while (\Zero\Timers::runNext()) { $log[] = \Zero\Timers::clock(); }
-        \Zero\Timers::set(function() {}, 500);
-        try { \Zero\Timers::runNext(); $log[]='slept'; } catch (\Zero\JsError $e) { $log[]=$e->jsName; }
+        \First\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
+        \First\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
+        \First\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
+        $signal = \First\JsAbortSignal::timeout(15);
+        while (\First\Timers::runNext()) { $log[] = \First\Timers::clock(); }
+        \First\Timers::set(function() {}, 500);
+        try { \First\Timers::runNext(); $log[]='slept'; } catch (\First\JsError $e) { $log[]=$e->jsName; }
         // A throwing abort listener: dispatch continues (as in Node), then the error ends the
         // request where Node would report it as uncaught.
-        $faulty = new \Zero\JsAbortController(); $seen = [];
-        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \Zero\JsError('listener'); });
+        $faulty = new \First\JsAbortController(); $seen = [];
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \First\JsError('listener'); });
         $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 2; });
-        try { $faulty->abort(); } catch (\Zero\JsError $e) { $seen[] = $e->getMessage(); }
+        try { $faulty->abort(); } catch (\First\JsError $e) { $seen[] = $e->getMessage(); }
         echo json_encode([$log, $signal->aborted, $signal->reason->jsName, $seen]);"#,
-        &[&root().join("runtime/Zero/bootstrap.php")],
+        &[&root().join("runtime/First/bootstrap.php")],
     );
     assert_eq!(
         order,
@@ -370,15 +370,15 @@ fn url_vectors_agree_in_node_and_generated_php() {
     std::fs::copy(dir.join("url.js"), tmp.path().join("url.js")).unwrap();
     std::fs::write(tmp.path().join("cases.json"), Value::Array(cases).to_string()).unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
-        r#"import { action, defineConfig } from "zero";
+        tmp.path().join("first.config.ts"),
+        r#"import { action, defineConfig } from "first";
 import { parseAll, searchParams, invalid } from "./url.js";
 export default defineConfig({ name: "url", actions: { probe: action({ input: {}, handler: () => [searchParams(), invalid()] }) } });
 "#,
     )
     .unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/zero-app-url/zero/app");
+    let app = content.join("plugins/first-app-url/first/app");
     // parseAll takes a data argument the action input can't carry at this size; call the compiled
     // module function directly with the decoded cases.
     let result = php(
@@ -386,23 +386,23 @@ export default defineConfig({ name: "url", actions: { probe: action({ input: {},
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
-        $probe = $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]));
-        $cases = \Zero\Js::decodeJson(file_get_contents($argv[3]));
+        $fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
+        $probe = $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]));
+        $cases = \First\Js::decodeJson(file_get_contents($argv[3]));
         $parse = static function ($cases) {
             $props = ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'];
             $out = [];
             foreach ($cases->a as $c) {
-                $base = \Zero\Js::dynamicGet($c, 'base');
-                $parsed = \Zero\Js::dynamicStaticCall('URL', 'parse', new \Zero\JsArray($base === null ? [\Zero\Js::dynamicGet($c, 'input')] : [\Zero\Js::dynamicGet($c, 'input'), $base]));
-                $out[] = $parsed === null ? null : new \Zero\JsArray(array_map(static fn ($p) => \Zero\Js::dynamicGet($parsed, $p), $props));
+                $base = \First\Js::dynamicGet($c, 'base');
+                $parsed = \First\Js::dynamicStaticCall('URL', 'parse', new \First\JsArray($base === null ? [\First\Js::dynamicGet($c, 'input')] : [\First\Js::dynamicGet($c, 'input'), $base]));
+                $out[] = $parsed === null ? null : new \First\JsArray(array_map(static fn ($p) => \First\Js::dynamicGet($parsed, $p), $props));
             }
-            return new \Zero\JsArray($out);
+            return new \First\JsArray($out);
         };
-        echo \Zero\Js::jsonStringify(new \Zero\JsArray([$parse($cases), ...$probe->a]));
+        echo \First\Js::jsonStringify(new \First\JsArray([$parse($cases), ...$probe->a]));
     "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
             &app,
             &tmp.path().join("cases.json"),
         ],
@@ -457,7 +457,7 @@ fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
     let tmp = tempfile::tempdir().unwrap();
     let (out, missing) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
-    assert_eq!(missing["diagnostics"][0]["code"], "Z1003");
+    assert_eq!(missing["diagnostics"][0]["code"], "F1003");
     assert_eq!(missing["diagnostics"][0]["location"], Value::Null);
     let relocated = tempfile::tempdir().unwrap();
     let (out, relocated_missing) = checked(relocated.path());
@@ -471,10 +471,10 @@ fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
                 .contains(project.to_str().unwrap())
         );
     }
-    std::fs::write(tmp.path().join("zero.config.ts"), "const x = ;").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "const x = ;").unwrap();
     let (out, syntax) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
-    assert_eq!(syntax["diagnostics"][0]["code"], "Z1001");
+    assert_eq!(syntax["diagnostics"][0]["code"], "F1001");
 }
 
 #[test]
@@ -507,8 +507,8 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
             } else {
                 expression.to_string()
             };
-            std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
-import {{ collection, id, text, action, defineConfig }} from "zero";
+            std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
+import {{ collection, id, text, action, defineConfig }} from "first";
 const result = {invocation};
 const notes = collection({{ id: id(), title: text().notNull() }}, {{ title: "title" }});
 export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: {handler_body} }}) }} }});
@@ -516,7 +516,7 @@ export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: act
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             assert_eq!(report["ok"], false);
-            assert!(!tmp.path().join(".zero").exists());
+            assert!(!tmp.path().join(".first").exists());
         }
     }
 }
@@ -568,10 +568,10 @@ fn type_guards_validate_their_domains_and_boolean_returns() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
+            tmp.path().join("first.config.ts"),
             format!(
                 r#"
-import {{ action, defineConfig }} from "zero";
+import {{ action, defineConfig }} from "first";
 {helper}
 export default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => guard }}) }} }});
 "#
@@ -677,8 +677,8 @@ function nonempty() {
         .output().unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
-import {{ action, defineConfig }} from 'zero';
+    std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
+import {{ action, defineConfig }} from 'first';
 import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './helpers.mjs';
 {mutation}
 function nullable(value: string | null) {{ return value.trim(); }}
@@ -696,23 +696,23 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach (['probe', 'dynamicError', 'nullableError'] as $key) {
-  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
-  $result[] = $fn(new \Zero\JsObject(), new \Zero\JsObject());
+  $fn = '\\FirstApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \First\JsObject(), new \First\JsObject());
 }
-echo \Zero\Js::jsonStringify($result);
+echo \First\Js::jsonStringify($result);
 "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-js-values/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-js-values/first/app"),
         ],
     );
     assert_eq!(actual, json!([expected, true, true]));
 
     // The nonempty proof belongs to the container and must disappear through aliases.
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
+        tmp.path().join("first.config.ts"),
         r#"
-import { action, defineConfig } from 'zero';
+import { action, defineConfig } from 'first';
 export default defineConfig({ actions: { probe: action({ input: {}, handler: (): string => {
   const values = Array.from(['first']);
   const alias = values;
@@ -740,9 +740,9 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
+        tmp.path().join("first.config.ts"),
         r#"
-import { action, defineConfig } from 'zero';
+import { action, defineConfig } from 'first';
 import { change } from './helpers.mjs';
 export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
   const values: number[] = [1];
@@ -778,9 +778,9 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
+            tmp.path().join("first.config.ts"),
             r#"
-import { action, defineConfig } from 'zero';
+import { action, defineConfig } from 'first';
 import { change } from './helpers.mjs';
 export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
   const object = { count: 1 };
@@ -839,9 +839,9 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
+        tmp.path().join("first.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'zero';\nimport {{ {} }} from './async.mjs';\nexport default defineConfig({{ name: 'async-diff', actions: {{\n{actions}\n}} }});\n",
+            "import {{ action, defineConfig }} from 'first';\nimport {{ {} }} from './async.mjs';\nexport default defineConfig({{ name: 'async-diff', actions: {{\n{actions}\n}} }});\n",
             cases.join(", ")
         ),
     )
@@ -855,16 +855,16 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach ({} as $key) {{
-  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
-  $result[] = $fn(new \Zero\JsObject(), new \Zero\JsObject());
+  $fn = '\\FirstApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \First\JsObject(), new \First\JsObject());
 }}
-echo \Zero\Js::jsonStringify(new \Zero\JsArray($result));
+echo \First\Js::jsonStringify(new \First\JsArray($result));
 "#,
             serde_json::to_string(&cases).unwrap()
         ),
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-async-diff/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-async-diff/first/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -876,8 +876,8 @@ echo \Zero\Js::jsonStringify(new \Zero\JsArray($result));
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
-        "import { action, defineConfig } from 'zero';\nimport { lost, stuck } from './async.mjs';\nexport default defineConfig({ name: 'async-diff', actions: {\n  lost: action({ input: {}, handler: async () => await lost() }),\n  stuck: action({ input: {}, handler: async () => await stuck() }),\n} });\n",
+        tmp.path().join("first.config.ts"),
+        "import { action, defineConfig } from 'first';\nimport { lost, stuck } from './async.mjs';\nexport default defineConfig({ name: 'async-diff', actions: {\n  lost: action({ input: {}, handler: async () => await lost() }),\n  stuck: action({ input: {}, handler: async () => await stuck() }),\n} });\n",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -888,22 +888,22 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach (['lost', 'stuck'] as $key) {
-  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
-  try { $fn(new \Zero\JsObject(), new \Zero\JsObject()); $result[] = 'completed'; }
-  catch (\Zero\JsError $e) { $result[] = $e->getMessage(); }
+  $fn = '\\FirstApp\\' . $schema['actions'][$key]['handler'];
+  try { $fn(new \First\JsObject(), new \First\JsObject()); $result[] = 'completed'; }
+  catch (\First\JsError $e) { $result[] = $e->getMessage(); }
 }
 echo json_encode($result);
 "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-async-diff/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-async-diff/first/app"),
         ],
     );
     assert_eq!(
         errors,
         json!([
             "lost",
-            "This promise can never settle: nothing left to run (awaited at zero.config.ts:5:51)"
+            "This promise can never settle: nothing left to run (awaited at first.config.ts:5:51)"
         ])
     );
 }
@@ -921,8 +921,8 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
         json!([{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"])
     );
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
-import {{ collection, id, text, json, action, defineConfig }} from "zero";
+    std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
+import {{ collection, id, text, json, action, defineConfig }} from "first";
 const measured = {expression};
 const notes = collection({{ id: id(), title: text().notNull(), result: json().default(measured) }}, {{ title: "title" }});
 export default defineConfig({{ name: "differences", collections: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {expression} }}) }} }});
@@ -933,12 +933,12 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\ZeroApp\\' . $schema['actions']['measure']['handler'];
-        echo \Zero\Js::jsonStringify([\Zero\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]);
+        $fn = '\\FirstApp\\' . $schema['actions']['measure']['handler'];
+        echo \First\Js::jsonStringify([\First\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]);
     "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-differences/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-differences/first/app"),
         ],
     );
     assert_eq!(
@@ -948,7 +948,7 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
             [{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"]
         ])
     );
-    std::fs::write(tmp.path().join("zero.config.ts"), r#"const half = "🙂a".slice(1);"#).unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), r#"const half = "🙂a".slice(1);"#).unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
     assert!(
@@ -1020,9 +1020,9 @@ fn static_commonjs_packages_match_node_through_generated_php() {
         json!({"source": "src/[^/]*\\.test\\.js", "order": "index,constants,escape,after", "limit": 3, "label": "items"})
     );
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
+        tmp.path().join("first.config.ts"),
         r#"
-import { action, defineConfig, text } from "zero";
+import { action, defineConfig, text } from "first";
 import run from "./probe.cjs";
 export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text().notNull() }, handler: (input) => run(input.glob) }) } });
 "#,
@@ -1034,12 +1034,12 @@ export default defineConfig({ name: "commonjs", actions: { probe: action({ acces
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
-        echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(['glob' => 'src/*.test.js']), \Zero\Seam::ctx(['user' => null])));
+        $fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
+        echo \First\Js::jsonStringify($fn(new \First\JsObject(['glob' => 'src/*.test.js']), \First\Seam::ctx(['user' => null])));
     "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-commonjs/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-commonjs/first/app"),
         ],
     );
     assert_eq!(result, expected);
@@ -1049,7 +1049,7 @@ export default defineConfig({ name: "commonjs", actions: { probe: action({ acces
 fn classes_match_node_through_generated_php_and_wire_client_types() {
     let tmp = tempfile::tempdir().unwrap();
     let config = root().join("tests/differential/classes.ts");
-    std::fs::copy(&config, tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(&config, tmp.path().join("first.config.ts")).unwrap();
     let js = tmp.path().join("node");
     let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
@@ -1075,8 +1075,8 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     assert_eq!(cases.len(), 5);
     assert!(cases.values().all(|result| result.get("data").is_some()), "{expected}");
     let content = build_wp(tmp.path());
-    let runtime = content.join("plugins/zero-runtime/zero/bootstrap.php");
-    let app = content.join("plugins/zero-app-class-tests/zero/app");
+    let runtime = content.join("plugins/first-runtime/first/bootstrap.php");
+    let app = content.join("plugins/first-app-class-tests/first/app");
     let actual = php(
         r#"
         require $argv[1];
@@ -1084,11 +1084,11 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\ZeroApp\\' . $action['handler'];
+            $fn = '\\FirstApp\\' . $action['handler'];
             try { $out[$name] = ['data' => $fn()]; }
             catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
         }
-        echo \Zero\Js::jsonStringify($out);
+        echo \First\Js::jsonStringify($out);
     "#,
         &[&runtime, &app],
     );
@@ -1099,13 +1099,13 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\ZeroApp\\' . $schema['actions']['classesWire']['handler'];
+        $fn = '\\FirstApp\\' . $schema['actions']['classesWire']['handler'];
         $instance = $fn();
-        $stored = \Zero\Seam::toPhp($instance, ['type' => 'json']);
-        $input = \Zero\Seam::toJs($stored, ['type' => 'json']);
+        $stored = \First\Seam::toPhp($instance, ['type' => 'json']);
+        $input = \First\Seam::toJs($stored, ['type' => 'json']);
         $stored->p['count'] = 99;
-        echo \Zero\Js::jsonStringify([
-            'wire' => \Zero\Seam::toWire($instance),
+        echo \First\Js::jsonStringify([
+            'wire' => \First\Seam::toWire($instance),
             'identity' => [$instance->class !== null, $stored->class === null, $input->class === null],
             'detached' => [$instance->p['count'], $stored->p['count'], $input->p['count']],
         ]);
@@ -1118,7 +1118,7 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     std::fs::write(
         tmp.path().join("class-client.ts"),
         r#"
-import type { Actions } from './zero/client/types';
+import type { Actions } from './first/client/types';
 declare const instance: Actions['classesWire']['output'];
 const count: number = instance.count;
 const label: string = instance.label;
@@ -1171,7 +1171,7 @@ const sharedLiteral: 0 | 1 = effects.sharedCount;
 fn private_names_accessors_and_imported_javascript_classes_match_node() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = root().join("tests/differential");
-    std::fs::copy(dir.join("class-private.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(dir.join("class-private.ts"), tmp.path().join("first.config.ts")).unwrap();
     std::fs::copy(
         dir.join("class-private-lib.mjs"),
         tmp.path().join("class-private-lib.mjs"),
@@ -1179,7 +1179,7 @@ fn private_names_accessors_and_imported_javascript_classes_match_node() {
     .unwrap();
     let node = Command::new("node")
         .arg(dir.join("run-node.mjs"))
-        .arg(tmp.path().join("zero.config.ts"))
+        .arg(tmp.path().join("first.config.ts"))
         .output()
         .unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
@@ -1202,15 +1202,15 @@ fn private_names_accessors_and_imported_javascript_classes_match_node() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\ZeroApp\\' . $action['handler'];
+            $fn = '\\FirstApp\\' . $action['handler'];
             try { $out[$name] = ['data' => $fn()]; }
             catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
         }
-        echo \Zero\Js::jsonStringify($out);
+        echo \First\Js::jsonStringify($out);
     "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-class-private/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-class-private/first/app"),
         ],
     );
     assert_eq!(
@@ -1329,7 +1329,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{ table, id, json, action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ tables: {{ n: table({{ id: id() }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{ table, id, json, action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ tables: {{ n: table({{ id: id() }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]
@@ -1338,7 +1338,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
             .iter()
             .find(|d| d["message"].as_str().unwrap().contains(message))
             .unwrap_or_else(|| panic!("expected {message}: {report}"));
-        assert_eq!(diagnostic["location"]["file"], "zero.config.ts", "{report}");
+        assert_eq!(diagnostic["location"]["file"], "first.config.ts", "{report}");
         assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
     }
 }
@@ -1370,13 +1370,13 @@ fn host_globals_match_node_through_generated_php() {
     let _origin = Kill(origin);
     let secret = " lane secret \n";
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("zero.config.ts")).unwrap();
+    std::fs::copy(dir.join("host-globals.ts"), tmp.path().join("first.config.ts")).unwrap();
     std::fs::copy(dir.join("host-crypto.cjs"), tmp.path().join("host-crypto.cjs")).unwrap();
     let js = tmp.path().join("node");
     let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
         .arg(&js)
-        .arg(tmp.path().join("zero.config.ts"))
+        .arg(tmp.path().join("first.config.ts"))
         .output()
         .unwrap();
     assert!(
@@ -1385,13 +1385,13 @@ fn host_globals_match_node_through_generated_php() {
         String::from_utf8_lossy(&transpiled.stdout)
     );
     // The config imports its CommonJS helper, which Node loads with its own require.
-    let module = std::fs::read_to_string(js.join("zero.config.js")).unwrap();
-    std::fs::write(js.join("zero.config.mjs"), module).unwrap();
+    let module = std::fs::read_to_string(js.join("first.config.js")).unwrap();
+    std::fs::write(js.join("first.config.mjs"), module).unwrap();
     std::fs::copy(dir.join("host-crypto.cjs"), js.join("host-crypto.cjs")).unwrap();
     // Node reads the origin directly; the PHP side sees the same answers through the stub.
     let node = Command::new("node")
         .arg(dir.join("run-node.mjs"))
-        .arg(js.join("zero.config.mjs"))
+        .arg(js.join("first.config.mjs"))
         .env("HOST_URL", format!("http://127.0.0.1:{port}"))
         .env("HOST_SECRET", secret)
         .env_remove("HOST_UNSET")
@@ -1420,15 +1420,15 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $out = [];
 foreach ($schema['actions'] as $name => $action) {
-    $fn = '\\ZeroApp\\' . $action['handler'];
-    try { $out[$name] = ['data' => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]; }
+    $fn = '\\FirstApp\\' . $action['handler'];
+    try { $out[$name] = ['data' => $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]; }
     catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
 }
-echo \Zero\Js::jsonStringify($out);
+echo \First\Js::jsonStringify($out);
 "#,
         ])
-        .arg(content.join("plugins/zero-runtime/zero/bootstrap.php"))
-        .arg(content.join("plugins/zero-app-host-globals/zero/app"))
+        .arg(content.join("plugins/first-runtime/first/bootstrap.php"))
+        .arg(content.join("plugins/first-app-host-globals/first/app"))
         .arg(dir.join("host-wp-http.php"))
         // The PHP side fetches the public name; the policy checks it, the stub connects locally.
         .env("HOST_URL", format!("https://origin.example:{port}"))
@@ -1443,28 +1443,28 @@ echo \Zero\Js::jsonStringify($out);
     assert_eq!(actual, expected, "generated PHP differs from Node");
 }
 
-/// `zero check --json` reports each plugin's package, integrity, locked and inferred grant, and
+/// `first check --json` reports each plugin's package, integrity, locked and inferred grant, and
 /// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
 #[test]
 fn check_reports_plugin_grants_and_read_to_send_flows() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(tmp.path().join("node_modules/zero-plugin-sync/src")).unwrap();
+    std::fs::create_dir_all(tmp.path().join("node_modules/first-plugin-sync/src")).unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
-        r#"import { collection, defineConfig, id, text } from "zero";
-import sync from "zero-plugin-sync";
+        tmp.path().join("first.config.ts"),
+        r#"import { collection, defineConfig, id, text } from "first";
+import sync from "first-plugin-sync";
 const posts = collection({ id: id(), title: text().notNull() }, { title: "title" });
 export default defineConfig({ name: "flows", collections: { posts }, use: [sync()] });"#,
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("node_modules/zero-plugin-sync/package.json"),
-        r#"{ "name": "zero-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
+        tmp.path().join("node_modules/first-plugin-sync/package.json"),
+        r#"{ "name": "first-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("node_modules/zero-plugin-sync/src/index.ts"),
-        r#"import { action, db, definePlugin } from "zero";
+        tmp.path().join("node_modules/first-plugin-sync/src/index.ts"),
+        r#"import { action, db, definePlugin } from "first";
 import { abilities, esc_html } from "php/wordpress";
 import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
@@ -1488,7 +1488,7 @@ export default () => definePlugin({
     .unwrap();
     // A first local check, before any lock exists. Under CI the same plugin is refused until a
     // lock is committed, which is its own assertion below.
-    let out = zero()
+    let out = first()
         .env_remove("CI")
         .args(["check", "--json"])
         .arg(tmp.path())
@@ -1497,7 +1497,7 @@ export default () => definePlugin({
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(out.status.success(), "{report}");
     let plugin = &report["plugins"][0];
-    assert_eq!(plugin["package"], "zero-plugin-sync");
+    assert_eq!(plugin["package"], "first-plugin-sync");
     assert_eq!(plugin["version"], "3.1.0");
     assert!(plugin["integrity"].as_str().unwrap().starts_with("sha256-"));
     assert_eq!(plugin["status"], "added");
@@ -1522,20 +1522,20 @@ export default () => definePlugin({
             "sends": ["http: hooks.example.com"],
         }])
     );
-    assert!(!tmp.path().join("zero").exists(), "check writes no lock");
-    let frozen = zero()
+    assert!(!tmp.path().join("first").exists(), "check writes no lock");
+    let frozen = first()
         .args(["check", "--json", "--frozen"])
         .arg(tmp.path())
         .output()
         .unwrap();
     let report: Value = serde_json::from_slice(&frozen.stdout).unwrap();
     assert_eq!(frozen.status.code(), Some(1), "{report}");
-    assert_eq!(report["diagnostics"][0]["code"], "Z4201");
+    assert_eq!(report["diagnostics"][0]["code"], "F4201");
     assert!(
         report["diagnostics"][0]["message"]
             .as_str()
             .unwrap()
-            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/plugins.lock.json"),
+            .contains("plugin \"sync\" (first-plugin-sync@3.1.0) isn't in first/plugins.lock.json"),
         "{report}"
     );
 }
@@ -1550,7 +1550,7 @@ fn installed_package_typescript_is_type_erased_like_javascript_and_matches_node(
         r#"{"name":"typed-lib","type":"module","exports":{".":{"types":"./src/index.d.ts","import":"./src/index.ts"}}}"#,
     )
     .unwrap();
-    // Every type-level construct here is refused in authored code or exceeds Zero's type subset.
+    // Every type-level construct here is refused in authored code or exceeds First's type subset.
     std::fs::write(
         package.join("src/index.ts"),
         r#"import type { Shape } from "./shape.js";
@@ -1635,9 +1635,9 @@ export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
+        tmp.path().join("first.config.ts"),
         r#"
-import { action, defineConfig, text } from 'zero';
+import { action, defineConfig, text } from 'first';
 import { run } from 'typed-lib';
 export default defineConfig({ name: 'typed-lib', actions: {
   probe: action({ input: { key: text().notNull() }, handler: (input) => run(input.key) }),
@@ -1651,14 +1651,14 @@ export default defineConfig({ name: 'typed-lib', actions: {
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
-$input = new \Zero\JsObject();
+$fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
+$input = new \First\JsObject();
 $input->p['key'] = 'hi';
-echo \Zero\Js::jsonStringify($fn($input, new \Zero\JsObject()));
+echo \First\Js::jsonStringify($fn($input, new \First\JsObject()));
 "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-typed-lib/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-typed-lib/first/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -1672,17 +1672,17 @@ echo \Zero\Js::jsonStringify($fn($input, new \Zero\JsObject()));
         ),
         (
             "import { run, Mapper } from 'typed-lib'; const read = (key: string) => run(key);",
-            "`Mapper` comes from an installed package or JavaScript module, whose types Zero erases",
+            "`Mapper` comes from an installed package or JavaScript module, whose types First erases",
         ),
         (
             "import { run, type Mapper } from 'typed-lib'; const read = (key: string) => { const map: Mapper | null = null; return run(key); };",
-            "`Mapper` comes from an installed package or JavaScript module, whose types Zero erases",
+            "`Mapper` comes from an installed package or JavaScript module, whose types First erases",
         ),
     ] {
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
+            tmp.path().join("first.config.ts"),
             format!(
-                "import {{ action, defineConfig, text }} from 'zero'; {source} export default defineConfig({{ actions: {{ probe: action({{ input: {{ key: text().notNull() }}, handler: (input) => read(input.key) }}) }} }});"
+                "import {{ action, defineConfig, text }} from 'first'; {source} export default defineConfig({{ actions: {{ probe: action({{ input: {{ key: text().notNull() }}, handler: (input) => read(input.key) }}) }} }});"
             ),
         )
         .unwrap();
@@ -1721,16 +1721,16 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     "#,
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; import {test} from './helper.js'; export default defineConfig({name:'classboundary',actions:{test:action({input:{},handler:()=>test()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; import {test} from './helper.js'; export default defineConfig({name:'classboundary',actions:{test:action({input:{},handler:()=>test()})}});").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/zero-app-classboundary/zero/app");
+    let app = content.join("plugins/first-app-classboundary/first/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \Zero\Js::jsonStringify(\ZeroApp\action__test());
+        echo \First\Js::jsonStringify(\FirstApp\action__test());
     "#,
-        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
     );
     let node = Command::new("node")
         .current_dir(tmp.path())
@@ -1763,7 +1763,7 @@ const attempt = (f) => { try { return f(); } catch (e) { return e.name; } };
 export function brand(target) { Object.defineProperty(target, BRAND, { value: true }); return target; }
 export function isBranded(value) { return isObject(value) && Object.hasOwn(value, BRAND) && value[BRAND] === true; }
 export function local() { return LOCAL; }
-// Built-in prototypes carry well-known symbol methods Zero doesn't model: refused, not guessed.
+// Built-in prototypes carry well-known symbol methods First doesn't model: refused, not guessed.
 export function unmodeled() {
   const list = [1];
   return [() => Symbol.iterator in list, () => list[Symbol.iterator], () => Symbol.hasInstance in isObject, () => class_instance()[BRAND]].map((f) => { try { return f(); } catch (e) { return [e.name, e.message]; } });
@@ -1808,8 +1808,8 @@ export function probe() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
-        "import { action, defineConfig } from 'zero'; import { probe, unmodeled } from './helpers.mjs'; export default defineConfig({ name: 'symbols', actions: { probe: action({ input: {}, handler: () => probe() }), unmodeled: action({ input: {}, handler: () => unmodeled() }) } });",
+        tmp.path().join("first.config.ts"),
+        "import { action, defineConfig } from 'first'; import { probe, unmodeled } from './helpers.mjs'; export default defineConfig({ name: 'symbols', actions: { probe: action({ input: {}, handler: () => probe() }), unmodeled: action({ input: {}, handler: () => unmodeled() }) } });",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -1818,12 +1818,12 @@ export function probe() {
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$run = fn ($name) => ('\\ZeroApp\\' . $schema['actions'][$name]['handler'])(new \Zero\JsObject(), new \Zero\JsObject());
-echo \Zero\Js::jsonStringify(new \Zero\JsArray([$run('probe'), $run('unmodeled')]));
+$run = fn ($name) => ('\\FirstApp\\' . $schema['actions'][$name]['handler'])(new \First\JsObject(), new \First\JsObject());
+echo \First\Js::jsonStringify(new \First\JsArray([$run('probe'), $run('unmodeled')]));
 "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-symbols/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-symbols/first/app"),
         ],
     );
     let refused = json!([
@@ -1872,13 +1872,13 @@ echo \Zero\Js::jsonStringify(new \Zero\JsArray([$run('probe'), $run('unmodeled')
         ),
         (
             "export default defineConfig({ actions: { a: action({ input: {}, handler: () => globalThis.Bun() }) } });",
-            "`globalThis.Bun` is undefined in Zero",
+            "`globalThis.Bun` is undefined in First",
         ),
     ] {
         std::fs::remove_file(tmp.path().join("helpers.mjs")).ok();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\n{source}"),
+            tmp.path().join("first.config.ts"),
+            format!("import {{ action, defineConfig }} from 'first';\n{source}"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -1929,8 +1929,8 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
         }
     }
     std::fs::write(tmp.path().join("helper.js"), javascript).unwrap();
-    let entry = tmp.path().join("zero.config.ts");
-    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{name: 'builtinparity', actions: {{{}}}}});", actions.join(",\n"))).unwrap();
+    let entry = tmp.path().join("first.config.ts");
+    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{name: 'builtinparity', actions: {{{}}}}});", actions.join(",\n"))).unwrap();
     let node = Command::new("node")
         .arg(root().join("tests/differential/run-node.mjs"))
         .arg(&entry)
@@ -1939,20 +1939,20 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/zero-app-builtinparity/zero/app");
+    let app = content.join("plugins/first-app-builtinparity/first/app");
     let actual = php(
         r#"
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $out = new \Zero\JsObject();
+        $out = new \First\JsObject();
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\ZeroApp\\' . $action['handler'];
-            $out->p[$name] = new \Zero\JsObject(['data' => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]);
+            $fn = '\FirstApp\\' . $action['handler'];
+            $out->p[$name] = new \First\JsObject(['data' => $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]);
         }
-        echo \Zero\Js::jsonStringify($out);
+        echo \First\Js::jsonStringify($out);
     "#,
-        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
     );
     assert_eq!(actual, expected["cases"]);
 }
@@ -2052,7 +2052,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
             } else {
                 (format!("const folded = {expression};"), "folded".into())
             };
-            std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\n{declaration}\nexport default defineConfig({{name:'refusal',actions:{{probe:action({{input:{{}},handler:()=>{result}}})}}}});")).unwrap();
+            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declaration}\nexport default defineConfig({{name:'refusal',actions:{{probe:action({{input:{{}},handler:()=>{result}}})}}}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2077,17 +2077,17 @@ fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
         assert!(!node.status.success(), "{expression}");
         assert!(String::from_utf8_lossy(&node.stderr).contains("SyntaxError"));
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{expression}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{expression}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
         assert_eq!(diagnostic["category"], "invalid-source", "{report}");
-        assert_eq!(diagnostic["code"], "Z1001", "{report}");
+        assert_eq!(diagnostic["code"], "F1001", "{report}");
         assert!(
             diagnostic["message"].as_str().unwrap().starts_with("syntax error:"),
             "{report}"
         );
-        assert_eq!(diagnostic["location"]["file"], "zero.config.ts");
+        assert_eq!(diagnostic["location"]["file"], "first.config.ts");
     }
 }
 
@@ -2119,7 +2119,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nexport default defineConfig({{name:'diagnostics',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nexport default defineConfig({{name:'diagnostics',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2137,7 +2137,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
         "'a,b,c'.split(',', {valueOf: () => 2})",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nconst result = {expression};\nexport default defineConfig({{name:'coercion',actions:{{probe:action({{input:{{}},handler:()=>result}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst result = {expression};\nexport default defineConfig({{name:'coercion',actions:{{probe:action({{input:{{}},handler:()=>result}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2151,7 +2151,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
 fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
     for method in ["findMany", "findFirst"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig, table, id, db}} from 'zero';\nconst notes = table({{id:id()}});\nexport default defineConfig({{name:'queryarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, id, db}} from 'first';\nconst notes = table({{id:id()}});\nexport default defineConfig({{name:'queryarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2184,7 +2184,7 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig, table, id, integer, db}} from 'zero';\nconst notes=table({{id:id(),count:integer()}});\nexport default defineConfig({{name:'builderarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, id, integer, db}} from 'first';\nconst notes=table({{id:id(),count:integer()}});\nexport default defineConfig({{name:'builderarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2203,13 +2203,13 @@ fn dynamic_large_radix_values_fail_as_an_explicit_runtime_refusal() {
         r#"
         require $argv[1];
         try {
-            \Zero\Js::parseInt('120101100002111211120012010111012200200201', 3);
+            \First\Js::parseInt('120101100002111211120012010111012200200201', 3);
             echo json_encode(['accepted']);
-        } catch (\Zero\JsError $error) {
+        } catch (\First\JsError $error) {
             echo json_encode([$error->jsName, $error->getMessage()]);
         }
     "#,
-        &[&root().join("runtime/Zero/bootstrap.php")],
+        &[&root().join("runtime/First/bootstrap.php")],
     );
     assert_eq!(
         actual,
@@ -2226,7 +2226,7 @@ fn configuration_validates_callbacks_before_empty_input_shortcuts() {
         "[].map(Math)",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nexport default defineConfig({{actions:{{probe:action({{input:{{}},handler:()=>value}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nexport default defineConfig({{actions:{{probe:action({{input:{{}},handler:()=>value}})}}}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2248,7 +2248,7 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{text, id, json, action, defineConfig, HttpError}} from 'zero';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, id, json, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2276,7 +2276,7 @@ fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
         "const methods=[' abc '.trim]; const result=methods['0']();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\n{source}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>result}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{source}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>result}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2302,7 +2302,7 @@ fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
         } else {
             format!("Object.hasOwn({expression}, '__proto__')")
         };
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\n{declaration}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{declaration}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2329,7 +2329,7 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
         "typeof [1, 2]['+1']",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2346,8 +2346,8 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
 #[test]
 fn console_results_preserve_undefined_and_emit_the_log() {
     let tmp = tempfile::tempdir().unwrap();
-    let entry = tmp.path().join("zero.config.ts");
-    std::fs::write(&entry, "import {action,defineConfig} from 'zero'; export default defineConfig({name:'logresult',actions:{probe:action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}})}});").unwrap();
+    let entry = tmp.path().join("first.config.ts");
+    std::fs::write(&entry, "import {action,defineConfig} from 'first'; export default defineConfig({name:'logresult',actions:{probe:action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}})}});").unwrap();
     let node = Command::new("node")
         .arg(root().join("tests/differential/run-node.mjs"))
         .arg(&entry)
@@ -2357,8 +2357,8 @@ fn console_results_preserve_undefined_and_emit_the_log() {
     assert!(String::from_utf8_lossy(&node.stderr).contains("builtin-return-marker"));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/zero-app-logresult/zero/app");
-    let actual = Command::new("php").args(["-r", r#"require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\ZeroApp\\'.$schema['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn());"#]).arg(content.join("plugins/zero-runtime/zero/bootstrap.php")).arg(app).output().unwrap();
+    let app = content.join("plugins/first-app-logresult/first/app");
+    let actual = Command::new("php").args(["-r", r#"require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\FirstApp\\'.$schema['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn());"#]).arg(content.join("plugins/first-runtime/first/bootstrap.php")).arg(app).output().unwrap();
     assert!(actual.status.success(), "{}", String::from_utf8_lossy(&actual.stderr));
     assert!(String::from_utf8_lossy(&actual.stderr).contains("builtin-return-marker"));
     assert_eq!(
@@ -2370,13 +2370,13 @@ fn console_results_preserve_undefined_and_emit_the_log() {
 #[test]
 fn dynamic_engine_dependent_math_fails_explicitly() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\ZeroApp\\'.$schema['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn());"#,
+        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\FirstApp\\'.$schema['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn());"#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-powerrefusal/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-powerrefusal/first/app"),
         ],
     );
     assert_eq!(result, json!(["power", "reciprocal", "log", "exp"]));
@@ -2392,7 +2392,7 @@ fn configuration_refuses_unmodeled_inherited_properties() {
         "typeof ({}).hasOwnProperty",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2415,7 +2415,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         "Date",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{json,action,defineConfig}} from 'zero';\nexport default defineConfig({{actions:{{probe:action({{input:{{values:json().$type<{annotation}>().notNull()}},handler:(input)=>input.values}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{json,action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{input:{{values:json().$type<{annotation}>().notNull()}},handler:(input)=>input.values}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2432,7 +2432,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
 fn action_results_refuse_implicit_typed_date_serialization() {
     for expression in ["new Date(0)", "({date: new Date(0)})", "[new Date(0)]"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2453,7 +2453,7 @@ fn typed_date_coercion_requires_explicit_formatting() {
         "new Date(0) + ''",
         "''.concat(new Date(0))",
     ] {
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         assert_eq!(
@@ -2468,13 +2468,13 @@ fn typed_date_coercion_requires_explicit_formatting() {
 fn dynamic_array_prototype_writes_are_refused() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'prototyperefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './helper.js';export default defineConfig({name:'prototyperefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-prototyperefusal/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-prototyperefusal/first/app"),
         ],
     );
     assert_eq!(result, json!(["TypeError", false]));
@@ -2483,7 +2483,7 @@ fn dynamic_array_prototype_writes_are_refused() {
 #[test]
 fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nexport default defineConfig({actions:{probe:action({handler:()=>String(()=>1)})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nexport default defineConfig({actions:{probe:action({handler:()=>String(()=>1)})}});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2496,13 +2496,13 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
         "function convert(value){return String(value);} export function probe(){try{return convert(()=>1);}catch(e){return e.name;}}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'functionrefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './helper.js';export default defineConfig({name:'functionrefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(),\Zero\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(),\First\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-functionrefusal/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-functionrefusal/first/app"),
         ],
     );
     assert_eq!(result, "TypeError");
@@ -2511,7 +2511,7 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
 #[test]
 fn non_iso_date_literals_are_refused_at_the_call() {
     for text in ["2020-1-1", "-000000-01-01"] {
-        for name in ["zero.config.ts", "helper.js"] {
+        for name in ["first.config.ts", "helper.js"] {
             let tmp = tempfile::tempdir().unwrap();
             if name == "helper.js" {
                 std::fs::write(
@@ -2519,9 +2519,9 @@ fn non_iso_date_literals_are_refused_at_the_call() {
                     format!("export const probe=()=>new Date({text:?}).getTime();"),
                 )
                 .unwrap();
-                std::fs::write(tmp.path().join("zero.config.ts"),"import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
+                std::fs::write(tmp.path().join("first.config.ts"),"import {action,defineConfig} from 'first';import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
             } else {
-                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>new Date({text:?}).getTime()}})}}}});")).unwrap();
+                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>new Date({text:?}).getTime()}})}}}});")).unwrap();
             }
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{report}");
@@ -2536,7 +2536,7 @@ fn non_iso_date_literals_are_refused_at_the_call() {
 
 #[test]
 fn effectful_sorting_is_refused_at_the_callback() {
-    for name in ["zero.config.ts", "helper.js"] {
+    for name in ["first.config.ts", "helper.js"] {
         let tmp = tempfile::tempdir().unwrap();
         let expression = "(() => { let calls=0; [3,2,1].sort((a,b)=>{calls++;return a-b;}); return calls; })()";
         let body = if name == "helper.js" {
@@ -2550,7 +2550,7 @@ fn effectful_sorting_is_refused_at_the_callback() {
         } else {
             ""
         };
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{import}export default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{import}export default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         assert_eq!(
@@ -2565,7 +2565,7 @@ fn effectful_sorting_is_refused_at_the_callback() {
 fn native_error_inspection_is_refused_during_configuration_evaluation() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';const folded=probe();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './helper.js';const folded=probe();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2587,7 +2587,7 @@ fn undefined_cannot_be_narrowed_through_a_null_annotation_or_conditional_var() {
         "try {if(true) throw Error('stop'); var x=1;} catch {} return String(x+1);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';\nexport default defineConfig({{name:'undefinedflow',actions:{{probe:action({{input:{{}},handler:()=>{{{body}}}}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';\nexport default defineConfig({{name:'undefinedflow',actions:{{probe:action({{input:{{}},handler:()=>{{{body}}}}})}}}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{body}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2649,12 +2649,12 @@ fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() 
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nexport default defineConfig({{name:'boundaries',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nexport default defineConfig({{name:'boundaries',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let d = &report["diagnostics"][0];
         assert!(d["message"].as_str().unwrap().contains(message), "{source}: {report}");
-        assert_eq!(d["location"]["file"], "zero.config.ts");
+        assert_eq!(d["location"]["file"], "first.config.ts");
         assert!(!d["help"].as_str().unwrap().is_empty(), "{report}");
     }
 }
@@ -2680,7 +2680,7 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
             } else {
                 ""
             };
-            std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';{import}export default defineConfig({{actions:{{probe:action({{handler:{handler}}})}}}});")).unwrap();
+            std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';{import}export default defineConfig({{actions:{{probe:action({{handler:{handler}}})}}}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2716,7 +2716,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
         "function g(a:{x:number}|null){f(a?.['x']);}g(null);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2736,13 +2736,13 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-nativeproperties/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-nativeproperties/first/app"),
         ],
     );
     assert_eq!(
@@ -2760,8 +2760,8 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
 #[test]
 fn typed_data_reads_refuse_unmodeled_inherited_values() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), r#"
-import {action,defineConfig} from 'zero';
+    std::fs::write(tmp.path().join("first.config.ts"), r#"
+import {action,defineConfig} from 'first';
 export default defineConfig({name:'typeddatareads',actions:{probe:action({handler:()=>{
     const o:Record<string,undefined>={};
     const key='to'+'String';
@@ -2772,10 +2772,10 @@ export default defineConfig({name:'typeddatareads',actions:{probe:action({handle
 "#).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-typeddatareads/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-typeddatareads/first/app"),
         ],
     );
     assert_eq!(
@@ -2802,7 +2802,7 @@ process.stdout.write(JSON.stringify(methods));
     assert!(methods.len() > 100, "unexpected native inventory: {}", methods.len());
     for (surface, name) in methods {
         assert!(
-            zero::builtins::contract(&surface, &name).is_some(),
+            first::builtins::contract(&surface, &name).is_some(),
             "native {surface}.{name} needs an accepted or explicitly refused shared contract"
         );
     }
@@ -2832,8 +2832,8 @@ fn parameter_default_scope_limits_are_located_refusals() {
                 format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
             };
             std::fs::write(
-                tmp.path().join("zero.config.ts"),
-                format!("import {{action,defineConfig}} from 'zero';{body}"),
+                tmp.path().join("first.config.ts"),
+                format!("import {{action,defineConfig}} from 'first';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -2860,7 +2860,7 @@ fn missing_string_compound_reads_do_not_fabricate_a_string_result_type() {
         ("const o:string[]=[];", "o[0]"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2908,8 +2908,8 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
                 format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
             };
             std::fs::write(
-                tmp.path().join("zero.config.ts"),
-                format!("import {{action,defineConfig}} from 'zero';{body}"),
+                tmp.path().join("first.config.ts"),
+                format!("import {{action,defineConfig}} from 'first';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -2955,7 +2955,7 @@ fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_ref
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{{{source}}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{{{source}}}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2989,7 +2989,7 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
             } else {
                 (format!("const folded=(()=>{{{body}}})();"), "folded".into())
             };
-            std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>{result}}})}}}});")).unwrap();
+            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>{result}}})}}}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{body}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -3012,16 +3012,16 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
 fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {read} from './helper.js';class Base {cause(){}} class Options extends Base {} export default defineConfig({name:'errorcause',actions:{test:action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {read} from './helper.js';class Base {cause(){}} class Options extends Base {} export default defineConfig({name:'errorcause',actions:{test:action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}})}});").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/zero-app-errorcause/zero/app");
+    let app = content.join("plugins/first-app-errorcause/first/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \Zero\Js::jsonStringify(\ZeroApp\action__test());
+        echo \First\Js::jsonStringify(\FirstApp\action__test());
     "#,
-        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
     );
     assert_eq!(
         actual,
@@ -3058,7 +3058,7 @@ fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join(file), source).unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{import}inc();const folded=value;export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{import}inc();const folded=value;export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3082,16 +3082,16 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
         "export function installArrayOverrides(a,b){a.map=()=>[99];b.join=()=>'own';}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {installArrayOverrides} from './array-overrides.js';export default defineConfig({name:'arraynative',actions:{test:action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {installArrayOverrides} from './array-overrides.js';export default defineConfig({name:'arraynative',actions:{test:action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}})}});").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/zero-app-arraynative/zero/app");
+    let app = content.join("plugins/first-app-arraynative/first/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \Zero\Js::jsonStringify(\ZeroApp\action__test());
+        echo \First\Js::jsonStringify(\FirstApp\action__test());
     "#,
-        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
     );
     assert_eq!(
         actual,
@@ -3111,7 +3111,7 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
 #[test]
 fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3119,7 +3119,7 @@ fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
         diagnostic["message"], "destructured var loops aren't supported yet",
         "{report}"
     );
-    assert_eq!(diagnostic["location"]["file"], "zero.config.ts", "{report}");
+    assert_eq!(diagnostic["location"]["file"], "first.config.ts", "{report}");
     assert_eq!(
         diagnostic["help"], "use const or let for loop destructuring",
         "{report}"
@@ -3134,13 +3134,13 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
     // Strict JavaScript throws on a write to the name, so it is refused where it is written.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nconst f=function g(){ g = () => 1; return 1; };\nexport default defineConfig({actions:{probe:action({handler:()=>f()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nconst f=function g(){ g = () => 1; return 1; };\nexport default defineConfig({actions:{probe:action({handler:()=>f()})}});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3163,7 +3163,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "export const run = () => { const fn = function f(x = (f = () => 1)) { return x; }; return fn(); };\n",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nimport { run } from './h.mjs';\nexport default defineConfig({actions:{probe:action({handler:()=>run()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nimport { run } from './h.mjs';\nexport default defineConfig({actions:{probe:action({handler:()=>run()})}});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert!(
@@ -3176,7 +3176,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
-/// compiler and for tsc (zero.gen.ts), and the compiled handler calls `Call::run` with the input as
+/// compiler and for tsc (first.gen.ts), and the compiled handler calls `Call::run` with the input as
 /// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
 #[test]
 fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
@@ -3184,18 +3184,18 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let project = tmp.path().join("calls");
     copy_dir(&root().join("tests/fixtures/abilities-call"), &project);
     let content = build_wp(&project);
-    let plugin = content.join("plugins/zero-app-calls/zero/app/functions.php");
+    let plugin = content.join("plugins/first-app-calls/first/app/functions.php");
     // Stand in for WordPress: record each call and answer as the ability would.
     let stub = tmp.path().join("call.php");
     std::fs::write(
         &stub,
         r#"<?php
-        namespace Zero\Wp\Abilities;
+        namespace First\Wp\Abilities;
         final class Call {
             public static array $seen = [];
             public static function run(string $name, mixed $input): mixed {
-                self::$seen[] = [$name, \Zero\Js::jsonStringify($input)];
-                return $name === 'acme/site-info' ? new \Zero\JsObject(['value' => 'zero site']) : 'hi ada';
+                self::$seen[] = [$name, \First\Js::jsonStringify($input)];
+                return $name === 'acme/site-info' ? new \First\JsObject(['value' => 'first site']) : 'hi ada';
             }
         }"#,
     )
@@ -3203,14 +3203,14 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let got = php(
         r#"
         require $argv[1]; require $argv[2]; require $argv[3];
-        $out = \ZeroApp\action__relay(new \Zero\JsObject(['who' => 'ada']), null);
-        echo json_encode(['out' => \Zero\Js::jsonTree($out), 'seen' => \Zero\Wp\Abilities\Call::$seen]);
+        $out = \FirstApp\action__relay(new \First\JsObject(['who' => 'ada']), null);
+        echo json_encode(['out' => \First\Js::jsonTree($out), 'seen' => \First\Wp\Abilities\Call::$seen]);
     "#,
-        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &stub, &plugin],
+        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &stub, &plugin],
     );
     assert_eq!(
         got,
-        json!({"out": {"name": "ZERO SITE", "own": "hi ada"},
+        json!({"out": {"name": "FIRST SITE", "own": "hi ada"},
             "seen": [["acme/site-info", "{\"field\":\"name\"}"], ["calls/greet", "{\"who\":\"ada\"}"]]})
     );
     std::fs::write(
@@ -3218,9 +3218,9 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
         serde_json::to_vec(&json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
-                "paths": { "zero": [root().join("types/zero/index.d.ts")], "php/wordpress": [root().join("types/zero/wordpress.d.ts")] }
+                "paths": { "first": [root().join("types/first/index.d.ts")], "php/wordpress": [root().join("types/first/wordpress.d.ts")] }
             },
-            "files": ["zero.config.ts", "zero.gen.ts"]
+            "files": ["first.config.ts", "first.gen.ts"]
         }))
         .unwrap(),
     )
@@ -3235,9 +3235,9 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let out = tsc();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     // tsc refuses the same wrong input the compiler refuses.
-    let config = std::fs::read_to_string(project.join("zero.config.ts")).unwrap();
+    let config = std::fs::read_to_string(project.join("first.config.ts")).unwrap();
     std::fs::write(
-        project.join("zero.config.ts"),
+        project.join("first.config.ts"),
         config.replace("field: \"name\"", "field: \"title\""),
     )
     .unwrap();
@@ -3276,7 +3276,7 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
         .arg(&content)
         .arg(
             r#"
-            $log = tempnam(sys_get_temp_dir(), 'zero-hooks');
+            $log = tempnam(sys_get_temp_dir(), 'first-hooks');
             ini_set('error_log', $log);
             $content = apply_filters('the_content', "  body  ");
             $title = apply_filters('the_title', 'Kept', 7);
@@ -3304,8 +3304,8 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
             "title": "Kept",
             "saved": true,
             "errors": [
-                "[zero] wp-hooks/the_title: Zero\\JsError: broken title filter",
-                "[zero] wp-hooks/save_post: Zero\\JsError: saw Draft one #true",
+                "[first] wp-hooks/the_title: First\\JsError: broken title filter",
+                "[first] wp-hooks/save_post: First\\JsError: saw Draft one #true",
             ],
         })
     );
@@ -3335,7 +3335,7 @@ fn wordpress_functions_run_as_the_signed_in_user() {
                 'editor' => $run('Fish & <chips>', 'editor'),
                 'subscriber' => $run('Nope', 'subscriber'),
                 'empty' => $run('', 'editor'),
-                'option' => get_option('zero_last_note'),
+                'option' => get_option('first_last_note'),
             ]), "\n";
             "#,
         )
@@ -3365,16 +3365,16 @@ fn wordpress_functions_run_as_the_signed_in_user() {
 
 /// The compiler's own-app ability types and the runtime's registered abilities come from the same
 /// schema; this runs both and compares names, input properties and required inputs, so a new
-/// operation in runtime/Zero/Wp/Abilities/Register.php can't go untyped.
+/// operation in runtime/First/Wp/Abilities/Register.php can't go untyped.
 #[test]
 fn wordpress_own_abilities_match_the_registered_ones() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("own");
     copy_dir(&root().join("tests/fixtures/abilities-own"), &project);
     let content = build_wp(&project);
-    let program = zero::loader::load(&project.join("zero.config.ts")).unwrap();
-    let built = zero::pipeline::build(&project, &program, || Ok(zero::pipeline::Previous::none()), |_| None).unwrap();
-    let compiled: Value = serde_json::to_value(zero::wordpress::abilities::own_inputs(&built.schema)).unwrap();
+    let program = first::loader::load(&project.join("first.config.ts")).unwrap();
+    let built = first::pipeline::build(&project, &program, || Ok(first::pipeline::Previous::none()), |_| None).unwrap();
+    let compiled: Value = serde_json::to_value(first::wordpress::abilities::own_inputs(&built.schema)).unwrap();
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
@@ -3383,7 +3383,7 @@ fn wordpress_own_abilities_match_the_registered_ones() {
         .arg(
             r#"
             $out = [];
-            foreach (\Zero\Wp\Abilities\Register::operations() as $op) {
+            foreach (\First\Wp\Abilities\Register::operations() as $op) {
                 $keys = array_map('strval', array_keys($op['input']['properties'] ?? []));
                 $required = array_map('strval', $op['input']['required'] ?? []);
                 sort($keys);
@@ -3412,10 +3412,10 @@ fn wordpress_own_abilities_match_the_registered_ones() {
     assert_eq!(compiled, registered);
 }
 
-/// Language constructs live Zero 0.8 apps use (zero#138). Each `tests/differential/language/*.ts`
+/// Language constructs live Zero 0.8 apps use (first#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
-/// A helper, class, namespace receiver or captured collection that Zero refuses is reported
+/// A helper, class, namespace receiver or captured collection that First refuses is reported
 /// wherever it is first compiled: in a sibling method that reads `this`, in an `if`, a ternary or
 /// a `for await` array, or behind an `instanceof` check. The checks that type a branch never leave
 /// it registered without code, so the build never calls a function PHP never got.
@@ -3493,8 +3493,8 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: {handler} }}) }} }});\n"),
+            tmp.path().join("first.config.ts"),
+            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: {handler} }}) }} }});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3517,8 +3517,8 @@ fn a_method_replaced_by_a_later_property_is_not_callable() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {body} }}) }} }});\n"),
+            tmp.path().join("first.config.ts"),
+            format!("import {{ action, defineConfig }} from 'first';\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {body} }}) }} }});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3547,7 +3547,7 @@ fn language_constructs_match_node_through_generated_php() {
             let path = entry.unwrap().path();
             std::fs::copy(&path, tmp.path().join(path.file_name().unwrap())).unwrap();
         }
-        std::fs::copy(&config, tmp.path().join("zero.config.ts")).unwrap();
+        std::fs::copy(&config, tmp.path().join("first.config.ts")).unwrap();
         let node = Command::new("node")
             .arg(root().join("tests/differential/run-node.mjs"))
             .arg(&config)
@@ -3567,8 +3567,8 @@ fn language_constructs_match_node_through_generated_php() {
             "{name}: {expected}"
         );
         let content = build_wp(tmp.path());
-        let runtime = content.join("plugins/zero-runtime/zero/bootstrap.php");
-        let app = content.join(format!("plugins/zero-app-language-{name}/zero/app"));
+        let runtime = content.join("plugins/first-runtime/first/bootstrap.php");
+        let app = content.join(format!("plugins/first-app-language-{name}/first/app"));
         let out = Command::new("php")
             .arg("-r")
             .arg(
@@ -3578,11 +3578,11 @@ fn language_constructs_match_node_through_generated_php() {
             require $argv[2] . '/functions.php';
             $out = [];
             foreach ($schema['actions'] as $name => $action) {
-                $fn = '\\ZeroApp\\' . $action['handler'];
-                try { $out[$name] = ['data' => \Zero\Seam::toWire($fn(new \Zero\JsObject()))]; }
+                $fn = '\\FirstApp\\' . $action['handler'];
+                try { $out[$name] = ['data' => \First\Seam::toWire($fn(new \First\JsObject()))]; }
                 catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
             }
-            echo \Zero\Js::jsonStringify(['schema' => 'zero-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
+            echo \First\Js::jsonStringify(['schema' => 'first-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
         "#,
             )
             .arg(&runtime)
@@ -3607,7 +3607,7 @@ fn language_constructs_match_node_through_generated_php() {
     }
 }
 
-/// Type-level rules of the language constructs added for 0.8 apps (zero#138): each source either
+/// Type-level rules of the language constructs added for 0.8 apps (first#138): each source either
 /// checks cleanly or is refused with the named diagnostic, matching TypeScript or JavaScript.
 #[test]
 fn language_construct_type_rules() {
@@ -3645,8 +3645,8 @@ fn language_construct_type_rules() {
     for (declarations, handler, refusal) in cases {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ name: 'rules', actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});"),
+            tmp.path().join("first.config.ts"),
+            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ name: 'rules', actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3698,10 +3698,10 @@ export default main;
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("zero.config.ts"),
+        tmp.path().join("first.config.ts"),
         format!(
             r#"
-import {{ action, defineConfig }} from 'zero';
+import {{ action, defineConfig }} from 'first';
 import match from './utils.mjs';
 import * as utils from './utils.mjs';
 export default defineConfig({{ name: 'namespaces', actions: {{ probe: action({{ input: {{}}, handler: () => {expression} }}) }} }});
@@ -3715,18 +3715,18 @@ export default defineConfig({{ name: 'namespaces', actions: {{ probe: action({{ 
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\ZeroApp\\' . $schema['actions']['probe']['handler'];
-echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), new \Zero\JsObject()));
+$fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
+echo \First\Js::jsonStringify($fn(new \First\JsObject(), new \First\JsObject()));
 "#,
         &[
-            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
-            &content.join("plugins/zero-app-namespaces/zero/app"),
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-namespaces/first/app"),
         ],
     );
     assert_eq!(actual, expected);
     // The namespace object and the function with properties are never built in PHP.
     let functions =
-        std::fs::read_to_string(content.join("plugins/zero-app-namespaces/zero/app/functions.php")).unwrap();
+        std::fs::read_to_string(content.join("plugins/first-app-namespaces/first/app/functions.php")).unwrap();
     assert!(!functions.contains("'version'"), "{functions}");
 
     for (declarations, handler, message, help) in [
@@ -3791,7 +3791,7 @@ echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), new \Zero\JsObject()));
             "build time only",
         ),
     ] {
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\n{declarations}\nexport default defineConfig({{name:'namespaces',actions:{{probe:action({{input:{{}},handler:()=>{handler}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declarations}\nexport default defineConfig({{name:'namespaces',actions:{{probe:action({{input:{{}},handler:()=>{handler}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -3801,7 +3801,7 @@ echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), new \Zero\JsObject()));
     }
 }
 
-/// Authored TypeScript runs `for await` only over sync iterables of settled values (Zero's own
+/// Authored TypeScript runs `for await` only over sync iterables of settled values (First's own
 /// promises or plain values). Values from imported JavaScript and async generators need the job
 /// queue, which only imported JavaScript has, so they keep a located refusal.
 #[test]
@@ -3840,8 +3840,8 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\nimport {{ untyped }} from './h.mjs';\nexport default defineConfig({{ name: 'awaits', actions: {{ probe: action({{ input: {{}}, handler: async () => {{ {source} }} }}) }} }});"),
+            tmp.path().join("first.config.ts"),
+            format!("import {{ action, defineConfig }} from 'first';\nimport {{ untyped }} from './h.mjs';\nexport default defineConfig({{ name: 'awaits', actions: {{ probe: action({{ input: {{}}, handler: async () => {{ {source} }} }}) }} }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3859,7 +3859,7 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
 }
 
 /// Every refusal names what to write instead, so an author (often an agent) can act on it. Each
-/// source here hits one `Zero code doesn't support ...` refusal; the diagnostic must carry a
+/// source here hits one `First code doesn't support ...` refusal; the diagnostic must carry a
 /// location and non-empty help. Add a case whenever a refusal is added.
 #[test]
 fn language_refusals_carry_a_location_and_a_fix() {
@@ -4038,8 +4038,8 @@ fn language_refusals_carry_a_location_and_a_fix() {
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("zero.config.ts"),
-            format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});\n"),
+            tmp.path().join("first.config.ts"),
+            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());

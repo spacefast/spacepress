@@ -71,6 +71,34 @@ Values are exact WordPress.org versions or resource objects with `version`,
 `pluginData`, optional `requires`, and a checksum (required for direct URLs).
 See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
 
+## Opinionated WordPress
+
+While a Zero app is the active app, it runs WordPress the way spec.md §6
+describes. The app plugin applies every switch below at runtime
+(`runtime/Zero/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
+mu-plugins or the site's stored settings. Deactivate the app and WordPress
+behaves as it ships again. A site with the runtime plugin but no active app
+isn't changed either. None of these switches can be turned off in
+`zero.config.ts`.
+
+| switch | effect |
+|---|---|
+| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
+| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
+| `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
+| `fileEditors` | the plugin and theme file editors are refused to everyone |
+| `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
+| `autoUpdates` | no automatic core, plugin or theme updates |
+| `customizer` | `customize` is refused, so `customize.php` and its links are gone |
+| `comments` | comments closed on every post type except collections with `comments: true` |
+| `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
+| `timezone` | the Space's timezone, when the host sets `ZERO_SITE_TIMEZONE` to an IANA name |
+| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise Zero's minimal default (`zero-default`) |
+
+`GET /_schema` lists the switches in `runtime.wp.hardening`. The object cache
+is whatever the host's `object-cache.php` drop-in provides. A plugin can't
+install a drop-in, so the host supplies it (on Spacefast, the box image does).
+
 ## Mixed content and app data
 
 ```ts
@@ -210,6 +238,7 @@ registered once.
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
+| `comments` | `false` | collections only; WordPress comments on the post type. Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
 | `title` | a `title: text()` column | WordPress post title; must be `text().notNull()` for collections |
 | `content` | a `content: richText()` column | WordPress post content |
 | `access` | read `"anyone"`, writes `"editor"` | see below |

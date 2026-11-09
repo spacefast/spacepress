@@ -30,7 +30,7 @@ export interface Dynamic<T> {
 
 type Entities = Register extends { relations: Relations<infer S, infer _C> } ? S : Record<string, { $inferSelect: Record<string, unknown> }>;
 
-/** Registered collection and table names (from `zero.gen.ts`). */
+/** Registered collection and table names (from `zero/_generated/db.d.ts`). */
 export type CollectionName = keyof Entities & string;
 
 type RowOf<K extends CollectionName> = Entities[K] extends { $inferSelect: infer R } ? R : never;

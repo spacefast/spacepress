@@ -1,6 +1,6 @@
 # The examples
 
-The pantry, blog and site examples commit `zero/client/` and `zero/_generated/migrations/`
+The pantry, blog and site examples commit `zero/_generated/client/` and `zero/_generated/migrations/`
 as produced by `zero build`, so a fresh build changes nothing. The showcase
 builds its disposable app under `.zero/showcase/`, leaving its sources unchanged.
 

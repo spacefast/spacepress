@@ -460,7 +460,7 @@ undefined denotes the built-in missing value. Runtime bindings named undefined a
 
 Status: **refused**. Diagnostic: `Z4001`.
 
-abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in zero/abilities.json by `zero abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in zero/_generated/abilities.json by `zero abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
 
 [Evidence](../tests/fixtures/reject-ability-unknown)
 
@@ -484,7 +484,7 @@ The ability name must be written in place so the build can type the input and re
 
 Status: **supported**.
 
-abilities.call("vendor/name", input) compiles to Zero\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from zero/abilities.json, which build and check read without touching the network. zero.gen.ts carries the same types for the editor.
+abilities.call("vendor/name", input) compiles to Zero\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from zero/_generated/abilities.json, which build and check read without touching the network. zero/_generated/db.d.ts carries the same types for the editor.
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_abilities_are_typed_from_the_lock_and_the_schema`)
 
@@ -556,7 +556,7 @@ Allowlisted WordPress functions compile to Zero\Wp\Functions::call(name, [args])
 
 Status: **refused**. Diagnostic: `Z4201`.
 
-A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
 
 [Evidence](../tests/fixtures/reject-plugin-write)
 
@@ -735,3 +735,203 @@ Status: **supported**.
 An ordinary function or object-literal method that reads `this` gets its call receiver: the object for a method call (`obj.m()`, `obj[k]()`), the first argument of `call`/`apply`, and undefined for a plain call (strict mode). Arrows inside see the same `this`. In authored TypeScript, `this` is typed by a `this:` parameter, or for an object-literal method by the literal's own fields. `this` at module level, in a module-level arrow, or before `super()` in a derived constructor is refused with a fix.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## tsx-server-components
+
+Status: **supported**.
+
+Functions exported under a capitalized name from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\Zero\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md.
+
+[Evidence](../tests/compiler.rs) (`compiled_tsx_renders_the_html_react_renders`)
+
+## jsx-unsafe-url
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`). A computed URL that fails the same check drops the attribute at render time.
+
+[Evidence](../tests/fixtures/reject-jsx-unsafe-url)
+
+## jsx-server-event-handler
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Event handlers run in the browser; move them into a "use client" component.
+
+[Evidence](../tests/fixtures/reject-jsx-handler)
+
+## jsx-dangerously-set-inner-html
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Render the value as a child, which is escaped. Trusted markup will use `<Html>`.
+
+[Evidence](../tests/fixtures/reject-jsx-inner-html)
+
+## jsx-object-child
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+React throws on an object child; render one of its fields, or map a list to elements.
+
+[Evidence](../tests/fixtures/reject-jsx-object-child)
+
+## jsx-component-props
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Props are type-checked against the component's annotation like any call; pass values of the declared types.
+
+[Evidence](../tests/fixtures/reject-jsx-props)
+
+## jsx-head-elements
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, and import styles and scripts as modules.
+
+[Evidence](../tests/fixtures/reject-jsx-head)
+
+## jsx-in-config
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+JSX compiles in `zero/components/`, pages and "use client" files; modules the config imports stay plain TypeScript.
+
+[Evidence](../tests/fixtures/reject-jsx-config)
+
+## jsx-in-action-result
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+Rendered JSX exists only while a page renders, so the config (and the actions it defines) can't import a component; return data from actions and render it in a component.
+
+[Evidence](../tests/fixtures/reject-jsx-action)
+
+## jsx-textarea-children
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Set a textarea's text with `defaultValue` (or `value`), as React asks.
+
+[Evidence](../tests/fixtures/reject-jsx-textarea)
+
+## jsx-srcdoc-value
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`srcDoc` is a document parsed as HTML, so it is refused even as a literal. Link to the document with `src`; trusted markup will use `<Html>`.
+
+[Evidence](../tests/fixtures/reject-jsx-srcdoc)
+
+## jsx-raw-text-tag-case
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Tag names are matched case-insensitively, as browsers read them: `<sCript>` is `<script>`.
+
+[Evidence](../tests/fixtures/reject-jsx-script-case)
+
+## jsx-raw-text-children
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`script`, `style`, `textarea`, `title`, `iframe`, `noscript`, `template`, `xmp`, `noembed`, `noframes`, `plaintext`, `object` and `embed` take only literal children, because their content isn't escaped text.
+
+[Evidence](../tests/fixtures/reject-jsx-iframe-child)
+
+## jsx-raw-text-close
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+A literal child of a raw-text tag can't contain that tag's closing `</tag`.
+
+[Evidence](../tests/fixtures/reject-jsx-raw-close)
+
+## jsx-open-spread
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Spread only objects whose type lists their keys; each key is checked as if written out. `Record<string, …>`, index signatures, `any` and `unknown` are refused.
+
+[Evidence](../tests/fixtures/reject-jsx-open-spread)
+
+## jsx-spread-event-handler
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+A closed spread's keys meet the same rules as written attributes, so a spread can't add an event handler, `srcDoc` or an unsafe literal URL.
+
+[Evidence](../tests/fixtures/reject-jsx-spread-handler)
+
+## jsx-computed-style
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`style` takes an object whose keys are known at build time; values from data are escaped, and values that add declarations or load a `url(` are dropped.
+
+[Evidence](../tests/fixtures/reject-jsx-style-keys)
+
+## jsx-attribute-name
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Attribute names match `[a-zA-Z_:][a-zA-Z0-9_.:-]*`.
+
+[Evidence](../tests/fixtures/reject-jsx-attribute-name)
+
+## jsx-svg-animation
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+SVG `animate`/`set` can rewrite their target's attributes: they never target URL or event attributes, and `values`/`to`/`from`/`by`/`attributeName` must be literal.
+
+[Evidence](../tests/fixtures/reject-jsx-svg-animate)
+
+## jsx-use-client-pending
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+Interactive components arrive with the Interactivity API output; until then, remove the directive to render on the server.
+
+[Evidence](../tests/fixtures/reject-jsx-use-client)
+
+## jsx-children-type
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`children` is what JSX passes: type it `ReactNode`, `JSX.Element`, `string` or `number`. Taking rendered children apart isn't supported.
+
+[Evidence](../tests/fixtures/reject-jsx-children-object)
+
+## jsx-config-reachable
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+A `.tsx` module the config imports is refused even when its JSX never runs; components live in `zero/components/`.
+
+[Evidence](../tests/fixtures/reject-jsx-config-unused)
+
+## jsx-use-client-after-prologue
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+The directive is found anywhere in the file's directive prologue, after comments and other directives such as `"use strict"`.
+
+[Evidence](../tests/fixtures/reject-jsx-use-client-prologue)
+
+## jsx-children-type-local
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Every component's `children`, exported or local, is checked where JSX calls it.
+
+[Evidence](../tests/fixtures/reject-jsx-children-local)
+
+## jsx-style-spelling
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Browsers read `STYLE` and `Style` as `style`, which Zero narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key.
+
+[Evidence](../tests/fixtures/reject-jsx-style-case)

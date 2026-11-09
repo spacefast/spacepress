@@ -328,6 +328,20 @@ eq('core\'s permission check decides: a draft is still 401 JSON', [fetch("$url/w
 $noteRest = fetch("$url/wp-json/wp/v2/zero_notes/$note?format=md");
 eq('a Zero collection row answers as core and its access rules decide (readable by anyone here)', [$noteRest['status'], $noteRest['body']], [200, MarkdownTwins::post(get_post($note))]);
 eq('a list route is not an item route: JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts?format=md")['headers']['content-type'][0] ?? '', 'application/json'), true);
+// Another collection's item with a hidden post's numeric id: core checked that object, not the post.
+// Make categories until one has each hidden post's id, so the route answers 200.
+$shadowTerms = [];
+for ($i = 0; $i < 40 && (!get_term($draft, 'category') || !get_term($private, 'category')); $i++) {
+    $shadowTerms[] = wp_insert_term("Shadow $i", 'category')['term_id'] ?? 0;
+}
+check('categories with the hidden posts\' ids exist', get_term($draft, 'category') instanceof \WP_Term && get_term($private, 'category') instanceof \WP_Term);
+foreach (["categories/$draft", "categories/$private", 'users/1'] as $other) {
+    $shadow = fetch("$url/wp-json/wp/v2/$other?format=md");
+    check("$other?format=md is not a post item route: no post Markdown", !str_starts_with($shadow['headers']['content-type'][0] ?? '', 'text/markdown') && !preg_match('/Draft body|Private body/', $shadow['body']), $shadow['body']);
+}
+foreach ($shadowTerms as $term) {
+    wp_delete_term($term, 'category');
+}
 eq('a protected post without its password: title and note', fetch("$url/wp-json/wp/v2/posts/$locked?format=md")['body'], "# Locked post\n\nThis content is password protected.\n");
 eq('with the right password, as core shows it: the body', fetch("$url/wp-json/wp/v2/posts/$locked?format=md&password=pw")['body'], "# Locked post\n\nLocked body.\n");
 eq('with a wrong password core refuses as before', fetch("$url/wp-json/wp/v2/posts/$locked?format=md&password=no")['status'], 403);

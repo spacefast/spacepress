@@ -88,7 +88,9 @@ update; `() => new Date()` on a timestamp is recognized as "now"),
 onUpdate })` with actions `"cascade" | "restrict" | "set null" | "no action"`,
 `.$type<T>()` (type only), `.min(n)` / `.max(n)` (numbers: bounds; strings:
 length; lists: item count), `.pattern(/re/)` (strings), `.validate((value, ctx)
-=> true | "message")` (compiled to PHP, runs on every write).
+=> true | "message")` (compiled to PHP, runs on every write), `.was("old")` (a
+rename: the deploy renames the stored column and keeps its values; see
+[Schema changes at deploy](#schema-changes-at-deploy)).
 
 Phase-2 modifiers:
 
@@ -135,7 +137,7 @@ export default defineConfig({ collections: { posts }, tables: { stock } });
 ```
 
 Definitions need no exports. Backend-only config is sufficient; `zero build`
-emits `zero.gen.ts` to type `db.query` without importing authored definitions.
+emits `zero/_generated/db.d.ts` to type `db.query` without importing authored definitions.
 An `id: id()` primary key is implicit. Tables may declare a custom single primary
 key; collections and user projections use the native integer `id`.
 
@@ -151,6 +153,7 @@ registered once.
 |---|---|---|
 | `storageName` | registry key in snake_case | explicit physical resource name without `wp_` / `zero_` prefixes; retain existing storage on upgrade |
 | `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes. The first migration checks columns and declared index/foreign-key names without creating or copying the table. |
+| `was` | none | `table()` only; the name this table was stored under. The deploy renames it and keeps its rows. See [Schema changes at deploy](#schema-changes-at-deploy). |
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
@@ -181,6 +184,23 @@ This keeps later constraint removals consistent with the committed snapshot. Dat
 engine checks include these tables. Uninstall retains their rows like normal tables.
 An [adopted application table](migrating-from-zero.md#application-source-migration)
 keeps its TEXT/DOUBLE storage and string response IDs.
+
+### Files that moved into `zero/_generated/`
+
+A checkout from before `zero/_generated/` is refused until its committed
+files move. Each refusal prints the `git mv` that fixes it.
+
+| Before | Now | Left in place, it would be |
+|---|---|---|
+| `zero/migrations/` | `zero/_generated/migrations/` | read as a first build |
+| `zero/plugins.lock.json` | `zero/_generated/plugins.lock.json` | ignored, and a new lock granting everything written |
+| `zero/wp-plugins.lock.json` | `zero/_generated/wp-plugins.lock.json` | ignored, and its plugins resolved again |
+| `zero/abilities.json` | `zero/_generated/abilities.json` | ignored, so its abilities are unknown |
+| `zero/client/` | `zero/_generated/client/` | loaded as app code |
+| `zero.gen.ts` | `zero/_generated/db.d.ts` | stale editor types |
+
+A source bundle a host stored earlier is read on the new layout instead, and
+is never refused.
 
 ### Upgrading authoring
 
@@ -214,7 +234,7 @@ revision ownership; relations and client properties still use logical keys.
    `zero build .`. This authoring-only transition must leave the snapshot and
    historical SQL unchanged and produce no new numbered SQL. Review with
    `git diff -- zero/_generated/migrations` before deployment.
-3. Deploy the generated `.zero/wp-content` plugins together as an ordinary
+3. Deploy the generated `zero/dist/wp-content` plugins together as an ordinary
    file-copy update to the existing site. The runtime keeps the app's migration
    ledger, rows, reference targets and revision identities; it has no data
    migration to apply. Verify existing reads, relations and revision history
@@ -224,9 +244,59 @@ This also supports old logical aliases: use the original physical name as the
 binding even if the registry key is different. Changing a binding does not move
 or rename data. Snapshots contain physical names without old logical aliases.
 A build that removes existing storage while adding new storage is refused as
-an ambiguous replacement, even when both names are snake_case. Retain the
-binding during the authoring cut; stage intentional resource removal separately
-after reviewing its data migration.
+an ambiguous replacement, even when both names are snake_case. Declare `was`
+on the new table to rename it, or remove the old one in its own deploy.
+
+### Schema changes at deploy
+
+`zero build` writes the SQL for each schema change to `zero/_generated/migrations/`.
+You don't edit or review it. The deploy (`wp zero migrate`, the first request after
+a file-copy update, or the host's initialization) checks every pending change against
+the live rows before it runs any of them:
+
+| Change | Result |
+|---|---|
+| New kind, new optional field, new field with `.default()`, new index | applies, nothing asked |
+| A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
+| A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
+| A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
+| A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
+| `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
+| A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |
+| `.was("old")` on a `table()` field, `was: "old"` on a `table()` | renamed in place, rows kept |
+| The database doesn't have a table or column the migrations expect | refused: `schema_out_of_step` |
+
+A refusal changes nothing: no table, row or ledger entry. Every refusal in the
+deploy is reported at once:
+
+```sh
+$ wp zero migrate
+{"error":{"status":409,"code":"schema_refused","refusals":[
+  {"migration":"0006_update","code":"drop_has_rows","name":"likes","rows":1204,
+   "message":"Dropping the kind likes would delete 1204 rows.",
+   "fix":"Keep likes in the schema, rename it with .was() if it moved, or deploy with --drop=likes=1204 to delete them.",
+   "table":"wp_zero_likes","drop":"likes=1204"}],
+ "drop":["likes=1204"]}}
+$ wp zero migrate --drop=likes=1204
+```
+
+`--drop` names a kind (`likes=1204`) or a field (`likes.emoji=17`, counting rows
+that have a value, or for a narrowing the values that wouldn't fit), comma-separated,
+after an equals sign (`--drop=…`). The count must match the live data, so a
+confirmation can't delete rows that arrived after it was written. `drop` in the
+refusal lists the arguments that accept today's counts. `zero dev --allow-destructive`
+passes them for you on the local site.
+
+Several pending migrations are checked together, before any of them runs, under
+the names each statement will see: a drop that follows a rename counts the rows
+still under the old name. While a refusal stands, the site keeps serving WordPress,
+Zero's routes answer 503, and wp-admin shows the refusal with its `wp zero migrate
+--drop=…` command; requests don't recount the rows until the build or the ledger
+changes. A plugin activated into a refusal stays active, so the command can run.
+
+Renames run once: after the deploy, `.was()` is inert and can stay or go. Only a
+`table()`'s own fields take `.was()`: a collection's fields live in post meta,
+and a field inside a group, repeater or blocks has no column of its own.
 
 ### Access
 
@@ -300,7 +370,7 @@ export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Si
   and `once()` keys are its own.
 
 There is no capability list to write. `zero build` infers each plugin's
-grant and writes `zero/plugins.lock.json`:
+grant and writes `zero/_generated/plugins.lock.json`:
 
 ```json
 { "version": 1, "plugins": { "seo": {
@@ -709,14 +779,14 @@ export default defineConfig({
 - The app's own abilities (`<app>/<collection>-list`, `<app>/<action>`, ...)
   are typed from the schema with nothing else to do. An action's result is
   `unknown`: its ability publishes no output schema.
-- Other abilities come from `zero/abilities.json`, which you commit.
+- Other abilities come from `zero/_generated/abilities.json`, which you commit.
   `zero abilities pull [dir] --site <url>` writes it from a running site;
   `--only acme/*` (repeatable) keeps matching names. The pull signs in only
   with `ZERO_APP_PASSWORD=user:application-password` from the environment.
   `zero build` and `zero check` read the lock and never contact the site.
 - Map `"php/wordpress"` in tsconfig.json next to `"zero"`
   (`types/wordpress.d.ts` in the CLI package); `zero build` writes the ability
-  types into `zero.gen.ts` when the app imports the module.
+  types into `zero/_generated/db.d.ts` when the app imports the module.
 - The call runs core's `WP_Ability::execute()` for the current WordPress user:
   core validates the input, runs the ability's permission check and validates
   the output. It runs inside the handler's transaction, so the ability's

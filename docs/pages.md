@@ -69,7 +69,7 @@ export default function NotePage({ item, cheers }: Props) {
 
 ```sh
 zero build site                     # the backend, and the compiled schema pages read
-zero-pages build site               # writes site/.zero/wp-content/plugins/zero-pages-<app>/
+zero-pages build site               # writes site/zero/dist/wp-content/plugins/zero-pages-<app>/
 ```
 
 `zero-pages build [project] [--out <wp-content>] [--json]` exits `0` when it
@@ -106,7 +106,7 @@ refuses an artifact that names a non-asset file, PHP, an unknown island or
 action, or a route WordPress owns. An uploaded artifact can only carry markup
 and static assets, never server code.
 
-Pages read the app's schema from `zero build` output (`zero/client/schema.ts`,
+Pages read the app's schema from `zero build` output (`zero/_generated/client/schema.ts`,
 `zero/_generated/migrations/snapshot.json`). They never execute `zero.config.ts`, and a
 page cannot import runtime values from `"zero"`; use type imports and name
 collections as strings.

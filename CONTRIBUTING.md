@@ -38,7 +38,7 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
    the types make it safe, `Zero\Js` helpers where JavaScript and PHP differ,
    and a build error where neither is sound.
 5. **Emit.** The output is MySQL migrations (diffed against one committed
-   snapshot), `schema.php`, `functions.php`, `zero.gen.ts` (types `db` in your
+   snapshot), `schema.php`, `functions.php`, `zero/_generated/db.d.ts` (types `db` in your
    editor), the typed client, and the PHP runtime: the database layer, the
    REST API, the hook pipeline, and the JS-semantics helpers.
 
@@ -60,7 +60,7 @@ files under `runtime/` are picked up without code changes.
 `zero help` prints every command, grouped. **Build** commands (`dev`, `build`,
 `check`, `doctor`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `zero`
 binary against the project's files (`abilities pull` reads a site's abilities
-into the committed `zero/abilities.json`). **Site** commands (`migrate`, `seed`,
+into the committed `zero/_generated/abilities.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp zero <command>` in
 the `zero-runtime` plugin; `zero <command>` forwards to it unchanged, and
 `zero wp <args>` forwards any WP-CLI command. `--site` picks the site: absent,
@@ -71,10 +71,10 @@ or a WP-CLI `@alias`. Credentials come only from `ZERO_APP_PASSWORD` or
 there and one PHP handler.
 
 `zero build` writes new migrations to `zero/_generated/migrations/`, the typed client to
-`zero/client/`, `zero.gen.ts`, `zero/wp-plugins.lock.json` and, with plugin
-packages, `zero/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
+`zero/_generated/client/`, `zero/_generated/db.d.ts`, `zero/_generated/wp-plugins.lock.json` and, with plugin
+packages, `zero/_generated/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
 plugin grants the lock doesn't hold),
-and the artifact to `.zero/wp-content`: plugin folders, ZIPs, pinned
+and the artifact to `zero/dist/wp-content`: plugin folders, ZIPs, pinned
 dependencies and one `zero-manifest.json`. `zero dev` installs that artifact
 into a persistent Studio site at `<project>/.zero/dev/wordpress`, activates
 its manifest plugins, and watches TypeScript, config and public files. It
@@ -202,8 +202,8 @@ checks remain available. They are not dependencies of `spacefast`.
 | `src/extract.rs` | evaluated config → schema + functions to compile |
 | `src/compile.rs`, `src/types.rs` | typed TS → PHP compiler |
 | `src/migrate.rs` | snapshots and migration planning |
-| `src/schema_php.rs` | `schema.php` and `zero.gen.ts` |
-| `src/client.rs` | `zero/client/types.ts` and `schema.ts` |
+| `src/schema_php.rs` | `schema.php` and `zero/_generated/db.d.ts` |
+| `src/client.rs` | `zero/_generated/client/types.ts` and `schema.ts` |
 | `src/wp_plugins/` | plugin acquisition, checksums and the lock |
 | `src/sync/` | the `zero sync` CLI |
 | `src/cli.rs`, `src/commands/site.rs` | the command table, and forwarding to WP-CLI |

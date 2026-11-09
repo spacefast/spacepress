@@ -1049,6 +1049,12 @@ impl Graph {
             self.event_owners.insert(e.span, owner);
         }
         match &e.kind {
+            ExprKind::Jsx(jsx) => {
+                for x in jsx.exprs() {
+                    self.expr(x, names, env, owner);
+                }
+                return None;
+            }
             ExprKind::Sequence(items) => {
                 let mut last = None;
                 for item in items {

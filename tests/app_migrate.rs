@@ -45,7 +45,7 @@ fn build(project: &Path) {
     assert!(node.join("node").is_dir(), "run: npm ci --prefix tests/host-types");
     std::fs::write(project.join("tsconfig.json"), serde_json::json!({
         "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"zero":[types]}},
-        "include":["zero.config.ts","zero.gen.ts","server/**/*.ts","shared/**/*.ts"]
+        "include":["zero.config.ts","zero/_generated/db.d.ts","server/**/*.ts","shared/**/*.ts"]
     }).to_string()).unwrap();
     let checked = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .arg("-p")
@@ -169,7 +169,7 @@ fn fresh_tables_for_a_new_space() {
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join(".zero/wp-content"))
+        .arg(out.join("zero/dist/wp-content"))
         .arg(
             r#"$r = fn ($n, $in) => $wp->call("POST", "/actions/$n", (object) $in, "admin")[1];
                $added = $r("add", ["input" => ["title" => "  Hello  "]]);
@@ -771,7 +771,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join(".zero/wp-content"))
+        .arg(out.join("zero/dist/wp-content"))
         .arg(
             r#"putenv("NOTE_PREFIX=hi ");
                putenv("NOTE_KEY=k1");
@@ -842,7 +842,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(shared.join(".zero/wp-content"))
+        .arg(shared.join("zero/dist/wp-content"))
         .arg(
             r#"$r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as);
                echo json_encode([
@@ -1544,7 +1544,7 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
 
 /// Runs each named action of a built app in PHP with `inputs`, under `env`, and returns the results.
 fn run_actions(project: &Path, env: &[(&str, &str)], calls: &Value) -> Value {
-    let content = project.join(".zero/wp-content/plugins");
+    let content = project.join("zero/dist/wp-content/plugins");
     let app = std::fs::read_dir(&content)
         .unwrap()
         .filter_map(Result::ok)
@@ -2054,7 +2054,7 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join(".zero/wp-content"))
+        .arg(out.join("zero/dist/wp-content"))
         .arg(r#"$r = []; foreach ($arg as [$n, $in]) { $r[] = json_decode($app->cli(['action', $n, json_encode((object) $in)])[1], true); } echo json_encode($r), "\n";"#)
         .arg(calls.to_string())
         .output()
@@ -2422,7 +2422,7 @@ console.log(JSON.stringify(sent[0]));
     );
     // Those are exactly the inputs the generated action takes.
     build(&out);
-    let plugin = out.join(".zero/wp-content/plugins/zero-app-shelf-notes/zero/app/schema.php");
+    let plugin = out.join("zero/dist/wp-content/plugins/zero-app-shelf-notes/zero/app/schema.php");
     let script = "echo json_encode(array_keys((require $argv[1])['actions']['page']['input']));";
     let php = Command::new("php").args(["-r", script]).arg(plugin).output().unwrap();
     assert!(php.status.success(), "{}", String::from_utf8_lossy(&php.stderr));

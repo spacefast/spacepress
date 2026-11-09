@@ -188,10 +188,17 @@ final class HtmlMarkdown
             return;
         }
         $text = (string) preg_replace('/\s+/u', ' ', $text);
-        if ($this->target() === '' || str_ends_with($this->target(), ' ') || str_ends_with($this->target(), "\n")) {
+        $target = $this->target();
+        $lineStart = $target === '' || str_ends_with($target, "\n") || preg_match('/^#{1,6} $/', $target) === 1;
+        if ($lineStart || str_ends_with($target, ' ')) {
             $text = ltrim($text);
         }
-        $this->emit(str_replace(['\\', '[', ']', '*', '_', '`'], ['\\\\', '\\[', '\\]', '\\*', '\\_', '\\`'], $text));
+        $text = str_replace(['\\', '[', ']', '*', '_', '`'], ['\\\\', '\\[', '\\]', '\\*', '\\_', '\\`'], $text);
+        if ($lineStart) {
+            // Text a reader saw as text, not a heading, quote, list item or rule: `\#`, `\>`, `1\.`.
+            $text = (string) preg_replace(['/^(#{1,6}|[>+=-])(?=\s|$)/', '/^(\d{1,9})([.)])(?=\s|$)/'], ['\\\\$1', '$1\\\\$2'], $text);
+        }
+        $this->emit($text);
     }
 
     private function emit(string $markdown): void

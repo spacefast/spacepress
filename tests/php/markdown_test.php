@@ -74,6 +74,12 @@ $hidden = "<!-- wp:zero-test/members --><div><!-- wp:paragraph --><p>Members onl
 eq('a dynamic block that renders nothing hides its inner blocks too', [do_blocks($hidden), Markdown::render($hidden)], ['', '']);
 eq('text that spells a tag stays text, never markup', Markdown::render('<!-- wp:html --><p>&lt;script&gt;alert(1)&lt;/script&gt; and <b>&lt;b&gt;</b></p><!-- /wp:html -->'),
     "\\<script>alert(1)\\</script> and **\\<b>**\n");
+eq('text that starts like Markdown syntax stays text', Markdown::render('<!-- wp:paragraph --><p># not a heading</p><!-- /wp:paragraph -->'
+    . '<!-- wp:paragraph --><p>&gt; not a quote</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>- not an item</p><!-- /wp:paragraph -->'
+    . '<!-- wp:paragraph --><p>+ plus</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>2026. A year</p><!-- /wp:paragraph -->'
+    . '<!-- wp:paragraph --><p>1) first</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>Line<br>- after a break</p><!-- /wp:paragraph -->'
+    . '<!-- wp:heading --><h2 class="wp-block-heading">#hashtag heading</h2><!-- /wp:heading -->'),
+    "\\# not a heading\n\n\\> not a quote\n\n\\- not an item\n\n\\+ plus\n\n2026\\. A year\n\n1\\) first\n\nLine  \n\\- after a break\n\n## #hashtag heading\n");
 eq('code keeps its angle brackets', Markdown::render(Markdown::toBlocks("Use `<div>` here.\n\n```html\n<p>x</p>\n```\n")), "Use `<div>` here.\n\n```html\n<p>x</p>\n```\n");
 eq('a comparison is not a tag', Markdown::render('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
 register_block_type('zero-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
@@ -246,6 +252,12 @@ file_put_contents("$site->content/mu-plugins/members-block.php", <<<'PHP'
     // A plugin hiding blocks by class through render_block, and a members shortcode.
     add_filter('render_block', static fn (string $html, array $block): string => !is_user_logged_in() && str_contains((string) ($block['attrs']['className'] ?? ''), 'members-only') ? '' : $html, 10, 2);
     add_shortcode('members', static fn (array|string $atts, ?string $content = null): string => is_user_logged_in() ? (string) $content : '');
+    // A paywall as PMPro, MemberPress and RCP do it: the_content swapped for a teaser when signed out.
+    add_filter('the_content', static fn (string $html): string => !is_user_logged_in() && get_post_meta((int) get_the_ID(), 'paywalled', true) === '1'
+        ? '<p>Subscribe to read.</p>' : $html, 99);
+    // A per-post rule in render_block that asks get_the_ID() which post it is rendering.
+    add_filter('render_block', static fn (string $html, array $block): string => !is_user_logged_in() && ($block['blockName'] ?? '') === 'core/paragraph'
+        && get_post_meta((int) get_the_ID(), 'members_paragraphs', true) === '1' && !str_contains($html, 'Public intro.') ? '' : $html, 10, 2);
     PHP);
 $hiders = [
     'a members-only dynamic block' => '<!-- wp:zero-test/members-site --><div><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:zero-test/members-site -->',
@@ -254,7 +266,10 @@ $hiders = [
     'a render_block filter on a group' => '<!-- wp:group {"className":"members-only"} --><div class="wp-block-group members-only"><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:group -->',
     'a render_block filter on a paragraph' => '<!-- wp:paragraph {"className":"members-only"} --><p class="members-only">SECRET-%s</p><!-- /wp:paragraph -->',
     'a [members] shortcode in a paragraph' => '<!-- wp:paragraph --><p>[members]SECRET-%s[/members]</p><!-- /wp:paragraph -->',
+    'a the_content paywall filter' => '<!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph -->',
+    'a render_block filter reading get_the_ID()' => '<!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph -->',
 ];
+$meta = ['a the_content paywall filter' => 'paywalled', 'a render_block filter reading get_the_ID()' => 'members_paragraphs'];
 wp_set_current_user(1);
 $hidden = [];
 $day = 5;
@@ -262,6 +277,9 @@ foreach ($hiders as $how => $markup) {
     $marker = 'SECRET-' . strtoupper(substr(md5($how), 0, 8));
     $id = $insert(['post_title' => "Members $day", 'post_name' => "members-$day", 'post_date' => sprintf('2026-10-%02d 10:00:00', $day),
         'post_content' => '<!-- wp:paragraph --><p>Public intro.</p><!-- /wp:paragraph -->' . sprintf($markup, substr($marker, 7))]);
+    if (isset($meta[$how])) {
+        update_post_meta($id, $meta[$how], '1');
+    }
     $hidden[$how] = [$id, "members-$day", $marker];
     $day++;
 }
@@ -270,11 +288,16 @@ wp_set_current_user(0);
 $shared = ['the blog index twin' => fetch("$url/index.md")['body'] . fetch("$url/page/2.md")['body'] . fetch("$url/page/3.md")['body'] . fetch("$url/page/4.md")['body'],
     '/llms.txt' => fetch("$url/llms.txt")['body'], 'search' => fetch("$url/index.md?s=public+intro")['body'] . fetch("$url/index.md?s=public+intro&paged=2")['body'] . fetch("$url/index.md?s=public+intro&paged=3")['body']];
 foreach ($hidden as $how => [$id, $slug, $marker]) {
-    $surfaces = ['the HTML page' => fetch("$url/$slug/")['body'], 'its twin' => fetch("$url/$slug.md")['body'], 'REST ?format=md' => fetch("$url/wp-json/wp/v2/posts/$id?format=md")['body']] + $shared;
+    // What WordPress shows a signed-out visitor: core REST's content.rendered runs the_content as them.
+    // The test router has no theme (WP_USE_THEMES false), so the HTML page itself is not compared.
+    $rendered = (string) (json_decode(fetch("$url/wp-json/wp/v2/posts/$id")['body'], true)['content']['rendered'] ?? '');
+    check("$how: WordPress itself hides it (the check below means something)", $rendered !== '' && !str_contains($rendered, $marker), $rendered);
+    $surfaces = ['its twin' => fetch("$url/$slug.md")['body'], 'REST ?format=md' => fetch("$url/wp-json/wp/v2/posts/$id?format=md")['body']] + $shared;
     foreach ($surfaces as $where => $body) {
         check("$how stays hidden in $where", !str_contains($body, $marker) && !str_contains($body, '[members]'), $body);
     }
-    check("$how: the rest of the post still shows", str_contains(fetch("$url/$slug.md")['body'], 'Public intro.'), fetch("$url/$slug.md")['body']);
+    $visible = isset($meta[$how]) && $meta[$how] === 'paywalled' ? 'Subscribe to read.' : 'Public intro.';
+    check("$how: the twin shows what WordPress shows ($visible)", str_contains(fetch("$url/$slug.md")['body'], $visible) && str_contains($rendered, $visible), [fetch("$url/$slug.md")['body'], $rendered]);
 }
 $surfaces = ['the blog index twin' => fetch("$url/index.md?s=public+intro")['body']];
 check('the listing summary is the rendered text', (bool) preg_match('#\[Members \d+\]\(' . preg_quote($url, '#') . '/members-\d+\.md\): Public intro\.\n#', $surfaces['the blog index twin']), $surfaces['the blog index twin']);

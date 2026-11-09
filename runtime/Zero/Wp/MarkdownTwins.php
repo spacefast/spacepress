@@ -18,7 +18,7 @@ use Zero\Sync\Markdown;
  *   main query and before any template, canonical redirect or the pages add-on's claim.
  * - Twins are the same for every visitor: only publicly viewable content, never drafts, previews,
  *   private posts or password-protected bodies. They are built from stored content
- *   ({@see Markdown::render()}), not from the theme's HTML.
+ *   ({@see Markdown::renderPost()}), not from the theme's HTML.
  * - HTML responses with a twin advertise it in a `Link` header and a `<link>` tag.
  * - The engine's `Accept: text/markdown` lane calls {@see negotiate()} (docs/runtime-contract.md).
  */
@@ -66,14 +66,14 @@ final class MarkdownTwins
     }
 
     /**
-     * One post as Markdown: `# Title`, then its stored content through {@see Markdown::render()}.
+     * One post as Markdown: `# Title`, then its content as WordPress shows it ({@see Markdown::renderPost()}).
      * A password-protected post gives its title and a note, never its body. Nothing else is checked:
      * the caller decides who may read the post (the twin URLs, `?format=md`).
      */
     public static function post(\WP_Post $post): string
     {
         $title = self::plain($post->post_title);
-        $body = post_password_required($post) ? "This content is password protected.\n" : Markdown::render((string) $post->post_content);
+        $body = post_password_required($post) ? "This content is password protected.\n" : Markdown::renderPost($post);
         $markdown = $title === '' ? '' : '# ' . $title . "\n";
         if ($body !== '') {
             $markdown .= ($markdown === '' ? '' : "\n") . $body;
@@ -424,7 +424,7 @@ final class MarkdownTwins
         }
         // From what the post's twin shows (rendered blocks, so a block that hides content hides it
         // here too), never from its raw markup; a hand-written excerpt is plain text already.
-        $source = $post->post_excerpt !== '' ? $post->post_excerpt : self::summaryText(Markdown::render((string) $post->post_content));
+        $source = $post->post_excerpt !== '' ? $post->post_excerpt : self::summaryText(Markdown::renderPost($post));
         $summary = self::plain(wp_trim_words($source, 30, '…'));
 
         return $line . ($summary !== '' ? ': ' . $summary : '');

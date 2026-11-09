@@ -1,7 +1,7 @@
 // The members app for the legacy-users suite: a user projection shaped like design §6.2,
 // with defaults of each usermeta storage form (text, boolean, date, timestamp, multiple select) and
 // a column without one.
-import { defineConfig, id, text, email, select, boolean, date, timestamp, userProjection } from "zero";
+import { defineConfig, id, text, email, select, boolean, date, timestamp, userProjection } from "first";
 const members = userProjection({
   id: id(),
   email: email().notNull().unique().max(191),

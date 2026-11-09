@@ -682,7 +682,7 @@ mod tests {
     /// A redirect is carried only when its first segment is a literal nothing on v2 answers.
     #[test]
     fn a_redirect_reaches_the_app_unless_its_first_segment_is_a_free_literal() {
-        let served: std::collections::BTreeSet<String> = ["app", "zero", "client", "assets"].map(String::from).into();
+        let served: std::collections::BTreeSet<String> = ["app", "first", "client", "assets"].map(String::from).into();
         for (source, reaches) in [
             ("/", false),
             ("/old", false),

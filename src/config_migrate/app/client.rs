@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 /// The compatibility module and the Preact build it runs on, written under `public/first/`.
 const RUNTIME: &[(&str, &str)] = &[
-    ("client.js", include_str!("client08/first-client.js")),
+    ("client.js", include_str!("client08/zero-client.js")),
     ("preact/preact.js", include_str!("client08/preact/preact.js")),
     ("preact/hooks.js", include_str!("client08/preact/hooks.js")),
     ("preact/jsx-runtime.js", include_str!("client08/preact/jsx-runtime.js")),

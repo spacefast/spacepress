@@ -16,7 +16,7 @@ const ids: Record<string, any> = site.ids;
 const release = join(here, "content-model.php");
 const migrate = (...flags: string[]) => {
   // `first migrate-legacy - < release` forwards exactly this: the release on stdin to the site's WP-CLI.
-  const r = spawnSync(`${here}/../harness.sh`, ["wp", "zero", "migrate-legacy", "-", ...flags], { input: readFileSync(release), encoding: "utf8" });
+  const r = spawnSync(`${here}/../harness.sh`, ["wp", "first", "migrate-legacy", "-", ...flags], { input: readFileSync(release), encoding: "utf8" });
   return { code: r.status, out: r.stdout.trim() === "" ? null : JSON.parse(r.stdout) };
 };
 // Everything the migration may touch: posts with their meta, term relationships and term counts.
@@ -65,7 +65,7 @@ test("a post's content is checked against the new app's content column", () => {
 
 test("an unknown flag is refused before anything runs", () => {
   // A typo like --dryrun must not fall through to a real migration.
-  const r = JSON.parse(wpTry("zero", "migrate-legacy", "/tmp/first-legacy-release.php", "--dryrun"));
+  const r = JSON.parse(wpTry("first", "migrate-legacy", "/tmp/first-legacy-release.php", "--dryrun"));
   assert.deepEqual([r.error.code, r.error.detail.includes("--dryrun")], ["invalid_command", true]);
   assert.deepEqual(snapshot(), before_);
 });

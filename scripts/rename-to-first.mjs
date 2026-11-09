@@ -66,6 +66,7 @@ const KEEP = [
   /__spacefast\/zero\b/g, // engine-owned paths
   /\/__zero\/(?:auth|run|config|realtime\/)[\w\/*.<>-]*/g, // 0.8 paths
   /\blegacy\/zero-0\.8\b/g,
+  /\bclient08\/zero-client\.js\b/g, // the 0.8 client bridge's file name
   /\bzero-0\.8(?:\.\d+)?\b/g,
   /\bzero-08\b/g,
   /\bzero08\b/g,
@@ -102,6 +103,12 @@ const KEEP = [
   /\bzero-(?:width|length|based|terminated|int|cost|indexed|padded|fill|filled|copy|byte|value|sized|or-more)\b/g,
   /\bzero(?:s|es|ize|ized|ing|ed|vec|from|trie)\b/g,
   /\bRezo Zero\b/g,
+  // Zero 0.8 values inside the converter: the `--from zero` source kind and the 0.8 physical
+  // table-name fallback.
+  /"zero" => Self::Zero/g,
+  /if s\.is_empty\(\) \{ "zero"\.into\(\) \}/g,
+  // A hash input: changing it would change every derived file uid (tests/fixtures/sync-file-uid.json).
+  /\bzero-sync-file\b/g,
 ];
 const KEEP_08_META = [/'_zero_'|\\\\?_zero\\\\?_%?|\b_+zero_\w*/g];
 
@@ -170,7 +177,6 @@ function bareWord(text, prose08) {
   return text.replace(/(?<![A-Za-z0-9_@.\\\/-])zero(?![A-Za-z0-9_-]|\.\d)/g, (m, offset, all) => {
     const before = all.slice(Math.max(0, offset - 24), offset);
     const after = all.slice(offset + 4, offset + 30);
-    if (prose08 && /(^|[^\\])["']$/.test(before) && /^["']/.test(after)) return m;
     return MATH_BEFORE.test(before) || MATH_AFTER.test(after) ? m : 'first';
   });
 }

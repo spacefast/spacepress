@@ -12,8 +12,8 @@ import { sql, wp, wpTry } from "../env.ts";
 
 const site = JSON.parse(readFileSync(process.env.ZERO_LEGACY_USERS!, "utf8"));
 const { ada, bo, cy, other } = site.ids;
-const migrate = (...flags: string[]) => JSON.parse(wpTry("zero", "migrate-legacy-users", "--space=legacy-space", ...flags));
-const member = (id: number) => JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id } }))).data[0] ?? null;
+const migrate = (...flags: string[]) => JSON.parse(wpTry("first", "migrate-legacy-users", "--space=legacy-space", ...flags));
+const member = (id: number) => JSON.parse(wp("first", "find", "members", JSON.stringify({ where: { id } }))).data[0] ?? null;
 const meta = () => sql("SELECT user_id, meta_key, meta_value FROM wp_usermeta ORDER BY umeta_id");
 const identity = () => sql("SELECT wp_user_id, status FROM wp_first_identity_accounts ORDER BY wp_user_id");
 /** Whether WpAuth refuses this user as suspended (what every Zero channel checks). */
@@ -66,7 +66,7 @@ async function race(body: string, blockedOn: string) {
   let run: ReturnType<typeof child> | undefined;
   try {
     await writer.ready();
-    run = child(["wp", "zero", "migrate-legacy-users", "--space=legacy-space"]);
+    run = child(["wp", "first", "migrate-legacy-users", "--space=legacy-space"]);
     await run.until("the move to wait on the writer's lock", () => running(blockedOn));
     writer.p.stdin.end("go\n");
     await writer.output();
@@ -191,7 +191,7 @@ test("app users get first-identity accounts with their verified email, and stay 
   const ada_ = member(ada);
   assert.deepEqual([ada_.newsletter, ada_.joinedOn, ada_.welcomedAt, ada_.topics, ada_.bio], [true, "2026-03-01", "2026-03-01T10:00:00.000Z", ["news", "events"], null]);
   // ...and filter like any member's (a `has` on the serialized list).
-  assert.ok(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { topics: { has: "events" } } }))).data.some((m: any) => m.id === ada));
+  assert.ok(JSON.parse(wp("first", "find", "members", JSON.stringify({ where: { topics: { has: "events" } } }))).data.some((m: any) => m.id === ada));
   // Passwords (and so existing sign-ins) are untouched.
   assert.deepEqual(passwords(), passwordsBefore);
   // Another Space's app user is not this app's to claim.
@@ -230,7 +230,7 @@ test("a suspension first-identity holds is never lifted by the move, even one co
 test("an account first-identity erased stays erased", () => {
   const gus = appUser("gus");
   sql(`INSERT INTO wp_first_identity_accounts (wp_user_id, primary_email_id, status, created_at) VALUES (${gus}, NULL, 'deletion_requested', 0)`);
-  wp("zero", "identity", "erase", String(gus));
+  wp("first", "identity", "erase", String(gus));
   const user = () => sql(`SELECT user_email, display_name FROM wp_users WHERE ID = ${gus}`);
   const erased = user();
   assert.deepEqual(erased, [{ user_email: "", display_name: "Deleted account" }]);

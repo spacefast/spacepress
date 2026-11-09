@@ -16,7 +16,7 @@ final class Uid
 
     public static function forFile(string $collection, string $basename): string
     {
-        return 'zr_' . substr(hash('sha256', "first-sync-file\0" . $collection . "\0" . $basename), 0, 20);
+        return 'zr_' . substr(hash('sha256', "zero-sync-file\0" . $collection . "\0" . $basename), 0, 20);
     }
 
     public static function valid(mixed $uid): bool

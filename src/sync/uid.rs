@@ -2,7 +2,7 @@
 use sha2::{Digest, Sha256};
 
 pub fn for_file(collection: &str, basename: &str) -> String {
-    let hash = Sha256::digest(format!("first-sync-file\0{collection}\0{basename}"));
+    let hash = Sha256::digest(format!("zero-sync-file\0{collection}\0{basename}"));
     let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
     format!("zr_{}", &hex[..20])
 }

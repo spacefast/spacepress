@@ -44,7 +44,7 @@ fn build(project: &Path) {
     let node = root.join("tests/host-types/node_modules/@types");
     assert!(node.join("node").is_dir(), "run: npm ci --prefix tests/host-types");
     std::fs::write(project.join("tsconfig.json"), serde_json::json!({
-        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"zero":[types]}},
+        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"first":[types]}},
         "include":["first.config.ts","first.gen.ts","server/**/*.ts","shared/**/*.ts"]
     }).to_string()).unwrap();
     let checked = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))

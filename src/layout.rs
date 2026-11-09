@@ -23,13 +23,14 @@ pub const DIST: &str = "zero/dist";
 /// `zero build`'s default output: a `wp-content` directory.
 pub const WP_CONTENT: &str = "zero/dist/wp-content";
 
-/// Committed inputs that moved into `zero/_generated/`: (old project path, new). A source bundle
+/// Committed inputs that moved (into `zero/_generated/`, or app code into `zero/`): (old, new). A source bundle
 /// captured before the move names the old paths, and a host recompiles stored bundles, so the
 /// hosted compile reads them through [`current`]. (The hosted compile reads the ledger's old path
 /// itself; see `bundle::compile_tree`.)
 const MOVED: &[(&str, &str)] = &[
     ("zero/abilities.json", "zero/_generated/abilities.json"),
     ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
+    ("wp-hooks/", "zero/wp-hooks/"),
 ];
 
 /// Committed files a live checkout may still have at their place before `zero/_generated/`: (old,
@@ -102,6 +103,8 @@ mod tests {
         for (old, new) in [
             ("zero/abilities.json", "zero/_generated/abilities.json"),
             ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
+            ("wp-hooks/save_post.ts", "zero/wp-hooks/save_post.ts"),
+            ("wp-hooks/the_content/a.ts", "zero/wp-hooks/the_content/a.ts"),
             // Already current, and unrelated paths, are unchanged.
             ("zero/_generated/abilities.json", "zero/_generated/abilities.json"),
             ("zero/lib/fields.ts", "zero/lib/fields.ts"),

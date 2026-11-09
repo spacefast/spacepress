@@ -13,7 +13,7 @@ repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 first="$target/debug/first"
-export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-zero-wp-store}"
+export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-store}"
 export FIRST_WP_PORT="${FIRST_WP_PORT:-8901}"
 work="$(mktemp -d)"
 cleanup() { "$here/harness.sh" down; rm -rf "$work"; }

@@ -467,7 +467,7 @@ test("a site already on runtime tables 0.2 gains the files table and working pro
   `);
   wp("option", "update", "first_runtime_tables", "0.2");
   wp("eval", "do_action('admin_init');");
-  assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_zero\\_\\_files'").length, 1, "the table exists again");
+  assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_first\\_\\_files'").length, 1, "the table exists again");
   assert.equal(wp("option", "get", "first_runtime_tables"), wp("eval", "echo \\First\\Wp\\Runtime::tablesVersion();"));
   assert.equal(wp("option", "get", "first_runtime_private_ok"), "1", "the deny rules were written and probed");
   assert.equal((await uploadDeck(pdf("after upgrade"))).status, 201, "uploads work without reactivating anything");

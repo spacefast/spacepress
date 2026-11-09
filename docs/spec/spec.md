@@ -384,7 +384,7 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
   (default `editor`), `idempotent`, `readonly`, `signature`, `abilities`,
   `name`. Each action is an Ability `<app>/<name>` (core's run route and MCP),
   `POST /__first/api/v1/actions/<name>` on the facade (§3a), and a typed client
-  method `zero.<name>()`. The name is the export name (§1.1). A `signature` action
+  method `first.<name>()`. The name is the export name (§1.1). A `signature` action
   (an inbound webhook) is an `app/**/route.ts` instead, since its caller signs
   the raw body.
   It can also be called from a form (rendering.md).

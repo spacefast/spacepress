@@ -13,7 +13,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 cd "$repo"
-export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-zero-system}" FIRST_WP_PORT="${FIRST_WP_PORT:-8809}"
+export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-system}" FIRST_WP_PORT="${FIRST_WP_PORT:-8809}"
 # Every build of the example shares one checksum-verified download cache for the platform plugins.
 export FIRST_WP_PLUGIN_CACHE="${FIRST_WP_PLUGIN_CACHE:-$repo/.first/cache/plugins}"
 

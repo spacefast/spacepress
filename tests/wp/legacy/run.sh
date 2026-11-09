@@ -37,16 +37,16 @@ rsync -a --delete "$app/.first/wp-content/" "$wp/.wp-content-legacy/"
 "$wp/harness.sh" up --wp-content "$wp/.wp-content-legacy" > "$wp/.harness-legacy.json"
 if [[ -n ${ZERO_ORIGINAL:-} ]]; then
   "$here/stage.sh" > "$wp/.legacy-site.json"
-  docker compose -p "${FIRST_WP_PROJECT:-zero-wp-test}" exec -T cli rm -f /var/www/html/wp-content/mu-plugins/first-legacy-kernel.php
+  docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" exec -T cli rm -f /var/www/html/wp-content/mu-plugins/first-legacy-kernel.php
   [[ ${FIRST_UPDATE_FIXTURES:-0} == 1 ]] && cp "$wp/.legacy-site.json" "$here/site.json"
 else
-  docker compose -p "${FIRST_WP_PROJECT:-zero-wp-test}" cp "$here/site.json" cli:/tmp/first-legacy-site.json >/dev/null 2>&1
-  docker compose -p "${FIRST_WP_PROJECT:-zero-wp-test}" cp "$here/replay.php" cli:/tmp/first-legacy-replay.php >/dev/null 2>&1
+  docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$here/site.json" cli:/tmp/first-legacy-site.json >/dev/null 2>&1
+  docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$here/replay.php" cli:/tmp/first-legacy-replay.php >/dev/null 2>&1
   "$wp/harness.sh" wp eval-file /tmp/first-legacy-replay.php /tmp/first-legacy-site.json >/dev/null
   cp "$here/site.json" "$wp/.legacy-site.json"
 fi
 # The release, inside the container, for tests that plan against a variant of the new schema.
-docker compose -p "${FIRST_WP_PROJECT:-zero-wp-test}" cp "$here/content-model.php" cli:/tmp/first-legacy-release.php >/dev/null 2>&1
+docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$here/content-model.php" cli:/tmp/first-legacy-release.php >/dev/null 2>&1
 FIRST_WP_HARNESS="$wp/.harness-legacy.json" ZERO_LEGACY_SITE="$wp/.legacy-site.json" FIRST_BIN="$first" \
   node --test --test-concurrency=1 "$here/legacy.test.ts"
 # Native posts are adopted only for the named Space, retaining IDs and their native body.
@@ -57,6 +57,6 @@ export default capsule({collections:{posts:{publicRead:true}}});
 TS
 "$first" migrate app --from zero-0.8 "$app/native" --out "$app/native-out" >/dev/null
 "$first" build "$app/native-out" --quiet >/dev/null
-docker compose -p "${FIRST_WP_PROJECT:-zero-wp-test}" cp "$app/native-out/.first/wp-content/plugins/first-app-migrated-app/first/app/schema.php" cli:/tmp/first-native-posts-schema.php >/dev/null 2>&1
-docker compose -p "${FIRST_WP_PROJECT:-zero-wp-test}" cp "$here/native.php" cli:/tmp/first-native-posts-proof.php >/dev/null 2>&1
+docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$app/native-out/.first/wp-content/plugins/first-app-migrated-app/first/app/schema.php" cli:/tmp/first-native-posts-schema.php >/dev/null 2>&1
+docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$here/native.php" cli:/tmp/first-native-posts-proof.php >/dev/null 2>&1
 "$wp/harness.sh" wp eval-file /tmp/first-native-posts-proof.php

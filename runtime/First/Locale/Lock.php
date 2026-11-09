@@ -34,7 +34,7 @@ final class Lock
         $queries = $store->isPostBacked($collection)
             ? [
                 ['SELECT * FROM `' . $store->db->wpdb()->posts . '` WHERE ID = ?', [(int) $pk]],
-                ['SELECT meta_id, meta_key, meta_value FROM `' . $store->db->wpdb()->postmeta . "` WHERE post_id = ? AND (meta_key LIKE 'first\\_%' OR meta_key LIKE '\\_zero\\_%') ORDER BY meta_id", [(int) $pk]],
+                ['SELECT meta_id, meta_key, meta_value FROM `' . $store->db->wpdb()->postmeta . "` WHERE post_id = ? AND (meta_key LIKE 'first\\_%' OR meta_key LIKE '\\_first\\_%') ORDER BY meta_id", [(int) $pk]],
             ]
             : [['SELECT * FROM `' . $store->tables->table($collection) . '` WHERE `' . db()->schema()->collection($collection)['primaryKey'] . '` = ?', [$pk]]];
         foreach ($queries as [$sql, $params]) {

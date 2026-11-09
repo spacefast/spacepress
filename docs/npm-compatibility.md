@@ -27,7 +27,7 @@ From `examples/npm-compat`, with `first` on PATH:
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
-FIRST_BIN="$(command -v zero)" npm run verify -- --isolated
+FIRST_BIN="$(command -v first)" npm run verify -- --isolated
 first build app
 first dev app --port "$PORT"
 ```

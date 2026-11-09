@@ -164,7 +164,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.equal(wp("option", "get", "first_runtime_tables"), wp("eval", "echo \\First\\Wp\\Runtime::tablesVersion();"));
   assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init"]);
   // Feature lanes add shared runtime tables of their own; the app's are these.
-  const tables = sql("SHOW TABLES LIKE 'wp\\_zero\\_%'");
+  const tables = sql("SHOW TABLES LIKE 'wp\\_first\\_%'");
   for (const table of ["wp_first__migrations", "wp_first__revisions", "wp_first_comments", "wp_first_subscribers"]) {
     assert.ok(tables.includes(table), `${table} missing from ${tables}`);
   }
@@ -379,7 +379,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   const seeded = JSON.parse(wp("eval", "echo wp_json_encode([as_schedule_single_action(time() + 3600, 'not_zero', [], 'someone-else')]);"));
   const [maintain] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE g.slug = 'first' AND a.hook = 'first_jobs_maintain' AND a.status = 'pending'");
   const status = (id: string | number) => sql(`SELECT status FROM wp_actionscheduler_actions WHERE action_id = ${id}`)[0];
-  const pending = () => sql("SELECT CONCAT(g.slug, ':', a.hook) FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.status = 'pending' AND (g.slug LIKE 'zero%' OR g.slug = 'someone-else') ORDER BY 1");
+  const pending = () => sql("SELECT CONCAT(g.slug, ':', a.hook) FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.status = 'pending' AND (g.slug LIKE 'first%' OR g.slug = 'someone-else') ORDER BY 1");
   assert.ok(pending().includes("first:first_jobs_maintain"), pending().join(","));
   // A job queued and not yet run: publishing a post enqueues notifyReaders under key publish-<id>.
   const pendingPost = await editor.posts.create({ title: "Queued at uninstall", status: "draft" });

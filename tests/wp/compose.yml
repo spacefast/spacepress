@@ -1,6 +1,6 @@
 # Disposable WordPress for First's WP-target tests. Not for production use.
 # The DB credentials below are throwaway values for this local container only.
-name: ${FIRST_WP_PROJECT:-zero-wp-test}
+name: ${FIRST_WP_PROJECT:-first-wp-test}
 services:
   db:
     image: mariadb:11.4

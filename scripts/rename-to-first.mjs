@@ -184,6 +184,16 @@ const CODE_RULES = [
   [/(?<=\[)zero(?=\])/g, 'first'],
   [/(\\?["'])zero\1/g, '$1first$1'],
   [/\bZERO\b/g, 'FIRST'],
+  // Shell defaults (`${FIRST_WP_PROJECT:-zero-wp-test}`), crate paths, and the binary in commands.
+  [/(?<=:-)zero-(?=[\w$])/g, 'first-'],
+  [/(?<=LIKE ')zero(?=%')/g, 'first'], // SQL patterns over First's names (Action Scheduler groups)
+  // LIKE patterns with escaped underscores: 'wp\\_zero\\_%', '\\_zero\\_%' (SCF's hidden meta twin).
+  [/(?<=(?:wp|')(?:\\+_)?)zero(?=\\+_|%)/g, 'first'],
+  [/\bzero::(?=[a-z])/g, 'first::'],
+  [/(?<=\bbrew test )zero\b/g, 'first'],
+  [/(?<=\bcommand -v )zero\b/g, 'first'],
+  [/(?<=^|\n)zero(?= users\|tokens)/g, 'first'],
+  [/(?<=`)zero(?=\.<name>\(\)`)/g, 'first'],
   // The generated client conventionally named after the product: `zero.posts.list(...)`.
   [/\b(const|let|var)(\s+)zero(?=\s*=\s*(?:await\s+)?createClient\b)/g, '$1$2first'],
   [/(?<=\bwatch\()zero(?=,)/g, 'first'],

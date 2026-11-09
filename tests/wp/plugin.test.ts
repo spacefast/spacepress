@@ -39,7 +39,7 @@ test("activation registers the post types, field groups and options page, and cr
   assert.deepEqual(scf.groups.find((g: any) => g[0] === "group_first_global_settings").slice(0, 2), ["group_first_global_settings", "first-global-settings"]);
   assert.deepEqual(scf.pages, [["first-global-settings", "first_global_settings", "first-blog"]]);
 
-  const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_zero%' AND TABLE_NAME NOT LIKE 'wp\\_zero\\_identity\\_%'");
+  const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_first%' AND TABLE_NAME NOT LIKE 'wp\\_first\\_identity\\_%'");
   const sharedTables = ["wp_first__files", "wp_first__jobs", "wp_first__migrations", "wp_first__outbox", "wp_first__receipts", "wp_first__revisions", "wp_first_comments", "wp_first_field_teams", "wp_first_fuse_log", "wp_first_guestbook", "wp_first_hook_notes", "wp_first_job_notes", "wp_first_key_links", "wp_first_key_roots", "wp_first_phrases", "wp_first_reviews", "wp_first_signups", "wp_first_tour_log"];
   assert.deepEqual(tables.filter((r) => sharedTables.includes(r.t)).map((r) => r.t).sort(), sharedTables);
   assert.deepEqual([...new Set(tables.map((r) => r.e))], ["InnoDB"]);

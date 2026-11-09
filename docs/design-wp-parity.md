@@ -1267,7 +1267,7 @@ first build [dir] [--target standalone|wp] [--out <dir>]   default target: `targ
 first check [dir]                                           evaluates + compiles; emits nothing; runs both targets' rejection rules
 first dev [dir] [--port n]                                  standalone: php -S as today
 first dev [dir] --wp [--port n]                             builds the plugin, boots tests/wp-style docker (WP+MariaDB+SCF), installs the plugin, prints URL + admin creds; rebuilds + re-copies the plugin on config change
-zero users|tokens …                                        standalone: shells to first/bin/first.php (§5.2)
+first users|tokens …                                        standalone: shells to first/bin/first.php (§5.2)
 ```
 
 Output layout:

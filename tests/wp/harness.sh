@@ -25,7 +25,7 @@ set -euo pipefail
 caller="$PWD"   # relative --wp-content paths are the caller's, not this directory's
 cd "$(dirname "$0")"
 export FIRST_WP_PORT="${FIRST_WP_PORT:-8790}"
-export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-zero-wp-test}"
+export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-test}"
 # Compose lowercases and strips other characters, so distinct inputs could share one stack.
 [[ $FIRST_WP_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "FIRST_WP_PROJECT must match ^[a-z0-9][a-z0-9_-]*\$" >&2; exit 2; }
 export FIRST_WP_UID="$(id -u)" FIRST_WP_GID="$(id -g)"

@@ -55,6 +55,61 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "zero.config.ts:2:11",
     );
     rejects("reject-infinite-loop", "step budget exceeded", "zero.config.ts:2:");
+    // App code loads only from zero/ (Z1210): here a module inside zero/ reaches back out.
+    rejects(
+        "reject-import-fence",
+        "zero/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside zero/",
+        "zero/tags.ts:2:1",
+    );
+    // Export names are unique across the app (Z1221): an action named like a kind.
+    rejects(
+        "reject-duplicate-export",
+        "`notes` names two things: at zero/a.ts:2 and here",
+        "zero/b.ts:3:22",
+    );
+    // "zero:db" names only registered kinds, and suggests the closest one.
+    rejects(
+        "reject-db-unknown",
+        "\"zero:db\" has no kind named `note`",
+        "zero/app.ts:2:10",
+    );
+    // ... in zero/wp-hooks/ modules too, which load after every kind has registered.
+    rejects(
+        "reject-wp-hook-db-unknown",
+        "\"zero:db\" has no kind named `note`",
+        "zero/wp-hooks/the_title.ts:2:10",
+    );
+    // An exported name is unique across the app: an action listed under it is refused too.
+    rejects(
+        "reject-action-named-like-table",
+        "`notes` names two things: at zero.config.ts:3 and here",
+        "zero/schema.ts:2:22",
+    );
+    // "zero:db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
+    // the app's kinds): refused at the statement, not a crash.
+    rejects(
+        "reject-db-reexport",
+        "\"zero:db\" can't be re-exported",
+        "zero/kinds.ts:4:1",
+    );
+    // ... and from a plugin, whose fix is to take the kinds as options.
+    rejects(
+        "reject-plugin-db-reexport",
+        "a plugin takes the app's kinds as options",
+        "node_modules/zero-plugin-reach/src/index.ts:3:1",
+    );
+    // A default export has no name to register under.
+    rejects(
+        "reject-default-export-kind",
+        "a kind, action or job can't be a default export",
+        "zero/notes.ts:3:16",
+    );
+    // wp-hooks/ beside zero.config.ts is from before zero/wp-hooks/: refused, never dropped.
+    rejects(
+        "reject-wp-hooks-root",
+        "wp-hooks/ beside zero.config.ts is from an earlier layout; its handlers would not register",
+        "wp-hooks:1:1",
+    );
 }
 
 /// JSX outside the subset fails the build at its source, saying what to write instead
@@ -94,7 +149,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config",
         "JSX files can't be part of a Zero config",
-        "view.tsx:1:1",
+        "zero/lib/view.tsx:1:1",
     );
     // An action can't return rendered JSX: the config never reaches a component module.
     rejects(
@@ -167,7 +222,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config-unused",
         "JSX files can't be part of a Zero config",
-        "label.tsx:1:1",
+        "zero/lib/label.tsx:1:1",
     );
     rejects(
         "reject-jsx-use-client-prologue",
@@ -727,7 +782,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let project = tmp.join("pantry");
     copy(&root().join("examples/pantry"), &project);
     let _ = std::fs::remove_dir_all(project.join(".zero"));
-    let _ = std::fs::remove_dir_all(project.join("zero"));
+    let _ = std::fs::remove_dir_all(project.join("zero/_generated"));
 
     let out = zero().arg("build").arg(&project).output().unwrap();
     assert!(
@@ -1029,10 +1084,17 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let tmp = std::env::temp_dir().join(format!("zero-diff-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
-    std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
-    std::fs::copy(dir.join("namespace.mjs"), tmp.join("namespace.mjs")).unwrap();
+    // App code loads from zero/; the root config re-exports the cases' config.
+    std::fs::create_dir_all(tmp.join("zero")).unwrap();
+    std::fs::copy(dir.join("cases.ts"), tmp.join("zero/cases.ts")).unwrap();
+    std::fs::copy(dir.join("namespace.mjs"), tmp.join("zero/namespace.mjs")).unwrap();
     // Plain JavaScript modules the cases import run through checked dynamic dispatch.
-    std::fs::copy(dir.join("stdlib.js"), tmp.join("stdlib.js")).unwrap();
+    std::fs::copy(dir.join("stdlib.js"), tmp.join("zero/stdlib.js")).unwrap();
+    std::fs::write(
+        tmp.join("zero.config.ts"),
+        "export { default } from \"./zero/cases.ts\";\n",
+    )
+    .unwrap();
     let built = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(
         built.status.success(),
@@ -2202,7 +2264,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("defineConfig() has no option `target`"), "{stderr}");
     assert!(
-        !tmp.join(".zero").exists() && !tmp.join("zero").exists(),
+        !tmp.join(".zero").exists() && !tmp.join("zero/_generated").exists() && !tmp.join("zero/dist").exists(),
         "a refusal wrote files"
     );
     std::fs::write(tmp.join("zero.config.ts"), config).unwrap();
@@ -2317,7 +2379,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         (
             "zero/client/index.ts",
             "zero/_generated/client/index.ts",
-            "export const stale = 1;\n",
+            "import { SCHEMA } from \"./schema.ts\";\nexport const stale = SCHEMA;\n",
         ),
     ] {
         let (old_dir, new_dir) = if old.starts_with("zero/client/") {
@@ -2362,6 +2424,27 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
             String::from_utf8_lossy(&again.stderr)
         );
     }
+    // Several left at once: one refusal names every one, and its one command moves them all.
+    std::fs::rename(
+        tmp.join("zero/_generated/abilities.json"),
+        tmp.join("zero/abilities.json"),
+    )
+    .unwrap();
+    std::fs::rename(
+        tmp.join("zero/_generated/wp-plugins.lock.json"),
+        tmp.join("zero/wp-plugins.lock.json"),
+    )
+    .unwrap();
+    refused("2 files are from before zero/_generated/:");
+    refused("zero/abilities.json moved to zero/_generated/abilities.json");
+    refused("zero/wp-plugins.lock.json moved to zero/_generated/wp-plugins.lock.json");
+    let fix = "mkdir -p zero/_generated && git mv zero/wp-plugins.lock.json zero/_generated/wp-plugins.lock.json && git mv zero/abilities.json zero/_generated/abilities.json";
+    refused(fix);
+    git(&["add", "-A"]);
+    let moved = Command::new("sh").args(["-c", fix]).current_dir(&tmp).output().unwrap();
+    assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
+    let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -2525,11 +2608,13 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
 ",
     );
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    // App modules live under zero/ (the import fence).
+    std::fs::create_dir_all(tmp.path().join("zero")).unwrap();
+    std::fs::write(tmp.path().join("zero/run.mjs"), body).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
         r#"import { action, defineConfig, text } from "zero";
-import { run } from "./run.mjs";
+import { run } from "./zero/run.mjs";
 export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )

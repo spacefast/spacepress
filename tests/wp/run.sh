@@ -16,17 +16,20 @@ zero="${CARGO_TARGET_DIR:-target}/debug/zero"
 # Retain downloads across the disposable source builds unless the caller chose a shared cache.
 export ZERO_WP_PLUGIN_CACHE="${ZERO_WP_PLUGIN_CACHE:-$here/app/.zero/cache/plugins}"
 # A fresh database expects one initial migration. Build fresh source each time so ignored
-# migrations from an earlier fixture schema cannot change the ledger under test. Keep the
-# same directory depth as app/ for its relative imports into tests/fixtures/.
+# migrations from an earlier fixture schema cannot change the ledger under test.
 build_app="$(mktemp -d "$here/.app-build.XXXXXX")"
 cleanup() {
   rm -rf -- "$build_app"
   [[ ${ZERO_WP_KEEP:-0} == 1 ]] || "$here/harness.sh" down
 }
 trap cleanup EXIT
-rsync -a --exclude '/zero/' --exclude '/.zero/' --exclude '/zero/_generated/db.d.ts' "$here/app/" "$build_app/"
+rsync -a --exclude '/zero/_generated/' --exclude '/zero/dist/' --exclude '/zero/blog/' --exclude '/.zero/' "$here/app/" "$build_app/"
+# The frozen blog the app extends lives in tests/fixtures/blog (the PHP suites' golden); the app
+# imports it from zero/blog/, inside the Zero root.
+mkdir -p "$build_app/zero/blog"
+cp tests/fixtures/blog/zero.config.ts "$build_app/zero/blog/zero.config.ts"
 if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
-  cp "$here/uploads.s3.ts" "$build_app/uploads.ts"
+  cp "$here/uploads.s3.ts" "$build_app/zero/uploads.ts"
 fi
 "$zero" build "$build_app" --quiet >/dev/null
 # The client integration tests import this stable path; leave existing fixture migrations alone.

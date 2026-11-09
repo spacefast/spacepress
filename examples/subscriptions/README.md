@@ -150,7 +150,7 @@ file-mode upload, rather than compiling a backend. A publish receipt marked
 |---|---|
 | Main compiler | Blocked by the diagnostic above. |
 | Final app startup and generated-file freshness | Blocked by compilation. |
-| Calendar and normalization tests | `node --test examples/subscriptions/lib/calendar.test.mjs` passes. Covers month ends, leap years, year boundaries, and fractional cents. |
+| Calendar and normalization tests | `node --test examples/subscriptions/zero/lib/calendar.test.mjs` passes. Covers month ends, leap years, year boundaries, and fractional cents. |
 | Agent protocol | A real, unchanged pantry `zero dev` site listed tools and executed a list tool. Exact output is in [the agent guide](../../docs/agents.md#verify-with-a-real-site). |
 | Frontend and other runtime paths | See the disposable contract proof below. It does not establish that the final app compiles. |
 

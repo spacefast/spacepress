@@ -6,6 +6,59 @@ Everything below is exported from the `"zero"` module. Shapes follow Drizzle
 ORM 1.0 (beta.22): column builders, `defineRelations`, relational-query
 `findMany`/`findFirst` with object filters.
 
+## Project layout
+
+`zero.config.ts` sits at the project root. Your own modules live under `zero/`
+([spec §1](spec/spec.md#1-layout)):
+
+```text
+my-project/
+├── zero.config.ts     # imports only from ./zero/** and npm packages
+├── zero/
+│   ├── lib/fields.ts  # your modules, any names
+│   ├── wp-hooks/      # WordPress actions and filters (see below)
+│   ├── _generated/    # written by zero build, committed
+│   └── dist/          # written by zero build, gitignored
+```
+
+A relative import from `zero.config.ts` or from a module under `zero/` must
+resolve inside `zero/`. Anything else, such as `import { x } from "./lib/x"`
+at the root or `"../src/x"` from `zero/`, fails with `Z1210` and names the
+file to move. Packages (`"zero"`, `"php/wordpress"`, npm packages) are always
+allowed, and an installed package's own relative imports are its business.
+
+### Exports register by name
+
+Zero loads every `.ts` file under `zero/`, except `app/`, `components/`,
+`wp-hooks/`, `content/`, `public/`, `_generated/` and `dist/`. Each exported
+`collection()`, `table()`, `userProjection()`, `global()`, `action()` and
+`job()` registers under its export name, so no file name is required and
+`defineConfig` needs no registry for them:
+
+```ts
+// zero/schema.ts
+export const notes = table({ id: id(), title: text().notNull() });
+
+// zero/server/likes.ts (any file name)
+import { notes } from "zero:db";
+export const like = action({ input: { id: integer().notNull() }, async handler({ id }) { /* … */ } });
+```
+
+- Other exports are ignored, so helper modules need no special place.
+- Export names are unique across the app. Two exports named `like`, an
+  action named like an exported kind, or an export and a `defineConfig`
+  registry entry under one name fail with `Z1221`, naming both places.
+- A kind, action or job must be a named export; `export default table(...)`
+  is refused. Files named `*.test.ts` or `*.spec.ts` are left to your test
+  runner.
+- A value both exported and listed in a `defineConfig` registry is one
+  registration.
+- `import { notes } from "zero:db"` gives a registered kind by name, from any
+  module (including `zero/wp-hooks/` files) and in any load order. It can't
+  be re-exported, and plugin packages can't import it: a plugin takes the
+  app's kinds as options. An unknown name is refused at the import with
+  the closest one. Types come from `zero/_generated/db.d.ts`.
+
 ## WordPress plugins
 
 Use a top-level package map in `defineConfig`:
@@ -106,7 +159,7 @@ Phase-2 modifiers:
   label, plain-text help, width and placeholders on supported input controls;
   schema description preserves metadata for other consumers. It never changes
   stored field names, JSON pointers, validation or access. Nested fields support
-  the same metadata. See the [SEO recipe](../examples/recipes/seo.ts).
+  the same metadata. See the [SEO recipe](../examples/recipes/zero/seo.ts).
 - `.showIf({ sibling: value | { eq, ne, in, isNull, isNotNull } })`: editor
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.
@@ -319,6 +372,52 @@ changes nothing. Core reads apply the read rule and field access; core writes
 and editor saves apply the create, update and field rules, and are authorized
 on the saved data before they commit.
 
+Core `/wp/v2/<post type>` speaks Zero's fields and queries too:
+
+- Every field is registered post meta (`register_post_meta`, `show_in_rest`,
+  with its JSON Schema) under its own name. `meta.seats` reads and writes the
+  value as Zero does: a group or repeater is one value, a date is
+  `YYYY-MM-DD`. Writes go through Zero's codec and rules, and a field hidden
+  from the viewer is dropped from `meta` like everywhere else.
+- List routes take Zero's query arguments next to core's own:
+  `where` (JSON), `orderBy` (`-seats,title`), `with` (`author,comments` or
+  JSON; each item gets the relations under `with`) and `search` (every text
+  and richText field the viewer may read). They run as the viewer, so a filter
+  or sort on a hidden field is the same 403 as on Zero's API. Core keeps
+  pagination (`page`, `per_page`, `X-WP-Total`) and `_fields`.
+- The users kind does the same on core `/wp/v2/users`: member fields are
+  registered user meta under `meta`, shown only to a viewer whose read rule
+  covers the member. A `meta` write runs Zero's update as the viewer (rules,
+  validation, hooks) in one transaction with core's own user save, so a
+  refusal keeps nothing. The list takes `where` and `orderBy`.
+- A `table()` kind gets core-shaped `/wp/v2/<storage name>` (for example
+  `/wp/v2/zero_signups`): list, get, create, update (`POST`/`PUT`/`PATCH`) and
+  delete, with `per_page`/`page`, `X-WP-Total`, `_fields`, a JSON Schema on
+  `OPTIONS`, and `where`/`orderBy`/`with`. Every call is Zero's pipeline as
+  the viewer, so it answers what Zero's API answers.
+
+## The `/__zero/api/v1` API
+
+One clean HTTP shape for clients and agents, over the core routes above. Each
+request is dispatched to the core route as the caller and only mapped, so it
+answers exactly what core answers under Zero's rules.
+
+| Request | Core route | Answer |
+|---|---|---|
+| `GET /__zero/api/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
+| `GET /__zero/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
+| `POST /__zero/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
+| `GET /__zero/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
+| `POST /__zero/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__zero/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+
+Rows are Zero rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
+`published` or `private`. Errors are RFC 9457 problem documents (`code`,
+`detail`, `pointer`). Callers authenticate the way core accepts: the cookie
+with `X-WP-Nonce`, an application password, or a Zero Identity bearer token.
+The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
+`/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
+
 ## Globals
 
 `global(name, fields, { label?, access?: { read?, update? } })`, registered in
@@ -390,7 +489,7 @@ grant and writes `zero/_generated/plugins.lock.json`:
 | `mail` | `send` |
 | `jobs` | the plugin's own jobs it enqueues |
 | `abilities` | `vendor/name` of each `abilities.call` from `"php/wordpress"` |
-| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `wp-hooks/` directory |
+| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `zero/wp-hooks/` directory |
 | `php` | reserved for PHP functions imported from `"php/wordpress"`, `"php/<slug>"` or `"php"` (`wordpress:get_option`); always empty today |
 
 Commit the lock: it is the grant.
@@ -477,6 +576,18 @@ Throwing anything aborts the request and rolls back every write in it.
   `zero` also checks a timestamp so old deliveries are refused.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
+- `readonly: true` marks an action that only reads; `destructive: true` one
+  that deletes or overwrites data, so agents confirm before running it.
+
+Each action is also the Ability `<app>/<kebab-name>`. Its annotations come from
+these options, its input schema from `input`, and its output schema from the
+handler's TypeScript return type (left out when the type has no single JSON
+shape). Core's run route, `/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`,
+serves it with the action's own access rule, so an `access: "anyone"` action
+runs anonymously. Core picks the method from the annotations: `GET` for
+`readonly`, `DELETE` for `destructive` with `idempotent`, `POST` otherwise.
+Errors are core's `WP_Error` JSON, with Zero's code (`zero_<code>`), status
+and `data.pointer`.
 
 ## HTTP routes
 
@@ -851,12 +962,12 @@ return post === null ? "" : esc_html(post.post_title);
 
 ## WordPress hooks
 
-`wp-hooks/` beside `zero.config.ts` adds WordPress actions and filters. Name a
+`zero/wp-hooks/` adds WordPress actions and filters. Name a
 file after the hook, or make a directory of that name for several handlers.
 Each file default-exports its handler:
 
 ```text
-wp-hooks/
+zero/wp-hooks/
 ├── save_post.ts
 └── the_content/
     ├── 10-reading-time.ts
@@ -864,7 +975,7 @@ wp-hooks/
 ```
 
 ```ts
-// wp-hooks/the_content/20-frame.ts
+// zero/wp-hooks/the_content/20-frame.ts
 import type { Handler } from "php/wordpress";
 
 const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
@@ -872,7 +983,7 @@ export default frame;
 ```
 
 ```ts
-// wp-hooks/save_post.ts
+// zero/wp-hooks/save_post.ts
 import type { WP_Post } from "php/wordpress";
 
 export const priority = 20;
@@ -903,7 +1014,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   run in that order after core's own callbacks at 10. `export const priority =
   <integer>` moves a file; lower runs first. A file exports only `default` and
   `priority`; share code through an ordinary imported module.
-- `wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
+- `zero/wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
   file without a default export, another file type, or the same hook as both a
   file and a directory is a build error at that path.
 - Handlers run in WordPress's own request, whichever it is: a page view, an
@@ -911,7 +1022,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   works and each write commits on its own; `ctx` and `HttpError` responses
   don't apply, since there is no Zero request.
 - A handler that throws is logged to the PHP error log as
-  `[zero] wp-hooks/<hook>: ...`. A filter then returns the value it was given,
+  `[zero] zero/wp-hooks/<hook>: ...`. A filter then returns the value it was given,
   so one broken handler leaves the page as WordPress rendered it. An action's
   throw stops only that handler.
 

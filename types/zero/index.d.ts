@@ -1,3 +1,4 @@
+/// <reference path="./db.d.ts" />
 import type { ServicesConfig } from "./services";
 export type { ServicesConfig, ServiceForm, ServiceFormField, ServiceProduct } from "./services";
 
@@ -851,6 +852,9 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
 export interface Register {}
 
 type RegisteredSchema = Register extends { relations: Relations<infer S, any> } ? S : never;
+
+/** The app's kinds by registered name: what `import { posts } from "zero:db"` gives you. */
+export type RegisteredKinds = [RegisteredSchema] extends [never] ? {} : RegisteredSchema;
 type RegisteredRelations = Register extends { relations: Relations<any, infer C> } ? C : {};
 
 type UnregisteredQuery = {
@@ -1048,6 +1052,10 @@ export declare function action<TInput extends ColumnsConfig, TResult>(definition
   access?: GateRule<InferActionInput<TInput>>;
   agents?: boolean;
   idempotent?: boolean;
+  /** Only reads: the Ability is annotated `readonly` (run over GET) and implies `idempotent`. */
+  readonly?: boolean;
+  /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
+  destructive?: boolean;
   signature?: { secret: EnvValue; header: string; scheme: "zero" | "hmac-sha256" };
   handler: (input: InferActionInput<TInput>, ctx: HookCtx) => Awaitable<TResult>;
 }): Action<TInput, TResult>;

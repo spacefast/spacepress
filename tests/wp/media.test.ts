@@ -1,5 +1,5 @@
 // Image sizes, focal point and private files on real WordPress (phase 2 §7.2). The app fragment
-// (app/lanes/media.ts) configures `card` (120x120 cover) and `wide` (200 wide, inside).
+// (app/zero/lanes/media.ts) configures `card` (120x120 cover) and `wide` (200 wide, inside).
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createClient, ZeroError } from "./app/zero/_generated/client/index.ts";

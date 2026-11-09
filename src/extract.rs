@@ -550,13 +550,13 @@ fn actions(
         for k in cfg.keys() {
             if !matches!(
                 k.as_str(),
-                "input" | "handler" | "access" | "agents" | "idempotent" | "signature"
+                "input" | "handler" | "access" | "agents" | "idempotent" | "readonly" | "destructive" | "signature"
             ) {
                 return Err(Diag::new(
                     ev.key_span(&a.config, k).unwrap_or(a.span),
                     format!("action() has no option `{k}`"),
                 )
-                .help("use input, handler, access"));
+                .help("use input, handler, access, agents, idempotent, readonly, destructive, signature"));
             }
         }
         let owner = Owner::Action(name.clone());
@@ -582,6 +582,15 @@ fn actions(
         };
         let agents = bool_option(&cfg, "agents", true, a.span)?;
         let idempotent = bool_option(&cfg, "idempotent", false, a.span)?;
+        let readonly = bool_option(&cfg, "readonly", false, a.span)?;
+        let destructive = bool_option(&cfg, "destructive", false, a.span)?;
+        if readonly && destructive {
+            return Err(Diag::new(
+                a.span,
+                format!("action `{name}` can't be both readonly and destructive"),
+            )
+            .help("a readonly action only reads; drop one of the two"));
+        }
         let signature = match cfg.get("signature") {
             None | Some(Value::Undef) => None,
             Some(v) => {
@@ -614,7 +623,10 @@ fn actions(
                 access,
                 agents,
                 idempotent,
+                readonly,
+                destructive,
                 signature,
+                output: None,
             },
         );
     }

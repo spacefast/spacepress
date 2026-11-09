@@ -7,7 +7,7 @@ namespace Zero\Sync;
 use WP_HTML_Processor as Html;
 
 /**
- * Rendered HTML → Markdown for reading (Markdown::render()), on core's HTML Processor, so the HTML is
+ * Rendered HTML → Markdown for reading (Markdown::renderPost()), on core's HTML Processor, so the HTML is
  * read the way a browser reads it. It writes what a reader sees: headings, paragraphs, lists, quotes,
  * code, tables, rules, links, images, emphasis. Every other element contributes its text, as a block
  * when it is a block-level element. Hidden elements (`hidden`, `<script>`, `<style>`, `<template>`,
@@ -195,8 +195,10 @@ final class HtmlMarkdown
         }
         $text = str_replace(['\\', '[', ']', '*', '_', '`'], ['\\\\', '\\[', '\\]', '\\*', '\\_', '\\`'], $text);
         if ($lineStart) {
-            // Text a reader saw as text, not a heading, quote, list item or rule: `\#`, `\>`, `1\.`.
-            $text = (string) preg_replace(['/^(#{1,6}|[>+=-])(?=\s|$)/', '/^(\d{1,9})([.)])(?=\s|$)/'], ['\\\\$1', '$1\\\\$2'], $text);
+            // Text a reader saw as text, never Markdown structure: a heading (`\#`), quote (`\>`), list
+            // item (`\-`, `1\.`), `~~~` fence, `---` rule or `===` setext underline. Backticks, `*` and
+            // `_` are escaped everywhere above, so ``` fences and `***`/`___` rules can't start here.
+            $text = (string) preg_replace(['/^(#{1,6}|[>+-])(?=\s|$)/', '/^(\d{1,9})([.)])(?=\s|$)/', '/^(~{3,}|-{2,}|={1,})/'], ['\\\\$1', '$1\\\\$2', '\\\\$1'], $text);
         }
         $this->emit($text);
     }
@@ -259,6 +261,9 @@ final class HtmlMarkdown
         if (trim($line) === '' || preg_match('/^#{1,6} *$/', $line) === 1) {
             return;
         }
+        // Strikethrough markup (`~~`) can line up into a `~~~` fence at a line start, which the
+        // per-text escape never sees: escape it on the assembled line, after each hard break too.
+        $line = (string) preg_replace('/(^|\n)(~{3,})/', '$1\\\\$2', $line);
         $this->push($line);
     }
 

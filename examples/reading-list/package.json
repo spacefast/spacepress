@@ -1,0 +1,13 @@
+{
+  "name": "first-reading-list",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "escape-html": "1.0.3",
+    "ms": "2.1.3"
+  },
+  "devDependencies": {
+    "@types/escape-html": "1.0.4",
+    "@types/ms": "2.1.0"
+  }
+}

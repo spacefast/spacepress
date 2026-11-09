@@ -38,7 +38,7 @@ the runtime and copied test material. Existing differential tests require a
 completed, nonempty Node case map and distinguish expected CLI application-error
 exits from unexpected process failures.
 
-`examples/recipes/seo.ts` demonstrates reusable, pure field composition. It uses
+`examples/recipes/zero/seo.ts` demonstrates reusable, pure field composition. It uses
 existing helpers/spreads and presentation metadata, without introducing another
 plugin lifecycle or changing what the config's `plugins` map means.
 

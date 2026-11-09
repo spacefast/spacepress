@@ -1,0 +1,133 @@
+---
+title: Get started
+description: Create a First app, run it on WordPress on your machine, and call its REST API.
+sidebar:
+  order: 1
+---
+
+In this guide we create a notes app, start it on a local WordPress site, add a note, and read it back through the REST API. It takes about five minutes.
+
+You need Node.js 22 or later and npm. You don't need Docker, PHP or a database. First downloads a local WordPress for you.
+
+:::note
+The npm packages `@spacefast/create-first` and `@spacefast/first-cli` are not published yet. Until they are, clone the [repository](https://github.com/spacefast/zero) and run `cargo build --release` there. Then run `node <repo>/packages/create-first/bin/create-first.mjs my-app` in place of `npm create`, and use `<repo>/target/release/first` as the `first` command. These paths exist once the rename to First is merged.
+:::
+
+## Create the app
+
+Run the creator with a new directory name:
+
+```sh
+npm create @spacefast/first my-app
+cd my-app
+```
+
+You should see:
+
+```text
+Created my-app.
+
+  cd "my-app"
+  npm run dev
+```
+
+The directory holds one config file, `first.config.ts`:
+
+<RepoFile path="packages/create-zero/template/zero.config.ts" replace={{ "__ZERO_APP_NAME__": "my-app" }} />
+
+`notes` is a collection: WordPress stores each note as a post. Anyone can read notes. Only WordPress editors can change them.
+
+## Check the config
+
+```sh
+npm run check
+```
+
+You should see:
+
+```text
+ok: 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions (6ms)
+```
+
+`check` compiles the config and writes nothing. If the config has a problem, it prints the file, the line and a [diagnostic code](/reference/diagnostics) instead.
+
+## Start the site
+
+```sh
+npm run dev
+```
+
+The first start downloads WordPress and takes about a minute. When it is ready, you should see lines like these:
+
+```text
+built 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions -> first/dist/wp-content (new migrations first/_generated/migrations/0001_init.sql) in 11s
+WordPress version: 7.1.4
+Plugin 'secure-custom-fields' activated.
+Plugin 'first-runtime' activated.
+Plugin 'first-identity' activated.
+Plugin 'first-app-my-app' activated.
+App:       http://localhost:9187/wp-content/plugins/first-app-my-app/public/index.html
+```
+
+Your port can differ. The next line prints a local admin login. Use it only on your machine. Keep this terminal open. `dev` rebuilds the app when you save `first.config.ts`.
+
+## Add a note
+
+Open a second terminal in `my-app`. Insert a note with the CLI:
+
+```sh
+npx first insert notes '{"title":"Hello"}'
+```
+
+You should see the new row:
+
+```json
+{"data":[{"id":5,"title":"Hello","body":null,"status":"published","publishedAt":"2026-11-09T04:26:14.000Z"}]}
+```
+
+You can also add notes in wp-admin. Sign in with the login that `dev` printed, then open **Notes**.
+
+## Read it through the API
+
+```sh
+curl http://localhost:9187/wp-json/first/v1/notes
+```
+
+You should see the same note:
+
+```json
+{"data":[{"id":5,"title":"Hello","body":null,"status":"published","publishedAt":"2026-11-09T04:26:14.000Z"}]}
+```
+
+Now try to create a note without signing in:
+
+```sh
+curl -X POST http://localhost:9187/wp-json/first/v1/notes \
+	-H 'Content-Type: application/json' \
+	--data '{"title":"From curl"}'
+```
+
+The access rule refuses it:
+
+```json
+{"type":"about:blank","title":"Unauthenticated","status":401,"code":"unauthenticated","detail":"Sign in to do create notes rows"}
+```
+
+## Stop the site
+
+```sh
+npm run stop
+```
+
+Your notes stay in the local database for the next `npm run dev`.
+
+## What to commit
+
+Commit `first.config.ts` and `first/_generated/`, which holds the migrations, the typed client and the editor types. Keep `first/dist/` and `.first/` out of git. They hold the build output and the local site. The starter app's `.gitignore` already does this.
+
+## Next steps
+
+- [Publish the app on Spacefast](/hosting/spacefast).
+- Open the [playground](/playground) to see the PHP and SQL your config compiles to.
+- Read the [config API](/reference/config) for tables, relations, hooks, actions and jobs.
+- Call the API from a frontend with the [JavaScript client](/reference/client).

@@ -58,10 +58,14 @@ final class Plugin
         CoreAccess::register();
         EditorSave::register();
         ProfileForm::register();
+        if (($this->schema->auth()['collection'] ?? null) !== null) {
+            UserMeta::register();
+        }
         IdentityBridge::hook($this->connection());
         add_action('rest_api_init', fn () => $this->unavailable() === null
             ? Rest::register(fn () => $this->app())
             : Rest::unavailable(self::UNAVAILABLE));
+        add_action('rest_api_init', fn () => TableController::registerAll($this));
         // While storage is behind, Zero collections' posts can't be written by any path (core REST,
         // wp-admin, other plugins): their hooks would run against tables the build doesn't match.
         // Last, so no later callback (SCF's `_acf_changed` one returns false) can undo the refusal.
@@ -98,6 +102,7 @@ final class Plugin
             }
         });
         Rest::boot();
+        Facade::register($this);
         HttpRoutes::register($this);
         MarkdownTwins::register();
         Purges::register($this);
@@ -453,6 +458,7 @@ final class Plugin
                 'rewrite' => false,
                 'query_var' => false,
             ]);
+            PostMeta::register($spec);
         }
     }
 

@@ -1,5 +1,5 @@
 // Field-level access over /wp-json/zero/v1 on real WordPress (phase 2 §4.3), with the lane B
-// fixtures in tests/wp/app/lanes/fields.ts: post-backed (SCF meta) and table rows are stripped,
+// fixtures in tests/wp/app/zero/lanes/fields.ts: post-backed (SCF meta) and table rows are stripped,
 // including `with` rows, for anonymous, an owning author, an editor and an admin; refusals and
 // group merges reach postmeta. The policy matrix lives in tests/php/db_test.php.
 import { test, before } from "node:test";

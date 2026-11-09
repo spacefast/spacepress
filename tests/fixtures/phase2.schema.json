@@ -645,6 +645,11 @@
                 },
                 "header": "stripe-signature",
                 "scheme": "hmac-sha256"
+            },
+            "readonly": false,
+            "destructive": false,
+            "output": {
+                "type": "boolean"
             }
         },
         "widened": {
@@ -655,7 +660,552 @@
             },
             "agents": true,
             "idempotent": false,
-            "signature": null
+            "signature": null,
+            "readonly": false,
+            "destructive": false,
+            "output": {
+                "type": "object",
+                "properties": {
+                    "values": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "choice": {
+                        "type": "string"
+                    },
+                    "finite": {
+                        "type": "array",
+                        "items": {
+                            "type": [
+                                "string"
+                            ],
+                            "enum": [
+                                "a",
+                                "b"
+                            ]
+                        }
+                    },
+                    "nested": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "callbacks": {
+                        "type": "array",
+                        "items": {
+                            "type": [
+                                "boolean",
+                                "null"
+                            ]
+                        }
+                    },
+                    "tuples": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "finiteDefaults": {
+                        "type": "array",
+                        "items": {
+                            "type": [
+                                "string"
+                            ],
+                            "enum": [
+                                "a",
+                                "b"
+                            ]
+                        }
+                    },
+                    "defaultTuple": {
+                        "type": "string"
+                    },
+                    "reduced": {
+                        "type": "string"
+                    },
+                    "reducedNested": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "numeric": {
+                        "type": "object",
+                        "properties": {
+                            "value": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "count": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "item": {
+                                "type": [
+                                    "integer"
+                                ],
+                                "enum": [
+                                    0,
+                                    1
+                                ]
+                            },
+                            "keep": {
+                                "type": "integer",
+                                "enum": [
+                                    0
+                                ]
+                            }
+                        },
+                        "required": [
+                            "value",
+                            "count",
+                            "keep"
+                        ]
+                    },
+                    "effects": {
+                        "type": "object",
+                        "properties": {
+                            "captured": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "invoked": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "loop": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "helper": {
+                                "type": "object",
+                                "properties": {
+                                    "count": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "captured": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "keep": {
+                                        "type": "integer",
+                                        "enum": [
+                                            0
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "count",
+                                    "captured",
+                                    "keep"
+                                ]
+                            },
+                            "maybeCaptured": {
+                                "type": "boolean"
+                            },
+                            "maybeHelper": {
+                                "type": "boolean"
+                            },
+                            "shadow": {
+                                "type": [
+                                    "integer"
+                                ],
+                                "enum": [
+                                    0,
+                                    1
+                                ]
+                            },
+                            "early": {
+                                "type": [
+                                    "integer"
+                                ],
+                                "enum": [
+                                    0,
+                                    1
+                                ]
+                            },
+                            "byValue": {
+                                "type": [
+                                    "integer"
+                                ],
+                                "enum": [
+                                    0,
+                                    1
+                                ]
+                            },
+                            "passed": {
+                                "type": "object",
+                                "properties": {
+                                    "scalar": {
+                                        "type": "boolean"
+                                    },
+                                    "member": {
+                                        "type": "boolean"
+                                    },
+                                    "object": {
+                                        "type": "object",
+                                        "properties": {
+                                            "maybe": {
+                                                "type": "boolean"
+                                            },
+                                            "keep": {
+                                                "type": "integer",
+                                                "enum": [
+                                                    0
+                                                ]
+                                            }
+                                        },
+                                        "required": [
+                                            "keep"
+                                        ]
+                                    },
+                                    "destructured": {
+                                        "type": "object",
+                                        "properties": {
+                                            "maybe": {
+                                                "type": "boolean"
+                                            },
+                                            "keep": {
+                                                "type": "integer",
+                                                "enum": [
+                                                    0
+                                                ]
+                                            }
+                                        },
+                                        "required": [
+                                            "keep"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "object",
+                                    "destructured"
+                                ]
+                            },
+                            "callback": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "defaulted": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "localDefaulted": {
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "logical": {
+                                "type": "object",
+                                "properties": {
+                                    "nullish": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "or": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "and": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "guarded": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "absent": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "nested": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "nullish",
+                                    "or",
+                                    "and",
+                                    "guarded",
+                                    "absent"
+                                ]
+                            },
+                            "nullableArguments": {
+                                "type": "object",
+                                "properties": {
+                                    "local": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "module": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "absent": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "sibling": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "stable": {
+                                        "type": [
+                                            "string"
+                                        ],
+                                        "enum": [
+                                            "a",
+                                            "b"
+                                        ]
+                                    },
+                                    "unchecked": {
+                                        "type": "object",
+                                        "properties": {
+                                            "empty": {
+                                                "type": [
+                                                    "string"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b"
+                                                ]
+                                            },
+                                            "shortened": {
+                                                "type": [
+                                                    "string"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b"
+                                                ]
+                                            },
+                                            "tail": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": [
+                                                        "number",
+                                                        "null"
+                                                    ]
+                                                }
+                                            },
+                                            "reversed": {
+                                                "type": [
+                                                    "string"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b"
+                                                ]
+                                            },
+                                            "captured": {
+                                                "type": [
+                                                    "string"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b"
+                                                ]
+                                            },
+                                            "forwarded": {
+                                                "type": [
+                                                    "string"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b"
+                                                ]
+                                            },
+                                            "grown": {
+                                                "type": [
+                                                    "string"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b"
+                                                ]
+                                            },
+                                            "optional": {
+                                                "type": "boolean"
+                                            },
+                                            "present": {
+                                                "type": "boolean"
+                                            },
+                                            "defaulted": {
+                                                "type": "boolean"
+                                            },
+                                            "moduleDefaulted": {
+                                                "type": "boolean"
+                                            },
+                                            "moduleProvided": {
+                                                "type": "boolean"
+                                            },
+                                            "destructuredDefault": {
+                                                "type": "boolean"
+                                            },
+                                            "destructuredProvided": {
+                                                "type": "boolean"
+                                            },
+                                            "early": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b",
+                                                    null
+                                                ]
+                                            },
+                                            "late": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ],
+                                                "enum": [
+                                                    "a",
+                                                    "b",
+                                                    null
+                                                ]
+                                            }
+                                        },
+                                        "required": [
+                                            "tail",
+                                            "defaulted",
+                                            "moduleDefaulted",
+                                            "moduleProvided",
+                                            "destructuredDefault",
+                                            "destructuredProvided",
+                                            "early",
+                                            "late"
+                                        ]
+                                    },
+                                    "ordered": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    },
+                                    "looped": {
+                                        "type": [
+                                            "string"
+                                        ],
+                                        "enum": [
+                                            "a",
+                                            "b"
+                                        ]
+                                    },
+                                    "earlier": {
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "sibling",
+                                    "stable",
+                                    "unchecked",
+                                    "looped",
+                                    "earlier"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "captured",
+                            "invoked",
+                            "loop",
+                            "helper",
+                            "shadow",
+                            "early",
+                            "byValue",
+                            "passed",
+                            "callback",
+                            "defaulted",
+                            "localDefaulted",
+                            "logical",
+                            "nullableArguments"
+                        ]
+                    },
+                    "formatted": {
+                        "type": "string"
+                    },
+                    "inferredNumber": {
+                        "type": "string"
+                    },
+                    "functionMaybe": {
+                        "type": "boolean"
+                    },
+                    "defaultMaybe": {
+                        "type": "boolean"
+                    },
+                    "maybe": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "values",
+                    "choice",
+                    "finite",
+                    "nested",
+                    "callbacks",
+                    "tuples",
+                    "finiteDefaults",
+                    "defaultTuple",
+                    "reduced",
+                    "reducedNested",
+                    "numeric",
+                    "effects",
+                    "formatted",
+                    "inferredNumber"
+                ]
+            }
         }
     },
     "uploads": {

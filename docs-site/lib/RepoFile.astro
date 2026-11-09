@@ -1,0 +1,27 @@
+---
+// A file from the repository, rendered whole by CodeFile with First names. For a config, the
+// compiler checks it and its diagnostics show inline. Pages use this instead of pasting code.
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import CodeFile from "./CodeFile.astro";
+import { diagnosticsFor } from "./code-file.ts";
+import { compileFiles, repo } from "./examples.ts";
+import { toFirst } from "./names.ts";
+
+interface Props {
+	/** Repository-relative path. */
+	path: string;
+	/** The name shown above the file. Defaults to the file name, with First names. */
+	name?: string;
+	/** Text to put in place of a placeholder, such as the starter's app name. */
+	replace?: Record<string, string>;
+}
+const { path: file, name, replace = {} } = Astro.props;
+let contents = readFileSync(path.join(repo, file), "utf8");
+for (const [from, to] of Object.entries(replace)) contents = contents.replaceAll(from, to);
+const shownName = name ?? toFirst(path.basename(file));
+const isConfig = path.basename(file) === "zero.config.ts";
+const diagnostics = isConfig ? diagnosticsFor(shownName, (await compileFiles("doc", { "zero.config.ts": contents })).check.diagnostics) : [];
+---
+
+<CodeFile name={shownName} contents={toFirst(contents)} diagnostics={diagnostics} />

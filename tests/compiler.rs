@@ -2071,11 +2071,13 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
 ",
     );
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    // App modules live under zero/ (the import fence).
+    std::fs::create_dir_all(tmp.path().join("zero")).unwrap();
+    std::fs::write(tmp.path().join("zero/run.mjs"), body).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
         r#"import { action, defineConfig, text } from "zero";
-import { run } from "./run.mjs";
+import { run } from "./zero/run.mjs";
 export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )

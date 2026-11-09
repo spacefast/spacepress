@@ -3,14 +3,18 @@
 Zero 0.8 and v2 both run on Spacefast while this spec is built. A Space runs
 one of them at a time, never both in the same version.
 
-## Migration is opt-in and one command
+## Migration happens on publish when nothing would be lost
 
-- **Apps already on 0.8** keep running and publishing as 0.8. Nothing converts
-  them without the owner asking.
-- **When the owner asks,** one command moves the app to v2:
-  `zero migrate app --from zero-0.8`, which the Spacefast CLI and MCP also expose.
-  It converts the app to the current v2 surface and adopts the Space's existing
-  tables, users and sessions, so no data is lost.
+- **Live 0.8 versions** keep running unchanged. Nothing touches a version that's
+  already published.
+- **Each new publish of a 0.8 app** runs the converter
+  (`zero migrate app --from zero-0.8`). When it refuses nothing, the publish ships
+  as v2 and adopts the Space's existing tables, users and sessions, so no data is
+  lost. When it refuses something, the publish ships as 0.8 and returns every
+  refusal as `{ code, file, line, column, feature, v2, fix }`, so the owner or
+  their agent can fix it and publish again. There is no flag to opt in or out.
+- **The same command** also runs on its own, for an owner who wants to see the
+  v2 app before publishing it.
 - **New apps** start on v2.
 
 So the converter always targets `main`. A PR that changes an authoring API, a

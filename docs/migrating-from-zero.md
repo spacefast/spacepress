@@ -15,8 +15,10 @@ data copy, access review, client changes, and runtime checks before calling an
 application migrated. [Coverage](#coverage) lists what each 0.8 capability
 becomes.
 
-For a standalone WordPress site, use the config and in-place data commands
-later in this guide. Both paths report unsupported behavior with pointers.
+On Spacefast, a 0.8 app's next publish runs this conversion on its own and ships
+as v2 when nothing is refused ([coexistence](spec/coexistence.md)); this guide is
+for doing it yourself first. For a standalone WordPress site, use the config and
+in-place data commands later in this guide. Both paths report unsupported behavior with pointers.
 
 ## Migrate a Spacefast app
 

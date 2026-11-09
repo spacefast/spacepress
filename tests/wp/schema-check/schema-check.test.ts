@@ -218,12 +218,52 @@ test("a refusal at activation keeps the plugin active so --drop can confirm it",
   const live = process.env.ZERO_SCHEMA_CHECK_LIVE ?? "";
   execFileSync("sh", ["-c", `printf '%s' "$0" > "$1"`,
     '-- zero-check {"check":"drop","name":"memos.legacy","table":"{prefix}zero_memos","column":"legacy","adopted":false}\nALTER TABLE `{prefix}zero_memos` DROP COLUMN `legacy`;',
-    `${live}/plugins/zero-app-schema-check/zero/app/migrations/0010_update.sql`]);
+    `${live}/plugins/zero-app-schema-check/zero/app/migrations/9000_legacy.sql`]);
   const activation = wpTry("plugin", "activate", "zero-app-schema-check");
   assert.match(activation, /Plugin 'zero-app-schema-check' activated/);
   assert.equal(wp("plugin", "is-active", "zero-app-schema-check") === "", true);
   const error = refused();
   assert.deepEqual(error.drop, ["memos.legacy=2"]);
-  assert.deepEqual(applied("--drop=memos.legacy=2").at(-1), "0010_update");
+  assert.deepEqual(applied("--drop=memos.legacy=2").at(-1), "9000_legacy");
   assert.deepEqual(sql("SHOW COLUMNS FROM wp_zero_memos").map((r) => r.Field), ["id", "text"]);
+});
+
+/** The live text values of wp_zero_tags, by name. */
+const tags = () => Object.fromEntries(sql("SELECT name, flag, count FROM wp_zero_tags ORDER BY id").map((r) => [r.name, [r.flag, r.count]]));
+
+test("text becoming a boolean or an integer is checked as text, and integers against their range", () => {
+  install("retype");
+  assert.ok(applied().includes("0010_update"), "adding text fields needs nothing");
+  // MySQL reads 'yes' as 0 and clamps a value past BIGINT's range: each would pass a numeric check.
+  sql("INSERT INTO wp_zero_tags (name, flag, count) VALUES ('a', 'yes', '7'), ('b', '1', '99999999999999999999'), ('c', '0', '-9223372036854775808'), ('d', NULL, '007')");
+  install("retyped");
+  const before = tags();
+  const error = refused();
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [
+    ["value_does_not_fit", "tags.flag", 1],
+    ["value_does_not_fit", "tags.count", 2],
+  ]);
+  assert.deepEqual(tags(), before, "nothing was converted");
+  // Fixed by hand: the in-range values (including BIGINT's minimum) then convert unchanged.
+  sql("UPDATE wp_zero_tags SET flag = '1' WHERE flag = 'yes'");
+  sql("UPDATE wp_zero_tags SET count = '9223372036854775807' WHERE name = 'b'");
+  sql("UPDATE wp_zero_tags SET count = '7' WHERE count = '007'");
+  assert.ok(applied().includes("0011_update"));
+  assert.deepEqual(tags(), { a: ["1", "7"], b: ["1", "9223372036854775807"], c: ["0", "-9223372036854775808"], d: ["NULL", "7"] });
+});
+
+test("a field made required and narrower in one change refuses a too-long value, never truncating it", () => {
+  install("requiredNarrow");
+  sql("UPDATE wp_zero_tags SET name = 'far too long' WHERE name = 'a'");
+  const error = refused();
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["value_does_not_fit", "tags.name", 1]]);
+  assert.deepEqual(sql("SELECT name FROM wp_zero_tags WHERE name = 'far too long'"), [{ name: "far too long" }], "nothing was truncated");
+  // Once it fits, a missing value is the next refusal, and its fix names the command that retries.
+  sql("UPDATE wp_zero_tags SET name = NULL WHERE name = 'far too long'");
+  const missing = refused().refusals[0];
+  assert.equal(missing.code, "required_field_missing");
+  assert.match(missing.fix, /wp zero migrate/);
+  sql("UPDATE wp_zero_tags SET name = 'a' WHERE name IS NULL");
+  assert.ok(applied().includes("0012_update"));
+  assert.deepEqual(sql("SELECT name FROM wp_zero_tags ORDER BY id").map((r) => r.name), ["a", "b", "c", "d"]);
 });

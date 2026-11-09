@@ -20,7 +20,7 @@ const notes = (fields = "", options = "") => `const notes = table({
   body: text(),${fields}
 }${options});`;
 
-const app = (parts, tables) => `import { defineConfig, id, integer, table, text } from "zero";
+const app = (parts, tables) => `import { boolean, defineConfig, id, integer, table, text } from "zero";
 ${parts.join("\n")}
 export default defineConfig({ name: "schema-check", tables: { ${tables} } });
 `;
@@ -64,6 +64,15 @@ export const steps = {
   // 9. A narrower column: values that wouldn't fit refuse; MySQL would truncate them.
   narrow: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
     "const tags = table({ id: id(), name: text() });"], "memos, tags"),
+  // 10. Text fields become a boolean and an integer: text is compared as text, and integers are
+  //     range-checked, since MySQL would turn 'yes' into 0 and clamp a value past BIGINT's range.
+  retype: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text(), flag: text(), count: text() });"], "memos, tags"),
+  retyped: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text(), flag: boolean(), count: integer() });"], "memos, tags"),
+  // 11. One change makes a field required and narrower: a too-long value refuses like a missing one.
+  requiredNarrow: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: integer() });"], "memos, tags"),
 };
 
 if (process.argv[2] !== undefined) {

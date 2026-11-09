@@ -85,16 +85,13 @@ final class Migrator
             $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
             $migrations[$id] = self::statements($sql);
         }
-        // A ledger from before rows were keyed by app is converted first, so the check below skips
-        // the files it already records (a missing ledger stays missing until DDL runs).
-        $exists = $this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$this->table('zero__migrations')]) !== [];
-        if ($exists && !$this->keyed()) {
-            $this->ledger();
-        }
-        $done = $this->keyed() ? array_flip($this->done()) : [];
+        // What this app already applied, read without changing anything: a ledger from before rows
+        // were keyed by app is read as this app's when this app is its one owner (as ledger() would
+        // convert it), and is only converted below, once the check has passed.
+        $done = array_flip($this->keyed() ? $this->done() : $this->unkeyedDone());
         // The deploy-time schema check (spec §2.9): every pending statement that could lose rows or
         // leave them without a required value is measured first, across all pending files, so a
-        // refusal leaves the tables and the ledger untouched.
+        // refusal leaves the tables, the rows and the ledger untouched.
         $pending = [];
         foreach ($migrations as $id => $statements) {
             foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
@@ -331,6 +328,24 @@ final class Migrator
         }
 
         return $owners;
+    }
+
+    /**
+     * This app's ids in a ledger from before rows were keyed by app, without converting it: the rows
+     * are this app's only when it is the ledger's one owner, as ledger() decides. With no ledger, or
+     * another owner, nothing is recorded for this app yet (ledger() then creates or refuses).
+     *
+     * @return list<string>
+     */
+    private function unkeyedDone(): array
+    {
+        $ledger = $this->table('zero__migrations');
+        if ($this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$ledger]) === []
+            || $this->legacyOwners() !== [$this->schema->name()]) {
+            return [];
+        }
+
+        return array_column($this->db->run("SELECT `id` FROM `$ledger`"), 'id');
     }
 
     /** @return list<string> this app's recorded ids, sorted (for comparing ledger states) */

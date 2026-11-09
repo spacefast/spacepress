@@ -444,6 +444,10 @@ impl Renames {
 /// For a column whose stored type changes from `before` to `after`, the SQL condition (over `{col}`)
 /// a value must meet to survive the change, or None when every value of `before` fits `after`.
 /// `"false"` means no value survives: any non-null value refuses.
+///
+/// Text is always compared as text: MySQL compares a string with a number as a number, so
+/// `'yes' IN (0, 1)` holds (`'yes'` is 0) and the value would silently become 0. Integers are
+/// checked against their type's range as well as their shape, since out-of-range text is clamped.
 fn fits(before: &Json, after: &Json) -> Option<String> {
     let render = |c: &Json| column_sql("{col}", c);
     let ty = |c: &Json| -> &'static str {
@@ -465,7 +469,20 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
     };
     let (from, to) = (ty(before), ty(after));
     let col = "{col}";
-    let numeric = format!("{col} REGEXP '^-?[0-9]+$'");
+    // Canonical integer text within a range: no sign on zero, no leading zeros, and digit-length plus
+    // a text comparison against the bound (equal lengths compare as numbers do).
+    let digits = |sign: &str, bound: &str| {
+        format!(
+            "({col} REGEXP '^{sign}(0|[1-9][0-9]*)$' AND (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) < {len} OR (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) = {len} AND TRIM(LEADING '-' FROM {col}) <= '{bound}')))",
+            len = bound.len()
+        )
+    };
+    let signed = format!(
+        "({} OR {})",
+        digits("", "9223372036854775807"),
+        digits("-", "9223372036854775808")
+    );
+    let unsigned = digits("", "18446744073709551615");
     match (from, to) {
         (a, b) if a == b && a != "text" => None,
         ("text", "text") => match (width(before), width(after)) {
@@ -478,12 +495,19 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
         ("bigint", "unsigned") => Some(format!("{col} >= 0")),
         ("boolean", "bigint" | "unsigned" | "double") => None,
         ("bigint" | "unsigned", "double") => Some(format!("ABS({col}) <= 9007199254740992")),
-        ("double", "bigint") => Some(format!("{col} = FLOOR({col})")),
-        ("double", "unsigned") => Some(format!("{col} = FLOOR({col}) AND {col} >= 0")),
+        ("double", "bigint") => Some(format!(
+            "{col} = FLOOR({col}) AND {col} >= -9223372036854775808 AND {col} < 9223372036854775808"
+        )),
+        ("double", "unsigned") => Some(format!(
+            "{col} = FLOOR({col}) AND {col} >= 0 AND {col} < 18446744073709551616"
+        )),
+        ("text", "boolean") => Some(format!("{col} IN ('0', '1')")),
         (_, "boolean") => Some(format!("{col} IN (0, 1)")),
-        ("text", "bigint") => Some(numeric),
-        ("text", "unsigned") => Some(format!("{col} REGEXP '^[0-9]+$'")),
-        ("text", "double") => Some(format!("{col} REGEXP '^-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?$'")),
+        ("text", "bigint") => Some(signed),
+        ("text", "unsigned") => Some(unsigned),
+        ("text", "double") => Some(format!(
+            "{col} REGEXP '^-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?$' AND ABS(CAST({col} AS DOUBLE)) < 1.7976931348623157e308"
+        )),
         _ => Some("false".into()),
     }
 }
@@ -653,16 +677,18 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
                     // truncate or coerce the values that don't fit, so they're counted first.
                     let fits = fits(&pc[k], c);
                     let tightens = required && pc[k]["notNull"] != true;
-                    if tightens && !c["default"].is_null() {
-                        // Empty rows get the declared default, then the column becomes required.
+                    // Empty rows get the declared default, then the column becomes required. The
+                    // backfill runs after every check has been measured (checks are counted before any
+                    // statement of the plan), so a narrowing check still sees the values as they are.
+                    let backfill = (tightens && !c["default"].is_null()).then(|| {
                         let ty = c["type"].as_str().unwrap_or("text");
-                        out.push(format!(
+                        format!(
                             "UPDATE {table} SET {} = {} WHERE {} IS NULL;",
                             q(k),
                             default_literal(ty, &c["default"]),
                             q(k)
-                        ));
-                    }
+                        )
+                    });
                     // A table Zero didn't create may store the column under another type than the snapshot
                     // says (adoption checks names, not types), so any change to one is confirmed first.
                     let mut check = match (tightens && c["default"].is_null(), &fits) {
@@ -681,11 +707,13 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
                     if !check.is_null() {
                         check["adopted"] = adopted.into();
                     }
-                    out.push(if check.is_null() {
-                        modify
-                    } else {
-                        checked(check, modify)
-                    });
+                    // The check goes on the first statement that touches the column, so it is the one
+                    // a resumed migration counts before; the backfill and the MODIFY run after it.
+                    let mut statements: Vec<String> = backfill.into_iter().chain([modify]).collect();
+                    if !check.is_null() {
+                        statements[0] = checked(check, statements[0].clone());
+                    }
+                    out.extend(statements);
                 }
                 _ => {}
             }
@@ -1162,6 +1190,65 @@ mod tests {
             sql.iter().filter(|s| s.contains("DROP FOREIGN KEY")).count(),
             1,
             "{sql:?}"
+        );
+    }
+
+    #[test]
+    fn a_field_made_required_and_narrower_checks_both_before_the_backfill() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(json!({ "notes": table(json!({ "id": id(), "body": col("text"), "tag": col("text") })) }));
+        let mut v2 = v1.clone();
+        for (k, default) in [("body", Json::Null), ("tag", json!("x"))] {
+            v2["tables"]["notes"]["columns"][k]["notNull"] = json!(true);
+            v2["tables"]["notes"]["columns"][k]["max"] = json!(5);
+            v2["tables"]["notes"]["columns"][k]["default"] = default;
+        }
+        let statements = plan(&v1, &v2);
+        let checks: Vec<Json> = statements.iter().filter_map(|s| check_of(s)).collect();
+        assert_eq!(
+            checks
+                .iter()
+                .map(|c| (
+                    c["check"].as_str().unwrap(),
+                    c["name"].as_str().unwrap(),
+                    c["fits"].as_str().unwrap()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("required", "notes.body", "CHAR_LENGTH({col}) <= 5"),
+                ("narrow", "notes.tag", "CHAR_LENGTH({col}) <= 5")
+            ]
+        );
+        // The backfill of the defaulted field carries the check, so it's measured before the UPDATE runs.
+        let backfill = statements
+            .iter()
+            .find(|s| s.contains("UPDATE `{prefix}zero_notes` SET `tag`"))
+            .unwrap();
+        assert!(check_of(backfill).is_some(), "{backfill}");
+    }
+
+    #[test]
+    fn text_becoming_a_number_or_boolean_is_compared_as_text_and_range_checked() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let fits_for = |ty: &str| {
+            let v1 = snap(json!({ "t": table(json!({ "id": id(), "v": col("text") })) }));
+            let mut v2 = v1.clone();
+            v2["tables"]["t"]["columns"]["v"]["type"] = json!(ty);
+            plan(&v1, &v2).iter().find_map(|s| check_of(s)).unwrap()["fits"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        // `'yes' IN (0, 1)` holds in MySQL ('yes' is 0); compared as text it doesn't.
+        assert_eq!(fits_for("boolean"), "{col} IN ('0', '1')");
+        let bigint = fits_for("integer");
+        assert!(
+            bigint.contains("'9223372036854775807'") && bigint.contains("'9223372036854775808'"),
+            "{bigint}"
+        );
+        assert!(
+            !bigint.contains("[0-9]+$'"),
+            "the shape alone allows out-of-range values: {bigint}"
         );
     }
 }

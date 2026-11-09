@@ -170,6 +170,15 @@ final class SchemaCheck
     private function required(array $check, string $migration): ?array
     {
         $column = $check['column'] ?? null;
+        $name = (string) $check['name'];
+        // A field that becomes required may narrow in the same change: the values it has must fit too,
+        // or MySQL truncates them. Each kind of row is refused with its own code and count.
+        if ($column !== null && isset($check['fits'])) {
+            $narrow = $this->narrow($check, $migration);
+            if ($narrow !== null) {
+                return $narrow;
+            }
+        }
         // A new column has no values yet: every row lacks it.
         $rows = $this->count($check, $column === null ? null : '{col} IS NULL');
         if ($rows === null) {
@@ -178,12 +187,11 @@ final class SchemaCheck
         if ($rows === 0) {
             return null;
         }
-        $name = (string) $check['name'];
         $field = substr($name, strrpos($name, '.') + 1);
-
-        $fill = $column === null ? '' : 'Fill those rows and deploy again, or ';
-        $fix = $fill . ($fill === '' ? 'G' : 'g') . "ive $field a default with .default(value), which existing rows get, or keep it optional: "
+        $keep = "give $field a default with .default(value), which existing rows get, or keep it optional: "
             . "delete the unapplied zero/_generated/migrations/$migration.sql, restore snapshot.json to the last deployed build, and build again.";
+        // The site keeps refusing until a migration runs again; filling the rows alone doesn't retry it.
+        $fix = $column === null ? ucfirst($keep) : "Fill those rows, then run `wp zero migrate` (or deploy again); or $keep";
 
         return ['code' => 'required_field_missing', 'name' => $name, 'table' => $check['table'], 'rows' => $rows,
             'message' => "$name is required, and $rows rows have no value for it.", 'fix' => $fix];

@@ -371,6 +371,20 @@ final class Html
         return ' ' . ($name === 'className' ? 'class' : $name) . '="' . ($value === true ? '' : self::escape(Js::str($value))) . '"';
     }
 
+    /**
+     * `style={{ … }}` limited to the property names the compiler saw in the style's type, so data
+     * that carries extra keys (decoded JSON, a row) can't add properties.
+     *
+     * @param list<string> $names
+     */
+    public static function styleOf(mixed $style, array $names): mixed
+    {
+        if (!$style instanceof JsObject) {
+            return $style;
+        }
+        return new JsObject(array_intersect_key($style->p, array_flip($names)));
+    }
+
     /** `style={{ … }}`, by react-dom-server's `pushStyleAttribute`. */
     private static function style(mixed $style): string
     {
@@ -381,6 +395,11 @@ final class Html
         foreach ($style->p as $name => $value) {
             $name = (string) $name;
             if (self::nullish($value) || is_bool($value) || $value === '') {
+                continue;
+            }
+            // A property name is an identifier or a custom property; anything else could close the
+            // declaration or the attribute.
+            if (preg_match('/^(--)?[a-zA-Z][a-zA-Z0-9-]*\z/', $name) !== 1) {
                 continue;
             }
             if (str_starts_with($name, '--')) {

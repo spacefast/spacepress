@@ -6280,6 +6280,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     _ => None,
                 };
+                // `children` is what JSX passes, for any component: exported or local.
+                if let Some(Ty::Obj(fields)) = callable_argument(&params, 0).map(|t| t.non_null())
+                    && let Some((children, _)) = fields.get("children")
+                    && self.jsx_child_type(children, callee.span).is_err()
+                {
+                    return err_help(
+                        callee.span,
+                        format!(
+                            "this component types `children` as {}, which JSX can't pass",
+                            children.describe()
+                        ),
+                        "type it `ReactNode`, `JSX.Element`, `string` or `number`",
+                    );
+                }
                 match callable_argument(&params, 0) {
                     Some(want) if !assignable(&props.ty, &want) => {
                         return err(
@@ -6442,10 +6456,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
                     let v = self.expr(value)?;
                     let v = self.finish_value(v, value.span)?;
-                    if name.eq_ignore_ascii_case("style") {
+                    let php = if name.eq_ignore_ascii_case("style") {
                         self.jsx_style_type(&v.ty, value.span)?;
-                    }
-                    entries.push(format!("{} => {}", php_str(name), v.php));
+                        style_of(&v.php, &v.ty)
+                    } else {
+                        v.php
+                    };
+                    entries.push(format!("{} => {}", php_str(name), php));
                 }
                 JsxAttr::Spread(value) => {
                     let v = self.expr(value)?;
@@ -6479,7 +6496,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     }
                     spread = true;
-                    entries.push(format!("...(({})->p ?? [])", v.wrapped()));
+                    // A spread is narrowed to the keys its type declares, and its `style` to the
+                    // properties the style's type declares: extra keys in the data are dropped.
+                    let keys: Vec<String> = fields.keys().map(|k| php_str(k)).collect();
+                    let narrowed = format!(
+                        "array_intersect_key(({})->p ?? [], array_flip([{}]))",
+                        v.wrapped(),
+                        keys.join(", ")
+                    );
+                    let narrowed = match fields.iter().find(|(k, _)| k.as_str() == "style") {
+                        Some((_, (style_ty, _))) => format!(
+                            "(static function (array $a): array {{ if (array_key_exists('style', $a)) {{ $a['style'] = {}; }} return $a; }})({narrowed})",
+                            style_of("$a['style']", style_ty)
+                        ),
+                        None => narrowed,
+                    };
+                    entries.push(format!("...{narrowed}"));
                 }
             }
         }
@@ -6499,7 +6531,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             format!("[{}]", entries.join(", "))
         };
-        let mut args = vec![php_str(tag), attrs];
+        // The browser reads an HTML tag in any case as its lowercase name, so the output uses that
+        // name and `Html::element` applies the tag's rules (`<bR/>` is a void `<br/>`; React would
+        // print `<bR></bR>`, which browsers parse as two line breaks). SVG's camelCase elements and
+        // custom elements keep the case they were written in.
+        let output_tag = if SVG_CAMEL_TAGS.contains(&tag) || tag.contains('-') {
+            tag.to_string()
+        } else {
+            folded_tag.clone()
+        };
+        let mut args = vec![php_str(&output_tag), attrs];
         // A literal string child stays a string, so `Html::element` can apply React's rules that
         // depend on it (the doubled leading newline in `<pre>`).
         match jsx.children.as_slice() {
@@ -10891,3 +10932,53 @@ fn valid_attribute_name(name: &str) -> bool {
         .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == ':')
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
 }
+
+/// `\Zero\Html::styleOf`: a `style` value narrowed to the property names its type declares.
+fn style_of(php: &str, ty: &Ty) -> String {
+    let names = match ty.non_null() {
+        Ty::Obj(fields) => fields.keys().map(|k| php_str(k)).collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    format!("\\Zero\\Html::styleOf({php}, [{}])", names.join(", "))
+}
+
+/// SVG elements whose names are camelCase in the specification; they keep their case.
+const SVG_CAMEL_TAGS: &[&str] = &[
+    "altGlyph",
+    "altGlyphDef",
+    "altGlyphItem",
+    "animateColor",
+    "animateMotion",
+    "animateTransform",
+    "clipPath",
+    "feBlend",
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feComposite",
+    "feConvolveMatrix",
+    "feDiffuseLighting",
+    "feDisplacementMap",
+    "feDistantLight",
+    "feDropShadow",
+    "feFlood",
+    "feFuncA",
+    "feFuncB",
+    "feFuncG",
+    "feFuncR",
+    "feGaussianBlur",
+    "feImage",
+    "feMerge",
+    "feMergeNode",
+    "feMorphology",
+    "feOffset",
+    "fePointLight",
+    "feSpecularLighting",
+    "feSpotLight",
+    "feTile",
+    "feTurbulence",
+    "foreignObject",
+    "glyphRef",
+    "linearGradient",
+    "radialGradient",
+    "textPath",
+];

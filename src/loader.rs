@@ -313,6 +313,7 @@ fn load_module(
         body,
         commonjs,
         type_names,
+        use_client,
     } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
@@ -329,7 +330,7 @@ fn load_module(
         dynamic: crate::ir::dynamic_source(path),
         type_names,
         jsx: path.extension().is_some_and(|e| e == "tsx"),
-        use_client: use_client_directive(&source),
+        use_client,
     }));
     for (index, (spec, span)) in imports.into_iter().enumerate() {
         if builtin_module(&spec) {
@@ -397,19 +398,26 @@ fn parse(
 ) -> Result<Parsed> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
-    if source_type.is_jsx() && !jsx_admitted(path.strip_prefix(root).unwrap_or(path), source) {
-        return Err(Diag::new(
-            Span { file, start: 0, end: 0 },
-            "JSX files can't be part of a Zero config",
-        )
-        .help("JSX compiles in components (`zero/components/`), pages, and files that start with \"use client\""));
-    }
     let ret = Parser::new(&allocator, source, source_type)
         .with_options(ParseOptions {
             parse_regular_expression: true,
             ..ParseOptions::default()
         })
         .parse();
+    // The directive prologue, as the parser read it: comments and other directives
+    // (`"use strict"`) may come before `"use client"`.
+    let use_client = ret
+        .program
+        .directives
+        .iter()
+        .any(|d| d.directive.as_str() == "use client");
+    if source_type.is_jsx() && !jsx_admitted(path.strip_prefix(root).unwrap_or(path), use_client) {
+        return Err(Diag::new(
+            Span { file, start: 0, end: 0 },
+            "JSX files can't be part of a Zero config",
+        )
+        .help("JSX compiles in components (`zero/components/`), pages, and files that start with \"use client\""));
+    }
     let mut syntax_failed = false;
     for err in ret.diagnostics.errors() {
         syntax_failed = true;
@@ -452,6 +460,7 @@ fn parse(
         body,
         commonjs,
         type_names: lowerer.erased_types.into_inner(),
+        use_client,
     })
 }
 
@@ -459,20 +468,14 @@ fn parse(
 /// (docs/decisions/2026-11-08-tsx-to-php.md); the config graph itself never renders. `path` is
 /// relative to the project root, so a project that itself sits under an `app/` folder gets no
 /// exemption.
-fn jsx_admitted(path: &Path, source: &str) -> bool {
+fn jsx_admitted(path: &Path, use_client: bool) -> bool {
     if path.extension().and_then(|e| e.to_str()) != Some("tsx") {
         return false;
     }
     let in_folder = path
         .components()
         .any(|part| matches!(part.as_os_str().to_str(), Some("components" | "pages" | "app")));
-    in_folder || use_client_directive(source)
-}
-
-/// Whether a source starts with the `"use client"` directive.
-fn use_client_directive(source: &str) -> bool {
-    let rest = source.trim_start_matches('\u{feff}').trim_start();
-    ["\"use client\"", "'use client'"].iter().any(|d| rest.starts_with(d))
+    in_folder || use_client
 }
 
 /// Whether a source can be CommonJS before it's lowered: `.cjs`, or `.js` with no import/export
@@ -496,6 +499,8 @@ struct Parsed {
     body: Vec<Stmt>,
     commonjs: Option<CommonJs>,
     type_names: std::collections::HashSet<String>,
+    /// The directive prologue holds `"use client"`.
+    use_client: bool,
 }
 
 /// What the loader learned about a CommonJS source.

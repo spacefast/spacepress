@@ -864,6 +864,22 @@
       "fixture": "tests/fixtures/reject-jsx-config-unused",
       "message": "JSX files can't be part of a Zero config",
       "guidance": "A `.tsx` module the config imports is refused even when its JSX never runs; components live in `zero/components/`."
+    },
+    {
+      "id": "jsx-use-client-after-prologue",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-use-client-prologue",
+      "message": "\"use client\" components aren't compiled yet",
+      "guidance": "The directive is found anywhere in the file's directive prologue, after comments and other directives such as `\"use strict\"`."
+    },
+    {
+      "id": "jsx-children-type-local",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-children-local",
+      "message": "which JSX can't pass",
+      "guidance": "Every component's `children`, exported or local, is checked where JSX calls it."
     }
   ],
   "zero08": [

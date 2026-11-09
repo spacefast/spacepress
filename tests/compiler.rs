@@ -169,6 +169,16 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "JSX files can't be part of a Zero config",
         "label.tsx:1:1",
     );
+    rejects(
+        "reject-jsx-use-client-prologue",
+        "\"use client\" components aren't compiled yet",
+        "zero/components/Toggle.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-children-local",
+        "this component types `children` as { title: string }, which JSX can't pass",
+        "zero/components/Page.tsx:6:11",
+    );
     // The folders that admit JSX are matched below the project, not anywhere in its path.
     let nested = std::env::temp_dir().join(format!("zero-jsx-app-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&nested);
@@ -1242,6 +1252,47 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "<div><a title=\"kept\">spread</a><my-el title=\"kept\"></my-el><a>upper</a><button>lower</button>\
          <object></object><my-el></my-el><svg><use></use></svg></div>"
     );
+    let cases = serde_json::json!([{ "component": "components/urls.tsx#TagCase", "props": {} }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div>a<br/>b<svg><foreignObject></foreignObject></svg></div>"
+    );
+    // Extra keys in decoded JSON never reach `style` or a spread's attributes.
+    let evil = "url(//evil.example/t)";
+    let cases = serde_json::json!([{
+        "component": "components/urls.tsx#ExtraKeys",
+        "props": {
+            "s": { "color": "red", "backgroundImage": evil, "position": "fixed", "inset": "0" },
+            "extra": {
+                "title": "t",
+                "onclick": "alert(1)",
+                "href": "javascript:alert(1)",
+                "style": { "color": "blue", "position": "fixed" },
+            },
+        },
+    }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("zero-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div><p style=\"color:red\">style</p><p title=\"t\" style=\"color:blue\">spread</p></div>"
+    );
     let _ = std::fs::remove_dir_all(&tmp);
     assert!(
         mismatches.is_empty(),
@@ -1265,14 +1316,19 @@ fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
             "title" => "kept"];
         echo \Zero\Html::element("a", $attrs, "x")->html(), "\n";
         echo \Zero\Html::element("my-el", $attrs)->html(), "\n";
-        $style = new \Zero\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px"]);
+        $style = new \Zero\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px",
+            "x:y;position" => "fixed", "inset\n" => "0", "--ok" => "1"]);
         echo \Zero\Html::element("div", ["style" => $style])->html(), "\n";
+        // `styleOf` keeps only the names the compiler saw in the style's type.
+        $extra = new \Zero\JsObject(["color" => "red", "position" => "fixed", "inset" => "0"]);
+        echo \Zero\Html::element("p", ["style" => \Zero\Html::styleOf($extra, ["color"])])->html(), "\n";
     "#;
     let out = Command::new("php").args(["-r", script]).arg(&runtime).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        "<a title=\"kept\">x</a>\n<my-el title=\"kept\"></my-el>\n<div style=\"width:1px\"></div>\n"
+        "<a title=\"kept\">x</a>\n<my-el title=\"kept\"></my-el>\n<div style=\"width:1px;--ok:1\"></div>\n\
+         <p style=\"color:red\"></p>\n"
     );
 }
 

@@ -22,3 +22,28 @@ export function Variants({ u, extra }: { u: string; extra: { Href: string; title
     </div>
   );
 }
+
+// Props arrive as decoded JSON, which can carry keys the types don't declare. `style` and a
+// closed spread keep only the declared keys.
+export function ExtraKeys({ s, extra }: { s: { color: string }; extra: { title: string; style: { color: string } } }) {
+  return (
+    <div>
+      <p style={s}>style</p>
+      <p {...extra}>spread</p>
+    </div>
+  );
+}
+
+// HTML tag names are case-insensitive: the output uses the lowercase name and its rules, so
+// `<bR/>` is one void `<br/>`. SVG camelCase elements keep their case. (React prints `<bR></bR>`,
+// which browsers read as two line breaks, so this case is checked on the PHP side only.)
+export function TagCase() {
+  return (
+    <dIv>
+      a<bR />b
+      <svg>
+        <foreignObject />
+      </svg>
+    </dIv>
+  );
+}

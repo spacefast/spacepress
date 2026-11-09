@@ -911,3 +911,19 @@ Status: **refused**. Diagnostic: `Z1003`.
 A `.tsx` module the config imports is refused even when its JSX never runs; components live in `zero/components/`.
 
 [Evidence](../tests/fixtures/reject-jsx-config-unused)
+
+## jsx-use-client-after-prologue
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+The directive is found anywhere in the file's directive prologue, after comments and other directives such as `"use strict"`.
+
+[Evidence](../tests/fixtures/reject-jsx-use-client-prologue)
+
+## jsx-children-type-local
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Every component's `children`, exported or local, is checked where JSX calls it.
+
+[Evidence](../tests/fixtures/reject-jsx-children-local)

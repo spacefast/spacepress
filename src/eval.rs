@@ -458,6 +458,13 @@ pub struct Evaluator<'p> {
     /// Allocations of `import * as ns` namespace objects. Node binds such a namespace as `this`
     /// for `ns.f()`, and it's frozen and holds live bindings, which a copy can't reproduce.
     pub namespace_imports: HashSet<usize>,
+    /// The object literal that defines each method reading `this`, keyed by the closure's
+    /// allocation. The compiler types that method's `this` as its object and compiles it only as
+    /// a method of it. Both are kept here so their allocations are never reused.
+    pub method_homes: HashMap<usize, (Rc<Closure>, Obj)>,
+    /// A field of such an object written `value as T`, by (object, key): its declared type and
+    /// module. `this.<key>` is typed `T`, as TypeScript types the literal.
+    pub method_home_fields: HashMap<(usize, String), (TyAnn, usize)>,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -482,6 +489,8 @@ impl<'p> Evaluator<'p> {
             duplicate_keys: HashMap::new(),
             pending_labels: Vec::new(),
             namespace_imports: HashSet::new(),
+            method_homes: HashMap::new(),
+            method_home_fields: HashMap::new(),
         }
     }
 
@@ -1622,6 +1631,35 @@ impl<'p> Evaluator<'p> {
                 }
                 let v = Value::object(map);
                 self.record_duplicates(&v, duplicates);
+                if let Value::Object(o) = &v {
+                    // A method written in this literal that reads `this` and still holds its key.
+                    let mut home = false;
+                    for p in props {
+                        if let Prop::KV(PropKey::Static(k), value) = p
+                            && let ExprKind::Func(f) = &value.kind
+                            && f.receives_this
+                            && let Some(Value::Closure(c)) = o.borrow().get(k)
+                            && Rc::ptr_eq(&c.func, f)
+                        {
+                            home = true;
+                            self.method_homes.insert(Rc::as_ptr(c) as usize, (c.clone(), o.clone()));
+                        }
+                    }
+                    // A field whose value is its own last `key: value as T` property is declared
+                    // `T`; a key a later property or spread wrote again keeps its value's type.
+                    if home {
+                        let last = |k: &str| spans.iter().rev().find(|(key, _)| key == k).map(|(_, span)| *span);
+                        for p in props {
+                            if let Prop::KV(PropKey::Static(k), value) = p
+                                && let ExprKind::As(_, ann) = &value.kind
+                                && last(k) == Some(value.span)
+                            {
+                                self.method_home_fields
+                                    .insert((Rc::as_ptr(o) as usize, k.clone()), (ann.clone(), scope.module));
+                            }
+                        }
+                    }
+                }
                 let p = ptr_of(&v).expect("object");
                 for (k, s) in spans {
                     self.key_spans.insert((p, k), s);
@@ -1902,6 +1940,13 @@ impl<'p> Evaluator<'p> {
                     e.span,
                     "generators can't run while the config is evaluated",
                     "call generators inside hooks and actions, which run in PHP",
+                );
+            }
+            ExprKind::Jsx(_) => {
+                return err_help(
+                    e.span,
+                    "JSX at the top level of a module",
+                    "Zero renders JSX only while a component runs; return it from a function, e.g. `const Icon = () => <svg …/>`",
                 );
             }
             ExprKind::Await(_) => {

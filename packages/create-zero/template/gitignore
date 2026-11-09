@@ -6,4 +6,4 @@ node_modules/
 .DS_Store
 *.log
 
-# Keep zero/migrations, zero/client and zero.gen.ts in version control.
+# Keep zero/_generated/migrations, zero/client and zero.gen.ts in version control.

@@ -1,6 +1,6 @@
 // Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
 // export into the app and fails the build if a key collides with the shared app or another lane.
-import { action, db, group, json, repeater, text } from "zero";
+import { action, db, group, integer, json, repeater, text } from "zero";
 import { comments } from "../blog/zero.config.ts";
 
 export const collections = {  };
@@ -31,6 +31,15 @@ export const actions = {
     async handler({ body }) {
       const gone = await db.delete(comments).where({ body }).returning();
       return gone.length;
+    },
+  }),
+  /** Computed numbers that can't be finite (NaN, Infinity, 2^70): null on the wire; 1e20 literal kept. */
+  refsRatio: action({
+    input: { n: integer().notNull() },
+    access: "anyone",
+    readonly: true,
+    handler({ n }) {
+      return { ratio: n / n, big: 1e20 as const, huge: 2 ** (n * 70) };
     },
   }),
   refsEmpty: action({ input: {}, access: "editor", handler: () => ({}) }),

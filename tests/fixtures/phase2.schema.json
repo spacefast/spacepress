@@ -739,10 +739,16 @@
                         "type": "object",
                         "properties": {
                             "value": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "count": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "item": {
                                 "type": [
@@ -770,22 +776,37 @@
                         "type": "object",
                         "properties": {
                             "captured": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "invoked": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "loop": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "helper": {
                                 "type": "object",
                                 "properties": {
                                     "count": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "captured": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "keep": {
                                         "type": "integer",
@@ -883,34 +904,61 @@
                                 ]
                             },
                             "callback": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "defaulted": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "localDefaulted": {
-                                "type": "number"
+                                "type": [
+                                    "number",
+                                    "null"
+                                ]
                             },
                             "logical": {
                                 "type": "object",
                                 "properties": {
                                     "nullish": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "or": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "and": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "guarded": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "absent": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "nested": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     }
                                 },
                                 "required": [
@@ -925,16 +973,28 @@
                                 "type": "object",
                                 "properties": {
                                     "local": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "module": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "absent": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "sibling": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "stable": {
                                         "type": [
@@ -1067,7 +1127,10 @@
                                         ]
                                     },
                                     "ordered": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
                                     "looped": {
                                         "type": [
@@ -1079,7 +1142,10 @@
                                         ]
                                     },
                                     "earlier": {
-                                        "type": "number"
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     }
                                 },
                                 "required": [

@@ -38,8 +38,8 @@ export const actions = {
     input: { n: integer().notNull() },
     access: "anyone",
     readonly: true,
-    handler({ n }) {
-      return { ratio: n / n, big: 1e20 as const, huge: 2 ** (n * 70) };
+    handler({ n }): { ratio: number; big: 1e20; huge: number } {
+      return { ratio: n / n, big: 1e20, huge: 2 ** (n * 70) };
     },
   }),
   refsEmpty: action({ input: {}, access: "editor", handler: () => ({}) }),

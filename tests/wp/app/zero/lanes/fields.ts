@@ -29,7 +29,7 @@ export const fieldStaff = collection({
   // `status` is a core post column, not an SCF field: settled from the saved row when the form renders.
   headline: text().showIf({ status: "published", kind: "pro" }),
   // A reference to a post-backed collection renders as SCF post_object, whose inequality is '!=='.
-  postNote: text().showIf({ postId: { ne: 1 } }),
+  postNote: text().showIf({ postId: { ne: 1 } }).validate((v, ctx) => v !== "pro only" || ctx.data.kind === "pro" || "Only pro staff take this note"),
   always: text().showIf({ OR: [{}, { kind: "pro" }] }),
   postId: integer().references(() => posts.id, { onDelete: "set null" }),
   notes: group({ fields: {

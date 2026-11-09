@@ -65,7 +65,7 @@ const RULES = [
   // every endpoint as an unsupported capsule feature.
   ["endpoint: no endpoint conversion", "refusal", (p, r) => /^\/endpoints(\/|$)/.test(p) && /unsupported capsule feature/.test(r)],
   ["endpoint: writing GET", "refusal", (p, r) => /^\/endpoints\//.test(p) && /writing GET/.test(r)],
-  ["endpoint: path owned by WordPress or Zero", "refusal", (p, r) => /^\/endpoints\//.test(p) && /belongs to WordPress or First/.test(r)],
+  ["endpoint: path owned by WordPress or First", "refusal", (p, r) => /^\/endpoints\//.test(p) && /belongs to WordPress or First/.test(r)],
   ["endpoint: OPTIONS or HEAD", "refusal", (p, r) => /^\/endpoints\//.test(p) && /OPTIONS|HEAD/.test(r) && /method|endpoints have no v2 route/.test(r)],
   ["endpoint: catch-all segment", "refusal", (p, r) => /^\/endpoints\//.test(p) && /catch-all|\*[a-z]|:splat|splat/.test(r)],
   ["endpoint: request API (url, bytes, headers.entries)", "refusal", (p, r) => /request API has no v2 route equivalent/.test(r)],

@@ -54,6 +54,9 @@ const ZERO_08_PROSE = [
 ];
 // Files where `_zero_<resource>_<field>` post meta is Zero 0.8 storage.
 const ZERO_08_META = [/^tests\/wp\/legacy\//, /^runtime\/(Zero|First)\/Wp\/Legacy\//, /^docs\/migrating-from-zero\.md$/];
+// The 0.8 census tool: its `zero` identifiers are the 0.8 client imports it measures, so a bare
+// `zero` there is kept (the binary and env var names are still renamed by the code rules).
+const KEEP_BARE = [/^scripts\/census-08\//];
 const CODE = /\.(rs|ts|tsx|mts|cts|mjs|js|cjs|jsx|php|sh|py|toml|ya?ml|json|jsonc|css|scss|sql)$|(^|\/)(Dockerfile|\.gitignore|gitignore)$/;
 
 // Deny list: Zero 0.8 and production names that keep their spelling. Matched first and shielded.
@@ -61,6 +64,7 @@ const KEEP = [
   /formerly Zero v2/g,
   /@spacefast\/zero-compile\b/g,
   /@spacefast\/zero(?![\w-])(?:\/[\w.\/-]*)?/g, // the 0.8 SDK and its subpaths
+  /@spacefast\\\/zero(?![\w-])/g, // the same, escaped in a regular expression
   /(?:github\.com\/)?spacefast\/zero(?![\w-]|\/)(?:\.git)?/g, // the repository name
   /github\.com\/spacefast\/zero\b/g,
   /__spacefast\/zero\b/g, // engine-owned paths
@@ -94,7 +98,7 @@ const KEEP = [
   /\bsf zero (?:abilities|call|queries|types|ls)\b/g, // `sf zero` commands that act on 0.8 Spaces
   /\bZERO_(?:CLIENT_MODULES|DYNAMIC_BLOCKS|SOURCE_CODE_EXTENSIONS|STRUCTURAL_COLLECTIONS|ORIGINAL|LEGACY_\w+)\b/g,
   // Monorepo paths that this repository only refers to.
-  /\b(?:apps\/control-plane|runtime\/tests|runtime\/engine|e2e-tests|packages\/(?:zero|zero-compile|common|sdk))\/[\w.\/*-]*/g,
+  /\b(?:apps\/control-plane|runtime\/tests|runtime\/engine|e2e-tests|packages\/(?:zero|zero-compile|common|sdk))(?:\/[\w.\/*-]*|\b)/g,
   /\bcrates\/stattic-[\w.\/-]*/g,
   // Zero 0.8 post meta (`_zero_<resource>_<field>`): see ZERO_08_META for the per-file rule.
   /\b_+zero_(?:projects|tasks|posts|pages_(?:title|content)|media_alt)\w*/g,
@@ -119,6 +123,8 @@ const MATH_AFTER = /^\s*(?:errors?|failures?|limbs?|bits?|octets?|or more|or (?:
 /** Rules for every renamed text. Each `[pattern, replacement]` only matches a spelling of zero. */
 const CODE_RULES = [
   // Whole phrases first.
+  // Paths First owns, in the converter's refusals and the census that matches them.
+  [/\bWordPress or Zero\b/g, 'WordPress or First'],
   // The First compiler's own diagnostics, which the 0.8 converter matches.
   [/\bZero code\b/g, 'First code'],
   [/\bZero v2's\b/g, "First's"],
@@ -134,7 +140,7 @@ const CODE_RULES = [
   [/(?<=\\)Zero\b/g, 'First'],
   [/\b(namespace|use)(\s+)Zero\b/g, '$1$2First'],
   // Directory and file names.
-  [/(?<![\w-])Zero(?=\/)/g, 'First'],
+  [/(?<![\w-])Zero(?=\/[\w*.<{])/g, 'First'],
   [/(?<![\w-])(\.?)zero(?=\/)/g, '$1first'],
   [/(?<=\/)zero(?![\w\/-]|\.\d)/g, 'first'],
   [/(?<![\w.\/@-])zero(?=\.(?:config|gen|wasm|exe|mjs|rb|php|json|d\.ts|hosted|source-bundle)\b)/g, 'first'],
@@ -215,7 +221,7 @@ export function rename(text, path = '') {
     if (prose08 && replacement === '$1first$1') continue; // 0.8 source kinds such as --from "zero"
     out = out.replace(pattern, replacement);
   }
-  if (path === '' || CODE.test(path)) out = bareWord(out, prose08);
+  if ((path === '' || CODE.test(path)) && !KEEP_BARE.some((r) => r.test(path))) out = bareWord(out, prose08);
   if (!prose08) {
     out = out
       .split('\n')

@@ -17,7 +17,7 @@ import { converterReport, outcome, payloadCensus, verifySource } from "./census.
 import { ERASED, pageStub, PAGE_MARKER, serverSource, writeCapsule } from "./reconstruct.mjs";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
-const first = path.resolve(process.env.FIRST_BIN ?? path.join(root, "target/debug/first"));
+const zero = path.resolve(process.env.FIRST_BIN ?? path.join(root, "target/debug/first"));
 const fixture = JSON.parse(fs.readFileSync(path.join(root, "tests/fixtures/app-migrate/manifest/finalize.json"), "utf8"));
 
 function typescript() {
@@ -46,7 +46,7 @@ function convert(finalize, users = true) {
     writeCapsule(ts, finalize, path.join(dir, "app"));
     const args = ["migrate", "app", "--from", "zero-0.8", path.join(dir, "app"), "--out", path.join(dir, "out"), "--space", "spc_census", "--dry-run", "--json"];
     if (users) args.push("--users");
-    const r = spawnSync(first, args, { encoding: "utf8" });
+    const r = spawnSync(zero, args, { encoding: "utf8" });
     return JSON.parse(r.stdout);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -151,7 +151,7 @@ test("source verification uses the recorded hashes", () => {
 });
 
 // With FIRST_BIN set (as in CI) a missing binary fails the test instead of skipping it.
-const skipConverter = !process.env.FIRST_BIN && !fs.existsSync(first) && "no first binary; run cargo build";
+const skipConverter = !process.env.FIRST_BIN && !fs.existsSync(zero) && "no zero binary; run cargo build";
 test("the converter's refusals on a rebuilt capsule keep their reasons", { skip: skipConverter }, () => {
   // A blocker the bundle shows: a context service the converter does not map.
   const services = convert(payload('var app_default=capsule({name:"t",schema:{notes:table({body:string()})},mutations:{add:mutation(async(ctx,body)=>{await ctx.jwt.sign({sub:body});return ctx.db.notes.insert({body})})}});', { pages: [] }));

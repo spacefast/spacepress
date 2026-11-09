@@ -169,7 +169,7 @@ pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<St
 /// - an absolute URL or an empty source;
 /// - a first segment holding a pattern character (the engine compiles `:name` anywhere in a
 ///   segment to `[^/]+`, so `/w:x` matches `/wp-json`, and `*` to a splat);
-/// - a first segment WordPress or Zero owns (`endpoints::RESERVED`, `wp-json` among them), or one
+/// - a first segment WordPress or First owns (`endpoints::RESERVED`, `wp-json` among them), or one
 ///   starting with `wp-` (WordPress's own entry points);
 /// - a first segment the candidate serves files under (`served`, from its public/ tree: the
 ///   converted client's `app/`, `first/` and stylesheet folders, and the carried static files).
@@ -601,7 +601,7 @@ pub(super) fn sweep(
             }
             Ok(_) => errors.push(file(fail(
                 &at,
-                format!("{STATIC}: /{first} belongs to WordPress or Zero on v2"),
+                format!("{STATIC}: /{first} belongs to WordPress or First on v2"),
             ))),
             // Binary files (images, fonts) need byte-exact copies, which the text candidate can't hold.
             Err(_) => errors.push(file(fail(

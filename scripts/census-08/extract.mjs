@@ -2,7 +2,7 @@
 // feature usage. Nothing here keeps a name, path or value from the Space beyond the call.
 import { readPayload, serverImports } from "./reconstruct.mjs";
 
-// First path segments the converter treats as owned by WordPress or Zero
+// First path segments the converter treats as owned by WordPress or First
 // (`RESERVED` in src/config_migrate/app/endpoints.rs), plus every `wp-*`.
 export const RESERVED_SEGMENTS = new Set([
   "wp-admin", "wp-json", "wp-content", "wp-includes", "wp-login.php", "wp-signup.php", "wp-cron.php",
@@ -288,7 +288,7 @@ function isDeclarationName(ts, node) {
 export function clientFacts(ts, finalize, pages, clientEntry) {
   const present = pages.some((p) => p.render === "client") || (pages.length === 0 && clientEntry);
   const file = (finalize.staticFiles ?? []).find((f) => f?.path === CLIENT_BUNDLE && f.contentBase64);
-  if (!present || !file) return { present, measured: false, first: new Set(), modules: new Set(), preactHooks: false, dynamicImport: false };
+  if (!present || !file) return { present, measured: false, zero: new Set(), modules: new Set(), preactHooks: false, dynamicImport: false };
   return { present, measured: true, ...clientBundleFacts(ts, Buffer.from(file.contentBase64, "base64").toString("utf8")) };
 }
 
@@ -308,7 +308,7 @@ const ZERO_CLIENT_MODULES = new Set(["@spacefast/zero/client", "lakebed/client",
 /** Imports `client.js` leaves to the platform import map, and SDK functions it bundled. */
 export function clientBundleFacts(ts, text) {
   const sf = ts.createSourceFile("client.js", text, ts.ScriptTarget.ES2022, false, ts.ScriptKind.JS);
-  const first = new Set();
+  const zero = new Set();
   const modules = new Set();
   let preactHooks = false;
   // esbuild keeps `import()` when it can't resolve the target statically.
@@ -320,13 +320,13 @@ export function clientBundleFacts(ts, text) {
     const names = ts.isImportDeclaration(st)
       ? [...(st.importClause?.namedBindings?.elements ?? [])].map((el) => (el.propertyName ?? el.name).text)
       : [];
-    if (ZERO_CLIENT_MODULES.has(spec)) names.forEach((n) => first.add(n));
+    if (ZERO_CLIENT_MODULES.has(spec)) names.forEach((n) => zero.add(n));
     if (/^(preact\/hooks|preact\/compat|react|react-dom)$/.test(spec) && names.some((n) => HOOK_NAMES.has(n))) preactHooks = true;
   }
   for (const n of CLIENT_NAMES) {
-    if (new RegExp(`function ${n}\\d*\\(`).test(text)) first.add(n);
+    if (new RegExp(`function ${n}\\d*\\(`).test(text)) zero.add(n);
   }
-  return { first, modules, preactHooks, dynamicImport };
+  return { zero, modules, preactHooks, dynamicImport };
 }
 
 export const _test = { reserved };

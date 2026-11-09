@@ -392,13 +392,13 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_ENDPOINT_RESERVED_PATH",
-        feature: "endpoint path owned by WordPress or Zero",
+        feature: "endpoint path owned by WordPress or First",
         v2: "a route under a path of the app's own",
         fix: "Move the endpoint to a path WordPress and Zero don't own, and update its callers.",
-        test: |_, r| r.contains("belongs to WordPress or Zero"),
+        test: |_, r| r.contains("belongs to WordPress or First"),
         example: (
             "/endpoints/login/path",
-            "/wp-login.php belongs to WordPress or Zero on v2",
+            "/wp-login.php belongs to WordPress or First on v2",
         ),
     },
     Rule {

@@ -154,7 +154,7 @@ reason, ranked by the #133 column):
 | ImageResponse (JSX on the server) | 19 | 19 | 19 | 19 | 19 | 19 | 19 |
 | ctx.auth: profile fields or methods | 0 | 0 | 0 | 19 | 19 | 19 | 19 |
 | ctx.env | 26 | 26 | 26 | 17 | 17 | 17 | 17 |
-| endpoint: path owned by WordPress or Zero | 0 | 0 | 0 | 16 | 16 | 16 | 16 |
+| endpoint: path owned by WordPress or First | 0 | 0 | 0 | 16 | 16 | 16 | 16 |
 | db: paginate, filter or other operation | 17 | 17 | 17 | 14 | 14 | 14 | 14 |
 | language: delete | 14 | 14 | 14 | 14 | 14 | 14 | 14 |
 | language: this outside a class | 14 | 14 | 14 | 14 | 14 | 14 | 14 |
@@ -225,7 +225,7 @@ one, and so what fixing it alone would release to source review):
 | ctx.db: database handle use | 10 |
 | favicon | 9 |
 | language: delete | 9 |
-| endpoint: path owned by WordPress or Zero | 7 |
+| endpoint: path owned by WordPress or First | 7 |
 | language: destructuring assignment | 6 |
 | ctx.env | 5 |
 
@@ -466,7 +466,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `:param` segments | `:param` | Auto, **WP** | — |
 | A final `:splat` (0.8's only catch-all; `*` is refused at publish) | `*splat` (#134), one or more decoded segments joined with `/`, plus a second route at the bare prefix, which 0.8's `:splat` also answered with an empty `params.splat` | Auto, **WP** | — |
 | A writing `GET` (`readOnly: false`) | **missing** by design: GET routes take cookies without a nonce | Refused | Move to POST |
-| Paths under `wp-*`, `feed`, `auth`, `__zero`, … | Owned by WordPress or Zero | Refused | Move the endpoint |
+| Paths under `wp-*`, `feed`, `auth`, `__zero`, … | Owned by WordPress or First | Refused | Move the endpoint |
 | `ImageResponse` | **missing** (PHP has no JSX renderer) | Refused | Pre-render the image |
 | `/llms.txt`, `/api/ping` defaults | Not converter work | — | The host serves them |
 

@@ -1480,7 +1480,11 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     ] {
         assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
     }
-    assert!(project.join("first/dist/wp-content/plugins/first-app-blog.zip").is_file());
+    assert!(
+        project
+            .join("first/dist/wp-content/plugins/first-app-blog.zip")
+            .is_file()
+    );
     let content = project.join("first/dist/wp-content");
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(content.join("first-manifest.json")).unwrap()).unwrap();
@@ -2322,7 +2326,11 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
             "first/_generated/abilities.json",
             r#"{"version":1,"abilities":[]}"#,
         ),
-        ("first/wp-plugins.lock.json", "first/_generated/wp-plugins.lock.json", ""),
+        (
+            "first/wp-plugins.lock.json",
+            "first/_generated/wp-plugins.lock.json",
+            "",
+        ),
         (
             "first/client/index.ts",
             "first/_generated/client/index.ts",

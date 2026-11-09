@@ -1,7 +1,7 @@
 import { abilities } from "php/wordpress";
 import { action, collection, defineConfig, global, integer, job, media, text, userProjection, email } from "zero";
 
-// Imports "php/wordpress" so zero.gen.ts carries the catalog. Every kind of ability the app registers: collection CRUD with revisions and media, an auth
+// Imports "php/wordpress" so zero/_generated/db.d.ts carries the catalog. Every kind of ability the app registers: collection CRUD with revisions and media, an auth
 // collection's create (with its `password` input), sync, an action with optional input, a global
 // and an agent-visible job. tests/compiler_contracts.rs compares them with Register::operations().
 const notes = collection({

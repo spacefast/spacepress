@@ -1,5 +1,5 @@
 // Generated client types for localized collections (§7.3).
-import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./zero/client/types";
+import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./zero/_generated/client/types";
 import "./zero.gen";
 import { db } from "zero";
 

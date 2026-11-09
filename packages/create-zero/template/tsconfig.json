@@ -12,5 +12,5 @@
       "php/wordpress": ["./node_modules/@spacefast/zero-cli/types/wordpress.d.ts"]
     }
   },
-  "include": ["zero.config.ts", "zero.gen.ts", "client.ts", "zero/client/**/*.ts"]
+  "include": ["zero.config.ts", "zero/_generated/db.d.ts", "client.ts", "zero/_generated/client/**/*.ts"]
 }

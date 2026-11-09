@@ -43,6 +43,7 @@ final class MarkdownTwins
         add_action('wp', [self::class, 'answer'], PHP_INT_MIN);
         add_action('wp_head', [self::class, 'linkTag'], 1);
         add_filter('robots_txt', [self::class, 'robots'], PHP_INT_MAX);
+        add_filter('rest_request_before_callbacks', [self::class, 'restFields'], 10, 3);
         add_filter('rest_pre_serve_request', [self::class, 'restMarkdown'], 10, 4);
     }
 
@@ -272,6 +273,41 @@ final class MarkdownTwins
     }
 
     /**
+     * rest_request_before_callbacks: a `?format=md` request needs only the item's id from core, so
+     * core builds no `content.rendered` or `excerpt.rendered` (two the_content runs) that
+     * restMarkdown() would throw away. Core's route still runs, permission check included.
+     */
+    public static function restFields(mixed $response, array $handler, \WP_REST_Request $request): mixed
+    {
+        if ($request->get_param('format') === 'md' && in_array($request->get_method(), ['GET', 'HEAD'], true) && self::itemRoutePost($request) !== null) {
+            $request->set_param('_fields', 'id');
+        }
+
+        return $response;
+    }
+
+    /**
+     * The post a REST route is that post's own item route for (`/<rest_namespace>/<rest_base>/<id>`
+     * of a REST post type), or null. Only that route had core check this post; another collection
+     * answering the same numeric id (a category, a user) checked a different object.
+     */
+    private static function itemRoutePost(\WP_REST_Request $request): ?\WP_Post
+    {
+        if (preg_match('#/(\d+)$#', $request->get_route(), $m) !== 1) {
+            return null;
+        }
+        $post = get_post((int) $m[1]);
+        if (!$post instanceof \WP_Post || !in_array($post->post_type, get_post_types(['show_in_rest' => true]), true)) {
+            return null;
+        }
+        $type = get_post_type_object($post->post_type);
+        $base = $type?->rest_base ?: $post->post_type;
+        $namespace = $type?->rest_namespace ?: 'wp/v2';
+
+        return $request->get_route() === '/' . $namespace . '/' . $base . '/' . $post->ID ? $post : null;
+    }
+
+    /**
      * rest_pre_serve_request: `?format=md` on a core post item route (`GET /wp/v2/posts/42`) answers
      * the item as {@see post()}. Core has already run the route, so its permission check decided
      * the request; only a successful item response becomes Markdown. A password-protected post is
@@ -286,13 +322,14 @@ final class MarkdownTwins
         }
         $data = $result->get_data();
         $id = is_array($data) ? (int) ($data['id'] ?? 0) : 0;
-        $post = $id > 0 && preg_match('#^/wp/v2/[^/]+/' . $id . '$#', $request->get_route()) === 1 ? get_post($id) : null;
-        if (!$post instanceof \WP_Post || !in_array($post->post_type, get_post_types(['show_in_rest' => true]), true)) {
+        // Only the post's own item route: core already ran its permission check for this post there.
+        $post = self::itemRoutePost($request);
+        if ($post === null || $post->ID !== $id) {
             return $served;
         }
+        $type = get_post_type_object($post->post_type);
         // Core shows a protected body only to a request it lets in (the right `password`, or an editor
         // in the edit context): the same check here, on the route's own controller.
-        $type = get_post_type_object($post->post_type);
         $controller = $type?->get_rest_controller();
         if ($post->post_password !== '' && $controller instanceof \WP_REST_Posts_Controller && $controller->can_access_password_content($post, $request)) {
             add_filter('post_password_required', $unlock = static fn (bool $required, mixed $p): bool => get_post($p)?->ID === $post->ID ? false : $required, PHP_INT_MAX, 2);

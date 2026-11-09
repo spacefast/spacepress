@@ -1,3 +1,4 @@
-/zero.gen.ts
-/zero/client/
+/zero/_generated/db.d.ts
+/zero/_generated/client/
 /zero/_generated/migrations/
+/zero/dist/

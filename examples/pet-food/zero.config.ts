@@ -1,6 +1,6 @@
 import { action, db, defineConfig, HttpError, integer, job, real, timestamp } from "zero";
-import { collections, tables, relations, feedings, stock, shoppingList } from "./lib/schema";
-import { DAY_MS, WINDOW_DAYS, ownerId, ownFood, ownPet, projection, queueStockCheck, usableStock } from "./lib/pantry";
+import { collections, tables, relations, feedings, stock, shoppingList } from "./zero/lib/schema";
+import { DAY_MS, WINDOW_DAYS, ownerId, ownFood, ownPet, projection, queueStockCheck, usableStock } from "./zero/lib/pantry";
 
 export default defineConfig({
   name: "pet-food",

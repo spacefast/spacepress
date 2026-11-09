@@ -5,11 +5,11 @@
  * "paths": { "zero": [".../types/index.d.ts"], "php/wordpress": [".../types/wordpress.d.ts"] }
  * ```
  *
- * `zero build` augments `Abilities` in `zero.gen.ts` with the app's own abilities and those locked in
- * `zero/abilities.json` (`zero abilities pull --site <url>`).
+ * `zero build` augments `Abilities` in `zero/_generated/db.d.ts` with the app's own abilities and those locked in
+ * `zero/_generated/abilities.json` (`zero abilities pull --site <url>`).
  */
 
-/** Ability name → `{ input; output }`, generated into `zero.gen.ts`. */
+/** Ability name → `{ input; output }`, generated into `zero/_generated/db.d.ts`. */
 export interface Abilities {}
 
 export type AbilityName = keyof Abilities & string;

@@ -12,7 +12,7 @@ type HookFunctions = indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<
 
 pub struct Built {
     pub plugins: Option<wp_plugins::Config>,
-    /// Every file under `zero/client/`.
+    /// Every file under `zero/_generated/client/`.
     pub client_files: Vec<(String, Vec<u8>)>,
     pub schema: schema::Schema,
     pub functions_php: String,
@@ -25,7 +25,7 @@ pub struct Built {
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
     pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
-    /// `zero/plugins.lock.json` as this build settled it (None without plugins or a lock).
+    /// `zero/_generated/plugins.lock.json` as this build settled it (None without plugins or a lock).
     pub plugin_lock: Option<serde_json::Value>,
     /// What changed in the lock, one line each, for the command line.
     pub plugin_changes: Vec<String>,
@@ -54,7 +54,7 @@ pub fn moved_ledger() -> Diag {
 pub struct Previous {
     pub snapshot: serde_json::Value,
     pub next_migration: u32,
-    /// Refuse any plugin grant `zero/plugins.lock.json` doesn't already hold (CI, `--frozen`).
+    /// Refuse any plugin grant `zero/_generated/plugins.lock.json` doesn't already hold (CI, `--frozen`).
     pub frozen: bool,
 }
 
@@ -133,6 +133,15 @@ pub fn build(
     previous: impl FnOnce() -> Result<Previous, Diag>,
     runtime: impl Fn(&str) -> Option<&'static [u8]>,
 ) -> Result<Built, Diag> {
+    // A checkout from before `zero/_generated/` would have its locks ignored (and replaced) and an old
+    // client loaded as app code. A stored source bundle maps those paths instead (`layout::current`).
+    let root = program.modules[program.entry]
+        .path
+        .parent()
+        .expect("the entry has a directory");
+    if let Some((message, help)) = crate::layout::old_in_checkout(|p| program.fs.exists(p), root) {
+        return Err(Diag::new(Span::NONE, message).help(help).phase(diag::Code::Schema));
+    }
     let mut ev = eval::Evaluator::new(program);
     let config = ev.run().map_err(|d| d.phase(diag::Code::Evaluation))?;
     let config_span = Span {
@@ -282,10 +291,17 @@ pub fn build(
     let previous = previous_value;
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
-            if let Some(next) = snapshot["tables"].get(stored)
+            // The table that keeps `stored`'s rows: the same name, or the one that declares `was: stored`.
+            let successor = snapshot["tables"].get(stored).or_else(|| {
+                snapshot["tables"]
+                    .as_object()?
+                    .values()
+                    .find(|t| t["was"].as_str() == Some(stored.as_str()))
+            });
+            if let Some(next) = successor
                 && tables[stored]["existingTable"] != next["existingTable"]
             {
-                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot; move data explicitly before changing storage")).phase(diag::Code::Schema));
+                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot, including through a `was` rename; move data explicitly before changing storage")).phase(diag::Code::Schema));
             }
             let canonical = crate::schema::physical_name(stored);
             if &canonical != stored
@@ -300,12 +316,17 @@ pub fn build(
             // Old snapshots record physical names only. A removed and a new resource
             // could be an authored alias becoming its storage name, even when both
             // names are already snake_case. Never guess a destructive replacement.
+            // A table that declares `was: "<stored>"` renames it (spec §2.6); the planner moves it.
+            let renamed = snapshot["tables"]
+                .as_object()
+                .is_some_and(|next| next.values().any(|t| t["was"].as_str() == Some(stored.as_str())));
             if !schema.collections.contains_key(stored)
+                && !renamed
                 && let Some(added) = schema.collections.keys().find(|name| !tables.contains_key(*name))
             {
                 return Err(Diag::new(config_span, format!(
                     "stored resource `{stored}` disappears while new resource `{added}` is added; an authoring change cannot rename persisted storage"
-                )).help("keep existing physical names registered; resolve intentional storage removals separately after reviewing the data migration")
+                )).help(format!("to rename it, declare `was: \"{stored}\"` on the table; to drop it, remove it in one deploy and add the new one in the next"))
                     .phase(diag::Code::Schema));
             }
         }
@@ -460,7 +481,7 @@ fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<ser
     serde_json::from_str(&text).map(Some).map_err(|e| bad(e.to_string()))
 }
 
-/// `zero/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
+/// `zero/_generated/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
 /// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
 /// browser read the same lock the command line does. Absent means no locked abilities.
 fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {

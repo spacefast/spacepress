@@ -236,6 +236,43 @@ file_put_contents("$site->content/mu-plugins/engine-accept-lane.php", <<<'PHP'
         }
     });
     PHP);
+// A members-only block (renders nothing for anyone signed out) on the site, as a plugin would add it:
+// no listing summary, /llms.txt line or REST Markdown may show what its HTML page hides.
+file_put_contents("$site->content/mu-plugins/members-block.php", <<<'PHP'
+    <?php
+    add_action('init', static fn () => register_block_type('zero-test/members-site', [
+        'render_callback' => static fn (array $a, string $content): string => is_user_logged_in() ? $content : '',
+    ]));
+    PHP);
+wp_set_current_user(1);
+$members = $insert(['post_title' => 'Members', 'post_name' => 'members', 'post_date' => '2026-11-05 10:00:00', 'post_content' => '<!-- wp:paragraph --><p>Public intro.</p><!-- /wp:paragraph -->'
+    . '<!-- wp:zero-test/members-site --><div><!-- wp:paragraph --><p>SECRET-MEMBERS-TEXT</p><!-- /wp:paragraph --></div><!-- /wp:zero-test/members-site -->']);
+wp_set_current_user(0);
+$surfaces = ['the HTML page' => fetch("$url/members/")['body'], 'its twin' => fetch("$url/members.md")['body'], 'the blog index twin' => fetch("$url/index.md")['body'],
+    '/llms.txt' => fetch("$url/llms.txt")['body'], 'search' => fetch("$url/index.md?s=public+intro")['body'], 'REST ?format=md' => fetch("$url/wp-json/wp/v2/posts/$members?format=md")['body']];
+foreach ($surfaces as $where => $body) {
+    check("a members-only block stays hidden in $where", !str_contains($body, 'SECRET-MEMBERS-TEXT'), $body);
+}
+check('the listing summary is the rendered text', str_contains($surfaces['the blog index twin'], "[Members]($url/members.md): Public intro."), $surfaces['the blog index twin']);
+wp_set_current_user(1);
+wp_update_post(['ID' => $members, 'post_excerpt' => 'Hand <b>&lt;i&gt;</b> excerpt.']);
+wp_set_current_user(0);
+check('a hand-written excerpt is plain text, a spelled tag kept inert', str_contains(fetch("$url/index.md")['body'], '): Hand &lt;i> excerpt.'), fetch("$url/index.md")['body']);
+
+// ?format=md on core item routes: the item as post(), after core's own permission check.
+$rest = fetch("$url/wp-json/wp/v2/posts/$hello?format=md");
+eq('?format=md on a core item route answers the twin body as Markdown', [$rest['status'], $rest['headers']['content-type'] ?? null, $rest['body']],
+    [200, ['text/markdown; charset=UTF-8'], MarkdownTwins::post(get_post($hello))]);
+eq('the same route without format is still JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts/$hello")['headers']['content-type'][0] ?? '', 'application/json'), true);
+eq('core\'s permission check decides: a draft is still 401 JSON', [fetch("$url/wp-json/wp/v2/posts/$draft?format=md")['status'], str_starts_with(fetch("$url/wp-json/wp/v2/posts/$draft?format=md")['headers']['content-type'][0] ?? '', 'application/json')], [401, true]);
+$noteRest = fetch("$url/wp-json/wp/v2/zero_notes/$note?format=md");
+eq('a Zero collection row answers as core and its access rules decide (readable by anyone here)', [$noteRest['status'], $noteRest['body']], [200, MarkdownTwins::post(get_post($note))]);
+eq('a list route is not an item route: JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts?format=md")['headers']['content-type'][0] ?? '', 'application/json'), true);
+eq('a protected post without its password: title and note', fetch("$url/wp-json/wp/v2/posts/$locked?format=md")['body'], "# Locked post\n\nThis content is password protected.\n");
+eq('with the right password, as core shows it: the body', fetch("$url/wp-json/wp/v2/posts/$locked?format=md&password=pw")['body'], "# Locked post\n\nLocked body.\n");
+eq('with a wrong password core refuses as before', fetch("$url/wp-json/wp/v2/posts/$locked?format=md&password=no")['status'], 403);
+eq('a page item route works the same', fetch("$url/wp-json/wp/v2/pages/$about?format=md")['body'], fetch("$url/about.md")['body']);
+
 // A plugin that renders a URL itself (the pages add-on's code Pages) takes the twin away.
 file_put_contents("$site->content/mu-plugins/own-about.php", '<?php add_filter("zero_markdown_twin", static fn (bool $twin, WP_Post $post): bool => $twin && $post->post_name !== "about", 10, 2);');
 eq('zero_markdown_twin false: no twin and no link', [fetch("$url/about.md")['status'], fetch("$url/about/")['headers']['link'] ?? []], [404, []]);

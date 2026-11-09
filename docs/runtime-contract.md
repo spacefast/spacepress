@@ -543,6 +543,17 @@ The v2 app plugin registers these. A WordPress without a Zero app is unchanged.
 - **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
   `/llms.txt`, and a `robots.txt` line). The `zero_content_signal` filter
   changes the value; `''` sends none.
+- **`?format=md` on core item routes** (`GET /wp-json/wp/v2/<type>/<id>`, any
+  post type in REST): after core has run the route and its permission check,
+  a 200 item response is sent as `MarkdownTwins::post()` in `text/markdown`.
+  A password-protected post shows its body only when core would (the right
+  `password` parameter, or an editor in the edit context). Every refusal stays
+  core's JSON error. List routes and other methods are unchanged. The
+  `/__zero/api/v1` facade's item route should call `MarkdownTwins::post()` so
+  that both give the same Markdown.
+- **Listing and `/llms.txt` summaries** come from the hand-written excerpt or
+  from the rendered Markdown of the post, never from its raw stored markup.
+  So a block that hides content from signed-out visitors hides it there too.
 - **`zero_markdown_twin` filter** (`bool $twin, WP_Post $post`): return false
   when a URL shows something other than the post's stored content. The pages
   add-on uses it for code Pages.
@@ -552,7 +563,7 @@ PHP API (all static):
 | Call | Returns |
 |---|---|
 | `MarkdownTwins::twin(string $url): string` | the twin URL: `/x/` → `/x.md`, home → `/index.md`; scheme, host and query kept. Purges use it to add each URL's `.md` twin. |
-| `MarkdownTwins::post(WP_Post $post): string` | `# Title` plus the stored content as Markdown. A password-protected post gives only its title and a note. It checks no visibility; the caller does. `?format=md` on item routes returns this. |
+| `MarkdownTwins::post(WP_Post $post): string` | `# Title` plus the stored content as Markdown. While `post_password_required()` holds, only the title and a note. It checks no other visibility; the caller does. |
 | `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses: when `fromBlocks()` succeeds, the result is its output exactly. Otherwise each block is written as Markdown, layout blocks (group, columns) by their inner blocks, and any other block as the text of what its own renderer prints, so a block that hides its content hides it here too. A block whose rendering throws shows nothing. A `<` that would start a tag outside code is escaped, so no HTML reaches the output. |
 | `MarkdownTwins::llms(): string` | the `/llms.txt` body |
 | `MarkdownTwins::negotiate(string $uri): ?array` | the engine's `Accept: text/markdown` answer, below |

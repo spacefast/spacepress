@@ -165,7 +165,7 @@ redaction through their existing test owners.
 ```text
 shop/
 ├── zero.config.ts             # required: content, tables, access and backend behavior
-├── zero.gen.ts                # generated editor types; never hand-edit
+├── zero/_generated/db.d.ts                # generated editor types; never hand-edit
 ├── tsconfig.json
 ├── lib/                      # ordinary imported TS; no discovery conventions
 │   └── pricing.ts

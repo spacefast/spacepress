@@ -183,6 +183,6 @@ export async function receiver(secret: string) {
 
 /** The typed client a rebuilt project generated, loaded the way a frontend imports it. */
 export async function clientOf(project: string, make: (createClient: (o: object) => unknown, role: Role) => unknown) {
-  const mod = await import(pathToFileURL(join(project, "zero/client/index.ts")).href);
+  const mod = await import(pathToFileURL(join(project, "zero/_generated/client/index.ts")).href);
   return (role: Role) => make(mod.createClient, role) as UpgradedClient;
 }

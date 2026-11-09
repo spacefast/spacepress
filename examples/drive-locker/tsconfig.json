@@ -4,5 +4,5 @@
     "moduleResolution": "bundler", "strict": true, "noEmit": true, "types": [],
     "paths": { "zero": ["../../types/zero/index.d.ts"] }
   },
-  "include": ["zero.config.ts", "zero.gen.ts", "lib/**/*.ts"]
+  "include": ["zero.config.ts", "zero/_generated/db.d.ts", "lib/**/*.ts"]
 }

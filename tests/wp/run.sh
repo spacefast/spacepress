@@ -24,17 +24,17 @@ cleanup() {
   [[ ${ZERO_WP_KEEP:-0} == 1 ]] || "$here/harness.sh" down
 }
 trap cleanup EXIT
-rsync -a --exclude '/zero/' --exclude '/.zero/' --exclude '/zero.gen.ts' "$here/app/" "$build_app/"
+rsync -a --exclude '/zero/' --exclude '/.zero/' --exclude '/zero/_generated/db.d.ts' "$here/app/" "$build_app/"
 if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
   cp "$here/uploads.s3.ts" "$build_app/uploads.ts"
 fi
 "$zero" build "$build_app" --quiet >/dev/null
 # The client integration tests import this stable path; leave existing fixture migrations alone.
-mkdir -p "$here/app/zero/client"
-rsync -a --delete "$build_app/zero/client/" "$here/app/zero/client/"
+mkdir -p "$here/app/zero/_generated/client"
+rsync -a --delete "$build_app/zero/_generated/client/" "$here/app/zero/_generated/client/"
 # Stage into a stable dir: the build replaces its output dir, which would orphan a bind mount.
 mkdir -p tests/wp/.wp-content
-rsync -a --delete "$build_app/.zero/wp-content/" tests/wp/.wp-content/
+rsync -a --delete "$build_app/zero/dist/wp-content/" tests/wp/.wp-content/
 
 "$here/harness.sh" down
 # Relative to the repo root (run.sh's working directory): harness.sh resolves it against the caller.

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\Config;
+namespace First\Vendor\League\Config;
 
 /**
  * Implement this class to facilitate setter injection of the configuration where needed

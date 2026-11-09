@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Enum;
+namespace First\Vendor\AsyncAws\S3\Enum;
 
 /**
  * The container element for object ownership for a bucket's ownership controls.

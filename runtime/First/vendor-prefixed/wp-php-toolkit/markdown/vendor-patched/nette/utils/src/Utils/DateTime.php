@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -17,7 +17,7 @@ use Zero\Vendor\Nette;
  */
 class DateTime extends \DateTime implements \JsonSerializable
 {
-	use \Zero\Vendor\Nette\SmartObject;
+	use \First\Vendor\Nette\SmartObject;
 
 	/** minute in seconds */
 	public const MINUTE = 60;
@@ -64,7 +64,7 @@ class DateTime extends \DateTime implements \JsonSerializable
 
 	/**
   * Creates DateTime object.
-  * @throws Zero\Vendor\Nette\InvalidArgumentException if the date and time are not valid.
+  * @throws First\Vendor\Nette\InvalidArgumentException if the date and time are not valid.
   * @return static
   */
  public static function fromParts(int $year, int $month, int $day, int $hour = 0, int $minute = 0, float $second = 0.0)
@@ -79,7 +79,7 @@ class DateTime extends \DateTime implements \JsonSerializable
    			|| $second < 0
    			|| $second >= 60
    		) {
-   			throw new \Zero\Vendor\Nette\InvalidArgumentException("Invalid date '$s'");
+   			throw new \First\Vendor\Nette\InvalidArgumentException("Invalid date '$s'");
    		}
      return new static($s);
  }

@@ -7,15 +7,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Schema;
+namespace First\Vendor\Nette\Schema;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
  * Validation error.
  */
-class ValidationException extends \Zero\Vendor\Nette\InvalidStateException
+class ValidationException extends \First\Vendor\Nette\InvalidStateException
 {
 	/** @var Message[] */
 	private $messages;

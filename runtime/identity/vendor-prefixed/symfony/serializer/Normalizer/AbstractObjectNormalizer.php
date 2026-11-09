@@ -9,41 +9,41 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\CsvEncoder;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException as TypeInfoLogicException;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\IntersectionType;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\NullableType;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\CsvEncoder;
+use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException as TypeInfoLogicException;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\IntersectionType;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\NullableType;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
 
 /**
  * Base class for a normalizer dealing with objects.

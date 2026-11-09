@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Retry;
+namespace First\Vendor\Symfony\Component\HttpClient\Retry;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * Decides to retry the request when HTTP status codes belong to the given list of codes.

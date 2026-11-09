@@ -1,10 +1,10 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Result;
+namespace First\Vendor\AsyncAws\S3\Result;
 
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Result;
-use Zero\Vendor\AsyncAws\S3\Enum\RequestCharged;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Result;
+use First\Vendor\AsyncAws\S3\Enum\RequestCharged;
 
 class DeleteObjectOutput extends Result
 {

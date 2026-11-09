@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
 
 /**
  * Container for all response elements.

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Normalizer;
+namespace First\Vendor\League\CommonMark\Normalizer;
 
 interface UniqueSlugNormalizerInterface extends TextNormalizerInterface
 {

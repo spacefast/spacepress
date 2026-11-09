@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL;
+namespace First\Vendor\Rowbot\URL;
 
 use Countable;
 use Iterator;
 use ReflectionObject;
 use ReflectionProperty;
-use Zero\Vendor\Rowbot\URL\Component\QueryList;
-use Zero\Vendor\Rowbot\URL\Exception\TypeError;
-use Zero\Vendor\Rowbot\URL\String\Utf8String;
+use First\Vendor\Rowbot\URL\Component\QueryList;
+use First\Vendor\Rowbot\URL\Exception\TypeError;
+use First\Vendor\Rowbot\URL\String\Utf8String;
 use Stringable;
 
 use function array_column;
@@ -293,7 +293,7 @@ class URLSearchParams implements Countable, Iterator, Stringable
     /**
      * @param iterable<int|string, array<int|string, scalar|\Stringable>|(\Traversable<int|string, scalar|\Stringable>&\Countable)> $input
      *
-     * @throws \Zero\Vendor\Rowbot\URL\Exception\TypeError
+     * @throws \First\Vendor\Rowbot\URL\Exception\TypeError
      */
     private function initIterator(iterable $input): void
     {

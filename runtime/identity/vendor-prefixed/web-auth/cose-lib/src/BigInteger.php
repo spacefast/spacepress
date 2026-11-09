@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose;
+namespace First\Identity\Vendor\Cose;
 
-use Zero\Identity\Vendor\Brick\Math\BigInteger as BrickBigInteger;
-use Zero\Identity\Vendor\Brick\Math\Exception\MathException;
+use First\Identity\Vendor\Brick\Math\BigInteger as BrickBigInteger;
+use First\Identity\Vendor\Brick\Math\Exception\MathException;
 use function chr;
 use function hex2bin;
 use function strlen;

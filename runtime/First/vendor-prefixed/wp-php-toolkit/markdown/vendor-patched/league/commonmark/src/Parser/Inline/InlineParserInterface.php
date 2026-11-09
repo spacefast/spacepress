@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Parser\Inline;
+namespace First\Vendor\League\CommonMark\Parser\Inline;
 
-use Zero\Vendor\League\CommonMark\Parser\InlineParserContext;
+use First\Vendor\League\CommonMark\Parser\InlineParserContext;
 
 interface InlineParserInterface
 {

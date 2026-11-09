@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
 
 /**
  * Implements value for 'Extension request' attribute.

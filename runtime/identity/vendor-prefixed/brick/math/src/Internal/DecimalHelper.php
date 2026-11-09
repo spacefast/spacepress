@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Brick\Math\Internal;
+namespace First\Identity\Vendor\Brick\Math\Internal;
 
-use Zero\Identity\Vendor\Brick\Math\RoundingMode;
+use First\Identity\Vendor\Brick\Math\RoundingMode;
 
 use function ltrim;
 use function rtrim;

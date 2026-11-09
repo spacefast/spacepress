@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core\Exception;
+namespace First\Vendor\AsyncAws\Core\Exception;
 
 class InvalidArgument extends \InvalidArgumentException implements Exception
 {

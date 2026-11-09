@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Stream;
+namespace First\Vendor\AsyncAws\Core\Stream;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * Convert an iterator into a Stream.

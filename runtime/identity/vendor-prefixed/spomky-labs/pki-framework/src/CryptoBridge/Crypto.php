@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge;
 
 use function defined;
 use RuntimeException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto\OpenSSLCrypto;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto\OpenSSLCrypto;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
 
 /**
  * Base class for crypto engine implementations.

@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\LoaderInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\LoaderInterface;
 
 /**
  * Returns a {@link ClassMetadata}.

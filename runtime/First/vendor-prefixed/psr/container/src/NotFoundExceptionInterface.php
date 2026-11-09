@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\Psr\Container;
+namespace First\Vendor\Psr\Container;
 
 /**
  * No entry was found in the container.

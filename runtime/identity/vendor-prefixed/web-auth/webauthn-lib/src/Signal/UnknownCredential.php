@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Signal;
+namespace First\Identity\Vendor\Webauthn\Signal;
 
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
 
 readonly class UnknownCredential implements Signal
 {

@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
+use First\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
 
 /**
  * Eases with processing responses while streaming them.

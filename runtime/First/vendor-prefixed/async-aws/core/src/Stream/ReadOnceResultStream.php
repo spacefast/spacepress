@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core\Stream;
+namespace First\Vendor\AsyncAws\Core\Stream;
 
 /**
  * Marker for ResultStream that can be read only once.

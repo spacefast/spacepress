@@ -11,12 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\Embed\Bridge;
+namespace First\Vendor\League\CommonMark\Extension\Embed\Bridge;
 
 use Embed\Embed as EmbedLib;
-use Zero\Vendor\League\CommonMark\Exception\MissingDependencyException;
-use Zero\Vendor\League\CommonMark\Extension\Embed\Embed;
-use Zero\Vendor\League\CommonMark\Extension\Embed\EmbedAdapterInterface;
+use First\Vendor\League\CommonMark\Exception\MissingDependencyException;
+use First\Vendor\League\CommonMark\Extension\Embed\Embed;
+use First\Vendor\League\CommonMark\Extension\Embed\EmbedAdapterInterface;
 
 final class OscaroteroEmbedAdapter implements EmbedAdapterInterface
 {

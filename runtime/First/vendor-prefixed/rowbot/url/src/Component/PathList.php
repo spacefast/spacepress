@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component;
+namespace First\Vendor\Rowbot\URL\Component;
 
 use function array_pop;
 use function count;

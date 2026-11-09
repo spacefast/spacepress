@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
+namespace First\Vendor\Symfony\Component\HttpClient\Response;
 
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\ExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * Allows turning ResponseInterface instances to PHP streams.

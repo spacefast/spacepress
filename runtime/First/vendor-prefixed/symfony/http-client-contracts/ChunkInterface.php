@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\HttpClient;
+namespace First\Vendor\Symfony\Contracts\HttpClient;
 
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * The interface of chunks returned by ResponseStreamInterface::current().

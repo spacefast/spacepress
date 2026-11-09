@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Brick\Math\Internal\Calculator;
+namespace First\Vendor\Brick\Math\Internal\Calculator;
 
-use Zero\Vendor\Brick\Math\Exception\PlatformException;
-use Zero\Vendor\Brick\Math\Internal\Calculator;
+use First\Vendor\Brick\Math\Exception\PlatformException;
+use First\Vendor\Brick\Math\Internal\Calculator;
 use Override;
 
 use function assert;

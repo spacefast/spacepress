@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace First\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use Zero\Identity\Vendor\Symfony\Component\Uid\TimeBasedUidInterface;
-use Zero\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use First\Identity\Vendor\Symfony\Component\Uid\TimeBasedUidInterface;
+use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
 
 class TimeBasedUuidFactory
 {

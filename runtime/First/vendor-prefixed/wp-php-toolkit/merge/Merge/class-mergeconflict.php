@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Merge\Merge;
+namespace First\Vendor\WordPress\Merge\Merge;
 
 class MergeConflict {
 

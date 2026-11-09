@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
+namespace First\Vendor\Symfony\Component\HttpClient\Internal;
 
 use Amp\Http\Client\ApplicationInterceptor;
 use Amp\Http\Client\Connection\Connection;
@@ -19,7 +19,7 @@ use Amp\Http\Client\NetworkInterceptor;
 use Amp\Http\Client\Request;
 use Amp\Http\Client\Response;
 use Amp\Socket\InternetAddress;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

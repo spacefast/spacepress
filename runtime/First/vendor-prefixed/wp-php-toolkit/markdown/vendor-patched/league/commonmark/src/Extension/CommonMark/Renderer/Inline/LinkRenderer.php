@@ -14,22 +14,22 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Renderer\Inline;
+namespace First\Vendor\League\CommonMark\Extension\CommonMark\Renderer\Inline;
 
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
-use Zero\Vendor\League\CommonMark\Node\Node;
-use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Util\HtmlElement;
-use Zero\Vendor\League\CommonMark\Util\RegexHelper;
-use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
-use Zero\Vendor\League\Config\ConfigurationAwareInterface;
-use Zero\Vendor\League\Config\ConfigurationInterface;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
+use First\Vendor\League\CommonMark\Node\Node;
+use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use First\Vendor\League\CommonMark\Util\HtmlElement;
+use First\Vendor\League\CommonMark\Util\RegexHelper;
+use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use First\Vendor\League\Config\ConfigurationAwareInterface;
+use First\Vendor\League\Config\ConfigurationInterface;
 
 final class LinkRenderer implements NodeRendererInterface, XmlNodeRendererInterface, ConfigurationAwareInterface
 {
     /** @psalm-readonly-allow-private-mutation
-     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
+     * @var \First\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     /**

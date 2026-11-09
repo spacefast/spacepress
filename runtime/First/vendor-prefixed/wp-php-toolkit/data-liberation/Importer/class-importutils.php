@@ -1,9 +1,9 @@
 <?php
 
-namespace Zero\Vendor\WordPress\DataLiberation\Importer;
+namespace First\Vendor\WordPress\DataLiberation\Importer;
 
-use Zero\Vendor\WordPress\DataLiberation\BlockMarkup\BlockMarkupProcessor;
-use Zero\Vendor\WordPress\DataLiberation\DataLiberationHTMLProcessor;
+use First\Vendor\WordPress\DataLiberation\BlockMarkup\BlockMarkupProcessor;
+use First\Vendor\WordPress\DataLiberation\DataLiberationHTMLProcessor;
 
 /**
  * A collection of utility functions for importing data into WordPress.

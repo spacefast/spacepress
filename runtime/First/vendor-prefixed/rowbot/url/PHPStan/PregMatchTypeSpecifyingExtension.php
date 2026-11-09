@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\PHPStan;
+namespace First\Vendor\Rowbot\URL\PHPStan;
 
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
@@ -14,7 +14,7 @@ use PHPStan\Reflection\MethodReflection;
 use PHPStan\TrinaryLogic;
 use PHPStan\Type\MethodTypeSpecifyingExtension;
 use PHPStan\Type\Php\RegexArrayShapeMatcher;
-use Zero\Vendor\Rowbot\URL\String\USVStringInterface;
+use First\Vendor\Rowbot\URL\String\USVStringInterface;
 
 final class PregMatchTypeSpecifyingExtension implements MethodTypeSpecifyingExtension, TypeSpecifierAwareExtension
 {

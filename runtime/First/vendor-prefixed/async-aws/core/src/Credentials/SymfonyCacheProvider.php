@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core\Credentials;
+namespace First\Vendor\AsyncAws\Core\Credentials;
 
-use Zero\Vendor\AsyncAws\Core\Configuration;
-use Zero\Vendor\Psr\Cache\CacheException;
-use Zero\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\AsyncAws\Core\Configuration;
+use First\Vendor\Psr\Cache\CacheException;
+use First\Vendor\Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
 

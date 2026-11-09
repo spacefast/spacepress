@@ -14,10 +14,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Reference;
+namespace First\Vendor\League\CommonMark\Reference;
 
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
-use Zero\Vendor\League\CommonMark\Util\LinkParserHelper;
+use First\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Util\LinkParserHelper;
 
 final class ReferenceParser
 {

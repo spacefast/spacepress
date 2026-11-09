@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Debug;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Debug;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\DataCollector\SerializerDataCollector;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\DataCollector\SerializerDataCollector;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
 
 /**
  * Collects some data about normalization.

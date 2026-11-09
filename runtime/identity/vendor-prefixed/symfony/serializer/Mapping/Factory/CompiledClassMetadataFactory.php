@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
-zero_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataFactory::class);
+first_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataFactory::class);
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>

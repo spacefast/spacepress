@@ -7,10 +7,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
-use Zero\Vendor\Nette\HtmlStringable;
+use First\Vendor\Nette;
+use First\Vendor\Nette\HtmlStringable;
 use function is_array, is_float, is_object, is_string;
 
 
@@ -233,7 +233,7 @@ use function is_array, is_float, is_object, is_string;
  */
 class Html implements \ArrayAccess, \Countable, \IteratorAggregate, HtmlStringable
 {
-	use \Zero\Vendor\Nette\SmartObject;
+	use \First\Vendor\Nette\SmartObject;
 
 	/** @var array<string, mixed>  element's attributes */
 	public $attrs = [];
@@ -639,7 +639,7 @@ class Html implements \ArrayAccess, \Countable, \IteratorAggregate, HtmlStringab
 
 	/**
   * Inserts child node.
-  * @param \Zero\Vendor\Nette\HtmlStringable|string $child
+  * @param \First\Vendor\Nette\HtmlStringable|string $child
   * @return static
   */
  public function insert(?int $index, $child, bool $replace = false)
@@ -670,7 +670,7 @@ class Html implements \ArrayAccess, \Countable, \IteratorAggregate, HtmlStringab
 	/**
   * Returns child node (\ArrayAccess implementation).
   * @param  int  $index
-  * @return \Zero\Vendor\Nette\HtmlStringable|string
+  * @return \First\Vendor\Nette\HtmlStringable|string
   */
  #[\ReturnTypeWillChange]
  final public function offsetGet($index)

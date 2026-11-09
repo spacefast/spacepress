@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Merge\Validate;
+namespace First\Vendor\WordPress\Merge\Validate;
 
 interface MergeValidator {
 

@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Test;
+namespace First\Vendor\Symfony\Component\HttpClient\Test;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\MockResponse;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use First\Vendor\Symfony\Component\HttpClient\Response\MockResponse;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * See: https://w3c.github.io/web-performance/specs/HAR/Overview.html.

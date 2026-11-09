@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Brick\Math\Exception;
+namespace First\Vendor\Brick\Math\Exception;
 
 use function sprintf;
 

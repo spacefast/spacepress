@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Event;
+namespace First\Identity\Vendor\Webauthn\Event;
 
 use LogicException;
 use function sprintf;
-use Zero\Identity\Vendor\Webauthn\CredentialRecord;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use First\Identity\Vendor\Webauthn\CredentialRecord;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
 
 /**
  * Event dispatched when the backup status flag (BS) changes.

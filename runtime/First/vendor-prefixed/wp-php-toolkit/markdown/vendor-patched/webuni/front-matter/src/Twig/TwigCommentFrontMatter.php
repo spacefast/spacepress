@@ -10,11 +10,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Webuni\FrontMatter\Twig;
+namespace First\Vendor\Webuni\FrontMatter\Twig;
 
-use Zero\Vendor\Webuni\FrontMatter\FrontMatter;
-use Zero\Vendor\Webuni\FrontMatter\Processor\ProcessorInterface;
-use Zero\Vendor\Webuni\FrontMatter\Processor\YamlProcessor;
+use First\Vendor\Webuni\FrontMatter\FrontMatter;
+use First\Vendor\Webuni\FrontMatter\Processor\ProcessorInterface;
+use First\Vendor\Webuni\FrontMatter\Processor\YamlProcessor;
 
 /**
  * @see https://plugins.craftcms.com/front-matter

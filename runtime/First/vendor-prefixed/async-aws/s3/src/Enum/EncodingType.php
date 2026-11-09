@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Enum;
+namespace First\Vendor\AsyncAws\S3\Enum;
 
 /**
  * Encoding type used by Amazon S3 to encode the object keys [^1] in the response. Responses are encoded only in UTF-8.

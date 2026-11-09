@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Exception;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Exception;
 
 use RuntimeException;
 

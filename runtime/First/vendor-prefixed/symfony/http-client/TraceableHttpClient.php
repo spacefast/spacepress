@@ -9,17 +9,17 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Psr\Log\LoggerAwareInterface;
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\TraceableResponse;
+use First\Vendor\Psr\Log\LoggerAwareInterface;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
+use First\Vendor\Symfony\Component\HttpClient\Response\TraceableResponse;
 use Symfony\Component\Stopwatch\Stopwatch;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * @author Jérémy Romey <jeremy@free-agent.fr>
@@ -99,7 +99,7 @@ final class TraceableHttpClient implements HttpClientInterface, ResetInterface, 
      */
     public function setLogger(LoggerInterface $logger): void
     {
-        zero_vendor_trigger_deprecation('symfony/http-client', '7.1', 'Configure the logger on the wrapped HTTP client directly instead.');
+        first_vendor_trigger_deprecation('symfony/http-client', '7.1', 'Configure the logger on the wrapped HTTP client directly instead.');
 
         if ($this->client instanceof LoggerAwareInterface) {
             $this->client->setLogger($logger);

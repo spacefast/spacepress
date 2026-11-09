@@ -1,9 +1,9 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Merge\Merge;
+namespace First\Vendor\WordPress\Merge\Merge;
 
-use Zero\Vendor\WordPress\Merge\Diff\Diff;
-use Zero\Vendor\WordPress\Merge\MergeConflictException;
+use First\Vendor\WordPress\Merge\Diff\Diff;
+use First\Vendor\WordPress\Merge\MergeConflictException;
 
 class LineMerger implements Merger {
 

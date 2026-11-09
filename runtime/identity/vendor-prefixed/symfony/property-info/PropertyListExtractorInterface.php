@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
 
 /**
  * Extracts the list of properties available for the given class.

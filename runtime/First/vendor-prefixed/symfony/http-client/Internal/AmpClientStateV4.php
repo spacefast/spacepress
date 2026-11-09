@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
+namespace First\Vendor\Symfony\Component\HttpClient\Internal;
 
 use Amp\CancellationToken;
 use Amp\Deferred;
@@ -30,7 +30,7 @@ use Amp\Socket\Connector;
 use Amp\Socket\DnsConnector;
 use Amp\Socket\SocketAddress;
 use Amp\Success;
-use Zero\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Psr\Log\LoggerInterface;
 
 /**
  * Internal representation of the Amp client's state.

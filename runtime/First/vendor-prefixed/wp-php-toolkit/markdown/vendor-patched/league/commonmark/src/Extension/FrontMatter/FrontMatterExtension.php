@@ -11,22 +11,22 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\FrontMatter;
+namespace First\Vendor\League\CommonMark\Extension\FrontMatter;
 
-use Zero\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
-use Zero\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
-use Zero\Vendor\League\CommonMark\Event\DocumentRenderedEvent;
-use Zero\Vendor\League\CommonMark\Extension\ExtensionInterface;
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Data\FrontMatterDataParserInterface;
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Data\LibYamlFrontMatterParser;
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Data\SymfonyYamlFrontMatterParser;
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Listener\FrontMatterPostRenderListener;
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Listener\FrontMatterPreParser;
+use First\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
+use First\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
+use First\Vendor\League\CommonMark\Event\DocumentRenderedEvent;
+use First\Vendor\League\CommonMark\Extension\ExtensionInterface;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\Data\FrontMatterDataParserInterface;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\Data\LibYamlFrontMatterParser;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\Data\SymfonyYamlFrontMatterParser;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\Listener\FrontMatterPostRenderListener;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\Listener\FrontMatterPreParser;
 
 final class FrontMatterExtension implements ExtensionInterface
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterParserInterface */
+     * @var \First\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterParserInterface */
     private $frontMatterParser;
 
     public function __construct(?FrontMatterDataParserInterface $dataParser = null)

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Key;
+namespace First\Identity\Vendor\Cose\Key;
 
 use InvalidArgumentException;
 use function is_string;

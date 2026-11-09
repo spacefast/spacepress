@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\FrontMatter\Data;
+namespace First\Vendor\League\CommonMark\Extension\FrontMatter\Data;
 
-use Zero\Vendor\League\CommonMark\Exception\MissingDependencyException;
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Exception\InvalidFrontMatterException;
+use First\Vendor\League\CommonMark\Exception\MissingDependencyException;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\Exception\InvalidFrontMatterException;
 
 final class LibYamlFrontMatterParser implements FrontMatterDataParserInterface
 {

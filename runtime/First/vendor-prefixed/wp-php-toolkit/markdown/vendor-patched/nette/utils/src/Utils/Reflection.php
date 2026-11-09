@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 /**
@@ -17,7 +17,7 @@ use Zero\Vendor\Nette;
  */
 final class Reflection
 {
-	use \Zero\Vendor\Nette\StaticClass;
+	use \First\Vendor\Nette\StaticClass;
 
 	/** @deprecated use Nette\Utils\Validator::isBuiltinType() */
 	public static function isBuiltinType(string $type): bool
@@ -145,7 +145,7 @@ final class Reflection
 		} elseif ($ref instanceof \ReflectionParameter) {
 			return '$' . $ref->name . ' in ' . self::toString($ref->getDeclaringFunction());
 		} else {
-			throw new \Zero\Vendor\Nette\InvalidArgumentException;
+			throw new \First\Vendor\Nette\InvalidArgumentException;
 		}
 	}
 
@@ -153,13 +153,13 @@ final class Reflection
 	/**
 	 * Expands the name of the class to full name in the given context of given class.
 	 * Thus, it returns how the PHP parser would understand $name if it were written in the body of the class $context.
-	 * @throws Zero\Vendor\Nette\InvalidArgumentException
+	 * @throws First\Vendor\Nette\InvalidArgumentException
 	 */
 	public static function expandClassName(string $name, \ReflectionClass $context): string
 	{
 		$lower = strtolower($name);
 		if (empty($name)) {
-			throw new \Zero\Vendor\Nette\InvalidArgumentException('Class name must not be empty.');
+			throw new \First\Vendor\Nette\InvalidArgumentException('Class name must not be empty.');
 
 		} elseif (Validators::isBuiltinType($lower)) {
 			return $lower;
@@ -195,7 +195,7 @@ final class Reflection
 	public static function getUseStatements(\ReflectionClass $class): array
 	{
 		if ($class->isAnonymous()) {
-			throw new \Zero\Vendor\Nette\NotImplementedException('Anonymous classes are not supported.');
+			throw new \First\Vendor\Nette\NotImplementedException('Anonymous classes are not supported.');
 		}
 
 		static $cache = [];

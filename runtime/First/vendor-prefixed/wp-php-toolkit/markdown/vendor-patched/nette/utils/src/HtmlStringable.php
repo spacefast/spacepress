@@ -7,7 +7,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette;
+namespace First\Vendor\Nette;
 
 
 interface HtmlStringable

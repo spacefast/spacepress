@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Nette\Utils;
+namespace First\Vendor\Nette\Utils;
 
-use Zero\Vendor\Nette;
+use First\Vendor\Nette;
 
 
 class Helpers
@@ -64,7 +64,7 @@ class Helpers
  public static function clamp($value, $min, $max)
 	{
 		if ($min > $max) {
-			throw new \Zero\Vendor\Nette\InvalidArgumentException("Minimum ($min) is not less than maximum ($max).");
+			throw new \First\Vendor\Nette\InvalidArgumentException("Minimum ($min) is not less than maximum ($max).");
 		}
 
 		return min(max($value, $min), $max);
@@ -117,7 +117,7 @@ class Helpers
       case '!==':
           return $left !== $right;
       default:
-          throw new \Zero\Vendor\Nette\InvalidArgumentException("Unknown operator '$operator'");
+          throw new \First\Vendor\Nette\InvalidArgumentException("Unknown operator '$operator'");
   }
 	}
 }

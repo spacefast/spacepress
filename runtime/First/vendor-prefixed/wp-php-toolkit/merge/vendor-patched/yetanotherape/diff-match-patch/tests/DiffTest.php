@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-namespace Zero\Vendor\DiffMatchPatch;
+namespace First\Vendor\DiffMatchPatch;
 
 use PHPUnit\Framework\TestCase;
 
@@ -679,7 +679,7 @@ class DiffTest extends TestCase
 
     public function testBisect()
     {
-        $method = new \ReflectionMethod('Zero\Vendor\DiffMatchPatch\Diff', 'bisect');
+        $method = new \ReflectionMethod('First\Vendor\DiffMatchPatch\Diff', 'bisect');
         $method->setAccessible(true);
 
         // Since the resulting diff hasn't been normalized, it would be ok if

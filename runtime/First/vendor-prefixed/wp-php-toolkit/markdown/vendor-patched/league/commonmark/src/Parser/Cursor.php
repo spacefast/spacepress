@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Parser;
+namespace First\Vendor\League\CommonMark\Parser;
 
-use Zero\Vendor\League\CommonMark\Exception\UnexpectedEncodingException;
+use First\Vendor\League\CommonMark\Exception\UnexpectedEncodingException;
 
 class Cursor
 {

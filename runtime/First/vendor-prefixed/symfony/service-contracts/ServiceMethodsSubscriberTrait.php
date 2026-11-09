@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\Service;
+namespace First\Vendor\Symfony\Contracts\Service;
 
-use Zero\Vendor\Psr\Container\ContainerInterface;
-use Zero\Vendor\Symfony\Contracts\Service\Attribute\Required;
-use Zero\Vendor\Symfony\Contracts\Service\Attribute\SubscribedService;
+use First\Vendor\Psr\Container\ContainerInterface;
+use First\Vendor\Symfony\Contracts\Service\Attribute\Required;
+use First\Vendor\Symfony\Contracts\Service\Attribute\SubscribedService;
 
 /**
  * Implementation of ServiceSubscriberInterface that determines subscribed services

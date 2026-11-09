@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
 use InvalidArgumentException;
 

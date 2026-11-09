@@ -10,9 +10,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Webuni\FrontMatter\Processor;
+namespace First\Vendor\Webuni\FrontMatter\Processor;
 
-use Zero\Vendor\Symfony\Component\Yaml\Yaml;
+use First\Vendor\Symfony\Component\Yaml\Yaml;
 
 final class YamlProcessor implements ProcessorInterface
 {

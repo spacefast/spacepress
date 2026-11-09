@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose;
+namespace First\Identity\Vendor\Cose;
 
 /**
  * @internal

@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Exception;
+namespace First\Vendor\AsyncAws\S3\Exception;
 
-use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * The bucket you tried to create already exists, and you own it. Amazon S3 returns this error in all Amazon Web

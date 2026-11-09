@@ -14,35 +14,35 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Environment;
+namespace First\Vendor\League\CommonMark\Environment;
 
-use Zero\Vendor\League\CommonMark\Delimiter\DelimiterParser;
-use Zero\Vendor\League\CommonMark\Delimiter\Processor\DelimiterProcessorCollection;
-use Zero\Vendor\League\CommonMark\Delimiter\Processor\DelimiterProcessorInterface;
-use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use Zero\Vendor\League\CommonMark\Event\ListenerData;
-use Zero\Vendor\League\CommonMark\Exception\AlreadyInitializedException;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
-use Zero\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
-use Zero\Vendor\League\CommonMark\Extension\ExtensionInterface;
-use Zero\Vendor\League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
-use Zero\Vendor\League\CommonMark\Normalizer\SlugNormalizer;
-use Zero\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface;
-use Zero\Vendor\League\CommonMark\Normalizer\UniqueSlugNormalizer;
-use Zero\Vendor\League\CommonMark\Normalizer\UniqueSlugNormalizerInterface;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Block\SkipLinesStartingWithLettersParser;
-use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Util\HtmlFilter;
-use Zero\Vendor\League\CommonMark\Util\PrioritizedList;
-use Zero\Vendor\League\Config\Configuration;
-use Zero\Vendor\League\Config\ConfigurationAwareInterface;
-use Zero\Vendor\League\Config\ConfigurationInterface;
-use Zero\Vendor\Nette\Schema\Expect;
-use Zero\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use Zero\Vendor\Psr\EventDispatcher\ListenerProviderInterface;
-use Zero\Vendor\Psr\EventDispatcher\StoppableEventInterface;
+use First\Vendor\League\CommonMark\Delimiter\DelimiterParser;
+use First\Vendor\League\CommonMark\Delimiter\Processor\DelimiterProcessorCollection;
+use First\Vendor\League\CommonMark\Delimiter\Processor\DelimiterProcessorInterface;
+use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use First\Vendor\League\CommonMark\Event\ListenerData;
+use First\Vendor\League\CommonMark\Exception\AlreadyInitializedException;
+use First\Vendor\League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use First\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
+use First\Vendor\League\CommonMark\Extension\ExtensionInterface;
+use First\Vendor\League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
+use First\Vendor\League\CommonMark\Normalizer\SlugNormalizer;
+use First\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface;
+use First\Vendor\League\CommonMark\Normalizer\UniqueSlugNormalizer;
+use First\Vendor\League\CommonMark\Normalizer\UniqueSlugNormalizerInterface;
+use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use First\Vendor\League\CommonMark\Parser\Block\SkipLinesStartingWithLettersParser;
+use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use First\Vendor\League\CommonMark\Util\HtmlFilter;
+use First\Vendor\League\CommonMark\Util\PrioritizedList;
+use First\Vendor\League\Config\Configuration;
+use First\Vendor\League\Config\ConfigurationAwareInterface;
+use First\Vendor\League\Config\ConfigurationInterface;
+use First\Vendor\Nette\Schema\Expect;
+use First\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use First\Vendor\Psr\EventDispatcher\ListenerProviderInterface;
+use First\Vendor\Psr\EventDispatcher\StoppableEventInterface;
 
 final class Environment implements EnvironmentInterface, EnvironmentBuilderInterface, ListenerProviderInterface
 {

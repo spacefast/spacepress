@@ -14,16 +14,16 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Node\Block;
+namespace First\Vendor\League\CommonMark\Node\Block;
 
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
-use Zero\Vendor\League\CommonMark\Reference\ReferenceMap;
-use Zero\Vendor\League\CommonMark\Reference\ReferenceMapInterface;
+use First\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Reference\ReferenceMap;
+use First\Vendor\League\CommonMark\Reference\ReferenceMapInterface;
 
 class Document extends AbstractBlock
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Reference\ReferenceMapInterface */
+     * @var \First\Vendor\League\CommonMark\Reference\ReferenceMapInterface */
     protected $referenceMap;
 
     public function __construct(?ReferenceMapInterface $referenceMap = null)

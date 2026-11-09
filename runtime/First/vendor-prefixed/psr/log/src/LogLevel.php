@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\Psr\Log;
+namespace First\Vendor\Psr\Log;
 
 /**
  * Describes log levels.

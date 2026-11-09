@@ -1,14 +1,14 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Result;
+namespace First\Vendor\AsyncAws\S3\Result;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Result;
-use Zero\Vendor\AsyncAws\S3\Input\ListBucketsRequest;
-use Zero\Vendor\AsyncAws\S3\S3Client;
-use Zero\Vendor\AsyncAws\S3\ValueObject\Bucket;
-use Zero\Vendor\AsyncAws\S3\ValueObject\Owner;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Result;
+use First\Vendor\AsyncAws\S3\Input\ListBucketsRequest;
+use First\Vendor\AsyncAws\S3\S3Client;
+use First\Vendor\AsyncAws\S3\ValueObject\Bucket;
+use First\Vendor\AsyncAws\S3\ValueObject\Owner;
 
 /**
  * @implements \IteratorAggregate<Bucket>

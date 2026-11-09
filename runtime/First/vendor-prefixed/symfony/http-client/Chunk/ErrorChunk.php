@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Chunk;
+namespace First\Vendor\Symfony\Component\HttpClient\Chunk;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TimeoutException;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TimeoutException;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use First\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

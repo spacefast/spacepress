@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\EndpointDiscovery;
+namespace First\Vendor\AsyncAws\Core\EndpointDiscovery;
 
 interface EndpointInterface
 {

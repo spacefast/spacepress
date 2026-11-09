@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Merge\Diff;
+namespace First\Vendor\WordPress\Merge\Diff;
 
 interface Differ {
 	/**

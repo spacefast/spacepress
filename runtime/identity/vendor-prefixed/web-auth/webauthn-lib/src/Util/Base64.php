@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Util;
+namespace First\Identity\Vendor\Webauthn\Util;
 
-use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use First\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
 use Throwable;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 abstract class Base64
 {
@@ -18,7 +18,7 @@ abstract class Base64
         }
 
         try {
-            return \Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64::decode($data);
+            return \First\Identity\Vendor\ParagonIE\ConstantTime\Base64::decode($data);
         } catch (Throwable $e) {
             throw InvalidDataException::create($data, 'Invalid data submitted', $e);
         }

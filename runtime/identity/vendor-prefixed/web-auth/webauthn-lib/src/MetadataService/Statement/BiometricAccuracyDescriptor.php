@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\MetadataService\Statement;
+namespace First\Identity\Vendor\Webauthn\MetadataService\Statement;
 
 class BiometricAccuracyDescriptor extends AbstractDescriptor
 {

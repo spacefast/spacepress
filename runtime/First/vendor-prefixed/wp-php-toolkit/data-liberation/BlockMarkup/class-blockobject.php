@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\DataLiberation\BlockMarkup;
+namespace First\Vendor\WordPress\DataLiberation\BlockMarkup;
 
 class BlockObject {
 	public $block_name;

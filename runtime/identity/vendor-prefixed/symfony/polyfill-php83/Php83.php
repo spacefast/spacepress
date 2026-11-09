@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Polyfill\Php83;
+namespace First\Identity\Vendor\Symfony\Polyfill\Php83;
 
 /**
  * @author Ion Bazan <ion.bazan@gmail.com>

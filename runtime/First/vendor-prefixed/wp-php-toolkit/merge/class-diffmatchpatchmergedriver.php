@@ -2,10 +2,10 @@
 
 // @TODO: Likely remove this file.
 
-namespace Zero\Vendor\WordPress\Merge;
+namespace First\Vendor\WordPress\Merge;
 
-use Zero\Vendor\DiffMatchPatch\Diff;
-use Zero\Vendor\DiffMatchPatch\DiffMatchPatch;
+use First\Vendor\DiffMatchPatch\Diff;
+use First\Vendor\DiffMatchPatch\DiffMatchPatch;
 
 class DiffMatchPatchMergeDriver {
 	// implements MergeDriver {.

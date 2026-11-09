@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component\Host;
+namespace First\Vendor\Rowbot\URL\Component\Host;
 
-use Zero\Vendor\Rowbot\URL\ParserContext;
-use Zero\Vendor\Rowbot\URL\String\CodePoint;
-use Zero\Vendor\Rowbot\URL\String\StringIteratorInterface;
-use Zero\Vendor\Rowbot\URL\String\USVStringInterface;
+use First\Vendor\Rowbot\URL\ParserContext;
+use First\Vendor\Rowbot\URL\String\CodePoint;
+use First\Vendor\Rowbot\URL\String\StringIteratorInterface;
+use First\Vendor\Rowbot\URL\String\USVStringInterface;
 
 use function array_is_list;
 use function assert;

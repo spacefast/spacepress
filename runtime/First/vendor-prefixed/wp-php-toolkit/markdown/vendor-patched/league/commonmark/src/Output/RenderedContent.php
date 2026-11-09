@@ -11,14 +11,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Output;
+namespace First\Vendor\League\CommonMark\Output;
 
-use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use First\Vendor\League\CommonMark\Node\Block\Document;
 
 class RenderedContent implements RenderedContentInterface
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Node\Block\Document */
+     * @var \First\Vendor\League\CommonMark\Node\Block\Document */
     private $document;
 
     /** @psalm-readonly

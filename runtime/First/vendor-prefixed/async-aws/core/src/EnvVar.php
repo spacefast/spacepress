@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core;
+namespace First\Vendor\AsyncAws\Core;
 
 /**
  * Helper to safely read environment variables.

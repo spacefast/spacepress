@@ -1,10 +1,10 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\S3\Enum\BucketVersioningStatus;
-use Zero\Vendor\AsyncAws\S3\Enum\MFADelete;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\S3\Enum\BucketVersioningStatus;
+use First\Vendor\AsyncAws\S3\Enum\MFADelete;
 
 /**
  * Describes the versioning state of an Amazon S3 bucket. For more information, see PUT Bucket versioning [^1] in the

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Pdo;
+namespace First\Identity\Vendor\Pdo;
 
 use PDO;
 

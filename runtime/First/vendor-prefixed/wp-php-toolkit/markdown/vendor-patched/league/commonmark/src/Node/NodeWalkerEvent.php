@@ -14,12 +14,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Node;
+namespace First\Vendor\League\CommonMark\Node;
 
 final class NodeWalkerEvent
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Node\Node */
+     * @var \First\Vendor\League\CommonMark\Node\Node */
     private $node;
 
     /** @psalm-readonly

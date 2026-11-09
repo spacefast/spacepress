@@ -1,27 +1,27 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts;
+namespace First\Vendor\AsyncAws\Core\Sts;
 
-use Zero\Vendor\AsyncAws\Core\AbstractApi;
-use Zero\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
-use Zero\Vendor\AsyncAws\Core\AwsError\XmlAwsErrorFactory;
-use Zero\Vendor\AsyncAws\Core\RequestContext;
-use Zero\Vendor\AsyncAws\Core\Sts\Exception\ExpiredTokenException;
-use Zero\Vendor\AsyncAws\Core\Sts\Exception\IDPCommunicationErrorException;
-use Zero\Vendor\AsyncAws\Core\Sts\Exception\IDPRejectedClaimException;
-use Zero\Vendor\AsyncAws\Core\Sts\Exception\InvalidIdentityTokenException;
-use Zero\Vendor\AsyncAws\Core\Sts\Exception\MalformedPolicyDocumentException;
-use Zero\Vendor\AsyncAws\Core\Sts\Exception\PackedPolicyTooLargeException;
-use Zero\Vendor\AsyncAws\Core\Sts\Exception\RegionDisabledException;
-use Zero\Vendor\AsyncAws\Core\Sts\Input\AssumeRoleRequest;
-use Zero\Vendor\AsyncAws\Core\Sts\Input\AssumeRoleWithWebIdentityRequest;
-use Zero\Vendor\AsyncAws\Core\Sts\Input\GetCallerIdentityRequest;
-use Zero\Vendor\AsyncAws\Core\Sts\Result\AssumeRoleResponse;
-use Zero\Vendor\AsyncAws\Core\Sts\Result\AssumeRoleWithWebIdentityResponse;
-use Zero\Vendor\AsyncAws\Core\Sts\Result\GetCallerIdentityResponse;
-use Zero\Vendor\AsyncAws\Core\Sts\ValueObject\PolicyDescriptorType;
-use Zero\Vendor\AsyncAws\Core\Sts\ValueObject\ProvidedContext;
-use Zero\Vendor\AsyncAws\Core\Sts\ValueObject\Tag;
+use First\Vendor\AsyncAws\Core\AbstractApi;
+use First\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
+use First\Vendor\AsyncAws\Core\AwsError\XmlAwsErrorFactory;
+use First\Vendor\AsyncAws\Core\RequestContext;
+use First\Vendor\AsyncAws\Core\Sts\Exception\ExpiredTokenException;
+use First\Vendor\AsyncAws\Core\Sts\Exception\IDPCommunicationErrorException;
+use First\Vendor\AsyncAws\Core\Sts\Exception\IDPRejectedClaimException;
+use First\Vendor\AsyncAws\Core\Sts\Exception\InvalidIdentityTokenException;
+use First\Vendor\AsyncAws\Core\Sts\Exception\MalformedPolicyDocumentException;
+use First\Vendor\AsyncAws\Core\Sts\Exception\PackedPolicyTooLargeException;
+use First\Vendor\AsyncAws\Core\Sts\Exception\RegionDisabledException;
+use First\Vendor\AsyncAws\Core\Sts\Input\AssumeRoleRequest;
+use First\Vendor\AsyncAws\Core\Sts\Input\AssumeRoleWithWebIdentityRequest;
+use First\Vendor\AsyncAws\Core\Sts\Input\GetCallerIdentityRequest;
+use First\Vendor\AsyncAws\Core\Sts\Result\AssumeRoleResponse;
+use First\Vendor\AsyncAws\Core\Sts\Result\AssumeRoleWithWebIdentityResponse;
+use First\Vendor\AsyncAws\Core\Sts\Result\GetCallerIdentityResponse;
+use First\Vendor\AsyncAws\Core\Sts\ValueObject\PolicyDescriptorType;
+use First\Vendor\AsyncAws\Core\Sts\ValueObject\ProvidedContext;
+use First\Vendor\AsyncAws\Core\Sts\ValueObject\Tag;
 
 class StsClient extends AbstractApi
 {

@@ -1,13 +1,13 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\HttpClient;
+namespace First\Vendor\AsyncAws\Core\HttpClient;
 
-use Zero\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
-use Zero\Vendor\AsyncAws\Core\AwsError\ChainAwsErrorFactory;
-use Zero\Vendor\AsyncAws\Core\Exception\UnparsableResponse;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
-use Zero\Vendor\Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
+use First\Vendor\AsyncAws\Core\AwsError\ChainAwsErrorFactory;
+use First\Vendor\AsyncAws\Core\Exception\UnparsableResponse;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
+use First\Vendor\Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * @author Jérémy Derussé <jeremy@derusse.com>

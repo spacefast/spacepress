@@ -1,22 +1,22 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Result;
+namespace First\Vendor\AsyncAws\S3\Result;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Result;
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
-use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use Zero\Vendor\AsyncAws\S3\Enum\EncodingType;
-use Zero\Vendor\AsyncAws\S3\Enum\ObjectVersionStorageClass;
-use Zero\Vendor\AsyncAws\S3\Enum\RequestCharged;
-use Zero\Vendor\AsyncAws\S3\Input\ListObjectVersionsRequest;
-use Zero\Vendor\AsyncAws\S3\S3Client;
-use Zero\Vendor\AsyncAws\S3\ValueObject\CommonPrefix;
-use Zero\Vendor\AsyncAws\S3\ValueObject\DeleteMarkerEntry;
-use Zero\Vendor\AsyncAws\S3\ValueObject\ObjectVersion;
-use Zero\Vendor\AsyncAws\S3\ValueObject\Owner;
-use Zero\Vendor\AsyncAws\S3\ValueObject\RestoreStatus;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Result;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
+use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use First\Vendor\AsyncAws\S3\Enum\EncodingType;
+use First\Vendor\AsyncAws\S3\Enum\ObjectVersionStorageClass;
+use First\Vendor\AsyncAws\S3\Enum\RequestCharged;
+use First\Vendor\AsyncAws\S3\Input\ListObjectVersionsRequest;
+use First\Vendor\AsyncAws\S3\S3Client;
+use First\Vendor\AsyncAws\S3\ValueObject\CommonPrefix;
+use First\Vendor\AsyncAws\S3\ValueObject\DeleteMarkerEntry;
+use First\Vendor\AsyncAws\S3\ValueObject\ObjectVersion;
+use First\Vendor\AsyncAws\S3\ValueObject\Owner;
+use First\Vendor\AsyncAws\S3\ValueObject\RestoreStatus;
 
 /**
  * @implements \IteratorAggregate<ObjectVersion|DeleteMarkerEntry|CommonPrefix>

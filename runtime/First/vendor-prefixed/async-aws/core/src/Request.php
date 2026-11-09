@@ -1,11 +1,11 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core;
+namespace First\Vendor\AsyncAws\Core;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Exception\LogicException;
-use Zero\Vendor\AsyncAws\Core\HttpClient\BuildHttpQueryTrait;
-use Zero\Vendor\AsyncAws\Core\Stream\RequestStream;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Exception\LogicException;
+use First\Vendor\AsyncAws\Core\HttpClient\BuildHttpQueryTrait;
+use First\Vendor\AsyncAws\Core\Stream\RequestStream;
 
 /**
  * Representation of an HTTP Request.

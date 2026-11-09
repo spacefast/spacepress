@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\HttpClient\Exception;
+namespace First\Vendor\Symfony\Contracts\HttpClient\Exception;
 
 /**
  * When any error happens at the transport level.

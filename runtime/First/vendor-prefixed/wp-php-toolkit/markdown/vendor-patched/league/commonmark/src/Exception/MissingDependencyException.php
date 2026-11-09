@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Exception;
+namespace First\Vendor\League\CommonMark\Exception;
 
 class MissingDependencyException extends \RuntimeException implements CommonMarkException
 {

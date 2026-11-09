@@ -17,9 +17,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Delimiter\Processor;
+namespace First\Vendor\League\CommonMark\Delimiter\Processor;
 
-use Zero\Vendor\League\CommonMark\Exception\InvalidArgumentException;
+use First\Vendor\League\CommonMark\Exception\InvalidArgumentException;
 
 interface DelimiterProcessorCollectionInterface extends \Countable
 {

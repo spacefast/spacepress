@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Exception;
+namespace First\Identity\Vendor\Webauthn\Exception;
 
 use Exception;
 use Throwable;

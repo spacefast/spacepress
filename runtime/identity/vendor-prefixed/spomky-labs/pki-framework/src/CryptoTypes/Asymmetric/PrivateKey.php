@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\EC\ECPrivateKey;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RSA\RSAPrivateKey;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\EC\ECPrivateKey;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RSA\RSAPrivateKey;
 use UnexpectedValueException;
 
 /**

@@ -11,12 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\Embed;
+namespace First\Vendor\League\CommonMark\Extension\Embed;
 
 class DomainFilteringAdapter implements EmbedAdapterInterface
 {
     /**
-     * @var \Zero\Vendor\League\CommonMark\Extension\Embed\EmbedAdapterInterface
+     * @var \First\Vendor\League\CommonMark\Extension\Embed\EmbedAdapterInterface
      */
     private $decorated;
 

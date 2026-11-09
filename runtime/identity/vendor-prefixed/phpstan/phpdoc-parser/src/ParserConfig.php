@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser;
 
 class ParserConfig
 {

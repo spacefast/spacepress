@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
 use Symfony\Component\Config\Util\XmlUtils;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Loads XML mapping files.

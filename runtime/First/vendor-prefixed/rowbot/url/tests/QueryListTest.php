@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Tests;
+namespace First\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Zero\Vendor\Rowbot\URL\Component\QueryList;
+use First\Vendor\Rowbot\URL\Component\QueryList;
 
 class QueryListTest extends TestCase
 {

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\AttestationStatement;
+namespace First\Identity\Vendor\Webauthn\AttestationStatement;
 
-use Zero\Identity\Vendor\Webauthn\AuthenticatorData;
-use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use First\Identity\Vendor\Webauthn\AuthenticatorData;
+use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 class AttestationObject
 {

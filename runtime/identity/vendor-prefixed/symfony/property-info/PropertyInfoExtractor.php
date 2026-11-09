@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
 
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Util\LegacyTypeConverter;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\Util\LegacyTypeConverter;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Default {@see PropertyInfoExtractorInterface} implementation.
@@ -80,7 +80,7 @@ class PropertyInfoExtractor implements PropertyInfoExtractorInterface, PropertyI
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         return $this->extract($this->typeExtractors, 'getTypes', [$class, $property, $context]);
     }

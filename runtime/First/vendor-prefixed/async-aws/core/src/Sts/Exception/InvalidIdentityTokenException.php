@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts\Exception;
+namespace First\Vendor\AsyncAws\Core\Sts\Exception;
 
-use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * The web identity token that was passed could not be validated by Amazon Web Services. Get a new identity token from

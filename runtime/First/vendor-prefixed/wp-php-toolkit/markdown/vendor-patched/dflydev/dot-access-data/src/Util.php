@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Dflydev\DotAccessData;
+namespace First\Vendor\Dflydev\DotAccessData;
 
 class Util
 {

@@ -9,26 +9,26 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Caching\Freshness;
-use Zero\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\ChunkCacheItemNotFoundException;
-use Zero\Vendor\Symfony\Component\HttpClient\Internal\OutgoingRequest;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\MockResponse;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
+use First\Vendor\Symfony\Component\HttpClient\Caching\Freshness;
+use First\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
+use First\Vendor\Symfony\Component\HttpClient\Exception\ChunkCacheItemNotFoundException;
+use First\Vendor\Symfony\Component\HttpClient\Internal\OutgoingRequest;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
+use First\Vendor\Symfony\Component\HttpClient\Response\AsyncResponse;
+use First\Vendor\Symfony\Component\HttpClient\Response\MockResponse;
+use First\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
 use Symfony\Component\HttpKernel\HttpCache\HttpCache;
 use Symfony\Component\HttpKernel\HttpCache\StoreInterface;
 use Symfony\Component\HttpKernel\HttpClientKernel;
 use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * Adds caching on top of an HTTP client (per RFC 9111).
@@ -121,7 +121,7 @@ class CachingHttpClient implements HttpClientInterface, ResetInterface
         private readonly ?int $maxTtl = null,
     ) {
         if ($cache instanceof StoreInterface) {
-            zero_vendor_trigger_deprecation('symfony/http-client', '7.4', 'Passing a "%s" as constructor\'s 2nd argument of "%s" is deprecated, "%s" expected.', StoreInterface::class, __CLASS__, TagAwareCacheInterface::class);
+            first_vendor_trigger_deprecation('symfony/http-client', '7.4', 'Passing a "%s" as constructor\'s 2nd argument of "%s" is deprecated, "%s" expected.', StoreInterface::class, __CLASS__, TagAwareCacheInterface::class);
 
             if (!class_exists(HttpClientKernel::class)) {
                 throw new \LogicException(\sprintf('Using "%s" requires the HttpKernel component, try running "composer require symfony/http-kernel".', __CLASS__));

@@ -2,24 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\AttestationStatement;
+namespace First\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
-use Zero\Identity\Vendor\CBOR\Decoder;
-use Zero\Identity\Vendor\CBOR\Normalizable;
+use First\Identity\Vendor\CBOR\Decoder;
+use First\Identity\Vendor\CBOR\Normalizable;
 use function is_array;
-use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use Zero\Identity\Vendor\Psr\Log\LoggerInterface;
-use Zero\Identity\Vendor\Psr\Log\NullLogger;
+use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use First\Identity\Vendor\Psr\Log\LoggerInterface;
+use First\Identity\Vendor\Psr\Log\NullLogger;
 use Throwable;
-use Zero\Identity\Vendor\Webauthn\AuthenticatorDataLoader;
-use Zero\Identity\Vendor\Webauthn\Event\AttestationObjectLoaded;
-use Zero\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use Zero\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use Zero\Identity\Vendor\Webauthn\MetadataService\CanLogData;
-use Zero\Identity\Vendor\Webauthn\StringStream;
-use Zero\Identity\Vendor\Webauthn\Util\Base64;
+use First\Identity\Vendor\Webauthn\AuthenticatorDataLoader;
+use First\Identity\Vendor\Webauthn\Event\AttestationObjectLoaded;
+use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use First\Identity\Vendor\Webauthn\StringStream;
+use First\Identity\Vendor\Webauthn\Util\Base64;
 
 class AttestationObjectLoader implements CanDispatchEvents, CanLogData
 {

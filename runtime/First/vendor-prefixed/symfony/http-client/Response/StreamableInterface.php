@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
+namespace First\Vendor\Symfony\Component\HttpClient\Response;
 
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

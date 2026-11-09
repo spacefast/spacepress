@@ -11,7 +11,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\FrontMatter;
+namespace First\Vendor\League\CommonMark\Extension\FrontMatter;
 
 interface FrontMatterProviderInterface
 {

@@ -11,23 +11,23 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\TableOfContents;
+namespace First\Vendor\League\CommonMark\Extension\TableOfContents;
 
-use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContentsPlaceholder;
-use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockStart;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
-use Zero\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
-use Zero\Vendor\League\Config\ConfigurationAwareInterface;
-use Zero\Vendor\League\Config\ConfigurationInterface;
+use First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContentsPlaceholder;
+use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use First\Vendor\League\CommonMark\Parser\Block\BlockStart;
+use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use First\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
+use First\Vendor\League\Config\ConfigurationAwareInterface;
+use First\Vendor\League\Config\ConfigurationInterface;
 
 final class TableOfContentsPlaceholderParser extends AbstractBlockContinueParser
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContentsPlaceholder */
+     * @var \First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContentsPlaceholder */
     private $block;
 
     public function __construct()
@@ -35,7 +35,7 @@ final class TableOfContentsPlaceholderParser extends AbstractBlockContinueParser
         $this->block = new TableOfContentsPlaceholder();
     }
 
-    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }
@@ -49,7 +49,7 @@ final class TableOfContentsPlaceholderParser extends AbstractBlockContinueParser
     {
         return new class () implements BlockStartParserInterface, ConfigurationAwareInterface {
             /** @psalm-readonly-allow-private-mutation
-             * @var \Zero\Vendor\League\Config\ConfigurationInterface */
+             * @var \First\Vendor\League\Config\ConfigurationInterface */
             private $config;
 
             public function tryStart(Cursor $cursor, MarkdownParserStateInterface $parserState): ?BlockStart

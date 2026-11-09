@@ -1,11 +1,11 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\HttpClient;
+namespace First\Vendor\AsyncAws\Core\HttpClient;
 
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Symfony\Component\HttpClient\HttpClient;
-use Zero\Vendor\Symfony\Component\HttpClient\RetryableHttpClient;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Symfony\Component\HttpClient\HttpClient;
+use First\Vendor\Symfony\Component\HttpClient\RetryableHttpClient;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * @author Jérémy Derussé <jeremy@derusse.com>

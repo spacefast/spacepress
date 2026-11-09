@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Event;
+namespace First\Vendor\League\CommonMark\Event;
 
-use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use First\Vendor\League\CommonMark\Node\Block\Document;
 
 /**
  * Event dispatched when the document has been fully parsed
@@ -21,7 +21,7 @@ use Zero\Vendor\League\CommonMark\Node\Block\Document;
 final class DocumentParsedEvent extends AbstractEvent
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Node\Block\Document */
+     * @var \First\Vendor\League\CommonMark\Node\Block\Document */
     private $document;
 
     public function __construct(Document $document)

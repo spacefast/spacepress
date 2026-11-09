@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\String;
+namespace First\Vendor\Rowbot\URL\String;
 
 enum EncodeSet
 {

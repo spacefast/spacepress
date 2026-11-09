@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
 
-use Zero\Identity\Vendor\CBOR\ByteStringObject;
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use Zero\Identity\Vendor\CBOR\Tag;
+use First\Identity\Vendor\CBOR\ByteStringObject;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use First\Identity\Vendor\CBOR\Tag;
 use function count;
 use Countable;
 use InvalidArgumentException;

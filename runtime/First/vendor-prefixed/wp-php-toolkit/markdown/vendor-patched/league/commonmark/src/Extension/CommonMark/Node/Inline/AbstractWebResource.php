@@ -14,9 +14,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
+namespace First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
 
-use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
 
 abstract class AbstractWebResource extends AbstractInline
 {

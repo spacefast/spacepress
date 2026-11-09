@@ -12,16 +12,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Node;
+namespace First\Vendor\League\CommonMark\Extension\Footnote\Node;
 
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Reference\ReferenceInterface;
-use Zero\Vendor\League\CommonMark\Reference\ReferenceableInterface;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Reference\ReferenceInterface;
+use First\Vendor\League\CommonMark\Reference\ReferenceableInterface;
 
 final class Footnote extends AbstractBlock implements ReferenceableInterface
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Reference\ReferenceInterface */
+     * @var \First\Vendor\League\CommonMark\Reference\ReferenceInterface */
     private $reference;
 
     public function __construct(ReferenceInterface $reference)

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Structure;
+namespace First\Identity\Vendor\Cose\Structure;
 
-use Zero\Identity\Vendor\CBOR\ByteStringObject;
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\ListObject;
-use Zero\Identity\Vendor\CBOR\TextStringObject;
+use First\Identity\Vendor\CBOR\ByteStringObject;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\ListObject;
+use First\Identity\Vendor\CBOR\TextStringObject;
 use Stringable;
 
 /**

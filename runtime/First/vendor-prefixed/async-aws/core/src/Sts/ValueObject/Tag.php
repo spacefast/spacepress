@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts\ValueObject;
+namespace First\Vendor\AsyncAws\Core\Sts\ValueObject;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * You can pass custom key-value pair attributes when you assume a role or federate a user. These are called session

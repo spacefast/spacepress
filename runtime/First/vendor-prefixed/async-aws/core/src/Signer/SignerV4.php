@@ -1,14 +1,14 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Signer;
+namespace First\Vendor\AsyncAws\Core\Signer;
 
-use Zero\Vendor\AsyncAws\Core\Credentials\Credentials;
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Request;
-use Zero\Vendor\AsyncAws\Core\RequestContext;
-use Zero\Vendor\AsyncAws\Core\Stream\ReadOnceResultStream;
-use Zero\Vendor\AsyncAws\Core\Stream\RewindableStream;
-use Zero\Vendor\AsyncAws\Core\Stream\StringStream;
+use First\Vendor\AsyncAws\Core\Credentials\Credentials;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Request;
+use First\Vendor\AsyncAws\Core\RequestContext;
+use First\Vendor\AsyncAws\Core\Stream\ReadOnceResultStream;
+use First\Vendor\AsyncAws\Core\Stream\RewindableStream;
+use First\Vendor\AsyncAws\Core\Stream\StringStream;
 
 /**
  * Version4 of signer.

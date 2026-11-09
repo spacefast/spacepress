@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\DataLiberation\DataFormatConsumer;
+namespace First\Vendor\WordPress\DataLiberation\DataFormatConsumer;
 
 /**
  * Represents a {Data Format} -> Block Markup + Metadata consumer.

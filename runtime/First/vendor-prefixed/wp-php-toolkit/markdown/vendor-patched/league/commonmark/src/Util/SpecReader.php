@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Util;
+namespace First\Vendor\League\CommonMark\Util;
 
-use Zero\Vendor\League\CommonMark\Exception\IOException;
+use First\Vendor\League\CommonMark\Exception\IOException;
 
 /**
  * Reads in a CommonMark spec document and extracts the input/output examples for testing against them

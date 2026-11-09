@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\String\Exception;
+namespace First\Vendor\Rowbot\URL\String\Exception;
 
-use Zero\Vendor\Rowbot\URL\Exception\URLException;
+use First\Vendor\Rowbot\URL\Exception\URLException;
 
 class UndefinedIndexException extends URLException
 {

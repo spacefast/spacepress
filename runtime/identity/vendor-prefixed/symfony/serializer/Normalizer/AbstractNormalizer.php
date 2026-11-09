@@ -9,19 +9,19 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\CircularReferenceException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\CircularReferenceException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 
 /**
  * Normalizer implementation.

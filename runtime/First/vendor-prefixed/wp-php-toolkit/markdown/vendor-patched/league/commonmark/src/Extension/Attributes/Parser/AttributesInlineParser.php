@@ -12,14 +12,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\Attributes\Parser;
+namespace First\Vendor\League\CommonMark\Extension\Attributes\Parser;
 
-use Zero\Vendor\League\CommonMark\Extension\Attributes\Node\AttributesInline;
-use Zero\Vendor\League\CommonMark\Extension\Attributes\Util\AttributesHelper;
-use Zero\Vendor\League\CommonMark\Node\StringContainerInterface;
-use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
-use Zero\Vendor\League\CommonMark\Parser\InlineParserContext;
+use First\Vendor\League\CommonMark\Extension\Attributes\Node\AttributesInline;
+use First\Vendor\League\CommonMark\Extension\Attributes\Util\AttributesHelper;
+use First\Vendor\League\CommonMark\Node\StringContainerInterface;
+use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use First\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
+use First\Vendor\League\CommonMark\Parser\InlineParserContext;
 
 final class AttributesInlineParser implements InlineParserInterface
 {

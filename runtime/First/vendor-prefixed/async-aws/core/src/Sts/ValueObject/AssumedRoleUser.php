@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\Core\Sts\ValueObject;
+namespace First\Vendor\AsyncAws\Core\Sts\ValueObject;
 
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * The identifiers for the temporary security credentials that the operation returns.

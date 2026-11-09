@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\HttpClient\Exception;
+namespace First\Vendor\Symfony\Contracts\HttpClient\Exception;
 
 /**
  * When a 4xx response is returned.

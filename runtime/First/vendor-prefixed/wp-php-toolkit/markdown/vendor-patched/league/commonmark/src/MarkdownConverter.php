@@ -11,28 +11,28 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark;
+namespace First\Vendor\League\CommonMark;
 
-use Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface;
-use Zero\Vendor\League\CommonMark\Exception\CommonMarkException;
-use Zero\Vendor\League\CommonMark\Output\RenderedContentInterface;
-use Zero\Vendor\League\CommonMark\Parser\MarkdownParser;
-use Zero\Vendor\League\CommonMark\Parser\MarkdownParserInterface;
-use Zero\Vendor\League\CommonMark\Renderer\HtmlRenderer;
-use Zero\Vendor\League\CommonMark\Renderer\MarkdownRendererInterface;
+use First\Vendor\League\CommonMark\Environment\EnvironmentInterface;
+use First\Vendor\League\CommonMark\Exception\CommonMarkException;
+use First\Vendor\League\CommonMark\Output\RenderedContentInterface;
+use First\Vendor\League\CommonMark\Parser\MarkdownParser;
+use First\Vendor\League\CommonMark\Parser\MarkdownParserInterface;
+use First\Vendor\League\CommonMark\Renderer\HtmlRenderer;
+use First\Vendor\League\CommonMark\Renderer\MarkdownRendererInterface;
 
 class MarkdownConverter implements ConverterInterface, MarkdownConverterInterface
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface */
+     * @var \First\Vendor\League\CommonMark\Environment\EnvironmentInterface */
     protected $environment;
 
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Parser\MarkdownParserInterface */
+     * @var \First\Vendor\League\CommonMark\Parser\MarkdownParserInterface */
     protected $markdownParser;
 
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Renderer\MarkdownRendererInterface */
+     * @var \First\Vendor\League\CommonMark\Renderer\MarkdownRendererInterface */
     protected $htmlRenderer;
 
     public function __construct(EnvironmentInterface $environment)
@@ -77,7 +77,7 @@ class MarkdownConverter implements ConverterInterface, MarkdownConverterInterfac
      */
     public function convertToHtml(string $markdown): RenderedContentInterface
     {
-        zero_vendor_trigger_deprecation('league/commonmark', '2.2.0', 'Calling "convertToHtml()" on a %s class is deprecated, use "convert()" instead.', self::class);
+        first_vendor_trigger_deprecation('league/commonmark', '2.2.0', 'Calling "convertToHtml()" on a %s class is deprecated, use "convert()" instead.', self::class);
 
         return $this->convert($markdown);
     }

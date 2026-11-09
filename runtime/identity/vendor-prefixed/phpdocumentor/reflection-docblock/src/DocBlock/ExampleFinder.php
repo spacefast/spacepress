@@ -11,9 +11,9 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Example;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Example;
 
 use function array_slice;
 use function file;

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\ClientDataCollector;
+namespace First\Identity\Vendor\Webauthn\ClientDataCollector;
 
-use Zero\Identity\Vendor\Webauthn\AuthenticatorResponse;
-use Zero\Identity\Vendor\Webauthn\CollectedClientData;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
+use First\Identity\Vendor\Webauthn\AuthenticatorResponse;
+use First\Identity\Vendor\Webauthn\CollectedClientData;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
 
 interface ClientDataCollector
 {

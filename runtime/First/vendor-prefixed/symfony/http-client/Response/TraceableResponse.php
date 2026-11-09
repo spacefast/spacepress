@@ -9,20 +9,20 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
+namespace First\Vendor\Symfony\Component\HttpClient\Response;
 
-use Zero\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\ClientException;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\RedirectionException;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\ServerException;
-use Zero\Vendor\Symfony\Component\HttpClient\TraceableHttpClient;
+use First\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
+use First\Vendor\Symfony\Component\HttpClient\Exception\ClientException;
+use First\Vendor\Symfony\Component\HttpClient\Exception\RedirectionException;
+use First\Vendor\Symfony\Component\HttpClient\Exception\ServerException;
+use First\Vendor\Symfony\Component\HttpClient\TraceableHttpClient;
 use Symfony\Component\Stopwatch\StopwatchEvent;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

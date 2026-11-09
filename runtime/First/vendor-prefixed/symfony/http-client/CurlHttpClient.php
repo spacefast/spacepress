@@ -9,20 +9,20 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient;
+namespace First\Vendor\Symfony\Component\HttpClient;
 
-use Zero\Vendor\Psr\Log\LoggerAwareInterface;
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use Zero\Vendor\Symfony\Component\HttpClient\Internal\CurlClientState;
-use Zero\Vendor\Symfony\Component\HttpClient\Internal\PushedResponse;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\CurlResponse;
-use Zero\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
-use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
+use First\Vendor\Psr\Log\LoggerAwareInterface;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use First\Vendor\Symfony\Component\HttpClient\Internal\CurlClientState;
+use First\Vendor\Symfony\Component\HttpClient\Internal\PushedResponse;
+use First\Vendor\Symfony\Component\HttpClient\Response\CurlResponse;
+use First\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
+use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use First\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * A performant implementation of the HttpClientInterface contracts based on the curl extension.
@@ -66,7 +66,7 @@ final class CurlHttpClient implements HttpClientInterface, LoggerAwareInterface,
     public function __construct(array $defaultOptions = [], int $maxHostConnections = 6, int $maxPendingPushes = 0)
     {
         if (!\extension_loaded('curl')) {
-            throw new \LogicException('You cannot use the "Zero\Vendor\Symfony\Component\HttpClient\CurlHttpClient" as the "curl" extension is not installed.');
+            throw new \LogicException('You cannot use the "First\Vendor\Symfony\Component\HttpClient\CurlHttpClient" as the "curl" extension is not installed.');
         }
 
         $this->defaultOptions['buffer'] ??= self::shouldBuffer(...);

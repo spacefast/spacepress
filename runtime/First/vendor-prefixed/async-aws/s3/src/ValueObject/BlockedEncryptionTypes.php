@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
-use Zero\Vendor\AsyncAws\S3\Enum\EncryptionType;
+use First\Vendor\AsyncAws\S3\Enum\EncryptionType;
 
 /**
  * A bucket-level setting for Amazon S3 general purpose buckets used to prevent the upload of new objects encrypted with

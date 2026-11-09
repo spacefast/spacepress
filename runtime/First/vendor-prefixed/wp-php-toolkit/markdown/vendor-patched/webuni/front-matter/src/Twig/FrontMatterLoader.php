@@ -10,11 +10,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Webuni\FrontMatter\Twig;
+namespace First\Vendor\Webuni\FrontMatter\Twig;
 
 use Twig\Loader\LoaderInterface;
 use Twig\Source;
-use Zero\Vendor\Webuni\FrontMatter\FrontMatterInterface;
+use First\Vendor\Webuni\FrontMatter\FrontMatterInterface;
 
 class FrontMatterLoader implements LoaderInterface
 {

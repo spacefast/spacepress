@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Event;
+namespace First\Identity\Vendor\Webauthn\Event;
 
 use LogicException;
 use function sprintf;
 use Throwable;
-use Zero\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use Zero\Identity\Vendor\Webauthn\CredentialRecord;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use First\Identity\Vendor\Webauthn\CredentialRecord;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
 
 class AuthenticatorAssertionResponseValidationFailedEvent
 {

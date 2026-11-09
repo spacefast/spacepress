@@ -11,15 +11,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\FrontMatter\Listener;
+namespace First\Vendor\League\CommonMark\Extension\FrontMatter\Listener;
 
-use Zero\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
-use Zero\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterParserInterface;
+use First\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
+use First\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterParserInterface;
 
 final class FrontMatterPreParser
 {
     /**
-     * @var \Zero\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterParserInterface
+     * @var \First\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterParserInterface
      */
     private $parser;
 

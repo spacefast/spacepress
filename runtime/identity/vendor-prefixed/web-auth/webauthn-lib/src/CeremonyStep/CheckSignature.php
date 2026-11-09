@@ -2,27 +2,27 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\CeremonyStep;
+namespace First\Identity\Vendor\Webauthn\CeremonyStep;
 
-use Zero\Identity\Vendor\CBOR\Decoder;
-use Zero\Identity\Vendor\CBOR\Normalizable;
-use Zero\Identity\Vendor\Cose\Algorithm\Manager;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use Zero\Identity\Vendor\Cose\Key\Key;
+use First\Identity\Vendor\CBOR\Decoder;
+use First\Identity\Vendor\CBOR\Normalizable;
+use First\Identity\Vendor\Cose\Algorithm\Manager;
+use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
+use First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
+use First\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use First\Identity\Vendor\Cose\Key\Key;
 use function is_array;
-use function zero_identity_vendor_trigger_deprecation as trigger_deprecation;
-use Zero\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use Zero\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use Zero\Identity\Vendor\Webauthn\CredentialRecord;
-use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
-use Zero\Identity\Vendor\Webauthn\StringStream;
-use Zero\Identity\Vendor\Webauthn\U2FPublicKey;
-use Zero\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
+use function first_identity_vendor_trigger_deprecation as trigger_deprecation;
+use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use First\Identity\Vendor\Webauthn\CredentialRecord;
+use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use First\Identity\Vendor\Webauthn\StringStream;
+use First\Identity\Vendor\Webauthn\U2FPublicKey;
+use First\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
 
 final readonly class CheckSignature implements CeremonyStep
 {
@@ -41,7 +41,7 @@ final readonly class CheckSignature implements CeremonyStep
         string $host
     ): void {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            zero_identity_vendor_trigger_deprecation(
+            first_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::process()" is deprecated, pass a CredentialRecord instead.',

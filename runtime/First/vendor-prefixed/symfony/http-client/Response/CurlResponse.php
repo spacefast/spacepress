@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
+namespace First\Vendor\Symfony\Component\HttpClient\Response;
 
-use Zero\Vendor\Psr\Log\LoggerInterface;
-use Zero\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
-use Zero\Vendor\Symfony\Component\HttpClient\Chunk\InformationalChunk;
-use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use Zero\Vendor\Symfony\Component\HttpClient\Internal\Canary;
-use Zero\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
-use Zero\Vendor\Symfony\Component\HttpClient\Internal\CurlClientState;
-use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use First\Vendor\Psr\Log\LoggerInterface;
+use First\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
+use First\Vendor\Symfony\Component\HttpClient\Chunk\InformationalChunk;
+use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use First\Vendor\Symfony\Component\HttpClient\Internal\Canary;
+use First\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
+use First\Vendor\Symfony\Component\HttpClient\Internal\CurlClientState;
+use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

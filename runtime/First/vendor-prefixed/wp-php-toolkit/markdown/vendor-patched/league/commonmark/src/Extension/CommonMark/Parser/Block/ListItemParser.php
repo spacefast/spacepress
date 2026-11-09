@@ -11,20 +11,20 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
+namespace First\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
 
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData;
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use First\Vendor\League\CommonMark\Parser\Cursor;
 
 final class ListItemParser extends AbstractBlockContinueParser
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem */
+     * @var \First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem */
     private $block;
 
     public function __construct(ListData $listData)
@@ -32,7 +32,7 @@ final class ListItemParser extends AbstractBlockContinueParser
         $this->block = new ListItem($listData);
     }
 
-    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }

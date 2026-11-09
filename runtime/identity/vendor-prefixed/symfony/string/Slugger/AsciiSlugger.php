@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\String\Slugger;
+namespace First\Identity\Vendor\Symfony\Component\String\Slugger;
 
 use Symfony\Component\Emoji\EmojiTransliterator;
-use Zero\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
-use Zero\Identity\Vendor\Symfony\Component\String\UnicodeString;
+use First\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
+use First\Identity\Vendor\Symfony\Component\String\UnicodeString;
 use Symfony\Contracts\Translation\LocaleAwareInterface;
 
 if (!interface_exists(LocaleAwareInterface::class)) {
-    throw new \LogicException('You cannot use the "Zero\Identity\Vendor\Symfony\Component\String\Slugger\AsciiSlugger" as the "symfony/translation-contracts" package is not installed. Try running "composer require symfony/translation-contracts".');
+    throw new \LogicException('You cannot use the "First\Identity\Vendor\Symfony\Component\String\Slugger\AsciiSlugger" as the "symfony/translation-contracts" package is not installed. Try running "composer require symfony/translation-contracts".');
 }
 
 /**

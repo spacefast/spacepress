@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\Idna\Test;
+namespace First\Vendor\Rowbot\Idna\Test;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
-use Zero\Vendor\Rowbot\Idna\Idna;
+use First\Vendor\Rowbot\Idna\Idna;
 
 use function array_filter;
 use function array_flip;

@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Symfony\Contracts\Service\Test;
+namespace First\Vendor\Symfony\Contracts\Service\Test;
 
 use PHPUnit\Framework\TestCase;
-use Zero\Vendor\Psr\Container\ContainerExceptionInterface;
-use Zero\Vendor\Psr\Container\ContainerInterface;
-use Zero\Vendor\Psr\Container\NotFoundExceptionInterface;
-use Zero\Vendor\Symfony\Contracts\Service\ServiceLocatorTrait;
+use First\Vendor\Psr\Container\ContainerExceptionInterface;
+use First\Vendor\Psr\Container\ContainerInterface;
+use First\Vendor\Psr\Container\NotFoundExceptionInterface;
+use First\Vendor\Symfony\Contracts\Service\ServiceLocatorTrait;
 
 abstract class ServiceLocatorTestCase extends TestCase
 {

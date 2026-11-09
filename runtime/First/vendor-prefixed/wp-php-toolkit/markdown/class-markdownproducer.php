@@ -1,10 +1,10 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Markdown;
+namespace First\Vendor\WordPress\Markdown;
 
-use Zero\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
-use Zero\Vendor\WordPress\DataLiberation\DataFormatProducer\DataFormatProducer;
-use Zero\Vendor\WordPress\DataLiberation\DataLiberationHTMLProcessor;
+use First\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
+use First\Vendor\WordPress\DataLiberation\DataFormatProducer\DataFormatProducer;
+use First\Vendor\WordPress\DataLiberation\DataLiberationHTMLProcessor;
 
 /**
  * Converts WordPress blocks and metadata to Markdown with frontmatter.

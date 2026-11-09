@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use First\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
+use First\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 /**
  * Reflection class for a {@}template tag in a Docblock.

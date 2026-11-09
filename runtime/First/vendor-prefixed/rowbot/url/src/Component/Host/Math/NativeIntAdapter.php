@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\Rowbot\URL\Component\Host\Math;
+namespace First\Vendor\Rowbot\URL\Component\Host\Math;
 
-use Zero\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException;
+use First\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException;
 use Stringable;
 
 use function floor;

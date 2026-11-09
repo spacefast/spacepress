@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\AsyncAws\Core\Exception\Http;
+namespace First\Vendor\AsyncAws\Core\Exception\Http;
 
-use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use First\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 
 /**
  * Represents a 4xx response.

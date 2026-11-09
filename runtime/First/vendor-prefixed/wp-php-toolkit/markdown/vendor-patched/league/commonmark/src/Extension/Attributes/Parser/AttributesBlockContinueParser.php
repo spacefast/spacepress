@@ -12,25 +12,25 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\Attributes\Parser;
+namespace First\Vendor\League\CommonMark\Extension\Attributes\Parser;
 
-use Zero\Vendor\League\CommonMark\Extension\Attributes\Node\Attributes;
-use Zero\Vendor\League\CommonMark\Extension\Attributes\Util\AttributesHelper;
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Extension\Attributes\Node\Attributes;
+use First\Vendor\League\CommonMark\Extension\Attributes\Util\AttributesHelper;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use First\Vendor\League\CommonMark\Parser\Cursor;
 
 final class AttributesBlockContinueParser extends AbstractBlockContinueParser
 {
     /**
-     * @var \Zero\Vendor\League\CommonMark\Extension\Attributes\Node\Attributes
+     * @var \First\Vendor\League\CommonMark\Extension\Attributes\Node\Attributes
      */
     private $block;
 
     /**
-     * @var \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
+     * @var \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
      */
     private $container;
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Brick\Math\Exception;
+namespace First\Identity\Vendor\Brick\Math\Exception;
 
 use RuntimeException;
 use Throwable;

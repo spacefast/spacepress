@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\WordPress\Merge\Validate;
+namespace First\Vendor\WordPress\Merge\Validate;
 
-use Zero\Vendor\WordPress\Merge\MergeException;
+use First\Vendor\WordPress\Merge\MergeException;
 
 class InvalidMergeException extends MergeException {
 

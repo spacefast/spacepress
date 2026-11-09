@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\ValueObject;
+namespace First\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * The PublicAccessBlock configuration that you want to apply to this Amazon S3 bucket. You can enable the configuration

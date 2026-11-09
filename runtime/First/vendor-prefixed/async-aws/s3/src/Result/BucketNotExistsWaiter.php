@@ -1,13 +1,13 @@
 <?php
 
-namespace Zero\Vendor\AsyncAws\S3\Result;
+namespace First\Vendor\AsyncAws\S3\Result;
 
-use Zero\Vendor\AsyncAws\Core\Exception\Http\HttpException;
-use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use Zero\Vendor\AsyncAws\Core\Response;
-use Zero\Vendor\AsyncAws\Core\Waiter;
-use Zero\Vendor\AsyncAws\S3\Input\HeadBucketRequest;
-use Zero\Vendor\AsyncAws\S3\S3Client;
+use First\Vendor\AsyncAws\Core\Exception\Http\HttpException;
+use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use First\Vendor\AsyncAws\Core\Response;
+use First\Vendor\AsyncAws\Core\Waiter;
+use First\Vendor\AsyncAws\S3\Input\HeadBucketRequest;
+use First\Vendor\AsyncAws\S3\S3Client;
 
 class BucketNotExistsWaiter extends Waiter
 {

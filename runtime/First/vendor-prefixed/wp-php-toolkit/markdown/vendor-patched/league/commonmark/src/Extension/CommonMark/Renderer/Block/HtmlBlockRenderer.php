@@ -14,21 +14,21 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Renderer\Block;
+namespace First\Vendor\League\CommonMark\Extension\CommonMark\Renderer\Block;
 
-use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\HtmlBlock;
-use Zero\Vendor\League\CommonMark\Node\Node;
-use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use Zero\Vendor\League\CommonMark\Util\HtmlFilter;
-use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
-use Zero\Vendor\League\Config\ConfigurationAwareInterface;
-use Zero\Vendor\League\Config\ConfigurationInterface;
+use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\HtmlBlock;
+use First\Vendor\League\CommonMark\Node\Node;
+use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use First\Vendor\League\CommonMark\Util\HtmlFilter;
+use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use First\Vendor\League\Config\ConfigurationAwareInterface;
+use First\Vendor\League\Config\ConfigurationInterface;
 
 final class HtmlBlockRenderer implements NodeRendererInterface, XmlNodeRendererInterface, ConfigurationAwareInterface
 {
     /** @psalm-readonly-allow-private-mutation
-     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
+     * @var \First\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     /**

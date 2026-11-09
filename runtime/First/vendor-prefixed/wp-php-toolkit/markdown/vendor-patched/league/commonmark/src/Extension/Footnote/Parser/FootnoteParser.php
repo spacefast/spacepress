@@ -12,20 +12,20 @@
 
 declare(strict_types=1);
 
-namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Parser;
+namespace First\Vendor\League\CommonMark\Extension\Footnote\Parser;
 
-use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
-use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use Zero\Vendor\League\CommonMark\Parser\Cursor;
-use Zero\Vendor\League\CommonMark\Reference\ReferenceInterface;
+use First\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
+use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use First\Vendor\League\CommonMark\Parser\Cursor;
+use First\Vendor\League\CommonMark\Reference\ReferenceInterface;
 
 final class FootnoteParser extends AbstractBlockContinueParser
 {
     /** @psalm-readonly
-     * @var \Zero\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote */
+     * @var \First\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote */
     private $block;
 
     /** @psalm-readonly-allow-private-mutation
@@ -37,7 +37,7 @@ final class FootnoteParser extends AbstractBlockContinueParser
         $this->block = new Footnote($reference);
     }
 
-    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }

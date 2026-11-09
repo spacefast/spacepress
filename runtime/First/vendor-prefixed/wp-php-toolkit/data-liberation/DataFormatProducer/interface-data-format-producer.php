@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Vendor\WordPress\DataLiberation\DataFormatProducer;
+namespace First\Vendor\WordPress\DataLiberation\DataFormatProducer;
 
 /**
  * Represents a Block Markup + Metadata -> {Data Format} producer.

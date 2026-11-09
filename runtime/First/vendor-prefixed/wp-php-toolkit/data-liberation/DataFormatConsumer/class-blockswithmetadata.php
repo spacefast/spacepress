@@ -1,8 +1,8 @@
 <?php
 
-namespace Zero\Vendor\WordPress\DataLiberation\DataFormatConsumer;
+namespace First\Vendor\WordPress\DataLiberation\DataFormatConsumer;
 
-use Zero\Vendor\WordPress\DataLiberation\DataLiberationException;
+use First\Vendor\WordPress\DataLiberation\DataLiberationException;
 
 /**
  * Represents the result of a {data format} -> block markup conversion.

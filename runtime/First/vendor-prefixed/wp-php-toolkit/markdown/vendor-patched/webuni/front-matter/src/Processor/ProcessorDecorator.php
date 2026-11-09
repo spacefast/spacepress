@@ -10,12 +10,12 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Vendor\Webuni\FrontMatter\Processor;
+namespace First\Vendor\Webuni\FrontMatter\Processor;
 
 abstract class ProcessorDecorator implements ProcessorInterface
 {
     /**
-     * @var \Zero\Vendor\Webuni\FrontMatter\Processor\ProcessorInterface
+     * @var \First\Vendor\Webuni\FrontMatter\Processor\ProcessorInterface
      */
     private $wrapped;
 

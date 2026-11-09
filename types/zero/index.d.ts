@@ -426,6 +426,8 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   drafts?: boolean;
   /** Keep a revision per update. Default true for collections, false for tables. */
   revisions?: boolean;
+  /** WordPress comments on this collection's post type. Default false: comments are closed on every kind that doesn't turn them on. */
+  comments?: boolean;
   /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required for collections. */
   title?: ColumnsOfKind<ColumnsOf<T>, "text", true>;
   /** The WordPress post_content (block editor): a `richText()` column. Default: a richText column named `content`. */

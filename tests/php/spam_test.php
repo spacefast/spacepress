@@ -14,6 +14,9 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
+// Zero closes comments on every kind that doesn't turn them on (Hardening::comments), so the target is
+// the blog's posts collection with `comments: true`.
+$schema['collections']['posts']['comments'] = true;
 $wp = wpSite('spam', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),
@@ -36,7 +39,7 @@ add_filter('pre_http_request', static function (mixed $pre, array $args, string 
     return ['headers' => [], 'body' => str_ends_with((string) parse_url($url, PHP_URL_PATH), '/comment-check') ? 'true' : 'valid', 'response' => ['code' => 200, 'message' => 'OK'], 'cookies' => [], 'filename' => null];
 }, 10, 3);
 
-$post = wp_insert_post(['post_title' => 'Spam target', 'post_status' => 'publish', 'comment_status' => 'open'], true);
+$post = wp_insert_post(['post_type' => $schema['collections']['posts']['wp']['postType'], 'post_title' => 'Spam target', 'post_status' => 'publish', 'comment_status' => 'open'], true);
 $comment = static function (string $content, string $as) use ($post, $wp): array {
     $wp->actAs($as);
     $request = new \WP_REST_Request('POST', '/wp/v2/comments');

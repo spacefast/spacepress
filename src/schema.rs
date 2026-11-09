@@ -349,6 +349,8 @@ pub struct Collection {
     pub editor: bool,
     pub drafts: bool,
     pub revisions: bool,
+    /// `comments: true`: the post type supports WordPress comments; every other kind has them off.
+    pub comments: bool,
     pub title: Option<String>,
     pub content: Option<String>,
     pub slug: Option<String>,

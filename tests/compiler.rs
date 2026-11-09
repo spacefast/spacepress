@@ -710,15 +710,16 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "build failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let init = std::fs::read_to_string(project.join("zero/migrations/0001_init.sql")).unwrap();
+    let init = std::fs::read_to_string(project.join("zero/_generated/migrations/0001_init.sql")).unwrap();
     assert!(init.contains("CREATE TABLE `{prefix}zero_items`"), "{init}");
     // A second build with no changes adds no migration.
     let again = zero().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert!(!project.join("zero/migrations/0002_update.sql").exists());
+    assert!(!project.join("zero/_generated/migrations/0002_update.sql").exists());
     for example in ["pantry", "blog", "site"] {
         let stored: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(root().join(format!("examples/{example}/zero/migrations/snapshot.json"))).unwrap(),
+            &std::fs::read(root().join(format!("examples/{example}/zero/_generated/migrations/snapshot.json")))
+                .unwrap(),
         )
         .unwrap();
         let persisted = tmp.join(format!("preserved-{example}"));
@@ -730,17 +731,18 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             String::from_utf8_lossy(&result.stderr)
         );
         let actual: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(persisted.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(persisted.join("zero/_generated/migrations/snapshot.json")).unwrap())
+                .unwrap();
         assert_eq!(
             actual, stored,
             "{example}: the authoring change must preserve stored resources"
         );
-        let migrations = std::fs::read_dir(persisted.join("zero/migrations"))
+        let migrations = std::fs::read_dir(persisted.join("zero/_generated/migrations"))
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
             .count();
-        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/migrations")))
+        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/_generated/migrations")))
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
@@ -758,12 +760,17 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     for file in ["snapshot.json", "0001_init.sql"] {
         assert_eq!(
-            std::fs::read(upgraded.join("zero/migrations").join(file)).unwrap(),
-            std::fs::read(fixture.join("zero/migrations").join(file)).unwrap(),
+            std::fs::read(upgraded.join("zero/_generated/migrations").join(file)).unwrap(),
+            std::fs::read(fixture.join("zero/_generated/migrations").join(file)).unwrap(),
             "the historical ledger must remain unchanged"
         );
     }
-    assert_eq!(std::fs::read_dir(upgraded.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(upgraded.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
 
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
@@ -771,7 +778,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     let built = zero().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let ledger = conflict.join("zero/migrations/snapshot.json");
+    let ledger = conflict.join("zero/_generated/migrations/snapshot.json");
     let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
     for stored_name in ["stockItems", "inventory"] {
         let mut legacy = canonical.clone();
@@ -789,7 +796,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{error}"
         );
         assert_eq!(std::fs::read(&ledger).unwrap(), legacy_bytes);
-        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        assert_eq!(
+            std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+                .unwrap()
+                .count(),
+            2
+        );
         std::fs::write(conflict.join("zero.config.ts"), format!("import {{ table, defineConfig }} from 'zero'; export default defineConfig({{ tables: {{ stockItems: table({{}}, {{ storageName: \"{stored_name}\" }}) }} }});")).unwrap();
         let preserved = zero().arg("build").arg(&conflict).output().unwrap();
         assert!(
@@ -799,7 +811,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         );
         let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
         assert_eq!(actual, legacy);
-        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        assert_eq!(
+            std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+                .unwrap()
+                .count(),
+            2
+        );
         std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     }
     // Physical-only siblings do not establish who owned the retained resource.
@@ -820,7 +837,12 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "{error}"
     );
     assert_eq!(std::fs::read(&ledger).unwrap(), sibling_bytes);
-    assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+    assert_eq!(
+        std::fs::read_dir(conflict.join("zero/_generated/migrations"))
+            .unwrap()
+            .count(),
+        2
+    );
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");
@@ -1977,7 +1999,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let again = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(
-        !tmp.join("zero/migrations/0002_update.sql").exists(),
+        !tmp.join("zero/_generated/migrations/0002_update.sql").exists(),
         "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
@@ -2106,22 +2128,22 @@ fn builds_wordpress_and_knows_no_target_option() {
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     assert!(tmp.join(".zero/wp-content/zero-manifest.json").is_file());
-    assert!(tmp.join("zero/migrations/0001_init.sql").is_file());
+    assert!(tmp.join("zero/_generated/migrations/0001_init.sql").is_file());
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A checkout from before the one-directory migration layout is refused, never read as empty: a
-/// `wp/` subdirectory, a `sqlite/` subdirectory or a version 1 snapshot each stop the build before it
-/// writes, so the numbering cannot restart at 0001 and the plugin cannot ship without its files.
+/// A project whose ledger is still at `zero/migrations/` is refused, never read as a first build:
+/// the build stops before it writes, so the numbering cannot restart at 0001 and the plugin cannot
+/// ship without its earlier files. Following the fix in the message builds again with nothing new.
+/// A version 1 snapshot is refused the same way.
 #[test]
-fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
+fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let tmp = std::env::temp_dir().join(format!("zero-legacy-layout-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let migrations = tmp.join("zero/migrations");
-    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
+    let migrations = tmp.join("zero/_generated/migrations");
     let snapshot = std::fs::read_to_string(migrations.join("snapshot.json")).unwrap();
     /// Every file under the project with its bytes, so a refusal is proven to write nothing anywhere.
     fn tree(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
@@ -2144,15 +2166,24 @@ fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
         assert!(stderr.contains(message), "expected {message:?} in {stderr}");
         assert!(tree(&tmp) == before, "the refusal changed the project");
     };
-    for legacy in ["wp", "sqlite"] {
-        std::fs::create_dir_all(migrations.join(legacy)).unwrap();
-        std::fs::write(migrations.join(legacy).join("0001_init.sql"), &init).unwrap();
-        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
-        // Following the message: the SQL moved out, the directory deleted. An emptied directory
-        // left behind is still the earlier layout.
-        std::fs::remove_file(migrations.join(legacy).join("0001_init.sql")).unwrap();
-        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
-        std::fs::remove_dir(migrations.join(legacy)).unwrap();
+    let old = tmp.join("zero/migrations");
+    std::fs::rename(&migrations, &old).unwrap();
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    // An old directory left beside the new one is refused too: one ledger, never two.
+    std::fs::create_dir_all(&migrations).unwrap();
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    std::fs::remove_dir(&migrations).unwrap();
+    // A pre-flat checkout moved as-is keeps its `wp/` and `sqlite/` subdirectories: still refused
+    // at the new path, so following the first message can't restart the numbering.
+    std::fs::rename(&old, &migrations).unwrap();
+    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
+    for nested in ["wp", "sqlite"] {
+        std::fs::create_dir_all(migrations.join(nested)).unwrap();
+        std::fs::write(migrations.join(nested).join("0001_init.sql"), &init).unwrap();
+        refused(&format!(
+            "zero/_generated/migrations/{nested}/ is from an earlier layout"
+        ));
+        std::fs::remove_dir_all(migrations.join(nested)).unwrap();
     }
     let mut v1: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
     v1["version"] = serde_json::json!(1);

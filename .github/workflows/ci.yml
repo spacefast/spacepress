@@ -36,11 +36,19 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
+  # Two shards in parallel: the compiler suites and the npm comparison (about 26 minutes), and
+  # fmt, clippy and every other test target (about 20). Test targets come from cargo metadata,
+  # so a new one lands in `rest` without a workflow edit.
   rust:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [compiler, rest]
     env:
+      SHARD: ${{ matrix.shard }}
       ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -74,22 +82,42 @@ jobs:
       # Migrated apps are type-checked with the standard Node declarations (tests/app_migrate.rs).
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       # React renders the Node half of the TSX parity test (tests/compiler.rs); esbuild compiles it.
-      - run: npm ci --prefix tests/differential/html --ignore-scripts --no-audit --no-fund
-      - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - if: matrix.shard == 'compiler'
+        run: npm ci --prefix tests/differential/html --ignore-scripts --no-audit --no-fund
+      - if: matrix.shard == 'rest'
+        run: cargo fmt --check
+      - if: matrix.shard == 'rest'
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: cargo test (${{ matrix.shard }})
+        run: |
+          compiler=(compiler compiler_contracts)
+          if [ "$SHARD" = compiler ]; then
+            cargo test --locked "${compiler[@]/#/--test=}"
+          else
+            rest=()
+            for name in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].targets[] | select(.kind[] == "test") | .name'); do
+              [[ " ${compiler[*]} " == *" $name "* ]] || rest+=("--test=$name")
+            done
+            cargo test --locked --lib --bins "${rest[@]}"
+            cargo test --locked --doc
+          fi
       - name: Compare real npm library imports with Node
+        if: matrix.shard == 'compiler'
         run: |
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
           ZERO_BIN="$GITHUB_WORKSPACE/target/debug/zero" node examples/npm-compat/verify.mjs --isolated
-      - run: target/debug/zero check examples/showcase
+      - if: matrix.shard == 'rest'
+        run: target/debug/zero check examples/showcase
       - name: Zero 0.8 census tool
+        if: matrix.shard == 'rest'
         env:
           ZERO_BIN: ${{ github.workspace }}/target/debug/zero
         run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
       - name: Docker-free local development acceptance
+        if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs
       - name: Offline deployment and recovery acceptance
+        if: matrix.shard == 'rest'
         env:
           ZERO_DEPLOY_BIN: ${{ github.workspace }}/target/debug/zero
         run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs

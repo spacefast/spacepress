@@ -70,7 +70,7 @@ or a WP-CLI `@alias`. Credentials come only from `ZERO_APP_PASSWORD` or
 (see `docs/decisions/2026-11-07-one-cli.md`); add a site command with one row
 there and one PHP handler.
 
-`zero build` writes new migrations to `zero/migrations/`, the typed client to
+`zero build` writes new migrations to `zero/_generated/migrations/`, the typed client to
 `zero/client/`, `zero.gen.ts`, `zero/wp-plugins.lock.json` and, with plugin
 packages, `zero/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
 plugin grants the lock doesn't hold),

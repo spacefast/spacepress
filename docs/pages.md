@@ -107,7 +107,7 @@ action, or a route WordPress owns. An uploaded artifact can only carry markup
 and static assets, never server code.
 
 Pages read the app's schema from `zero build` output (`zero/client/schema.ts`,
-`zero/migrations/snapshot.json`). They never execute `zero.config.ts`, and a
+`zero/_generated/migrations/snapshot.json`). They never execute `zero.config.ts`, and a
 page cannot import runtime values from `"zero"`; use type imports and name
 collections as strings.
 

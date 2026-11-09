@@ -66,7 +66,7 @@ test("a config that builds on the command line builds in the browser, to the sam
   assert.equal(envelope, nativeCheck(dir));
   assert.ok(output);
   // A first build: everything is one init migration, from the same snapshot the example commits.
-  assert.deepEqual(output.snapshot, JSON.parse(readFileSync(path.join(dir, "zero/migrations/snapshot.json"), "utf8")));
+  assert.deepEqual(output.snapshot, JSON.parse(readFileSync(path.join(dir, "zero/_generated/migrations/snapshot.json"), "utf8")));
   assert.deepEqual(output.migrations.map(([name]) => name), ["0001_init.sql"]);
   assert.equal(output.client["types.ts"], readFileSync(path.join(dir, "zero/client/types.ts"), "utf8"));
   assert.equal(output.client["schema.ts"], readFileSync(path.join(dir, "zero/client/schema.ts"), "utf8"));
@@ -91,8 +91,8 @@ test("a config that builds on the command line builds in the browser, to the sam
 
 test("the previous snapshot and migration files drive the next migration like they do on disk", () => {
   const dir = path.join(repo, "examples/pantry");
-  const previous = JSON.parse(readFileSync(path.join(dir, "zero/migrations/snapshot.json"), "utf8"));
-  const migrationFiles = readdirSync(path.join(dir, "zero/migrations"));
+  const previous = JSON.parse(readFileSync(path.join(dir, "zero/_generated/migrations/snapshot.json"), "utf8"));
+  const migrationFiles = readdirSync(path.join(dir, "zero/_generated/migrations"));
   const unchanged = compiler.compile({ name: "pantry", files: sources(dir), previous, migrationFiles });
   assert.deepEqual(unchanged.output?.migrations, []);
   const files = sources(dir);
@@ -106,7 +106,7 @@ test("the previous snapshot and migration files drive the next migration like th
 
 test("without a snapshot the migration files still number the next one, like on disk", () => {
   const dir = path.join(repo, "examples/pantry");
-  const migrationFiles = readdirSync(path.join(dir, "zero/migrations"));
+  const migrationFiles = readdirSync(path.join(dir, "zero/_generated/migrations"));
   const { output } = compiler.compile({ name: "pantry", files: sources(dir), previous: null, migrationFiles });
   assert.deepEqual(output?.migrations.map(([name]) => name), ["0003_update.sql"]);
 });

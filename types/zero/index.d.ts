@@ -835,7 +835,7 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
 
 /**
  * `db` is imported, not constructed, so it learns your schema through this
- * interface. `zero build` writes the augmentation into `zero.gen.ts`:
+ * interface. `zero build` writes the augmentation into `zero/_generated/db.d.ts`:
  *
  * ```ts
  * import type { relations } from "./zero.config";
@@ -854,7 +854,7 @@ type RegisteredSchema = Register extends { relations: Relations<infer S, any> } 
 type RegisteredRelations = Register extends { relations: Relations<any, infer C> } ? C : {};
 
 type UnregisteredQuery = {
-  readonly [key: string]: "Schema not registered: add zero.gen.ts (run `zero build`) so `db.query` knows your collections";
+  readonly [key: string]: "Schema not registered: add zero/_generated/db.d.ts (run `zero build`) so `db.query` knows your collections";
 };
 
 export type QueryApi = [RegisteredSchema] extends [never]
@@ -1116,7 +1116,7 @@ export interface ConfigInput<
   admin?: boolean;
   /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
-   * inferred from its compiled code and granted by the committed `zero/plugins.lock.json`.
+   * inferred from its compiled code and granted by the committed `zero/_generated/plugins.lock.json`.
    */
   use?: readonly Plugin[];
 }
@@ -1300,7 +1300,7 @@ export type WordPressPlugin = string | ({
   | {
       /** Defaults to the exact WordPress.org ZIP for the map key and version. */
       pluginData?: { resource: "wordpress.org/plugins"; slug: string };
-      /** Otherwise recorded in zero/wp-plugins.lock.json on first acquisition. */
+      /** Otherwise recorded in zero/_generated/wp-plugins.lock.json on first acquisition. */
       sha256?: string;
     }
   | {

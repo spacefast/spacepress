@@ -1,6 +1,6 @@
 //! Emits `zero/app/schema.php` (version 3, phase-2 §3.1: the runtime's whole view
-//! of the app, WordPress identifiers included) and `zero.gen.ts` (registers the
-//! schema with the `"zero"` types).
+//! of the app, WordPress identifiers included) and `zero/_generated/db.d.ts`
+//! (registers the schema with the `"zero"` types).
 
 use crate::compile::{php_json, php_str};
 use crate::num::php_number;
@@ -328,6 +328,12 @@ pub fn render(schema: &Schema) -> String {
             route.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into())
         );
     }
+    if !schema.components.is_empty() {
+        out.push_str("    ],\n    'components' => [\n");
+        for (name, function) in &schema.components {
+            let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
+        }
+    }
     // The fields each WordPress class view exposes (hook arguments, function results): the
     // catalog's, so the runtime and the types agree. Only apps that touch WordPress carry them.
     if schema.wp_views {
@@ -424,7 +430,7 @@ pub fn gen_ts(schema: &Schema) -> String {
     );
     let has_config = !schema.globals.is_empty() || !schema.jobs.is_empty();
     if has_config {
-        out.push_str("import type config from \"./zero.config\";\n");
+        out.push_str("import type config from \"../../zero.config\";\n");
     }
     out.push_str("type Entities = {\n");
     for c in schema.collections.values() {

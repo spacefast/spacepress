@@ -1942,6 +1942,13 @@ impl<'p> Evaluator<'p> {
                     "call generators inside hooks and actions, which run in PHP",
                 );
             }
+            ExprKind::Jsx(_) => {
+                return err_help(
+                    e.span,
+                    "JSX at the top level of a module",
+                    "Zero renders JSX only while a component runs; return it from a function, e.g. `const Icon = () => <svg …/>`",
+                );
+            }
             ExprKind::Await(_) => {
                 return err_help(
                     e.span,

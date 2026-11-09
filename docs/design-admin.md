@@ -200,7 +200,7 @@ in Spacefast's repository and is not imported).
 ### 2.1 The plugin
 
 ```
-.zero/wp-content/plugins/zero-admin/
+zero/dist/wp-content/plugins/zero-admin/
   zero-admin.php          header below; rewrite rule, menu entry, page render, module registration
   lib/                    registration APIs, kept REST controllers, menu builder, i18n, legacy bridge
   build/                  committed JS/CSS modules + index.php + THIRD-PARTY-LICENSES.txt + .manifest.json

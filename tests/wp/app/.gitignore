@@ -1,4 +1,5 @@
 zero/
-zero.gen.ts
+zero/_generated/db.d.ts
 .zero/*
 !.zero/sync-base.json
+zero/dist/

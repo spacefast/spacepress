@@ -12,7 +12,7 @@ type HookFunctions = indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<
 
 pub struct Built {
     pub plugins: Option<wp_plugins::Config>,
-    /// Every file under `zero/client/`.
+    /// Every file under `zero/_generated/client/`.
     pub client_files: Vec<(String, Vec<u8>)>,
     pub schema: schema::Schema,
     pub functions_php: String,
@@ -25,7 +25,7 @@ pub struct Built {
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
     pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
-    /// `zero/plugins.lock.json` as this build settled it (None without plugins or a lock).
+    /// `zero/_generated/plugins.lock.json` as this build settled it (None without plugins or a lock).
     pub plugin_lock: Option<serde_json::Value>,
     /// What changed in the lock, one line each, for the command line.
     pub plugin_changes: Vec<String>,
@@ -54,7 +54,7 @@ pub fn moved_ledger() -> Diag {
 pub struct Previous {
     pub snapshot: serde_json::Value,
     pub next_migration: u32,
-    /// Refuse any plugin grant `zero/plugins.lock.json` doesn't already hold (CI, `--frozen`).
+    /// Refuse any plugin grant `zero/_generated/plugins.lock.json` doesn't already hold (CI, `--frozen`).
     pub frozen: bool,
 }
 
@@ -133,6 +133,15 @@ pub fn build(
     previous: impl FnOnce() -> Result<Previous, Diag>,
     runtime: impl Fn(&str) -> Option<&'static [u8]>,
 ) -> Result<Built, Diag> {
+    // A checkout from before `zero/_generated/` would have its locks ignored (and replaced) and an old
+    // client loaded as app code. A stored source bundle maps those paths instead (`layout::current`).
+    let root = program.modules[program.entry]
+        .path
+        .parent()
+        .expect("the entry has a directory");
+    if let Some((message, help)) = crate::layout::old_in_checkout(|p| program.fs.exists(p), root) {
+        return Err(Diag::new(Span::NONE, message).help(help).phase(diag::Code::Schema));
+    }
     let mut ev = eval::Evaluator::new(program);
     let config = ev.run().map_err(|d| d.phase(diag::Code::Evaluation))?;
     let config_span = Span {
@@ -147,6 +156,7 @@ pub fn build(
     let mut ext =
         extract::extract(&config, &mut ev, config_span, &dir_name).map_err(|d| d.phase(diag::Code::Schema))?;
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
@@ -235,6 +245,9 @@ pub fn build(
             Slot::JobHandler { job } => schema.jobs.get_mut(&job).expect("job").handler = name,
             Slot::RouteHandler { route } => schema.routes.get_mut(&route).expect("route").handler = name,
             Slot::WpHook { index } => schema.wp_hooks[index].handler = name,
+            Slot::Component { name: component } => {
+                schema.components.insert(component, name);
+            }
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
             Slot::Access { owner, op } => {
                 let rule = Access::Fn(name);
@@ -429,6 +442,33 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
     Ok(())
 }
 
+/// Every function exported from a `zero/components/` file under a capitalized name becomes a
+/// compiled component, called with one props object (docs/decisions/2026-11-08-tsx-to-php.md).
+/// The capital is React's own rule for what a JSX tag can name; other exports are helpers and are
+/// ignored, as in any module.
+fn components(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
+    use crate::value::Value;
+    for (path, module) in &program.components {
+        let exports = ev.run_module(*module)?;
+        for (export, value) in &exports {
+            let Value::Closure(closure) = value else { continue };
+            if !export.starts_with(|c: char| c.is_ascii_uppercase()) {
+                continue;
+            }
+            let stem = path.trim_end_matches(".tsx");
+            ext.roots.push(extract::Root {
+                closure: closure.clone(),
+                slot: Slot::Component {
+                    name: format!("{path}#{export}"),
+                },
+                name: format!("component__{}__{export}", extract::slugify_name(stem).replace('-', "_")),
+                plugin: None,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The committed plugin grant, read like the other compiler inputs; absent until the first build.
 fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<serde_json::Value>, Diag> {
     if !program.fs.exists(path) {
@@ -441,7 +481,7 @@ fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<ser
     serde_json::from_str(&text).map(Some).map_err(|e| bad(e.to_string()))
 }
 
-/// `zero/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
+/// `zero/_generated/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
 /// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
 /// browser read the same lock the command line does. Absent means no locked abilities.
 fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {

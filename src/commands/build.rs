@@ -1,7 +1,7 @@
 use crate::diag::{Diag, Span};
 use crate::emit::{emit_generated, plugin_vars, runtime_file, write};
 use crate::pipeline::{self, Built};
-use crate::{diag, loader, platform, schema_php, wp_plugins};
+use crate::{diag, layout, loader, platform, schema_php, wp_plugins};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -103,7 +103,7 @@ fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     file.write_all(content.as_ref())
 }
 
-/// Writes migrations, the snapshot, zero.gen.ts and the typed client into the project (committed).
+/// Writes `zero/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks and the typed client.
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
@@ -115,14 +115,14 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
             serde_json::to_string_pretty(&built.snapshot)? + "\n",
         )?;
     }
-    write(&project.join("zero.gen.ts"), &built.gen_ts)?;
+    write(&project.join(layout::DB_TYPES), &built.gen_ts)?;
     if let Some(lock) = &built.plugin_lock {
         write(
             &project.join(crate::plugins::LOCK_PATH),
             serde_json::to_string_pretty(lock)? + "\n",
         )?;
     }
-    let client_dir = project.join("zero").join("client");
+    let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
     }
@@ -199,10 +199,12 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
             .map_err(|e| std::io::Error::other(format!("cannot acquire build lock {}: {e}", path.display())))?;
         Ok(Guard(path, file))
     }
-    let lock = project.join("zero/wp-plugins.lock.json");
+    let lock = project.join(layout::WP_PLUGINS_LOCK);
     std::fs::create_dir_all(lock.parent().unwrap())?;
-    // Serialize the project lockfile and publication to a shared output root.
-    let _project_guard = guard(project.join("zero/.wp-plugins.build.lock"))?;
+    // Serialize the project lockfile and publication to a shared output root. The guard lives in
+    // the Zero root, which no output may contain (checked above), so publication never renames it
+    // away while a build holds it.
+    let _project_guard = guard(project.join(layout::ROOT).join(".wp-plugins.build.lock"))?;
     let _output_guard = guard(parent.join(format!(
         ".{}.zero-build.lock",
         root.file_name().unwrap().to_string_lossy()
@@ -414,7 +416,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("error: {e}");
         return ExitCode::from(1);
     }
-    let root = args.out.clone().unwrap_or_else(|| project.join(".zero/wp-content"));
+    let root = args.out.clone().unwrap_or_else(|| project.join(layout::WP_CONTENT));
     let out = match emit_wp_content(&project, &root, &built) {
         Ok(directory) => directory,
         Err(error) => {

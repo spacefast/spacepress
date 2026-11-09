@@ -41,7 +41,7 @@ MD
 "$target/debug/zero" compile-sources "$app/source-1" "$app/compiled-1" "$app/source-1"
 # Native build acquires the harness's pinned platform dependencies; execute the hosted plugins.
 "$target/debug/zero" build "$app/project" --quiet >/dev/null
-rsync -a "$app/project/.zero/wp-content/" "$app/content/"
+rsync -a "$app/project/zero/dist/wp-content/" "$app/content/"
 rsync -a "$app/compiled-1/plugins/" "$app/content/plugins/"
 "$here/harness.sh" up --wp-content "$app/content" > "$app/harness.json"
 "$here/harness.sh" wp zero migrate > /dev/null

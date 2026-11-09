@@ -5,7 +5,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import type { Actions, Collections, User } from "../../zero/client/types.ts";
+import type { Actions, Collections, User } from "../../zero/_generated/client/types.ts";
 import { logRenewal, zero } from "./client";
 
 type Subscription = Collections["subscriptions"]["row"];

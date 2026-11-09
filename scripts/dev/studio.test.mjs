@@ -108,7 +108,8 @@ test('watch inputs include imported TypeScript and public files without reacting
   const second = await sourceDigest(project);
   assert.notEqual(second, first);
   await waitForDigest(second);
-  await writeFile(join(project, 'zero.gen.ts'), 'generated');
+  await mkdir(join(project, 'zero/_generated'), { recursive: true });
+  await writeFile(join(project, 'zero/_generated/db.d.ts'), 'generated');
   for (let build = 0; build < 16; build++) {
     const staged = join(plugins, `.zero-app-watch-${build}`);
     const previous = `${staged}.previous`;

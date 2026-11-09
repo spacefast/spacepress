@@ -85,6 +85,13 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "`notes` names two things: at zero.config.ts:3 and here",
         "zero/schema.ts:2:22",
     );
+    // "zero:db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
+    // the app's kinds): refused at the statement, not a crash.
+    rejects(
+        "reject-db-reexport",
+        "\"zero:db\" can't be re-exported",
+        "zero/kinds.ts:2:1",
+    );
     // A default export has no name to register under.
     rejects(
         "reject-default-export-kind",

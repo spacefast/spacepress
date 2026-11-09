@@ -54,7 +54,9 @@ export const like = action({ input: { id: integer().notNull() }, async handler({
 - A value both exported and listed in a `defineConfig` registry is one
   registration.
 - `import { notes } from "zero:db"` gives a registered kind by name, from any
-  module and in any load order. An unknown name is refused at the import with
+  module (including `zero/wp-hooks/` files) and in any load order. It can't
+  be re-exported, and plugin packages can't import it: a plugin takes the
+  app's kinds as options. An unknown name is refused at the import with
   the closest one. Types come from `zero/_generated/db.d.ts`.
 
 ## WordPress plugins

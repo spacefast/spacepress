@@ -79,14 +79,14 @@ pub struct Program {
     pub entry: usize,
     /// The source of these modules; later passes that look beside them (sync directories) ask it.
     pub fs: Rc<dyn Fs>,
-    /// `wp-hooks/` handler files beside the entry, in registration order (see [`wp_hook_files`]).
+    /// `zero/wp-hooks/` handler files, in registration order (see [`wp_hook_files`]).
     pub wp_hooks: Vec<WpHookFile>,
     /// Every app module under `zero/` (see [`app_files`]), in path order. Each one's exported kinds,
     /// actions and jobs register by export name, whatever imports it.
     pub app_modules: Vec<usize>,
 }
 
-/// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
+/// One `zero/wp-hooks/` file: `zero/wp-hooks/<hook>.ts`, or `zero/wp-hooks/<hook>/<file>.ts`.
 #[derive(Debug, Clone)]
 pub struct WpHookFile {
     pub hook: String,
@@ -220,7 +220,8 @@ pub fn app_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>> {
 /// The WordPress hooks directory: one file or directory per hook name (docs/spec/spec.md §1).
 pub const WP_HOOKS_DIR: &str = "zero/wp-hooks";
 
-/// `wp-hooks/<hook>.ts` and `wp-hooks/<hook>/*.ts`, as `(hook, order, path)` sorted by hook, then by
+/// `zero/wp-hooks/<hook>.ts` and `zero/wp-hooks/<hook>/*.ts` (tests aside), as `(hook, order, path)`
+/// sorted by hook, then by
 /// file name. Anything else in the directory is an error that names it: a non-`.ts` file would
 /// otherwise be silently skipped, and the author would wonder why their handler never runs.
 pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, PathBuf)>> {
@@ -243,11 +244,20 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
     };
     let ts =
         |p: &Path| p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p);
+    // Colocated tests belong to the test runner, as under the rest of `zero/` (see [`app_files`]).
+    let test = |p: &Path| {
+        let name = p.file_name().unwrap_or_default().to_string_lossy();
+        name.ends_with(".test.ts") || name.ends_with(".spec.ts")
+    };
     let mut out = Vec::new();
     for path in listing(dir)? {
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if test(&path) {
+            continue;
+        }
         if fs.is_dir(&path) {
-            for (order, file) in listing(&path)?.into_iter().enumerate() {
+            let files: Vec<PathBuf> = listing(&path)?.into_iter().filter(|f| !test(f)).collect();
+            for (order, file) in files.into_iter().enumerate() {
                 if !ts(&file) {
                     return Err(refuse(&file, "not a .ts handler file"));
                 }
@@ -294,6 +304,22 @@ fn load_module(
         commonjs,
         type_names,
     } = parse(fs, &source, path, file, id, diagnostics)?;
+    // `"zero:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
+    // them on under another module's name, which no evaluator path resolves.
+    for stmt in &body {
+        if let Stmt::ExportNames {
+            from: Some(from), span, ..
+        }
+        | Stmt::ExportAll { from, span } = stmt
+            && from == DB_MODULE
+        {
+            diagnostics.push(
+                Diag::new(*span, "\"zero:db\" can't be re-exported")
+                    .help("import the kinds where they're used: `import { posts } from \"zero:db\"`")
+                    .code(diag::Code::Import),
+            );
+        }
+    }
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
     let commonjs = commonjs.map(|CommonJs { names, requires }| {

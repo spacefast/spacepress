@@ -288,6 +288,11 @@ struct Local {
     /// A PHP JsObject parameter whose binding is never replaced, including by captures.
     native_object: bool,
     initialized: bool,
+    /// Set on an uninitialized `const`/`let` whose whole initializer is a function expression:
+    /// closures inside that initializer may capture the binding, since none of them can run
+    /// before the declaration assigns it. The type their reads see; `Unknown` when TypeScript
+    /// gives none, which refuses the reference (docs/decisions/2026-11-09-self-referencing-bindings.md).
+    self_closure: Option<Ty>,
 }
 
 /// Binding reads may be widened by runtime effects independently of what the
@@ -1385,6 +1390,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 view: Vec::new(),
                 native_object: false,
                 initialized: true,
+                self_closure: None,
             },
         );
         php
@@ -1436,10 +1442,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut functions = vec![fx.function];
         let mut outer = fx.outer.as_deref();
         let mut found = None;
+        let mut by_reference = false;
         while let Some(o) = outer {
             if let Some(l) = o.scopes.iter().rev().find_map(|s| s.get(name)) {
-                require_initialized_local(name, l, span)?;
-                found = Some(l.clone());
+                let mut l = l.clone();
+                // A closure in its own binding's initializer: read through a PHP reference, since
+                // the closure is created before the binding is assigned.
+                if let (false, Some(ty)) = (l.initialized, l.self_closure.take()) {
+                    if ty == Ty::Unknown {
+                        return err_help(
+                            span,
+                            format!("`{name}` refers to itself before its type is known"),
+                            format!(
+                                "annotate every parameter and the return type, e.g. `const {name} = (n: number): number => ...`"
+                            ),
+                        );
+                    }
+                    l.ty = ty.clone();
+                    l.constraint = ty;
+                    l.initialized = true;
+                    by_reference = true;
+                }
+                require_initialized_local(name, &l, span)?;
+                found = Some(l);
                 break;
             }
             functions.push(o.function);
@@ -1463,7 +1488,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(caps) = &mut c.captures
                     && !caps.iter().any(|(n, _)| *n == var)
                 {
-                    caps.push((var.clone(), l.mutable));
+                    caps.push((var.clone(), l.mutable || by_reference));
                 }
                 cur = c.outer.as_deref_mut();
             }
@@ -1644,6 +1669,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     None => None,
                 };
+                if let (Pat::Id(name, binding), Some(f)) = (pat, init.as_ref().and_then(function_initializer)) {
+                    let ty = match &declared {
+                        Some(d @ Ty::Fn(..)) => d.clone(),
+                        _ => self.declared_signature(f)?.unwrap_or(Ty::Unknown),
+                    };
+                    if let Some(local) = self.fx().scopes.last_mut().expect("scope").get_mut(name)
+                        && local.binding == *binding
+                    {
+                        local.self_closure = Some(ty);
+                    }
+                }
                 let value = match init {
                     Some(e) => {
                         let v = self.expr(e)?;
@@ -2955,6 +2991,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         view,
                         native_object: false,
                         initialized: true,
+                        self_closure: None,
                     },
                 );
                 continue;
@@ -10041,12 +10078,41 @@ fn pad(n: usize) -> String {
     "    ".repeat(n)
 }
 
+/// The function expression a declaration's whole initializer evaluates to, through type-only
+/// wrappers. Evaluating it runs none of its body, so nothing inside can run before the binding
+/// holds it. A named function expression is lowered to `(() => { function name() {} return
+/// name; })()`, which only declares and returns the function, so it counts too.
+fn function_initializer(init: &Expr) -> Option<&Rc<Func>> {
+    match &init.kind {
+        ExprKind::Func(f) => Some(f),
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => function_initializer(inner),
+        ExprKind::Call { callee, args, .. } if args.is_empty() => {
+            let ExprKind::Func(wrapper) = &callee.kind else {
+                return None;
+            };
+            let FnBody::Block(body) = &wrapper.body else {
+                return None;
+            };
+            match (
+                wrapper.params.is_empty() && !wrapper.is_async && !wrapper.is_generator,
+                body.as_slice(),
+            ) {
+                (true, [Stmt::Func(f), Stmt::Return(Some(returned), _)]) if matches!((&f.name, &returned.kind), (Some(name), ExprKind::Ident(r)) if name == r) => {
+                    Some(f)
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 fn require_initialized_local(name: &str, local: &Local, span: Span) -> Result<()> {
     if !local.initialized {
         return err_help(
             span,
             format!("`{name}` is referenced before its lexical declaration"),
-            "initialize the lexical binding before reading it or creating a closure that captures it",
+            "initialize the lexical binding before reading it or creating a closure that captures it; a closure may capture its own binding only when it is the whole initializer, as in `const f = (n) => f(n - 1)`",
         );
     }
     Ok(())

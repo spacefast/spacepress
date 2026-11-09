@@ -20,3 +20,57 @@ export function hoistedVar() {
   const fn = function f(flag) { if (flag) { var f; } f = 2; return f; };
   return [fn(true), fn(false)];
 }
+
+// A const arrow or function expression that names its own binding: the closure is the whole
+// initializer, so it can only run after the binding holds it.
+export function selfBound() {
+  const fact = n => (n <= 1 ? 1 : n * fact(n - 1));
+  const fib = n => (n < 2 ? n : fib(n - 1) + fib(n - 2));
+  const sum = function (list) { return list.length === 0 ? 0 : list[0] + sum(list.slice(1)); };
+  const both = function inner(n) { return n <= 0 ? 0 : 1 + both(n - 1) + inner(0); };
+  let countdown = n => (n <= 0 ? "done" : countdown(n - 1));
+  const original = countdown;
+  countdown = () => "replaced";
+  const shadowParam = (shadowParam, n) => (n <= 0 ? shadowParam : shadowParam + 1);
+  const shadowInner = n => { const shadowInner = n * 2; return shadowInner; };
+  const nested = n => { const step = m => (m <= 0 ? 0 : 1 + nested(m - 1)); return step(n); };
+  const perIteration = [];
+  for (let i = 0; i < 3; i++) {
+    const again = n => (n <= 0 ? i : again(n - 1));
+    perIteration.push(again);
+  }
+  return [
+    fact(5), fib(10), sum([1, 2, 3, 4]), both(3), original(4),
+    shadowParam(7, 1), shadowInner(5), nested(4), perIteration.map(f => f(2)),
+  ];
+}
+
+// Async and generator function expressions naming their own binding.
+export async function selfBoundSuspending() {
+  const depth = async n => (n <= 0 ? 0 : 1 + (await depth(n - 1)));
+  const countdown = function* (n) { if (n > 0) { yield n; yield* countdown(n - 1); } };
+  return [await depth(3), [...countdown(3)]];
+}
+
+// picomatch 4.0.7 lib/parse.js `parse.fastpaths`: a recursive const arrow in a switch default.
+export function fastpath(input) {
+  const star = "[^/]*?";
+  const create = str => {
+    switch (str) {
+      case "*":
+        return `(?!\\.)${star}`;
+      case "**":
+        return "(?:.*)";
+      case "*.*":
+        return `(?!\\.)${star}\\.${star}`;
+      default: {
+        const match = /^(.*?)\.(\w+)$/.exec(str);
+        if (!match) return;
+        const source = create(match[1]);
+        if (!source) return;
+        return source + "\\." + match[2];
+      }
+    }
+  };
+  return [create(input), create("a.b.c"), create("*.md"), create("*.*.ts"), String(create("a/b"))];
+}

@@ -188,9 +188,16 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields
                 $v = $db->current(static fn () => \Zero\FieldAccess::effectiveGroup('update', $def, $v, $before[$col] ?? null, $viewer));
             }
             $norm = Schema::normalize($def, $v, $col, $ptr);
-            Schema::checkRules($def, $norm, $col, $ptr, ['data' => [$col => $norm], 'user' => WpAuth::current()]);
             $norms[$col] = $norm;
             $values[$col] = Schema::store($def, $norm);
+        }
+        if ($norms !== []) {
+            // Rules see the row as it will be, as Db::checkValues gives them: a rule may read another field.
+            $before ??= $db->editorRow($this->collection, (int) $object_id) ?? [];
+            $ctx = ['data' => $norms + $before, 'user' => WpAuth::current()];
+            foreach ($norms as $col => $norm) {
+                Schema::checkRules($fields[$col], $norm, (string) $col, HttpError::seg((string) $col), $ctx, $this->spec()['columns']);
+            }
         }
         // Media ids must name attachments (of an accepted kind), as every other write path checks.
         $db->checkMedia($fields, $norms);

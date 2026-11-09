@@ -332,8 +332,22 @@ final class SchemaCheck
             }
             $sql .= ' WHERE ' . str_replace('{col}', '`' . str_replace('`', '``', $column) . '`', $where);
         }
+        // A count that can't be taken (the condition overflowed on some row, say) is never a zero:
+        // that would let the change through unmeasured.
+        try {
+            $n = $this->db->run($sql)[0]['n'] ?? null;
+        } catch (DbError $e) {
+            throw new SchemaRefused([['code' => 'check_failed', 'name' => (string) ($check['name'] ?? $table), 'table' => $table, 'rows' => 0,
+                'message' => "Couldn't count the rows {$check['name']} would change: " . $e->getMessage(),
+                'fix' => 'Nothing was changed. Report this with the message; the values in that column need a look before the change can run.']]);
+        }
+        if (!is_numeric($n)) {
+            throw new SchemaRefused([['code' => 'check_failed', 'name' => (string) ($check['name'] ?? $table), 'table' => $table, 'rows' => 0,
+                'message' => "Couldn't count the rows {$check['name']} would change: the count returned no row.",
+                'fix' => 'Nothing was changed. Report this; the change can\'t run until it can be measured.']]);
+        }
 
-        return (int) $this->db->run($sql)[0]['n'];
+        return (int) $n;
     }
 
     /** @var array<string, array<string, true>> table => columns pending statements add */

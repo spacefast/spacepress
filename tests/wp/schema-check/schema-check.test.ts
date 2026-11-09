@@ -236,15 +236,18 @@ test("text becoming a boolean or an integer is checked as text, and integers aga
   assert.ok(applied().includes("0010_update"), "adding text fields needs nothing");
   // MySQL reads 'yes' as 0 and clamps a value past BIGINT's range: each would pass a numeric check.
   sql("INSERT INTO wp_zero_tags (name, flag, count) VALUES ('a', 'yes', '7'), ('b', '1', '99999999999999999999'), ('c', '0', '-9223372036854775808'), ('d', NULL, '007')");
+  // Look-alikes the column's accent-insensitive collation equates with '1': each would become 0.
+  sql("INSERT INTO wp_zero_tags (name, flag, count) VALUES ('w', '１', '1'), ('x', '١', '1'), ('y', '¹', '1'), ('z', '1 ', '1')");
   install("retyped");
   const before = tags();
   const error = refused();
   assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [
-    ["value_does_not_fit", "tags.flag", 1],
+    ["value_does_not_fit", "tags.flag", 5],
     ["value_does_not_fit", "tags.count", 2],
   ]);
   assert.deepEqual(tags(), before, "nothing was converted");
   // Fixed by hand: the in-range values (including BIGINT's minimum) then convert unchanged.
+  sql("DELETE FROM wp_zero_tags WHERE name IN ('w', 'x', 'y', 'z')");
   sql("UPDATE wp_zero_tags SET flag = '1' WHERE flag = 'yes'");
   sql("UPDATE wp_zero_tags SET count = '9223372036854775807' WHERE name = 'b'");
   sql("UPDATE wp_zero_tags SET count = '7' WHERE count = '007'");
@@ -266,4 +269,48 @@ test("a field made required and narrower in one change refuses a too-long value,
   sql("UPDATE wp_zero_tags SET name = 'a' WHERE name IS NULL");
   assert.ok(applied().includes("0012_update"));
   assert.deepEqual(sql("SELECT name FROM wp_zero_tags ORDER BY id").map((r) => r.name), ["a", "b", "c", "d"]);
+});
+
+test("an integer becoming a real refuses what a DOUBLE can't hold, BIGINT's minimum included", () => {
+  install("toReal");
+  // BIGINT's minimum overflows ABS(); 2^53 + 1 has no exact DOUBLE and would become 2^53.
+  sql("UPDATE wp_zero_tags SET count = -9223372036854775808 WHERE name = 'a'");
+  sql("UPDATE wp_zero_tags SET count = 9007199254740993 WHERE name = 'd'");
+  const before = sql("SELECT name, count FROM wp_zero_tags ORDER BY id");
+  const error = refused();
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["value_does_not_fit", "tags.count", 4]]);
+  assert.deepEqual(sql("SELECT name, count FROM wp_zero_tags ORDER BY id"), before, "nothing was converted");
+  // Exactly 2^53 and -2^53 fit; the change then applies and keeps them exact.
+  sql("UPDATE wp_zero_tags SET count = 9007199254740992 WHERE name IN ('a', 'b')");
+  sql("UPDATE wp_zero_tags SET count = -9007199254740992 WHERE name IN ('c', 'd')");
+  assert.ok(applied().includes("0013_update"));
+  assert.deepEqual(sql("SELECT name, CAST(count AS DECIMAL(20,0)) AS count FROM wp_zero_tags ORDER BY id"), [
+    { name: "a", count: "9007199254740992" }, { name: "b", count: "9007199254740992" },
+    { name: "c", count: "-9007199254740992" }, { name: "d", count: "-9007199254740992" },
+  ]);
+});
+
+test("a check whose count errors refuses with check_failed, never reading as zero rows", () => {
+  // The condition the integer-to-real check used before: ABS() overflows on BIGINT's minimum
+  // (MariaDB ERROR 1690), so the count fails. Written by hand, as an older build would have shipped it.
+  sql("CREATE TABLE wp_zero_overflow (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, n BIGINT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  sql("INSERT INTO wp_zero_overflow (n) VALUES (-9223372036854775808), (9007199254740993)");
+  const live = process.env.ZERO_SCHEMA_CHECK_LIVE ?? "";
+  const file = `${live}/plugins/zero-app-schema-check/zero/app/migrations/9001_overflow.sql`;
+  execFileSync("sh", ["-c", `printf '%s' "$0" > "$1"`,
+    '-- zero-check {"check":"narrow","name":"overflow.n","table":"{prefix}zero_overflow","column":"n","fits":"ABS({col}) <= 9007199254740992","adopted":false}\nALTER TABLE `{prefix}zero_overflow` MODIFY COLUMN `n` DOUBLE;',
+    file]);
+  try {
+    const before = sql("SELECT n FROM wp_zero_overflow ORDER BY id");
+    const error = refused();
+    assert.deepEqual(error.refusals.map((r) => [r.code, r.name]), [["check_failed", "overflow.n"]]);
+    // wpdb reports the overflow as an empty result, not an error: the count has no row, and refuses.
+    assert.match(error.refusals[0].message, /returned no row|out of range|1690/i);
+    assert.deepEqual(sql("SELECT n FROM wp_zero_overflow ORDER BY id"), before, "nothing was converted");
+    assert.equal(sql("SELECT DATA_TYPE AS t FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_zero_overflow' AND COLUMN_NAME = 'n'")[0].t, "bigint");
+    assert.ok(!ledger().includes("9001_overflow"));
+  } finally {
+    execFileSync("rm", ["-f", file]);
+    sql("DROP TABLE wp_zero_overflow");
+  }
 });

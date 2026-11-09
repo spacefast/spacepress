@@ -445,9 +445,12 @@ impl Renames {
 /// a value must meet to survive the change, or None when every value of `before` fits `after`.
 /// `"false"` means no value survives: any non-null value refuses.
 ///
-/// Text is always compared as text: MySQL compares a string with a number as a number, so
-/// `'yes' IN (0, 1)` holds (`'yes'` is 0) and the value would silently become 0. Integers are
-/// checked against their type's range as well as their shape, since out-of-range text is clamped.
+/// Text is always compared as text, byte for byte: MySQL compares a string with a number as a number
+/// (`'yes' IN (0, 1)` holds, `'yes'` is 0), and the column's accent-insensitive collation equates
+/// `'１'` (fullwidth) or `'١'` (Arabic-Indic) with `'1'`. Patterns match bytes for the same reason.
+/// Integers are checked against their type's range as well as their shape, since out-of-range text
+/// is clamped. No condition may overflow: a count that errors refuses (SchemaCheck::count), and a
+/// condition that can't be computed for some row must not read as passing.
 fn fits(before: &Json, after: &Json) -> Option<String> {
     let render = |c: &Json| column_sql("{col}", c);
     let ty = |c: &Json| -> &'static str {
@@ -473,7 +476,7 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
     // a text comparison against the bound (equal lengths compare as numbers do).
     let digits = |sign: &str, bound: &str| {
         format!(
-            "({col} REGEXP '^{sign}(0|[1-9][0-9]*)$' AND (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) < {len} OR (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) = {len} AND TRIM(LEADING '-' FROM {col}) <= '{bound}')))",
+            "({col} REGEXP BINARY '^{sign}(0|[1-9][0-9]*)$' AND (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) < {len} OR (CHAR_LENGTH(TRIM(LEADING '-' FROM {col})) = {len} AND BINARY TRIM(LEADING '-' FROM {col}) <= '{bound}')))",
             len = bound.len()
         )
     };
@@ -494,19 +497,22 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
         ("unsigned", "bigint") => Some(format!("{col} <= 9223372036854775807")),
         ("bigint", "unsigned") => Some(format!("{col} >= 0")),
         ("boolean", "bigint" | "unsigned" | "double") => None,
-        ("bigint" | "unsigned", "double") => Some(format!("ABS({col}) <= 9007199254740992")),
+        // Not ABS(): it overflows on BIGINT's minimum, and an erroring count must never pass.
+        ("bigint" | "unsigned", "double") => Some(format!("{col} BETWEEN -9007199254740992 AND 9007199254740992")),
         ("double", "bigint") => Some(format!(
             "{col} = FLOOR({col}) AND {col} >= -9223372036854775808 AND {col} < 9223372036854775808"
         )),
         ("double", "unsigned") => Some(format!(
             "{col} = FLOOR({col}) AND {col} >= 0 AND {col} < 18446744073709551616"
         )),
-        ("text", "boolean") => Some(format!("{col} IN ('0', '1')")),
+        ("text", "boolean") => Some(format!("BINARY {col} IN ('0', '1')")),
         (_, "boolean") => Some(format!("{col} IN (0, 1)")),
         ("text", "bigint") => Some(signed),
         ("text", "unsigned") => Some(unsigned),
+        // A decimal of at most 15 significant digits (what a DOUBLE holds exactly), no exponent: an
+        // exponent could overflow the conversion, and more digits would be rounded.
         ("text", "double") => Some(format!(
-            "{col} REGEXP '^-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?$' AND ABS(CAST({col} AS DOUBLE)) < 1.7976931348623157e308"
+            "{col} REGEXP BINARY '^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$' AND CHAR_LENGTH(REPLACE(REPLACE(TRIM(LEADING '-' FROM {col}), '.', ''), '-', '')) <= 15"
         )),
         _ => Some("false".into()),
     }
@@ -1240,7 +1246,7 @@ mod tests {
                 .to_string()
         };
         // `'yes' IN (0, 1)` holds in MySQL ('yes' is 0); compared as text it doesn't.
-        assert_eq!(fits_for("boolean"), "{col} IN ('0', '1')");
+        assert_eq!(fits_for("boolean"), "BINARY {col} IN ('0', '1')");
         let bigint = fits_for("integer");
         assert!(
             bigint.contains("'9223372036854775807'") && bigint.contains("'9223372036854775808'"),

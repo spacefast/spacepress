@@ -3607,8 +3607,6 @@ fn language_constructs_match_node_through_generated_php() {
     }
 }
 
-/// Type-level rules of the language constructs added for 0.8 apps (zero#138): each source either
-/// checks cleanly or is refused with the named diagnostic, matching TypeScript or JavaScript.
 /// A token parser shaped like picomatch's `parse()`: each branch writes through `prev`,
 /// `prev.prev` and `prev.prev.prev`, so the effect places below those bindings multiply past
 /// the solver's widening threshold. The solve restarts with them widened
@@ -3725,6 +3723,8 @@ echo json_encode($out);
     assert_eq!(actual, expected);
 }
 
+/// Type-level rules of the language constructs added for 0.8 apps (zero#138): each source either
+/// checks cleanly or is refused with the named diagnostic, matching TypeScript or JavaScript.
 #[test]
 fn language_construct_type_rules() {
     let cases: &[(&str, &str, Option<&str>)] = &[

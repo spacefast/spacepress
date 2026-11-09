@@ -35,6 +35,7 @@ Largest group in the exact solve, measured at the end of each pass:
 | `tests/differential/cases.ts` | 42 | 465 | 424,225 |
 | `language/bitwise.ts` | 22 | 61 | 19,152 |
 | `language/destructuring-assignment.ts` | 15 | 145 | |
+| `tests/differential/class-private.ts` (through `class-private-lib.mjs`) | 249 | | 610,072 exact, 406,504 widened |
 | every other program of the 106 that reach the effects pass | ≤ 12 | ≤ 79 | ≤ 40,819 |
 | `pm5` (`parse.js` alone) | 766 | 155 | 10.9M (13 s, 5.0 GB) |
 | `pm3` (makeRe app), after 3 passes | 4,664 | 782 | 26M and still growing |
@@ -229,9 +230,12 @@ measurements below come from the prototype that preceded the implementation.
 | 256 | 63 s | 10.8 GB | 3 | 214 |
 | widen every JavaScript-owned binding from the start | 3.3 s | 0.63 GB | 0 | all |
 
-The largest JavaScript-owned group in any existing program is 42 (`cases.ts`); the next are
-22 (`language/bitwise.ts`) and 15 (`language/destructuring-assignment.ts`). So 64 leaves a
-margin of 1.5× over the largest. Widening every JavaScript-owned binding from the start was
+Among the 106 measured programs the largest JavaScript-owned group is 42 (`cases.ts`); the next
+are 22 (`language/bitwise.ts`) and 15 (`language/destructuring-assignment.ts`). So 64 leaves a
+margin of 1.5× over those. One existing program outside that set does cross it:
+`tests/differential/class-private.ts`, whose `class-private-lib.mjs` has groups of 249. It
+widens 22 bindings; every exact fact is still covered by the widened result (609,087 checked),
+`reassigned` and `captured` are unchanged, and its build and Node-parity output are identical. Widening every JavaScript-owned binding from the start was
 rejected, because it refuses `language/bitwise.ts`. The first diagnostic with widening is `` `SyntaxError` isn't
 defined ``. For `pm5` it is at `parse.js:368`. For `pm3` it is at `parse.js:1344`, the same
 `throw new SyntaxError(...)` in `parse.fastpaths`, which `makeRe` reaches first. The
@@ -280,6 +284,10 @@ Programs under the threshold are unchanged:
 - The `ZERO_DEBUG_EFFECTS` dumps of all 106 programs that reach the solver are
   byte-identical to `origin/main`, and so are their `zero check --json` outputs.
 - `zero build` of all 200 programs gives byte-identical output trees and identical refusals.
+- A wider check of 238 programs (the 200 plus `class-private`, `host-globals` and the rest of
+  `tests/differential/`) found one that crosses the threshold, `class-private.ts`. Its dump
+  differs; the other 137 that reach the solver are byte-identical, and all 238 have identical
+  `check --json` output, build trees and refusals.
 
 ## Not solved here
 

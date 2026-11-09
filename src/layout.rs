@@ -32,6 +32,58 @@ const MOVED: &[(&str, &str)] = &[
     ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
 ];
 
+/// Committed files a live checkout may still have at their place before `zero/_generated/`: (old,
+/// new, what goes wrong if it is left there). A stored source bundle is frozen data and reads its
+/// old paths through [`current`]; a checkout is refused, so nothing is silently ignored or loaded.
+const OLD_IN_CHECKOUT: &[(&str, &str, &str)] = &[
+    (
+        "zero/plugins.lock.json",
+        "zero/_generated/plugins.lock.json",
+        "its grants would be ignored and a new lock written that grants everything the plugins use",
+    ),
+    (
+        "zero/wp-plugins.lock.json",
+        "zero/_generated/wp-plugins.lock.json",
+        "the plugins it pins would be resolved again",
+    ),
+    (
+        "zero/abilities.json",
+        "zero/_generated/abilities.json",
+        "the abilities it locks would be unknown",
+    ),
+    (
+        "zero/client",
+        "zero/_generated/client",
+        "its files would load as app code from zero/",
+    ),
+    (
+        "zero.gen.ts",
+        "zero/_generated/db.d.ts",
+        "editors would read the old registration",
+    ),
+];
+
+/// The first committed file a checkout still keeps at its place from before `zero/_generated/`, as
+/// (message, help). Callers refuse to build: see [`OLD_IN_CHECKOUT`] for why each one matters.
+pub fn old_in_checkout(
+    exists: impl Fn(&std::path::Path) -> bool,
+    project: &std::path::Path,
+) -> Option<(String, String)> {
+    OLD_IN_CHECKOUT
+        .iter()
+        .find(|(old, ..)| exists(&project.join(old)))
+        .map(|(old, new, why)| {
+            let parent = std::path::Path::new(new)
+                .parent()
+                .expect("under zero/_generated")
+                .display();
+            (
+                format!("{old} moved to {new}; left where it is, {why}"),
+                format!("move it with `mkdir -p {parent} && git mv {old} {new}`, then build again"),
+            )
+        })
+}
+
 /// A captured project path on this layout: an input that moved into `zero/_generated/` is renamed,
 /// everything else is unchanged.
 pub fn current(path: &str) -> String {

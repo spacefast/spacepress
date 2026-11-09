@@ -1930,6 +1930,64 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let moved = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
     assert!(!migrations.join("0002_update.sql").exists());
+    // The other committed files from before `zero/_generated/`: each is refused, writing nothing,
+    // and the printed command is the whole fix. Left in place, a lock would be ignored (and
+    // replaced) and an old client would load as app code.
+    for (old, new, content) in [
+        (
+            "zero/abilities.json",
+            "zero/_generated/abilities.json",
+            r#"{"version":1,"abilities":[]}"#,
+        ),
+        ("zero/wp-plugins.lock.json", "zero/_generated/wp-plugins.lock.json", ""),
+        (
+            "zero/client/index.ts",
+            "zero/_generated/client/index.ts",
+            "export const stale = 1;\n",
+        ),
+    ] {
+        let (old_dir, new_dir) = if old.starts_with("zero/client/") {
+            ("zero/client", "zero/_generated/client")
+        } else {
+            (old, new)
+        };
+        let path = tmp.join(old);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // The pin lock is the one the last build wrote, moved back to where it used to live.
+        let content = if content.is_empty() {
+            std::fs::read_to_string(tmp.join(new)).unwrap()
+        } else {
+            content.to_string()
+        };
+        std::fs::write(&path, content).unwrap();
+        refused(&format!("{old_dir} moved to {new_dir}"));
+        let fix = format!("mkdir -p zero/_generated && git mv {old_dir} {new_dir}");
+        refused(&fix);
+        git(&["add", "-A"]);
+        // The old client and lock may already have a regenerated twin; the move replaces it.
+        let _ = std::fs::remove_dir_all(tmp.join(new_dir));
+        let _ = std::fs::remove_file(tmp.join(new_dir));
+        let moved = Command::new("sh")
+            .args(["-c", &fix])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        assert!(
+            moved.status.success(),
+            "{fix}: {}",
+            String::from_utf8_lossy(&moved.stderr)
+        );
+        assert!(tmp.join(new).is_file() && !tmp.join(old_dir).exists());
+        if old_dir == "zero/client" {
+            std::fs::remove_dir_all(tmp.join(new_dir)).unwrap();
+        }
+        let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+        assert!(
+            again.status.success(),
+            "{old}: {}",
+            String::from_utf8_lossy(&again.stderr)
+        );
+    }
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -2009,6 +2067,24 @@ fn a_plugin_package_runs_under_its_locked_grant() {
         "{stderr}"
     );
     assert!(!project.join(".zero").exists(), "a refused plugin generates nothing");
+
+    // The same narrowed lock left at its place from before zero/_generated/: without --frozen it
+    // must not be skipped and replaced by a lock granting posts.body. The build refuses and the
+    // owner's file is untouched.
+    let lock = project.join("zero/_generated/plugins.lock.json");
+    let old = project.join("zero/plugins.lock.json");
+    let granted = std::fs::read(&lock).unwrap();
+    std::fs::rename(&lock, &old).unwrap();
+    let refused = zero().arg("build").arg(&project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("zero/plugins.lock.json moved to zero/_generated/plugins.lock.json"),
+        "{stderr}"
+    );
+    assert_eq!(std::fs::read(&old).unwrap(), granted);
+    assert!(!lock.exists(), "a refusal writes no lock");
+    std::fs::rename(&old, &lock).unwrap();
 
     std::fs::write(&index, source).unwrap();
     let out = zero().args(["build", "--frozen"]).arg(&project).output().unwrap();

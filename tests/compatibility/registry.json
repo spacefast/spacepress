@@ -535,6 +535,14 @@
       "guidance": "A plugin package imports its own modules, \"zero\" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin."
     },
     {
+      "id": "plugin-app-kinds",
+      "status": "refused",
+      "code": "Z1201",
+      "fixture": "tests/fixtures/reject-plugin-db",
+      "message": "plugin \"reach\" can't import \"zero:db\": the app's kinds belong to the app",
+      "guidance": "A plugin can't import \"zero:db\": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it."
+    },
+    {
       "id": "host-globals",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",

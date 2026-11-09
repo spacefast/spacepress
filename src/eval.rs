@@ -461,6 +461,9 @@ pub struct Evaluator<'p> {
     /// `import { x } from "zero:db"` bindings, filled once every app module has registered
     /// (see [`Evaluator::bind_db`]): (scope, local name, kind name, span).
     db_imports: Vec<(Rc<Scope>, String, String, Span)>,
+    /// The registered kinds, once [`Evaluator::bind_db`] has run: later `"zero:db"` imports (the
+    /// `zero/wp-hooks/` modules) bind on the spot.
+    db_kinds: Option<IndexMap<String, Value>>,
     /// The object literal that defines each method reading `this`, keyed by the closure's
     /// allocation. The compiler types that method's `this` as its object and compiles it only as
     /// a method of it. Both are kept here so their allocations are never reused.
@@ -493,6 +496,7 @@ impl<'p> Evaluator<'p> {
             pending_labels: Vec::new(),
             namespace_imports: HashSet::new(),
             db_imports: Vec::new(),
+            db_kinds: None,
             method_homes: HashMap::new(),
             method_home_fields: HashMap::new(),
         }
@@ -523,6 +527,7 @@ impl<'p> Evaluator<'p> {
     /// Fills every `"zero:db"` binding from `kinds` (registered name → kind), once registration has
     /// run. An unknown name is refused at its import, with the closest registered name.
     pub fn bind_db(&mut self, kinds: &IndexMap<String, Value>) -> Result<(), Diag> {
+        self.db_kinds = Some(kinds.clone());
         for (scope, local, name, span) in std::mem::take(&mut self.db_imports) {
             let Some(value) = kinds.get(&name) else {
                 let mut d = Diag::new(span, format!("\"zero:db\" has no kind named `{name}`"));
@@ -873,6 +878,9 @@ impl<'p> Evaluator<'p> {
                 );
                 self.db_imports
                     .push((scope.clone(), spec.local.clone(), name.clone(), spec.span));
+                if let Some(kinds) = self.db_kinds.clone() {
+                    self.bind_db(&kinds).map_err(Ctl::Err)?;
+                }
                 continue;
             }
             // TypeScript elides imports that only name types.

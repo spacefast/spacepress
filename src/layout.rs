@@ -29,13 +29,14 @@ pub const WP_CONTENT: &str = "zero/dist/wp-content";
 /// Where the migration ledger lived before `zero/_generated/` (zero ≤ 0.x builds).
 const OLD_MIGRATIONS: &str = "zero/migrations";
 
-/// Committed inputs that moved into `zero/_generated/`: (old project path, new). A source bundle
+/// Committed inputs that moved (into `zero/_generated/`, or app code into `zero/`): (old, new). A source bundle
 /// captured before the move names the old paths, and a host recompiles stored bundles, so the
 /// hosted compile reads them through [`current`].
 const MOVED: &[(&str, &str)] = &[
     ("zero/migrations/", "zero/_generated/migrations/"),
     ("zero/abilities.json", "zero/_generated/abilities.json"),
     ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
+    ("wp-hooks/", "zero/wp-hooks/"),
 ];
 
 /// A captured project path on this layout: an input that moved into `zero/_generated/` is renamed,
@@ -73,6 +74,8 @@ mod tests {
             ),
             ("zero/abilities.json", "zero/_generated/abilities.json"),
             ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
+            ("wp-hooks/save_post.ts", "zero/wp-hooks/save_post.ts"),
+            ("wp-hooks/the_content/a.ts", "zero/wp-hooks/the_content/a.ts"),
             // Already current, and unrelated paths, are unchanged.
             ("zero/_generated/abilities.json", "zero/_generated/abilities.json"),
             ("zero/lib/fields.ts", "zero/lib/fields.ts"),

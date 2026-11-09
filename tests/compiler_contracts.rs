@@ -3376,8 +3376,8 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
             "title": "Kept",
             "saved": true,
             "errors": [
-                "[zero] wp-hooks/the_title: Zero\\JsError: broken title filter",
-                "[zero] wp-hooks/save_post: Zero\\JsError: saw Draft one #true",
+                "[zero] zero/wp-hooks/the_title: Zero\\JsError: broken title filter",
+                "[zero] zero/wp-hooks/save_post: Zero\\JsError: saw Draft one #true",
             ],
         })
     );

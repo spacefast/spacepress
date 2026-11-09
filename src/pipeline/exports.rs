@@ -58,7 +58,7 @@ fn span_of(value: &Value) -> Span {
 fn duplicate(root: &Path, name: &str, first: Span, second: Span) -> Diag {
     let at =
         crate::diag::position(first, root).map_or_else(|| "the config".to_string(), |(f, l, _)| format!("{f}:{l}"));
-    Diag::new(second, format!("`{name}` is exported twice: at {at} and here"))
+    Diag::new(second, format!("`{name}` names two things: at {at} and here"))
         .code(Code::DuplicateExport)
         .help("export names are the API (zero.<name>(), its route and its Ability); rename one")
 }
@@ -76,6 +76,12 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
         for (name, value) in exports {
             let Some(registry) = registry(&value) else { continue };
             let span = span_of(&value);
+            // The export name is the registered name; a default export has none.
+            if name == "default" {
+                return Err(Diag::new(span, "a kind, action or job can't be a default export")
+                    .code(Code::DuplicateExport)
+                    .help("export it by name, e.g. `export const notes = table({ ... })`; the name is its API"));
+            }
             if let Some(other) = taken.get(&name) {
                 // Re-exported from another module: the same value under the same name.
                 if same(&other.value, &value) {
@@ -122,6 +128,22 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
         }
         map.borrow_mut().insert(name, value);
     }
+    // An export name is unique across the app, not per registry (docs/spec/spec.md §1.1): it may not
+    // also name something else in any registry, such as an action listed in `defineConfig` under
+    // an exported table's name. Names only listed in `defineConfig` keep that API's per-registry
+    // namespaces (0.8 apps converted onto it name a query like its table) until it is removed.
+    for (name, taken) in &taken {
+        for registry in ["collections", "tables", "users", "globals", "actions", "jobs"] {
+            let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
+                continue;
+            };
+            if let Some(listed) = entries.borrow().get(name)
+                && !same(listed, &taken.value)
+            {
+                return Err(duplicate(&program.root, name, span_of(listed), taken.span));
+            }
+        }
+    }
     // `"zero:db"` resolves to every registered kind, by its registry key.
     let mut kinds = IndexMap::new();
     for registry in ["collections", "tables", "users"] {
@@ -131,5 +153,11 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             }
         }
     }
-    ev.bind_db(&kinds)
+    ev.bind_db(&kinds)?;
+    // `zero/wp-hooks/` modules declare no kinds, so they run once every kind is registered: their
+    // `"zero:db"` imports bind as each module evaluates.
+    for file in &program.wp_hooks {
+        ev.run_module(file.module).map_err(|d| d.phase(Code::Evaluation))?;
+    }
+    Ok(())
 }

@@ -576,6 +576,14 @@ A plugin package imports its own modules, "zero" and ordinary npm packages, comp
 
 [Evidence](../tests/fixtures/reject-plugin-isolation)
 
+## plugin-app-kinds
+
+Status: **refused**. Diagnostic: `Z1201`.
+
+A plugin can't import "zero:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
+
+[Evidence](../tests/fixtures/reject-plugin-db)
+
 ## host-globals
 
 Status: **supported**.

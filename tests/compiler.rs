@@ -64,7 +64,7 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     // Export names are unique across the app (Z1221): an action named like a kind.
     rejects(
         "reject-duplicate-export",
-        "`notes` is exported twice: at zero/a.ts:2 and here",
+        "`notes` names two things: at zero/a.ts:2 and here",
         "zero/b.ts:3:22",
     );
     // "zero:db" names only registered kinds, and suggests the closest one.
@@ -72,6 +72,30 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "reject-db-unknown",
         "\"zero:db\" has no kind named `note`",
         "zero/app.ts:2:10",
+    );
+    // ... in zero/wp-hooks/ modules too, which load after every kind has registered.
+    rejects(
+        "reject-wp-hook-db-unknown",
+        "\"zero:db\" has no kind named `note`",
+        "zero/wp-hooks/the_title.ts:2:10",
+    );
+    // An exported name is unique across the app: an action listed under it is refused too.
+    rejects(
+        "reject-action-named-like-table",
+        "`notes` names two things: at zero.config.ts:3 and here",
+        "zero/schema.ts:2:22",
+    );
+    // A default export has no name to register under.
+    rejects(
+        "reject-default-export-kind",
+        "a kind, action or job can't be a default export",
+        "zero/notes.ts:3:16",
+    );
+    // wp-hooks/ beside zero.config.ts is from before zero/wp-hooks/: refused, never dropped.
+    rejects(
+        "reject-wp-hooks-root",
+        "wp-hooks/ beside zero.config.ts is from an earlier layout; its handlers would not register",
+        "wp-hooks:1:1",
     );
 }
 

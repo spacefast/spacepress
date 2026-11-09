@@ -133,6 +133,20 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
+    // Handlers beside zero.config.ts are from before `zero/wp-hooks/`: refuse them rather than
+    // build without them, which would drop every filter they register.
+    let old = program.root.join("wp-hooks");
+    if fs.exists(&old) {
+        let file = diag::register_file(&old, "");
+        diagnostics.push(
+            Diag::new(
+                Span { file, start: 0, end: 0 },
+                "wp-hooks/ beside zero.config.ts is from an earlier layout; its handlers would not register",
+            )
+            .help("move it into the Zero root: mkdir -p zero && git mv wp-hooks zero/wp-hooks")
+            .code(diag::Code::Import),
+        );
+    }
     let dir = program.root.join(WP_HOOKS_DIR);
     match wp_hook_files(&*fs, &dir) {
         Ok(files) => {
@@ -166,8 +180,9 @@ pub const RESERVED_DIRS: &[&str] = &[
 ];
 
 /// Every `.ts` file under `zero/` outside [`RESERVED_DIRS`], in path order: app modules load whatever
-/// their names are. Declaration files are types only, and dot-entries and symlinked directories
-/// are skipped, so editor and VCS state never become code.
+/// their names are. Declaration files are types only, test files (`*.test.ts`, `*.spec.ts`) belong
+/// to the test runner, and dot-entries and symlinked directories are skipped, so editor and VCS
+/// state never become code. A test file that an app module imports still loads, as an import.
 pub fn app_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     if !fs.is_dir(root) {
@@ -188,7 +203,12 @@ pub fn app_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>> {
                 if !top && name != "node_modules" && !fs.is_symlink(&path) {
                     stack.push(path);
                 }
-            } else if name.ends_with(".ts") && !name.ends_with(".d.ts") && fs.is_file(&path) {
+            } else if name.ends_with(".ts")
+                && ![".d.ts", ".test.ts", ".spec.ts"]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+                && fs.is_file(&path)
+            {
                 out.push(path);
             }
         }
@@ -1336,6 +1356,59 @@ mod tests {
                 .map(|(path, source)| (PathBuf::from(path), source.to_string()))
                 .collect(),
         )
+    }
+
+    /// `app_files` loads every module under `zero/` but the reserved folders, declaration files and
+    /// colocated tests, which the test runner owns (they import `vitest` and the like).
+    #[test]
+    fn app_modules_are_every_ts_file_under_zero_but_reserved_ones() {
+        let fs = memory(&[
+            ("/p/zero.config.ts", ""),
+            ("/p/zero/index.ts", ""),
+            ("/p/zero/server/likes.ts", ""),
+            ("/p/zero/lib/fields.ts", ""),
+            ("/p/zero/lib/fields.test.ts", "import { test } from 'vitest';"),
+            ("/p/zero/lib/fields.spec.ts", "import { test } from 'vitest';"),
+            ("/p/zero/types.d.ts", ""),
+            ("/p/zero/notes.md", ""),
+            ("/p/zero/app/page.ts", ""),
+            ("/p/zero/components/card.ts", ""),
+            ("/p/zero/wp-hooks/init.ts", ""),
+            ("/p/zero/content/post.ts", ""),
+            ("/p/zero/public/app.ts", ""),
+            ("/p/zero/_generated/db.ts", ""),
+            ("/p/zero/dist/x.ts", ""),
+            ("/p/zero/node_modules/pkg/index.ts", ""),
+            // Only top-level folder names are reserved: a nested `app/` is ordinary.
+            ("/p/zero/server/app/route.ts", ""),
+        ]);
+        let found: Vec<String> = app_files(&fs, Path::new("/p/zero"))
+            .unwrap()
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            found,
+            [
+                "/p/zero/index.ts",
+                "/p/zero/lib/fields.ts",
+                "/p/zero/server/app/route.ts",
+                "/p/zero/server/likes.ts"
+            ]
+        );
+        // A project with a colocated test still loads.
+        let ok = load_from(
+            Rc::new(memory(&[
+                ("/p/zero.config.ts", "export default {};"),
+                ("/p/zero/lib/fields.ts", "export const a = 1;"),
+                (
+                    "/p/zero/lib/fields.test.ts",
+                    "import { test } from 'vitest'; test('a', () => {});",
+                ),
+            ])),
+            Path::new("/p/zero.config.ts"),
+        );
+        assert!(ok.is_ok(), "{:?}", ok.err());
     }
 
     /// App code loads only from `zero/` (`Z1210`); installed packages keep their own relative imports.

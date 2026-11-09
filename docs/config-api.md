@@ -45,8 +45,12 @@ export const like = action({ input: { id: integer().notNull() }, async handler({
 ```
 
 - Other exports are ignored, so helper modules need no special place.
-- Export names are unique across the app. Two exports named `like`, or an
-  action named like a kind, fail with `Z1221`, naming both files.
+- Export names are unique across the app. Two exports named `like`, an
+  action named like an exported kind, or an export and a `defineConfig`
+  registry entry under one name fail with `Z1221`, naming both places.
+- A kind, action or job must be a named export; `export default table(...)`
+  is refused. Files named `*.test.ts` or `*.spec.ts` are left to your test
+  runner.
 - A value both exported and listed in a `defineConfig` registry is one
   registration.
 - `import { notes } from "zero:db"` gives a registered kind by name, from any
@@ -367,7 +371,7 @@ grant and writes `zero/_generated/plugins.lock.json`:
 | `mail` | `send` |
 | `jobs` | the plugin's own jobs it enqueues |
 | `abilities` | `vendor/name` of each `abilities.call` from `"php/wordpress"` |
-| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `wp-hooks/` directory |
+| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `zero/wp-hooks/` directory |
 | `php` | reserved for PHP functions imported from `"php/wordpress"`, `"php/<slug>"` or `"php"` (`wordpress:get_option`); always empty today |
 
 Commit the lock: it is the grant.
@@ -888,7 +892,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   works and each write commits on its own; `ctx` and `HttpError` responses
   don't apply, since there is no Zero request.
 - A handler that throws is logged to the PHP error log as
-  `[zero] wp-hooks/<hook>: ...`. A filter then returns the value it was given,
+  `[zero] zero/wp-hooks/<hook>: ...`. A filter then returns the value it was given,
   so one broken handler leaves the page as WordPress rendered it. An action's
   throw stops only that handler.
 

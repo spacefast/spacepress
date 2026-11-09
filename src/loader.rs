@@ -14,11 +14,13 @@ use std::rc::Rc;
 pub const ZERO_MODULE: &str = "zero";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
+/// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `zero/_generated/db.d.ts`.
+pub const DB_MODULE: &str = "zero:db";
 
 /// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
 /// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || crate::builtins::module(spec).is_some()
+    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || spec == DB_MODULE || crate::builtins::module(spec).is_some()
 }
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
@@ -82,13 +84,16 @@ pub struct Program {
     pub entry: usize,
     /// The source of these modules; later passes that look beside them (sync directories) ask it.
     pub fs: Rc<dyn Fs>,
-    /// `wp-hooks/` handler files beside the entry, in registration order (see [`wp_hook_files`]).
+    /// `zero/wp-hooks/` handler files, in registration order (see [`wp_hook_files`]).
     pub wp_hooks: Vec<WpHookFile>,
+    /// Every app module under `zero/` (see [`app_files`]), in path order. Each one's exported kinds,
+    /// actions and jobs register by export name, whatever imports it.
+    pub app_modules: Vec<usize>,
     /// `zero/components/**/*.tsx` beside the entry: (path relative to `zero/`, module), sorted.
     pub components: Vec<(String, usize)>,
 }
 
-/// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
+/// One `zero/wp-hooks/` file: `zero/wp-hooks/<hook>.ts`, or `zero/wp-hooks/<hook>/<file>.ts`.
 #[derive(Debug, Clone)]
 pub struct WpHookFile {
     pub hook: String,
@@ -116,6 +121,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         entry: 0,
         fs: fs.clone(),
         wp_hooks: Vec::new(),
+        app_modules: Vec::new(),
         components: Vec::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
@@ -123,6 +129,39 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     match load_module(&*fs, &entry, &mut program, &mut by_path, &mut diagnostics) {
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    // A checkout from before `zero/_generated/` (a leftover `zero/client/`, an old lock) is refused
+    // before any module under `zero/` loads, so its message is the move, not whatever the stale
+    // files fail on. A stored bundle reads those paths on the new layout instead.
+    if !fs.frozen_capture()
+        && let Some((message, help)) = crate::layout::old_in_checkout(|p| fs.exists(p), &program.root)
+    {
+        return Err(vec![Diag::new(Span::NONE, message).help(help).code(diag::Code::Import)]);
+    }
+    match app_files(&*fs, &program.root.join(crate::layout::ROOT)) {
+        Ok(files) => {
+            for path in files {
+                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
+                    Ok(module) => program.app_modules.push(module),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+        }
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    // Handlers beside zero.config.ts are from before `zero/wp-hooks/`: refuse them rather than
+    // build without them, which would drop every filter they register.
+    let old = program.root.join("wp-hooks");
+    if fs.exists(&old) {
+        let file = diag::register_file(&old, "");
+        diagnostics.push(
+            Diag::new(
+                Span { file, start: 0, end: 0 },
+                "wp-hooks/ beside zero.config.ts is from an earlier layout; its handlers would not register",
+            )
+            .help("move it into the Zero root: mkdir -p zero && git mv wp-hooks zero/wp-hooks")
+            .code(diag::Code::Import),
+        );
     }
     let dir = program.root.join(WP_HOOKS_DIR);
     match wp_hook_files(&*fs, &dir) {
@@ -136,7 +175,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
-    let zero_dir = entry.parent().expect("entry has a directory").join("zero");
+    let zero_dir = program.root.join(crate::layout::ROOT);
     match component_files(&*fs, &zero_dir.join(COMPONENTS_DIR)) {
         Ok(files) => {
             for path in files {
@@ -162,13 +201,27 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     }
 }
 
-/// JSX belongs to components: a `.tsx` module that `zero.config.ts` (or a `wp-hooks/` handler)
-/// reaches through its imports is refused, even if its JSX never runs at build time, and a
-/// `"use client"` file is refused until generator B compiles it.
+/// Folders under `zero/` whose names Zero reads, or that it writes: no app module is loaded from
+/// them (docs/spec/spec.md §1.1).
+pub const RESERVED_DIRS: &[&str] = &[
+    "app",
+    "components",
+    "wp-hooks",
+    "content",
+    "public",
+    "_generated",
+    "dist",
+    "node_modules",
+];
+
+/// JSX belongs to components: a `.tsx` module that `zero.config.ts`, an app module or a
+/// `zero/wp-hooks/` handler reaches through its imports is refused, even if its JSX never runs at
+/// build time, and a `"use client"` file is refused until generator B compiles it.
 fn jsx_reachability(program: &Program) -> Vec<Diag> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut stack: Vec<usize> = std::iter::once(program.entry)
+        .chain(program.app_modules.iter().copied())
         .chain(program.wp_hooks.iter().map(|h| h.module))
         .collect();
     while let Some(id) = stack.pop() {
@@ -241,10 +294,49 @@ fn component_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-/// The WordPress hooks directory beside `zero.config.ts`.
-pub const WP_HOOKS_DIR: &str = "wp-hooks";
+/// Every `.ts` file under `zero/` outside [`RESERVED_DIRS`], in path order: app modules load whatever
+/// their names are. Declaration files are types only, test files (`*.test.ts`, `*.spec.ts`) belong
+/// to the test runner, and dot-entries and symlinked directories are skipped, so editor and VCS
+/// state never become code. A test file that an app module imports still loads, as an import.
+pub fn app_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    if !fs.is_dir(root) {
+        return Ok(out);
+    }
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs
+            .read_dir(&dir)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", dir.display())))?;
+        for path in entries {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            if fs.is_dir(&path) {
+                let top = dir == root && RESERVED_DIRS.contains(&name.as_ref());
+                if !top && name != "node_modules" && !fs.is_symlink(&path) {
+                    stack.push(path);
+                }
+            } else if name.ends_with(".ts")
+                && ![".d.ts", ".test.ts", ".spec.ts"]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+                && fs.is_file(&path)
+            {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
 
-/// `wp-hooks/<hook>.ts` and `wp-hooks/<hook>/*.ts`, as `(hook, order, path)` sorted by hook, then by
+/// The WordPress hooks directory: one file or directory per hook name (docs/spec/spec.md §1).
+pub const WP_HOOKS_DIR: &str = "zero/wp-hooks";
+
+/// `zero/wp-hooks/<hook>.ts` and `zero/wp-hooks/<hook>/*.ts` (tests aside), as `(hook, order, path)`
+/// sorted by hook, then by
 /// file name. Anything else in the directory is an error that names it: a non-`.ts` file would
 /// otherwise be silently skipped, and the author would wonder why their handler never runs.
 pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, PathBuf)>> {
@@ -262,16 +354,25 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
     let refuse = |path: &Path, why: &str| {
         let file = diag::register_file(path, "");
         Diag::new(Span { file, start: 0, end: 0 }, why.to_string()).help(
-            "wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
+            "zero/wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
         )
     };
     let ts =
         |p: &Path| p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p);
+    // Colocated tests belong to the test runner, as under the rest of `zero/` (see [`app_files`]).
+    let test = |p: &Path| {
+        let name = p.file_name().unwrap_or_default().to_string_lossy();
+        name.ends_with(".test.ts") || name.ends_with(".spec.ts")
+    };
     let mut out = Vec::new();
     for path in listing(dir)? {
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if test(&path) {
+            continue;
+        }
         if fs.is_dir(&path) {
-            for (order, file) in listing(&path)?.into_iter().enumerate() {
+            let files: Vec<PathBuf> = listing(&path)?.into_iter().filter(|f| !test(f)).collect();
+            for (order, file) in files.into_iter().enumerate() {
                 if !ts(&file) {
                     return Err(refuse(&file, "not a .ts handler file"));
                 }
@@ -319,6 +420,43 @@ fn load_module(
         type_names,
         use_client,
     } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
+    // `"zero:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
+    // them on under another module's name, which no evaluator path resolves.
+    // Locals bound by `import { x } from "zero:db"`: exporting one again is the same re-export.
+    let db_locals: std::collections::HashSet<&str> = body
+        .iter()
+        .filter_map(|s| match s {
+            Stmt::Import { source, specs, .. } if source == DB_MODULE => Some(specs),
+            _ => None,
+        })
+        .flatten()
+        .map(|spec| spec.local.as_str())
+        .collect();
+    for stmt in &body {
+        let reexports = match stmt {
+            Stmt::ExportNames { from: Some(from), .. } | Stmt::ExportAll { from, .. } => from == DB_MODULE,
+            Stmt::ExportNames { names, from: None, .. } => {
+                names.iter().any(|(local, _)| db_locals.contains(local.as_str()))
+            }
+            _ => false,
+        };
+        if let Stmt::ExportNames { span, .. } | Stmt::ExportAll { span, .. } = stmt
+            && reexports
+        {
+            let installed = path
+                .strip_prefix(&program.root)
+                .is_ok_and(|rel| rel.components().any(|c| c.as_os_str() == "node_modules"));
+            diagnostics.push(
+                Diag::new(*span, "\"zero:db\" can't be re-exported")
+                    .help(if installed {
+                        "a plugin takes the app's kinds as options, e.g. seo({ posts }); it can't import \"zero:db\""
+                    } else {
+                        "import the kinds where they're used: `import { posts } from \"zero:db\"`"
+                    })
+                    .code(diag::Code::Import),
+            );
+        }
+    }
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
     let commonjs = commonjs.map(|CommonJs { names, requires }| {
@@ -1419,6 +1557,59 @@ mod tests {
                 .map(|(path, source)| (PathBuf::from(path), source.to_string()))
                 .collect(),
         )
+    }
+
+    /// `app_files` loads every module under `zero/` but the reserved folders, declaration files and
+    /// colocated tests, which the test runner owns (they import `vitest` and the like).
+    #[test]
+    fn app_modules_are_every_ts_file_under_zero_but_reserved_ones() {
+        let fs = memory(&[
+            ("/p/zero.config.ts", ""),
+            ("/p/zero/index.ts", ""),
+            ("/p/zero/server/likes.ts", ""),
+            ("/p/zero/lib/fields.ts", ""),
+            ("/p/zero/lib/fields.test.ts", "import { test } from 'vitest';"),
+            ("/p/zero/lib/fields.spec.ts", "import { test } from 'vitest';"),
+            ("/p/zero/types.d.ts", ""),
+            ("/p/zero/notes.md", ""),
+            ("/p/zero/app/page.ts", ""),
+            ("/p/zero/components/card.ts", ""),
+            ("/p/zero/wp-hooks/init.ts", ""),
+            ("/p/zero/content/post.ts", ""),
+            ("/p/zero/public/app.ts", ""),
+            ("/p/zero/_generated/db.ts", ""),
+            ("/p/zero/dist/x.ts", ""),
+            ("/p/zero/node_modules/pkg/index.ts", ""),
+            // Only top-level folder names are reserved: a nested `app/` is ordinary.
+            ("/p/zero/server/app/route.ts", ""),
+        ]);
+        let found: Vec<String> = app_files(&fs, Path::new("/p/zero"))
+            .unwrap()
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            found,
+            [
+                "/p/zero/index.ts",
+                "/p/zero/lib/fields.ts",
+                "/p/zero/server/app/route.ts",
+                "/p/zero/server/likes.ts"
+            ]
+        );
+        // A project with a colocated test still loads.
+        let ok = load_from(
+            Rc::new(memory(&[
+                ("/p/zero.config.ts", "export default {};"),
+                ("/p/zero/lib/fields.ts", "export const a = 1;"),
+                (
+                    "/p/zero/lib/fields.test.ts",
+                    "import { test } from 'vitest'; test('a', () => {});",
+                ),
+            ])),
+            Path::new("/p/zero.config.ts"),
+        );
+        assert!(ok.is_ok(), "{:?}", ok.err());
     }
 
     /// App code loads only from `zero/` (`Z1210`); installed packages keep their own relative imports.

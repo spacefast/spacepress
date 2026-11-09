@@ -22,22 +22,26 @@ export interface Example {
 }
 
 /**
- * Every file of an example a config can import (build output and the blog's web page left out),
- * plus the committed abilities lock, the one compiler input under `zero/`. The example's own
- * `node_modules`, when installed, goes too: the compiler reads npm packages as sources. Nested
- * ones (a web app's or a tool's) do not.
+ * Every file of an example a config can import (app code under `zero/` included; build output and
+ * the blog's web page left out), plus the committed abilities lock, the one input in `_generated/`.
+ * The example's own root `node_modules`, when installed, goes too, code and package.json only: the
+ * compiler reads npm packages as sources. Nested ones (a web app's or a tool's) do not.
  */
 export function sources(dir: string): Request["files"] {
-  const skip = new Set(["zero", ".zero", "node_modules", "public", "client-tests", "content"]);
+  // Skipped at the project root only (web page, tests, content), except `.zero` and `node_modules`
+  // at any depth: app code under `zero/` may import from its own `zero/content/` or `zero/public/`.
+  const skip = new Set([".zero", "node_modules", "public", "client-tests", "content", "zero/_generated", "zero/dist"]);
+  const anyDepth = new Set([".zero", "node_modules"]);
   const files: Request["files"] = {};
   const lock = path.join(dir, "zero/_generated/abilities.json");
   if (existsSync(lock)) files["zero/_generated/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
-      if (skip.has(name) && !(name === "node_modules" && sub === "")) continue;
-      // Of a package, the compiler reads its code and package.json; licenses and docs stay behind.
-      if (sub.startsWith("node_modules") && !/\.(c?m?js|json)$/.test(name) && !lstatSync(path.join(dir, sub, name)).isDirectory()) continue;
       const rel = sub ? `${sub}/${name}` : name;
+      const installed = rel === "node_modules" || sub.startsWith("node_modules");
+      if (!installed && (skip.has(rel) || anyDepth.has(name))) continue;
+      // Of a package, the compiler reads its code and package.json; licenses and docs stay behind.
+      if (installed && rel !== "node_modules" && !/\.(c?m?js|json)$/.test(name) && !lstatSync(path.join(dir, rel)).isDirectory()) continue;
       const stat = lstatSync(path.join(dir, rel));
       if (stat.isDirectory()) walk(rel);
       else if (stat.isFile()) files[rel] = readFileSync(path.join(dir, rel), "utf8");

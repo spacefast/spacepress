@@ -297,6 +297,8 @@ const variantNames: Record<string, string> = {
 	PluginCapability: "A plugin uses a capability its lock entry doesn't grant",
 	SyncFilesTooLarge: "The content files to sync are too large",
 	SourceNeedsLocalCapture: "The host can't capture this source; publish from your machine",
+	ImportFence: "App code imports a file outside `first/`",
+	DuplicateExport: "Two exports register the same name",
 };
 for (const { variant } of codes) if (!variantNames[variant]) throw new Error(`src/diag.rs has a new code ${variant}: name it in scripts/generate.ts`);
 

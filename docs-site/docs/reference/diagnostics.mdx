@@ -26,6 +26,8 @@ description: "Every code first check can report, and the refusals the test suite
 | `F4001` | `invalid-source` | A handler failed type checking or PHP compilation |
 | `F4101` | `unsupported` | An access rule can't be compiled to a query |
 | `F1201` | `invalid-source` | A plugin package imports code it may not import |
+| `F1210` | `invalid-source` | App code imports a file outside `first/` |
+| `F1221` | `invalid-source` | Two exports register the same name |
 | `F4201` | `invalid-source` | A plugin uses a capability its lock entry doesn't grant |
 
 ## Tested refusals
@@ -44,12 +46,13 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F1102` | Node built-ins other than node:crypto are unavailable | [`reject-node-builtin`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-builtin) |
 | `F1102` | can't import "node:fs": Node built-ins other than node:crypto are unavailable | [`reject-require-module`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-require-module) |
 | `F1102` | package is not installed in node_modules | [`reject-uninstalled-package`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-uninstalled-package) |
+| `F1201` | plugin "reach" can't import "zero:db": the app's kinds belong to the app | [`reject-plugin-db`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-db) |
 | `F1201` | plugin "b" can't import "zero-plugin-a": it belongs to plugin "a" | [`reject-plugin-isolation`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-isolation) |
 | `F2001` | "node:crypto" has no `createCipheriv` in First code | [`reject-node-crypto-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-crypto-member) |
 | `F2001` | "php/wordpress" has no export named `the_title` | [`reject-wp-function-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-function-unknown) |
 | `F2001` | "first" has no export named `fetch` | [`reject-zero-fetch-import`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-zero-fetch-import) |
 | `F2101` | Date.now() | [`reject-build-time-clock`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-build-time-clock) |
-| `F3001` | a wp-hooks/ file needs a default-exported handler function | [`reject-wp-hook-no-default`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-hook-no-default) |
+| `F3001` | a zero/wp-hooks/ file needs a default-exported handler function | [`reject-wp-hook-no-default`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-hook-no-default) |
 | `F3001` | `the_contnet` is not a WordPress hook First types | [`reject-wp-hook-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-hook-unknown) |
 | `F3101` | width must be an integer from 1 to 100 | [`reject-field-ui`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-field-ui) |
 | `F4001` | conditional structural matching | [`reject-type-structural-predicate`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-structural-predicate) |

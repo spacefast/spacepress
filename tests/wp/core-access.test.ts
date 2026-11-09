@@ -1,5 +1,5 @@
 // Core /wp/v2/zero_* under Zero's access rules (lane R): the block editor keeps its REST routes, but
-// they answer exactly what /zero/v1 would. Fixtures: tests/wp/app/lanes/rest.ts (vault: admin-only;
+// they answer exactly what /zero/v1 would. Fixtures: tests/wp/app/zero/lanes/rest.ts (vault: admin-only;
 // ledger: owners read and edit their own rows; payroll: anyone reads, salary admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";

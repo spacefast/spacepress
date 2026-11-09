@@ -8,7 +8,7 @@ use Zero\JsArray;
 use Zero\JsObject;
 
 /**
- * `wp-hooks/` handlers (docs/config-api.md "WordPress hooks"): each compiled handler is registered
+ * `zero/wp-hooks/` handlers (docs/config-api.md "WordPress hooks"): each compiled handler is registered
  * with add_filter/add_action at its priority. Handlers run in WordPress's own request, outside any
  * Zero transaction. A handler that throws is logged; a filter then returns the value it was given,
  * so one broken handler never blanks the page or its content.
@@ -27,7 +27,7 @@ final class Hooks
 
                     return $hook['filter'] ? self::toPhp($result, $given) : null;
                 } catch (\Throwable $e) {
-                    error_log(sprintf('[zero] wp-hooks/%s: %s: %s', $hook['hook'], $e::class, $e->getMessage()));
+                    error_log(sprintf('[zero] zero/wp-hooks/%s: %s: %s', $hook['hook'], $e::class, $e->getMessage()));
 
                     return $given;
                 }

@@ -183,6 +183,11 @@ export async function publishPlugins(content, managed) {
   return { manifest, activate };
 }
 
+// Directory names never watched anywhere, and the project paths Zero writes itself.
+const IGNORED_NAMES = new Set(['.zero', '.git', 'node_modules']);
+const GENERATED = new Set(['zero/_generated', 'zero/dist']);
+const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
+
 export async function sourceDigest(project) {
   const digest = createHash('sha256');
   async function visit(directory, prefix = '') {
@@ -190,7 +195,7 @@ export async function sourceDigest(project) {
     entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       const name = prefix + entry.name;
-      if (['.zero', '.git', 'node_modules', 'zero'].includes(entry.name) || entry.isSymbolicLink()) continue;
+      if (ignoredPath(name) || entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path, `${name}/`);
       else if (/\.[cm]?[jt]sx?$/.test(name) || name.startsWith('public/')) {
@@ -205,7 +210,6 @@ export async function sourceDigest(project) {
 // Native recursive watchers descend into generated trees before event filters run.
 // Watch authored directories individually so rebuild output is never traversed.
 export async function watchSources(project, onChange, onError) {
-  const ignored = new Set(['.zero', '.git', 'node_modules', 'zero']);
   const watchers = new Map();
   let closed = false, refreshing, refreshAgain = false;
   const close = () => {
@@ -233,8 +237,9 @@ export async function watchSources(project, onChange, onError) {
             }
             if (!watchers.has(directory)) {
               const watcher = watch(directory, (event, filename) => {
-                if (closed || !filename || ignored.has(String(filename))) return;
-                const name = relative(project, join(directory, String(filename)));
+                if (closed || !filename) return;
+                const name = relative(project, join(directory, String(filename))).split(sep).join('/');
+                if (ignoredPath(name) || [...GENERATED].some((dir) => name.startsWith(`${dir}/`))) return;
                 if (event === 'rename') {
                   // Discover new directories before notifying: files may have been created
                   // before their directory acquired its own watch handle.
@@ -248,7 +253,8 @@ export async function watchSources(project, onChange, onError) {
             }
             present.add(directory);
             for (const entry of await readdir(directory, { withFileTypes: true })) {
-              if (entry.isDirectory() && !ignored.has(entry.name)) await visit(join(directory, entry.name));
+              const child = relative(project, join(directory, entry.name)).split(sep).join('/');
+              if (entry.isDirectory() && !ignoredPath(child)) await visit(join(directory, entry.name));
             }
           } catch (error) {
             if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error;

@@ -10,6 +10,7 @@ production data and may be rotated with the stack.
 
 ```sh
 cargo build
+mkdir -p tests/wp/app/zero/blog && cp tests/fixtures/blog/zero.config.ts tests/wp/app/zero/blog/
 target/debug/zero build tests/wp/app
 tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/zero/dist/wp-content"
 tests/wp/harness.sh wp plugin list

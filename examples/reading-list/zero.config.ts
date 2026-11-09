@@ -6,7 +6,7 @@ import {
 } from "zero";
 import escapeHtml from "escape-html";
 import ms from "ms";
-import { mine, ownerId, signedIn } from "./lib/owner";
+import { mine, ownerId, signedIn } from "./zero/lib/owner";
 
 // A collection is stored as WordPress posts, so it gets the editor, drafts and revisions.
 export const books = collection({

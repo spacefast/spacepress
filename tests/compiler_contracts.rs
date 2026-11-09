@@ -1212,7 +1212,7 @@ fn private_names_accessors_and_imported_javascript_classes_match_node() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     assert_eq!(expected["complete"], true);
-    assert_eq!(expected["cases"].as_object().unwrap().len(), 7);
+    assert_eq!(expected["cases"].as_object().unwrap().len(), 8);
     assert!(
         expected["cases"]
             .as_object()

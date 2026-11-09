@@ -1022,7 +1022,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// Instances of classes whose chain reaches `extends Error` (or TypeError/RangeError).
+    /// Instances of classes whose chain reaches `extends Error` (or another `ERROR_CONSTRUCTORS` entry).
     pub(super) fn error_instance(&self, ty: &Ty) -> bool {
         let Ty::Instance(identity, _) = ty.non_null() else {
             return false;

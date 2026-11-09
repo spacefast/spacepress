@@ -114,6 +114,7 @@ class NotFound extends StoreError {
 }
 class Plain extends Error {}
 class Typed extends TypeError {}
+class Syntax extends SyntaxError {}
 
 export function untypedErrors() {
   const results = [];
@@ -123,11 +124,13 @@ export function untypedErrors() {
     () => { throw StoreError.wrap("text"); },
     () => { throw { code: "raw" }; },
     () => { throw new Typed("typed"); },
+    () => { throw new Syntax("syntax"); },
+    () => { throw SyntaxError("called"); },
   ]) {
     try { run(); } catch (error) {
       results.push({
         store: error instanceof StoreError, notFound: error instanceof NotFound,
-        error: error instanceof Error, type: error instanceof TypeError,
+        error: error instanceof Error, type: error instanceof TypeError, syntax: error instanceof SyntaxError,
         name: error.name, code: error.code, message: error.message, permanent: error.permanent,
         text: error instanceof Error ? String(error) : "", stack: error instanceof Error ? error.stack.split("\n")[0] : "",
         keys: Object.keys(error), json: JSON.stringify(error), cause: typeof error.cause,
@@ -135,10 +138,12 @@ export function untypedErrors() {
     }
   }
   const plain = new Plain();
+  let json = [];
+  try { JSON.parse("{"); } catch (error) { json = [error instanceof SyntaxError, error instanceof Error, error instanceof TypeError, error.name]; }
   const caused = new StoreError("Invalid", "outer", "inner");
   return {
     results, plain: [String(plain), plain.message, plain.name, Object.hasOwn(plain, "message"), Object.keys(plain).length],
     caused: [caused.cause, caused.permanent, Object.hasOwn(caused, "cause"), Object.keys(caused).length],
-    text: String(new NotFound("t")),
+    text: String(new NotFound("t")), json,
   };
 }

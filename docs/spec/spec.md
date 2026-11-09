@@ -476,7 +476,7 @@ run on a box or in wasm. Check its crate API before depending on it.
 - **Server and client APIs:**
   - `jobs.x.enqueue`;
   - `db.query`, `db.insert`, `db.update` and `db.delete`;
-  - review of `zero/migrations/*.sql`;
+  - review of `zero/_generated/migrations/*.sql`;
   - the generated `zero/client/` source.
 - **Pages:** the `zero_<name>` post types for kinds WordPress already has,
   `@spacefast/zero-pages`, `zero/pages.json`, `load()`, `<Show>`, `orElse()`,

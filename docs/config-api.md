@@ -182,6 +182,23 @@ engine checks include these tables. Uninstall retains their rows like normal tab
 An [adopted application table](migrating-from-zero.md#application-source-migration)
 keeps its TEXT/DOUBLE storage and string response IDs.
 
+### Files that moved into `zero/_generated/`
+
+A checkout from before `zero/_generated/` is refused until its committed
+files move. Each refusal prints the `git mv` that fixes it.
+
+| Before | Now | Left in place, it would be |
+|---|---|---|
+| `zero/migrations/` | `zero/_generated/migrations/` | read as a first build |
+| `zero/plugins.lock.json` | `zero/_generated/plugins.lock.json` | ignored, and a new lock granting everything written |
+| `zero/wp-plugins.lock.json` | `zero/_generated/wp-plugins.lock.json` | ignored, and its plugins resolved again |
+| `zero/abilities.json` | `zero/_generated/abilities.json` | ignored, so its abilities are unknown |
+| `zero/client/` | `zero/_generated/client/` | loaded as app code |
+| `zero.gen.ts` | `zero/_generated/db.d.ts` | stale editor types |
+
+A source bundle a host stored earlier is read on the new layout instead, and
+is never refused.
+
 ### Upgrading authoring
 
 Replace named builders with unnamed `collection()` or `table()` and register

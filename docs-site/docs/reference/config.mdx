@@ -17,7 +17,7 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 | `users` | Fields on WordPress users. Build each one with `userProjection()`. |
 | `relations` | Links between collections and tables. Build them with `defineRelations()`. |
 | `globals` | Key = the name used in `db.globals.<key>` and `/globals/<key>`. |
-| `hooks` | `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. |
+| `hooks` | Functions that run before or after a create, update or delete. |
 | `actions` | Named endpoints at `POST /wp-json/first/v1/actions/<name>`. Build each one with `action()`. |
 | `routes` | Custom HTTP endpoints on the site's own paths, outside `/wp-json`. |
 | `jobs` | Background work that runs after the request, on Action Scheduler. Build each one with `job()`. |

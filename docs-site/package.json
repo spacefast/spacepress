@@ -17,7 +17,7 @@
 		"build": "pnpm wasm && pnpm showcase && pnpm generate && blume build && node scripts/prepare-spacefast.mjs",
 		"test": "node --test tests/unit/*.test.ts",
 		"test:browser": "playwright test",
-		"check": "pnpm showcase && pnpm generate:check && pnpm test && blume validate && pnpm test:browser"
+		"check": "pnpm wasm && pnpm showcase && pnpm generate:check && pnpm test && blume build && blume validate && pnpm test:browser"
 	},
 	"dependencies": {
 		"@pierre/diffs": "1.6.4",

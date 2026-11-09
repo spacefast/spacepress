@@ -87,7 +87,8 @@ interface MediaClient {
 ## Sign-in
 
 ```ts
-interface AuthClient {  signIn(opts?: { returnTo?: string }): Promise<never>;
+interface AuthClient {
+  signIn(opts?: { returnTo?: string }): Promise<never>;
   handleCallback(): Promise<User>;
   guest(): Promise<User>;
   upgrade(): Promise<never>;
@@ -100,7 +101,8 @@ interface AuthClient {  signIn(opts?: { returnTo?: string }): Promise<never>;
 ## Options
 
 ```ts
-interface ClientOptions {  url?: string;
+interface ClientOptions {
+  url?: string;
   nonce?: string;
   fetch?: typeof fetch;
   headers?: Record<string, string>;

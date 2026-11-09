@@ -13,7 +13,8 @@ export const books = collection({
   title: text().notNull().max(160),
   slug: slug({ source: "title" }),
   review: richText(),
-  minutesRead: integer().notNull().default(0),
+  // Written by the tally job below; a client can't set it.
+  minutesRead: integer().notNull().default(0).access({ create: false, update: false }),
 }, {
   title: "title",
   content: "review",

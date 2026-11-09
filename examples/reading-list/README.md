@@ -39,4 +39,4 @@ Use the `id` the first call returns as `bookId`. What each call shows, as run ag
 | `POST /reads` with `"ownerId": 99` | 403 `You can't set ownerId` |
 | `GET /reads` without signing in | 401 |
 | `action-scheduler run`, then `GET /books` | `minutesRead` is the book's total, written by the `tally` job |
-| `GET /shelf.html` | `<ul><li>The Left Hand of Darkness: 30 minutes</li></ul>`, formatted by `escape-html` and `ms` running as PHP |
+| `GET /shelf.html` | `<ul><li>The Left Hand of Darkness: 25 minutes</li></ul>`, formatted by `escape-html` and `ms` running as PHP |

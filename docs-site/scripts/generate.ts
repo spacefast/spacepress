@@ -64,7 +64,9 @@ function fence(lang: string, code: string, meta = ""): string {
 // the playground runs, and shown in a file browser built from the native build.
 // ---------------------------------------------------------------------------------------------
 
-const compiler = await Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));
+const wasm = path.join(site, "public/compiler.wasm");
+if (!existsSync(wasm)) throw new Error("public/compiler.wasm is missing: run `pnpm wasm` in docs-site/ first");
+const compiler = await Compiler.load(readFileSync(wasm));
 
 /** A README without its title, which the page states itself. */
 function readme(dir: string): { body: string } | null {
@@ -483,7 +485,7 @@ A First app is one \`first.config.ts\`. It imports its building blocks from \`"f
 
 | Option | What it sets |
 | --- | --- |
-${configKeys.map((k) => `| \`${k.key}\` | ${cell(mdx(toFirst(k.doc || defaultDocs[k.key] || "")))} |`).join("\n")}
+${configKeys.map((k) => `| \`${k.key}\` | ${cell(mdx(toFirst(defaultDocs[k.key] || k.doc)))} |`).join("\n")}
 
 ${sections
 	.filter((s) => s.items.some((item) => item.signature))
@@ -724,7 +726,7 @@ const interfaceBody = (name: string) => {
 /** An interface from the client, as declared: comments dropped, every member and its signature kept. */
 const memberBlock = (name: string) => {
 	const { head, body } = interfaceBody(name);
-	const declared = body.replace(/^\s*\/\*\*[\s\S]*?\*\/\n/gm, "").replace(/^\s*\/\/.*\n/gm, "");
+	const declared = body.replace(/^[ \t]*\/\*\*[\s\S]*?\*\/\n/gm, "").replace(/^[ \t]*\/\/.*\n/gm, "");
 	return fence("ts", toFirst(`interface ${head} {${declared}\n}`));
 };
 const pantryClient = read("examples/pantry/zero/_generated/client/README.md");

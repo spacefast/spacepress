@@ -45,8 +45,9 @@ export function manifest(name: string): Manifest {
 function sourcesOf(dir: string, rel = ""): string[] {
   const found: string[] = [];
   for (const name of readdirSync(path.join(dir, rel))) {
-    if (["zero", ".zero", "node_modules"].includes(name) && rel === "") continue;
     const sub = rel ? `${rel}/${name}` : name;
+    // Build output: `first build` writes zero/_generated/ and zero/dist/. App code under zero/ counts.
+    if ([".zero", "node_modules", "zero/_generated", "zero/dist"].includes(sub)) continue;
     if (lstatSync(path.join(dir, sub)).isDirectory()) found.push(...sourcesOf(dir, sub));
     else found.push(sub);
   }

@@ -16,8 +16,7 @@ interface Props {
 	file?: string;
 }
 const { name, file = compilerEntry } = Astro.props;
-const shownName = file === compilerEntry ? "first.config.ts" : file;
-const contents = firstFiles({ [file]: readFileSync(path.join(repo, "examples", name, file), "utf8") })[shownName]!;
+const [[shownName, contents]] = Object.entries(firstFiles({ [file]: readFileSync(path.join(repo, "examples", name, file), "utf8") })) as [[string, string]];
 const { check } = await compileExample(name);
 ---
 

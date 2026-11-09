@@ -71,7 +71,7 @@ export const tours: Tour[] = [
         slug: "a-hook",
         title: "A hook is compiled to PHP",
         prose: [
-          "Hooks run inside WordPress, so they cannot be JavaScript at runtime. Zero compiles them: string methods become `Zero\\Js` helpers where JavaScript and PHP differ, `throw new HttpError` becomes the runtime's exception, and the `slugify` helper imported from zero/lib/fields.ts comes along as a PHP function.",
+          "Hooks run inside WordPress, so they cannot be JavaScript at runtime. Zero compiles them: string methods become `\\Zero\\Js` helpers where JavaScript and PHP differ, `throw new HttpError` becomes the runtime's exception, and the `slugify` helper imported from zero/lib/fields.ts comes along as a PHP function.",
           "Where no sound translation exists, the build fails with a location and a suggestion rather than guessing.",
         ],
         config: { file: "zero.config.ts", lines: { from: "beforeCreate(data) {", to: "afterUpdate: restock," } },

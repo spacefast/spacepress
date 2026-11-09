@@ -95,7 +95,15 @@ const count = (n: number) => n.toLocaleString("en-US");
 				loaded.hidden = true;
 				return;
 			}
-			const contents = await (await fetch(`/files/blobs/${file.blob}.txt`)).text();
+			const response = await fetch(`/files/blobs/${file.blob}.txt`).catch(() => null);
+			if (current !== path) return;
+			if (!response?.ok) {
+				note.textContent = `${path} couldn't be loaded${response ? ` (${response.status})` : ""}. Reload the page to try again.`;
+				note.hidden = false;
+				loaded.hidden = true;
+				return;
+			}
+			const contents = await response.text();
 			if (current !== path) return;
 			viewer?.cleanUp();
 			loaded.replaceChildren();
@@ -107,7 +115,10 @@ const count = (n: number) => n.toLocaleString("en-US");
 		};
 
 		// The tree is in the page already; the file list it was rendered from is fetched to hydrate it.
-		void fetch(section.dataset.manifest!).then((response) => response.json()).then(({ files }: { files: Entry[] }) => {
+		void fetch(section.dataset.manifest!).then((response) => {
+			if (!response.ok) throw new Error(String(response.status));
+			return response.json();
+		}).then(({ files }: { files: Entry[] }) => {
 			byPath = new Map(files.map((file) => [file.path, file]));
 			const tree = new FileTree({
 				...options,
@@ -138,6 +149,9 @@ const count = (n: number) => n.toLocaleString("en-US");
 			};
 			window.addEventListener("hashchange", () => fromHash());
 			fromHash(true);
+		}).catch((error: unknown) => {
+			note.textContent = `The file list couldn't be loaded (${error instanceof Error ? error.message : String(error)}). Reload the page to try again.`;
+			note.hidden = false;
 		});
 
 		// WordPress Playground, embedded on request: it downloads WordPress and PHP (about 30 MB).

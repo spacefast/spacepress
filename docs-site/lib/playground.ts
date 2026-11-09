@@ -76,7 +76,10 @@ const fit = (area: HTMLTextAreaElement) => {
   area.style.height = `${area.scrollHeight}px`;
 };
 addEventListener("resize", () => fit(source));
-new MutationObserver(() => viewer?.setThemeType(dark() ? "dark" : "light")).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+new MutationObserver(() => {
+  viewer?.setThemeType(dark() ? "dark" : "light");
+  paint(source, sourceView, sourceFile.value);
+}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
 // The output pane renders with the diffs File component, the same renderer as every other file on
 // the site, and scrolls inside a fixed height. The textarea keeps the plain text, for the find

@@ -35,7 +35,6 @@ final class UserMeta
         add_filter('rest_user_query', [self::class, 'query'], 20, 2);
         add_filter('rest_request_before_callbacks', [self::class, 'before'], 20, 3);
         add_filter('rest_dispatch_request', [self::class, 'dispatch'], 20, 4);
-        add_action('rest_after_insert_user', [self::class, 'inserted'], 10, 3);
     }
 
     public static function registerMeta(): void
@@ -89,6 +88,11 @@ final class UserMeta
         if ($row !== null) {
             $data['meta'] = PostMeta::values($collection, $row, array_keys(array_intersect_key($fields, $row))) + $data['meta'];
         }
+        if (Facade::dispatching()) {
+            // The facade's row is Zero's: the member as this viewer may read it (email and role
+            // included, for one's own row too), or nothing when the read rule doesn't cover it.
+            $data[Kinds::USER_ROW] = $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+        }
         $response->set_data($data);
 
         return $response;
@@ -105,6 +109,11 @@ final class UserMeta
         }
         [, $keys, $ordered] = self::$selected;
         $include = empty($args['include']) ? $keys : array_values(array_intersect($keys, array_map('intval', (array) $args['include'])));
+        if (Facade::dispatching()) {
+            // The facade's rows are Zero's (its read rule chose them; UserMeta::prepare gives Zero's row):
+            // core's "authors only" default must not drop a member's own row. Core's own clients keep it.
+            unset($args['has_published_posts']);
+        }
 
         return ['include' => $include === [] ? [0] : $include] + ($ordered ? ['orderby' => 'include'] : []) + $args;
     }
@@ -145,16 +154,57 @@ final class UserMeta
     public static function dispatch(mixed $result, mixed $request, mixed $route, mixed $handler): mixed
     {
         if ($result !== null || !$request instanceof \WP_REST_Request || self::$open !== null || !is_array($handler)
-            || !in_array($request->get_method(), ['POST', 'PUT', 'PATCH'], true)
+            || !in_array($request->get_method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)
             || !preg_match(self::ROUTE, $request->get_route(), $m) || self::collection() === null) {
+            return $result;
+        }
+        $id = isset($m[1]) ? (strtolower($m[1]) === 'me' ? get_current_user_id() : (int) $m[1]) : 0;
+        $controller = is_array($handler['callback'] ?? null) ? ($handler['callback'][0] ?? null) : null;
+        // A member is created and deleted by Zero's pipeline (create/delete rules, validation, hooks,
+        // referential actions), after core's own permission check, in core's response shape.
+        // Multisite users belong to the network (wpmu signup, add_user_to_blog, remove from blog): core's.
+        if (is_multisite()) {
+            $controller = null;
+        }
+        if ($controller instanceof \WP_REST_Users_Controller && $request->get_method() === 'DELETE') {
+            return $id > 0 ? self::remove($id, $request, $controller) : $result;
+        }
+        if ($controller instanceof \WP_REST_Users_Controller && !isset($m[1])) {
+            return self::create($request, $controller);
+        }
+        if ($request->get_method() === 'DELETE' || $id === 0 || !$controller instanceof \WP_REST_Users_Controller) {
             return $result;
         }
         $meta = PostMeta::input($request);
         $fields = is_array($meta) ? array_intersect_key($meta, self::fields()) : [];
-        if ($fields === []) {
+        // The member's email, name and role are the users kind's fields too: an update applies them with
+        // Zero's update (rules, field rules, hooks) like every other member field, never core alone. A
+        // password stays core's (it re-issues the login cookie and notifies the account holder).
+        $core = [];
+        foreach (['email', 'name'] as $param) {
+            if ($request->has_param($param) && $request->get_param($param) !== null) {
+                $core[$param] = $request->get_param($param);
+            }
+        }
+        // A role Zero knows is the member's `role`; another plugin's role stays core's (promote_user),
+        // and the member's ladder role follows its capabilities (WpUserStore::syncRole).
+        $roles = $request->get_param('roles');
+        if (is_array($roles) && count($roles) === 1 && ($role = WpUserStore::zeroRole((string) reset($roles))) !== null) {
+            if (is_wp_error($denied = self::checkRoles($controller, $id, $roles))) {
+                return $denied;
+            }
+            $core['role'] = $role;
+        }
+        if ($fields === [] && $core === []) {
             return $result;
         }
         $request->set_param('meta', array_diff_key((array) $request->get_param('meta'), $fields));
+        foreach (['email' => 'email', 'name' => 'name', 'role' => 'roles'] as $col => $param) {
+            if (array_key_exists($col, $core)) {
+                unset($request[$param]);
+            }
+        }
+        $fields = $core + $fields;
         $connection = self::plugin()->connection();
         $began = !$connection->inTransaction();
         if ($began) {
@@ -162,13 +212,10 @@ final class UserMeta
         }
         self::$open = ['request' => $request, 'fields' => $fields, 'error' => null, 'began' => $began];
         try {
-            $id = isset($m[1]) ? (strtolower($m[1]) === 'me' ? get_current_user_id() : (int) $m[1]) : 0;
-            if ($id > 0) {
-                // An update: Zero decides before core writes anything.
-                self::apply($id);
-                if (self::$open['error'] !== null) {
-                    return self::finish(null);
-                }
+            // Zero decides before core writes anything.
+            self::apply($id);
+            if (self::$open['error'] !== null) {
+                return self::finish(null);
             }
             $response = call_user_func($handler['callback'], $request);
         } catch (\Throwable $e) {
@@ -182,12 +229,128 @@ final class UserMeta
         return self::finish($response);
     }
 
-    /** rest_after_insert_user: a create's member fields, once the user exists. */
-    public static function inserted(mixed $user, mixed $request, mixed $creating): void
+    /**
+     * `POST /wp/v2/users`: Db::insert as the viewer creates the member (create rule, field rules,
+     * validation, hooks) from email, name, the role (`roles`), the password and member `meta`; core's
+     * `username` becomes the login. Core's own update then applies the rest of the request (other
+     * plugins' meta, description, ...) to the new user, in the same transaction.
+     */
+    private static function create(\WP_REST_Request $request, \WP_REST_Users_Controller $controller): mixed
     {
-        if ($creating && $user instanceof \WP_User && self::$open !== null && self::$open['request'] === $request) {
-            self::apply((int) $user->ID);
+        $collection = self::collection() ?? throw new \LogicException('No users kind');
+        $plugin = self::plugin();
+        $meta = PostMeta::input($request);
+        $data = is_array($meta) ? array_intersect_key($meta, self::fields()) : [];
+        foreach (['email', 'name', 'password'] as $param) {
+            if ($request->has_param($param) && $request->get_param($param) !== null) {
+                $data[$param] = $request->get_param($param);
+            }
         }
+        $roles = $request->get_param('roles');
+        if (is_array($roles) && $roles !== []) {
+            if (is_wp_error($denied = self::checkRoles($controller, 0, $roles))) {
+                return $denied;
+            }
+            $data['role'] = count($roles) === 1 ? WpUserStore::zeroRole((string) reset($roles)) : null;
+            if ($data['role'] === null) {
+                return new \WP_Error('zero_invalid_input', 'A member has one of the roles Zero knows', ['status' => 422, 'pointer' => '/role']);
+            }
+        }
+        try {
+            $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+
+            $user = $plugin->db()->transaction(function () use ($plugin, $collection, $data, $viewer, $request, $controller, $meta): \WP_User {
+                $id = (int) $plugin->db()->insert($collection, $data, true, $viewer)[0]['id'];
+                $login = $request->get_param('username');
+                if (is_string($login) && $login !== '') {
+                    WpUserStore::setLogin($plugin->connection(), $id, $login);
+                }
+                // The rest of core's create_item, as it runs after wp_insert_user: its hooks (creating),
+                // other plugins' registered meta, additional fields.
+                $user = get_user_by('id', $id) ?: throw new \LogicException("User $id vanished");
+                do_action('rest_insert_user', $user, $request, true);
+                $others = is_array($meta) ? array_diff_key($meta, self::fields()) : [];
+                if ($others !== []) {
+                    $fields = (fn () => $this->meta)->call($controller);
+                    $done = $fields->update_value($others, $id);
+                    if (is_wp_error($done)) {
+                        throw self::failure($done);
+                    }
+                }
+                $user = get_user_by('id', $id);
+                $done = (fn ($u, $r) => $this->update_additional_fields_for_object($u, $r))->call($controller, $user, $request);
+                if (is_wp_error($done)) {
+                    throw self::failure($done); // the member Zero created rolls back with it
+                }
+                do_action('rest_after_insert_user', $user, $request, true);
+
+                return $user;
+            });
+        } catch (HttpError | \Zero\JsError $e) {
+            return CoreAccess::error(self::problem($e));
+        }
+        $request->set_param('context', 'edit');
+        $response = rest_ensure_response($controller->prepare_item_for_response($user, $request));
+        $response->set_status(201);
+        $response->header('Location', rest_url(sprintf('%s/%s/%d', 'wp/v2', 'users', $user->ID)));
+
+        return $response;
+    }
+
+    /** Core's own role check (the role exists, is editable by the caller, no self-demotion from edit_users). */
+    private static function checkRoles(\WP_REST_Users_Controller $controller, int $id, array $roles): true|\WP_Error
+    {
+        return (fn (int $id, array $roles) => $this->check_role_update($id, $roles))->call($controller, $id, $roles);
+    }
+
+    /**
+     * `DELETE /wp/v2/users/<id>`: Db::delete as the viewer. The member's posts are kept, unowned (or
+     * reassigned to `reassign`), as every Zero delete keeps them; core would delete them with the user.
+     */
+    private static function remove(int $id, \WP_REST_Request $request, \WP_REST_Users_Controller $controller): mixed
+    {
+        if (!$request['force']) {
+            return new \WP_Error('rest_trash_not_supported', "Users do not support trashing. Set 'force=true' to delete.", ['status' => 501]);
+        }
+        $user = get_userdata($id);
+        if (!$user instanceof \WP_User) {
+            return new \WP_Error('rest_user_invalid_id', __('Invalid user ID.'), ['status' => 404]);
+        }
+        $reassign = $request['reassign'] === false ? 0 : absint($request['reassign']);
+        if ($reassign !== 0 && ($reassign === $id || !get_userdata($reassign))) {
+            return new \WP_Error('rest_user_invalid_reassign', __('Invalid user ID for reassignment.'), ['status' => 400]);
+        }
+        $collection = self::collection() ?? throw new \LogicException('No users kind');
+        $plugin = self::plugin();
+        $request->set_param('context', 'edit');
+        $previous = rest_ensure_response($controller->prepare_item_for_response($user, $request))->get_data();
+        try {
+            $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+            $deleted = $plugin->db()->transaction(function () use ($plugin, $collection, $id, $reassign, $viewer): array {
+                if ($reassign !== 0) {
+                    WpUserStore::reassignPosts($plugin->connection(), $id, $reassign);
+                }
+
+                // An empty result: the delete rule doesn't cover this member.
+                return $plugin->db()->delete($collection, ['id' => $id], true, $viewer)[0] ?? throw HttpError::notFound("No $collection row with id $id");
+            });
+        } catch (HttpError | \Zero\JsError $e) {
+            return CoreAccess::error(self::problem($e));
+        }
+        if (Facade::dispatching() && is_array($previous)) {
+            $previous[Kinds::USER_ROW] = (object) PostMeta::values($collection, $deleted, array_map('strval', array_keys($deleted)));
+        }
+        $response = rest_ensure_response(['deleted' => true, 'previous' => $previous]);
+        do_action('rest_delete_user', $user, $response, $request); // core's own notice, as its delete fires it
+
+        return $response;
+    }
+
+    private static function problem(\Throwable $e): HttpError
+    {
+        $problem = \Zero\App::problem($e);
+
+        return new HttpError($problem['status'], $problem['code'], $problem['detail'], $problem['pointer'] ?? null);
     }
 
     private static function apply(int $id): void
@@ -202,8 +365,7 @@ final class UserMeta
                 throw HttpError::notFound("No $collection row with id $id");
             }
         } catch (HttpError | \Zero\JsError $e) {
-            $problem = \Zero\App::problem($e);
-            self::$open['error'] = new HttpError($problem['status'], $problem['code'], $problem['detail'], $problem['pointer'] ?? null);
+            self::$open['error'] = self::problem($e);
         }
     }
 

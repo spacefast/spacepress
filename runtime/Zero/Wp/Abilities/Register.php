@@ -143,6 +143,26 @@ final class Register
         return $body instanceof \Zero\JsObject && array_key_exists('input', $body->p) ? [urldecode($m[1]), $body->p['input']] : null;
     }
 
+    /**
+     * Run $fn with $json (a raw JSON object) as ability $name's input as sent, so `{}` inside a json()
+     * value survives the array core hands to the ability (the facade's actions).
+     */
+    public static function withSentInput(string $name, string $json, callable $fn): mixed
+    {
+        $previous = self::$raw;
+        try {
+            $decoded = trim($json) === '' ? new \Zero\JsObject() : \Zero\Js::decodeJson($json);
+        } catch (\JsonException) {
+            $decoded = null;
+        }
+        self::$raw = $decoded === null ? null : [$name, $decoded];
+        try {
+            return $fn();
+        } finally {
+            self::$raw = $previous;
+        }
+    }
+
     /** The executing ability's input as sent, when the REST run endpoint carried it. */
     public static function sentInput(string $name, mixed $input): mixed
     {

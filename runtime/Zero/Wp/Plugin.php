@@ -102,6 +102,7 @@ final class Plugin
             }
         });
         Rest::boot();
+        Facade::register($this);
         HttpRoutes::register($this);
         MarkdownTwins::register();
         Purges::register($this);

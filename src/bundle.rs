@@ -136,7 +136,10 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     crate::pages::check(&*recording, &project, &built)?;
     let mut app = SourceBundle::default();
     let mut vendor = SourceBundle::default();
-    let migration_dir = project.join("zero/migrations");
+    if fs.exists(&project.join(crate::pipeline::OLD_LEDGER)) {
+        return Err(crate::pipeline::moved_ledger());
+    }
+    let migration_dir = project.join(crate::pipeline::LEDGER);
     if fs.is_dir(&migration_dir) {
         for path in fs.read_dir(&migration_dir).map_err(io)? {
             safe_migration_name(&path.file_name().unwrap_or_default().to_string_lossy())?;
@@ -451,7 +454,14 @@ pub(crate) fn compile_tree(
     let source_migrations = sources
         .files
         .iter()
-        .filter_map(|(path, text)| path.strip_prefix("zero/migrations/").map(|name| (name, text)))
+        // A capture is frozen: one taken by an older compiler keeps its ledger at the old path, and
+        // its archive must survive a recompile (docs/spacefast-deploy.md).
+        .filter_map(|(path, text)| {
+            [crate::pipeline::LEDGER, crate::pipeline::OLD_LEDGER]
+                .iter()
+                .find_map(|ledger| path.strip_prefix(ledger)?.strip_prefix('/'))
+                .map(|name| (name, text))
+        })
         .map(|(name, text)| {
             safe_migration_name(name)?;
             Ok((name.to_owned(), text.clone()))

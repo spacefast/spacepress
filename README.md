@@ -88,7 +88,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> .zero/wp-content in 6s
 
 | You get | Where |
 |---|---|
-| MySQL migrations, diffed against the last build | `zero/migrations/0001_init.sql` |
+| MySQL migrations, diffed against the last build | `zero/_generated/migrations/0001_init.sql` |
 | A typed client: `zero.posts.list({ with: { author: true } })` and friends | `zero/client/` |
 | Editor types, so `db` in your hooks knows your schema | `zero.gen.ts` |
 | REST endpoints for every collection, global and action, with relations loaded through `with` | `/wp-json/zero/v1/...` |
@@ -174,7 +174,7 @@ curl -u "$AUTH" -X POST $BASE/actions/consume -d '{"itemId":1}'
 
 `zero check` compiles without writing anything; `zero build` writes the
 plugins to `.zero/wp-content/` without booting anything. Commit
-`zero/migrations/`, `zero/client/`, `zero.gen.ts` and
+`zero/_generated/migrations/`, `zero/client/`, `zero.gen.ts` and
 `zero/wp-plugins.lock.json`; `.zero/` is local build and development state.
 
 Want a seeded app to click through? [The showcase](examples/showcase/README.md)

@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = fileURLToPath(new URL("./", import.meta.url));
 const destination = path.join(root, ".zero/publish");
-const inputs = ["zero.config.ts", "lib", "zero/migrations", "public"];
+const inputs = ["zero.config.ts", "lib", "zero/_generated/migrations", "public"];
 
 async function rejectSymlinks(file) {
   const stat = await lstat(file);

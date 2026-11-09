@@ -469,7 +469,7 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     // One site, three trusted CLI actions in a row (the global's first write, its second, a json filter).
     let out = wp_eval_json(
-        &tmp.join(".zero/wp-content"),
+        &tmp.join("zero/dist/wp-content"),
         r#"$run = static fn (string $name) => json_decode($app->cli(['action', $name])[1], true);
            echo json_encode([$run('visit'), $run('visit'), $run('emptyMeta')]);"#,
         &serde_json::Value::Null,
@@ -498,7 +498,7 @@ fn context_values_pass_through_typed_helpers() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(tmp.join(".zero/wp-content"))
+        .arg(tmp.join("zero/dist/wp-content"))
         .arg(
             r#"$route = $app->matchRoute("POST", "/echo");
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
@@ -870,7 +870,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     );
 
     // Writes default to editor access: the site's editor signs in with an application password.
-    let content = project.join(".zero/wp-content");
+    let content = project.join("zero/dist/wp-content");
     let mut server = Server::start(&content, &["kim=editor"]);
     let (s, denied) = server.send("POST", "/locations", Some(r#"{"name":"Shed"}"#));
     assert_eq!((s, denied["code"].as_str()), (401, Some("unauthenticated")));
@@ -1040,7 +1040,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
         String::from_utf8_lossy(&built.stderr)
     );
     // The compiled app plugin (named after the project directory) and the runtime beside it.
-    let plugins = tmp.join(".zero/wp-content/plugins");
+    let plugins = tmp.join("zero/dist/wp-content/plugins");
     let app = std::fs::read_dir(&plugins)
         .unwrap()
         .filter_map(Result::ok)
@@ -1098,7 +1098,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
             }
             // Actions run through the trusted CLI on a site: they may use db(), once() and jobs.
             _ => wp_eval(
-                &tmp.join(".zero/wp-content"),
+                &tmp.join("zero/dist/wp-content"),
                 "echo $app->cli(['action', $arg])[1];",
                 &serde_json::Value::String(name.clone()),
             ),
@@ -1164,7 +1164,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "node failed:\n{}",
         String::from_utf8_lossy(&node.stderr)
     );
-    let plugins = tmp.join(".zero/wp-content/plugins");
+    let plugins = tmp.join("zero/dist/wp-content/plugins");
     let app = plugins.join(format!(
         "zero-app-{}",
         tmp.file_name().unwrap().to_string_lossy().replace('_', "-")
@@ -1395,7 +1395,7 @@ fn localized_generated_client_types() {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
                 "paths": { "zero": [root().join("types/zero/index.d.ts")] }
             },
-            "files": ["client.ts", "zero.gen.ts"]
+            "files": ["client.ts", "zero/_generated/db.d.ts"]
         }))
         .unwrap(),
     )
@@ -1448,7 +1448,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     let out = zero().arg("build").arg(&frozen).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(
-        as_json(&frozen.join(".zero/wp-content/plugins/zero-app-blog/zero/app/schema.php")),
+        as_json(&frozen.join("zero/dist/wp-content/plugins/zero-app-blog/zero/app/schema.php")),
         golden,
         "schema.php drifted from tests/fixtures/blog/schema.php"
     );
@@ -1463,7 +1463,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let plugin = project.join(".zero/wp-content/plugins/zero-app-blog");
+    let plugin = project.join("zero/dist/wp-content/plugins/zero-app-blog");
     for rel in [
         "zero-app-blog.php",
         "zero/app/functions.php",
@@ -1471,8 +1471,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     ] {
         assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
     }
-    assert!(project.join(".zero/wp-content/plugins/zero-app-blog.zip").is_file());
-    let content = project.join(".zero/wp-content");
+    assert!(project.join("zero/dist/wp-content/plugins/zero-app-blog.zip").is_file());
+    let content = project.join("zero/dist/wp-content");
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(content.join("zero-manifest.json")).unwrap()).unwrap();
     assert_eq!(manifest["runtime"], "0.3");
@@ -1542,12 +1542,12 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "{mysql}"
     );
     // The typed client: generated types and the descriptor, next to the migrations.
-    let types = std::fs::read_to_string(project.join("zero/client/types.ts")).unwrap();
+    let types = std::fs::read_to_string(project.join("zero/_generated/client/types.ts")).unwrap();
     assert!(
         types.contains("tags: (\"news\" | \"guide\" | \"release\")[];"),
         "{types}"
     );
-    assert!(project.join("zero/client/schema.ts").is_file());
+    assert!(project.join("zero/_generated/client/schema.ts").is_file());
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -2070,7 +2070,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join(".zero/wp-content/plugins/zero-app-phase2/zero/app/schema.php"))
+        .arg(tmp.join("zero/dist/wp-content/plugins/zero-app-phase2/zero/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -2084,7 +2084,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
-    let wpml = tmp.join(".zero/wp-content/plugins/zero-app-phase2/wpml-config.xml");
+    let wpml = tmp.join("zero/dist/wp-content/plugins/zero-app-phase2/wpml-config.xml");
     assert_eq!(
         std::fs::read_to_string(&wpml).expect("localized post types ship wpml-config.xml"),
         std::fs::read_to_string(root().join("tests/fixtures/phase2.wpml-config.xml")).unwrap(),
@@ -2116,7 +2116,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     // The compiled closures run on a WordPress site with the plugins active (fields rules, actions,
     // a job handler writing through db()).
     let out = wp_eval(
-        &tmp.join(".zero/wp-content"),
+        &tmp.join("zero/dist/wp-content"),
         r#"
 
         $db = \Zero\Db::instance();
@@ -2208,7 +2208,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     std::fs::write(tmp.join("zero.config.ts"), config).unwrap();
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    assert!(tmp.join(".zero/wp-content/zero-manifest.json").is_file());
+    assert!(tmp.join("zero/dist/wp-content/zero-manifest.json").is_file());
     assert!(tmp.join("zero/_generated/migrations/0001_init.sql").is_file());
     let _ = std::fs::remove_dir_all(tmp);
 }
@@ -2279,6 +2279,89 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(!migrations.join("0002_update.sql").exists());
+    // A checkout from before `zero/_generated/`: the ledger still in `zero/migrations/` and nothing
+    // generated beside it. Building there would start a second 0001_init.sql, so the build names
+    // the move; running exactly the command it prints is enough.
+    let old = tmp.join("zero/migrations");
+    std::fs::rename(&migrations, &old).unwrap();
+    std::fs::remove_dir_all(tmp.join("zero/_generated")).unwrap();
+    std::fs::remove_dir_all(tmp.join("zero/dist")).unwrap();
+    let fix = "mkdir -p zero/_generated && rmdir zero/_generated/migrations 2>/dev/null; git mv zero/migrations zero/_generated/migrations";
+    refused("zero/migrations/ moved to zero/_generated/migrations/");
+    refused(fix);
+    let git = |args: &[&str]| {
+        let out = Command::new("git").args(args).current_dir(&tmp).output().unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    let moved = Command::new("sh").args(["-c", fix]).current_dir(&tmp).output().unwrap();
+    assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
+    let moved = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
+    assert!(!migrations.join("0002_update.sql").exists());
+    // The other committed files from before `zero/_generated/`: each is refused, writing nothing,
+    // and the printed command is the whole fix. Left in place, a lock would be ignored (and
+    // replaced) and an old client would load as app code.
+    for (old, new, content) in [
+        (
+            "zero/abilities.json",
+            "zero/_generated/abilities.json",
+            r#"{"version":1,"abilities":[]}"#,
+        ),
+        ("zero/wp-plugins.lock.json", "zero/_generated/wp-plugins.lock.json", ""),
+        (
+            "zero/client/index.ts",
+            "zero/_generated/client/index.ts",
+            "export const stale = 1;\n",
+        ),
+    ] {
+        let (old_dir, new_dir) = if old.starts_with("zero/client/") {
+            ("zero/client", "zero/_generated/client")
+        } else {
+            (old, new)
+        };
+        let path = tmp.join(old);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // The pin lock is the one the last build wrote, moved back to where it used to live.
+        let content = if content.is_empty() {
+            std::fs::read_to_string(tmp.join(new)).unwrap()
+        } else {
+            content.to_string()
+        };
+        std::fs::write(&path, content).unwrap();
+        refused(&format!("{old_dir} moved to {new_dir}"));
+        let fix = format!("mkdir -p zero/_generated && git mv {old_dir} {new_dir}");
+        refused(&fix);
+        git(&["add", "-A"]);
+        // The old client and lock may already have a regenerated twin; the move replaces it.
+        let _ = std::fs::remove_dir_all(tmp.join(new_dir));
+        let _ = std::fs::remove_file(tmp.join(new_dir));
+        let moved = Command::new("sh")
+            .args(["-c", &fix])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        assert!(
+            moved.status.success(),
+            "{fix}: {}",
+            String::from_utf8_lossy(&moved.stderr)
+        );
+        assert!(tmp.join(new).is_file() && !tmp.join(old_dir).exists());
+        if old_dir == "zero/client" {
+            std::fs::remove_dir_all(tmp.join(new_dir)).unwrap();
+        }
+        let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+        assert!(
+            again.status.success(),
+            "{old}: {}",
+            String::from_utf8_lossy(&again.stderr)
+        );
+    }
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -2294,7 +2377,7 @@ fn auth_fixture_matches_the_compiler() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join(".zero/wp-content/plugins/zero-app-club/zero/app/schema.php"))
+        .arg(tmp.join("zero/dist/wp-content/plugins/zero-app-club/zero/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -2352,16 +2435,36 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(
-        stderr.contains("plugin \"seo\" writes posts.body; zero/plugins.lock.json grants it only posts.summary"),
+        stderr.contains(
+            "plugin \"seo\" writes posts.body; zero/_generated/plugins.lock.json grants it only posts.summary"
+        ),
         "{stderr}"
     );
     assert!(!project.join(".zero").exists(), "a refused plugin generates nothing");
+
+    // The same narrowed lock left at its place from before zero/_generated/: without --frozen it
+    // must not be skipped and replaced by a lock granting posts.body. The build refuses and the
+    // owner's file is untouched.
+    let lock = project.join("zero/_generated/plugins.lock.json");
+    let old = project.join("zero/plugins.lock.json");
+    let granted = std::fs::read(&lock).unwrap();
+    std::fs::rename(&lock, &old).unwrap();
+    let refused = zero().arg("build").arg(&project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("zero/plugins.lock.json moved to zero/_generated/plugins.lock.json"),
+        "{stderr}"
+    );
+    assert_eq!(std::fs::read(&old).unwrap(), granted);
+    assert!(!lock.exists(), "a refusal writes no lock");
+    std::fs::rename(&old, &lock).unwrap();
 
     std::fs::write(&index, source).unwrap();
     let out = zero().args(["build", "--frozen"]).arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let got = wp_eval_json(
-        &project.join(".zero/wp-content"),
+        &project.join("zero/dist/wp-content"),
         r#"$row = json_decode($app->cli(['insert', 'posts', '{"title":"Hello plugins"}'])[1], true)['data'][0];
            $denied = json_decode($app->cli(['action', 'seo_lookup', '{"url":"https://elsewhere.example/x"}'])[1], true);
            echo json_encode(['summary' => $row['summary'], 'body' => $row['body'], 'denied' => $denied['error']['code'] ?? $denied]);"#,

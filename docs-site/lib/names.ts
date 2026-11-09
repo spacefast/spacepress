@@ -36,7 +36,7 @@ const rules: [RegExp, string][] = [
 	[/(^|[\s`(])(?<!sf )zero (?=(dev|build|check|doctor|sync|abilities|migrate|deploy|wp|seed|jobs|run|action|find|insert|update|delete|publish-due|identity|help|sources)\b)/gm, "$1first "],
 	[/(^|[\s`"'(/])\.zero\//gm, "$1.first/"],
 	// The app folder. Not `@spacefast/zero/client`, the 0.8 package.
-	[/(^|[\s`"'(/])(?<!@spacefast\/)zero\/(_generated|client|dist|migrations|app|abilities\.json|plugins\.lock\.json|wp-plugins\.lock\.json)/gm, "$1first/$2"],
+	[/(^|[\s`"'(/.])(?<!@spacefast\/)zero\/(_generated|client|dist|migrations|app|components|pages\.json|abilities\.json|plugins\.lock\.json|wp-plugins\.lock\.json)/gm, "$1first/$2"],
 	[/\bZERO_(?!0)/g, "FIRST_"],
 	[/\bZ(\d{4})\b/g, "F$1"],
 	[/\bZero(Error|Config)\b/g, "First$1"],

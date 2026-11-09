@@ -16,6 +16,7 @@ const cases: [string, string][] = [
 	['import { table } from "zero";', 'import { table } from "first";'],
 	["write the WordPress plugins to .zero/wp-content", "write the WordPress plugins to .first/wp-content"],
 	["commit zero/_generated/migrations", "commit first/_generated/migrations"],
+	["-> zero/dist/wp-content", "-> first/dist/wp-content"],
 	["zero.config.ts and zero.gen.ts", "first.config.ts and first.gen.ts"],
 	["`zero build` and `wp zero jobs`", "`first build` and `wp first jobs`"],
 	["/wp-json/zero/v1/actions/hello", "/wp-json/first/v1/actions/hello"],

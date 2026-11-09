@@ -135,7 +135,7 @@ export default defineConfig({ collections: { posts }, tables: { stock } });
 ```
 
 Definitions need no exports. Backend-only config is sufficient; `zero build`
-emits `zero.gen.ts` to type `db.query` without importing authored definitions.
+emits `zero/_generated/db.d.ts` to type `db.query` without importing authored definitions.
 An `id: id()` primary key is implicit. Tables may declare a custom single primary
 key; collections and user projections use the native integer `id`.
 
@@ -182,6 +182,23 @@ engine checks include these tables. Uninstall retains their rows like normal tab
 An [adopted application table](migrating-from-zero.md#application-source-migration)
 keeps its TEXT/DOUBLE storage and string response IDs.
 
+### Files that moved into `zero/_generated/`
+
+A checkout from before `zero/_generated/` is refused until its committed
+files move. Each refusal prints the `git mv` that fixes it.
+
+| Before | Now | Left in place, it would be |
+|---|---|---|
+| `zero/migrations/` | `zero/_generated/migrations/` | read as a first build |
+| `zero/plugins.lock.json` | `zero/_generated/plugins.lock.json` | ignored, and a new lock granting everything written |
+| `zero/wp-plugins.lock.json` | `zero/_generated/wp-plugins.lock.json` | ignored, and its plugins resolved again |
+| `zero/abilities.json` | `zero/_generated/abilities.json` | ignored, so its abilities are unknown |
+| `zero/client/` | `zero/_generated/client/` | loaded as app code |
+| `zero.gen.ts` | `zero/_generated/db.d.ts` | stale editor types |
+
+A source bundle a host stored earlier is read on the new layout instead, and
+is never refused.
+
 ### Upgrading authoring
 
 Replace named builders with unnamed `collection()` or `table()` and register
@@ -214,7 +231,7 @@ revision ownership; relations and client properties still use logical keys.
    `zero build .`. This authoring-only transition must leave the snapshot and
    historical SQL unchanged and produce no new numbered SQL. Review with
    `git diff -- zero/_generated/migrations` before deployment.
-3. Deploy the generated `.zero/wp-content` plugins together as an ordinary
+3. Deploy the generated `zero/dist/wp-content` plugins together as an ordinary
    file-copy update to the existing site. The runtime keeps the app's migration
    ledger, rows, reference targets and revision identities; it has no data
    migration to apply. Verify existing reads, relations and revision history
@@ -300,7 +317,7 @@ export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Si
   and `once()` keys are its own.
 
 There is no capability list to write. `zero build` infers each plugin's
-grant and writes `zero/plugins.lock.json`:
+grant and writes `zero/_generated/plugins.lock.json`:
 
 ```json
 { "version": 1, "plugins": { "seo": {
@@ -709,14 +726,14 @@ export default defineConfig({
 - The app's own abilities (`<app>/<collection>-list`, `<app>/<action>`, ...)
   are typed from the schema with nothing else to do. An action's result is
   `unknown`: its ability publishes no output schema.
-- Other abilities come from `zero/abilities.json`, which you commit.
+- Other abilities come from `zero/_generated/abilities.json`, which you commit.
   `zero abilities pull [dir] --site <url>` writes it from a running site;
   `--only acme/*` (repeatable) keeps matching names. The pull signs in only
   with `ZERO_APP_PASSWORD=user:application-password` from the environment.
   `zero build` and `zero check` read the lock and never contact the site.
 - Map `"php/wordpress"` in tsconfig.json next to `"zero"`
   (`types/wordpress.d.ts` in the CLI package); `zero build` writes the ability
-  types into `zero.gen.ts` when the app imports the module.
+  types into `zero/_generated/db.d.ts` when the app imports the module.
 - The call runs core's `WP_Ability::execute()` for the current WordPress user:
   core validates the input, runs the ability's permission check and validates
   the output. It runs inside the handler's transaction, so the ability's

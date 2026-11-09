@@ -8,7 +8,7 @@ App metadata is read from that schema rather than global `ZERO_APP_*` constants,
 so trying to activate another app produces a located runtime notice without
 redefining the first app's global state.
 
-`zero build` writes these under `.zero/wp-content/plugins`, alongside
+`zero build` writes these under `zero/dist/wp-content/plugins`, alongside
 the identity bundle, acquired dependencies and generated ZIPs. One
 `zero-manifest.json` describes the complete artifact. App-specific schema,
 functions, MySQL migrations and public files live in `zero-app-<name>`; shared

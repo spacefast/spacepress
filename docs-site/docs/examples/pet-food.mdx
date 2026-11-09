@@ -220,7 +220,7 @@ followed by:
 first dev: Failed (1): build
 ```
 
-Generated `first/client/`, `first/_generated/migrations/`, `first.gen.ts`, and plugin locks
+Generated `first/_generated/client/`, `first/_generated/migrations/`, `first/_generated/db.d.ts`, and plugin locks
 are absent because the build exits before emission. They have not been
 handwritten. The local collection probe reports `fetch failed: ECONNREFUSED`.
 `verify.mjs` passed `node --check` only. Local actions, CRUD, the scheduler,

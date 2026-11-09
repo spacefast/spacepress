@@ -3,7 +3,7 @@
 	"info": {
 		"title": "First REST API",
 		"version": "0.3.0",
-		"description": "Every First app serves these routes under `/wp-json/first/v1` on its WordPress site. The paths with `{collection}`, `{name}` and `{bucket}` exist once for each collection, table, action, global and file bucket your config defines.\n\nA successful response is JSON with the result under `data`. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.\n\nRequests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/client/` calls every route on this page for you."
+		"description": "Every First app serves these routes under `/wp-json/first/v1` on its WordPress site. The paths with `{collection}`, `{name}` and `{bucket}` exist once for each collection, table, action, global and file bucket your config defines.\n\nA successful response is JSON with the result under `data`. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.\n\nRequests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/_generated/client/` calls every route on this page for you."
 	},
 	"servers": [
 		{

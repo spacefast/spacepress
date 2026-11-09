@@ -923,9 +923,7 @@ async function main() {
   run("cargo", ["build", "--locked", "--quiet"]);
   const zero = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/zero");
   mkdirSync(app, { recursive: true });
-  const sourceFiles = readdirSync(example).filter(
-    (name) => name.endsWith(".ts") && name !== "zero.gen.ts",
-  );
+  const sourceFiles = readdirSync(example).filter((name) => name.endsWith(".ts"));
   const overridesFile = join(state, "source-overrides.json");
   const sourceOverrides = existsSync(overridesFile)
     ? JSON.parse(readFileSync(overridesFile, "utf8"))
@@ -952,7 +950,7 @@ async function main() {
   });
   const content = join(state, "wp-content");
   mkdirSync(content, { recursive: true });
-  const builtContent = join(app, ".zero/wp-content");
+  const builtContent = join(app, "zero/dist/wp-content");
   // Refresh generated files without deleting plugins installed through WordPress.
   run("rsync", ["-a", "--exclude=/plugins/", `${builtContent}/`, `${content}/`]);
   const builtPlugins = join(builtContent, "plugins");

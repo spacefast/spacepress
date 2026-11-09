@@ -585,7 +585,7 @@ const openapi = {
 			"",
 			"A successful response is JSON with the result under `data`. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.",
 			"",
-			"Requests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/client/` calls every route on this page for you.",
+			"Requests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/_generated/client/` calls every route on this page for you.",
 		].join("\n"),
 	},
 	servers: [{ url: `https://example.space.fast/wp-json/${namespace}`, description: "Your app's WordPress site" }],
@@ -718,7 +718,7 @@ const openapi = {
 out.set("openapi/first.json", `${JSON.stringify(openapi, null, "\t")}\n`);
 
 // ---------------------------------------------------------------------------------------------
-// The generated client: runtime/client/index.ts is the code every app's first/client/ wraps.
+// The generated client: runtime/client/index.ts is the code every app's first/_generated/client/ wraps.
 // ---------------------------------------------------------------------------------------------
 
 const clientTs = read("runtime/client/index.ts");
@@ -735,20 +735,20 @@ const memberBlock = (name: string) => {
 	const declared = body.replace(/^\s*\/\*\*[\s\S]*?\*\/\n/gm, "").replace(/^\s*\/\/.*\n/gm, "");
 	return fence("ts", toFirst(`interface ${head} {${declared}\n}`));
 };
-const pantryClient = read("examples/pantry/zero/client/README.md");
+const pantryClient = read("examples/pantry/zero/_generated/client/README.md");
 
 page(
 	"docs/reference/client.mdx",
-	{ title: "JavaScript client", description: "The typed client first build writes to first/client/, and every function it exports." },
+	{ title: "JavaScript client", description: "The typed client first build writes to first/_generated/client/, and every function it exports." },
 	"runtime/client/index.ts",
 	`
-\`first build\` writes a typed client for your app to \`first/client/\`. It calls the [REST API](/rest) with \`fetch\`, so it works in any browser and any frontend framework. Its types come from your config: a renamed column fails your frontend's type check.
+\`first build\` writes a typed client for your app to \`first/_generated/client/\`. It calls the [REST API](/rest) with \`fetch\`, so it works in any browser and any frontend framework. Its types come from your config: a renamed column fails your frontend's type check.
 
 On Spacefast, every First Space also serves the client at \`/__first/client.js\`, with its types at \`/__first/client.d.ts\`.
 
 ## Use it
 
-${fence("ts", `import { createClient } from "./first/client/index.ts";\n\nconst first = createClient();\nconst notes = await first.notes.list({ where: { title: "Hello" } });`)}
+${fence("ts", `import { createClient } from "./first/_generated/client/index.ts";\n\nconst first = createClient();\nconst notes = await first.notes.list({ where: { title: "Hello" } });`)}
 
 The client unwraps \`data\`, so \`list()\` returns the rows themselves.
 

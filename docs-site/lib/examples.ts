@@ -26,10 +26,10 @@ export interface Example {
  * plus the committed abilities lock, the one compiler input under `zero/`.
  */
 export function sources(dir: string): Request["files"] {
-  const skip = new Set(["zero", ".zero", "node_modules", "zero.gen.ts", "public", "client-tests", "content"]);
+  const skip = new Set(["zero", ".zero", "node_modules", "public", "client-tests", "content"]);
   const files: Request["files"] = {};
-  const lock = path.join(dir, "zero/abilities.json");
-  if (existsSync(lock)) files["zero/abilities.json"] = readFileSync(lock, "utf8");
+  const lock = path.join(dir, "zero/_generated/abilities.json");
+  if (existsSync(lock)) files["zero/_generated/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
       if (skip.has(name)) continue;

@@ -58,7 +58,7 @@ npm run check
 You should see:
 
 ```text
-ok: 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions (12ms)
+ok: 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions (6ms)
 ```
 
 `check` compiles the config and writes nothing. If the config has a problem, it prints the file, the line and a [diagnostic code](/reference/diagnostics) instead.
@@ -72,7 +72,7 @@ npm run dev
 The first start downloads WordPress and takes about a minute. When it is ready, you should see lines like these:
 
 ```text
-built 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions -> .first/wp-content (new migrations first/_generated/migrations/0001_init.sql) in 11s
+built 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions -> first/dist/wp-content (new migrations first/_generated/migrations/0001_init.sql) in 11s
 WordPress version: 7.1.4
 Plugin 'secure-custom-fields' activated.
 Plugin 'first-runtime' activated.
@@ -135,7 +135,7 @@ Your notes stay in the local database for the next `npm run dev`.
 
 ## What to commit
 
-Commit `first.config.ts`, `first.gen.ts`, `first/_generated/migrations/` and `first/client/`. Keep `.first/` out of git. It holds the build output and the local site.
+Commit `first.config.ts` and `first/_generated/`, which holds the migrations, the typed client and the editor types. Keep `first/dist/` and `.first/` out of git. They hold the build output and the local site. The starter app's `.gitignore` already does this.
 
 ## Next steps
 

@@ -31,11 +31,11 @@ export function artifactText(example: Example, artifact: Artifact): { label: str
       return { label: `first/_generated/migrations/${name}`, lang: "sql", text: sql };
     }
     case "types.ts":
-      return { label: "first/client/types.ts", lang: "ts", text: output.client["types.ts"] ?? "" };
+      return { label: "first/_generated/client/types.ts", lang: "ts", text: output.client["types.ts"] ?? "" };
     case "schema.ts":
-      return { label: "first/client/schema.ts", lang: "ts", text: output.client["schema.ts"] ?? "" };
-    case "zero.gen.ts":
-      return { label: "first.gen.ts", lang: "ts", text: output.genTs };
+      return { label: "first/_generated/client/schema.ts", lang: "ts", text: output.client["schema.ts"] ?? "" };
+    case "db.d.ts":
+      return { label: "first/_generated/db.d.ts", lang: "ts", text: output.genTs };
   }
 }
 

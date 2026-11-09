@@ -132,8 +132,8 @@ const compile = () => {
       "first/app/functions.php": output.functionsPhp,
       "first/app/schema.php": output.schemaPhp,
       ...Object.fromEntries(output.migrations.map(([name, sql]) => [`first/_generated/migrations/${name}`, sql])),
-      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`first/client/${name}`, text])),
-      "first.gen.ts": output.genTs,
+      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`first/_generated/client/${name}`, text])),
+      "first/_generated/db.d.ts": output.genTs,
       "first/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
     };
     updateFileMenu(selected);

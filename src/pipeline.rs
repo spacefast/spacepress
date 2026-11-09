@@ -12,7 +12,7 @@ type HookFunctions = indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<
 
 pub struct Built {
     pub plugins: Option<wp_plugins::Config>,
-    /// Every file under `zero/client/`.
+    /// Every file under `zero/_generated/client/`.
     pub client_files: Vec<(String, Vec<u8>)>,
     pub schema: schema::Schema,
     pub functions_php: String,
@@ -25,7 +25,7 @@ pub struct Built {
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
     pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
-    /// `zero/plugins.lock.json` as this build settled it (None without plugins or a lock).
+    /// `zero/_generated/plugins.lock.json` as this build settled it (None without plugins or a lock).
     pub plugin_lock: Option<serde_json::Value>,
     /// What changed in the lock, one line each, for the command line.
     pub plugin_changes: Vec<String>,
@@ -54,7 +54,7 @@ pub fn moved_ledger() -> Diag {
 pub struct Previous {
     pub snapshot: serde_json::Value,
     pub next_migration: u32,
-    /// Refuse any plugin grant `zero/plugins.lock.json` doesn't already hold (CI, `--frozen`).
+    /// Refuse any plugin grant `zero/_generated/plugins.lock.json` doesn't already hold (CI, `--frozen`).
     pub frozen: bool,
 }
 
@@ -133,6 +133,15 @@ pub fn build(
     previous: impl FnOnce() -> Result<Previous, Diag>,
     runtime: impl Fn(&str) -> Option<&'static [u8]>,
 ) -> Result<Built, Diag> {
+    // A checkout from before `zero/_generated/` would have its locks ignored (and replaced) and an old
+    // client loaded as app code. A stored source bundle maps those paths instead (`layout::current`).
+    let root = program.modules[program.entry]
+        .path
+        .parent()
+        .expect("the entry has a directory");
+    if let Some((message, help)) = crate::layout::old_in_checkout(|p| program.fs.exists(p), root) {
+        return Err(Diag::new(Span::NONE, message).help(help).phase(diag::Code::Schema));
+    }
     let mut ev = eval::Evaluator::new(program);
     let config = ev.run().map_err(|d| d.phase(diag::Code::Evaluation))?;
     let config_span = Span {
@@ -460,7 +469,7 @@ fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<ser
     serde_json::from_str(&text).map(Some).map_err(|e| bad(e.to_string()))
 }
 
-/// `zero/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
+/// `zero/_generated/abilities.json` beside the program's `zero.config.ts`, through the program's file system,
 /// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
 /// browser read the same lock the command line does. Absent means no locked abilities.
 fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {

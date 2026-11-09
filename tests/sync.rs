@@ -274,7 +274,7 @@ fn setup() -> (PathBuf, Site) {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join(".zero/wp-content"))
+        .arg(project.join("zero/dist/wp-content"))
         .args(["ed=editor", "au=author", "root=admin"])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())

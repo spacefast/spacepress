@@ -495,7 +495,9 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
         (_, "text") => width(after).map(fits_width),
         ("unsigned", "bigint") => Some(format!("{col} <= 9223372036854775807")),
         ("bigint", "unsigned") => Some(format!("{col} >= 0")),
-        ("boolean", "bigint" | "unsigned" | "double") => None,
+        // TINYINT's -128..127 fits a signed BIGINT and a DOUBLE; a negative one would become 0 unsigned.
+        ("boolean", "unsigned") => Some(format!("{col} >= 0")),
+        ("boolean", "bigint" | "double") => None,
         // Not ABS(): it overflows on BIGINT's minimum, and an erroring count must never pass.
         ("bigint" | "unsigned", "double") => Some(format!("{col} BETWEEN -9007199254740992 AND 9007199254740992")),
         // A DOUBLE above 2^53 isn't an exact integer (`9.2233720368547e18` becomes `…700032`), so a
@@ -1149,6 +1151,20 @@ mod tests {
         v2["tables"]["posts"]["columns"]["views"]["type"] = json!("boolean");
         v2["tables"]["posts"]["columns"]["slug"]["unique"] = json!(true);
         let checks: Vec<Json> = plan(&v1, &v2).iter().filter_map(|s| check_of(s)).collect();
+        // A boolean becoming an unsigned reference would turn a stored -1 into 0.
+        let mut flagged = v1.clone();
+        flagged["tables"]["posts"]["columns"]["views"]["type"] = json!("boolean");
+        let mut referenced = flagged.clone();
+        referenced["tables"]["posts"]["columns"]["views"]["type"] = json!("integer");
+        referenced["tables"]["posts"]["columns"]["views"]["references"] =
+            json!({ "table": "posts", "column": "id", "onDelete": null, "onUpdate": null, "unsigned": true });
+        let to_unsigned: Vec<Json> = plan(&flagged, &referenced).iter().filter_map(|s| check_of(s)).collect();
+        assert!(
+            to_unsigned
+                .iter()
+                .any(|c| c["name"] == "posts.views" && c["fits"] == "{col} >= 0"),
+            "{to_unsigned:?}"
+        );
         let fits: Vec<(&str, &str)> = checks
             .iter()
             .map(|c| (c["name"].as_str().unwrap(), c["fits"].as_str().unwrap()))

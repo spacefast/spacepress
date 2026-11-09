@@ -359,6 +359,21 @@ test("text becoming BIGINT UNSIGNED refuses values from 2^63, which ALTER would 
   assert.deepEqual(sql("SELECT name, memo FROM wp_zero_tags WHERE memo IS NOT NULL"), [{ name: "a", memo }]);
 });
 
+test("a field of a table the app didn't create changes type only with --drop, even when empty", () => {
+  install("readoptField");
+  assert.ok(applied().includes("0018_update"), "adopting the table and its field needs nothing");
+  install("readoptRetype");
+  const columns = sql("SHOW COLUMNS FROM sf_spc_schema_check_retype");
+  const retype = refused();
+  assert.deepEqual(retype.refusals.map((r) => [r.code, r.name, r.rows]), [["drop_adopted_table", "tasks.rank", 0]]);
+  assert.match(retype.refusals[0].message, /sf_spc_schema_check_retype/);
+  assert.deepEqual(sql("SHOW COLUMNS FROM sf_spc_schema_check_retype"), columns, "a refused retype changed the table");
+  assert.ok(applied("--drop=tasks.rank=0").includes("0019_update"));
+  const rank = sql("SHOW COLUMNS FROM sf_spc_schema_check_retype").find((c) => c.Field === "rank");
+  assert.equal(String(rank?.Type).toLowerCase(), "longtext", "the confirmed retype made rank text");
+  assert.deepEqual(sql("SELECT name FROM sf_spc_schema_check_retype"), [{ name: "from 0.8" }], "the adopted rows are kept");
+});
+
 test("a migration that failed after a rename resumes: later checks find the table under its new name", () => {
   // One file: rename notes2 to memos2, then a step that fails (a constraint over an orphan row),
   // then a drop whose check names the table as it was before the plan. Built here by hand, the shape

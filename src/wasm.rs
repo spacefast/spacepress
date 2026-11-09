@@ -12,7 +12,7 @@
 //!              "zero/plugins.lock.json": "…" },,
 //!   "previous": null, "migrationFiles": [], "frozen": false }
 //! ```
-//! `previous` is the last build's `zero/migrations/snapshot.json` (null for a first build) and
+//! `previous` is the last build's `zero/_generated/migrations/snapshot.json` (null for a first build) and
 //! `migrationFiles` the names beside it, which number the next migration like `zero build` does.
 //! `files` carries every compiler input, including the committed `zero/abilities.json` lock that
 //! types `abilities.call` from "php/wordpress".
@@ -317,12 +317,15 @@ pub fn operation(operation: &str, request: &str) -> String {
                 }
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
-                    let previous = root.join("zero/migrations/snapshot.json");
+                    let previous = root.join(pipeline::LEDGER).join("snapshot.json");
                     let built = loader::load_from(fs.clone(), &root.join("zero.config.ts")).and_then(|program| {
                         pipeline::build(
                             &root,
                             &program,
                             || {
+                                if fs.exists(&root.join(pipeline::OLD_LEDGER)) {
+                                    return Err(pipeline::moved_ledger());
+                                }
                                 let snapshot = if fs.exists(&previous) {
                                     Some(
                                         serde_json::from_str(
@@ -334,7 +337,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                                 } else {
                                     None
                                 };
-                                let dir = root.join("zero/migrations");
+                                let dir = root.join(pipeline::LEDGER);
                                 let paths = if fs.is_dir(&dir) {
                                     fs.read_dir(&dir)
                                         .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?

@@ -6,6 +6,7 @@
 //   node scripts/generate.ts --check   fail if a committed page differs from what this writes
 //
 // Each source is named next to the code that reads it. A page says where its data came from.
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,7 +106,13 @@ function compileSummary(name: string, dir: string): { ok: boolean; text: string;
 // has one, and a file browser with every file the developer writes and every file `first build`
 // writes for them. The other directories under examples/ stay in the repository.
 for (const { name } of siteExamples) {
-	const result = compileSummary(name, path.join(repo, "examples", name));
+	const dir = path.join(repo, "examples", name);
+	// The compiler reads an example's npm packages as sources, so its locked packages must be there.
+	if (existsSync(path.join(dir, "package-lock.json")) && !existsSync(path.join(dir, "node_modules"))) {
+		const installed = spawnSync("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: dir, stdio: "inherit" });
+		if (installed.status !== 0) throw new Error(`npm ci failed in examples/${name}`);
+	}
+	const result = compileSummary(name, dir);
 	if (!result.ok) throw new Error(`examples/${name} does not compile, so the site can't show it: ${result.text}`);
 }
 

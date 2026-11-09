@@ -157,6 +157,8 @@ export interface ColumnBuilder<
 
   /** On a sub-field: required in every item. */
   notNull(): ColumnBuilder<TKind, TData, true, THasDefault, TLocalized, TPrimary>;
+  /** Declares a rename: this field was stored as `old`. The deploy renames the column and keeps its values. */
+  was(old: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
   default(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
@@ -409,6 +411,9 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Bind table() to an already existing SQL table, without adding any prefix.
    * The first migration checks its columns; it never creates or copies this table. */
   existingTable?: string;
+  /** Declares a rename: this table was stored as `old` (its name in zero/_generated/migrations/snapshot.json).
+   * The deploy renames the table and keeps its rows. table() only. */
+  was?: string;
   /** Project-relative Markdown/JSON files; implies uid: true. */
   sync?: `${string}/*.md` | `${string}/*.json`;
   uid?: boolean;

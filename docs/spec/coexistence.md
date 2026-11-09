@@ -7,15 +7,24 @@ one of them at a time, never both in the same version.
 
 - **Live 0.8 versions** keep running unchanged. Nothing touches a version that's
   already published.
-- **Each new publish of a 0.8 app** runs the converter
-  (`zero migrate app --from zero-0.8`). When it refuses nothing, the publish ships
-  as v2 and adopts the Space's existing tables, users and sessions, so no data is
-  lost. When it refuses something, the publish ships as 0.8 and returns every
-  refusal as `{ code, file, line, column, feature, v2, fix }`, so the owner or
-  their agent can fix it and publish again. There is no flag to opt in or out.
-- **The same command** also runs on its own, for an owner who wants to see the
-  v2 app before publishing it.
-- **New apps** start on v2.
+- **Each new publish of a 0.8 app** from the Spacefast CLI, local MCP or a source
+  build runs the converter (`zero migrate app --from zero-0.8`) and the publish
+  checks. When neither refuses anything and the Space's runtime runs v2, the
+  publish ships as v2: on an existing 0.8 Space it adopts that Space's tables, and
+  on a new Space it starts with fresh ones.
+- **Otherwise the publish ships as 0.8** and returns every refusal as
+  `{ code, file, line, column, feature, v2, fix }`, so the owner or their agent
+  can fix it and publish again. Until v2 hosting and the hosted data copy land,
+  that includes every app with a frontend, pages, static files, posts, users or
+  Functions (the `Z08_LOCAL_*` and `Z08_FUNCTIONS` refusals). A clean candidate on
+  a Space whose runtime doesn't run v2 yet also ships as 0.8, with status
+  `waiting_on_runtime`.
+- **There is no flag** to opt in or out. Hosted MCP doesn't build Zero apps, and
+  older CLIs and direct API publishes never run the converter: the API doesn't
+  convert.
+- **A new Space can still start on 0.8** until CLI 0.9.0 and Zero v2 ship. New
+  apps made with `zero init` start on v2.
+- **The same command** runs on its own to preview the v2 candidate.
 
 So the converter always targets `main`. A PR that changes an authoring API, a
 route or a generated file that the converter emits or calls updates the

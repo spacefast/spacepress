@@ -6,8 +6,8 @@ Generated endpoints, actions, [HTTP routes](config-api.md#http-routes) and
 [live updates](realtime.md) work on Spacefast. [TSX pages](pages.md) do not
 yet: the Spacefast host mounts the runtime, the app and identity for a v2
 version, but not the compiled pages plugin, and it does not serve its assets.
-Until it does, keep any 0.8 Space whose visitors depend on its pages on 0.8;
-this guide's commit step retires the 0.8 site.
+Until it does, a 0.8 app with pages stays on 0.8: its publish is refused with
+`Z08_LOCAL_PAGES`. This guide's commit step retires the 0.8 site.
 
 The baseline is `@spacefast/zero` and `@spacefast/zero-compile` 0.8.1. A
 successful source conversion proves that the candidate compiles. Complete the
@@ -15,10 +15,14 @@ data copy, access review, client changes, and runtime checks before calling an
 application migrated. [Coverage](#coverage) lists what each 0.8 capability
 becomes.
 
-On Spacefast, a 0.8 app's next publish runs this conversion on its own and ships
-as v2 when nothing is refused ([coexistence](spec/coexistence.md)); this guide is
-for doing it yourself first. For a standalone WordPress site, use the config and
-in-place data commands later in this guide. Both paths report unsupported behavior with pointers.
+On Spacefast, a publish from the CLI runs this conversion on its own and ships
+as v2 when nothing is refused ([coexistence](spec/coexistence.md)). To preview
+the candidate first, run `zero migrate app --from zero-0.8 … --dry-run`
+([below](#convert-source-locally-for-review)). The hosted operation in the next section
+(`sf zero migrate --space`, `migrateSpaceZero`, `POST
+/v1/spaces/{id}/zero/migration`) hasn't shipped yet. For a standalone WordPress
+site, use the config and in-place data commands later in this guide. Both paths
+report unsupported behavior with pointers.
 
 ## Migrate a Spacefast app
 

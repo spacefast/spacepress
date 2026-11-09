@@ -61,6 +61,55 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "zero/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside zero/",
         "zero/tags.ts:2:1",
     );
+    // Export names are unique across the app (Z1221): an action named like a kind.
+    rejects(
+        "reject-duplicate-export",
+        "`notes` names two things: at zero/a.ts:2 and here",
+        "zero/b.ts:3:22",
+    );
+    // "zero:db" names only registered kinds, and suggests the closest one.
+    rejects(
+        "reject-db-unknown",
+        "\"zero:db\" has no kind named `note`",
+        "zero/app.ts:2:10",
+    );
+    // ... in zero/wp-hooks/ modules too, which load after every kind has registered.
+    rejects(
+        "reject-wp-hook-db-unknown",
+        "\"zero:db\" has no kind named `note`",
+        "zero/wp-hooks/the_title.ts:2:10",
+    );
+    // An exported name is unique across the app: an action listed under it is refused too.
+    rejects(
+        "reject-action-named-like-table",
+        "`notes` names two things: at zero.config.ts:3 and here",
+        "zero/schema.ts:2:22",
+    );
+    // "zero:db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
+    // the app's kinds): refused at the statement, not a crash.
+    rejects(
+        "reject-db-reexport",
+        "\"zero:db\" can't be re-exported",
+        "zero/kinds.ts:4:1",
+    );
+    // ... and from a plugin, whose fix is to take the kinds as options.
+    rejects(
+        "reject-plugin-db-reexport",
+        "a plugin takes the app's kinds as options",
+        "node_modules/zero-plugin-reach/src/index.ts:3:1",
+    );
+    // A default export has no name to register under.
+    rejects(
+        "reject-default-export-kind",
+        "a kind, action or job can't be a default export",
+        "zero/notes.ts:3:16",
+    );
+    // wp-hooks/ beside zero.config.ts is from before zero/wp-hooks/: refused, never dropped.
+    rejects(
+        "reject-wp-hooks-root",
+        "wp-hooks/ beside zero.config.ts is from an earlier layout; its handlers would not register",
+        "wp-hooks:1:1",
+    );
 }
 
 /// JSX outside the subset fails the build at its source, saying what to write instead
@@ -2330,7 +2379,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         (
             "zero/client/index.ts",
             "zero/_generated/client/index.ts",
-            "export const stale = 1;\n",
+            "import { SCHEMA } from \"./schema.ts\";\nexport const stale = SCHEMA;\n",
         ),
     ] {
         let (old_dir, new_dir) = if old.starts_with("zero/client/") {

@@ -1,0 +1,163 @@
+//! Registers what the app's modules export (docs/spec/spec.md §1.1). Every exported kind, action
+//! and job in a module under `zero/` registers under its export name, whatever the file is called
+//! and whether or not anything imports it. Other exports are ignored, so helper modules need no
+//! special place.
+//!
+//! Registration fills the config's own registries (`collections`, `tables`, `users`, `globals`,
+//! `actions`, `jobs`), so everything after it reads one shape. An export and a config entry for the
+//! same value are the same registration; anything else that shares a name is `Z1221`.
+
+use crate::diag::{Code, Diag, Result, Span};
+use crate::eval::Evaluator;
+use crate::loader::Program;
+use crate::value::{StorageKind, Value};
+use indexmap::IndexMap;
+use std::path::Path;
+use std::rc::Rc;
+
+/// Where an export name is taken, for the error that names both places.
+struct Taken {
+    value: Value,
+    span: Span,
+}
+
+/// The registry an exported value belongs in, or `None` for an export Zero ignores.
+fn registry(value: &Value) -> Option<&'static str> {
+    Some(match value {
+        Value::Collection(c) => match c.kind {
+            StorageKind::Collection => "collections",
+            StorageKind::Table => "tables",
+            StorageKind::UserProjection => "users",
+        },
+        Value::Global(_) => "globals",
+        Value::Action(_) => "actions",
+        Value::Job(_) => "jobs",
+        _ => return None,
+    })
+}
+
+/// Whether two registry values are the same definition (one allocation, exported and listed).
+fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
+        (Value::Global(a), Value::Global(b)) => Rc::ptr_eq(a, b),
+        (Value::Action(a), Value::Action(b)) | (Value::Job(a), Value::Job(b)) => Rc::ptr_eq(a, b),
+        _ => false,
+    }
+}
+
+fn span_of(value: &Value) -> Span {
+    match value {
+        Value::Collection(c) => c.span,
+        Value::Global(g) => g.span,
+        Value::Action(a) | Value::Job(a) => a.span,
+        _ => Span::NONE,
+    }
+}
+
+fn duplicate(root: &Path, name: &str, first: Span, second: Span) -> Diag {
+    let at =
+        crate::diag::position(first, root).map_or_else(|| "the config".to_string(), |(f, l, _)| format!("{f}:{l}"));
+    Diag::new(second, format!("`{name}` names two things: at {at} and here"))
+        .code(Code::DuplicateExport)
+        .help("export names are the API (zero.<name>(), its route and its Ability); rename one")
+}
+
+/// Evaluates every app module, then adds their exports to `config`'s registries in place, so the
+/// spans the evaluator recorded for the config's own keys still locate errors.
+pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Result<()> {
+    let Value::Object(cfg) = config else {
+        return ev.bind_db(&IndexMap::new());
+    };
+    let mut taken: IndexMap<String, Taken> = IndexMap::new();
+    let mut found: Vec<(&'static str, String, Value)> = Vec::new();
+    for &module in &program.app_modules {
+        let exports = ev.run_module(module).map_err(|d| d.phase(Code::Evaluation))?;
+        for (name, value) in exports {
+            let Some(registry) = registry(&value) else { continue };
+            let span = span_of(&value);
+            // The export name is the registered name; a default export has none.
+            if name == "default" {
+                return Err(Diag::new(span, "a kind, action or job can't be a default export")
+                    .code(Code::DuplicateExport)
+                    .help("export it by name, e.g. `export const notes = table({ ... })`; the name is its API"));
+            }
+            if let Some(other) = taken.get(&name) {
+                // Re-exported from another module: the same value under the same name.
+                if same(&other.value, &value) {
+                    continue;
+                }
+                return Err(duplicate(&program.root, &name, other.span, span));
+            }
+            if let Some((other, _)) = taken.iter().find(|(_, t)| same(&t.value, &value)) {
+                return Err(
+                    Diag::new(span, format!("`{name}` and `{other}` export the same definition"))
+                        .code(Code::DuplicateExport)
+                        .help("export each kind, action or job under one name"),
+                );
+            }
+            taken.insert(
+                name.clone(),
+                Taken {
+                    value: value.clone(),
+                    span,
+                },
+            );
+            found.push((registry, name, value));
+        }
+    }
+    for (registry, name, value) in found {
+        let listed = cfg.borrow().get(registry).cloned();
+        let entries = match listed {
+            Some(entries @ Value::Object(_)) => entries,
+            // No such registry yet (or an invalid one, which extraction reports): start one.
+            Some(Value::Undef) | None => {
+                let entries = Value::object(IndexMap::new());
+                cfg.borrow_mut().insert(registry.to_string(), entries.clone());
+                entries
+            }
+            Some(_) => continue,
+        };
+        let Value::Object(map) = &entries else { unreachable!() };
+        // Listed in the config under any key already: one registration, the config's.
+        if map.borrow().values().any(|v| same(v, &value)) {
+            continue;
+        }
+        if let Some(listed) = map.borrow().get(&name) {
+            return Err(duplicate(&program.root, &name, span_of(listed), span_of(&value)));
+        }
+        map.borrow_mut().insert(name, value);
+    }
+    // An export name is unique across the app, not per registry (docs/spec/spec.md §1.1): it may not
+    // also name something else in any registry, such as an action listed in `defineConfig` under
+    // an exported table's name. Names only listed in `defineConfig` keep that API's per-registry
+    // namespaces (0.8 apps converted onto it name a query like its table) until it is removed.
+    for (name, taken) in &taken {
+        for registry in ["collections", "tables", "users", "globals", "actions", "jobs"] {
+            let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
+                continue;
+            };
+            if let Some(listed) = entries.borrow().get(name)
+                && !same(listed, &taken.value)
+            {
+                return Err(duplicate(&program.root, name, span_of(listed), taken.span));
+            }
+        }
+    }
+    // `"zero:db"` resolves to every registered kind, by its registry key.
+    let mut kinds = IndexMap::new();
+    for registry in ["collections", "tables", "users"] {
+        if let Some(Value::Object(entries)) = cfg.borrow().get(registry) {
+            for (name, value) in entries.borrow().iter() {
+                kinds.insert(name.clone(), value.clone());
+            }
+        }
+    }
+    ev.bind_db(&kinds)?;
+    // `zero/wp-hooks/` modules declare no kinds, so they run once every kind is registered: their
+    // `"zero:db"` imports bind as each module evaluates.
+    for file in &program.wp_hooks {
+        ev.run_module(file.module).map_err(|d| d.phase(Code::Evaluation))?;
+    }
+    Ok(())
+}

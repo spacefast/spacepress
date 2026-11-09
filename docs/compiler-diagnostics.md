@@ -57,6 +57,7 @@ format.
 - `Z4001`: handler type checking or PHP compilation failure.
 - `Z1201`: a plugin package imports the app's modules or another plugin's package.
 - `Z1210`: app source imports a file outside `zero/` (`zero.config.ts` and modules under `zero/` load app code only from `zero/`).
+- `Z1221`: an export name is taken twice (two exports, or an export and a `defineConfig` entry), one definition is exported under two names, or a kind, action or job is a default export.
 - `Z4201`: a plugin's compiled code needs a capability its `zero/_generated/plugins.lock.json` entry doesn't grant.
 
 Specific, fixture-backed codes take precedence over phase codes. The growing

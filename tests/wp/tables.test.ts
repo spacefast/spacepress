@@ -273,6 +273,20 @@ test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape
   await http("POST", base, { as: "editor", body: { name: `Core team ${run} b` } });
   const page = await fetch(`${base}?` + new URLSearchParams({ where: JSON.stringify({ name: { like: `Core team ${run}%` } }), orderBy: "-name", per_page: "1" }), { headers: auth("editor") });
   assert.deepEqual([(await page.json()).map((t: any) => t.name), page.headers.get("x-wp-total"), page.headers.get("x-wp-totalpages")], [[`Core team ${run} b`], "2", "2"]);
+  // The total counts in SQL what the list holds: the same filter, the same read rule.
+  const counted = await fetch(`${base}?` + new URLSearchParams({ where: JSON.stringify({ name: { like: `Core team ${run}%` } }), per_page: "100" }), { headers: auth("editor") });
+  assert.equal(Number(counted.headers.get("x-wp-total")), (await counted.json()).length);
+  const hiddenTotal = await http("GET", `${base}?` + new URLSearchParams({ where: JSON.stringify({ budget: 40 }), per_page: "1" }), { as: "editor" });
+  assert.deepEqual([hiddenTotal.status, hiddenTotal.json.data?.pointer], [403, "/where/budget"], "a total can't count by a hidden field either");
+  // Core's `_fields`, nested paths included, on Zero rows and their relations.
+  const staff = zero("insert", "field_staff", JSON.stringify({ name: `Fielded ${run}`, kind: "basic", teamId: id }))[0];
+  const fielded = await http("GET", `${base}/${id}?` + new URLSearchParams({ with: "members", _fields: "name,members.name" }), { as: "editor" });
+  assert.deepEqual(fielded.json, { name: `Core team ${run}`, members: [{ name: `Fielded ${run}` }] }, JSON.stringify(fielded.json));
+  zero("delete", "field_staff", JSON.stringify({ id: staff.id }));
+  // A form-encoded body is read as WordPress parses it, not as JSON.
+  const form = await fetch(base, { method: "POST", headers: { ...auth("editor"), "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ name: `Form team ${run}` }) });
+  const formed = await form.json();
+  assert.deepEqual([form.status, formed.name], [201, `Form team ${run}`], JSON.stringify(formed));
   const updated = await http("PATCH", `${base}/${id}`, { as: "editor", body: { name: `Core team ${run} renamed` } });
   assert.deepEqual([updated.status, updated.json.name], [200, `Core team ${run} renamed`]);
   const deleted = await http("DELETE", `${base}/${id}`, { as: "editor" });

@@ -100,7 +100,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config",
         "JSX files can't be part of a Zero config",
-        "view.tsx:1:1",
+        "zero/lib/view.tsx:1:1",
     );
     // An action can't return rendered JSX: the config never reaches a component module.
     rejects(
@@ -173,7 +173,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config-unused",
         "JSX files can't be part of a Zero config",
-        "label.tsx:1:1",
+        "zero/lib/label.tsx:1:1",
     );
     rejects(
         "reject-jsx-use-client-prologue",

@@ -2424,6 +2424,27 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
             String::from_utf8_lossy(&again.stderr)
         );
     }
+    // Several left at once: one refusal names every one, and its one command moves them all.
+    std::fs::rename(
+        tmp.join("zero/_generated/abilities.json"),
+        tmp.join("zero/abilities.json"),
+    )
+    .unwrap();
+    std::fs::rename(
+        tmp.join("zero/_generated/wp-plugins.lock.json"),
+        tmp.join("zero/wp-plugins.lock.json"),
+    )
+    .unwrap();
+    refused("2 files are from before zero/_generated/:");
+    refused("zero/abilities.json moved to zero/_generated/abilities.json");
+    refused("zero/wp-plugins.lock.json moved to zero/_generated/wp-plugins.lock.json");
+    let fix = "mkdir -p zero/_generated && git mv zero/wp-plugins.lock.json zero/_generated/wp-plugins.lock.json && git mv zero/abilities.json zero/_generated/abilities.json";
+    refused(fix);
+    git(&["add", "-A"]);
+    let moved = Command::new("sh").args(["-c", fix]).current_dir(&tmp).output().unwrap();
+    assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
+    let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     let _ = std::fs::remove_dir_all(tmp);
 }
 

@@ -40,6 +40,12 @@ export const shoppingList = table({
   done: boolean().notNull().default(false),
 });
 
+// Renames (spec §2.5, §2.6): a field and a table declare the names they were stored under.
+export const errands = table({
+  id: id(),
+  label: text().notNull().was("name"),
+}, { was: "chores" });
+
 export const authors = collection({
   id: id(),
   name: text().notNull().max(80),

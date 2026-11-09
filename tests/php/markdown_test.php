@@ -31,11 +31,17 @@ $fixtures = dirname(__DIR__) . '/fixtures/sync';
 
 // ================================================================ the reading renderer
 
+/** Markup as a post's content would render it: an unsaved post, so renderPost() runs the_content on it. */
+function md(string $content): string
+{
+    return Markdown::renderPost(new WP_Post((object) ['ID' => 0, 'post_type' => 'post', 'post_status' => 'publish', 'post_content' => $content, 'filter' => 'raw']));
+}
+
 $document = file_get_contents("$fixtures/document.md");
 $blocks = Markdown::toBlocks($document);
-eq('blocks Markdown can carry render exactly as fromBlocks writes them', Markdown::render($blocks), Markdown::fromBlocks($blocks));
-eq('editor-saved blocks render as the sync fixture', Markdown::render(file_get_contents("$fixtures/editor.blocks")), file_get_contents("$fixtures/editor.md"));
-$mixed = Markdown::render(file_get_contents("$fixtures/widget.blocks"));
+eq('blocks Markdown can carry render exactly as fromBlocks writes them', md($blocks), Markdown::fromBlocks($blocks));
+eq('editor-saved blocks render as the sync fixture', md(file_get_contents("$fixtures/editor.blocks")), file_get_contents("$fixtures/editor.md"));
+$mixed = md(file_get_contents("$fixtures/widget.blocks"));
 eq('an unregistered block renders as nothing; its neighbours render as Markdown', $mixed, "Before\n");
 $rich = <<<'HTML'
 <!-- wp:paragraph -->
@@ -62,29 +68,36 @@ $rich = <<<'HTML'
 <script>alert(1)</script><p>Raw <em>HTML</em></p>
 <!-- /wp:html -->
 HTML;
-eq('containers, styled blocks, buttons and raw HTML render as readable Markdown, never as markup', Markdown::render($rich),
+eq('containers, styled blocks, buttons and raw HTML render as readable Markdown, never as markup', md($rich),
     "Intro with [a link](https://example.com/a).\n\n## Inside a group\n\nCentred **text**.\n\n[Sign up](/signup)\n\nRaw *HTML*\n");
-eq('a block Markdown has syntax for renders even when sync would refuse it', [Markdown::render(file_get_contents("$fixtures/table.blocks")), Markdown::render(file_get_contents("$fixtures/aligned.blocks"))],
+eq('a block Markdown has syntax for renders even when sync would refuse it', [md(file_get_contents("$fixtures/table.blocks")), md(file_get_contents("$fixtures/aligned.blocks"))],
     ["| a | b |\n|---|---|\n", "Centered\n"]);
-eq('classic content renders by paragraph', Markdown::render("First line.\n\nSecond <em>line</em>."), "First line.\n\nSecond *line*.\n");
-eq('an empty body renders as nothing', Markdown::render(''), '');
+eq('classic content renders by paragraph', md("First line.\n\nSecond <em>line</em>."), "First line.\n\nSecond *line*.\n");
+eq('an empty body renders as nothing', md(''), '');
 // What the review found: no layer of the renderer may reveal more than WordPress renders.
 register_block_type('first-test/members', ['render_callback' => static fn (): string => '']);
 $hidden = "<!-- wp:first-test/members --><div><!-- wp:paragraph --><p>Members only.</p><!-- /wp:paragraph --></div><!-- /wp:first-test/members -->";
-eq('a dynamic block that renders nothing hides its inner blocks too', [do_blocks($hidden), Markdown::render($hidden)], ['', '']);
-eq('text that spells a tag stays text, never markup', Markdown::render('<!-- wp:html --><p>&lt;script&gt;alert(1)&lt;/script&gt; and <b>&lt;b&gt;</b></p><!-- /wp:html -->'),
+eq('a dynamic block that renders nothing hides its inner blocks too', [do_blocks($hidden), md($hidden)], ['', '']);
+eq('text that spells a tag stays text, never markup', md('<!-- wp:html --><p>&lt;script&gt;alert(1)&lt;/script&gt; and <b>&lt;b&gt;</b></p><!-- /wp:html -->'),
     "\\<script>alert(1)\\</script> and **\\<b>**\n");
-eq('text that starts like Markdown syntax stays text', Markdown::render('<!-- wp:paragraph --><p># not a heading</p><!-- /wp:paragraph -->'
+eq('text that starts like Markdown syntax stays text (as WordPress texturizes it: a dash is no list marker)', md('<!-- wp:paragraph --><p># not a heading</p><!-- /wp:paragraph -->'
     . '<!-- wp:paragraph --><p>&gt; not a quote</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>- not an item</p><!-- /wp:paragraph -->'
     . '<!-- wp:paragraph --><p>+ plus</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>2026. A year</p><!-- /wp:paragraph -->'
     . '<!-- wp:paragraph --><p>1) first</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>Line<br>- after a break</p><!-- /wp:paragraph -->'
-    . '<!-- wp:heading --><h2 class="wp-block-heading">#hashtag heading</h2><!-- /wp:heading -->'),
-    "\\# not a heading\n\n\\> not a quote\n\n\\- not an item\n\n\\+ plus\n\n2026\\. A year\n\n1\\) first\n\nLine  \n\\- after a break\n\n## #hashtag heading\n");
-eq('code keeps its angle brackets', Markdown::render(Markdown::toBlocks("Use `<div>` here.\n\n```html\n<p>x</p>\n```\n")), "Use `<div>` here.\n\n```html\n<p>x</p>\n```\n");
-eq('a comparison is not a tag', Markdown::render('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
+    . '<!-- wp:heading --><h2 class="wp-block-heading">#hashtag heading</h2><!-- /wp:heading -->'
+    . '<!-- wp:paragraph --><p>~~~ tilde fence</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>```js not code</p><!-- /wp:paragraph -->'
+    . '<!-- wp:paragraph --><p>Title<br>===</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>Title<br>---</p><!-- /wp:paragraph -->'
+    . '<!-- wp:paragraph --><p>---</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>***</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>___</p><!-- /wp:paragraph -->'),
+    "\\# not a heading\n\n\\> not a quote\n\n– not an item\n\n\\+ plus\n\n2026\\. A year\n\n1\\) first\n\nLine  \n– after a break\n\n## #hashtag heading\n\n\\~~~ tilde fence\n\n“\\`js not code\n\nTitle  \n\\===\n\nTitle  \n—\n\n—\n\n\\*\\*\\*\n\n\\_\\_\\_\n");
+eq('the converter escapes each marker itself, with no texturize in front', \First\Sync\HtmlMarkdown::convert('<p>- item</p><p>---</p><p>Title<br>---</p><p>~~~</p><p>1. one</p>'),
+    "\\- item\n\n\\---\n\nTitle  \n\\---\n\n\\~~~\n\n1\\. one");
+// Strikethrough markup that lines up into a fence is escaped on the assembled line, not per text.
+eq('strikethrough tildes never open a fence', \First\Sync\HtmlMarkdown::convert('<p><del></del> x</p><p><del>~</del> y</p><p>~~<span>~</span> z</p><p>a<br><del></del>b</p>'),
+    "\\~~~~ x\n\n\\~~~~~ y\n\n\\~~~ z\n\na  \n\\~~~~b");
+eq('code keeps its angle brackets', md(Markdown::toBlocks("Use `<div>` here.\n\n```html\n<p>x</p>\n```\n")), "Use `<div>` here.\n\n```html\n<p>x</p>\n```\n");
+eq('a comparison is not a tag', md('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
 register_block_type('first-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
-eq('a block whose rendering fails shows nothing; its neighbours still render', Markdown::render('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:first-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'),
-    "Before.\n\nAfter.\n");
+eq('a post whose rendering throws shows nothing, never a partial or unfiltered body', md('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:first-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'), '');
 
 // ================================================================ content
 
@@ -310,11 +323,35 @@ check('a hand-written excerpt is plain text, a spelled tag kept inert', str_cont
 $rest = fetch("$url/wp-json/wp/v2/posts/$hello?format=md");
 eq('?format=md on a core item route answers the twin body as Markdown', [$rest['status'], $rest['headers']['content-type'] ?? null, $rest['body']],
     [200, ['text/markdown; charset=UTF-8'], MarkdownTwins::post(get_post($hello))]);
+file_put_contents("$site->content/mu-plugins/count-content.php", '<?php add_filter("the_content", static function (string $html): string { $GLOBALS["first_test_content_runs"] = ($GLOBALS["first_test_content_runs"] ?? 0) + 1; header("X-Content-Runs: " . $GLOBALS["first_test_content_runs"]); return $html; }, PHP_INT_MAX);');
+eq('?format=md runs the_content once', fetch("$url/wp-json/wp/v2/posts/$hello?format=md")['headers']['x-content-runs'] ?? null, ['1']);
+unlink("$site->content/mu-plugins/count-content.php");
 eq('the same route without format is still JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts/$hello")['headers']['content-type'][0] ?? '', 'application/json'), true);
 eq('core\'s permission check decides: a draft is still 401 JSON', [fetch("$url/wp-json/wp/v2/posts/$draft?format=md")['status'], str_starts_with(fetch("$url/wp-json/wp/v2/posts/$draft?format=md")['headers']['content-type'][0] ?? '', 'application/json')], [401, true]);
 $noteRest = fetch("$url/wp-json/wp/v2/first_notes/$note?format=md");
 eq('a First collection row answers as core and its access rules decide (readable by anyone here)', [$noteRest['status'], $noteRest['body']], [200, MarkdownTwins::post(get_post($note))]);
 eq('a list route is not an item route: JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts?format=md")['headers']['content-type'][0] ?? '', 'application/json'), true);
+// ?format=md trims the response only where it then answers Markdown: other routes keep their JSON.
+$pagesList = json_decode(fetch("$url/wp-json/wp/v2/pages?format=md")['body'], true);
+check('a list route keeps every field with ?format=md', is_array($pagesList) && isset($pagesList[0]['title'], $pagesList[0]['link']), json_encode($pagesList));
+$typeObject = json_decode(fetch("$url/wp-json/wp/v2/types/post?format=md")['body'], true);
+eq('a non-post item route keeps its JSON with ?format=md', $typeObject['slug'] ?? null, 'post');
+$index = json_decode(fetch("$url/wp-json/?format=md")['body'], true);
+check('the REST index keeps its JSON with ?format=md', isset($index['namespaces']), substr(json_encode($index), 0, 200));
+// Another collection's item with a hidden post's numeric id: core checked that object, not the post.
+// Make categories until one has each hidden post's id, so the route answers 200.
+$shadowTerms = [];
+for ($i = 0; $i < 40 && (!get_term($draft, 'category') || !get_term($private, 'category')); $i++) {
+    $shadowTerms[] = wp_insert_term("Shadow $i", 'category')['term_id'] ?? 0;
+}
+check('categories with the hidden posts\' ids exist', get_term($draft, 'category') instanceof \WP_Term && get_term($private, 'category') instanceof \WP_Term);
+foreach (["categories/$draft", "categories/$private", 'users/1'] as $other) {
+    $shadow = fetch("$url/wp-json/wp/v2/$other?format=md");
+    check("$other?format=md is not a post item route: no post Markdown", !str_starts_with($shadow['headers']['content-type'][0] ?? '', 'text/markdown') && !preg_match('/Draft body|Private body/', $shadow['body']), $shadow['body']);
+}
+foreach ($shadowTerms as $term) {
+    wp_delete_term($term, 'category');
+}
 eq('a protected post without its password: title and note', fetch("$url/wp-json/wp/v2/posts/$locked?format=md")['body'], "# Locked post\n\nThis content is password protected.\n");
 eq('with the right password, as core shows it: the body', fetch("$url/wp-json/wp/v2/posts/$locked?format=md&password=pw")['body'], "# Locked post\n\nLocked body.\n");
 eq('with a wrong password core refuses as before', fetch("$url/wp-json/wp/v2/posts/$locked?format=md&password=no")['status'], 403);

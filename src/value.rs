@@ -204,6 +204,8 @@ pub struct ColBuilder {
     pub ui: Option<Value>,
     pub localized: bool,
     pub bucket: Option<String>,
+    /// `.was("old")`: the stored name this field had before a rename.
+    pub was: Option<String>,
     pub span: Span,
     /// Where each modifier was applied (`unique`, `references`, ...), for precise errors.
     pub mods: Vec<(&'static str, Span)>,

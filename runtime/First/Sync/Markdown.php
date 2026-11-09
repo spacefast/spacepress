@@ -65,48 +65,16 @@ final class Markdown
     }
 
     /**
-     * Stored blocks as Markdown for reading: the page's `.md` twin and `?format=md`. Never refuses.
-     *
-     * Markdown is written from what WordPress renders, never from stored markup, so everything that
-     * decides what a visitor sees decides it here too: each block's render callback and supports
-     * (core's "Hide block"), `render_block` filters, shortcodes, embeds. Each top-level block goes
-     * through render_block() on its own, and its HTML becomes Markdown; one that renders nothing
-     * shows nothing, one that throws shows nothing and the rest still render. Shortcodes run on the
-     * rendered HTML, as the_content runs do_shortcode after do_blocks; classic content gets wpautop
-     * first, as there.
-     *
-     * No HTML reaches the output: a `<` that would start a tag outside code is escaped, whether it
-     * came from markup (a custom HTML block) or from text (`&lt;script&gt;`).
-     */
-    public static function render(string $blocks): string
-    {
-        Blocks::boot();
-        $parts = [];
-        foreach (has_blocks($blocks) ? Blocks::parse($blocks) : [['blockName' => null, 'innerHTML' => $blocks]] as $block) {
-            try {
-                // As the_content orders it: blocks (do_blocks, 9), then paragraphs for classic content
-                // (wpautop, 10), then shortcodes over the result (do_shortcode, 11).
-                $html = ($block['blockName'] ?? null) === null
-                    ? do_shortcode(wpautop((string) ($block['innerHTML'] ?? '')))
-                    : do_shortcode(render_block($block));
-                $part = trim(HtmlMarkdown::convert($html));
-            } catch (\Throwable) {
-                $part = '';
-            }
-            if ($part !== '') {
-                $parts[] = $part;
-            }
-        }
-
-        return $parts === [] ? '' : self::escapeTags(implode("\n\n", $parts)) . "\n";
-    }
-
-    /**
      * A post's content as Markdown for reading, exactly as WordPress shows it: the post is set up
      * (setup_postdata), so get_the_ID() and every per-post check see it; then the whole the_content
      * filter runs (blocks, shortcodes, embeds, and the filters membership and paywall plugins use to
-     * replace content for visitors who may not read it), and its HTML becomes Markdown. A post whose
-     * rendering throws shows nothing. The global post is restored afterwards.
+     * replace content for visitors who may not read it), and its HTML becomes Markdown. If anything
+     * in that rendering throws, the post shows nothing (never a partial or unfiltered body). The
+     * global post is restored afterwards.
+     *
+     * No HTML reaches the output: a `<` that would start a tag outside code is escaped, whether it
+     * came from markup (a custom HTML block) or from text (`&lt;script&gt;`). This is for reading;
+     * fromBlocks() is the sync format, written from stored markup and refusing what it can't carry.
      */
     public static function renderPost(\WP_Post $subject): string
     {

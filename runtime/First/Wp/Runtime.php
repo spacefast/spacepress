@@ -125,8 +125,14 @@ final class Runtime
         return self::$managed;
     }
 
-    /** The host calls this on the candidate before exposing its immutable URL. */
-    public static function initialize(): array
+    /**
+     * The host calls this on the candidate before exposing its immutable URL. `$drops` are the
+     * publisher's `--drop` confirmations (`['likes' => 1204]`); a refused schema change throws
+     * SchemaRefused with every refusal and its fix, before any table changes.
+     *
+     * @param array<string, int> $drops
+     */
+    public static function initialize(array $drops = []): array
     {
         if (!self::$managed || self::$plugin === null) {
             throw new \LogicException('Mount a managed app before initializing it');
@@ -137,7 +143,7 @@ final class Runtime
         }
         global $wpdb;
         Migrator::locked(new Connection($wpdb), 'first_runtime_tables', [self::class, 'applySystemTables']);
-        return self::$plugin->initialize();
+        return self::$plugin->initialize($drops);
     }
 
     public static function activate(): void

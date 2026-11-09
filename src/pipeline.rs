@@ -291,10 +291,17 @@ pub fn build(
     let previous = previous_value;
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
-            if let Some(next) = snapshot["tables"].get(stored)
+            // The table that keeps `stored`'s rows: the same name, or the one that declares `was: stored`.
+            let successor = snapshot["tables"].get(stored).or_else(|| {
+                snapshot["tables"]
+                    .as_object()?
+                    .values()
+                    .find(|t| t["was"].as_str() == Some(stored.as_str()))
+            });
+            if let Some(next) = successor
                 && tables[stored]["existingTable"] != next["existingTable"]
             {
-                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot; move data explicitly before changing storage")).phase(diag::Code::Schema));
+                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot, including through a `was` rename; move data explicitly before changing storage")).phase(diag::Code::Schema));
             }
             let canonical = crate::schema::physical_name(stored);
             if &canonical != stored
@@ -309,12 +316,17 @@ pub fn build(
             // Old snapshots record physical names only. A removed and a new resource
             // could be an authored alias becoming its storage name, even when both
             // names are already snake_case. Never guess a destructive replacement.
+            // A table that declares `was: "<stored>"` renames it (spec §2.6); the planner moves it.
+            let renamed = snapshot["tables"]
+                .as_object()
+                .is_some_and(|next| next.values().any(|t| t["was"].as_str() == Some(stored.as_str())));
             if !schema.collections.contains_key(stored)
+                && !renamed
                 && let Some(added) = schema.collections.keys().find(|name| !tables.contains_key(*name))
             {
                 return Err(Diag::new(config_span, format!(
                     "stored resource `{stored}` disappears while new resource `{added}` is added; an authoring change cannot rename persisted storage"
-                )).help("keep existing physical names registered; resolve intentional storage removals separately after reviewing the data migration")
+                )).help(format!("to rename it, declare `was: \"{stored}\"` on the table; to drop it, remove it in one deploy and add the new one in the next"))
                     .phase(diag::Code::Schema));
             }
         }

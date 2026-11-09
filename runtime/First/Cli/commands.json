@@ -14,7 +14,7 @@
   ],
   "site": [
     { "name": "wp", "args": "<WP-CLI arguments>", "summary": "any WP-CLI command (first wp plugin list)", "via": "wp" },
-    { "name": "migrate", "args": "[--mark-applied=<id>]", "summary": "apply pending database migrations" },
+    { "name": "migrate", "args": "[--drop=<kind>=<rows>,...] [--mark-applied=<id>]", "summary": "apply pending database migrations, checked against live rows" },
     { "name": "seed", "args": "--records=<dir> [--dry-run]", "summary": "first-sync content from compiled records" },
     { "name": "jobs", "args": "list [--state=s] | run <id> | retry <id> | cancel <id> | maintain", "summary": "inspect and drive background jobs" },
     { "name": "abilities", "args": "", "summary": "list the app's abilities" },

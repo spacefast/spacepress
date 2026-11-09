@@ -90,7 +90,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("field", &["integer", "real", "text", "boolean", "date", "timestamp", "json", "email", "url", "slug", "richText", "media"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["file", "select", "group", "repeater", "blocks"], overload("options: object", arity(1, 1), None, None)),
     ("column", &["localized", "notNull", "unique", "primaryKey", "defaultNow", "$type"], overload("no runtime arguments", arity(0, 0), None, None)),
-    ("column", &["access", "showIf", "ui", "min", "max", "pattern", "validate", "default", "$default", "$defaultFn", "$onUpdate", "$onUpdateFn"], overload("one value or callback", arity(1, 1), None, None)),
+    ("column", &["access", "showIf", "ui", "min", "max", "pattern", "validate", "default", "$default", "$defaultFn", "$onUpdate", "$onUpdateFn", "was"], overload("one value or callback", arity(1, 1), None, None)),
     ("column", &["references"], overload("target: function, options?: object", arity(1, 2), None, None)),
     ("constructor", &["HttpError"], overload("runtime-only status: number, code: string, message: string, details?: object", None, arity(3, 4), None)),
     ("db", &["insert", "update", "delete"], overload("collection: static registered Collection reference", None, arity(1, 1), None)),

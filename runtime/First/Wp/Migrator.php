@@ -23,8 +23,13 @@ namespace First\Wp;
 final class Migrator
 {
 
-    public function __construct(private readonly Connection $db, private readonly string $dir, private readonly \First\Schema $schema)
-    {
+    /** @param array<string, int> $drops `--drop` confirmations for the schema check (SchemaCheck::drops) */
+    public function __construct(
+        private readonly Connection $db,
+        private readonly string $dir,
+        private readonly \First\Schema $schema,
+        private readonly array $drops = [],
+    ) {
     }
 
     /** The statements of a migration file: split on the compiler's `--> statement-breakpoint` lines. */
@@ -80,8 +85,28 @@ final class Migrator
             $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
             $migrations[$id] = self::statements($sql);
         }
+        // What this app already applied, read without changing anything: a ledger from before rows
+        // were keyed by app is read as this app's when this app is its one owner (as ledger() would
+        // convert it), and is only converted below, once the check has passed.
+        $done = array_flip($this->keyed() ? $this->done() : $this->unkeyedDone());
+        // The deploy-time schema check (spec §2.9): every pending statement that could lose rows or
+        // leave them without a required value is measured first, across all pending files, so a
+        // refusal leaves the tables, the rows and the ledger untouched.
+        // A file that stopped part way has steps that already ran: their renames are replayed (not
+        // measured), so the checks after them find the tables and columns under their new names.
+        $pending = [];
+        $applied = [];
+        foreach ($migrations as $id => $statements) {
+            foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
+                if (isset($done[$id . ':' . ($i + 1)])) {
+                    $applied[] = $statement;
+                } else {
+                    $pending[$id][] = $statement;
+                }
+            }
+        }
+        (new SchemaCheck($this->db, $this->drops))->check($pending, $applied);
         // Check every pending adoption before any DDL or ledger writes, even across tables/files.
-        $done = $this->keyed() ? array_flip($this->done()) : [];
         foreach ($migrations as $id => $statements) {
             if (isset($done[$id])) {
                 continue;
@@ -111,7 +136,7 @@ final class Migrator
                     continue;
                 }
                 try {
-                    $this->db->run($statement);
+                    $this->execute($statement);
                 } catch (DbError $e) {
                     throw new \RuntimeException("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0, $e);
                 }
@@ -124,6 +149,45 @@ final class Migrator
 
         $this->requireCompatibleTables();
         return $applied;
+    }
+
+    /**
+     * Runs one migration statement. On the SQLite Database Integration driver, renames take another
+     * route: it has no RENAME TABLE (the table is copied under its new name, rows and auto-increment
+     * included, and the old one dropped, in one transaction), and its RENAME COLUMN loses the values
+     * (it runs as CHANGE COLUMN with the definition the compiler recorded).
+     */
+    private function execute(string $statement): void
+    {
+        $sql = SchemaCheck::sql($statement);
+        $check = SchemaCheck::parse($statement);
+        if (!$this->db->sqlite() || ($check['check'] ?? null) !== 'rename') {
+            $this->db->run($sql);
+
+            return;
+        }
+        if (isset($check['column'])) {
+            // The statement names the table as it is when it runs (an earlier rename may have moved it);
+            // the check names it as it was before the plan.
+            preg_match('/^ALTER TABLE (`(?:[^`]|``)+`)/', $sql, $m);
+            $this->db->run("ALTER TABLE {$m[1]} CHANGE COLUMN `" . str_replace('`', '``', (string) $check['column']) . '` ' . $check['definition']);
+
+            return;
+        }
+        $from = '`' . str_replace('`', '``', (string) $check['table']) . '`';
+        $to = '`' . str_replace('`', '``', (string) $check['to']) . '`';
+        $create = array_values($this->db->run("SHOW CREATE TABLE $from")[0])[1];
+        $dbh = $this->db->wpdb()->dbh;
+        $dbh->query('START TRANSACTION');
+        try {
+            $dbh->query((string) preg_replace('/^CREATE TABLE `(?:[^`]|``)+`/', "CREATE TABLE $to", $create));
+            $dbh->query("INSERT INTO $to SELECT * FROM $from");
+            $dbh->query("DROP TABLE $from");
+            $dbh->query('COMMIT');
+        } catch (\Throwable $e) {
+            $dbh->query('ROLLBACK');
+            throw new DbError($e->getMessage() . " [$sql]", 0);
+        }
     }
 
     private function requireCompatibleTables(): void
@@ -269,6 +333,33 @@ final class Migrator
         }
 
         return $owners;
+    }
+
+    /**
+     * This app's ids in a ledger from before rows were keyed by app, without converting it: the rows
+     * are this app's only when it is the ledger's one owner, as ledger() decides. With no ledger, or
+     * another owner, nothing is recorded for this app yet (ledger() then creates or refuses).
+     *
+     * @return list<string>
+     */
+    private function unkeyedDone(): array
+    {
+        $ledger = $this->table('first__migrations');
+        if ($this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$ledger]) === []
+            || $this->legacyOwners() !== [$this->schema->name()]) {
+            return [];
+        }
+
+        return array_column($this->db->run("SELECT `id` FROM `$ledger`"), 'id');
+    }
+
+    /** @return list<string> this app's recorded ids, sorted (for comparing ledger states) */
+    public function applied(): array
+    {
+        $done = $this->done();
+        sort($done, SORT_STRING);
+
+        return $done;
     }
 
     /** @return list<string> this app's recorded ids (files and in-progress `<id>:<n>` steps) */

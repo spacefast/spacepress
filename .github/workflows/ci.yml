@@ -373,6 +373,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-migrate FIRST_WP_PORT=8794 tests/wp/migrate-run.sh
       - name: Spacefast cross-prefix migration and session continuity
         run: FIRST_WP_PROJECT=first-wp-spacefast FIRST_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+      - name: Deploy-time schema check against live rows
+        run: FIRST_WP_PROJECT=first-wp-schema-check FIRST_WP_PORT=8902 tests/wp/schema-check/run.sh
       - name: First-publish seed and sync adoption
         run: FIRST_WP_PROJECT=first-wp-seed FIRST_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals

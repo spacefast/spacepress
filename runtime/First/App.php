@@ -14,6 +14,8 @@ final class App
     private const MAX_LIST_LIMIT = 200;
     private const TITLES = [
         'invalid_input' => 'Invalid input',
+        'schema_refused' => 'Schema change refused',
+        'invalid_drop' => 'Invalid --drop',
         'invalid_query' => 'Invalid query',
         'invalid_json' => 'Invalid JSON',
         'not_found' => 'Not found',
@@ -585,6 +587,12 @@ final class App
             'code' => $code,
             'detail' => $detail,
         ];
+
+        if ($e instanceof Wp\SchemaRefused) {
+            // Each refusal has its own stable code, the live count, and the fix; `drop` lists the
+            // `--drop` arguments that accept today's counts, for a publisher to offer.
+            $problem += ['refusals' => $e->refusals, 'drop' => $e->drops()];
+        }
 
         return $pointer === null ? $problem : $problem + ['pointer' => $pointer];
     }

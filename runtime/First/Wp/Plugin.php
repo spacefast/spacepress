@@ -36,6 +36,8 @@ final class Plugin
     private array $promoting = [];
     /** @var array<int, list<string>> post id → columns fillEditorDefaults generated in this save */
     private array $filled = [];
+    /** @var array<string, int> `--drop` confirmations for this process's migration (SchemaCheck) */
+    private array $drops = [];
 
     public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
@@ -134,6 +136,8 @@ final class Plugin
         // (Runtime's `wp first` dispatcher already refused everything but `migrate` while storage is behind.)
         if (($args[0] ?? '') === 'migrate') {
             try {
+                // `--drop=likes=1204,likes.note=12`: WP-CLI keeps the last of repeated flags, so values are comma-separated.
+                $this->drops = SchemaCheck::drops(array_key_exists('drop', $assocArgs) ? [$assocArgs['drop']] : []);
                 $mark = $assocArgs['mark-applied'] ?? null;
                 if (is_string($mark)) {
                     Migrator::locked($this->connection(), $this->schemaOption(), fn () => $this->migrator()->markApplied($mark));
@@ -258,6 +262,12 @@ final class Plugin
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         try {
             $this->migrateLocked();
+        } catch (SchemaRefused $refused) {
+            // The plugin stays active with First's routes refusing, so `wp first migrate --drop=…` can
+            // confirm what was refused; deactivating would leave no way to run it. Each request
+            // reports the refusal (see maybeMigrate).
+            $this->unavailable = $this->remember($refused);
+            $this->notice($this->unavailable);
         } catch (\Throwable $error) {
             deactivate_plugins(plugin_basename($this->mainFile));
             wp_die(esc_html($error->getMessage()), 'First', ['back_link' => true]);
@@ -282,14 +292,72 @@ final class Plugin
         if (Runtime::managed() || $this->current()) {
             return;
         }
+        // A schema refusal holds until someone confirms or changes something: this build, or the
+        // ledger (`wp first migrate` records progress there). Requests meanwhile skip the lock and the
+        // row counts and report it, rather than recounting large tables on every page load.
+        $refused = get_option($this->refusalOption());
+        if (is_array($refused) && ($refused['state'] ?? null) === $this->refusalState()) {
+            $this->unavailable = (string) $refused['problem'];
+            $this->notice($this->unavailable);
+
+            return;
+        }
         // Concurrent first requests queue on one lock; whoever gets it after the holder sees the
         // new hash. A failure or timeout leaves the hash stale, so the next request retries.
-        $this->unavailable = Migrator::upgrade($this->connection(), $this->schemaOption(), fn () => $this->current(true), fn () => $this->migrateNow());
+        $this->unavailable = Migrator::upgrade($this->connection(), $this->schemaOption(), fn () => $this->current(true), function (): void {
+            try {
+                $this->migrateNow();
+            } catch (SchemaRefused $refused) {
+                // upgrade() reports it (log and notice) from the message remember() builds.
+                throw new \RuntimeException($this->remember($refused), 0, $refused);
+            }
+        });
     }
 
-    /** Explicit host initialization; failures propagate without wp-admin or activation hooks. */
-    public function initialize(): array
+    /** Keeps a refusal for this build and ledger, with the command that confirms it; returns the report. */
+    private function remember(SchemaRefused $refused): string
     {
+        $drop = $refused->drops();
+        $problem = 'Schema change refused: ' . $refused->getMessage()
+            . ($drop === [] ? '' : ' To confirm: wp first migrate --drop=' . implode(',', $drop));
+        update_option($this->refusalOption(), ['state' => $this->refusalState(), 'problem' => $problem], false);
+
+        return $problem;
+    }
+
+    private function notice(string $problem): void
+    {
+        add_action('admin_notices', static function () use ($problem): void {
+            if (current_user_can('manage_options')) {
+                printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('First: ' . $problem));
+            }
+        });
+    }
+
+    private function refusalOption(): string
+    {
+        return 'first_' . $this->schema->name() . '_refused';
+    }
+
+    /** This build and the app's ledger rows: either changing means the refusal may no longer hold. */
+    private function refusalState(): string
+    {
+        $migrator = $this->migrator();
+        $done = $migrator->keyed() ? $migrator->applied() : [];
+
+        return hash('sha256', $this->schemaHash() . "\0" . implode("\n", $done));
+    }
+
+    /**
+     * Explicit host initialization; failures propagate without wp-admin or activation hooks.
+     * `$drops` are the deploy's `--drop` confirmations (SchemaCheck::drops); a SchemaRefused carries
+     * the refusals to report.
+     *
+     * @param array<string, int> $drops
+     */
+    public function initialize(array $drops = []): array
+    {
+        $this->drops = SchemaCheck::drops($drops);
         $bad = $this->storageProblems();
         if ($bad !== []) {
             throw new \RuntimeException('First requires InnoDB and utf8mb4: ' . implode(', ', $bad));
@@ -306,6 +374,7 @@ final class Plugin
     private function migrateNow(): array
     {
         $applied = $this->migrator()->migrate();
+        delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();
         update_option($this->schemaOption(), $this->schemaHash(), false);
@@ -333,7 +402,7 @@ final class Plugin
 
     private function migrator(): Migrator
     {
-        return new Migrator($this->connection(), $this->dir . '/first/app/migrations', $this->schema);
+        return new Migrator($this->connection(), $this->dir . '/first/app/migrations', $this->schema, $this->drops);
     }
 
     public function pendingMigrations(): array

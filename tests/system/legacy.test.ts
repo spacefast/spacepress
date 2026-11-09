@@ -41,10 +41,10 @@ before(async () => {
   writeFileSync(config, readFileSync(config, "utf8").replaceAll(`"create":false,"update":false,"delete":false`, `"create":"editor","update":"editor","delete":"editor"`));
   // Step 3: build, upload the plugins, activate dependencies, then the runtime, then the app.
   zero("build", project, "--quiet");
-  const built = join(project, ".zero/wp-content/plugins");
+  const built = join(project, "zero/dist/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
   wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "zero-runtime", "zero-identity", "zero-app-legacy");
-  const mod = await import(pathToFileURL(join(project, "zero/client/index.ts")).href);
+  const mod = await import(pathToFileURL(join(project, "zero/_generated/client/index.ts")).href);
   const basic = (role: "editor") => ({ Authorization: "Basic " + btoa(`${role}:${receipt.users[role].appPassword}`) });
   client = (role) => mod.createClient({ url: api, headers: role === "anonymous" ? {} : basic(role) });
 });

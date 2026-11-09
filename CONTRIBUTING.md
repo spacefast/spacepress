@@ -38,7 +38,7 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
    the types make it safe, `Zero\Js` helpers where JavaScript and PHP differ,
    and a build error where neither is sound.
 5. **Emit.** The output is MySQL migrations (diffed against one committed
-   snapshot), `schema.php`, `functions.php`, `zero.gen.ts` (types `db` in your
+   snapshot), `schema.php`, `functions.php`, `zero/_generated/db.d.ts` (types `db` in your
    editor), the typed client, and the PHP runtime: the database layer, the
    REST API, the hook pipeline, and the JS-semantics helpers.
 
@@ -46,9 +46,9 @@ The crate is a library plus the `zero` binary. The core (`loader`, `lower`, `eva
 `compile`, `migrate`, `client`, `schema_php`, tied together by `pipeline`) does no I/O of its own:
 sources come through `loader::Fs` and the previous snapshot is a value. The `cli` feature (on by
 default) adds `commands/`, `sync/`, `config_migrate/`, plugin downloads and the embedded runtime.
-`src/wasm.rs` exports the core to the browser; `site/` builds it with
+`src/wasm.rs` exports the core to the browser; `docs-site/` builds it with
 `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown` and
-serves it as the website's compiler (see [`site/README.md`](site/README.md)).
+serves it as the docs site's playground compiler (see [`docs-site/README.md`](docs-site/README.md)).
 
 The runtime under `runtime/` is embedded into the binary by `build.rs` and
 written out by `zero build` into the `zero-runtime`, `zero-identity` and
@@ -60,7 +60,7 @@ files under `runtime/` are picked up without code changes.
 `zero help` prints every command, grouped. **Build** commands (`dev`, `build`,
 `check`, `doctor`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `zero`
 binary against the project's files (`abilities pull` reads a site's abilities
-into the committed `zero/abilities.json`). **Site** commands (`migrate`, `seed`,
+into the committed `zero/_generated/abilities.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp zero <command>` in
 the `zero-runtime` plugin; `zero <command>` forwards to it unchanged, and
 `zero wp <args>` forwards any WP-CLI command. `--site` picks the site: absent,
@@ -71,10 +71,10 @@ or a WP-CLI `@alias`. Credentials come only from `ZERO_APP_PASSWORD` or
 there and one PHP handler.
 
 `zero build` writes new migrations to `zero/_generated/migrations/`, the typed client to
-`zero/client/`, `zero.gen.ts`, `zero/wp-plugins.lock.json` and, with plugin
-packages, `zero/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
+`zero/_generated/client/`, `zero/_generated/db.d.ts`, `zero/_generated/wp-plugins.lock.json` and, with plugin
+packages, `zero/_generated/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
 plugin grants the lock doesn't hold),
-and the artifact to `.zero/wp-content`: plugin folders, ZIPs, pinned
+and the artifact to `zero/dist/wp-content`: plugin folders, ZIPs, pinned
 dependencies and one `zero-manifest.json`. `zero dev` installs that artifact
 into a persistent Studio site at `<project>/.zero/dev/wordpress`, activates
 its manifest plugins, and watches TypeScript, config and public files. It
@@ -108,7 +108,7 @@ tests/php/run.sh                 # runtime: JS parity (checked against node) + t
 tsc -p types/zero/tests          # the "zero" types catch real mistakes
 tests/wp/run.sh                  # the runtime on real WordPress (Docker)
 tests/system/run.sh              # examples/site end to end on WordPress
-(cd site && pnpm check)          # the website: browser compiler ≡ zero check --json, page in Chromium
+(cd docs-site && pnpm check)     # the docs site: generated pages current, browser compiler ≡ zero check --json, pages in Chromium
 ```
 
 CI runs `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D
@@ -202,8 +202,8 @@ checks remain available. They are not dependencies of `spacefast`.
 | `src/extract.rs` | evaluated config → schema + functions to compile |
 | `src/compile.rs`, `src/types.rs` | typed TS → PHP compiler |
 | `src/migrate.rs` | snapshots and migration planning |
-| `src/schema_php.rs` | `schema.php` and `zero.gen.ts` |
-| `src/client.rs` | `zero/client/types.ts` and `schema.ts` |
+| `src/schema_php.rs` | `schema.php` and `zero/_generated/db.d.ts` |
+| `src/client.rs` | `zero/_generated/client/types.ts` and `schema.ts` |
 | `src/wp_plugins/` | plugin acquisition, checksums and the lock |
 | `src/sync/` | the `zero sync` CLI |
 | `src/cli.rs`, `src/commands/site.rs` | the command table, and forwarding to WP-CLI |

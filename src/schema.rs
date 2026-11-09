@@ -179,6 +179,8 @@ pub struct Column {
     pub hidden: bool,
     /// `json().$type<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
+    /// `.was("old")`: the stored name before a rename (spec §2.5).
+    pub was: Option<String>,
 }
 
 impl Column {
@@ -209,6 +211,7 @@ impl Column {
             derived: false,
             hidden: false,
             ts_type: None,
+            was: None,
         }
     }
 
@@ -340,6 +343,8 @@ pub struct Collection {
     pub table: String,
     /// Exact SQL table binding, without the WordPress prefix. Must already exist.
     pub existing_table: Option<String>,
+    /// `was: "old"`: the stored name before a rename (spec §2.6).
+    pub was: Option<String>,
     pub label: String,
     pub editor: bool,
     pub drafts: bool,
@@ -387,7 +392,13 @@ pub struct Action {
     pub access: Access,
     pub agents: bool,
     pub idempotent: bool,
+    /// Reads only: the Ability runs over GET, and the facade serves `GET /actions/<name>`.
+    pub readonly: bool,
+    /// Removes or overwrites data an agent should confirm first (the Ability's `destructive`).
+    pub destructive: bool,
     pub signature: Option<Json>,
+    /// The handler's result as a JSON Schema, from its TypeScript return type (filled after compile).
+    pub output: Option<Json>,
 }
 
 /// One `wp-hooks/` handler, registered with `add_filter`/`add_action`.

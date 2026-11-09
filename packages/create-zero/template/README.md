@@ -11,7 +11,7 @@ Edit `zero.config.ts` for your backend and `public/` for your frontend. Zero reb
 ```sh
 npm run check                 # compiler diagnostics, without writing output
 npm run typecheck             # generate and check backend + client types
-npm run build                # WordPress plugin artifact in .zero/wp-content
+npm run build                # WordPress plugin artifact in zero/dist/wp-content
 npm run dev -- --port 9123    # choose an available port
 npm run status
 npm run wp -- core version   # WordPress's own WP-CLI
@@ -20,4 +20,4 @@ npm run stop                 # stop the site, preserve its SQLite data
 
 `client.ts` demonstrates the generated typed client. The static frontend uses same-origin REST directly. Backend TypeScript compiles to PHP and supports a documented subset; it is not a Node.js server. Run `npm run check` when adding library code.
 
-Commit `zero/_generated/migrations/`, `zero/client/` and `zero.gen.ts`. `.zero/` is local state and build output. Do not deploy local SQLite files or development credentials. See the Zero installation guide for release availability, compiler overrides and production deployment prerequisites.
+Commit `zero/_generated/migrations/`, `zero/_generated/client/` and `zero/_generated/db.d.ts`. `.zero/` is local state and build output. Do not deploy local SQLite files or development credentials. See the Zero installation guide for release availability, compiler overrides and production deployment prerequisites.

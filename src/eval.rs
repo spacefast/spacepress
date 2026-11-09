@@ -458,6 +458,12 @@ pub struct Evaluator<'p> {
     /// Allocations of `import * as ns` namespace objects. Node binds such a namespace as `this`
     /// for `ns.f()`, and it's frozen and holds live bindings, which a copy can't reproduce.
     pub namespace_imports: HashSet<usize>,
+    /// `import { x } from "zero:db"` bindings, filled once every app module has registered
+    /// (see [`Evaluator::bind_db`]): (scope, local name, kind name, span).
+    db_imports: Vec<(Rc<Scope>, String, String, Span)>,
+    /// The registered kinds, once [`Evaluator::bind_db`] has run: later `"zero:db"` imports (the
+    /// `zero/wp-hooks/` modules) bind on the spot.
+    db_kinds: Option<IndexMap<String, Value>>,
     /// The object literal that defines each method reading `this`, keyed by the closure's
     /// allocation. The compiler types that method's `this` as its object and compiles it only as
     /// a method of it. Both are kept here so their allocations are never reused.
@@ -489,6 +495,8 @@ impl<'p> Evaluator<'p> {
             duplicate_keys: HashMap::new(),
             pending_labels: Vec::new(),
             namespace_imports: HashSet::new(),
+            db_imports: Vec::new(),
+            db_kinds: None,
             method_homes: HashMap::new(),
             method_home_fields: HashMap::new(),
         }
@@ -514,6 +522,30 @@ impl<'p> Evaluator<'p> {
 
     pub fn program(&self) -> &'p Program {
         self.program
+    }
+
+    /// Fills every `"zero:db"` binding from `kinds` (registered name → kind), once registration has
+    /// run. An unknown name is refused at its import, with the closest registered name.
+    pub fn bind_db(&mut self, kinds: &IndexMap<String, Value>) -> Result<(), Diag> {
+        self.db_kinds = Some(kinds.clone());
+        for (scope, local, name, span) in std::mem::take(&mut self.db_imports) {
+            let Some(value) = kinds.get(&name) else {
+                let mut d = Diag::new(span, format!("\"zero:db\" has no kind named `{name}`"));
+                if let Some(s) = suggest(&name, kinds.keys().map(String::as_str)) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                } else {
+                    d = d.help(
+                        "export the kind from a module under zero/, e.g. `export const posts = collection({ ... })`",
+                    );
+                }
+                return Err(d);
+            };
+            if let Some(binding) = scope.vars.borrow_mut().get_mut(&local) {
+                binding.value = value.clone();
+                binding.initialized = true;
+            }
+        }
+        Ok(())
     }
 
     /// Evaluates another entry module (a `wp-hooks/` file) and returns its exports.
@@ -821,6 +853,34 @@ impl<'p> Evaluator<'p> {
     fn bind_imports(&mut self, id: usize, source: &str, specs: &[ImportSpec], span: Span, scope: &Rc<Scope>) -> R<()> {
         for spec in specs {
             if spec.type_only {
+                continue;
+            }
+            // A kind may be declared in a module that runs later, so the binding starts
+            // uninitialized: reading it while modules load is a TDZ error, and handlers, which run
+            // after every module, see the registered kind.
+            if source == crate::loader::DB_MODULE {
+                let ImportName::Named(name) = &spec.imported else {
+                    return err_help(
+                        spec.span,
+                        "\"zero:db\" exports one name per kind",
+                        "import the kinds you use: `import { posts } from \"zero:db\"`",
+                    );
+                };
+                scope.vars.borrow_mut().insert(
+                    spec.local.clone(),
+                    Binding {
+                        initialized: false,
+                        value: Value::Undef,
+                        mutable: false,
+                        module_level: true,
+                        ann: None,
+                    },
+                );
+                self.db_imports
+                    .push((scope.clone(), spec.local.clone(), name.clone(), spec.span));
+                if let Some(kinds) = self.db_kinds.clone() {
+                    self.bind_db(&kinds).map_err(Ctl::Err)?;
+                }
                 continue;
             }
             // TypeScript elides imports that only name types.
@@ -3536,6 +3596,15 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "showIf" => c.show_if = Some(arg(0)),
         "ui" => c.ui = Some(arg(0)),
         "localized" => c.localized = true,
+        "was" => match arg(0) {
+            Value::Str(old) => c.was = Some(old.to_string()),
+            other => {
+                return err(
+                    span,
+                    format!("`.was()` needs the field's old name, not {}", other.describe()),
+                );
+            }
+        },
         "notNull" => c.not_null = true,
         "unique" => c.unique = true,
         "min" | "max" => {
@@ -3677,6 +3746,7 @@ const MODIFIERS: &[&str] = &[
     "showIf",
     "ui",
     "localized",
+    "was",
 ];
 
 /// "a text column", "an email column".
@@ -3747,6 +3817,7 @@ impl ColBuilder {
             ui: None,
             localized: false,
             bucket: None,
+            was: None,
             span,
             mods: Vec::new(),
         }

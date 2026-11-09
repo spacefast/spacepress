@@ -1,6 +1,6 @@
 import { action, collection, defineConfig, media, richText, text } from "zero";
 
-import { getReadingTime } from "./backend/reading-time";
+import { getReadingTime } from "./zero/backend/reading-time";
 
 // Native WordPress titles and blocks; the remaining fields are editable in SCF.
 const posts = collection({

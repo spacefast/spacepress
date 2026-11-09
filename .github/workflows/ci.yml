@@ -373,6 +373,41 @@ jobs:
         run: ZERO_WP_PROJECT=zero-wp-migrate ZERO_WP_PORT=8794 tests/wp/migrate-run.sh
       - name: Spacefast cross-prefix migration and session continuity
         run: ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+
+  # Schema checks, seeding, outbound fetch and WordPress abilities: split from wp-migrate, which
+  # ran past its timeout once both halves shared one runner.
+  wp-schema:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .zero/cache/plugins
+            tests/wp/cache
+          key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: cargo build --locked --bin zero
+      - name: Deploy-time schema check against live rows
+        run: ZERO_WP_PROJECT=zero-wp-schema-check ZERO_WP_PORT=8902 tests/wp/schema-check/run.sh
       - name: First-publish seed and sync adoption
         run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals

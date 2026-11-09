@@ -21,13 +21,13 @@ import { defineConfig } from "zero";
 export default defineConfig({ name: "abilities-lane" });
 TS
 "$zero" build "$work/app" --quiet >/dev/null
-"$wp/harness.sh" up --wp-content "$work/app/.zero/wp-content" > "$work/harness.json"
+"$wp/harness.sh" up --wp-content "$work/app/zero/dist/wp-content" > "$work/harness.json"
 "$wp/harness.sh" compose cp "$here/mu-plugin.php" wordpress:/var/www/html/wp-content/mu-plugins/zero-abilities-lane.php >/dev/null 2>&1
 url=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "$work/harness.json")
 password=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["users"]["admin"]["appPassword"])' "$work/harness.json")
 # The pull lists the site's abilities as an administrator, from the environment only.
 ZERO_APP_PASSWORD="admin:$password" "$zero" abilities pull "$work/app" --site "$url" --only 'acme/*'
-python3 - "$work/app/zero/abilities.json" <<'PY'
+python3 - "$work/app/zero/_generated/abilities.json" <<'PY'
 import json, sys
 lock = json.load(open(sys.argv[1]))
 assert [a["name"] for a in lock["abilities"]] == ["acme/word-count"], lock
@@ -35,10 +35,10 @@ assert lock["abilities"][0]["input_schema"]["required"] == ["text"], lock
 PY
 # Build the calling app against the lock alone, and replace the running app plugin with it.
 cp "$here/zero.config.ts" "$work/app/zero.config.ts"
-cp -r "$here/wp-hooks" "$work/app/wp-hooks"
+mkdir -p "$work/app/zero" && cp -r "$here/zero/wp-hooks" "$work/app/zero/wp-hooks"
 "$zero" build "$work/app" --out "$work/next" --quiet >/dev/null
-rsync -a --delete "$work/next/plugins/zero-app-abilities-lane/" "$work/app/.zero/wp-content/plugins/zero-app-abilities-lane/"
-grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/zero.gen.ts"
+rsync -a --delete "$work/next/plugins/zero-app-abilities-lane/" "$work/app/zero/dist/wp-content/plugins/zero-app-abilities-lane/"
+grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/zero/_generated/db.d.ts"
 # Doctor reports the lock as satisfied, then the change once the site's schema moves.
 ZERO_APP_PASSWORD="admin:$password" "$zero" doctor "$work/app" --out "$work/next" --site "$url" > "$work/doctor.txt" || true
 grep -q '✓ locked abilities: all present and unchanged' "$work/doctor.txt" || { cat "$work/doctor.txt" >&2; exit 1; }

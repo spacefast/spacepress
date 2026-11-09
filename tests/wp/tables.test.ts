@@ -3,7 +3,7 @@
 // MySQL UNIQUE violation maps to a 409 `unique_violation` with the column pointer. Also: db.globals from
 // compiled code.
 import { test } from "node:test";
-import { createClient, ZeroError } from "./app/zero/client/index.ts";
+import { createClient, ZeroError } from "./app/zero/_generated/client/index.ts";
 import assert from "node:assert/strict";
 import { api, auth, core, harness, http, ok, problem, run, sql, wp, wpTry, zero } from "./env.ts";
 
@@ -254,4 +254,70 @@ test("cascades and generated editor values cannot answer questions about hidden 
   }
   assert.equal(zero("find", "oracle_defaults", JSON.stringify({ where: { id: generated.id } }))[0].title, "Existing");
   assert.equal(zero("find", "oracle_children", JSON.stringify({ where: { id: child.id } })).length, 1);
+});
+
+// The one new core route (spec §3a): /wp/v2/<table> for a table() kind, in core's shape, answering
+// what /zero/v1 answers because both run Zero's pipeline as the viewer.
+test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape", async () => {
+  const base = `${core}/zero_field_teams`;
+  const created = await http("POST", base, { as: "editor", body: { name: `Core team ${run}`, budget: 40 } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = created.json.id;
+  assert.equal("budget" in created.json, false, "field masks apply to write results");
+  assert.deepEqual(sql(`SELECT name, budget FROM wp_zero_field_teams WHERE id = ${id}`), [{ name: `Core team ${run}`, budget: "40" }]);
+  const zeroRow = await ok("GET", `/field_teams/${id}`, { as: "editor" });
+  const coreRow = await http("GET", `${base}/${id}`, { as: "editor" });
+  assert.deepEqual(coreRow.json.name, zeroRow.name);
+  assert.equal((await http("GET", `${base}/${id}`, { as: "admin" })).json.budget, 40);
+  // Lists: Zero's where/orderBy, core's pagination headers.
+  await http("POST", base, { as: "editor", body: { name: `Core team ${run} b` } });
+  const page = await fetch(`${base}?` + new URLSearchParams({ where: JSON.stringify({ name: { like: `Core team ${run}%` } }), orderBy: "-name", per_page: "1" }), { headers: auth("editor") });
+  assert.deepEqual([(await page.json()).map((t: any) => t.name), page.headers.get("x-wp-total"), page.headers.get("x-wp-totalpages")], [[`Core team ${run} b`], "2", "2"]);
+  // The total counts in SQL what the list holds: the same filter, the same read rule.
+  const counted = await fetch(`${base}?` + new URLSearchParams({ where: JSON.stringify({ name: { like: `Core team ${run}%` } }), per_page: "100" }), { headers: auth("editor") });
+  assert.equal(Number(counted.headers.get("x-wp-total")), (await counted.json()).length);
+  const hiddenTotal = await http("GET", `${base}?` + new URLSearchParams({ where: JSON.stringify({ budget: 40 }), per_page: "1" }), { as: "editor" });
+  assert.deepEqual([hiddenTotal.status, hiddenTotal.json.data?.pointer], [403, "/where/budget"], "a total can't count by a hidden field either");
+  // Core's `_fields`, nested paths included, on Zero rows and their relations.
+  const signup = await http("POST", `${core}/zero_signups`, { as: "editor", body: { email: `fields-${run}@example.test`, teamId: id } });
+  assert.equal(signup.status, 201, JSON.stringify(signup.json));
+  const fielded = await http("GET", `${core}/zero_signups/${signup.json.id}?` + new URLSearchParams({ with: "team", _fields: "email,team.name" }), { as: "editor" });
+  assert.deepEqual(fielded.json, { email: `fields-${run}@example.test`, team: { name: `Core team ${run}` } }, JSON.stringify(fielded.json));
+  assert.ok("_links" in (await http("GET", `${base}/${id}`, { as: "editor" })).json, "links without _fields, as core gives them");
+  // A form-encoded body is read as WordPress parses it, not as JSON.
+  const form = await fetch(base, { method: "POST", headers: { ...auth("editor"), "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ name: `Form team ${run}` }) });
+  const formed = await form.json();
+  assert.deepEqual([form.status, formed.name], [201, `Form team ${run}`], JSON.stringify(formed));
+  const updated = await http("PATCH", `${base}/${id}`, { as: "editor", body: { name: `Core team ${run} renamed` } });
+  assert.deepEqual([updated.status, updated.json.name], [200, `Core team ${run} renamed`]);
+  const deleted = await http("DELETE", `${base}/${id}`, { as: "editor" });
+  assert.deepEqual([deleted.status, deleted.json.deleted, deleted.json.previous.id], [200, true, id]);
+  assert.equal((await http("GET", `${base}/${id}`, { as: "editor" })).status, 404);
+  const schema = (await http("OPTIONS", base)).json.schema;
+  assert.deepEqual([schema.title, schema.properties.name.type], ["zero_field_teams", "string"]);
+});
+
+test("/wp/v2/<table> keeps every denial /zero/v1 makes", async () => {
+  const signups = `${core}/zero_signups`;
+  const email = `core-${run}@example.test`;
+  // An anonymous create of a unique value is refused on both (it would answer whether it exists).
+  const anonCore = await http("POST", signups, { body: { email } });
+  const anonFacade = await http("POST", `${api}/signups`, { body: { email } });
+  assert.deepEqual([anonCore.status, anonCore.json.code, anonCore.json.data.pointer], [anonFacade.status, anonFacade.json.code, anonFacade.json.pointer]);
+  assert.equal((await http("POST", signups, { as: "editor", body: { email } })).status, 201);
+  const facadeList = await http("GET", `${api}/signups`);
+  const coreList = await http("GET", signups);
+  assert.deepEqual([coreList.status, coreList.json.code], [facadeList.status, facadeList.json.code]);
+  const dup = await http("POST", signups, { as: "editor", body: { email } });
+  assert.deepEqual([dup.status, dup.json.code, dup.json.data.pointer], [409, "unique_violation", "/email"]);
+  const bad = await http("POST", signups, { as: "editor", body: { email: "not an email" } });
+  assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [422, "invalid_input", "/email"]);
+  // A filter through a hidden field of a related table is the same 403.
+  const hidden = await http("GET", `${signups}?` + new URLSearchParams({ where: JSON.stringify({ team: { budget: 1 } }) }), { as: "editor" });
+  assert.deepEqual([hidden.status, hidden.json.data.pointer], [403, "/where/team/budget"]);
+  // Writes need the table's rules: editor-only update and delete.
+  const [row] = (await http("GET", `${signups}?` + new URLSearchParams({ where: JSON.stringify({ email }) }), { as: "editor" })).json;
+  assert.equal((await http("PATCH", `${signups}/${row.id}`, { as: "subscriber", body: { email: `x-${email}` } })).status, 403);
+  assert.equal((await http("DELETE", `${signups}/${row.id}`, { as: "subscriber" })).status, 403);
+  assert.equal((await http("DELETE", `${signups}/${row.id}`, { as: "editor" })).status, 200);
 });

@@ -165,7 +165,7 @@ redaction through their existing test owners.
 ```text
 shop/
 ├── zero.config.ts             # required: content, tables, access and backend behavior
-├── zero.gen.ts                # generated editor types; never hand-edit
+├── zero/_generated/db.d.ts                # generated editor types; never hand-edit
 ├── tsconfig.json
 ├── lib/                      # ordinary imported TS; no discovery conventions
 │   └── pricing.ts
@@ -184,14 +184,14 @@ shop/
 ├── styles/
 │   ├── tokens.ts
 │   └── global.css
-├── wp-hooks/                 # optional WordPress actions/filters, one per hook name
-│   ├── save_post.ts          # default-exports the handler
-│   └── the_content/          # several handlers, registered in file-name order
-│       └── frame.ts
 ├── agents/                   # optional instruction files, referenced by agent declarations
 │   └── editor.md
 ├── content/products/         # optional collection file sync
 ├── zero/
+│   ├── wp-hooks/             # optional WordPress actions/filters, one per hook name
+│   │   ├── save_post.ts      # default-exports the handler
+│   │   └── the_content/      # several handlers, registered in file-name order
+│   │       └── frame.ts
 │   ├── client/               # generated typed HTTP client
 │   ├── migrations/           # reviewed database migrations
 │   ├── abilities.json        # optional: abilities locked by `zero abilities pull`
@@ -202,10 +202,10 @@ shop/
 Do not require a folder per collection, service classes, a route handler per
 resource, or a special file for every backend operation. Splitting the config
 into ordinary relative imports is optional. Discovery applies only to the
-documented page entry files and to `wp-hooks/`, where a file or directory
+documented page entry files and to `zero/wp-hooks/`, where a file or directory
 name is a WordPress hook name and each file default-exports its handler.
 Co-located helper and test files are not routes; helpers for hooks live outside
-`wp-hooks/` and are imported.
+`zero/wp-hooks/` and are imported.
 `page.blocks.html` is the alternative content-owned page format described in
 the pages proposal; one route cannot declare competing ownership formats.
 

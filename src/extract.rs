@@ -101,6 +101,7 @@ const CONFIG_KEYS: &[&str] = &[
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
     "existingTable",
+    "was",
     "label",
     "drafts",
     "revisions",
@@ -311,6 +312,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     key: key.clone(),
                     table: c.table().to_string(),
                     existing_table: None,
+                    was: None,
                     label: title_case(c.table()),
                     editor: true,
                     drafts: true,
@@ -345,6 +347,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         let mut columns = IndexMap::new();
         for (name, b) in &c.columns {
             let col = column(name, b, &owner, &[], Place::Top, ev, &mut out)?;
+            if col.was.is_some() && c.kind != StorageKind::Table {
+                return Err(Diag::new(
+                    b.span_of("was"),
+                    "`.was()` renames a column of a table(); this kind stores its fields elsewhere",
+                )
+                .help("rename the field without `.was()` and move its values yourself, or keep the old name"));
+            }
             columns.insert(name.clone(), col);
         }
         let pks: Vec<&Column> = columns.values().filter(|c| c.primary_key).collect();
@@ -363,6 +372,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         let coll = out.schema.collections.get_mut(c.table()).expect("collection");
         coll.columns = columns;
         coll.existing_table = opts.existing_table;
+        coll.was = opts.was;
         coll.label = opts.label;
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
@@ -543,13 +553,13 @@ fn actions(
         for k in cfg.keys() {
             if !matches!(
                 k.as_str(),
-                "input" | "handler" | "access" | "agents" | "idempotent" | "signature"
+                "input" | "handler" | "access" | "agents" | "idempotent" | "readonly" | "destructive" | "signature"
             ) {
                 return Err(Diag::new(
                     ev.key_span(&a.config, k).unwrap_or(a.span),
                     format!("action() has no option `{k}`"),
                 )
-                .help("use input, handler, access"));
+                .help("use input, handler, access, agents, idempotent, readonly, destructive, signature"));
             }
         }
         let owner = Owner::Action(name.clone());
@@ -575,6 +585,15 @@ fn actions(
         };
         let agents = bool_option(&cfg, "agents", true, a.span)?;
         let idempotent = bool_option(&cfg, "idempotent", false, a.span)?;
+        let readonly = bool_option(&cfg, "readonly", false, a.span)?;
+        let destructive = bool_option(&cfg, "destructive", false, a.span)?;
+        if readonly && destructive {
+            return Err(Diag::new(
+                a.span,
+                format!("action `{name}` can't be both readonly and destructive"),
+            )
+            .help("a readonly action only reads; drop one of the two"));
+        }
         let signature = match cfg.get("signature") {
             None | Some(Value::Undef) => None,
             Some(v) => {
@@ -607,7 +626,10 @@ fn actions(
                 access,
                 agents,
                 idempotent,
+                readonly,
+                destructive,
                 signature,
+                output: None,
             },
         );
     }
@@ -739,6 +761,7 @@ pub fn slugify_name(s: &str) -> String {
 
 struct CollOpts {
     existing_table: Option<String>,
+    was: Option<String>,
     label: String,
     editor: bool,
     drafts: bool,
@@ -822,6 +845,17 @@ fn collection_options(
                 span("existingTable"),
                 "existingTable requires table() and an exact SQL identifier of at most 64 ASCII characters",
             ));
+        }
+    };
+    let was = match o.get("was") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) => Some(name.to_string()),
+        _ => {
+            return Err(Diag::new(
+                span("was"),
+                "`was` takes the table's old storage name, and only on table()",
+            )
+            .help("write `was: \"old_name\"`: the name in zero/_generated/migrations/snapshot.json"));
         }
     };
     if let Some(name) = &existing_table
@@ -1082,6 +1116,7 @@ fn collection_options(
     }
     Ok(CollOpts {
         existing_table,
+        was,
         label,
         editor,
         drafts,
@@ -1301,6 +1336,13 @@ fn column(
     if !valid_ident(name) {
         return Err(Diag::new(b.span, format!("\"{name}\" isn't a valid column name"))
             .help("use letters, digits, and underscores, starting with a letter"));
+    }
+    if b.was.is_some() && place != Place::Top {
+        return Err(Diag::new(
+            b.span_of("was"),
+            "`.was()` renames a stored column; only a kind's own fields have one",
+        )
+        .help("remove `.was()` here"));
     }
     let mut path = parent.to_vec();
     path.push(name.to_string());
@@ -1636,6 +1678,7 @@ fn column(
         derived: false,
         hidden: false,
         ts_type: b.ts_type.clone(),
+        was: b.was.clone(),
     })
 }
 

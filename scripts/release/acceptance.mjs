@@ -73,7 +73,7 @@ try {
   const offline = { ...env, ZERO_OFFLINE: '1', ZERO_RELEASE_BASE_URL: 'http://127.0.0.1:1/' };
   await run(zero, ['check'], { env: offline });
   await run('npm', ['run', 'typecheck']);
-  const generated = await readdir(join(project, 'zero/client'));
+  const generated = await readdir(join(project, 'zero/_generated/client'));
   assert.ok(generated.includes('index.ts') && generated.includes('types.ts'));
   const server = createServer();
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
@@ -119,7 +119,7 @@ try {
   assert.equal(notes.length, 1);
   assert.equal(notes[0].title, 'From native WordPress');
   assert.equal(notes[0].body, 'One server, real SQLite.');
-  const { createClient } = await import(pathToFileURL(join(project, 'zero/client/index.ts')).href);
+  const { createClient } = await import(pathToFileURL(join(project, 'zero/_generated/client/index.ts')).href);
   assert.equal((await createClient({ url: `${base}/wp-json/zero/v1` }).notes.list())[0].title, 'From native WordPress');
   // Exercise the actual supplied-compiler escape hatch independently of the cache.
   await run(zero, ['check'], { env: { ...env, ZERO_BIN: compiler, ZERO_OFFLINE: '1', ZERO_CACHE_DIR: join(work, 'unused-cache') } });

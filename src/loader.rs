@@ -14,11 +14,13 @@ use std::rc::Rc;
 pub const ZERO_MODULE: &str = "zero";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
+/// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `zero/_generated/db.d.ts`.
+pub const DB_MODULE: &str = "zero:db";
 
 /// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
 /// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || crate::builtins::module(spec).is_some()
+    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || spec == DB_MODULE || crate::builtins::module(spec).is_some()
 }
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
@@ -32,6 +34,11 @@ pub trait Fs {
     }
     fn allow_packages(&self) -> bool {
         true
+    }
+    /// A stored source bundle: frozen data captured by some earlier compiler, so layout rules that
+    /// came later (the `zero/` import fence) don't apply to it. A live project is never frozen.
+    fn frozen_capture(&self) -> bool {
+        false
     }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
     fn is_file(&self, path: &Path) -> bool;
@@ -69,21 +76,24 @@ impl Fs for Disk {
 }
 
 pub struct Program {
+    /// The directory that holds `zero.config.ts`.
+    pub root: PathBuf,
     pub modules: Vec<Rc<Module>>,
     /// (module id, specifier) → resolved module id.
     pub resolved: HashMap<(usize, String), usize>,
     pub entry: usize,
     /// The source of these modules; later passes that look beside them (sync directories) ask it.
     pub fs: Rc<dyn Fs>,
-    /// `wp-hooks/` handler files beside the entry, in registration order (see [`wp_hook_files`]).
+    /// `zero/wp-hooks/` handler files, in registration order (see [`wp_hook_files`]).
     pub wp_hooks: Vec<WpHookFile>,
+    /// Every app module under `zero/` (see [`app_files`]), in path order. Each one's exported kinds,
+    /// actions and jobs register by export name, whatever imports it.
+    pub app_modules: Vec<usize>,
     /// `zero/components/**/*.tsx` beside the entry: (path relative to `zero/`, module), sorted.
     pub components: Vec<(String, usize)>,
-    /// The directory holding the entry; JSX admission matches folders below it.
-    pub root: PathBuf,
 }
 
-/// One `wp-hooks/` file: `wp-hooks/<hook>.ts`, or `wp-hooks/<hook>/<file>.ts`.
+/// One `zero/wp-hooks/` file: `zero/wp-hooks/<hook>.ts`, or `zero/wp-hooks/<hook>/<file>.ts`.
 #[derive(Debug, Clone)]
 pub struct WpHookFile {
     pub hook: String,
@@ -101,26 +111,59 @@ pub fn load_all(entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
 }
 
 pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
+    let entry = fs
+        .canonicalize(entry)
+        .map_err(|e| vec![Diag::new(Span::NONE, format!("{}: {e}", entry.display())).code(diag::Code::Import)])?;
     let mut program = Program {
+        root: entry.parent().expect("entry has a directory").to_path_buf(),
         modules: Vec::new(),
         resolved: HashMap::new(),
         entry: 0,
         fs: fs.clone(),
         wp_hooks: Vec::new(),
+        app_modules: Vec::new(),
         components: Vec::new(),
-        root: PathBuf::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
-    let entry = fs
-        .canonicalize(entry)
-        .map_err(|e| vec![Diag::new(Span::NONE, format!("{}: {e}", entry.display())).code(diag::Code::Import)])?;
     let mut diagnostics = Vec::new();
-    program.root = entry.parent().expect("entry has a directory").to_path_buf();
     match load_module(&*fs, &entry, &mut program, &mut by_path, &mut diagnostics) {
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
-    let dir = entry.parent().expect("entry has a directory").join(WP_HOOKS_DIR);
+    // A checkout from before `zero/_generated/` (a leftover `zero/client/`, an old lock) is refused
+    // before any module under `zero/` loads, so its message is the move, not whatever the stale
+    // files fail on. A stored bundle reads those paths on the new layout instead.
+    if !fs.frozen_capture()
+        && let Some((message, help)) = crate::layout::old_in_checkout(|p| fs.exists(p), &program.root)
+    {
+        return Err(vec![Diag::new(Span::NONE, message).help(help).code(diag::Code::Import)]);
+    }
+    match app_files(&*fs, &program.root.join(crate::layout::ROOT)) {
+        Ok(files) => {
+            for path in files {
+                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
+                    Ok(module) => program.app_modules.push(module),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+        }
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    // Handlers beside zero.config.ts are from before `zero/wp-hooks/`: refuse them rather than
+    // build without them, which would drop every filter they register.
+    let old = program.root.join("wp-hooks");
+    if fs.exists(&old) {
+        let file = diag::register_file(&old, "");
+        diagnostics.push(
+            Diag::new(
+                Span { file, start: 0, end: 0 },
+                "wp-hooks/ beside zero.config.ts is from an earlier layout; its handlers would not register",
+            )
+            .help("move it into the Zero root: mkdir -p zero && git mv wp-hooks zero/wp-hooks")
+            .code(diag::Code::Import),
+        );
+    }
+    let dir = program.root.join(WP_HOOKS_DIR);
     match wp_hook_files(&*fs, &dir) {
         Ok(files) => {
             for (hook, order, path) in files {
@@ -132,7 +175,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
-    let zero_dir = entry.parent().expect("entry has a directory").join("zero");
+    let zero_dir = program.root.join(crate::layout::ROOT);
     match component_files(&*fs, &zero_dir.join(COMPONENTS_DIR)) {
         Ok(files) => {
             for path in files {
@@ -158,13 +201,27 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     }
 }
 
-/// JSX belongs to components: a `.tsx` module that `zero.config.ts` (or a `wp-hooks/` handler)
-/// reaches through its imports is refused, even if its JSX never runs at build time, and a
-/// `"use client"` file is refused until generator B compiles it.
+/// Folders under `zero/` whose names Zero reads, or that it writes: no app module is loaded from
+/// them (docs/spec/spec.md §1.1).
+pub const RESERVED_DIRS: &[&str] = &[
+    "app",
+    "components",
+    "wp-hooks",
+    "content",
+    "public",
+    "_generated",
+    "dist",
+    "node_modules",
+];
+
+/// JSX belongs to components: a `.tsx` module that `zero.config.ts`, an app module or a
+/// `zero/wp-hooks/` handler reaches through its imports is refused, even if its JSX never runs at
+/// build time, and a `"use client"` file is refused until generator B compiles it.
 fn jsx_reachability(program: &Program) -> Vec<Diag> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut stack: Vec<usize> = std::iter::once(program.entry)
+        .chain(program.app_modules.iter().copied())
         .chain(program.wp_hooks.iter().map(|h| h.module))
         .collect();
     while let Some(id) = stack.pop() {
@@ -237,10 +294,49 @@ fn component_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-/// The WordPress hooks directory beside `zero.config.ts`.
-pub const WP_HOOKS_DIR: &str = "wp-hooks";
+/// Every `.ts` file under `zero/` outside [`RESERVED_DIRS`], in path order: app modules load whatever
+/// their names are. Declaration files are types only, test files (`*.test.ts`, `*.spec.ts`) belong
+/// to the test runner, and dot-entries and symlinked directories are skipped, so editor and VCS
+/// state never become code. A test file that an app module imports still loads, as an import.
+pub fn app_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    if !fs.is_dir(root) {
+        return Ok(out);
+    }
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs
+            .read_dir(&dir)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", dir.display())))?;
+        for path in entries {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            if fs.is_dir(&path) {
+                let top = dir == root && RESERVED_DIRS.contains(&name.as_ref());
+                if !top && name != "node_modules" && !fs.is_symlink(&path) {
+                    stack.push(path);
+                }
+            } else if name.ends_with(".ts")
+                && ![".d.ts", ".test.ts", ".spec.ts"]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+                && fs.is_file(&path)
+            {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
 
-/// `wp-hooks/<hook>.ts` and `wp-hooks/<hook>/*.ts`, as `(hook, order, path)` sorted by hook, then by
+/// The WordPress hooks directory: one file or directory per hook name (docs/spec/spec.md §1).
+pub const WP_HOOKS_DIR: &str = "zero/wp-hooks";
+
+/// `zero/wp-hooks/<hook>.ts` and `zero/wp-hooks/<hook>/*.ts` (tests aside), as `(hook, order, path)`
+/// sorted by hook, then by
 /// file name. Anything else in the directory is an error that names it: a non-`.ts` file would
 /// otherwise be silently skipped, and the author would wonder why their handler never runs.
 pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, PathBuf)>> {
@@ -258,16 +354,25 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
     let refuse = |path: &Path, why: &str| {
         let file = diag::register_file(path, "");
         Diag::new(Span { file, start: 0, end: 0 }, why.to_string()).help(
-            "wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
+            "zero/wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
         )
     };
     let ts =
         |p: &Path| p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p);
+    // Colocated tests belong to the test runner, as under the rest of `zero/` (see [`app_files`]).
+    let test = |p: &Path| {
+        let name = p.file_name().unwrap_or_default().to_string_lossy();
+        name.ends_with(".test.ts") || name.ends_with(".spec.ts")
+    };
     let mut out = Vec::new();
     for path in listing(dir)? {
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if test(&path) {
+            continue;
+        }
         if fs.is_dir(&path) {
-            for (order, file) in listing(&path)?.into_iter().enumerate() {
+            let files: Vec<PathBuf> = listing(&path)?.into_iter().filter(|f| !test(f)).collect();
+            for (order, file) in files.into_iter().enumerate() {
                 if !ts(&file) {
                     return Err(refuse(&file, "not a .ts handler file"));
                 }
@@ -315,6 +420,43 @@ fn load_module(
         type_names,
         use_client,
     } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
+    // `"zero:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
+    // them on under another module's name, which no evaluator path resolves.
+    // Locals bound by `import { x } from "zero:db"`: exporting one again is the same re-export.
+    let db_locals: std::collections::HashSet<&str> = body
+        .iter()
+        .filter_map(|s| match s {
+            Stmt::Import { source, specs, .. } if source == DB_MODULE => Some(specs),
+            _ => None,
+        })
+        .flatten()
+        .map(|spec| spec.local.as_str())
+        .collect();
+    for stmt in &body {
+        let reexports = match stmt {
+            Stmt::ExportNames { from: Some(from), .. } | Stmt::ExportAll { from, .. } => from == DB_MODULE,
+            Stmt::ExportNames { names, from: None, .. } => {
+                names.iter().any(|(local, _)| db_locals.contains(local.as_str()))
+            }
+            _ => false,
+        };
+        if let Stmt::ExportNames { span, .. } | Stmt::ExportAll { span, .. } = stmt
+            && reexports
+        {
+            let installed = path
+                .strip_prefix(&program.root)
+                .is_ok_and(|rel| rel.components().any(|c| c.as_os_str() == "node_modules"));
+            diagnostics.push(
+                Diag::new(*span, "\"zero:db\" can't be re-exported")
+                    .help(if installed {
+                        "a plugin takes the app's kinds as options, e.g. seo({ posts }); it can't import \"zero:db\""
+                    } else {
+                        "import the kinds where they're used: `import { posts } from \"zero:db\"`"
+                    })
+                    .code(diag::Code::Import),
+            );
+        }
+    }
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
     let commonjs = commonjs.map(|CommonJs { names, requires }| {
@@ -349,7 +491,11 @@ fn load_module(
             resolve_require(fs, path, &spec, span)
         } else {
             resolve(fs, path, &spec, span)
-        };
+        }
+        .and_then(|target| match fs.frozen_capture() {
+            true => Ok(target),
+            false => fence(&program.root, path, &spec, target, span),
+        });
         match target.and_then(|target| load_module(fs, &target, program, by_path, diagnostics)) {
             Ok(target_id) => {
                 program.resolved.insert((id, spec), target_id);
@@ -358,6 +504,38 @@ fn load_module(
         }
     }
     Ok(id)
+}
+
+/// App source loads code only from `zero/` (docs/spec/spec.md §1, `Z1210`): a relative import from
+/// `zero.config.ts` or from a module under `zero/` must resolve inside `zero/`. Installed packages
+/// keep their own relative imports, and `"zero"`, `"php/wordpress"` and npm packages are always
+/// allowed.
+fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> Result<PathBuf> {
+    // Installed code is a module under a node_modules directory: below the project root, or above
+    // it for a package a workspace hoisted into a parent directory. A project that itself sits under
+    // some node_modules is still fenced, since only the path below the root counts there. A module
+    // outside the root that is not in a node_modules (a linked package's real directory) is fenced.
+    let in_node_modules = |p: &Path| p.components().any(|c| c.as_os_str() == "node_modules");
+    let installed = |p: &Path| {
+        p.strip_prefix(root)
+            .map_or_else(|_| in_node_modules(p), in_node_modules)
+    };
+    if !spec.starts_with('.') || installed(from) || target.starts_with(root.join(crate::layout::ROOT)) {
+        return Ok(target);
+    }
+    let importer = from.strip_prefix(root).unwrap_or(from).display().to_string();
+    let (shown, destination) = match target.strip_prefix(root) {
+        Ok(rel) => (rel.display().to_string(), format!("zero/{}", rel.display())),
+        Err(_) => (target.display().to_string(), "zero/".to_string()),
+    };
+    Err(Diag::new(
+        span,
+        format!("{importer} imports \"{spec}\" ({shown}), which is outside zero/"),
+    )
+    .code(diag::Code::ImportFence)
+    .help(format!(
+        "Zero loads app code only from zero/: move {shown} to {destination} and import it from there, or install it as an npm package"
+    )))
 }
 
 fn import_source(s: &Stmt) -> Option<(String, Span)> {
@@ -1388,6 +1566,236 @@ mod tests {
         )
     }
 
+    /// `app_files` loads every module under `zero/` but the reserved folders, declaration files and
+    /// colocated tests, which the test runner owns (they import `vitest` and the like).
+    #[test]
+    fn app_modules_are_every_ts_file_under_zero_but_reserved_ones() {
+        let fs = memory(&[
+            ("/p/zero.config.ts", ""),
+            ("/p/zero/index.ts", ""),
+            ("/p/zero/server/likes.ts", ""),
+            ("/p/zero/lib/fields.ts", ""),
+            ("/p/zero/lib/fields.test.ts", "import { test } from 'vitest';"),
+            ("/p/zero/lib/fields.spec.ts", "import { test } from 'vitest';"),
+            ("/p/zero/types.d.ts", ""),
+            ("/p/zero/notes.md", ""),
+            ("/p/zero/app/page.ts", ""),
+            ("/p/zero/components/card.ts", ""),
+            ("/p/zero/wp-hooks/init.ts", ""),
+            ("/p/zero/content/post.ts", ""),
+            ("/p/zero/public/app.ts", ""),
+            ("/p/zero/_generated/db.ts", ""),
+            ("/p/zero/dist/x.ts", ""),
+            ("/p/zero/node_modules/pkg/index.ts", ""),
+            // Only top-level folder names are reserved: a nested `app/` is ordinary.
+            ("/p/zero/server/app/route.ts", ""),
+        ]);
+        let found: Vec<String> = app_files(&fs, Path::new("/p/zero"))
+            .unwrap()
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            found,
+            [
+                "/p/zero/index.ts",
+                "/p/zero/lib/fields.ts",
+                "/p/zero/server/app/route.ts",
+                "/p/zero/server/likes.ts"
+            ]
+        );
+        // A project with a colocated test still loads.
+        let ok = load_from(
+            Rc::new(memory(&[
+                ("/p/zero.config.ts", "export default {};"),
+                ("/p/zero/lib/fields.ts", "export const a = 1;"),
+                (
+                    "/p/zero/lib/fields.test.ts",
+                    "import { test } from 'vitest'; test('a', () => {});",
+                ),
+            ])),
+            Path::new("/p/zero.config.ts"),
+        );
+        assert!(ok.is_ok(), "{:?}", ok.err());
+    }
+
+    /// App code loads only from `zero/` (`Z1210`); installed packages keep their own relative imports.
+    #[test]
+    fn app_imports_stay_inside_the_zero_root() {
+        let load = |files: &[(&str, &str)]| load_from(Rc::new(memory(files)), Path::new("/p/zero.config.ts"));
+        let refused = |files: &[(&str, &str)]| {
+            let diagnostics = load(files).err().expect("refused");
+            assert!(
+                diagnostics.iter().all(|d| d.code == diag::Code::ImportFence),
+                "{diagnostics:?}"
+            );
+            diagnostics.iter().map(|d| d.message.clone()).collect::<Vec<_>>()
+        };
+        // Inside zero/, from the config and between app modules, including type-only imports.
+        let ok = load(&[
+            (
+                "/p/zero.config.ts",
+                "import { a } from './zero/a'; import type { T } from './zero/types'; export default a;",
+            ),
+            ("/p/zero/a.ts", "import { b } from './server/b'; export const a = b;"),
+            (
+                "/p/zero/server/b.ts",
+                "import { c } from '../c.ts'; export const b = c;",
+            ),
+            ("/p/zero/c.ts", "export const c = 1;"),
+            ("/p/zero/types.ts", "export type T = number;"),
+            (
+                "/p/node_modules/pkg/package.json",
+                r#"{"type":"module","exports":"./src/index.js"}"#,
+            ),
+            ("/p/node_modules/pkg/src/index.js", "export { x } from '../lib/x.js';"),
+            ("/p/node_modules/pkg/lib/x.js", "export const x = 2;"),
+        ]);
+        assert!(ok.is_ok(), "{:?}", ok.err());
+        // An installed package's own relative imports leave zero/ freely.
+        let ok = load(&[
+            ("/p/zero.config.ts", "import { x } from 'pkg'; export default x;"),
+            (
+                "/p/node_modules/pkg/package.json",
+                r#"{"type":"module","exports":"./src/index.js"}"#,
+            ),
+            ("/p/node_modules/pkg/src/index.js", "export { x } from '../lib/x.js';"),
+            ("/p/node_modules/pkg/lib/x.js", "export const x = 2;"),
+        ]);
+        assert!(ok.is_ok(), "{:?}", ok.err());
+        // A package hoisted above the project (a workspace's node_modules in a parent directory)
+        // keeps its own relative imports too.
+        let hoisted = load_from(
+            Rc::new(memory(&[
+                ("/w/app/zero.config.ts", "import { x } from 'pkg'; export default x;"),
+                (
+                    "/w/node_modules/pkg/package.json",
+                    r#"{"type":"module","exports":"./src/index.js"}"#,
+                ),
+                ("/w/node_modules/pkg/src/index.js", "export { x } from '../lib/x.js';"),
+                ("/w/node_modules/pkg/lib/x.js", "export const x = 2;"),
+            ])),
+            Path::new("/w/app/zero.config.ts"),
+        );
+        assert!(hoisted.is_ok(), "{:?}", hoisted.err());
+        // Outside the root, only node_modules marks a package: a module the hoisted package reached
+        // in a plain directory (a linked package's real files) is fenced like app code.
+        let linked = load_from(
+            Rc::new(memory(&[
+                ("/w/app/zero.config.ts", "import { x } from 'pkg'; export default x;"),
+                (
+                    "/w/node_modules/pkg/package.json",
+                    r#"{"type":"module","exports":"./src/index.js"}"#,
+                ),
+                (
+                    "/w/node_modules/pkg/src/index.js",
+                    "export { x } from '../../../shared/s.js';",
+                ),
+                ("/w/shared/s.js", "export { x } from './t.js';"),
+                ("/w/shared/t.js", "export const x = 2;"),
+            ])),
+            Path::new("/w/app/zero.config.ts"),
+        )
+        .err()
+        .expect("refused");
+        assert_eq!(
+            linked
+                .iter()
+                .map(|d| (d.code, d.message.as_str(), d.help.as_deref()))
+                .collect::<Vec<_>>(),
+            [(
+                diag::Code::ImportFence,
+                "/w/shared/s.js imports \"./t.js\" (/w/shared/t.js), which is outside zero/",
+                Some(
+                    "Zero loads app code only from zero/: move /w/shared/t.js to zero/ and import it from there, or install it as an npm package"
+                ),
+            )]
+        );
+        // App code that imports past the project root is still refused: only the importer's
+        // location decides, and app code sits under the root.
+        let escaped = load_from(
+            Rc::new(memory(&[
+                (
+                    "/w/app/zero.config.ts",
+                    "import { a } from './zero/a'; export default a;",
+                ),
+                (
+                    "/w/app/zero/a.ts",
+                    "import { o } from '../../outside'; export const a = o;",
+                ),
+                ("/w/outside.ts", "export const o = 1;"),
+            ])),
+            Path::new("/w/app/zero.config.ts"),
+        )
+        .err()
+        .expect("refused");
+        assert!(escaped.iter().any(|d| d.code == diag::Code::ImportFence), "{escaped:?}");
+        // A project that itself lives under a node_modules directory is still fenced: only
+        // node_modules below the project root marks a package.
+        let nested =
+            |files: &[(&str, &str)]| load_from(Rc::new(memory(files)), Path::new("/w/node_modules/app/zero.config.ts"));
+        let diagnostics = nested(&[
+            (
+                "/w/node_modules/app/zero.config.ts",
+                "import { a } from './lib/a'; export default a;",
+            ),
+            ("/w/node_modules/app/lib/a.ts", "export const a = 1;"),
+        ])
+        .err()
+        .expect("refused");
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| (d.code, d.message.as_str()))
+                .collect::<Vec<_>>(),
+            [(
+                diag::Code::ImportFence,
+                "zero.config.ts imports \"./lib/a\" (lib/a.ts), which is outside zero/"
+            )]
+        );
+        assert!(
+            nested(&[
+                (
+                    "/w/node_modules/app/zero.config.ts",
+                    "import { x } from 'pkg'; export default x;"
+                ),
+                (
+                    "/w/node_modules/app/node_modules/pkg/package.json",
+                    r#"{"type":"module","exports":"./src/index.js"}"#
+                ),
+                (
+                    "/w/node_modules/app/node_modules/pkg/src/index.js",
+                    "export { x } from '../lib/x.js';"
+                ),
+                ("/w/node_modules/app/node_modules/pkg/lib/x.js", "export const x = 2;"),
+            ])
+            .is_ok()
+        );
+        // Out of the config, out of a zero/ module, and into a sibling named like the root.
+        assert_eq!(
+            refused(&[
+                (
+                    "/p/zero.config.ts",
+                    "import { a } from './lib/a'; import type { T } from './types'; export default a;"
+                ),
+                ("/p/lib/a.ts", "export const a = 1;"),
+                ("/p/types.ts", "export type T = number;"),
+            ]),
+            [
+                "zero.config.ts imports \"./lib/a\" (lib/a.ts), which is outside zero/",
+                "zero.config.ts imports \"./types\" (types.ts), which is outside zero/",
+            ]
+        );
+        assert_eq!(
+            refused(&[
+                ("/p/zero.config.ts", "import { a } from './zero/a'; export default a;"),
+                ("/p/zero/a.ts", "import { b } from '../zero-lib/b'; export const a = b;"),
+                ("/p/zero-lib/b.ts", "export const b = 1;"),
+            ]),
+            ["zero/a.ts imports \"../zero-lib/b\" (zero-lib/b.ts), which is outside zero/"]
+        );
+    }
+
     #[test]
     fn installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports() {
         let fs = memory(&[
@@ -1497,7 +1905,7 @@ mod tests {
         let fs = memory(&[
             (
                 "/p/zero.config.ts",
-                "import add from 'anonymous'; import multiply from './local.cjs'; import subtract from 'local'; export default [add(4), multiply(5), subtract(6)];",
+                "import add from 'anonymous'; import multiply from './zero/local.cjs'; import subtract from 'local'; export default [add(4), multiply(5), subtract(6)];",
             ),
             ("/p/node_modules/anonymous/package.json", "{}"),
             (
@@ -1505,7 +1913,7 @@ mod tests {
                 "'use strict'; const offset = 3; module.exports = function(value) { return value + offset; };",
             ),
             (
-                "/p/local.cjs",
+                "/p/zero/local.cjs",
                 "module.exports = multiply; function multiply(value) { const arguments = [value]; const read = () => arguments[0]; return read() * factor; } const factor = 2;",
             ),
             ("/p/node_modules/local/package.json", r#"{"main":"./source"}"#),
@@ -1569,14 +1977,14 @@ mod tests {
         let result = evaluate(&[
             (
                 "/p/zero.config.ts",
-                "import esm from 'pm'; import pm from './entry.cjs'; import { log } from 'pm/log'; export default [esm, pm.answer, pm.isMatch, log.join(','), pm.same];",
+                "import esm from 'pm'; import pm from './zero/entry.cjs'; import { log } from 'pm/log'; export default [esm, pm.answer, pm.isMatch, log.join(','), pm.same];",
             ),
             (
                 "/p/node_modules/pm/package.json",
                 r#"{"exports":{".":{"import":"./esm.mjs","require":"./index.js"},"./log":"./log.js"}}"#,
             ),
             ("/p/node_modules/pm/esm.mjs", "export default 'esm entry';"),
-            ("/p/entry.cjs", "module.exports = require('pm');"),
+            ("/p/zero/entry.cjs", "module.exports = require('pm');"),
             ("/p/node_modules/pm/log.js", "exports.log = [];"),
             (
                 "/p/node_modules/pm/index.js",
@@ -1599,11 +2007,14 @@ mod tests {
         let result = evaluate(&[
             (
                 "/p/zero.config.ts",
-                "import a, { x } from './a.cjs'; import b, { y } from './b.cjs'; import * as c from './c.cjs'; export default [a, x, b, y, c.default.z];",
+                "import a, { x } from './zero/a.cjs'; import b, { y } from './zero/b.cjs'; import * as c from './zero/c.cjs'; export default [a, x, b, y, c.default.z];",
             ),
-            ("/p/a.cjs", "exports.x = 1; exports.default = 'ignored'; exports.x = 2;"),
-            ("/p/b.cjs", "module.exports = { y: 3 }; module.exports.y = 4;"),
-            ("/p/c.cjs", "if (true) { module.exports.z = 5; }"),
+            (
+                "/p/zero/a.cjs",
+                "exports.x = 1; exports.default = 'ignored'; exports.x = 2;",
+            ),
+            ("/p/zero/b.cjs", "module.exports = { y: 3 }; module.exports.y = 4;"),
+            ("/p/zero/c.cjs", "if (true) { module.exports.z = 5; }"),
         ]);
         assert_eq!(json(&result), r#"[{x:2,default:"ignored"},2,{y:4},4,5]"#);
     }
@@ -1613,10 +2024,10 @@ mod tests {
         let fs = memory(&[
             (
                 "/p/zero.config.ts",
-                "import { scale, Factor } from 'typed'; import { typeOnly } from './local'; export default [scale(2), typeOnly];",
+                "import { scale, Factor } from 'typed'; import { typeOnly } from './zero/local'; export default [scale(2), typeOnly];",
             ),
             (
-                "/p/local.ts",
+                "/p/zero/local.ts",
                 "export type Local = { n: number }; export const typeOnly = 1;",
             ),
             (
@@ -1674,14 +2085,14 @@ mod tests {
         let result = evaluate(&[
             (
                 "/p/zero.config.ts",
-                "import helpers from './helpers.cjs'; import replaced from './replaced.cjs'; export default [helpers.picked, helpers.same, helpers.fromArrow, replaced.thisKeys, replaced.isOriginal];",
+                "import helpers from './zero/helpers.cjs'; import replaced from './zero/replaced.cjs'; export default [helpers.picked, helpers.same, helpers.fromArrow, replaced.thisKeys, replaced.isOriginal];",
             ),
             (
-                "/p/helpers.cjs",
+                "/p/zero/helpers.cjs",
                 "'use strict'; var pick = (this && this.__pick) || function (v) { return v + 1; }; exports.picked = pick(1); exports.same = this === module.exports; const arrow = () => this; exports.fromArrow = arrow() === exports;",
             ),
             (
-                "/p/replaced.cjs",
+                "/p/zero/replaced.cjs",
                 "this.marker = 'kept'; const original = this; module.exports = { thisKeys: Object.keys(original).join(','), isOriginal: this === original };",
             ),
         ]);
@@ -1695,10 +2106,10 @@ mod tests {
         let result = evaluate(&[
             (
                 "/p/zero.config.ts",
-                "import star from './star.cjs'; export default [star.copied, star.own, star.target.a, star.target.b, star.req];",
+                "import star from './zero/star.cjs'; export default [star.copied, star.own, star.target.a, star.target.b, star.req];",
             ),
             (
-                "/p/star.cjs",
+                "/p/zero/star.cjs",
                 "var __exportStar = (this && this.__exportStar) || function (m, exports) { for (var p in m) if (p !== 'default' && !Object.hasOwn(exports, p)) exports[p] = m[p]; return exports; };\nconst target = { b: 2 };\n__exportStar({ a: 1, b: 9, default: 0 }, target);\nfunction pick(module, require) { return module.name + require; }\nexports.target = target;\nexports.copied = Object.keys(target).join(',');\nexports.own = Object.keys(module.exports).join(',');\nexports.req = pick({ name: 'm' }, '!');",
             ),
         ]);

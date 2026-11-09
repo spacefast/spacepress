@@ -923,9 +923,7 @@ async function main() {
   run("cargo", ["build", "--locked", "--quiet"]);
   const zero = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/zero");
   mkdirSync(app, { recursive: true });
-  const sourceFiles = readdirSync(example).filter(
-    (name) => name.endsWith(".ts") && name !== "zero.gen.ts",
-  );
+  const sourceFiles = readdirSync(example).filter((name) => name.endsWith(".ts"));
   const overridesFile = join(state, "source-overrides.json");
   const sourceOverrides = existsSync(overridesFile)
     ? JSON.parse(readFileSync(overridesFile, "utf8"))
@@ -936,12 +934,12 @@ async function main() {
       sourceFiles.map((name) => [name, readFileSync(join(example, name), "utf8")]),
     );
   cpSync(join(example, "public"), join(app, "public"), { recursive: true });
-  run("node", [join(repo, "site/scripts/build-wasm.mjs")]);
+  run("node", [join(repo, "docs-site/scripts/build-wasm.mjs")]);
   run("npm", ["ci", "--no-audit", "--no-fund"], {
     cwd: join(example, "code-tools"),
   });
   run("node", [join(example, "code-tools/build.mjs"), join(app, "public")]);
-  copyFileSync(join(repo, "site/public/zero.wasm"), join(app, "public/zero.wasm"));
+  copyFileSync(join(repo, "docs-site/public/compiler.wasm"), join(app, "public/zero.wasm"));
   await buildApp({
     app,
     zero,
@@ -952,7 +950,7 @@ async function main() {
   });
   const content = join(state, "wp-content");
   mkdirSync(content, { recursive: true });
-  const builtContent = join(app, ".zero/wp-content");
+  const builtContent = join(app, "zero/dist/wp-content");
   // Refresh generated files without deleting plugins installed through WordPress.
   run("rsync", ["-a", "--exclude=/plugins/", `${builtContent}/`, `${content}/`]);
   const builtPlugins = join(builtContent, "plugins");

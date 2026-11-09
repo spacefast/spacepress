@@ -37,7 +37,7 @@
   },
   "include": [
     "zero.config.ts",
-    "zero.gen.ts",
+    "zero/_generated/db.d.ts",
     "pages",
     "components",
     "islands",

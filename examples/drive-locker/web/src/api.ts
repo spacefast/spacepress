@@ -1,4 +1,4 @@
-import { createClient, ZeroError, type Collections, type Actions } from "../../zero/client/index.ts";
+import { createClient, ZeroError, type Collections, type Actions } from "../../zero/_generated/client/index.ts";
 
 export const zero = createClient({
   url: "/wp-json/zero/v1",

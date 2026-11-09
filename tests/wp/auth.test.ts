@@ -8,7 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
-import { createClient } from "./app/zero/client/index.ts";
+import { createClient } from "./app/zero/_generated/client/index.ts";
 import { api, auth, harness, http, run, sql, wp, wpTry, zero } from "./env.ts";
 
 const site = harness.url;
@@ -815,4 +815,109 @@ test("application passwords still authenticate /zero/v1 as before", async () => 
 test("identity storage failures refuse every authentication path in the runtime", () => {
   const probe = readFileSync(new URL("../identity/native-auth-storage.php", import.meta.url), "utf8").replace(/^<\?php\s*/, "");
   assert.match(wp("eval", probe), /PASS identity storage failures refuse cookie, native password, application password, Bearer\/OAuth and runtime authentication/);
+});
+
+// Core /wp/v2/users for the users kind (spec §2.2, §3a): member fields under `meta`, read and
+// written through Zero as the viewer, and Zero's `where`/`orderBy` on the list.
+const coreUsers = `${harness.url}/wp-json/wp/v2/users`;
+
+test("core users meta holds member fields as Zero reads them, for whoever may read the member", async () => {
+  const sub = harness.users.subscriber.id;
+  zero("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ points: 3, tags: ["early"], notes: { private: "admin only" } }));
+  const self = await http("GET", `${coreUsers}/me?context=edit`, { as: "subscriber" });
+  assert.equal(self.status, 200, JSON.stringify(self.json));
+  assert.deepEqual([self.json.meta.plan, self.json.meta.points, self.json.meta.tags, self.json.meta.notes], ["free", 3, ["early"], {}]);
+  assert.doesNotMatch(JSON.stringify(self.json.meta), HIDDEN);
+  // `self` read rule: another member's fields are not in core's answer either.
+  const other = await http("GET", `${coreUsers}/${sub}?context=edit`, { as: "admin" });
+  assert.equal(other.status, 200);
+  assert.equal("points" in other.json.meta, false);
+  const schema = (await http("OPTIONS", coreUsers, { as: "admin" })).json.schema.properties.meta.properties;
+  assert.deepEqual([schema.points.type, schema.tags.items.enum, "passwordHash" in schema], ["integer", ["early", "beta"], false]);
+});
+
+test("core users meta writes run Zero's update: rules, validation, one transaction with core's save", async () => {
+  const sub = harness.users.subscriber.id;
+  const ok = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { meta: { points: 11, tags: ["beta"] } } });
+  assert.deepEqual([ok.status, ok.json.meta?.points, ok.json.meta?.tags], [200, 11, ["beta"]], JSON.stringify(ok.json));
+  assert.deepEqual(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${sub} AND meta_key = 'zero_tags'`)[0], { meta_value: 'a:1:{i:0;s:4:"beta";}' });
+  const name = sql(`SELECT display_name FROM wp_users WHERE ID = ${sub}`)[0].display_name;
+  const bad = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { name: `Renamed ${run}`, meta: { plan: "gold" } } });
+  assert.deepEqual([bad.status, bad.json.code, bad.json.data?.pointer], [422, "invalid_input", "/plan"]);
+  assert.equal(sql(`SELECT display_name FROM wp_users WHERE ID = ${sub}`)[0].display_name, name, "core's own change rolled back too");
+  // A field only admins may set, and a member the update rule doesn't cover: the facade's answers.
+  const sealed = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { meta: { address: { source: "forged" } } } });
+  assert.deepEqual([sealed.status, sealed.json.data?.pointer], [403, "/address/source"]);
+  const another = await http("POST", `${coreUsers}/${sub}`, { as: "admin", body: { meta: { points: 99 } } });
+  assert.equal(another.status, 404, JSON.stringify(another.json));
+  assert.equal(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: sub } }))).data[0].points, 11);
+});
+
+test("core users list takes Zero's where and orderBy as the viewer", async () => {
+  const admin = harness.users.admin.id;
+  const listed = await http("GET", `${coreUsers}?` + new URLSearchParams({ where: JSON.stringify({ plan: "free" }), context: "edit" }), { as: "admin" });
+  assert.deepEqual(listed.json.map((u: any) => u.id), [admin], "the read rule (`self`) still decides");
+  const hidden = await http("GET", `${coreUsers}?` + new URLSearchParams({ where: JSON.stringify({ suspendedAt: null }) }), { as: "admin" });
+  assert.deepEqual([hidden.status, hidden.json.code], [403, "forbidden"]);
+});
+
+test("core users meta writes never leave a transaction behind: late errors and throws roll back", () => {
+  const sub = harness.users.subscriber.id;
+  zero("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ points: 5 }));
+  const out = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    $points = static fn () => (int) $db->findFirst('members', ['where' => ['id' => ${sub}]])['points'];
+    $name = static fn () => (clean_user_cache(${sub}) || true) ? get_userdata(${sub})->display_name : '';
+    $before = $name();
+    wp_set_current_user(${sub});
+    // A REST field that refuses after core and the member fields were written, inside an open transaction.
+    add_action('rest_api_init', static fn () => register_rest_field('user', 'zfail', ['update_callback' => static fn () => new WP_Error('nope', 'refused late', ['status' => 400]), 'schema' => ['type' => 'string']]));
+    $late = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $late->set_body_params(['name' => 'Half done', 'zfail' => 'x', 'meta' => ['points' => 6]]);
+    try { $db->transaction(static fn () => rest_do_request($late)); $caught = null; } catch (Throwable $e) { $caught = $e->getMessage(); }
+    $afterLate = [$caught, $points(), $name() === $before];
+    // A hook that throws during core's save: the caller catches it; nothing commits, nothing stays open.
+    $throw = static function () { throw new RuntimeException('hook threw'); };
+    add_action('profile_update', $throw);
+    $thrown = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $thrown->set_body_params(['name' => 'Thrown', 'meta' => ['points' => 7]]);
+    try { rest_do_request($thrown); $caught = null; } catch (Throwable $e) { $caught = $e->getMessage(); }
+    remove_action('profile_update', $throw);
+    $afterThrow = [$caught, $points(), $name() === $before, \\Zero\\Wp\\Plugin::instance()->connection()->inTransaction()];
+    // The next member write opens and commits normally.
+    $next = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $next->set_body_params(['meta' => ['points' => 8]]);
+    $status = rest_do_request($next)->get_status();
+    echo wp_json_encode([$afterLate, $afterThrow, [$status, $points()]]);
+  `));
+  assert.deepEqual(out, [["refused late", 5, true], ["hook threw", 5, true, false], [200, 8]]);
+});
+
+test("core users updates through Zero keep core's role check and password path", () => {
+  const sub = harness.users.subscriber.id;
+  const out = JSON.parse(wp("eval", `
+    wp_set_current_user(1);
+    // An admin can't demote themselves out of edit_users: core's own check runs before Zero's update.
+    $demote = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $demote->set_body_params(['roles' => ['subscriber']]);
+    $demoted = rest_do_request($demote);
+    // A password change stays core's (cookie re-issue, notice): the hash changes; member fields go to Zero.
+    $before = get_userdata(${sub})->user_pass;
+    $pass = new WP_REST_Request('POST', '/wp/v2/users/${sub}');
+    $pass->set_body_params(['password' => 'another long password 2', 'meta' => ['points' => 4]]);
+    $changed = rest_do_request($pass);
+    clean_user_cache(${sub});
+    $refused = get_userdata(${sub})->user_pass !== $before;
+    // The member themself: the update rule covers their row, so both the password and the field save.
+    wp_set_current_user(${sub});
+    $own = new WP_REST_Request('POST', '/wp/v2/users/me');
+    $own->set_body_params(['password' => 'another long password 2', 'meta' => ['points' => 4]]);
+    $saved = rest_do_request($own);
+    clean_user_cache(${sub});
+    $ok = wp_check_password('another long password 2', get_userdata(${sub})->user_pass, ${sub});
+    wp_set_password('zero-test-subscriber', ${sub});
+    wp_set_current_user(1);
+    echo wp_json_encode([$demoted->get_status(), $demoted->get_data()['code'] ?? null, array_values(wp_get_current_user()->roles), $changed->get_status(), $refused, $saved->get_status(), $ok, $saved->get_data()['meta']['points'] ?? null]);
+  `));
+  assert.deepEqual(out, [403, "rest_user_invalid_role", ["administrator"], 404, false, 200, true, 4]);
 });

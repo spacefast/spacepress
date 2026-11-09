@@ -1,4 +1,4 @@
-import { createClient } from './zero/client/index.ts';
+import { createClient } from './zero/_generated/client/index.ts';
 
 // Generated types follow your schema. Import this client in an optional TS frontend.
 export const client = createClient({ url: '/wp-json/zero/v1' });

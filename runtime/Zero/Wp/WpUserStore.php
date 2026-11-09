@@ -179,6 +179,49 @@ final class WpUserStore implements Store
         return self::ROLES[$role] ?? 'subscriber';
     }
 
+    /** The Zero role a WordPress role maps to (contributor is author), or null for any other role. */
+    public static function zeroRole(string $wpRole): ?string
+    {
+        return $wpRole === 'contributor' ? 'author' : (array_search($wpRole, self::ROLES, true) ?: null);
+    }
+
+    /** A member's login, as core's `username` asks (Zero generates one otherwise). Validated as core does. */
+    public static function setLogin(Connection $db, int $id, string $login): void
+    {
+        $login = sanitize_user($login, true);
+        if ($login === '' || !validate_username($login) || mb_strlen($login) > 60) {
+            throw \Zero\HttpError::invalidInput('This username is invalid because it uses illegal characters', '/username');
+        }
+        $owner = username_exists($login);
+        if ($owner !== false && (int) $owner !== $id) {
+            throw new \Zero\HttpError(409, 'unique_violation', 'Sorry, that username already exists!', '/username');
+        }
+        $wpdb = $db->wpdb();
+        // An author slug unique among users, with core's own `-2` suffixes (wp_insert_user's rule).
+        $base = mb_substr(sanitize_title($login), 0, 50);
+        $nicename = $base;
+        for ($n = 2; $db->run("SELECT ID FROM `{$wpdb->users}` WHERE user_nicename = ? AND ID <> ? LIMIT 1", [$nicename, $id]) !== []; $n++) {
+            $nicename = mb_substr($base, 0, 49 - strlen((string) $n)) . '-' . $n;
+        }
+        $db->run("UPDATE `{$wpdb->users}` SET user_login = ?, user_nicename = ? WHERE ID = ?", [$login, $nicename, $id]);
+        clean_user_cache($id);
+    }
+
+    /** Before a member's delete: their posts go to $to (core's `reassign`), not to no one. */
+    public static function reassignPosts(Connection $db, int $from, int $to): void
+    {
+        $wpdb = $db->wpdb();
+        $posts = array_map('intval', array_column($db->run("SELECT ID FROM `{$wpdb->posts}` WHERE post_author = ?", [$from]), 'ID'));
+        if ($posts === []) {
+            return;
+        }
+        $db->run("UPDATE `{$wpdb->posts}` SET post_author = ? WHERE post_author = ?", [$to, $from]);
+        foreach ($posts as $post) {
+            $db->touchPost($post);
+            clean_post_cache($post);
+        }
+    }
+
     public function source(string $collection): Source
     {
         return $this->sources[$collection] ??= $this->build($collection);

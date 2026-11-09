@@ -542,7 +542,46 @@
             },
             "agents": true,
             "idempotent": false,
-            "signature": null
+            "signature": null,
+            "readonly": false,
+            "destructive": false,
+            "output": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    },
+                    "postId": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "body": {
+                        "type": "string"
+                    },
+                    "approved": {
+                        "type": "boolean"
+                    },
+                    "createdAt": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "postId",
+                    "name",
+                    "body",
+                    "approved",
+                    "createdAt"
+                ]
+            }
         },
         "publishedCount": {
             "input": [],
@@ -552,7 +591,23 @@
             },
             "agents": true,
             "idempotent": false,
-            "signature": null
+            "signature": null,
+            "readonly": false,
+            "destructive": false,
+            "output": {
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "count"
+                ]
+            }
         }
     }
 }

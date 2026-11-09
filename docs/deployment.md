@@ -9,7 +9,7 @@ or provisions a host.
 Inspect a build with the installed CLI:
 
 ```sh
-zero deploy inspect --artifact ./app/.zero/wp-content
+zero deploy inspect --artifact ./app/zero/dist/wp-content
 ```
 
 All commands emit one JSON `{ data }` or `{ error }` receipt. `--json` is accepted
@@ -21,8 +21,8 @@ with SQLite3 and ZipArchive. `php -m` lists extensions. The binary uses
 
 ```sh
 zero deploy inspect \
-  --artifact ./candidate/.zero/wp-content \
-  --baseline ./previous/.zero/wp-content
+  --artifact ./candidate/zero/dist/wp-content \
+  --baseline ./previous/zero/dist/wp-content
 ```
 
 The report includes a SHA-256 inventory digest, total bytes and file count,
@@ -52,7 +52,7 @@ ownership claim, or authorization to install the artifact.
 ## Publish capability boundary
 
 ```sh
-zero deploy publish --artifact ./app/.zero/wp-content
+zero deploy publish --artifact ./app/zero/dist/wp-content
 ```
 
 This command **refuses** with `host_capability_missing` and attaches the concrete
@@ -99,7 +99,7 @@ zero deploy init \
   --wordpress /tmp/zero-local-recovery/wordpress \
   --sqlite /tmp/zero-local-recovery/sqlite-database-integration \
   --wp-cli /path/to/wp-cli.phar \
-  --artifact ./app/.zero/wp-content
+  --artifact ./app/zero/dist/wp-content
 ```
 
 The destination must not exist. This creates private local files, config salts,

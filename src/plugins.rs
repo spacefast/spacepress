@@ -1,6 +1,6 @@
 //! Plugin packages: who a plugin is, what its compiled code uses, and the committed lock that grants
 //! it. The compiler is the boundary: every capability-bearing call in a plugin's compiled code is
-//! recorded here as a [`Use`], and `zero/plugins.lock.json` decides which of them are granted.
+//! recorded here as a [`Use`], and `zero/_generated/plugins.lock.json` decides which of them are granted.
 //! See docs/decisions/2026-11-07-plugin-capabilities.md.
 
 use crate::diag::{Code, Diag, Result, Span};
@@ -34,7 +34,7 @@ pub const KINDS: &[(&str, &str)] = &[
     ("php", "calls the PHP function"),
 ];
 
-pub const LOCK_PATH: &str = "zero/plugins.lock.json";
+pub const LOCK_PATH: &str = "zero/_generated/plugins.lock.json";
 
 /// One registered plugin package.
 #[derive(Debug, Clone)]
@@ -206,6 +206,18 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
         let mut queue: Vec<usize> = seen.iter().copied().collect();
         while let Some(m) = queue.pop() {
             for (spec, span) in import_spans(program, m) {
+                // The app's kinds are app values: a plugin gets them only through its options.
+                if spec == crate::loader::DB_MODULE {
+                    return Err(Diag::new(
+                        span,
+                        format!(
+                            "plugin \"{}\" can't import \"zero:db\": the app's kinds belong to the app",
+                            plugins[i].name
+                        ),
+                    )
+                    .code(Code::PluginIsolation)
+                    .help("take the kinds the plugin works on as plugin options, e.g. seo({ posts })"));
+                }
                 let Some(&target) = program.resolved.get(&(m, spec.clone())) else {
                     continue;
                 };

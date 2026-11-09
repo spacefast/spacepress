@@ -10,8 +10,9 @@ production data and may be rotated with the stack.
 
 ```sh
 cargo build
+mkdir -p tests/wp/app/zero/blog && cp tests/fixtures/blog/zero.config.ts tests/wp/app/zero/blog/
 target/debug/zero build tests/wp/app
-tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/.zero/wp-content"
+tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/zero/dist/wp-content"
 tests/wp/harness.sh wp plugin list
 tests/wp/harness.sh down
 tests/wp/run.sh
@@ -50,7 +51,7 @@ It also runs core image scale/restore, owner denial, rollback, provider outage,
 and durable deletion recovery. Cleanup uses `ZERO_WP_S3=1` to include both replicas
 and the provider volume. `ZERO_WP_KEEP=1` retains the stack for investigation.
 
-`run.sh` ends with `tests/wp/migrate-run.sh`: the 0.8 site, app-user and app migration lanes, each on a fresh stack. `ZERO_WP_SKIP_MIGRATE=1` skips them; CI runs them, the Spacefast and seed lanes, and the S3 lane as separate jobs so no job nears its time limit. The app migration proof also runs on its own with `tests/wp/app-migrate/run.sh`. It
+`run.sh` ends with `tests/wp/migrate-run.sh`: the 0.8 site, app-user and app migration lanes, each on a fresh stack. `ZERO_WP_SKIP_MIGRATE=1` skips them; CI runs them with the Spacefast lane in the `wp-migrate` job; the schema-check, seed, fetch and WordPress lanes run in `wp-schema`, and the S3 lane in its own job, so no job nears its time limit. The app migration proof also runs on its own with `tests/wp/app-migrate/run.sh`. It
 uses the dedicated `zero-wp-app-migrate` project and port 8798, configurable with
 `ZERO_WP_APP_MIGRATE_PROJECT` and `ZERO_WP_APP_MIGRATE_PORT`. It seeds original
 BIGINT/TEXT/DOUBLE tables before activation and checks retained rows, DDL, action

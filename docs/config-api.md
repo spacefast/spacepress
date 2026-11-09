@@ -6,6 +6,59 @@ Everything below is exported from the `"zero"` module. Shapes follow Drizzle
 ORM 1.0 (beta.22): column builders, `defineRelations`, relational-query
 `findMany`/`findFirst` with object filters.
 
+## Project layout
+
+`zero.config.ts` sits at the project root. Your own modules live under `zero/`
+([spec §1](spec/spec.md#1-layout)):
+
+```text
+my-project/
+├── zero.config.ts     # imports only from ./zero/** and npm packages
+├── zero/
+│   ├── lib/fields.ts  # your modules, any names
+│   ├── wp-hooks/      # WordPress actions and filters (see below)
+│   ├── _generated/    # written by zero build, committed
+│   └── dist/          # written by zero build, gitignored
+```
+
+A relative import from `zero.config.ts` or from a module under `zero/` must
+resolve inside `zero/`. Anything else, such as `import { x } from "./lib/x"`
+at the root or `"../src/x"` from `zero/`, fails with `Z1210` and names the
+file to move. Packages (`"zero"`, `"php/wordpress"`, npm packages) are always
+allowed, and an installed package's own relative imports are its business.
+
+### Exports register by name
+
+Zero loads every `.ts` file under `zero/`, except `app/`, `components/`,
+`wp-hooks/`, `content/`, `public/`, `_generated/` and `dist/`. Each exported
+`collection()`, `table()`, `userProjection()`, `global()`, `action()` and
+`job()` registers under its export name, so no file name is required and
+`defineConfig` needs no registry for them:
+
+```ts
+// zero/schema.ts
+export const notes = table({ id: id(), title: text().notNull() });
+
+// zero/server/likes.ts (any file name)
+import { notes } from "zero:db";
+export const like = action({ input: { id: integer().notNull() }, async handler({ id }) { /* … */ } });
+```
+
+- Other exports are ignored, so helper modules need no special place.
+- Export names are unique across the app. Two exports named `like`, an
+  action named like an exported kind, or an export and a `defineConfig`
+  registry entry under one name fail with `Z1221`, naming both places.
+- A kind, action or job must be a named export; `export default table(...)`
+  is refused. Files named `*.test.ts` or `*.spec.ts` are left to your test
+  runner.
+- A value both exported and listed in a `defineConfig` registry is one
+  registration.
+- `import { notes } from "zero:db"` gives a registered kind by name, from any
+  module (including `zero/wp-hooks/` files) and in any load order. It can't
+  be re-exported, and plugin packages can't import it: a plugin takes the
+  app's kinds as options. An unknown name is refused at the import with
+  the closest one. Types come from `zero/_generated/db.d.ts`.
+
 ## WordPress plugins
 
 Use a top-level package map in `defineConfig`:
@@ -116,7 +169,9 @@ update; `() => new Date()` on a timestamp is recognized as "now"),
 onUpdate })` with actions `"cascade" | "restrict" | "set null" | "no action"`,
 `.$type<T>()` (type only), `.min(n)` / `.max(n)` (numbers: bounds; strings:
 length; lists: item count), `.pattern(/re/)` (strings), `.validate((value, ctx)
-=> true | "message")` (compiled to PHP, runs on every write).
+=> true | "message")` (compiled to PHP, runs on every write), `.was("old")` (a
+rename: the deploy renames the stored column and keeps its values; see
+[Schema changes at deploy](#schema-changes-at-deploy)).
 
 Phase-2 modifiers:
 
@@ -132,7 +187,7 @@ Phase-2 modifiers:
   label, plain-text help, width and placeholders on supported input controls;
   schema description preserves metadata for other consumers. It never changes
   stored field names, JSON pointers, validation or access. Nested fields support
-  the same metadata. See the [SEO recipe](../examples/recipes/seo.ts).
+  the same metadata. See the [SEO recipe](../examples/recipes/zero/seo.ts).
 - `.showIf({ sibling: value | { eq, ne, in, isNull, isNotNull } })`: editor
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.
@@ -163,7 +218,7 @@ export default defineConfig({ collections: { posts }, tables: { stock } });
 ```
 
 Definitions need no exports. Backend-only config is sufficient; `zero build`
-emits `zero.gen.ts` to type `db.query` without importing authored definitions.
+emits `zero/_generated/db.d.ts` to type `db.query` without importing authored definitions.
 An `id: id()` primary key is implicit. Tables may declare a custom single primary
 key; collections and user projections use the native integer `id`.
 
@@ -179,6 +234,7 @@ registered once.
 |---|---|---|
 | `storageName` | registry key in snake_case | explicit physical resource name without `wp_` / `zero_` prefixes; retain existing storage on upgrade |
 | `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes. The first migration checks columns and declared index/foreign-key names without creating or copying the table. |
+| `was` | none | `table()` only; the name this table was stored under. The deploy renames it and keeps its rows. See [Schema changes at deploy](#schema-changes-at-deploy). |
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
@@ -210,6 +266,23 @@ This keeps later constraint removals consistent with the committed snapshot. Dat
 engine checks include these tables. Uninstall retains their rows like normal tables.
 An [adopted application table](migrating-from-zero.md#application-source-migration)
 keeps its TEXT/DOUBLE storage and string response IDs.
+
+### Files that moved into `zero/_generated/`
+
+A checkout from before `zero/_generated/` is refused until its committed
+files move. Each refusal prints the `git mv` that fixes it.
+
+| Before | Now | Left in place, it would be |
+|---|---|---|
+| `zero/migrations/` | `zero/_generated/migrations/` | read as a first build |
+| `zero/plugins.lock.json` | `zero/_generated/plugins.lock.json` | ignored, and a new lock granting everything written |
+| `zero/wp-plugins.lock.json` | `zero/_generated/wp-plugins.lock.json` | ignored, and its plugins resolved again |
+| `zero/abilities.json` | `zero/_generated/abilities.json` | ignored, so its abilities are unknown |
+| `zero/client/` | `zero/_generated/client/` | loaded as app code |
+| `zero.gen.ts` | `zero/_generated/db.d.ts` | stale editor types |
+
+A source bundle a host stored earlier is read on the new layout instead, and
+is never refused.
 
 ### Upgrading authoring
 
@@ -243,7 +316,7 @@ revision ownership; relations and client properties still use logical keys.
    `zero build .`. This authoring-only transition must leave the snapshot and
    historical SQL unchanged and produce no new numbered SQL. Review with
    `git diff -- zero/_generated/migrations` before deployment.
-3. Deploy the generated `.zero/wp-content` plugins together as an ordinary
+3. Deploy the generated `zero/dist/wp-content` plugins together as an ordinary
    file-copy update to the existing site. The runtime keeps the app's migration
    ledger, rows, reference targets and revision identities; it has no data
    migration to apply. Verify existing reads, relations and revision history
@@ -253,9 +326,59 @@ This also supports old logical aliases: use the original physical name as the
 binding even if the registry key is different. Changing a binding does not move
 or rename data. Snapshots contain physical names without old logical aliases.
 A build that removes existing storage while adding new storage is refused as
-an ambiguous replacement, even when both names are snake_case. Retain the
-binding during the authoring cut; stage intentional resource removal separately
-after reviewing its data migration.
+an ambiguous replacement, even when both names are snake_case. Declare `was`
+on the new table to rename it, or remove the old one in its own deploy.
+
+### Schema changes at deploy
+
+`zero build` writes the SQL for each schema change to `zero/_generated/migrations/`.
+You don't edit or review it. The deploy (`wp zero migrate`, the first request after
+a file-copy update, or the host's initialization) checks every pending change against
+the live rows before it runs any of them:
+
+| Change | Result |
+|---|---|
+| New kind, new optional field, new field with `.default()`, new index | applies, nothing asked |
+| A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
+| A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
+| A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
+| A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
+| `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
+| A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |
+| `.was("old")` on a `table()` field, `was: "old"` on a `table()` | renamed in place, rows kept |
+| The database doesn't have a table or column the migrations expect | refused: `schema_out_of_step` |
+
+A refusal changes nothing: no table, row or ledger entry. Every refusal in the
+deploy is reported at once:
+
+```sh
+$ wp zero migrate
+{"error":{"status":409,"code":"schema_refused","refusals":[
+  {"migration":"0006_update","code":"drop_has_rows","name":"likes","rows":1204,
+   "message":"Dropping the kind likes would delete 1204 rows.",
+   "fix":"Keep likes in the schema, rename it with .was() if it moved, or deploy with --drop=likes=1204 to delete them.",
+   "table":"wp_zero_likes","drop":"likes=1204"}],
+ "drop":["likes=1204"]}}
+$ wp zero migrate --drop=likes=1204
+```
+
+`--drop` names a kind (`likes=1204`) or a field (`likes.emoji=17`, counting rows
+that have a value, or for a narrowing the values that wouldn't fit), comma-separated,
+after an equals sign (`--drop=…`). The count must match the live data, so a
+confirmation can't delete rows that arrived after it was written. `drop` in the
+refusal lists the arguments that accept today's counts. `zero dev --allow-destructive`
+passes them for you on the local site.
+
+Several pending migrations are checked together, before any of them runs, under
+the names each statement will see: a drop that follows a rename counts the rows
+still under the old name. While a refusal stands, the site keeps serving WordPress,
+Zero's routes answer 503, and wp-admin shows the refusal with its `wp zero migrate
+--drop=…` command; requests don't recount the rows until the build or the ledger
+changes. A plugin activated into a refusal stays active, so the command can run.
+
+Renames run once: after the deploy, `.was()` is inert and can stay or go. Only a
+`table()`'s own fields take `.was()`: a collection's fields live in post meta,
+and a field inside a group, repeater or blocks has no column of its own.
 
 ### Access
 
@@ -277,6 +400,52 @@ through `map_meta_cap`, and no role is granted them, so granting one by hand
 changes nothing. Core reads apply the read rule and field access; core writes
 and editor saves apply the create, update and field rules, and are authorized
 on the saved data before they commit.
+
+Core `/wp/v2/<post type>` speaks Zero's fields and queries too:
+
+- Every field is registered post meta (`register_post_meta`, `show_in_rest`,
+  with its JSON Schema) under its own name. `meta.seats` reads and writes the
+  value as Zero does: a group or repeater is one value, a date is
+  `YYYY-MM-DD`. Writes go through Zero's codec and rules, and a field hidden
+  from the viewer is dropped from `meta` like everywhere else.
+- List routes take Zero's query arguments next to core's own:
+  `where` (JSON), `orderBy` (`-seats,title`), `with` (`author,comments` or
+  JSON; each item gets the relations under `with`) and `search` (every text
+  and richText field the viewer may read). They run as the viewer, so a filter
+  or sort on a hidden field is the same 403 as on Zero's API. Core keeps
+  pagination (`page`, `per_page`, `X-WP-Total`) and `_fields`.
+- The users kind does the same on core `/wp/v2/users`: member fields are
+  registered user meta under `meta`, shown only to a viewer whose read rule
+  covers the member. A `meta` write runs Zero's update as the viewer (rules,
+  validation, hooks) in one transaction with core's own user save, so a
+  refusal keeps nothing. The list takes `where` and `orderBy`.
+- A `table()` kind gets core-shaped `/wp/v2/<storage name>` (for example
+  `/wp/v2/zero_signups`): list, get, create, update (`POST`/`PUT`/`PATCH`) and
+  delete, with `per_page`/`page`, `X-WP-Total`, `_fields`, a JSON Schema on
+  `OPTIONS`, and `where`/`orderBy`/`with`. Every call is Zero's pipeline as
+  the viewer, so it answers what Zero's API answers.
+
+## The `/__zero/api/v1` API
+
+One clean HTTP shape for clients and agents, over the core routes above. Each
+request is dispatched to the core route as the caller and only mapped, so it
+answers exactly what core answers under Zero's rules.
+
+| Request | Core route | Answer |
+|---|---|---|
+| `GET /__zero/api/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
+| `GET /__zero/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
+| `POST /__zero/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
+| `GET /__zero/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
+| `POST /__zero/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__zero/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+
+Rows are Zero rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
+`published` or `private`. Errors are RFC 9457 problem documents (`code`,
+`detail`, `pointer`). Callers authenticate the way core accepts: the cookie
+with `X-WP-Nonce`, an application password, or a Zero Identity bearer token.
+The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
+`/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
 
 ## Globals
 
@@ -329,7 +498,7 @@ export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Si
   and `once()` keys are its own.
 
 There is no capability list to write. `zero build` infers each plugin's
-grant and writes `zero/plugins.lock.json`:
+grant and writes `zero/_generated/plugins.lock.json`:
 
 ```json
 { "version": 1, "plugins": { "seo": {
@@ -349,7 +518,7 @@ grant and writes `zero/plugins.lock.json`:
 | `mail` | `send` |
 | `jobs` | the plugin's own jobs it enqueues |
 | `abilities` | `vendor/name` of each `abilities.call` from `"php/wordpress"` |
-| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `wp-hooks/` directory |
+| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `zero/wp-hooks/` directory |
 | `php` | reserved for PHP functions imported from `"php/wordpress"`, `"php/<slug>"` or `"php"` (`wordpress:get_option`); always empty today |
 
 Commit the lock: it is the grant.
@@ -436,6 +605,18 @@ Throwing anything aborts the request and rolls back every write in it.
   `zero` also checks a timestamp so old deliveries are refused.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
+- `readonly: true` marks an action that only reads; `destructive: true` one
+  that deletes or overwrites data, so agents confirm before running it.
+
+Each action is also the Ability `<app>/<kebab-name>`. Its annotations come from
+these options, its input schema from `input`, and its output schema from the
+handler's TypeScript return type (left out when the type has no single JSON
+shape). Core's run route, `/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`,
+serves it with the action's own access rule, so an `access: "anyone"` action
+runs anonymously. Core picks the method from the annotations: `GET` for
+`readonly`, `DELETE` for `destructive` with `idempotent`, `POST` otherwise.
+Errors are core's `WP_Error` JSON, with Zero's code (`zero_<code>`), status
+and `data.pointer`.
 
 ## HTTP routes
 
@@ -738,14 +919,14 @@ export default defineConfig({
 - The app's own abilities (`<app>/<collection>-list`, `<app>/<action>`, ...)
   are typed from the schema with nothing else to do. An action's result is
   `unknown`: its ability publishes no output schema.
-- Other abilities come from `zero/abilities.json`, which you commit.
+- Other abilities come from `zero/_generated/abilities.json`, which you commit.
   `zero abilities pull [dir] --site <url>` writes it from a running site;
   `--only acme/*` (repeatable) keeps matching names. The pull signs in only
   with `ZERO_APP_PASSWORD=user:application-password` from the environment.
   `zero build` and `zero check` read the lock and never contact the site.
 - Map `"php/wordpress"` in tsconfig.json next to `"zero"`
   (`types/wordpress.d.ts` in the CLI package); `zero build` writes the ability
-  types into `zero.gen.ts` when the app imports the module.
+  types into `zero/_generated/db.d.ts` when the app imports the module.
 - The call runs core's `WP_Ability::execute()` for the current WordPress user:
   core validates the input, runs the ability's permission check and validates
   the output. It runs inside the handler's transaction, so the ability's
@@ -810,12 +991,12 @@ return post === null ? "" : esc_html(post.post_title);
 
 ## WordPress hooks
 
-`wp-hooks/` beside `zero.config.ts` adds WordPress actions and filters. Name a
+`zero/wp-hooks/` adds WordPress actions and filters. Name a
 file after the hook, or make a directory of that name for several handlers.
 Each file default-exports its handler:
 
 ```text
-wp-hooks/
+zero/wp-hooks/
 ├── save_post.ts
 └── the_content/
     ├── 10-reading-time.ts
@@ -823,7 +1004,7 @@ wp-hooks/
 ```
 
 ```ts
-// wp-hooks/the_content/20-frame.ts
+// zero/wp-hooks/the_content/20-frame.ts
 import type { Handler } from "php/wordpress";
 
 const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
@@ -831,7 +1012,7 @@ export default frame;
 ```
 
 ```ts
-// wp-hooks/save_post.ts
+// zero/wp-hooks/save_post.ts
 import type { WP_Post } from "php/wordpress";
 
 export const priority = 20;
@@ -862,7 +1043,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   run in that order after core's own callbacks at 10. `export const priority =
   <integer>` moves a file; lower runs first. A file exports only `default` and
   `priority`; share code through an ordinary imported module.
-- `wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
+- `zero/wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
   file without a default export, another file type, or the same hook as both a
   file and a directory is a build error at that path.
 - Handlers run in WordPress's own request, whichever it is: a page view, an
@@ -870,7 +1051,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   works and each write commits on its own; `ctx` and `HttpError` responses
   don't apply, since there is no Zero request.
 - A handler that throws is logged to the PHP error log as
-  `[zero] wp-hooks/<hook>: ...`. A filter then returns the value it was given,
+  `[zero] zero/wp-hooks/<hook>: ...`. A filter then returns the value it was given,
   so one broken handler leaves the page as WordPress rendered it. An action's
   throw stops only that handler.
 

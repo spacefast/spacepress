@@ -293,7 +293,7 @@ first term (`:topics.slug`), and `:path` for hierarchical kinds.
   `_generated/`. Deploy checks each change against live data:
   - Additive changes apply.
   - A new required field on rows that lack it fails with the count and the fix.
-  - Dropping a field or kind that holds data requires the count, e.g. `--drop likes=1204`.
+  - Dropping a field or kind that holds data requires the count, e.g. `--drop=likes=1204`.
   - Renames use `.was()`. Changes only go forward.
 
 ## 3. Queries: one API everywhere

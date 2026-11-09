@@ -60,7 +60,7 @@ final class Purges
             sort($previous);
             // Term archives list public posts only: a draft's terms show nowhere.
             if (self::listening() && $changed !== $previous && ($urls = self::postUrls(get_post($id))) !== []) {
-                self::add($plugin, [...self::termUrls([...$changed, ...$previous], $taxonomy), ...$urls]);
+                self::add($plugin, [...self::listings(self::termUrls([...$changed, ...$previous], $taxonomy)), ...$urls]);
             }
         }, 10, 6);
         // A term edit purges its archive before (edit_terms runs before the update, so a slug change

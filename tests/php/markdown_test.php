@@ -357,7 +357,9 @@ check('feeds and llms.txt get no .md twin', !in_array('/feed.md', $paths, true) 
 eq('every path is root-relative and listed once', [count($paths), count(array_unique($paths)), array_filter($paths, static fn (string $p): bool => !str_starts_with($p, '/'))], [count($paths), count($paths), []]);
 $cat = wp_insert_term('Elsewhere', 'category');
 $moved = $writes(static fn () => wp_set_post_categories($hello, [$cat['term_id']]))[0] ?? [];
-check('a term change purges the old and new term archives', in_array('/category/field-notes/', $moved, true) && in_array('/category/elsewhere.md', $moved, true), $moved);
+foreach (['/category/field-notes/', '/category/field-notes/page/2/', '/category/field-notes/page/2.md', '/category/elsewhere.md', '/category/elsewhere/page/2/'] as $path) {
+    check("moving a post between terms purges $path", in_array($path, $moved, true), $moved);
+}
 $trashed = $writes(static fn () => wp_trash_post($secondPost))[0] ?? [];
 check('trashing a published post purges where it was', in_array('/second-post/', $trashed, true) && in_array('/index.md', $trashed, true), $trashed);
 eq('a draft that stays a draft purges nothing', $writes(static fn () => wp_update_post(['ID' => $draft, 'post_content' => 'Still a draft.'])), []);

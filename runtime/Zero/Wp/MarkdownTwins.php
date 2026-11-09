@@ -43,6 +43,7 @@ final class MarkdownTwins
         add_action('wp', [self::class, 'answer'], PHP_INT_MIN);
         add_action('wp_head', [self::class, 'linkTag'], 1);
         add_filter('robots_txt', [self::class, 'robots'], PHP_INT_MAX);
+        add_filter('rest_pre_serve_request', [self::class, 'restMarkdown'], 10, 4);
     }
 
     // ================================================================ public API
@@ -72,7 +73,7 @@ final class MarkdownTwins
     public static function post(\WP_Post $post): string
     {
         $title = self::plain($post->post_title);
-        $body = $post->post_password !== '' ? "This content is password protected.\n" : Markdown::render((string) $post->post_content);
+        $body = post_password_required($post) ? "This content is password protected.\n" : Markdown::render((string) $post->post_content);
         $markdown = $title === '' ? '' : '# ' . $title . "\n";
         if ($body !== '') {
             $markdown .= ($markdown === '' ? '' : "\n") . $body;
@@ -270,6 +271,52 @@ final class MarkdownTwins
         }
     }
 
+    /**
+     * rest_pre_serve_request: `?format=md` on a core post item route (`GET /wp/v2/posts/42`) answers
+     * the item as {@see post()}. Core has already run the route, so its permission check decided
+     * the request; only a successful item response becomes Markdown. A password-protected post is
+     * its title and a note unless core would show its content (the right `password` parameter, or
+     * an editor in the edit context). The item renders as the asking user, as core's own
+     * `content.rendered` does.
+     */
+    public static function restMarkdown(bool $served, \WP_HTTP_Response $result, \WP_REST_Request $request, \WP_REST_Server $server): bool
+    {
+        if ($served || $request->get_param('format') !== 'md' || !in_array($request->get_method(), ['GET', 'HEAD'], true) || $result->get_status() !== 200) {
+            return $served;
+        }
+        $data = $result->get_data();
+        $id = is_array($data) ? (int) ($data['id'] ?? 0) : 0;
+        $post = $id > 0 && preg_match('#^/wp/v2/[^/]+/' . $id . '$#', $request->get_route()) === 1 ? get_post($id) : null;
+        if (!$post instanceof \WP_Post || !in_array($post->post_type, get_post_types(['show_in_rest' => true]), true)) {
+            return $served;
+        }
+        // Core shows a protected body only to a request it lets in (the right `password`, or an editor
+        // in the edit context): the same check here, on the route's own controller.
+        $type = get_post_type_object($post->post_type);
+        $controller = $type?->get_rest_controller();
+        if ($post->post_password !== '' && $controller instanceof \WP_REST_Posts_Controller && $controller->can_access_password_content($post, $request)) {
+            add_filter('post_password_required', $unlock = static fn (bool $required, mixed $p): bool => get_post($p)?->ID === $post->ID ? false : $required, PHP_INT_MAX, 2);
+        }
+        try {
+            $markdown = self::post($post);
+        } finally {
+            if (isset($unlock)) {
+                remove_filter('post_password_required', $unlock, PHP_INT_MAX);
+            }
+        }
+        $server->send_header('Content-Type', self::CONTENT_TYPE);
+        $server->send_header('X-Content-Type-Options', 'nosniff');
+        $signal = self::contentSignal();
+        if ($signal !== '') {
+            $server->send_header('Content-Signal', $signal);
+        }
+        if ($request->get_method() !== 'HEAD') {
+            echo $markdown;
+        }
+
+        return true;
+    }
+
     /** robots_txt: the same signal for crawlers that read it there (contentsignals.org). */
     public static function robots(string $output): string
     {
@@ -375,9 +422,24 @@ final class MarkdownTwins
         if ($post->post_password !== '') {
             return $line;
         }
-        $summary = self::plain(wp_trim_words(strip_shortcodes($post->post_excerpt !== '' ? $post->post_excerpt : $post->post_content), 30, '…'));
+        // From what the post's twin shows (rendered blocks, so a block that hides content hides it
+        // here too), never from its raw markup; a hand-written excerpt is plain text already.
+        $source = $post->post_excerpt !== '' ? $post->post_excerpt : self::summaryText(Markdown::render((string) $post->post_content));
+        $summary = self::plain(wp_trim_words($source, 30, '…'));
 
         return $line . ($summary !== '' ? ': ' . $summary : '');
+    }
+
+    /**
+     * Rendered Markdown as running text for a one-line summary: link, image and emphasis syntax
+     * dropped, headings and list markers too, the visible words kept.
+     */
+    private static function summaryText(string $markdown): string
+    {
+        $text = (string) preg_replace(['/!\[([^\]]*)\]\([^)]*\)/', '/\[([^\]]*)\]\([^)]*\)/', '/^\s{0,3}(#{1,6}|[-*+>]|\d+\.)\s+/m', '/(\*\*|\*|~~|`+)/', '/\\\\(?=[<\[\]\\\\])/'],
+            ['$1', '$1', '', '', ''], $markdown);
+
+        return $text;
     }
 
     /** @param list<string> $lines @param list<string> $entries */
@@ -408,10 +470,16 @@ final class MarkdownTwins
 
     // ================================================================ helpers
 
-    /** HTML or stored text as one plain line: tags dropped, entities decoded, whitespace collapsed. */
+    /**
+     * HTML or stored text as one plain line: tags dropped, entities decoded, whitespace collapsed. A
+     * `<` that would start a tag (one spelled `&lt;b&gt;` decodes to it) stays `&lt;`, so no HTML
+     * reaches a listing or /llms.txt.
+     */
     private static function plain(string $text): string
     {
-        return trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(wp_strip_all_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        $text = html_entity_decode(wp_strip_all_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return trim((string) preg_replace(['/\s+/u', '/<(?=[A-Za-z\/!?])/'], [' ', '&lt;'], $text));
     }
 
     private static function link(string $text, string $url): string

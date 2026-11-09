@@ -5,7 +5,7 @@
 // The SQL text is pinned in tests/php/sql_test.php; this suite proves MariaDB agrees with it.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { core, http, ok, problem, qs, run, sql, wp, zero } from "./env.ts";
+import { api, core, http, ok, problem, qs, run, sql, wp, zero } from "./env.ts";
 
 const ids: Record<string, number> = {};
 let post: any;
@@ -193,4 +193,14 @@ test("core meta writes check that media ids exist, as every write path does", as
   const update = await http("POST", `${core}/zero_talks/${stored.json.id}`, { as: "admin", body: { meta: { image: 999_999_999 } } });
   assert.deepEqual([update.status, update.json.data?.pointer], [422, "/image"]);
   assert.equal((await ok("GET", `/talks/${stored.json.id}`)).image, attachment, "a refused update changes nothing");
+});
+
+test("core meta rules see the whole row, as /zero/v1's do", async () => {
+  const [basic, pro] = zero("insert", "field_staff", JSON.stringify([{ name: `Basic ${run}`, kind: "basic" }, { name: `Pro ${run}`, kind: "pro" }])).map((r: any) => r.id);
+  const refused = await http("POST", `${core}/zero_field_staff/${basic}`, { as: "editor", body: { meta: { postNote: "pro only" } } });
+  const viaZero = await http("PATCH", `${api}/field_staff/${basic}`, { as: "editor", body: { postNote: "pro only" } });
+  assert.deepEqual([refused.status, refused.json.data?.pointer], [viaZero.status, viaZero.json.pointer]);
+  assert.deepEqual([refused.status, refused.json.data?.pointer], [422, "/postNote"], JSON.stringify(refused.json));
+  const allowed = await http("POST", `${core}/zero_field_staff/${pro}`, { as: "editor", body: { meta: { postNote: "pro only" } } });
+  assert.deepEqual([allowed.status, allowed.json.meta?.postNote], [200, "pro only"], JSON.stringify(allowed.json));
 });

@@ -65,6 +65,7 @@ final class Plugin
         add_action('rest_api_init', fn () => $this->unavailable() === null
             ? Rest::register(fn () => $this->app())
             : Rest::unavailable(self::UNAVAILABLE));
+        add_action('rest_api_init', fn () => TableController::registerAll($this));
         // While storage is behind, Zero collections' posts can't be written by any path (core REST,
         // wp-admin, other plugins): their hooks would run against tables the build doesn't match.
         // Last, so no later callback (SCF's `_acf_changed` one returns false) can undo the refusal.

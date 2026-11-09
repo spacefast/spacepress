@@ -915,6 +915,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .map(|(_, t)| t)
                 .collect(),
             Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
+            // A component's own annotation types its props (see `compile_function`).
+            Slot::Component { .. } => vec![],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,
@@ -1021,6 +1023,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
             );
         }
+        if matches!(slot, Some(Slot::Component { .. })) {
+            if f.params.len() > 1 {
+                return err_help(
+                    f.span,
+                    "a component takes one props object",
+                    "destructure every prop from the first parameter",
+                );
+            }
+            if let Some(p) = f.params.first()
+                && p.ann.is_none()
+            {
+                return err_help(
+                    p.span,
+                    "a component's props need a type",
+                    "annotate them, e.g. `({ title }: { title: string })`",
+                );
+            }
+            // `children` holds what JSX renders (text, numbers, rendered JSX, arrays of those). It
+            // can be read as its type (`children.toUpperCase()` on string children), as in React,
+            // but never as a structure to take apart (`Children.map`, `cloneElement`).
+            if let Some(p) = f.params.first()
+                && let Some(ann) = &p.ann
+                && let Ty::Obj(fields) = self.resolve_runtime_ann(ann, f.module)?
+                && let Some((children, _)) = fields.get("children")
+                && self.jsx_child_type(children, p.span).is_err()
+            {
+                return err_help(
+                    p.span,
+                    format!("`children` is typed {}, which JSX can't pass", children.describe()),
+                    "type it `ReactNode`, `JSX.Element`, `string` or `number`",
+                );
+            }
+        }
         let mut param_tys = Vec::new();
         // A module-level literal's method types its hidden receiver as its object (see
         // `home_this_type`), as `closure_with_types` does for a literal inside a function.
@@ -1091,6 +1126,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             });
         }
         if let Some(ps) = &params
+            && !matches!(slot, Some(Slot::Component { .. }))
             && ps.len()
                 < f.params
                     .iter()
@@ -3567,6 +3603,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.expr(inner)?
             }
             ExprKind::Await(x) => self.await_expr(x, span)?,
+            ExprKind::Jsx(jsx) => self.jsx(jsx, span)?,
             ExprKind::Yield { arg, delegate } => self.yield_expr(arg.as_deref(), *delegate, span)?,
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
@@ -6208,6 +6245,421 @@ impl<'a, 'p> Compiler<'a, 'p> {
             out.place = None;
         }
         Ok(out)
+    }
+
+    // ---- JSX (docs/decisions/2026-11-08-tsx-to-php.md) -----------------------------------------
+
+    /// A JSX node as rendered HTML. Literal parts fold to escaped strings at build time; every
+    /// value goes through `\Zero\Html`, which follows react-dom/server's child and attribute rules.
+    fn jsx(&mut self, jsx: &Jsx, span: Span) -> Result<Out> {
+        match &jsx.kind {
+            JsxKind::Component(call) => {
+                let ExprKind::Call { callee, args, .. } = &call.kind else {
+                    unreachable!("lowering builds component calls")
+                };
+                let [ArrEl::Item(props_expr)] = args.as_slice() else {
+                    unreachable!("a component call has one props object")
+                };
+                let f = self.expr(callee)?;
+                let f = self.finish_value(f, callee.span)?;
+                let Ty::Fn(params, ret) = f.ty.clone() else {
+                    return err_help(
+                        callee.span,
+                        format!("{} isn't a component", f.ty.describe()),
+                        "use a function that takes one props object and returns JSX",
+                    );
+                };
+                // React builds the element now and calls the component when it renders it.
+                let props = self.expr(props_expr)?;
+                let props = self.finish_value(props, props_expr.span)?;
+                // `key` evaluates for its effects and is then dropped, as React drops it from props.
+                let key = match jsx.attrs.as_slice() {
+                    [JsxAttr::Named { value, .. }] => {
+                        let v = self.expr(value)?;
+                        Some(self.finish_value(v, value.span)?.php)
+                    }
+                    _ => None,
+                };
+                // `children` is what JSX passes, for any component: exported or local.
+                if let Some(Ty::Obj(fields)) = callable_argument(&params, 0).map(|t| t.non_null())
+                    && let Some((children, _)) = fields.get("children")
+                    && self.jsx_child_type(children, callee.span).is_err()
+                {
+                    return err_help(
+                        callee.span,
+                        format!(
+                            "this component types `children` as {}, which JSX can't pass",
+                            children.describe()
+                        ),
+                        "type it `ReactNode`, `JSX.Element`, `string` or `number`",
+                    );
+                }
+                match callable_argument(&params, 0) {
+                    Some(want) if !assignable(&props.ty, &want) => {
+                        return err(
+                            props_expr.span,
+                            format!(
+                                "these props are {}, but the component expects {}",
+                                props.ty.describe(),
+                                want.describe()
+                            ),
+                        );
+                    }
+                    None if !matches!(&props_expr.kind, ExprKind::Object(p) if p.is_empty()) => {
+                        return err_help(
+                            props_expr.span,
+                            "this component takes no props",
+                            "remove the attributes and children",
+                        );
+                    }
+                    _ => {}
+                }
+                // An async server component blocks until its data is in (handlers' blocking `await`).
+                let ret = match *ret {
+                    Ty::Promise(t) => *t,
+                    t => t,
+                };
+                self.jsx_child_type(&ret, callee.span).map_err(|_| {
+                    Diag::new(
+                        callee.span,
+                        format!("this component returns {}, which JSX can't render", ret.describe()),
+                    )
+                    .help("return JSX, a string, a number or null")
+                })?;
+                let props = match key {
+                    // `[props, key][0]` evaluates both in source order and keeps the props.
+                    Some(key) => format!("[{}, {key}][0]", props.php),
+                    None => props.php,
+                };
+                Ok(Out::atom(
+                    format!("\\Zero\\Html::component({}, {props})", f.php),
+                    Ty::Html,
+                ))
+            }
+            JsxKind::Fragment => {
+                let children = self.jsx_children(&jsx.children)?;
+                Ok(Out::atom(
+                    format!("\\Zero\\Html::children({})", children.join(", ")),
+                    Ty::Html,
+                ))
+            }
+            JsxKind::Intrinsic(tag) => self.jsx_element(tag, jsx, span),
+        }
+    }
+
+    fn jsx_children(&mut self, children: &[Expr]) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        for child in children {
+            if let ExprKind::Str(text) = &child.kind {
+                out.push(format!("\\Zero\\Html::raw({})", php_str(&jsx_escape(text))));
+                continue;
+            }
+            let v = self.expr(child)?;
+            let v = self.finish_value(v, child.span)?;
+            self.jsx_child_type(&v.ty, child.span)?;
+            out.push(v.php);
+        }
+        Ok(out)
+    }
+
+    /// What React accepts as a child: text, numbers, booleans and nullish (which render nothing),
+    /// rendered JSX, and arrays of those.
+    fn jsx_child_type(&self, ty: &Ty, span: Span) -> Result<()> {
+        let ok = ty.all(|t| match t {
+            Ty::Html
+            | Ty::Str
+            | Ty::StrLit(_)
+            | Ty::FreshStrLit(_)
+            | Ty::Num
+            | Ty::NumLit(_)
+            | Ty::FreshNumLit(_)
+            | Ty::BigInt
+            | Ty::Bool
+            | Ty::BoolLit(_)
+            | Ty::FreshBoolLit(_)
+            | Ty::Null
+            | Ty::Undefined
+            | Ty::Void
+            | Ty::Never
+            | Ty::Dynamic => true,
+            // `ReactNode`'s nested arrays: `\Zero\Html::child` checks each element when it renders.
+            Ty::Array(inner) | Ty::NonEmptyArray(inner) if **inner == Ty::Unknown => true,
+            Ty::Array(inner) | Ty::NonEmptyArray(inner) => self.jsx_child_type(inner, span).is_ok(),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) => items.iter().all(|t| self.jsx_child_type(t, span).is_ok()),
+            _ => false,
+        });
+        if ok {
+            Ok(())
+        } else {
+            err_help(
+                span,
+                format!("{} can't be rendered as a JSX child", ty.describe()),
+                "render one of its fields, e.g. `{item.title}`, or map it to elements",
+            )
+        }
+    }
+
+    fn jsx_element(&mut self, tag: &str, jsx: &Jsx, span: Span) -> Result<Out> {
+        // Browsers lowercase tag names, so every tag rule matches the lowercased name
+        // (docs/decisions/2026-11-08-tsx-to-php.md, "Contexts text escaping can't make safe").
+        let folded_tag = tag.to_ascii_lowercase();
+        // React hoists or preloads these into the document head, which a fragment of a page can't
+        // reproduce; workstream 6's root layout owns the head.
+        if matches!(
+            folded_tag.as_str(),
+            "title" | "meta" | "link" | "script" | "style" | "base"
+        ) {
+            return err_help(
+                span,
+                format!("a component can't render `<{tag}>`"),
+                "set titles and meta tags with `export const metadata`, and import styles and scripts as modules",
+            );
+        }
+        if folded_tag == "textarea" && !jsx.children.is_empty() {
+            return err_help(
+                span,
+                "`<textarea>` can't have children",
+                "set its text with `defaultValue`",
+            );
+        }
+        // Raw-text and embedding elements: text escaping can't make an expression safe inside them.
+        if RAW_TEXT_TAGS.contains(&folded_tag.as_str()) {
+            for child in &jsx.children {
+                match &child.kind {
+                    ExprKind::Str(text) if !text.to_ascii_lowercase().contains(&format!("</{folded_tag}")) => {}
+                    ExprKind::Str(_) => {
+                        return err_help(
+                            child.span,
+                            format!("this text closes `<{tag}>` early"),
+                            format!("remove `</{folded_tag}` from the text"),
+                        );
+                    }
+                    _ => {
+                        return err_help(
+                            child.span,
+                            format!("`<{tag}>` takes only literal text"),
+                            "its content isn't parsed as escaped text, so values can't be placed in it safely",
+                        );
+                    }
+                }
+            }
+        }
+        let mut entries = Vec::new();
+        let mut spread = false;
+        for attr in &jsx.attrs {
+            match attr {
+                JsxAttr::Named { name, value, span } => {
+                    let literal = match &value.kind {
+                        ExprKind::Str(text) => Some(text.as_str()),
+                        _ => None,
+                    };
+                    self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
+                    let v = self.expr(value)?;
+                    let v = self.finish_value(v, value.span)?;
+                    let php = if name.eq_ignore_ascii_case("style") {
+                        self.jsx_style_type(&v.ty, value.span)?;
+                        style_of(&v.php, &v.ty)
+                    } else {
+                        v.php
+                    };
+                    entries.push(format!("{} => {}", php_str(name), php));
+                }
+                JsxAttr::Spread(value) => {
+                    let v = self.expr(value)?;
+                    let v = self.finish_value(v, value.span)?;
+                    // Only a spread with a closed set of keys: each key meets the rules as if written out.
+                    let fields = match v.ty.non_null() {
+                        Ty::Obj(fields) => fields,
+                        Ty::Instance(_, fields) => match *fields {
+                            Ty::Obj(fields) => fields,
+                            other => {
+                                return err(value.span, format!("can't spread {} into attributes", other.describe()));
+                            }
+                        },
+                        other => {
+                            return err_help(
+                                value.span,
+                                format!("can't spread {} into attributes", other.describe()),
+                                "spread an object whose type lists its keys, or write the attributes out",
+                            );
+                        }
+                    };
+                    for (key, (ty, _)) in &fields {
+                        let literal = match ty {
+                            Ty::StrLit(text) | Ty::FreshStrLit(text) => Some(text.as_str()),
+                            _ => None,
+                        };
+                        self.jsx_attribute_rule(&folded_tag, key, literal, value, value.span)
+                            .map_err(|d| d.help(format!("the spread sets `{key}`; write the attributes out")))?;
+                        if key.eq_ignore_ascii_case("style") {
+                            self.jsx_style_type(ty, value.span)?;
+                        }
+                    }
+                    spread = true;
+                    // A spread is narrowed to the keys its type declares, and its `style` to the
+                    // properties the style's type declares: extra keys in the data are dropped.
+                    let keys: Vec<String> = fields.keys().map(|k| php_str(k)).collect();
+                    let narrowed = format!(
+                        "array_intersect_key(({})->p ?? [], array_flip([{}]))",
+                        v.wrapped(),
+                        keys.join(", ")
+                    );
+                    let narrowed = match fields.iter().find(|(k, _)| k.as_str() == "style") {
+                        Some((_, (style_ty, _))) => format!(
+                            "(static function (array $a): array {{ if (array_key_exists('style', $a)) {{ $a['style'] = {}; }} return $a; }})({narrowed})",
+                            style_of("$a['style']", style_ty)
+                        ),
+                        None => narrowed,
+                    };
+                    entries.push(format!("...{narrowed}"));
+                }
+            }
+        }
+        let attrs = if spread {
+            // A later attribute replaces an earlier spread key, as object spread does.
+            format!(
+                "array_merge({})",
+                entries
+                    .iter()
+                    .map(|e| match e.strip_prefix("...") {
+                        Some(s) => s.to_string(),
+                        None => format!("[{e}]"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            format!("[{}]", entries.join(", "))
+        };
+        // The browser reads an HTML tag in any case as its lowercase name, so the output uses that
+        // name and `Html::element` applies the tag's rules (`<bR/>` is a void `<br/>`; React would
+        // print `<bR></bR>`, which browsers parse as two line breaks). SVG's camelCase elements and
+        // custom elements keep the case they were written in.
+        let output_tag = if SVG_CAMEL_TAGS.contains(&tag) || tag.contains('-') {
+            tag.to_string()
+        } else {
+            folded_tag.clone()
+        };
+        let mut args = vec![php_str(&output_tag), attrs];
+        // A literal string child stays a string, so `Html::element` can apply React's rules that
+        // depend on it (the doubled leading newline in `<pre>`).
+        match jsx.children.as_slice() {
+            [
+                Expr {
+                    kind: ExprKind::Str(text),
+                    ..
+                },
+            ] => args.push(php_str(text)),
+            children => args.extend(self.jsx_children(children)?),
+        }
+        Ok(Out::atom(
+            format!("\\Zero\\Html::element({})", args.join(", ")),
+            Ty::Html,
+        ))
+    }
+
+    /// One attribute of an intrinsic element, named in the source or set by a closed spread,
+    /// against the record's build-time rules. `literal` is its value when that is a known string.
+    fn jsx_attribute_rule(&self, tag: &str, name: &str, literal: Option<&str>, value: &Expr, span: Span) -> Result<()> {
+        if !valid_attribute_name(name) {
+            return err_help(
+                span,
+                format!("`{name}` isn't a valid attribute name"),
+                "attribute names start with a letter, `_` or `:`, then letters, digits, `_`, `.`, `:` or `-`",
+            );
+        }
+        let folded = name.to_ascii_lowercase();
+        // `style` is narrowed to its declared properties; any other spelling would skip that.
+        if folded == "style" && name != "style" {
+            return err_help(
+                span,
+                format!("`{name}` is spelled `style`"),
+                "write `style` in lowercase",
+            );
+        }
+        if folded == "dangerouslysetinnerhtml" {
+            return err_help(
+                span,
+                "`dangerouslySetInnerHTML` isn't supported",
+                "render the value as a child, which is escaped; trusted markup will use `<Html>`",
+            );
+        }
+        if folded == "srcdoc" {
+            return err_help(
+                span,
+                "`srcDoc` isn't supported",
+                "it is a document parsed as HTML; link to the document with `src`, and trusted markup will use `<Html>`",
+            );
+        }
+        if folded.starts_with("on") && folded.len() > 2 {
+            return if literal.is_some() || matches!(value.kind, ExprKind::Str(_) | ExprKind::Template(..)) {
+                err_help(
+                    span,
+                    format!("`{name}` with a string is inline script"),
+                    "handle events in a \"use client\" component with a function",
+                )
+            } else {
+                err_help(
+                    span,
+                    format!("server components can't handle events (`{name}`)"),
+                    "move the handler into a \"use client\" component",
+                )
+            };
+        }
+        if is_url_attribute(&folded)
+            && let Some(url) = literal
+            && !safe_url(url)
+        {
+            return err_help(
+                value.span,
+                format!("`{name}` is an unsafe URL"),
+                "use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`)",
+            );
+        }
+        // SVG animation can set any attribute of its target, URL attributes included, so it takes
+        // only literal values, and never targets a URL attribute.
+        if matches!(tag, "animate" | "set" | "animatemotion" | "animatetransform") {
+            if folded == "attributename"
+                && let Some(target) = literal
+                && (is_url_attribute(&target.to_ascii_lowercase()) || target.to_ascii_lowercase().starts_with("on"))
+            {
+                return err_help(
+                    span,
+                    format!("SVG animation of `{target}`"),
+                    "animate presentation attributes only",
+                );
+            }
+            if matches!(folded.as_str(), "attributename" | "values" | "to" | "from" | "by") && literal.is_none() {
+                return err_help(
+                    span,
+                    format!("`{name}` on `<{tag}>` must be literal"),
+                    "SVG animation can rewrite its target's attributes, so its values can't come from data",
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// `style` takes an object whose keys are known at build time, so request data can only fill
+    /// values (which `\Zero\Html` escapes), never choose properties.
+    fn jsx_style_type(&self, ty: &Ty, span: Span) -> Result<()> {
+        match ty.non_null() {
+            Ty::Obj(fields)
+                if fields.values().all(|(t, _)| {
+                    t.all(|t| {
+                        t.is_str() || t.is_num() || matches!(t, Ty::Undefined | Ty::Null | Ty::Bool | Ty::BoolLit(_))
+                    })
+                }) =>
+            {
+                Ok(())
+            }
+            Ty::Undefined | Ty::Never => Ok(()),
+            other => err_help(
+                span,
+                format!("`style` needs an object with fixed keys, not {}", other.describe()),
+                "write the properties out, e.g. `style={{ color: c }}`",
+            ),
+        }
     }
 
     fn await_expr(&mut self, x: &Expr, span: Span) -> Result<Out> {
@@ -9730,6 +10182,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Regex
         | Ty::Host(_)
         | Ty::Error
+        | Ty::Html
         | Ty::Collection(_)
         | Ty::Db
         | Ty::DbQuery
@@ -10024,6 +10477,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Regex
         | Ty::Host(_)
         | Ty::Error
+        | Ty::Html
         | Ty::Collection(_)
         | Ty::Db
         | Ty::DbQuery
@@ -10394,3 +10848,145 @@ fn literal_position(e: &Expr) -> bool {
         _ => false,
     }
 }
+
+/// Text React would escape, escaped the same way (`&`, `<`, `>`, `"`, `'`).
+fn jsx_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// `\Zero\Html::URL`, for a lowercased attribute name.
+fn is_url_attribute(folded: &str) -> bool {
+    let name = folded
+        .strip_prefix("xlink:")
+        .or_else(|| folded.strip_prefix("xlink"))
+        .unwrap_or(folded);
+    matches!(
+        name,
+        "href"
+            | "src"
+            | "action"
+            | "formaction"
+            | "data"
+            | "ping"
+            | "poster"
+            | "background"
+            | "cite"
+            | "codebase"
+            | "longdesc"
+            | "manifest"
+            | "srcset"
+            | "imagesrcset"
+            | "icon"
+            | "profile"
+            | "usemap"
+            | "lowsrc"
+            | "dynsrc"
+            | "archive"
+            | "classid"
+    )
+}
+
+/// `\Zero\Html::safeUrl` at build time, for literal URLs.
+fn safe_url(url: &str) -> bool {
+    let url: String = url
+        .trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    if url.starts_with("//") || url.starts_with("/\\") || url.starts_with('\\') {
+        return false;
+    }
+    match url.find(':') {
+        Some(colon) if !url[..colon].contains(['/', '?', '#']) => {
+            matches!(url[..colon].to_ascii_lowercase().as_str(), "http" | "https" | "mailto")
+        }
+        _ => true,
+    }
+}
+
+/// Elements whose content isn't escaped text: they take only literal children.
+const RAW_TEXT_TAGS: &[&str] = &[
+    "script",
+    "style",
+    "textarea",
+    "title",
+    "iframe",
+    "noscript",
+    "template",
+    "xmp",
+    "noembed",
+    "noframes",
+    "plaintext",
+    "object",
+    "embed",
+];
+
+/// `[a-zA-Z_:][a-zA-Z0-9_.:-]*`.
+fn valid_attribute_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == ':')
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
+}
+
+/// `\Zero\Html::styleOf`: a `style` value narrowed to the property names its type declares.
+fn style_of(php: &str, ty: &Ty) -> String {
+    let names = match ty.non_null() {
+        Ty::Obj(fields) => fields.keys().map(|k| php_str(k)).collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    format!("\\Zero\\Html::styleOf({php}, [{}])", names.join(", "))
+}
+
+/// SVG elements whose names are camelCase in the specification; they keep their case.
+const SVG_CAMEL_TAGS: &[&str] = &[
+    "altGlyph",
+    "altGlyphDef",
+    "altGlyphItem",
+    "animateColor",
+    "animateMotion",
+    "animateTransform",
+    "clipPath",
+    "feBlend",
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feComposite",
+    "feConvolveMatrix",
+    "feDiffuseLighting",
+    "feDisplacementMap",
+    "feDistantLight",
+    "feDropShadow",
+    "feFlood",
+    "feFuncA",
+    "feFuncB",
+    "feFuncG",
+    "feFuncR",
+    "feGaussianBlur",
+    "feImage",
+    "feMerge",
+    "feMergeNode",
+    "feMorphology",
+    "feOffset",
+    "fePointLight",
+    "feSpecularLighting",
+    "feSpotLight",
+    "feTile",
+    "feTurbulence",
+    "foreignObject",
+    "glyphRef",
+    "linearGradient",
+    "radialGradient",
+    "textPath",
+];

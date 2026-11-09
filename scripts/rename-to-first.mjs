@@ -91,6 +91,7 @@ const KEEP = [
   /\bzero-all-features\b/g,
   /\blegacy-zero\b/g,
   /\bmigrating-from-zero\b/g,
+  /\[[Mm]igrat\w* from Zero(?: 0\.8)?\]/g, // link text for the 0.8 migration guide
   /\bstattic-zero[\w-]*/g,
   /\w*[sS]tatticZero\w*/g,
   /\w+ZeroCapsule\w*|\w*ZeroContentModel\w*|isZero(?:ProjectOnly|PublicStatic)Path/g,

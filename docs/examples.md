@@ -94,5 +94,5 @@ tests/system/run.sh            # examples/site on WordPress, a site migration, t
 1. `examples/site`, installed as a site owner would and walked through the
    whole journey, then upgraded, deactivated and reinstalled.
 2. A site built with an earlier Zero, moved over as
-   [migrating from First](migrating-from-zero.md) describes.
+   [migrating from Zero](migrating-from-zero.md) describes.
 3. `examples/blog`, whose committed Markdown posts sync in.

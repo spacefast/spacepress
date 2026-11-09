@@ -23,7 +23,7 @@ An old content-model artifact is not a new `first.config.ts`. The compiler refus
 unknown behavior instead of stripping it from a candidate.
 
 Moving an app from an earlier Zero has its own procedure and coverage table in
-[migrating from First](migrating-from-zero.md#coverage).
+[migrating from Zero](migrating-from-zero.md#coverage).
 
 ## Executable acceptance
 

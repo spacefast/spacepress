@@ -3,7 +3,7 @@
 `first migrate config` imports declarative schemas from EmDash, Payload and
 Sanity. It writes a new `first.config.ts`; it never overwrites the source or an
 existing destination. `--from zero` reads an earlier Zero's capsule config; see
-[migrating from First](migrating-from-zero.md#the-original-capsule-config).
+[migrating from Zero](migrating-from-zero.md#the-original-capsule-config).
 
 ```sh
 first migrate config --from payload payload.config.ts --out migrated/first.config.ts

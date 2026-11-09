@@ -1,5 +1,8 @@
 # First framework spec
 
+First was formerly Zero v2. Zero 0.8 keeps the name Zero; it is retired, and Zero
+0.9 is its last release apart from security fixes, made to migrate Zero apps to First.
+
 Written 2026-11-08. Design only;
 nothing is implemented. Baseline: spacefast/zero `origin/main` de46201a and
 monorepo main (Cast live updates #5152).

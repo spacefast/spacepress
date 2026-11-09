@@ -1,6 +1,6 @@
 # First
 
-**First is a TypeScript framework for building backends, fast.**
+**First is a TypeScript framework for building backends, fast.** (formerly Zero v2)
 
 You write one `first.config.ts`. `first build` turns it into
 database migrations, REST endpoints, user authentication, a dashboard and a
@@ -337,6 +337,10 @@ sure WP-Cron or a real cron reaches the site.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how the compiler works, the test suites, the layout
 
 ## Status
+
+Zero, the 0.8 runtime that existing Spaces use, is retired.
+Zero 0.9 is its last release apart from security fixes; Zero 0.9 exists to move 0.8 apps to First.
+See [migrating from Zero](docs/migrating-from-zero.md).
 
 First is new and experimental. The examples build and run end to end on
 WordPress, and CI proves it on every change, but the config API, the wire

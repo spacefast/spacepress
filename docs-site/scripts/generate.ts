@@ -543,9 +543,19 @@ expectAllow(authPhp, "Auth\\Module::route", "case 'auth/session'", ["DELETE"]);
 expectAllow(filesPhp, "FileRoutes::dispatch", "if ($n === 2) {", ["POST"]);
 expectAllow(mediaPhp, "Media\\Module::dispatch", "if ($n === 1) {", ["GET", "POST"]);
 expectAllow(syncPhp, "Sync\\Routes::dispatch", "if ($action === null) {", ["GET", "POST"]);
-for (const route of ["forms/", "'search'", "'checkout'", "checkout/(", "stripe/webhook", "submissions/("]) {
-	if (!servicesPhp.includes(route)) throw new Error(`Services\\Module::route no longer has ${route}; update scripts/generate.ts`);
+/** Checks that a handler still contains this text, so a route or status the spec names can't drift. */
+function expectText(php: string, where: string, text: string) {
+	if (!php.includes(text)) throw new Error(`${where} no longer has ${text}; update the OpenAPI document in scripts/generate.ts`);
 }
+expectText(servicesPhp, "Services\\Module::route", "return [201, self::submit(");
+expectText(servicesPhp, "Services\\Module::route", "return [202, Payments::checkout(");
+for (const route of ["'search'", "checkout/(", "stripe/webhook", "submissions/("]) expectText(servicesPhp, "Services\\Module::route", route);
+for (const action of ["'trash' =>", "'convert' =>", "'merge' =>"]) expectText(syncPhp, "Sync\\Routes::dispatch", action);
+expectText(mediaPhp, "Media\\Module::dispatch", "$segments[2] === 'file'");
+// PATCH /media/{id} accepts these fields and refuses any other.
+expectText(mediaPhp, "Media\\Module", "'alt' =>");
+expectText(mediaPhp, "Media\\Module", "'focal' =>");
+expectText(read("runtime/Zero/Media/Files.php"), "Media\\Files::download", "$query['sig']");
 
 const problem = { $ref: "#/components/responses/Problem" };
 const ok = (description: string, schema: object = { $ref: "#/components/schemas/Data" }) => ({ description, content: { "application/json": { schema } } });
@@ -640,7 +650,7 @@ const openapi = {
 		},
 		"/media/{id}": {
 			get: op("Media", "getMedia", "Get a media item", "One media item.", { parameters: [id] }),
-			patch: op("Media", "updateMedia", "Update a media item", "Changes its alt text or caption.", { parameters: [id], ...body("The fields to change.") }),
+			patch: op("Media", "updateMedia", "Update a media item", "Changes `alt`, the alt text, or `focal`, the focal point. Any other field is refused.", { parameters: [id], ...body("`alt`, `focal`, or both.") }),
 			delete: op("Media", "deleteMedia", "Delete a media item", "Deletes the item. Fields that pointed at it become null.", { parameters: [id] }),
 		},
 		"/files/{bucket}": {
@@ -651,19 +661,36 @@ const openapi = {
 			delete: op("Files", "deleteFile", "Delete a private file", "Deletes the file.", { parameters: [param("bucket", "The bucket key."), id] }),
 		},
 		"/files/{bucket}/{id}/download": {
-			get: op("Files", "downloadFile", "Download a private file", "The file's bytes, for a user the bucket's rules allow, or through a signed link.", { parameters: [param("bucket", "The bucket key."), id], responses: { "200": { description: "The file." }, default: problem } }),
+			get: op("Files", "downloadFile", "Download a private file", "The file's bytes. The link is the permission: get the file to receive a `url` with `exp` and `sig`, and request that URL before it expires. Signing in does not replace the signature.", {
+				parameters: [
+					param("bucket", "The bucket key."),
+					id,
+					{ name: "exp", in: "query", required: true, description: "When the link expires, in Unix seconds.", schema: { type: "string" } },
+					{ name: "sig", in: "query", required: true, description: "The link's signature.", schema: { type: "string" } },
+				],
+				responses: { "200": { description: "The file." }, default: problem },
+			}),
 		},
 		"/me": { get: op("Auth", "me", "The signed-in user", "The user, with their member row when the config has a `users` projection. `data` is null when nobody is signed in.") },
 		"/auth/config": { get: op("Auth", "authConfig", "Sign-in settings", "The First Identity issuer, and whether guests are allowed.") },
 		"/auth/guest": { post: op("Auth", "guest", "Start a guest session", "Creates a guest user, when the app allows guests. Returns status 201.", { responses: { "201": ok("The guest user."), default: problem } }) },
 		"/auth/session": { delete: op("Auth", "signOut", "Sign out", "Ends the current First Identity session.") },
+		"/media/{id}/file/{hash}/{path}": {
+			get: op("Media", "mediaFile", "Read an uploaded file", "The bytes of one file of a media item, such as an image size. Media URLs point here when uploads are stored outside WordPress.", {
+				parameters: [id, param("hash", "The SHA-256 of the file's path, from the media item's URL."), param("path", "The file's path within the item.")],
+				responses: { "200": { description: "The file." }, default: problem },
+			}),
+		},
+		"/sync/{collection}/trash": { post: op("Sync", "syncTrash", "Trash synced rows", "Moves the rows of deleted content files to the trash.", { parameters: [collection], ...body("The rows to trash.") }) },
+		"/sync/{collection}/convert": { post: op("Sync", "syncConvert", "Convert synced rows", "Converts rows between content file formats.", { parameters: [collection], ...body("The rows to convert.") }) },
+		"/sync/{collection}/merge": { post: op("Sync", "syncMerge", "Merge synced rows", "Applies a three-way merge of a content file and its row.", { parameters: [collection], ...body("The rows to merge.") }) },
 		"/sync/{collection}": {
 			get: op("Sync", "syncRead", "Read sync state", "The rows and file hashes `first sync` compares.", { parameters: [collection] }),
 			post: op("Sync", "syncWrite", "Write synced rows", "Applies changes from content files.", { parameters: [collection], ...body("The changes to apply.") }),
 		},
-		"/services/forms/{form}": { post: op("Services", "submitForm", "Submit a form", "Stores a form submission and queues its mail.", { parameters: [param("form", "The form key.")], ...body("The form fields.") }) },
+		"/services/forms/{form}": { post: op("Services", "submitForm", "Submit a form", "Stores a form submission and queues its mail. Returns status 201.", { parameters: [param("form", "The form key.")], ...body("The form fields."), responses: { "201": ok("The submission."), default: problem } }) },
 		"/services/search": { get: op("Services", "search", "Search", "Searches published content.", { parameters: [query("q", "The search text.")] }) },
-		"/services/checkout": { post: op("Services", "checkout", "Start a checkout", "Prices the order on the server and starts a hosted checkout.", body("The items to buy.")) },
+		"/services/checkout": { post: op("Services", "checkout", "Start a checkout", "Prices the order on the server and starts a hosted checkout. Returns status 202.", { ...body("The items to buy."), responses: { "202": ok("The checkout, with the URL to send the buyer to."), default: problem } }) },
 		"/services/checkout/{id}": { get: op("Services", "checkoutStatus", "Checkout status", "The status of a checkout.", { parameters: [param("id", "The checkout ID.")] }) },
 		"/services/stripe/webhook": { post: op("Services", "stripeWebhook", "Stripe webhook", "Receives signed events from Stripe.", body("The Stripe event.")) },
 		"/services/submissions/{id}": { get: op("Services", "getSubmission", "Get a submission", "One form submission.", { parameters: [param("id", "The submission ID.")] }) },
@@ -696,14 +723,18 @@ out.set("openapi/first.json", `${JSON.stringify(openapi, null, "\t")}\n`);
 
 const clientTs = read("runtime/client/index.ts");
 const clientExports = [...clientTs.matchAll(/^export (?:declare )?(function|class|interface|type|const) (\w+)/gm)].map((m) => ({ kind: m[1]!, name: m[2]! }));
-const interfaceBody = (name: string) => new RegExp(`export interface ${name}[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(clientTs)?.[1] ?? "";
-const members = (name: string) =>
-	interfaceBody(name)
-		.split("\n")
-		.map((l) => l.trim())
-		.filter((l) => /^(readonly )?\w+[?(:<]/.test(l))
-		.map((l) => toFirst(l.replace(/;$/, "")));
-const memberBlock = (name: string) => fence("ts", `interface ${name} {\n${members(name).map((m) => `\t${m};`).join("\n")}\n}`);
+/** An interface's head (`CollectionClient<K extends CollectionKey>`) and body, as declared. */
+const interfaceBody = (name: string) => {
+	const match = new RegExp(`export interface (${name}[^{]*)\\{([\\s\\S]*?)\\n\\}`).exec(clientTs);
+	if (!match) throw new Error(`runtime/client/index.ts has no interface ${name}; update scripts/generate.ts`);
+	return { head: match[1]!.trim(), body: match[2]! };
+};
+/** An interface from the client, as declared: comments dropped, every member and its signature kept. */
+const memberBlock = (name: string) => {
+	const { head, body } = interfaceBody(name);
+	const declared = body.replace(/^\s*\/\*\*[\s\S]*?\*\/\n/gm, "").replace(/^\s*\/\/.*\n/gm, "");
+	return fence("ts", toFirst(`interface ${head} {${declared}\n}`));
+};
 const pantryClient = read("examples/pantry/zero/client/README.md");
 
 page(
@@ -717,7 +748,9 @@ On Spacefast, every First Space also serves the client at \`/__first/client.js\`
 
 ## Use it
 
-${fence("ts", `import { createClient } from "./first/client/index.ts";\n\nconst first = createClient();\nconst { data: notes } = await first.notes.list({ where: { title: "Hello" } });`)}
+${fence("ts", `import { createClient } from "./first/client/index.ts";\n\nconst first = createClient();\nconst notes = await first.notes.list({ where: { title: "Hello" } });`)}
+
+The client unwraps \`data\`, so \`list()\` returns the rows themselves.
 
 ## Exports
 
@@ -783,13 +816,15 @@ page(
 // Write, or compare in --check mode.
 // ---------------------------------------------------------------------------------------------
 
-const generatedRoots = ["docs/examples", "docs/changelog", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx", "openapi/first.json"];
+// Directories the generator owns outright, and generated files that share docs/reference with
+// hand-written ones. A file in an owned directory that the generator didn't write fails --check.
+const generatedRoots = ["docs/examples", "docs/changelog", "openapi", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx"];
 const onDisk = new Set<string>();
 for (const root of generatedRoots) {
 	const full = path.join(site, root);
 	if (!existsSync(full)) continue;
 	if (statSync(full).isDirectory()) {
-		for (const name of readdirSync(full)) if (!name.endsWith(".ts")) onDisk.add(`${root}/${name}`);
+		for (const name of readdirSync(full)) onDisk.add(`${root}/${name}`);
 	} else onDisk.add(root);
 }
 

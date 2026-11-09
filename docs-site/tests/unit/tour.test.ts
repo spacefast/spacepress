@@ -47,3 +47,18 @@ test("every playground example compiles with the First names the editor shows", 
 		assert.equal(check.ok, true, `${name}: ${check.diagnostics.map((d) => d.message).join("; ")}`);
 	}
 });
+
+test("every TypeScript block on the client page parses", async () => {
+	const { readFileSync } = await import("node:fs");
+	const path = await import("node:path");
+	const ts = (await import("typescript")).default;
+	const { site } = await import("../../lib/examples.ts");
+	const page = readFileSync(path.join(site, "docs/reference/client.mdx"), "utf8");
+	const blocks = [...page.matchAll(/^```ts[^\n]*\n([\s\S]*?)^```$/gm)].map((m) => m[1]!);
+	assert.ok(blocks.length >= 4);
+	for (const code of blocks) {
+		const file = ts.createSourceFile("block.ts", code, ts.ScriptTarget.Latest, true);
+		const errors = (file as unknown as { parseDiagnostics: { messageText: unknown }[] }).parseDiagnostics;
+		assert.deepEqual(errors.map((e) => String(e.messageText)), [], code.slice(0, 120));
+	}
+});

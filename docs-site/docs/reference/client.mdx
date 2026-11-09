@@ -15,8 +15,10 @@ On Spacefast, every First Space also serves the client at `/__first/client.js`, 
 import { createClient } from "./first/client/index.ts";
 
 const first = createClient();
-const { data: notes } = await first.notes.list({ where: { title: "Hello" } });
+const notes = await first.notes.list({ where: { title: "Hello" } });
 ```
+
+The client unwraps `data`, so `list()` returns the rows themselves.
 
 ## Exports
 
@@ -51,20 +53,22 @@ const { data: notes } = await first.notes.list({ where: { title: "Hello" } });
 Each collection and table in your config is a property of the client.
 
 ```ts
-interface CollectionClient {
-	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
-	get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
-	create(data: Collections[K]["insert"]): Promise<Row<K>>;
-	update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
-	delete(id: IdOf<K>): Promise<Row<K>>;
-	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(;
-	q: ListQuery<K, ExactWith<K, W>> | undefined,;
-	onRows: (rows: RowWith<K, W>[]) => void,;
-	onError?: (error: FirstError) => void,;
-	revisions: {;
-	list(id: IdOf<K>): Promise<RevisionSummary[]>;
-	get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
-	restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+interface CollectionClient<K extends CollectionKey> {
+  list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+  get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
+  create(data: Collections[K]["insert"]): Promise<Row<K>>;
+  update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
+  delete(id: IdOf<K>): Promise<Row<K>>;
+  watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
+    q: ListQuery<K, ExactWith<K, W>> | undefined,
+    onRows: (rows: RowWith<K, W>[]) => void,
+    onError?: (error: FirstError) => void,
+  ): () => void;
+  revisions: {
+    list(id: IdOf<K>): Promise<RevisionSummary[]>;
+    get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+    restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+  };
 }
 ```
 
@@ -72,38 +76,36 @@ interface CollectionClient {
 
 ```ts
 interface MediaClient {
-	list(q?: MediaQuery): Promise<Media[]>;
-	get(id: number): Promise<Media>;
-	upload(file: Blob, opts?: { alt?: string; filename?: string }): Promise<Media>;
-	update(id: number, patch: { alt?: string | null; focal?: { x: number; y: number } | null }): Promise<Media>;
-	delete(id: number): Promise<Media>;
+  list(q?: MediaQuery): Promise<Media[]>;
+  get(id: number): Promise<Media>;
+  upload(file: Blob, opts?: { alt?: string; filename?: string }): Promise<Media>;
+  update(id: number, patch: { alt?: string | null; focal?: { x: number; y: number } | null }): Promise<Media>;
+  delete(id: number): Promise<Media>;
 }
 ```
 
 ## Sign-in
 
 ```ts
-interface AuthClient {
-	signIn(opts?: { returnTo?: string }): Promise<never>;
-	handleCallback(): Promise<User>;
-	guest(): Promise<User>;
-	upgrade(): Promise<never>;
-	me(): Promise<User | null>;
-	signOut(opts?: { returnTo?: string }): Promise<void>;
-	session(): Session | null;
+interface AuthClient {  signIn(opts?: { returnTo?: string }): Promise<never>;
+  handleCallback(): Promise<User>;
+  guest(): Promise<User>;
+  upgrade(): Promise<never>;
+  me(): Promise<User | null>;
+  signOut(opts?: { returnTo?: string }): Promise<void>;
+  session(): Session | null;
 }
 ```
 
 ## Options
 
 ```ts
-interface ClientOptions {
-	url?: string;
-	nonce?: string;
-	fetch?: typeof fetch;
-	headers?: Record<string, string>;
-	auth?: AuthOptions;
-	realtime?: RealtimeOptions;
+interface ClientOptions {  url?: string;
+  nonce?: string;
+  fetch?: typeof fetch;
+  headers?: Record<string, string>;
+  auth?: AuthOptions;
+  realtime?: RealtimeOptions;
 }
 ```
 

@@ -9,6 +9,8 @@ const rules: [RegExp, string][] = [
 	[/zero\.gen\.ts/g, "first.gen.ts"],
 	[/(from |import\()(["'])zero\2/g, "$1$2first$2"],
 	[/"zero":/g, '"first":'],
+	// The module in a compiler message: `"zero" has no export named fetch`.
+	[/"zero"(?= has no export)/g, '"first"'],
 	[/\/wp-json\/zero\/v1/g, "/wp-json/first/v1"],
 	[/\bzero\/v1\b/g, "first/v1"],
 	// v2 browser paths only. /__zero/auth, /__zero/run, /__zero/config and /__zero/realtime/* are 0.8.

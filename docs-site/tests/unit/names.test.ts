@@ -22,6 +22,7 @@ const cases: [string, string][] = [
 	["/__zero/client.js", "/__first/client.js"],
 	["ZERO_APP_PASSWORD", "FIRST_APP_PASSWORD"],
 	["Z1101", "F1101"],
+	['"zero" has no export named `fetch`', '"first" has no export named `fetch`'],
 	["plugins/zero-app-showcase/public and zero-pages-fullsite", "plugins/first-app-showcase/public and first-pages-fullsite"],
 	["admin / zero-test-admin", "admin / first-test-admin"],
 	["edit.php?post_type=zero_pets", "edit.php?post_type=first_pets"],

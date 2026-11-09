@@ -734,7 +734,7 @@
 				],
 				"operationId": "updateMedia",
 				"summary": "Update a media item",
-				"description": "Changes its alt text or caption.",
+				"description": "Changes `alt`, the alt text, or `focal`, the focal point. Any other field is refused.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",
@@ -763,7 +763,7 @@
 				],
 				"requestBody": {
 					"required": true,
-					"description": "The fields to change.",
+					"description": "`alt`, `focal`, or both.",
 					"content": {
 						"application/json": {
 							"schema": {
@@ -960,7 +960,7 @@
 				],
 				"operationId": "downloadFile",
 				"summary": "Download a private file",
-				"description": "The file's bytes, for a user the bucket's rules allow, or through a signed link.",
+				"description": "The file's bytes. The link is the permission: get the file to receive a `url` with `exp` and `sig`, and request that URL before it expires. Signing in does not replace the signature.",
 				"responses": {
 					"200": {
 						"description": "The file."
@@ -984,6 +984,24 @@
 						"in": "path",
 						"required": true,
 						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "exp",
+						"in": "query",
+						"required": true,
+						"description": "When the link expires, in Unix seconds.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "sig",
+						"in": "query",
+						"required": true,
+						"description": "The link's signature.",
 						"schema": {
 							"type": "string"
 						}
@@ -1091,6 +1109,197 @@
 				}
 			}
 		},
+		"/media/{id}/file/{hash}/{path}": {
+			"get": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "mediaFile",
+				"summary": "Read an uploaded file",
+				"description": "The bytes of one file of a media item, such as an image size. Media URLs point here when uploads are stored outside WordPress.",
+				"responses": {
+					"200": {
+						"description": "The file."
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "hash",
+						"in": "path",
+						"required": true,
+						"description": "The SHA-256 of the file's path, from the media item's URL.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "path",
+						"in": "path",
+						"required": true,
+						"description": "The file's path within the item.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/sync/{collection}/trash": {
+			"post": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncTrash",
+				"summary": "Trash synced rows",
+				"description": "Moves the rows of deleted content files to the trash.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The rows to trash.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/sync/{collection}/convert": {
+			"post": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncConvert",
+				"summary": "Convert synced rows",
+				"description": "Converts rows between content file formats.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The rows to convert.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/sync/{collection}/merge": {
+			"post": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncMerge",
+				"summary": "Merge synced rows",
+				"description": "Applies a three-way merge of a content file and its row.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The rows to merge.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
 		"/sync/{collection}": {
 			"get": {
 				"tags": [
@@ -1180,10 +1389,10 @@
 				],
 				"operationId": "submitForm",
 				"summary": "Submit a form",
-				"description": "Stores a form submission and queues its mail.",
+				"description": "Stores a form submission and queues its mail. Returns status 201.",
 				"responses": {
-					"200": {
-						"description": "The result, under `data`.",
+					"201": {
+						"description": "The submission.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -1264,10 +1473,10 @@
 				],
 				"operationId": "checkout",
 				"summary": "Start a checkout",
-				"description": "Prices the order on the server and starts a hosted checkout.",
+				"description": "Prices the order on the server and starts a hosted checkout. Returns status 202.",
 				"responses": {
-					"200": {
-						"description": "The result, under `data`.",
+					"202": {
+						"description": "The checkout, with the URL to send the buyer to.",
 						"content": {
 							"application/json": {
 								"schema": {

@@ -78,5 +78,6 @@ TSX pages from `pages/` do not run on Spacefast yet. Keep your frontend in `publ
 
 | Message | What to do |
 | --- | --- |
-| `first_source_needs_local_capture` | An import needs npm packages, or a page has no current render. Run `npm install` in the app, then publish again from your machine. |
+| `first_source_needs_local_capture` because an import needs npm packages | Run `npm install` in the app, then publish again from your machine. |
+| `first_source_needs_local_capture` because `first/pages.json` is missing or stale | Run `npx @spacefast/first-pages build` to render the pages again, then publish again. |
 | A diagnostic code such as `F1002` | The compiler refused the config. Read the [diagnostic codes](/reference/diagnostics), fix the file and line it names, and publish again. |

@@ -710,15 +710,11 @@
     },
     {
       "code": "Z08_OMITTED_REDIRECTS",
-      "feature": "redirect, rewrite and header rules (_redirects, _headers, sf.jsonc)"
-    },
-    {
-      "code": "Z08_OMITTED_CLEAN_URLS",
-      "feature": "clean URLs (/<name> serving <name>.html)"
+      "feature": "redirect and header rule files (_redirects, _headers)"
     },
     {
       "code": "Z08_OMITTED_SERVE",
-      "feature": "serving settings (fallback, index, listing, inject, firewall, cache)"
+      "feature": "serving settings (rewrites, headers, listing, fallback, serve, inject)"
     },
     {
       "code": "Z08_OMITTED_CONNECTORS",
@@ -730,7 +726,7 @@
     },
     {
       "code": "Z08_OMITTED_CONFIG",
-      "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, access or crons, or theme.json)"
+      "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall, crons or sell, or theme.json)"
     },
     {
       "code": "Z08_OMITTED_UNVERIFIED_CONFIG",

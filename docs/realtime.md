@@ -8,8 +8,8 @@ returns.
 ```ts
 import { createClient } from "./first/client/index.ts";
 
-const zero = createClient();
-const stop = zero.todos.watch({ where: { done: false }, orderBy: { createdAt: "asc" } }, (todos) => render(todos));
+const first = createClient();
+const stop = first.todos.watch({ where: { done: false }, orderBy: { createdAt: "asc" } }, (todos) => render(todos));
 // later: stop();
 ```
 
@@ -26,8 +26,8 @@ read depends on:
 ```ts
 import { createClient, watch } from "./first/client/index.ts";
 
-const zero = createClient();
-watch(zero, ["todos"], () => zero.actions.openCount(), (count) => badge(count));
+const first = createClient();
+watch(first, ["todos"], () => first.actions.openCount(), (count) => badge(count));
 ```
 
 ## Transports

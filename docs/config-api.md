@@ -45,9 +45,9 @@ export default defineConfig({
 });
 ```
 
-The generated client stays flat: `zero.posts.create({ title: "Hello" })`,
-`zero.stock.create({ postId, quantity: 2 })`, then
-`zero.stock.list({ where: { post: { title: "Hello" } }, with: { post: true } })`.
+The generated client stays flat: `first.posts.create({ title: "Hello" })`,
+`first.stock.create({ postId, quantity: 2 })`, then
+`first.stock.list({ where: { post: { title: "Hello" } }, with: { post: true } })`.
 See the [pantry](../examples/pantry/first.config.ts) for a table-only app and
 [blog](../examples/blog/first.config.ts) for editorial content with related app data.
 
@@ -140,7 +140,7 @@ An `id: id()` primary key is implicit. Tables may declare a custom single primar
 key; collections and user projections use the native integer `id`.
 
 The registry key is the logical name, used verbatim by `db.query`, hooks,
-relations and the flat generated client (`zero.shoppingList`). Physical names
+relations and the flat generated client (`first.shoppingList`). Physical names
 and REST paths default to deterministic snake_case: `shoppingList` → `shopping_list`,
 `HTTPLogs` → `http_logs`. A table uses `wp_first_shopping_list`; a collection
 registers `first_shopping_list`. Duplicate logical or physical names across all

@@ -49,7 +49,7 @@ are up to you:
   `schema.ts` into `schema/*.ts`.
 - **Moving code never changes the API.** Names come from exports, not paths,
   so moving `like` from `index.ts` to `server/posts.ts` keeps
-  `zero.like()`, its endpoint and its Ability.
+  `first.like()`, its endpoint and its Ability.
 - Export names are unique across the app: two exports named `like`, or an
   action named like a kind, fail the build (`F1221`) and name both files.
   Rename one, or set `action({ name: "posts.like" }, …)`.
@@ -157,7 +157,7 @@ else fails the build (`F1220`), so there is never a second users table or a
 - **Reads and writes:** `users.me()`, `users.get(id)`, `users.list(...)` (editors and up),
   `users.update("me", { bio })`. `email` is readable only by the user and admins.
   Identity operations (sessions, passkeys, MFA, emails, export, delete) are in
-  the client: `zero.auth.*`.
+  the client: `first.auth.*`.
 
 ### 2.3 Comments
 
@@ -371,7 +371,7 @@ check, so a public action runs anonymously.
 ## 4. Server code
 
 ```ts
-// first/server/posts.ts (any file under first/ works) → zero.feature(), notifySubscribers.enqueue(...)
+// first/server/posts.ts (any file under first/ works) → first.feature(), notifySubscribers.enqueue(...)
 import { action, job } from "first";
 import { posts } from "zero:db";
 

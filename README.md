@@ -89,7 +89,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> .first/wp-content in 6s
 | You get | Where |
 |---|---|
 | MySQL migrations, diffed against the last build | `first/_generated/migrations/0001_init.sql` |
-| A typed client: `zero.posts.list({ with: { author: true } })` and friends | `first/client/` |
+| A typed client: `first.posts.list({ with: { author: true } })` and friends | `first/client/` |
 | Editor types, so `db` in your hooks knows your schema | `first.gen.ts` |
 | REST endpoints for every collection, global and action, with relations loaded through `with` | `/wp-json/first/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `first-identity` plugin |
@@ -203,23 +203,23 @@ application password from that command:
 ```ts
 import { createClient } from "./first/client/index.ts";
 
-const zero = createClient({
+const first = createClient({
   url: "http://localhost:8787/wp-json/first/v1",
   headers: { Authorization: "Basic " + btoa("admin:<application password>") },
 });
 
-const author = await zero.authors.create({ name: "Alice" });
-const post = await zero.posts.create({ title: "  Hello, First  ", authorId: author.id });
+const author = await first.authors.create({ name: "Alice" });
+const post = await first.posts.create({ title: "  Hello, First  ", authorId: author.id });
 console.log(post.slug, post.status);                       // hello-first published
-const posts = await zero.posts.list({ with: { author: true }, orderBy: { updatedAt: "desc" } });
+const posts = await first.posts.list({ with: { author: true }, orderBy: { updatedAt: "desc" } });
 console.log(posts[0]?.author?.name);                       // Alice
-console.log(await zero.actions.publishedCount({}));        // { count: 1 }
+console.log(await first.actions.publishedCount({}));        // { count: 1 }
 ```
 
 Every argument and result is typed from your schema: `with` keys, filters,
 `orderBy`, action inputs and outputs. The post is a real WordPress post, so it
 is also in `wp-admin` under Posts. Browser apps sign members in with
-`zero.auth.signIn()`, which goes through the first-identity screens given a
+`first.auth.signIn()`, which goes through the first-identity screens given a
 `clientId` and `redirectUri`; see the client's generated README for sessions,
 guests and server-to-server auth.
 
@@ -287,7 +287,7 @@ next to whatever the site already does.
 Use `table(fields, options?)` for app data in its own SQL table. Both kinds
 support references and one/many relations to either kind, with typed client
 queries and target access rules. The registry key supplies the name once:
-`shoppingList` stays `zero.shoppingList` in the client and stores in
+`shoppingList` stays `first.shoppingList` in the client and stores in
 `wp_first_shopping_list`. `userProjection()` in `users` projects existing
 WordPress users for auth; it creates no second user table. Core `/wp/v2` routes and
 admin screens for First's post types follow First's access rules. Need other

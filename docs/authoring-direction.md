@@ -80,8 +80,8 @@ post IDs. Backend validation must reject an ID for the wrong content type.
 The generated client keeps the existing flat resource vocabulary:
 
 ```ts
-const rows = await zero.stock.list({ with: { product: true } });
-const products = await zero.products.list({ with: { stock: true } });
+const rows = await first.stock.list({ with: { product: true } });
+const products = await first.products.list({ with: { stock: true } });
 ```
 
 The collection/table example uses the accepted configuration vocabulary;

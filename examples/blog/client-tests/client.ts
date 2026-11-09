@@ -39,8 +39,8 @@ async function reads() {
 
   const revs = await first.posts.revisions.list(1);
   expectType<Equal<typeof revs, RevisionSummary[]>>();
-  expectType<Equal<Awaited<ReturnType<typeof zero.posts.revisions.restore>>, Post>>();
-  expectType<Equal<Awaited<ReturnType<typeof zero.auth.me>>, User | null>>();
+  expectType<Equal<Awaited<ReturnType<typeof first.posts.revisions.restore>>, Post>>();
+  expectType<Equal<Awaited<ReturnType<typeof first.auth.me>>, User | null>>();
 }
 
 async function writes() {

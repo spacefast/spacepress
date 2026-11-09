@@ -169,6 +169,10 @@ const CODE_RULES = [
   [/(?<=\[)zero(?=\])/g, 'first'],
   [/(\\?["'])zero\1/g, '$1first$1'],
   [/\bZERO\b/g, 'FIRST'],
+  // The generated client conventionally named after the product: `zero.posts.list(...)`.
+  [/\b(const|let|var)(\s+)zero(?=\s*=\s*(?:await\s+)?createClient\b)/g, '$1$2first'],
+  [/(?<=\bwatch\()zero(?=,)/g, 'first'],
+  [/(?<![\w.$@\/\\-])zero\.(?=(?:auth|posts|pages|comments|authors|actions|globals|stock|products|shoppingList|todos|categories|media|files|users|me|like|feature|changes|webhook|prune-guests|schema)\b)/g, 'first.'],
 ];
 // Prose and code: the product name as a word.
 const PROSE_RULES = [[/(?<![\w\\-])Zero(?![\w\\])/g, 'First']];

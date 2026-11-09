@@ -938,7 +938,7 @@ Outbox/receipts/retries are First's because AS has none of them.
 #### Webhooks (D2)
 
 Outbound: after every committed pipeline write on a collection named in
-`events`, enqueue the built-in job `zero.webhook` with
+`events`, enqueue the built-in job `first.webhook` with
 `{ webhook: <index>, event: "posts.created", id, row, previous? }`; delivery
 `POST <url>` JSON `{ id: "<jobId>", event, collection, at, data: { row, previous? } }`,
 headers `First-Event-Id`, `First-Event`, `First-Signature: t=<unix>,v1=<hex hmac_sha256(secret, "<t>.<body>")>`;
@@ -1017,7 +1017,7 @@ sets `suspendedAt`, revokes sessions; WP: `wp first-identity suspend`). Guests:
 ladder gains `"guest"` at the bottom; `"authenticated"` includes guests; a role
 rule `"subscriber"` excludes them; `User.role` type gains `"guest"`. Guests
 without any owned row older than 30 days are pruned by the jobs worker /
-an Action Scheduler recurring action (`zero.prune-guests`).
+an Action Scheduler recurring action (`first.prune-guests`).
 
 #### user projections
 

@@ -193,7 +193,7 @@ core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
 
 This already exists on main (monorepo #5152, zero #128):
 1. A committed write fires `first_realtime_changes` with ids only.
-2. The control plane broadcasts `zero.changes` into the Space's Cast room.
+2. The control plane broadcasts `first.changes` into the Space's Cast room.
 3. `/__spacefast/client.js` holds one socket per page.
 4. The client re-runs its own query through the normal API, so a viewer only
    ever sees rows its own read returns.

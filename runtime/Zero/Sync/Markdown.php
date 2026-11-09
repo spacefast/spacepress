@@ -27,9 +27,6 @@ use WP_HTML_Tag_Processor as Tags;
  */
 final class Markdown
 {
-    /** Layout blocks with no content of their own: render() writes their inner blocks. */
-    private const LAYOUT_BLOCKS = ['core/group', 'core/columns', 'core/column'];
-
     /** Blocks MarkdownProducer writes as Markdown syntax (table included; the round trip then judges it). */
     private const MARKDOWN_BLOCKS = ['core/paragraph', 'core/heading', 'core/list', 'core/list-item', 'core/quote',
         'core/code', 'core/image', 'core/table', 'core/separator'];
@@ -70,31 +67,29 @@ final class Markdown
     /**
      * Stored blocks as Markdown for reading: the page's `.md` twin and `?format=md`. Never refuses.
      *
-     * When the document can be written as Markdown, the result is exactly fromBlocks(). Otherwise
-     * each top-level block is written on its own: a block Markdown has syntax for through the
-     * toolkit's producer (whatever the round trip would lose, such as an alignment), a layout block
-     * (group, columns) by its inner blocks, and any other block (buttons, embeds, dynamic blocks,
-     * classic content) as the text, links, emphasis and images of what it renders, so its own render
-     * callback still decides what it shows. A block whose rendering fails shows nothing.
+     * Markdown is written from what WordPress renders, never from stored markup, so everything that
+     * decides what a visitor sees decides it here too: each block's render callback and supports
+     * (core's "Hide block"), `render_block` filters, shortcodes, embeds. Each top-level block goes
+     * through render_block() on its own, and its HTML becomes Markdown; one that renders nothing
+     * shows nothing, one that throws shows nothing and the rest still render. Shortcodes run on the
+     * rendered HTML, as the_content runs do_shortcode after do_blocks; classic content gets wpautop
+     * first, as there.
      *
      * No HTML reaches the output: a `<` that would start a tag outside code is escaped, whether it
      * came from markup (a custom HTML block) or from text (`&lt;script&gt;`).
      */
     public static function render(string $blocks): string
     {
-        return self::escapeTags(self::renderBlocks($blocks));
-    }
-
-    private static function renderBlocks(string $blocks): string
-    {
-        try {
-            return self::fromBlocks($blocks);
-        } catch (HttpError) {
-        }
+        Blocks::boot();
         $parts = [];
-        foreach (Blocks::parse($blocks) as $block) {
+        foreach (has_blocks($blocks) ? Blocks::parse($blocks) : [['blockName' => null, 'innerHTML' => $blocks]] as $block) {
             try {
-                $part = self::renderBlock($block);
+                // As the_content orders it: blocks (do_blocks, 9), then paragraphs for classic content
+                // (wpautop, 10), then shortcodes over the result (do_shortcode, 11).
+                $html = ($block['blockName'] ?? null) === null
+                    ? do_shortcode(wpautop((string) ($block['innerHTML'] ?? '')))
+                    : do_shortcode(render_block($block));
+                $part = trim(HtmlMarkdown::convert($html));
             } catch (\Throwable) {
                 $part = '';
             }
@@ -103,31 +98,7 @@ final class Markdown
             }
         }
 
-        return $parts === [] ? '' : implode("\n", $parts);
-    }
-
-    /** One block for render(): Markdown ending in one newline, or '' when it shows nothing. */
-    private static function renderBlock(array $block): string
-    {
-        if (($block['blockName'] ?? null) !== null && self::unsupported([$block]) === null) {
-            // Markdown has syntax for every block here; for reading, what the round trip would lose
-            // (an alignment, a table's caption) needn't refuse it.
-            try {
-                $markdown = rtrim(self::produce(Blocks::serialize([$block])), "\n");
-                if (trim($markdown) !== '') {
-                    return $markdown . "\n";
-                }
-            } catch (HttpError) {
-            }
-        }
-        if (in_array($block['blockName'] ?? null, self::LAYOUT_BLOCKS, true)) {
-            return self::renderBlocks(Blocks::serialize($block['innerBlocks'] ?? []));
-        }
-        $html = ($block['blockName'] ?? null) === null
-            ? wpautop(do_shortcode((string) ($block['innerHTML'] ?? '')))
-            : render_block($block);
-
-        return self::text($html);
+        return $parts === [] ? '' : self::escapeTags(implode("\n\n", $parts)) . "\n";
     }
 
     /**
@@ -165,26 +136,6 @@ final class Markdown
         }
 
         return implode("\n", $out);
-    }
-
-    /**
-     * Rendered HTML as Markdown paragraphs: the producer's inline conversion (links, emphasis, code,
-     * images) of the HTML read as one paragraph, every other tag dropped, one paragraph per line.
-     */
-    private static function text(string $html): string
-    {
-        $html = (string) preg_replace('/<!--.*?-->/s', '', $html);
-        if (trim(wp_strip_all_tags($html)) === '' && !str_contains(strtolower($html), '<img')) {
-            return '';
-        }
-        try {
-            $markdown = self::produce("<!-- wp:paragraph -->\n" . $html . "\n<!-- /wp:paragraph -->");
-        } catch (HttpError) {
-            $markdown = wp_strip_all_tags($html);
-        }
-        $lines = array_values(array_filter(array_map('trim', explode("\n", $markdown)), static fn (string $line): bool => $line !== ''));
-
-        return $lines === [] ? '' : implode("\n\n", $lines) . "\n";
     }
 
     /**

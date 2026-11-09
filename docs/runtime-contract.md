@@ -552,8 +552,10 @@ The v2 app plugin registers these. A WordPress without a Zero app is unchanged.
   `/__zero/api/v1` facade's item route should call `MarkdownTwins::post()` so
   that both give the same Markdown.
 - **Listing and `/llms.txt` summaries** come from the hand-written excerpt or
-  from the rendered Markdown of the post, never from its raw stored markup.
-  So a block that hides content from signed-out visitors hides it there too.
+  from `Markdown::render()` of the post, never from its raw stored markup. So
+  anything that hides content from signed-out visitors (a block's render
+  callback, "Hide block", a `render_block` filter, a shortcode) hides it there
+  too.
 - **`zero_markdown_twin` filter** (`bool $twin, WP_Post $post`): return false
   when a URL shows something other than the post's stored content. The pages
   add-on uses it for code Pages.
@@ -564,7 +566,7 @@ PHP API (all static):
 |---|---|
 | `MarkdownTwins::twin(string $url): string` | the twin URL: `/x/` → `/x.md`, home → `/index.md`; scheme, host and query kept. Purges use it to add each URL's `.md` twin. |
 | `MarkdownTwins::post(WP_Post $post): string` | `# Title` plus the stored content as Markdown. While `post_password_required()` holds, only the title and a note. It checks no other visibility; the caller does. |
-| `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses: when `fromBlocks()` succeeds, the result is its output exactly. Otherwise each block is written as Markdown, layout blocks (group, columns) by their inner blocks, and any other block as the text of what its own renderer prints, so a block that hides its content hides it here too. A block whose rendering throws shows nothing. A `<` that would start a tag outside code is escaped, so no HTML reaches the output. |
+| `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses. Markdown is written from what WordPress renders, never from stored markup: each top-level block goes through `render_block()`, then `do_shortcode()`, and the rendered HTML is converted (`Sync\HtmlMarkdown`). So block render callbacks, block supports such as core's "Hide block", `render_block` filters and shortcodes decide what shows, exactly as on the HTML page. A block that renders nothing or throws shows nothing. A `<` that would start a tag outside code is escaped, so no HTML reaches the output. `fromBlocks()` (sync) still writes stored markup and refuses what Markdown can't carry. |
 | `MarkdownTwins::llms(): string` | the `/llms.txt` body |
 | `MarkdownTwins::negotiate(string $uri): ?array` | the engine's `Accept: text/markdown` answer, below |
 

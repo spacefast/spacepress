@@ -279,10 +279,11 @@ test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape
   const hiddenTotal = await http("GET", `${base}?` + new URLSearchParams({ where: JSON.stringify({ budget: 40 }), per_page: "1" }), { as: "editor" });
   assert.deepEqual([hiddenTotal.status, hiddenTotal.json.data?.pointer], [403, "/where/budget"], "a total can't count by a hidden field either");
   // Core's `_fields`, nested paths included, on Zero rows and their relations.
-  const staff = zero("insert", "field_staff", JSON.stringify({ name: `Fielded ${run}`, kind: "basic", teamId: id }))[0];
-  const fielded = await http("GET", `${base}/${id}?` + new URLSearchParams({ with: "members", _fields: "name,members.name" }), { as: "editor" });
-  assert.deepEqual(fielded.json, { name: `Core team ${run}`, members: [{ name: `Fielded ${run}` }] }, JSON.stringify(fielded.json));
-  zero("delete", "field_staff", JSON.stringify({ id: staff.id }));
+  const signup = await http("POST", `${core}/zero_signups`, { as: "editor", body: { email: `fields-${run}@example.test`, teamId: id } });
+  assert.equal(signup.status, 201, JSON.stringify(signup.json));
+  const fielded = await http("GET", `${core}/zero_signups/${signup.json.id}?` + new URLSearchParams({ with: "team", _fields: "email,team.name" }), { as: "editor" });
+  assert.deepEqual(fielded.json, { email: `fields-${run}@example.test`, team: { name: `Core team ${run}` } }, JSON.stringify(fielded.json));
+  assert.ok("_links" in (await http("GET", `${base}/${id}`, { as: "editor" })).json, "links without _fields, as core gives them");
   // A form-encoded body is read as WordPress parses it, not as JSON.
   const form = await fetch(base, { method: "POST", headers: { ...auth("editor"), "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ name: `Form team ${run}` }) });
   const formed = await form.json();

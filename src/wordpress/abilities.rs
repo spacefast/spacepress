@@ -190,11 +190,15 @@ pub fn schema_ty(s: &Value, warnings: &mut Vec<String>, at: &str) -> Ty {
 /// never refuses a result the type system allowed. Every node keeps the `type` core's validator needs.
 pub fn ty_schema(t: &Ty) -> Option<Value> {
     use serde_json::json;
+    const MAX_SAFE: f64 = 9_007_199_254_740_992.0; // 2^53
     let t = types::json_wire_type(t);
     Some(match &t {
         Ty::Instance(_, fields) => return ty_schema(fields),
-        Ty::Num | Ty::FreshNumLit(_) | Ty::Date => json!({ "type": "number" }),
-        Ty::NumLit(n) if n.fract() == 0.0 && n.is_finite() => json!({ "type": "integer", "enum": [*n as i64] }),
+        // A computed number may be NaN or ±Infinity, which the wire encodes as null.
+        Ty::Num | Ty::FreshNumLit(_) => json!({ "type": ["number", "null"] }),
+        // An integer literal is an `integer` only where the cast is exact (|n| <= 2^53); beyond that
+        // the literal itself stays in the enum, as the number the wire carries.
+        Ty::NumLit(n) if n.fract() == 0.0 && n.abs() <= MAX_SAFE => json!({ "type": "integer", "enum": [*n as i64] }),
         Ty::NumLit(n) => json!({ "type": "number", "enum": [n] }),
         Ty::Str => json!({ "type": "string" }),
         Ty::StrLit(v) | Ty::FreshStrLit(v) => json!({ "type": "string", "enum": [v] }),
@@ -232,18 +236,28 @@ pub fn ty_schema(t: &Ty) -> Option<Value> {
             let mut literal_only = true;
             for item in items {
                 let s = ty_schema(item)?;
-                let kind = s.get("type")?.as_str()?.to_string();
-                if matches!(kind.as_str(), "object" | "array") {
+                let item_kinds: Vec<String> = match s.get("type")? {
+                    Value::String(k) => vec![k.clone()],
+                    Value::Array(ks) => ks.iter().map(|k| k.as_str().map(str::to_string)).collect::<Option<_>>()?,
+                    _ => return None,
+                };
+                if item_kinds.iter().any(|k| matches!(k.as_str(), "object" | "array")) {
                     return None;
                 }
                 match s.get("enum") {
                     Some(Value::Array(e)) => values.extend(e.iter().cloned()),
-                    _ if kind == "null" => values.push(Value::Null),
+                    _ if item_kinds == ["null"] => values.push(Value::Null),
                     _ => literal_only = false,
                 }
-                if !kinds.contains(&Value::String(kind.clone())) {
-                    kinds.push(Value::String(kind));
+                for kind in item_kinds {
+                    if !kinds.contains(&Value::String(kind.clone())) {
+                        kinds.push(Value::String(kind));
+                    }
                 }
+            }
+            // `integer` is a subset of `number`: listed beside it, it adds nothing.
+            if kinds.contains(&Value::String("number".into())) {
+                kinds.retain(|k| k != "integer");
             }
             let mut o = json!({ "type": kinds });
             if literal_only {
@@ -556,9 +570,21 @@ mod tests {
             ty_schema(&Ty::Promise(Box::new(row.clone()))).or_else(|| ty_schema(&row)),
             Some(json!({
                 "type": "object",
-                "properties": { "id": { "type": "number" }, "note": { "type": ["string", "null"] } },
+                // A computed number may be NaN or Infinity, which the wire carries as null.
+                "properties": { "id": { "type": ["number", "null"] }, "note": { "type": ["string", "null"] } },
                 "required": ["id"],
             }))
+        );
+        assert_eq!(
+            ty_schema(&Ty::union([Ty::Num, Ty::Str])),
+            Some(json!({ "type": ["number", "null", "string"] }))
+        );
+        // Integer literals: exact up to 2^53; beyond it the literal number itself, never a saturated i64.
+        assert_eq!(ty_schema(&Ty::NumLit(42.0)), Some(json!({ "type": "integer", "enum": [42] })));
+        assert_eq!(ty_schema(&Ty::NumLit(1e20)), Some(json!({ "type": "number", "enum": [1e20] })));
+        assert_eq!(
+            ty_schema(&Ty::union([Ty::NumLit(1.0), Ty::NumLit(-1e300)])),
+            Some(json!({ "type": ["number"], "enum": [1, -1e300] }))
         );
         assert_eq!(
             ty_schema(&Ty::Array(Box::new(Ty::Bool))),
@@ -570,7 +596,7 @@ mod tests {
         );
         assert_eq!(
             ty_schema(&Ty::Map(Box::new(Ty::Num))),
-            Some(json!({ "type": "object", "additionalProperties": { "type": "number" } }))
+            Some(json!({ "type": "object", "additionalProperties": { "type": ["number", "null"] } }))
         );
         // Undefined and void results are null on the wire.
         assert_eq!(ty_schema(&Ty::Void), Some(json!({ "type": "null" })));

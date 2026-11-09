@@ -290,13 +290,14 @@ test("an action's options annotate its Ability, and its return type is the outpu
   const count = byName["blog/refs-count"];
   // Core lists all three annotations, null when unset.
   assert.deepEqual(count.meta.annotations, { readonly: true, destructive: null, idempotent: true });
+  // A computed number may be NaN or Infinity, which the wire carries as null.
   assert.deepEqual(count.output_schema, {
     type: "object",
-    properties: { body: { type: "string" }, count: { type: "number" }, ids: { type: "array", items: { type: "number" } } },
+    properties: { body: { type: "string" }, count: { type: ["number", "null"] }, ids: { type: "array", items: { type: ["number", "null"] } } },
     required: ["body", "count", "ids"],
   });
   assert.deepEqual(byName["blog/refs-purge"].meta.annotations, { readonly: null, destructive: true, idempotent: true });
-  assert.deepEqual(byName["blog/refs-purge"].output_schema, { type: "number" });
+  assert.deepEqual(byName["blog/refs-purge"].output_schema, { type: ["number", "null"] });
   assert.deepEqual(byName["blog/approve-comment"].meta.annotations, { readonly: null, destructive: null, idempotent: null });
 });
 
@@ -314,6 +315,14 @@ test("core's run route serves actions by their annotations: GET for readonly, DE
   const purged = await runAbility("blog/refs-purge", { body }, "editor", "DELETE");
   assert.deepEqual([purged.status, purged.json], [200, 1]);
   assert.deepEqual((await runAbility("blog/refs-count", { body }, "anonymous", "GET")).json.count, 0);
+  // Non-finite results are null on the wire and pass core's output validation; a literal beyond
+  // 2^53 is the same number in the published enum as on the wire.
+  const ratio = await runAbility("blog/refs-ratio", { n: 0 }, "anonymous", "GET");
+  assert.deepEqual([ratio.status, ratio.json], [200, { ratio: null, big: 1e20, huge: 1 }], JSON.stringify(ratio.json));
+  const inf = await runAbility("blog/refs-ratio", { n: 20 }, "anonymous", "GET");
+  assert.deepEqual([inf.status, inf.json.ratio, inf.json.huge], [200, 1, null], JSON.stringify(inf.json));
+  const schema = (await http("GET", `${abilities}/abilities/blog/refs-ratio`, { as: "admin" })).json.output_schema;
+  assert.deepEqual(schema.properties.big, { type: "number", enum: [1e20] });
   // Errors are core's WP_Error JSON with Zero's code, status and pointer.
   const bad = await runAbility("blog/refs-count", {}, "anonymous", "GET");
   assert.deepEqual([bad.status, bad.json.code, bad.json.data?.pointer], [422, "zero_invalid_input", "/body"]);

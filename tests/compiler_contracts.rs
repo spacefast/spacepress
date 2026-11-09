@@ -3295,6 +3295,43 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
+/// An app with no registries in `defineConfig` (docs/spec/spec.md §1.1): `notes` and `like` register
+/// from their exports under `zero/`, `like` reaches `notes` through `"zero:db"`, and on an
+/// in-process WordPress the action's write lands in the table the export declared.
+#[test]
+fn exported_kinds_and_actions_register_by_name_and_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("exports");
+    copy_dir(&root().join("tests/fixtures/exports"), &project);
+    let content = build_wp(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(&content)
+        .arg(
+            r#"
+            $row = $app->db->insert('notes', ['title' => 'First'], true)[0];
+            $first = $wp->call('POST', '/actions/like', ['id' => $row['id']]);
+            $second = $wp->call('POST', '/actions/like', ['id' => $row['id']]);
+            $stored = $app->db->findFirst('notes', ['where' => ['id' => $row['id']]]);
+            echo json_encode([$first[0], $first[1], $second[1], $stored['likes']]), "
+";
+            "#,
+        )
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let got: Value = serde_json::from_str(text.lines().next_back().unwrap()).unwrap();
+    assert_eq!(got, json!([200, 1, 2, 2]));
+}
+
 /// `wp-hooks/` on an in-process WordPress, through the built plugin: one hook's files apply in
 /// file-name order, a `priority` export moves one, a throwing filter hands back its input, and an
 /// action reads the typed WP_Post view (its throw is logged, the save goes on).
@@ -3339,8 +3376,8 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
             "title": "Kept",
             "saved": true,
             "errors": [
-                "[zero] wp-hooks/the_title: Zero\\JsError: broken title filter",
-                "[zero] wp-hooks/save_post: Zero\\JsError: saw Draft one #true",
+                "[zero] zero/wp-hooks/the_title: Zero\\JsError: broken title filter",
+                "[zero] zero/wp-hooks/save_post: Zero\\JsError: saw Draft one #true",
             ],
         })
     );
@@ -3688,12 +3725,13 @@ fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
 }
 ",
     );
-    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    std::fs::create_dir(tmp.path().join("zero")).unwrap();
+    std::fs::write(tmp.path().join("zero/run.mjs"), body).unwrap();
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
         r#"import { action, defineConfig, text } from "zero";
-import { run } from "./run.mjs";
+import { run } from "./zero/run.mjs";
 export default defineConfig({ name: "tokens", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )
@@ -3730,7 +3768,7 @@ export default defineConfig({ name: "tokens", actions: { a: action({ access: "an
         .current_dir(tmp.path())
         .args(["--input-type=module", "-e"])
         .arg(format!(
-            "import {{ run }} from './run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            "import {{ run }} from './zero/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
             serde_json::to_string(&inputs).unwrap()
         ))
         .output()

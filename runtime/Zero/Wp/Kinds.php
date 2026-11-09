@@ -18,6 +18,9 @@ namespace Zero\Wp;
  */
 final class Kinds
 {
+    /** Where a users response carries Zero's row during the facade's own dispatches (UserMeta::prepare). */
+    public const USER_ROW = '__zero_row';
+
     /** @return array<string, array{name: string, type: string, route: string, spec: array, drafts?: true}> */
     public static function all(Plugin $plugin): array
     {
@@ -54,27 +57,13 @@ final class Kinds
 
             return $item + $with;
         }
-        $row = [$spec['primaryKey'] => $item['id'] ?? null];
         if ($kind['type'] === 'users') {
-            $member = $item['meta'] ?? [];
-            foreach ($spec['columns'] as $col => $def) {
-                $col = (string) $col;
-                if ($col === $spec['primaryKey'] || ($def['hidden'] ?? false)) {
-                    continue;
-                }
-                $value = match ($col) {
-                    'email' => $item['email'] ?? null,
-                    'name' => $item['name'] ?? null,
-                    'role' => array_key_exists('roles', $item) ? self::role((array) $item['roles']) : null,
-                    default => $member[$col] ?? null,
-                };
-                if ($value !== null || array_key_exists($col, $member) || in_array($col, ['email', 'name'], true) && array_key_exists($col, $item)) {
-                    $row[$col] = $value;
-                }
-            }
+            // Zero's row for this viewer, or null: core may list a user Zero's read rule hides.
+            $zero = $item[self::USER_ROW] ?? null;
 
-            return $row + $with;
+            return $zero === null ? null : (is_object($zero) ? get_object_vars($zero) : (array) $zero) + $with;
         }
+        $row = [$spec['primaryKey'] => $item['id'] ?? null];
         $text = static fn (mixed $v): mixed => is_array($v) ? ($v['raw'] ?? $v['rendered'] ?? null) : $v;
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
@@ -116,8 +105,10 @@ final class Kinds
         foreach ($data as $col => $value) {
             $col = (string) $col;
             if ($kind['type'] === 'users') {
+                // Core's own user fields; UserMeta applies them (and `meta`) through Zero's pipeline.
                 match ($col) {
-                    'email', 'name' => $out[$col] = $value,
+                    'email', 'name', 'password' => $out[$col] = $value,
+                    'role' => $out['roles'] = is_string($value) ? [WpUserStore::wpRole($value)] : $value,
                     default => $meta[$col] = $value,
                 };
                 continue;
@@ -140,6 +131,11 @@ final class Kinds
         }
         if ($kind['type'] === 'post' && !isset($out['status']) && $create) {
             $out['status'] = 'publish'; // Zero's default: a row without a status is published
+        }
+        if ($kind['type'] === 'users' && $create) {
+            // Core requires a login and a password; Zero generates the login and, without one, a password.
+            $out['username'] = 'zm_' . bin2hex(random_bytes(10));
+            $out['password'] ??= wp_generate_password(32, true, true);
         }
         if ($meta !== []) {
             $out['meta'] = (object) $meta;
@@ -201,15 +197,4 @@ final class Kinds
         };
     }
 
-    /** @param list<string> $roles */
-    private static function role(array $roles): string
-    {
-        return match (true) {
-            in_array('administrator', $roles, true) => 'admin',
-            in_array('editor', $roles, true) => 'editor',
-            in_array('author', $roles, true) || in_array('contributor', $roles, true) => 'author',
-            in_array('zero_guest', $roles, true) => 'guest',
-            default => 'subscriber',
-        };
-    }
 }

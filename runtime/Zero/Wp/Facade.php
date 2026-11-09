@@ -69,7 +69,7 @@ final class Facade
             self::emit($status, $headers, $body);
         } catch (HttpError | \Zero\JsError $e) {
             $problem = \Zero\App::problem($e);
-            self::emit($problem['status'], ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify($problem));
+            self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + self::PRIVATE, (string) Js::jsonStringify($problem));
         }
     }
 
@@ -125,13 +125,21 @@ final class Facade
             return self::json(200, ['data' => Kinds::row($kind, $row)]);
         }
         if ($method === 'DELETE') {
-            $out = self::dispatch('DELETE', $item, $kind['type'] === 'post' ? ['force' => true] : []);
+            // Zero's delete is permanent: core trashes posts without `force`, and refuses users without it.
+            $out = self::dispatch('DELETE', $item, match ($kind['type']) {
+                'post' => ['force' => true],
+                'users' => ['force' => true, 'reassign' => false], // the member's posts are kept, unowned
+                default => [],
+            });
 
             return self::json(200, ['data' => Kinds::row($kind, $out['previous'] ?? $out)]);
         }
         $row = self::dispatch('GET', $item, self::context($kind) + array_intersect_key($query, ['with' => true]));
+        if ($kind['type'] === 'users' && Kinds::row($kind, $row) === null) {
+            throw HttpError::notFound("No {$kind['name']} row with id $id"); // Zero's read rule doesn't cover it
+        }
         if (($query['format'] ?? null) === 'md') {
-            return [200, ['Content-Type' => 'text/markdown; charset=utf-8'], Kinds::markdown($kind, $row)];
+            return [200, ['Content-Type' => 'text/markdown; charset=utf-8'] + self::PRIVATE, Kinds::markdown($kind, $row)];
         }
 
         return self::json(200, ['data' => Kinds::row($kind, $row)]);
@@ -162,7 +170,9 @@ final class Facade
         $pages = (int) ($response->get_headers()['X-WP-TotalPages'] ?? 0);
         $cursor = $page < $pages ? rtrim(strtr(base64_encode((string) json_encode(['page' => $page + 1])), '+/', '-_'), '=') : null;
 
-        return self::json(200, ['data' => array_map(static fn (array $r) => Kinds::row($kind, $r), $rows), 'cursor' => $cursor]);
+        $rows = array_values(array_filter(array_map(static fn (array $r) => Kinds::row($kind, $r), $rows), static fn ($r) => $r !== null));
+
+        return self::json(200, ['data' => $rows, 'cursor' => $cursor]);
     }
 
     /**
@@ -264,6 +274,7 @@ final class Facade
         $code = str_starts_with($code, 'zero_') ? substr($code, 5) : $code;
         $code = match ($code) {
             'rest_forbidden', 'rest_cannot_create', 'rest_cannot_edit', 'rest_cannot_delete', 'rest_cannot_read', 'rest_forbidden_context',
+            'rest_cannot_create_user', 'rest_user_cannot_delete', 'rest_user_cannot_view', 'rest_cannot_edit_roles',
             'rest_ability_cannot_execute' => get_current_user_id() === 0 ? 'unauthenticated' : 'forbidden',
             'rest_post_invalid_id', 'rest_user_invalid_id', 'rest_no_route', 'rest_ability_not_found' => 'not_found',
             'rest_invalid_param', 'rest_missing_callback_param' => 'invalid_input',
@@ -359,24 +370,27 @@ final class Facade
     // ================================================================ output
 
     /**
-     * The core context to ask for. Post kinds and tables: `view` (PostsController carries the stored
-     * title and content in it). Users: `edit` for one's own row (email, roles), `view` otherwise.
+     * The core context to ask for: `view`. Post kinds: PostsController carries the stored title and
+     * content in it. Users: the row is Zero's own (UserMeta::prepare), whatever core's context shows.
      */
     private static function context(array $kind): array
     {
-        return ['context' => $kind['type'] === 'users' && current_user_can('list_users') ? 'edit' : 'view'];
+        return ['context' => 'view'];
     }
+
+    /** Every facade answer depends on who asks (cookie, application password, bearer): never cached for others. */
+    private const PRIVATE = ['Cache-Control' => 'private, no-store', 'Vary' => 'Cookie, Authorization'];
 
     /** @return array{int, array<string, string>, string} */
     private static function json(int $status, array $body): array
     {
-        return [$status, ['Content-Type' => 'application/json; charset=utf-8', 'Cache-Control' => 'private, no-store'], (string) Js::jsonStringify($body)];
+        return [$status, ['Content-Type' => 'application/json; charset=utf-8'] + self::PRIVATE, (string) Js::jsonStringify($body)];
     }
 
     private static function problem(\WP_Error $error): never
     {
         $problem = \Zero\App::problem(self::fromWpError($error, 401));
-        self::emit($problem['status'], ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify($problem));
+        self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + self::PRIVATE, (string) Js::jsonStringify($problem));
     }
 
     /** @param array<string, string> $headers */

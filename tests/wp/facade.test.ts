@@ -3,7 +3,7 @@
 // problem documents for errors. Each check compares with /wp-json/zero/v1 or core directly.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { api, auth, core, harness, http, ok, qs, run, zero, type Role } from "./env.ts";
+import { api, auth, core, harness, http, ok, qs, run, sql, wp, zero, type Role } from "./env.ts";
 
 const facade = `${harness.url}/__zero/api/v1`;
 const f = (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => http(method, facade + path, opts);
@@ -103,5 +103,61 @@ test("the facade denies what core and /zero/v1 deny", async () => {
   for (const path of ["/__zero/config", "/__zero/run", "/__zero/auth/session", "/__zero/realtime/events"]) {
     const res = await fetch(harness.url + path);
     assert.notEqual(res.headers.get("content-type"), "application/problem+json", path);
+  }
+});
+
+test("the users kind: rows as Zero reads them, writes through Zero's rules, creates and permanent deletes", async () => {
+  const sub = harness.users.subscriber.id;
+  // A member reads their own row whole (email, role) without list_users; another's is not theirs.
+  const own = await f("GET", `/members/${sub}`, { as: "subscriber" });
+  const viaZero = await http("GET", `${api}/members/${sub}`, { as: "subscriber" });
+  // The one encoder of core routes keeps a group whose sub-fields are all hidden an object ({}), where
+  // /zero/v1's encoder gives [] for it; every other value is the same.
+  assert.deepEqual([own.status, own.json.data], [200, { ...viaZero.json.data, notes: {} }], JSON.stringify(own.json));
+  assert.deepEqual(viaZero.json.data.notes, []);
+  assert.deepEqual([own.json.data.email, own.json.data.role], [viaZero.json.data.email, "subscriber"]);
+  assert.equal((await f("GET", `/members/${harness.users.admin.id}`, { as: "subscriber" })).status, 404);
+  assert.deepEqual((await f("GET", "/members", { as: "subscriber" })).json.data.map((m: any) => m.id), [sub], "the list holds what `self` allows");
+  // A PATCH of only core user fields still runs Zero's update: validation, field rules, hooks.
+  const name = (await ok("GET", `/members/${sub}`, { as: "subscriber" })).name;
+  const long = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { name: "x".repeat(81) } });
+  assert.deepEqual([long.status, long.json.code, long.json.pointer], [422, "invalid_input", "/name"]);
+  const email = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { email: `taken-${run}@example.test` } });
+  assert.deepEqual([email.status, email.json.pointer], [403, "/email"], "a member changes their email where it is verified");
+  assert.deepEqual(sql(`SELECT display_name, user_email FROM wp_users WHERE ID = ${sub}`)[0], { display_name: name, user_email: own.json.data.email }, "nothing changed");
+  const renamed = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { name: `Renamed ${run}` } });
+  assert.deepEqual([renamed.status, renamed.json.data.name], [200, `Renamed ${run}`], JSON.stringify(renamed.json));
+  assert.deepEqual(zero("find", "member_updates", JSON.stringify({ where: { memberId: sub, name: `Renamed ${run}` } })).length, 1, "the afterUpdate hook ran");
+  zero("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ name }));
+  const role = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { role: "admin" } });
+  assert.equal(role.status, 403, JSON.stringify(role.json));
+  // Create reaches Zero's insert (not core's "missing username/password"): the same answers as /zero/v1
+  // for the create rule, Zero's password rule, and `self` reads keeping even an admin from setting a
+  // unique email it can't see (this app's members can only be created by trusted code).
+  const address = `facade-${run}@example.test`;
+  const body = { email: address, name: `Created ${run}`, password: "a long password 1" };
+  for (const [as, input] of [["editor", body], ["admin", { ...body, password: "short" }], ["admin", body]] as const) {
+    const viaFacade = await f("POST", "/members", { as, body: input });
+    const direct = await http("POST", `${api}/members`, { as, body: input });
+    // An editor lacks core's create_users, so core refuses first: the same status and code, no pointer.
+    const answer = (r: any) => [r.status, r.json.code, as === "editor" ? undefined : r.json.pointer];
+    assert.deepEqual(answer(viaFacade), answer(direct), `${as} ${JSON.stringify(input)}`);
+    assert.ok(viaFacade.status >= 400, "the test app's create rules refuse these");
+  }
+  assert.equal(wp("eval", `echo email_exists('${address}') ? 'created' : 'none';`), "none", "a refused create leaves no user");
+  // A permanent delete (core refuses one without force), with Zero's delete rule.
+  const id = zero("insert", "members", JSON.stringify({ email: address, name: `Created ${run}`, plan: "pro" }))[0].id;
+  assert.equal((await f("DELETE", `/members/${id}`, { as: "editor" })).status, 403, "the admin-only delete rule");
+  const removed = await f("DELETE", `/members/${id}`, { as: "admin" });
+  assert.deepEqual([removed.status, removed.json.data?.plan], [200, "pro"], JSON.stringify(removed.json));
+  assert.equal(wp("eval", `echo get_userdata(${id}) ? 'kept' : 'gone';`), "gone");
+});
+
+test("markdown answers are private to their caller, like JSON ones", async () => {
+  const post = zero("insert", "posts", JSON.stringify({ title: `Private md ${run}`, body: "<p>x</p>" }))[0];
+  for (const url of [`${facade}/posts/${post.id}?format=md`, `${facade}/posts/${post.id}`, `${facade}/nope`]) {
+    const res = await fetch(url);
+    assert.equal(res.headers.get("cache-control"), "private, no-store", url);
+    assert.match(res.headers.get("vary") ?? "", /Cookie/, url);
   }
 });

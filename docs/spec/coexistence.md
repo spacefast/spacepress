@@ -3,15 +3,29 @@
 Zero 0.8 and v2 both run on Spacefast while this spec is built. A Space runs
 one of them at a time, never both in the same version.
 
-## Migration is opt-in and one command
+## Migration happens on publish when nothing would be lost
 
-- **Apps already on 0.8** keep running and publishing as 0.8. Nothing converts
-  them without the owner asking.
-- **When the owner asks,** one command moves the app to v2:
-  `zero migrate app --from zero-0.8`, which the Spacefast CLI and MCP also expose.
-  It converts the app to the current v2 surface and adopts the Space's existing
-  tables, users and sessions, so no data is lost.
-- **New apps** start on v2.
+- **Live 0.8 versions** keep running unchanged. Nothing touches a version that's
+  already published.
+- **Each new publish of a 0.8 app** from the Spacefast CLI, local MCP or a source
+  build runs the converter (`zero migrate app --from zero-0.8`) and the publish
+  checks. When neither refuses anything and the Space's runtime runs v2, the
+  publish ships as v2: on an existing 0.8 Space it adopts that Space's tables, and
+  on a new Space it starts with fresh ones.
+- **Otherwise the publish ships as 0.8** and returns every refusal as
+  `{ code, file, line, column, feature, v2, fix }`, so the owner or their agent
+  can fix it and publish again. Until v2 hosting and the hosted data copy land,
+  that includes every app with a frontend, pages, static files, posts, users or
+  Functions (the `Z08_LOCAL_*` and `Z08_FUNCTIONS` refusals). A clean candidate on
+  a 0.8 Space whose runtime doesn't run v2 yet also ships as 0.8, with status
+  `waiting_on_runtime`; on a Space with no 0.8 app it's refused with the
+  retryable `runtime_capabilities_pending`.
+- **There is no flag** to opt in or out. Hosted MCP doesn't build Zero apps, and
+  older CLIs and direct API publishes never run the converter: the API doesn't
+  convert.
+- **A new Space can still start on 0.8** until CLI 0.9.0 and Zero v2 ship. New
+  apps made with `sf zero init` start on v2.
+- **The same command** runs on its own to preview the v2 candidate.
 
 So the converter always targets `main`. A PR that changes an authoring API, a
 route or a generated file that the converter emits or calls updates the
@@ -34,11 +48,22 @@ The platform enforces these, and the spec work keeps them true:
    plugin activation, rewrite rules, link filters, cache headers and markdown
    negotiation live in the v2 app plugin's request path, or behind the engine's
    `zero_generation === 'v2'` check. Static, Functions, content-model and 0.8
-   Spaces see no difference.
+   Spaces see no difference, with two accepted exceptions:
+   - The platform plugins Zero v2 needs (Action Scheduler, the MCP Adapter) are
+     installed on every box, so Action Scheduler's two post statuses
+     (`in-progress`, `failed`) show up in every Space's REST index. They are
+     labels only, with no routes or permissions.
+   - `GET /__zero/realtime.js` is a reserved engine path on every Space. On a
+     Space without live updates, which includes every non-v2 Space, it returns a
+     one-line script comment and pages poll instead. No 0.8, Static, Functions
+     or content-model page ever loads that path, so their visible behavior
+     doesn't change.
 4. **0.8's paths stay 0.8's.** `/__zero/config`, `/__zero/run`, `/__zero/auth/*`
    and `/__zero/realtime/events` keep their 0.8 meaning on 0.8 versions. v2 adds
    `/__zero/api/v1/*`, `/__zero/client.js`, `/__zero/client.d.ts` and
    `/__zero/realtime.js`, and never reuses a 0.8 path with a different meaning.
+   0.8 never used `/__zero/realtime.js`; rule 3 covers why it answers on
+   every version.
 5. **Adopted 0.8 tables are data, not schema to tidy.** The deploy-time schema
    check never alters or drops them without an explicit `--drop`.
 6. **A root `zero.config.ts` means v2.** The spec's `zero/` and `app/` folders

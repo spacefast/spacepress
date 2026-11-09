@@ -2,8 +2,8 @@
 //! Integration plugin translates it on SQLite sites).
 //!
 //! Each build compares the evaluated schema with the last snapshot
-//! (`zero/_generated/migrations/snapshot.json`, committed with the project) and writes the
-//! next numbered migration into `zero/_generated/migrations/`.
+//! (`zero/_generated/migrations/snapshot.json`, committed with the project) and
+//! writes the next numbered migration beside it.
 //!
 //! Only `table()` definitions get a table, `{prefix}zero_<table>`, plus
 //! the `{prefix}zero__revisions` system table. Post-backed collections live in

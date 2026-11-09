@@ -33,60 +33,51 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
-    project.join(layout::MIGRATIONS)
+    project.join(pipeline::LEDGER)
 }
 
-/// The last build, from the migration ledger: the snapshot and everything beside it.
+/// The last build, from the ledger: the snapshot and everything beside it.
 fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
-    if let Some(problem) = layout::old_migrations(|p| p.exists(), project) {
-        return Err(Diag::new(Span::NONE, problem));
+    if project.join(pipeline::OLD_LEDGER).exists() {
+        return Err(pipeline::moved_ledger());
     }
     let dir = migrations_dir(project);
+    let ledger = pipeline::LEDGER;
     // Only a missing file is a first build. A snapshot that is there but cannot be read (permissions,
     // a directory in its place, not UTF-8) is an error: diffing against an empty schema would plan a
     // migration that recreates every table.
     let snapshot = match std::fs::read_to_string(dir.join("snapshot.json")) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => {
-            return Err(Diag::new(
-                Span::NONE,
-                format!("can't read {}/snapshot.json: {e}", layout::MIGRATIONS),
-            ));
+            return Err(Diag::new(Span::NONE, format!("can't read {ledger}/snapshot.json: {e}")));
         }
-        Ok(text) => Some(serde_json::from_str(&text).map_err(|e| {
-            Diag::new(
-                Span::NONE,
-                format!("{}/snapshot.json is not valid JSON: {e}", layout::MIGRATIONS),
-            )
-        })?),
+        Ok(text) => Some(
+            serde_json::from_str(&text)
+                .map_err(|e| Diag::new(Span::NONE, format!("{ledger}/snapshot.json is not valid JSON: {e}")))?,
+        ),
     };
     let names = migration_names(&dir)?;
     pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str))
 }
 
-/// Every name in the migration ledger. The next migration's number comes from these, so an entry that
+/// Every name in the ledger directory. The next migration's number comes from these, so an entry that
 /// cannot be listed or named is an error: skipping it could reuse a number that is already taken.
 fn migration_names(dir: &Path) -> Result<Vec<String>, Diag> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => {
-            return Err(Diag::new(
-                Span::NONE,
-                format!("can't read {}/: {e}", layout::MIGRATIONS),
-            ));
-        }
+        Err(e) => return Err(Diag::new(Span::NONE, format!("can't read {}/: {e}", pipeline::LEDGER))),
     };
     let mut names = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|e| Diag::new(Span::NONE, format!("can't read {}/: {e}", layout::MIGRATIONS)))?;
+        let entry = entry.map_err(|e| Diag::new(Span::NONE, format!("can't read {}/: {e}", pipeline::LEDGER)))?;
         let name = entry.file_name();
         let Some(name) = name.to_str() else {
             return Err(Diag::new(
                 Span::NONE,
                 format!(
                     "{}/{} is not a UTF-8 file name; rename or remove it",
-                    layout::MIGRATIONS,
+                    pipeline::LEDGER,
                     name.to_string_lossy()
                 ),
             ));
@@ -445,7 +436,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     let new: Vec<String> = built
         .migrations
         .iter()
-        .map(|(n, _)| format!("{}/{n}", layout::MIGRATIONS))
+        .map(|(n, _)| format!("{}/{n}", pipeline::LEDGER))
         .collect();
     let suffix = if new.is_empty() {
         String::new()
@@ -480,25 +471,12 @@ fn php_lint_tree(directory: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::read_previous;
-    use crate::layout;
-
-    #[test]
-    fn a_checkout_with_the_old_ledger_directory_is_refused_with_the_move() {
-        let project = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(project.path().join("zero/migrations")).unwrap();
-        std::fs::write(project.path().join("zero/migrations/0001_init.sql"), "").unwrap();
-        let error = read_previous(project.path()).unwrap_err();
-        assert_eq!(
-            error.message,
-            "zero/migrations/ is from an earlier layout; move it to zero/_generated/migrations/ (mkdir -p zero/_generated && git mv zero/migrations zero/_generated/migrations)"
-        );
-    }
 
     #[test]
     fn a_snapshot_that_cannot_be_read_is_an_error_not_a_first_build() {
         let project = tempfile::tempdir().unwrap();
         // A directory where the file should be: readable as a path, not as a snapshot.
-        std::fs::create_dir_all(project.path().join(layout::MIGRATIONS).join("snapshot.json")).unwrap();
+        std::fs::create_dir_all(project.path().join(crate::pipeline::LEDGER).join("snapshot.json")).unwrap();
         let error = read_previous(project.path()).unwrap_err();
         assert!(
             error
@@ -513,7 +491,7 @@ mod tests {
     fn a_migration_file_name_that_is_not_utf8_is_an_error_not_skipped() {
         use std::os::unix::ffi::OsStrExt as _;
         let project = tempfile::tempdir().unwrap();
-        let dir = project.path().join(layout::MIGRATIONS);
+        let dir = project.path().join(crate::pipeline::LEDGER);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("0001_init.sql"), "").unwrap();
         std::fs::write(dir.join(std::ffi::OsStr::from_bytes(b"0002_\xff.sql")), "").unwrap();
@@ -524,11 +502,20 @@ mod tests {
     #[test]
     fn a_new_migration_never_replaces_a_file_that_is_already_there() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join(layout::MIGRATIONS).join("0002_update.sql");
+        let path = dir.path().join(crate::pipeline::LEDGER).join("0002_update.sql");
         super::write_new(&path, "first").unwrap();
         let error = super::write_new(&path, "second").unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "first");
+    }
+
+    #[test]
+    fn a_ledger_still_at_the_old_path_is_refused_not_built_as_a_first_build() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(project.path().join("zero/migrations")).unwrap();
+        std::fs::write(project.path().join("zero/migrations/snapshot.json"), "{}").unwrap();
+        let error = read_previous(project.path()).unwrap_err();
+        assert_eq!(error.message, "zero/migrations/ moved to zero/_generated/migrations/");
     }
 
     #[test]

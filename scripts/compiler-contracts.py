@@ -32,7 +32,7 @@ def render():
         assert (ROOT / evidence).exists(), f"missing evidence: {evidence}"
         if status == "refused":
             assert (ROOT / evidence / "first.config.ts").is_file()
-            assert entry["code"].startswith("Z") and entry["message"]
+            assert entry["code"].startswith("F") and entry["message"]
         if status != "refused":
             test = entry["test"]
             assert re.search(r"\n\s*fn " + re.escape(test) + r"\(", (ROOT / evidence).read_text()), f"missing test: {test}"

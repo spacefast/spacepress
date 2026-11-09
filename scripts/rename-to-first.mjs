@@ -163,6 +163,7 @@ const CODE_RULES = [
   [/(?<![\w-])Zero-(?=[A-Za-z])/g, 'First-'],
   // Diagnostic codes.
   [/\bZ(\d{4})\b/g, 'F$1'],
+  [/(?<=entry\["code"\]\.startswith\(")Z(?="\))/g, 'F'],
   // The binary, the module and the WP-CLI command.
   [/\bwp(\s+(?:@\S+\s+)?)zero\b/g, 'wp$1first'],
   [/\bsf zero\b/g, 'sf first'],
@@ -216,7 +217,7 @@ const unshield = (text, slots) => {
 };
 
 export function rename(text, path = '') {
-  if (!/zero|Z\d{4}/i.test(text)) return text;
+  if (!/zero|Z\d{4}|startswith\("Z"\)/i.test(text)) return text;
   const slots = [];
   let out = shield(text, KEEP, slots);
   if (ZERO_08_META.some((r) => r.test(path))) out = shield(out, KEEP_08_META, slots);

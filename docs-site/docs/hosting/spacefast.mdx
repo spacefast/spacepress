@@ -83,5 +83,5 @@ A First app can sign people in with Spacefast like any other OAuth2 provider. Sp
 | Message | What to do |
 | --- | --- |
 | `first_source_needs_local_capture` because an import needs npm packages | Run `npm install` in the app, then publish again from your machine. |
-| `first_source_needs_local_capture` because `first/pages.json` is missing or stale | Run `npx @spacefast/first-pages build` to render the pages again, then publish again. |
+| `first_source_needs_local_capture` because `first/pages.json` is missing or stale | Run `first build`, then `npx @spacefast/first-pages build` to render the pages again, then publish again. |
 | A diagnostic code such as `F1002` | The compiler refused the config. Read the [diagnostic codes](/reference/diagnostics), fix the file and line it names, and publish again. |

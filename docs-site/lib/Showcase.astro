@@ -9,7 +9,7 @@ import path from "node:path";
 import { preloadFileTree } from "@pierre/trees/ssr";
 
 import CodeFile from "./CodeFile.astro";
-import { filesRoot, isWritten, manifest } from "./showcase.ts";
+import { filesRoot, isBuilt, isWritten, manifest } from "./showcase.ts";
 
 interface Props {
 	/** The directory under examples/. */
@@ -19,7 +19,7 @@ const { name } = Astro.props;
 const { app, files } = manifest(name);
 const entry = "first.config.ts";
 const written = files.filter((file) => isWritten(file.path));
-const built = files.filter((file) => file.path.startsWith("first/"));
+const built = files.filter((file) => isBuilt(file.path));
 const plugins = "first/dist/wp-content/plugins";
 const appPlugin = `${plugins}/first-app-${app}`;
 const parents = (file: string) => file.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));

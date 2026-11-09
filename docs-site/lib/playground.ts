@@ -5,7 +5,7 @@ import { highlightHtml, languageOf } from "./highlight.ts";
 import { toFirst } from "./names.ts";
 
 const dark = () => document.documentElement.dataset.theme === "dark";
-import { playgroundExamples, wordpressFiles } from "./playground-catalog.ts";
+import { compilerFiles, playgroundExamples, wordpressFiles } from "./playground-catalog.ts";
 
 function readFiles(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid source files");
@@ -23,8 +23,6 @@ function readExamples(value: unknown): Map<string, Record<string, string>> {
 }
 
 const root = document.querySelector<HTMLElement>(".playground");
-const compilerEntry = root?.dataset.entry ?? "first.config.ts";
-const compilerModule = root?.dataset.module ?? "first";
 const example = document.querySelector<HTMLSelectElement>("#example");
 const sourceFile = document.querySelector<HTMLSelectElement>("#source-file");
 const source = document.querySelector<HTMLTextAreaElement>("#source");
@@ -45,14 +43,9 @@ if (!root || !example || !sourceFile || !source || !generatedFile || !generated 
 }
 
 const examples = readExamples(JSON.parse(data.textContent ?? "null"));
-// The editor shows First names: `first.config.ts` and `import ... from "first"`. The compiler is
-// handed the names it reads, which the page states in data-entry and data-module.
+// The editor shows First names (`first.config.ts`, `first/`, `import ... from "first"`); the compiler
+// is handed the names it reads (lib/playground-catalog.ts).
 const entry = "first.config.ts";
-const toCompiler = (sources: Record<string, string>) =>
-  Object.fromEntries(Object.entries(sources).map(([file, text]) => [
-    file === entry ? compilerEntry : file,
-    text.replace(/(from |import\()(["'])first\2/g, `$1$2${compilerModule}$2`),
-  ]));
 const runtime = readFiles(JSON.parse(runtimeData.textContent ?? "null"));
 const drafts = new Map<string, Record<string, string>>();
 let files: Record<string, string> = {};
@@ -132,14 +125,14 @@ const compile = () => {
   diagnostics.hidden = true;
   diagnostics.textContent = "";
   try {
-    const { check, output } = compiler.compile({ name: example.value, files: toCompiler(files), previous: null });
+    const { check, output } = compiler.compile({ name: example.value, files: compilerFiles(files), previous: null });
     if (!check.ok || !output) {
       clearOutputs();
       status.dataset.state = "diagnostics";
       status.textContent = "Fix the config to generate files.";
       diagnostics.textContent = check.diagnostics.map((d) => {
         const location = d.location ? `${d.location.file}:${d.location.line}:${d.location.column}: ` : "";
-        return `${location}${d.message}${d.help ? `\n${d.help}` : ""}`;
+        return toFirst(`${location}${d.message}${d.help ? `\n${d.help}` : ""}`);
       }).join("\n\n");
       diagnostics.hidden = false;
       return;

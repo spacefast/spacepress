@@ -32,18 +32,15 @@ test("every playground example compiles with the First names the editor shows", 
 	const { readFileSync } = await import("node:fs");
 	const path = await import("node:path");
 	const { Compiler } = await import("../../lib/compiler.ts");
-	const { playgroundExamples, firstFiles, compilerEntry, compilerModule } = await import("../../lib/playground-catalog.ts");
+	const { playgroundExamples, firstFiles, compilerFiles } = await import("../../lib/playground-catalog.ts");
 	const { sources, repo, site } = await import("../../lib/examples.ts");
 	const compiler = await Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));
 	for (const { name } of playgroundExamples) {
 		// What the browser does: show First names, then hand the compiler the names it reads.
 		const shown = firstFiles(sources(path.join(repo, "examples", name)));
 		assert.ok("first.config.ts" in shown, name);
-		const handed = Object.fromEntries(Object.entries(shown).map(([file, text]) => [
-			file === "first.config.ts" ? compilerEntry : file,
-			text.replace(/(from |import\()(["'])first\2/g, `$1$2${compilerModule}$2`),
-		]));
-		const { check } = compiler.compile({ name, files: handed, previous: null });
+		assert.ok(!Object.keys(shown).some((file) => file.startsWith("zero/")), `${name} shows a zero/ path`);
+		const { check } = compiler.compile({ name, files: compilerFiles(shown), previous: null });
 		assert.equal(check.ok, true, `${name}: ${check.diagnostics.map((d) => d.message).join("; ")}`);
 	}
 });

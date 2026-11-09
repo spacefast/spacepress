@@ -15,7 +15,7 @@ pnpm check     # generated pages current, unit tests, links, browser tests
 
 | Path | Source |
 | --- | --- |
-| `docs/index.mdx`, `docs/getting-started.mdx`, `docs/hosting/`, `docs/migrating-from-zero.mdx` | Written by hand |
+| `docs/index.mdx`, `docs/getting-started.mdx`, `docs/hosting/` | Written by hand |
 | `docs/examples/` | `examples/*`: each README and config, compiled when the pages are generated |
 | `docs/reference/config.mdx` | `types/zero/index.d.ts` |
 | `docs/reference/client.mdx` | `runtime/client/index.ts` |

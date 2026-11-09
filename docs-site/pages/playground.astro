@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
 import { example, repo } from "../lib/examples.ts";
-import { compilerEntry, compilerModule, firstFiles, playgroundExamples, wordpressFiles } from "../lib/playground-catalog.ts";
+import { firstFiles, playgroundExamples, wordpressFiles } from "../lib/playground-catalog.ts";
 
 const examples = Object.fromEntries(await Promise.all(
 	playgroundExamples.map(async ({ name }) => [name, firstFiles((await example(name)).files)]),
@@ -29,7 +29,7 @@ const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, 
 	ogEnabled={config.og.enabled}
 	page={{ title: "Playground · First", description: "Edit a First config and see the PHP, SQL migrations and TypeScript client it compiles to. The compiler runs in your browser.", route: "/playground" }}
 >
-	<main class="playground" data-wasm="/compiler.wasm" data-entry={compilerEntry} data-module={compilerModule}>
+	<main class="playground" data-wasm="/compiler.wasm">
 		<div class="intro">
 			<div>
 				<h1>Playground</h1>

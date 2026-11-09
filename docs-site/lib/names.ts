@@ -40,8 +40,9 @@ const rules: [RegExp, string][] = [
 	// The `first` binary's commands. Not after `sf `: `sf zero abilities` and the like act on 0.8 Spaces.
 	[/(^|[\s`(])(?<!sf )zero (?=(dev|build|check|doctor|sync|abilities|migrate|deploy|wp|seed|jobs|run|action|find|insert|update|delete|publish-due|identity|help|sources)\b)/gm, "$1first "],
 	[/(^|[\s`"'(/])\.zero\//gm, "$1.first/"],
-	// The app folder. Not `@spacefast/zero/client`, the 0.8 package.
-	[/(^|[\s`"'(/.])(?<!@spacefast\/)zero\/(_generated|client|dist|migrations|app|components|pages\.json|abilities\.json|plugins\.lock\.json|wp-plugins\.lock\.json)/gm, "$1first/$2"],
+	// The app folder and everything in it. Not `@spacefast/zero/client` (the 0.8 package), the
+	// repository (`spacefast/zero/blob`), the REST namespace (`zero/v1`) or `types/zero/`.
+	[/(^|[\s`"'(/.])(?<!spacefast\/|types\/)zero\/(?!v1\b)(?=[\w.<-])/gm, "$1first/"],
 	[/\bZERO_(?!0)/g, "FIRST_"],
 	[/\bZ(\d{4})\b/g, "F$1"],
 	[/\bZero(Error|Config)\b/g, "First$1"],

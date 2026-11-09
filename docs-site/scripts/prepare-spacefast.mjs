@@ -23,18 +23,21 @@ for (const line of readFileSync(headersFile, "utf8").split("\n")) {
 	if (line.startsWith("/")) rules.push({ path: line, headers: [] });
 	else if (line.trim() && rules.length) rules.at(-1).headers.push(line);
 }
-// A `*` is allowed only as the whole last segment: `/*` or `/assets/*`.
+// A `*` is allowed only as the whole last segment: `/*` or `/assets/*`. A rule with `*` inside a
+// segment, such as Blume's `/blume-assets/*.svg` sandbox for content images, is widened to its folder
+// so it keeps its headers: everything under /blume-assets/ is a content asset.
 const allowed = (pattern) => !pattern.includes("*") || /(^|\/)\*$/.test(pattern);
+const widened = (pattern) => pattern.replace(/\/[^/]*\*[^/]*$/, "/*");
 const kept = [
-	...rules.filter((rule) => allowed(rule.path)),
+	...rules.map((rule) => (allowed(rule.path) ? rule : { ...rule, path: widened(rule.path) })).filter((rule) => allowed(rule.path)),
 	{ path: "/compiler.wasm", headers: ["  Content-Type: application/wasm"] },
 	// WordPress Playground runs on playground.wordpress.net and fetches the example blueprints and
 	// plugin zips from here, which needs CORS.
 	{ path: "/files/*", headers: ["  Access-Control-Allow-Origin: *"] },
 ];
-const dropped = [...new Set(rules.filter((rule) => !allowed(rule.path)).map((rule) => rule.path))];
+const dropped = [...new Set(rules.filter((rule) => !allowed(rule.path) && !allowed(widened(rule.path))).map((rule) => rule.path))];
 writeFileSync(headersFile, `${kept.map((rule) => [rule.path, ...rule.headers].join("\n")).join("\n")}\n`);
-console.log(`_headers: kept ${kept.length} rules, dropped ${dropped.join(", ")}`);
+console.log(`_headers: kept ${kept.length} rules${dropped.length ? `, dropped ${dropped.join(", ")}` : ""}`);
 
 let raw = 0;
 const walk = (dir) => {

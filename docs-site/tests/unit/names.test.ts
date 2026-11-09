@@ -47,6 +47,10 @@ const cases: [string, string][] = [
 	["{prefix}zero_locations, zero__migrations, zero_identity_keys", "{prefix}first_locations, first__migrations, first_identity_keys"],
 	["`zero-blocks content <file.tsx>`", "`first-blocks content <file.tsx>`"],
 	["independent of the `zero` binary's", "independent of the `first` binary's"],
+	["`zero/lib/owner.ts` and zero/wp-hooks/init.ts", "`first/lib/owner.ts` and first/wp-hooks/init.ts"],
+	["import { mine } from \"./zero/lib/owner\";", "import { mine } from \"./first/lib/owner\";"],
+	["github.com/spacefast/zero/blob/main/types/zero/index.d.ts", "github.com/spacefast/zero/blob/main/types/zero/index.d.ts"],
+	["from \"./zero/_generated/client/index.ts\" and /zero/pages.json", "from \"./first/_generated/client/index.ts\" and /first/pages.json"],
 ];
 
 for (const [input, expected] of cases) {

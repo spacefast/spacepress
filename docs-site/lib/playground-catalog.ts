@@ -1,15 +1,28 @@
 import { toFirst } from "./names.ts";
 import { siteExamples } from "./site-examples.ts";
 
-// The names the compiler on main reads for the entry file and the module a config imports. The
-// playground shows First names and hands the compiler these. After the rename lands on main, both
-// are "first.config.ts" and "first", and firstFiles changes nothing.
+// The names the compiler on main reads for the entry file, the app folder and the module a config
+// imports. The playground shows First names and hands the compiler these. After the rename lands on
+// main, they are "first.config.ts", "first" and "first", and both functions below change nothing.
 export const compilerEntry = "zero.config.ts";
+export const compilerRoot = "zero";
 export const compilerModule = "zero";
 
-/** An example's sources as the docs show them: First names, and the entry as first.config.ts. */
+const moved = (file: string, from: string, to: string) => (file.startsWith(`${from}/`) ? `${to}/${file.slice(from.length + 1)}` : file);
+
+/** An example's sources as the docs show them: First names, the entry as first.config.ts, app code under first/. */
 export function firstFiles(files: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(files).map(([file, text]) => [file === compilerEntry ? "first.config.ts" : file, toFirst(text)]));
+  return Object.fromEntries(Object.entries(files).map(([file, text]) => [file === compilerEntry ? "first.config.ts" : moved(file, compilerRoot, "first"), toFirst(text)]));
+}
+
+/** What the editor shows, handed back with the names the compiler reads. */
+export function compilerFiles(files: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(files).map(([file, text]) => [
+    file === "first.config.ts" ? compilerEntry : moved(file, "first", compilerRoot),
+    text
+      .replace(/(from |import\()(["'])first\2/g, `$1$2${compilerModule}$2`)
+      .replace(/(["'])((?:\.\.?\/)+)first\//g, `$1$2${compilerRoot}/`),
+  ]));
 }
 
 // The site's examples (lib/site-examples.ts), the first one opened by default, plus the blog,

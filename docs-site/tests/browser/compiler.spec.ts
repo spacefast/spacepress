@@ -46,13 +46,13 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await generatedFile.selectOption("first/app/schema.php");
   await expect(generated).toHaveValue(/<\?php[\s\S]*'collections' =>/);
 
-  await page.getByRole("combobox", { name: "Source file", exact: true }).selectOption("zero/lib/fields.ts");
+  await page.getByRole("combobox", { name: "Source file", exact: true }).selectOption("first/lib/fields.ts");
   await source.fill((await source.inputValue()).replace("LOW_STOCK = 1", "LOW_STOCK = 7"));
   await expect(generated).toHaveValue(/'lowStockAt' => [^\n]*'value' => 7/);
 
   await source.fill("export const =");
   await expect(status).toHaveAttribute("data-state", "diagnostics");
-  await expect(page.getByRole("alert")).toContainText("zero/lib/fields.ts");
+  await expect(page.getByRole("alert")).toContainText("first/lib/fields.ts");
   await expect(generated).toHaveValue("");
   await expect(page.getByRole("button", { name: "Download file" })).toBeDisabled();
 

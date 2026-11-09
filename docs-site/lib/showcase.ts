@@ -22,8 +22,11 @@ export interface Manifest {
 // lockfile is npm's. They are in the tree, and are not counted as files you write.
 const notSources = new Set(["README.md", "tsconfig.json", "package-lock.json", ".gitignore"]);
 
-/** A path the developer writes: outside the `first/` build folder, and an app source. */
-export const isWritten = (file: string) => !file.startsWith("first/") && !notSources.has(file);
+/** A path `first build` writes: the generated files and the WordPress output under `first/`. */
+export const isBuilt = (file: string) => file.startsWith("first/_generated/") || file.startsWith("first/dist/");
+
+/** A path the developer writes: app code, under `first/` or not, that the build didn't write. */
+export const isWritten = (file: string) => !isBuilt(file) && !notSources.has(file);
 
 export function manifest(name: string): Manifest {
   const file = path.join(filesRoot, `${name}.json`);

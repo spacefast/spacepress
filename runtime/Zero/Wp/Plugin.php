@@ -98,6 +98,7 @@ final class Plugin
         Rest::boot();
         HttpRoutes::register($this);
         MarkdownTwins::register();
+        Purges::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         // A plugin updated by copying files in has no activation; the first request of any kind

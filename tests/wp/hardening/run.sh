@@ -16,7 +16,7 @@ trap cleanup EXIT
 mkdir "$work/app"
 cp "$here/zero.config.ts" "$work/app/"
 "$target/debug/zero" build "$work/app" --quiet >/dev/null
-"$wp/harness.sh" up --wp-content "$work/app/.zero/wp-content" > "$work/harness.json"
+"$wp/harness.sh" up --wp-content "$work/app/zero/dist/wp-content" > "$work/harness.json"
 # Jetpack, as a site that gets Akismet through it would run: the xmlrpc switch's one exception is its
 # connection. Pinned and checked like the platform plugins, into the harness's shared cache.
 jetpack="$wp/cache/jetpack.16.4.zip"

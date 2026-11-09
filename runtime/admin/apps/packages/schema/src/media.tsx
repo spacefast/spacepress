@@ -169,7 +169,7 @@ export function MediaDocument() {
 					key={id}
 					id={id}
 					core={state.value.core}
-					first={state.value.zero}
+					first={state.value.first}
 				/>
 			)}
 		</Page>

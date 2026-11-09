@@ -45,7 +45,7 @@ const pinned = {
   action: ["approveComment", "publishedCount", "agentNote"],
   global: ["settings"],
 };
-const isPinned = (a: any) => Object.entries(pinned).some(([kind, names]) => names.includes(a.meta.zero[kind]));
+const isPinned = (a: any) => Object.entries(pinned).some(([kind, names]) => names.includes(a.meta.first[kind]));
 
 test("wp first abilities lists every operation of the app with schemas from schema.php (golden)", () => {
   const listed = first("abilities").filter(isPinned);

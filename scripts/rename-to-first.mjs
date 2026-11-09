@@ -185,6 +185,10 @@ const PROSE_RULES = [[/(?<![\w\\-])Zero(?![\w\\])/g, 'First']];
 // Lines that talk about Zero 0.8 keep "Zero" as a word.
 const PROSE_08_LINE = /0\.[89]\b|\boriginal Zero|\bOriginal Zero|\bORIGINAL Zero|\bearlier Zero|Zero's last release|formerly Zero|\bthe new Zero|\bRezo Zero/;
 
+// A property named after the product: `manifest.zero`, `meta.zero`, `state.value.zero`. Its producers
+// (`{"zero": …}`, `'zero' => …`, `{ zero: … }`) are renamed by bareWord and the quoted-word rule.
+const memberAccess = (text) => text.replace(/(?<=[\w)\]]\.)zero(?![\w\/.-])/g, 'first');
+
 function bareWord(text, prose08) {
   // A bare lowercase `zero` in code is the binary, the module or a variable named after them,
   // unless it is arithmetic. In Zero 0.8 code a plain "zero" string literal is a 0.8 value (the
@@ -221,7 +225,7 @@ export function rename(text, path = '') {
     if (prose08 && replacement === '$1first$1') continue; // 0.8 source kinds such as --from "zero"
     out = out.replace(pattern, replacement);
   }
-  if ((path === '' || CODE.test(path)) && !KEEP_BARE.some((r) => r.test(path))) out = bareWord(out, prose08);
+  if ((path === '' || CODE.test(path)) && !KEEP_BARE.some((r) => r.test(path))) out = memberAccess(bareWord(out, prose08));
   if (!prose08) {
     out = out
       .split('\n')

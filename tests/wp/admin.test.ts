@@ -16,12 +16,12 @@ import { loginCookie } from "./login.ts";
 
 test("the built artifact ships first-admin and the harness activated it after the app", () => {
   const manifest = JSON.parse(readFileSync(`${content}first-manifest.json`, "utf8"));
-  assert.equal(manifest.plugins["first-admin"], manifest.zero, "the admin plugin is versioned with the compiler");
+  assert.equal(manifest.plugins["first-admin"], manifest.first, "the admin plugin is versioned with the compiler");
   const status = JSON.parse(wp("plugin", "list", "--format=json", "--fields=name,status,version"));
   const admin = status.find((p: any) => p.name === "first-admin");
-  assert.deepEqual([admin?.status, admin?.version], ["active", manifest.zero]);
+  assert.deepEqual([admin?.status, admin?.version], ["active", manifest.first]);
   // Activation registered and persisted the one rewrite rule, so pretty URLs reach the app.
-  assert.equal(wp("option", "get", "first_admin_rewrite"), manifest.zero);
+  assert.equal(wp("option", "get", "first_admin_rewrite"), manifest.first);
   // Plugins may enqueue an admin asset before REST has registered its handle.
   const assets = JSON.parse(wp("eval", `
     wp_set_current_user(${harness.users.admin.id});

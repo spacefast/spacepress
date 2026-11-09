@@ -1,21 +1,22 @@
-// The WP test app: the frozen phase-1 blog's schema (tests/fixtures/blog), relations, globals and actions, plus hooks that leave
+// The WP test app: the frozen phase-1 blog's schema (tests/fixtures/blog, which run.sh copies to
+// zero/blog/ so the app imports it from inside zero/), relations, globals and actions, plus hooks that leave
 // an observable trace for the editor-parity and rollback tests. The blog's own hooks are repeated
 // verbatim (a config can't import another config's default export).
 import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, json, real, select, text, timestamp, HttpError, table } from "zero";
-import { collections, tables, users, entities, settings, comments } from "../../fixtures/blog/zero.config.ts";
-import blog from "../../fixtures/blog/zero.config.ts";
+import { collections, tables, users, entities, settings, comments } from "./zero/blog/zero.config.ts";
+import blog from "./zero/blog/zero.config.ts";
 // One fragment per phase-2 lane, so lanes add test collections without editing this file.
-import * as fields from "./lanes/fields.ts";
-import * as sync from "./lanes/sync.ts";
-import * as jobs from "./lanes/jobs.ts";
-import * as auth from "./lanes/auth.ts";
-import * as abilities from "./lanes/abilities.ts";
-import * as media from "./lanes/media.ts";
-import * as locales from "./lanes/locales.ts";
-import * as rest from "./lanes/rest.ts";
-import * as runtime from "./lanes/runtime.ts";
-import { merge, mergeHooks } from "./compose.ts";
-import uploads from "./uploads.ts";
+import * as fields from "./zero/lanes/fields.ts";
+import * as sync from "./zero/lanes/sync.ts";
+import * as jobs from "./zero/lanes/jobs.ts";
+import * as auth from "./zero/lanes/auth.ts";
+import * as abilities from "./zero/lanes/abilities.ts";
+import * as media from "./zero/lanes/media.ts";
+import * as locales from "./zero/lanes/locales.ts";
+import * as rest from "./zero/lanes/rest.ts";
+import * as runtime from "./zero/lanes/runtime.ts";
+import { merge, mergeHooks } from "./zero/compose.ts";
+import uploads from "./zero/uploads.ts";
 const lanes = [fields, sync, jobs, auth, abilities, media, locales, rest, runtime];
 
 // A `table()` with a real SQL UNIQUE index (the blog has none).

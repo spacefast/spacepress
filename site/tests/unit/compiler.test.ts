@@ -22,9 +22,9 @@ function sources(dir: string): Request["files"] {
   }
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
-      // `zero/` holds generated output, except `zero/components/`: server components are sources.
-      if ((name === "zero" && sub === "") || name === ".zero") continue;
       const rel = sub ? `${sub}/${name}` : name;
+      // App code under zero/ is an input; what Zero wrote there is not (the locks are read above).
+      if (name === ".zero" || rel === "zero/_generated" || rel === "zero/dist") continue;
       const full = path.join(dir, rel);
       const stat = lstatSync(full);
       if (stat.isDirectory()) walk(rel);
@@ -32,7 +32,6 @@ function sources(dir: string): Request["files"] {
     }
   };
   walk("");
-  if (statSync(path.join(dir, "zero/components"), { throwIfNoEntry: false })?.isDirectory()) walk("zero/components");
   return files;
 }
 
@@ -174,6 +173,7 @@ test("finite type algebra preserves native outputs and strict client boundaries 
   try {
     const files = sources(fixture);
     for (const [rel, text] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
       writeFileSync(path.join(dir, rel), text);
     }
     const { envelope, check, output } = browserCheck({ name, files });
@@ -362,7 +362,8 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
       const entries: Array<[string, unknown]> = Object.entries(value.files);
       for (const [name, source] of entries) {
         assert.ok(typeof source === "string");
-        files[name] = source;
+        // App modules load only from zero/; the generated config below lives there too.
+        files[`zero/${name}`] = source;
       }
     }
     if ("declarations" in value) {
@@ -381,12 +382,16 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
     }
   }
   vectors.forEach(addVector);
-  files["helper.js"] = javascript.join("\n");
-  files["zero.config.ts"] = `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});`;
+  files["zero/helper.js"] = javascript.join("\n");
+  files["zero/app.ts"] = `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});`;
+  files["zero.config.ts"] = "export { default } from './zero/app.ts';\n";
   const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
   mkdirSync(dir, { recursive: true });
   try {
-    for (const [name, source] of Object.entries(files)) writeFileSync(path.join(dir, name), source);
+    for (const [name, source] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+      writeFileSync(path.join(dir, name), source);
+    }
     const { envelope, check, output } = browserCheck({ name: "builtinparity", files });
     assert.equal(envelope, nativeCheck(dir));
     assert.equal(check.ok, true);

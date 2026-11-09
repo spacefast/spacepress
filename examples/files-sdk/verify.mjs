@@ -1,4 +1,4 @@
-// Differential test: run every scenario in app/scenarios.mjs under Node against
+// Differential test: run every scenario in app/zero/scenarios.mjs under Node against
 // the installed files-sdk, then through the PHP that Zero generates, and compare
 // the JSON output byte for byte.
 //
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { sourceFiles } from "./sources.mjs";
 import { measure, table } from "./table.mjs";
-import * as scenarios from "./app/scenarios.mjs";
+import * as scenarios from "./app/zero/scenarios.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const { values: options } = parseArgs({

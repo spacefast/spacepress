@@ -55,6 +55,12 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "zero.config.ts:2:11",
     );
     rejects("reject-infinite-loop", "step budget exceeded", "zero.config.ts:2:");
+    // App code loads only from zero/ (Z1210): here a module inside zero/ reaches back out.
+    rejects(
+        "reject-import-fence",
+        "zero/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside zero/",
+        "zero/tags.ts:2:1",
+    );
 }
 
 /// JSX outside the subset fails the build at its source, saying what to write instead
@@ -94,7 +100,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config",
         "JSX files can't be part of a Zero config",
-        "view.tsx:1:1",
+        "zero/lib/view.tsx:1:1",
     );
     // An action can't return rendered JSX: the config never reaches a component module.
     rejects(
@@ -167,7 +173,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config-unused",
         "JSX files can't be part of a Zero config",
-        "label.tsx:1:1",
+        "zero/lib/label.tsx:1:1",
     );
     rejects(
         "reject-jsx-use-client-prologue",
@@ -727,7 +733,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let project = tmp.join("pantry");
     copy(&root().join("examples/pantry"), &project);
     let _ = std::fs::remove_dir_all(project.join(".zero"));
-    let _ = std::fs::remove_dir_all(project.join("zero"));
+    let _ = std::fs::remove_dir_all(project.join("zero/_generated"));
 
     let out = zero().arg("build").arg(&project).output().unwrap();
     assert!(
@@ -1029,10 +1035,17 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let tmp = std::env::temp_dir().join(format!("zero-diff-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
-    std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
-    std::fs::copy(dir.join("namespace.mjs"), tmp.join("namespace.mjs")).unwrap();
+    // App code loads from zero/; the root config re-exports the cases' config.
+    std::fs::create_dir_all(tmp.join("zero")).unwrap();
+    std::fs::copy(dir.join("cases.ts"), tmp.join("zero/cases.ts")).unwrap();
+    std::fs::copy(dir.join("namespace.mjs"), tmp.join("zero/namespace.mjs")).unwrap();
     // Plain JavaScript modules the cases import run through checked dynamic dispatch.
-    std::fs::copy(dir.join("stdlib.js"), tmp.join("stdlib.js")).unwrap();
+    std::fs::copy(dir.join("stdlib.js"), tmp.join("zero/stdlib.js")).unwrap();
+    std::fs::write(
+        tmp.join("zero.config.ts"),
+        "export { default } from \"./zero/cases.ts\";\n",
+    )
+    .unwrap();
     let built = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(
         built.status.success(),
@@ -2202,7 +2215,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("defineConfig() has no option `target`"), "{stderr}");
     assert!(
-        !tmp.join(".zero").exists() && !tmp.join("zero").exists(),
+        !tmp.join(".zero").exists() && !tmp.join("zero/_generated").exists() && !tmp.join("zero/dist").exists(),
         "a refusal wrote files"
     );
     std::fs::write(tmp.join("zero.config.ts"), config).unwrap();
@@ -2525,11 +2538,13 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
 ",
     );
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    // App modules live under zero/ (the import fence).
+    std::fs::create_dir_all(tmp.path().join("zero")).unwrap();
+    std::fs::write(tmp.path().join("zero/run.mjs"), body).unwrap();
     std::fs::write(
         tmp.path().join("zero.config.ts"),
         r#"import { action, defineConfig, text } from "zero";
-import { run } from "./run.mjs";
+import { run } from "./zero/run.mjs";
 export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )

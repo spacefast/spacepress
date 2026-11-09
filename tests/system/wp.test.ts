@@ -29,7 +29,7 @@ const project = join(work, "wp-site");
 const artifact = join(work, "wp-artifact");
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
-const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "polylang", "zero-runtime", "zero-identity", "zero-app-site"];
+const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "zero-runtime", "zero-identity", "zero-app-site"];
 
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const wpFails = (...args: string[]) => {
@@ -151,8 +151,8 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.deepEqual(readdirSync(join(artifact, "plugins")).filter((n) => !n.endsWith(".zip")).sort(), [...ORDER].sort());
   install(artifact);
   // Requires Plugins refuses to activate a plugin before its dependencies, so order matters.
-  assert.match(wpFails("plugin", "activate", "zero-app-site"), /requires 5 plugins.*Action Scheduler, MCP Adapter, Polylang, Secure Custom Fields, Zero Runtime/s);
-  assert.match(wpFails("plugin", "activate", "zero-runtime"), /requires 3 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields/s);
+  assert.match(wpFails("plugin", "activate", "zero-app-site"), /requires 6 plugins.*Action Scheduler, MCP Adapter, Polylang, Secure Custom Fields, Two Factor, Zero Runtime/s);
+  assert.match(wpFails("plugin", "activate", "zero-runtime"), /requires 4 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Two Factor/s);
   assert.deepEqual(active(), []);
   // This site sits behind a published port its own container can't reach, so the owner routes the
   // private-files probe to the web server's in-network name, with the filter that exists for hosts.
@@ -182,6 +182,10 @@ test("installing the artifact: activation order, platform requirements, doctor",
     [wp("core", "version"), "6.9.7", "4.2.0", "0.7.1"],
     "doctor reports the site's real versions",
   );
+  // Akismet isn't required: without it the site still passes, and one line says spam checks are off.
+  assert.deepEqual(diagnosis.checks.find((c) => c.name === "spam checks"), {
+    name: "spam checks", ok: true, detail: "off: Akismet is not active (set it up through Jetpack); comments are not spam-checked",
+  });
 
   // Without a required plugin the app refuses to boot and names the unmet row; doctor fails.
   wp("plugin", "deactivate", "secure-custom-fields");

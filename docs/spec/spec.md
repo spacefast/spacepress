@@ -172,7 +172,8 @@ else fails the build (`Z1220`), so there is never a second users table or a
   is a separate kind stored as `comment_type = "review"` with meta fields. It
   appears in wp-admin under its own screen and is excluded from normal comment counts.
 - **Moderation and spam:** statuses `pending`, `approved`, `spam` and `trash`.
-  Akismet is always installed (§6) and checks every create. Editors and
+  Akismet checks every create when the site has Akismet through Jetpack;
+  otherwise spam checks are off (§6). Editors and
   users with the `moderateComments` capability change status.
 - **Access defaults:** anyone reads `approved`; the comment's author also sees
   their own `pending`; create follows the item's `comments` options, and the
@@ -428,7 +429,7 @@ export default defineConfig({
 Zero's release pins the WordPress it runs on. Users cannot remove any of the following.
 
 - **Always installed:**
-  - Secure Custom Fields, Action Scheduler, MCP Adapter, Akismet;
+  - Secure Custom Fields, Action Scheduler, MCP Adapter;
   - Two Factor (enforced per `mfa`);
   - Zero's own plugins;
   - Polylang when `locales` is set.
@@ -439,6 +440,10 @@ Zero's release pins the WordPress it runs on. Users cannot remove any of the fol
   - the Customizer;
   - comments on kinds without `comments`;
   - the theme front end when `app/` or `frontend` takes over.
+- **Spam checks:** Zero uses the Akismet a site sets up through Jetpack. While it
+  has a key (Jetpack's connection or `WPCOM_API_KEY`), Akismet checks every
+  comment create. Without Akismet or a key, spam checks are off, the app
+  still runs, and `zero doctor` says so.
 - **Always configured:** pretty permalinks, the Space's timezone, the object
   cache, Batcache and edge cache (rendering.md), and a block theme (Zero's
   minimal default when none is chosen).

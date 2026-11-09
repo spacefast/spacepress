@@ -288,7 +288,8 @@ and a TanStack list updates live.
 **Exists:** plugin pinning (`plugins.lock.json`), the SCF and Action Scheduler bundles, `zero-identity`.
 
 **Build:** Zero's release installs and pins Secure Custom Fields, Action
-Scheduler, the MCP Adapter, Akismet, Two Factor and (with `locales`) Polylang.
+Scheduler, the MCP Adapter, Two Factor and (with `locales`) Polylang. Spam
+checks use the Akismet a site has through Jetpack, when it has a key.
 It also hardens WordPress:
 - turns off XML-RPC, pings, emoji scripts, file editors, plugin and theme installs, core auto-updates and the Customizer;
 - disables comments everywhere except kinds that turn them on;

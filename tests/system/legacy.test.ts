@@ -43,7 +43,7 @@ before(async () => {
   zero("build", project, "--quiet");
   const built = join(project, "zero/dist/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
-  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "zero-runtime", "zero-identity", "zero-app-legacy");
+  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "zero-runtime", "zero-identity", "zero-app-legacy");
   const mod = await import(pathToFileURL(join(project, "zero/_generated/client/index.ts")).href);
   const basic = (role: "editor") => ({ Authorization: "Basic " + btoa(`${role}:${receipt.users[role].appPassword}`) });
   client = (role) => mod.createClient({ url: api, headers: role === "anonymous" ? {} : basic(role) });

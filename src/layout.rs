@@ -5,16 +5,13 @@
 //!   declarations, the typed client and the locks.
 //! - `zero/dist/` is written by `zero build` and ignored by git: the deployable output.
 
-use std::path::Path;
-
 /// The config at the project root.
 pub const CONFIG: &str = "zero.config.ts";
 /// The Zero root.
 pub const ROOT: &str = "zero";
 /// Written by Zero, committed.
 pub const GENERATED: &str = "zero/_generated";
-/// The migration ledger: numbered SQL files and `snapshot.json`.
-pub const MIGRATIONS: &str = "zero/_generated/migrations";
+/// The migration ledger lives at [`crate::pipeline::LEDGER`], beside these.
 /// The type declarations that register the app's schema with `"zero"`.
 pub const DB_TYPES: &str = "zero/_generated/db.d.ts";
 /// The typed client.
@@ -26,14 +23,11 @@ pub const DIST: &str = "zero/dist";
 /// `zero build`'s default output: a `wp-content` directory.
 pub const WP_CONTENT: &str = "zero/dist/wp-content";
 
-/// Where the migration ledger lived before `zero/_generated/` (zero ≤ 0.x builds).
-const OLD_MIGRATIONS: &str = "zero/migrations";
-
 /// Committed inputs that moved into `zero/_generated/`: (old project path, new). A source bundle
 /// captured before the move names the old paths, and a host recompiles stored bundles, so the
-/// hosted compile reads them through [`current`].
+/// hosted compile reads them through [`current`]. (The hosted compile reads the ledger's old path
+/// itself; see `bundle::compile_tree`.)
 const MOVED: &[(&str, &str)] = &[
-    ("zero/migrations/", "zero/_generated/migrations/"),
     ("zero/abilities.json", "zero/_generated/abilities.json"),
     ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
 ];
@@ -49,28 +43,11 @@ pub fn current(path: &str) -> String {
     path.to_string()
 }
 
-/// The ledger's old directory, if a checkout still has it. Building beside it would number a new
-/// `0001_init.sql` that a site's migration ledger already recorded under the same id, so callers
-/// refuse instead.
-pub fn old_migrations(exists: impl Fn(&Path) -> bool, project: &Path) -> Option<String> {
-    exists(&project.join(OLD_MIGRATIONS)).then(|| {
-        format!("{OLD_MIGRATIONS}/ is from an earlier layout; move it to {MIGRATIONS}/ (mkdir -p {GENERATED} && git mv {OLD_MIGRATIONS} {MIGRATIONS})")
-    })
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
     fn captured_paths_from_before_generated_read_on_this_layout() {
         for (old, new) in [
-            (
-                "zero/migrations/0001_init.sql",
-                "zero/_generated/migrations/0001_init.sql",
-            ),
-            (
-                "zero/migrations/snapshot.json",
-                "zero/_generated/migrations/snapshot.json",
-            ),
             ("zero/abilities.json", "zero/_generated/abilities.json"),
             ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
             // Already current, and unrelated paths, are unchanged.

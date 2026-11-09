@@ -3,15 +3,29 @@
 Zero 0.8 and v2 both run on Spacefast while this spec is built. A Space runs
 one of them at a time, never both in the same version.
 
-## Migration is opt-in and one command
+## Migration happens on publish when nothing would be lost
 
-- **Apps already on 0.8** keep running and publishing as 0.8. Nothing converts
-  them without the owner asking.
-- **When the owner asks,** one command moves the app to v2:
-  `zero migrate app --from zero-0.8`, which the Spacefast CLI and MCP also expose.
-  It converts the app to the current v2 surface and adopts the Space's existing
-  tables, users and sessions, so no data is lost.
-- **New apps** start on v2.
+- **Live 0.8 versions** keep running unchanged. Nothing touches a version that's
+  already published.
+- **Each new publish of a 0.8 app** from the Spacefast CLI, local MCP or a source
+  build runs the converter (`zero migrate app --from zero-0.8`) and the publish
+  checks. When neither refuses anything and the Space's runtime runs v2, the
+  publish ships as v2: on an existing 0.8 Space it adopts that Space's tables, and
+  on a new Space it starts with fresh ones.
+- **Otherwise the publish ships as 0.8** and returns every refusal as
+  `{ code, file, line, column, feature, v2, fix }`, so the owner or their agent
+  can fix it and publish again. Until v2 hosting and the hosted data copy land,
+  that includes every app with a frontend, pages, static files, posts, users or
+  Functions (the `Z08_LOCAL_*` and `Z08_FUNCTIONS` refusals). A clean candidate on
+  a 0.8 Space whose runtime doesn't run v2 yet also ships as 0.8, with status
+  `waiting_on_runtime`; on a Space with no 0.8 app it's refused with the
+  retryable `runtime_capabilities_pending`.
+- **There is no flag** to opt in or out. Hosted MCP doesn't build Zero apps, and
+  older CLIs and direct API publishes never run the converter: the API doesn't
+  convert.
+- **A new Space can still start on 0.8** until CLI 0.9.0 and Zero v2 ship. New
+  apps made with `sf zero init` start on v2.
+- **The same command** runs on its own to preview the v2 candidate.
 
 So the converter always targets `main`. A PR that changes an authoring API, a
 route or a generated file that the converter emits or calls updates the

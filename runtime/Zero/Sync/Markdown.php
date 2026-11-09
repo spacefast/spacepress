@@ -102,6 +102,37 @@ final class Markdown
     }
 
     /**
+     * A post's content as Markdown for reading, exactly as WordPress shows it: the post is set up
+     * (setup_postdata), so get_the_ID() and every per-post check see it; then the whole the_content
+     * filter runs (blocks, shortcodes, embeds, and the filters membership and paywall plugins use to
+     * replace content for visitors who may not read it), and its HTML becomes Markdown. A post whose
+     * rendering throws shows nothing. The global post is restored afterwards.
+     */
+    public static function renderPost(\WP_Post $subject): string
+    {
+        Blocks::boot();
+        global $post;
+        $previous = $post ?? null;
+        $post = $subject;
+        setup_postdata($subject);
+        try {
+            $html = (string) apply_filters('the_content', (string) $subject->post_content);
+            $markdown = trim(HtmlMarkdown::convert($html));
+        } catch (\Throwable) {
+            $markdown = '';
+        } finally {
+            $post = $previous;
+            if ($previous instanceof \WP_Post) {
+                setup_postdata($previous);
+            } else {
+                wp_reset_postdata();
+            }
+        }
+
+        return $markdown === '' ? '' : self::escapeTags($markdown) . "\n";
+    }
+
+    /**
      * `\<` for every `<` that a Markdown renderer could read as the start of raw HTML (a tag, a
      * comment, a declaration), outside fenced code and code spans, where it is shown as written.
      */

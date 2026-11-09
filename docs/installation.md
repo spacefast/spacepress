@@ -7,7 +7,7 @@ First's npm installer and unsigned release workflow are ready for maintainers to
 After publication:
 
 ```sh
-npm create @spacefast/zero@0.3.0 my-app
+npm create @spacefast/first@0.3.0 my-app
 cd my-app
 npm run dev
 ```
@@ -29,7 +29,7 @@ npm run stop
 
 Stopping preserves your local SQLite content. Commit generated migrations and client files; keep `.first/`, dependencies and secrets out of Git. The emitted deployment artifact is `.first/wp-content`, not the local Studio database. Production provisioning and data migration require the deployment lifecycle for your target WordPress site.
 
-Use `npm create @spacefast/zero@0.3.0 my-app -- --no-install` to scaffold without installing dependencies. Choose a new directory: existing empty directories, populated directories and symbolic links are all refused. An installation failure preserves the newly created app for a retry.
+Use `npm create @spacefast/first@0.3.0 my-app -- --no-install` to scaffold without installing dependencies. Choose a new directory: existing empty directories, populated directories and symbolic links are all refused. An installation failure preserves the newly created app for a retry.
 
 ## Install the command separately
 

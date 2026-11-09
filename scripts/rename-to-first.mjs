@@ -60,6 +60,8 @@ const KEEP_BARE = [/^scripts\/census-08\//];
 const CODE = /\.(rs|ts|tsx|mts|cts|mjs|js|cjs|jsx|php|sh|py|toml|ya?ml|json|jsonc|css|scss|sql)$|(^|\/)(Dockerfile|\.gitignore|gitignore)$/;
 
 // Deny list: Zero 0.8 and production names that keep their spelling. Matched first and shielded.
+// Runs before KEEP: `npm create @spacefast/zero` resolves to @spacefast/create-zero, a First package.
+const PRE = [[/(?<=\bnpm create )@spacefast\/zero(?=[@ ])/g, '@spacefast/first']];
 const KEEP = [
   /formerly Zero v2/g,
   /@spacefast\/zero-compile\b/g,
@@ -237,7 +239,8 @@ const unshield = (text, slots) => {
 export function rename(text, path = '') {
   if (!/zero|Z\d{4}|startswith\("Z"\)/i.test(text)) return text;
   const slots = [];
-  let out = path === 'tests/config_migrate.rs' ? shield(text, KEEP_FROM_ZERO, slots) : text;
+  let out = PRE.reduce((t, [p, r]) => t.replace(p, r), text);
+  if (path === 'tests/config_migrate.rs') out = shield(out, KEEP_FROM_ZERO, slots);
   out = shield(out, KEEP, slots);
   if (ZERO_08_META.some((r) => r.test(path))) out = shield(out, KEEP_08_META, slots);
   const prose08 = ZERO_08_PROSE.some((r) => r.test(path));

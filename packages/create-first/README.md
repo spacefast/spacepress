@@ -1,6 +1,6 @@
 # Create a First app
 
-After publication, `npm create @spacefast/zero@0.3.0 my-app` creates a typed backend, a working public frontend and editor settings, then installs the matching compiler package. `cd my-app && npm run dev` starts WordPress and watches your sources. Node.js 22+ and npm are required; Rust and Docker are not.
+After publication, `npm create @spacefast/first@0.3.0 my-app` creates a typed backend, a working public frontend and editor settings, then installs the matching compiler package. `cd my-app && npm run dev` starts WordPress and watches your sources. Node.js 22+ and npm are required; Rust and Docker are not.
 
 Use `-- --no-install` to write files without installing packages. Existing destinations, including empty directories and symbolic links, are refused. Failed dependency installation preserves the new project so you can fix the error and retry.
 

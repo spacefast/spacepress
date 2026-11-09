@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/pro
 import { basename, join, resolve } from 'node:path';
 
 const metadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-const help = `Create First ${metadata.version}\n\nUsage: npm create @spacefast/zero@${metadata.version} <directory> [-- --no-install]\n\nCreates a backend and public frontend served by WordPress. Installs npm dependencies\nunless --no-install is supplied. Existing destinations are never overwritten.\n\nNext: cd <directory> && npm run dev\nRequires Node.js 22+ and npm. No Rust toolchain or Docker required.\n`;
+const help = `Create First ${metadata.version}\n\nUsage: npm create @spacefast/first@${metadata.version} <directory> [-- --no-install]\n\nCreates a backend and public frontend served by WordPress. Installs npm dependencies\nunless --no-install is supplied. Existing destinations are never overwritten.\n\nNext: cd <directory> && npm run dev\nRequires Node.js 22+ and npm. No Rust toolchain or Docker required.\n`;
 
 async function main() {
   const args = process.argv.slice(2).filter((arg) => arg !== '--');

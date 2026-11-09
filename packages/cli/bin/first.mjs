@@ -18,7 +18,7 @@ const args = process.argv.slice(2);
 if (args.length === 1 && ['--version', '-v'].includes(args[0])) {
   process.stdout.write(`first ${metadata.version} (npm launcher)\n`);
 } else if (args.length === 0 || (args.length === 1 && ['--help', '-h', 'help'].includes(args[0]))) {
-  process.stdout.write(`First ${metadata.version}\n\n${help()}\nCreate an app: npm create @spacefast/zero@${metadata.version} my-app\nLocal compiler: FIRST_BIN=/absolute/path/to/first\n`);
+  process.stdout.write(`First ${metadata.version}\n\n${help()}\nCreate an app: npm create @spacefast/first@${metadata.version} my-app\nLocal compiler: FIRST_BIN=/absolute/path/to/first\n`);
 } else {
   try {
     const child = spawn(await compiler(), args, { stdio: 'inherit' });

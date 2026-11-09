@@ -22,18 +22,21 @@ export interface Example {
 }
 
 /**
- * Every file of an example a config can import (build output and the blog's web page left out),
- * plus the committed abilities lock, the one compiler input under `zero/`.
+ * Every file of an example a config can import (app code under `zero/` included; build output and
+ * the blog's web page left out), plus the committed abilities lock, the one input in `_generated/`.
  */
 export function sources(dir: string): Request["files"] {
-  const skip = new Set(["zero", ".zero", "node_modules", "zero.gen.ts", "public", "client-tests", "content"]);
+  // Skipped at the project root only (web page, tests, content), except `.zero` and `node_modules`
+  // at any depth: app code under `zero/` may import from its own `zero/content/` or `zero/public/`.
+  const skip = new Set([".zero", "node_modules", "public", "client-tests", "content", "zero/_generated", "zero/dist"]);
+  const anyDepth = new Set([".zero", "node_modules"]);
   const files: Request["files"] = {};
-  const lock = path.join(dir, "zero/abilities.json");
-  if (existsSync(lock)) files["zero/abilities.json"] = readFileSync(lock, "utf8");
+  const lock = path.join(dir, "zero/_generated/abilities.json");
+  if (existsSync(lock)) files["zero/_generated/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
-      if (skip.has(name)) continue;
       const rel = sub ? `${sub}/${name}` : name;
+      if (skip.has(rel) || anyDepth.has(name)) continue;
       const stat = lstatSync(path.join(dir, rel));
       if (stat.isDirectory()) walk(rel);
       else if (stat.isFile()) files[rel] = readFileSync(path.join(dir, rel), "utf8");

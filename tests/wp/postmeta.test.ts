@@ -144,6 +144,13 @@ test("core list routes take Zero's where, orderBy and search", async () => {
     const r = await http("GET", `${core}/zero_field_staff` + qs({ search: `metaonly-${run}`, ...extra }), { as: "editor" });
     assert.deepEqual([r.status, r.json.map((s: any) => s.id)], [200, [staff]], JSON.stringify(extra));
   }
+  // Paging links keep Zero's search: following `next` gives the next page of the same matches.
+  const first = await fetch(`${core}/zero_events` + qs({ search: run, where: { id: { in: [ids.A, ids.B, noted.id] } }, orderBy: "title", per_page: "1" }));
+  assert.equal(first.headers.get("x-wp-total"), "3");
+  const next = /<([^>]+)>; rel="next"/.exec(first.headers.get("link") ?? "")?.[1];
+  assert.ok(next && new URL(next).searchParams.get("search") === run, first.headers.get("link") ?? "no Link header");
+  const second = await fetch(next!);
+  assert.deepEqual([second.headers.get("x-wp-total"), (await second.json()).map((e: any) => e.title.rendered[0])], ["3", ["B"]]);
   // The same refusals as /zero/v1, as WP_Error.
   const bad = await http("GET", `${core}/zero_events` + qs({ where: { kinds: { in: ["talk"] } } }));
   assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [400, "invalid_query", "/where/kinds/in"]);
@@ -174,4 +181,16 @@ test("core meta writes go through Zero's codec and validation", async () => {
   const bad = await http("POST", `${core}/zero_events/${id}`, { as: "editor", body: { meta: { day: "2026-02-30" } } });
   assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [422, "invalid_input", "/day"]);
   assert.equal((await ok("GET", `/events/${id}`)).day, "2026-03-04", "a refused save changes nothing");
+});
+
+test("core meta writes check that media ids exist, as every write path does", async () => {
+  const missing = await http("POST", `${core}/zero_talks`, { as: "admin", body: { title: `No media ${run}`, status: "publish", meta: { image: 999_999_999 } } });
+  assert.deepEqual([missing.status, missing.json.code, missing.json.data?.pointer], [422, "invalid_input", "/image"], JSON.stringify(missing.json));
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'zero_talks' AND post_title = 'No media ${run}'`)[0].n, "0", "nothing was created");
+  const attachment = Number(wp("eval", `echo wp_insert_attachment(['post_title' => 'Img ${run}', 'post_mime_type' => 'image/png', 'post_status' => 'inherit']);`));
+  const stored = await http("POST", `${core}/zero_talks`, { as: "admin", body: { title: `Media ${run}`, status: "publish", meta: { image: attachment } } });
+  assert.deepEqual([stored.status, stored.json.meta?.image], [201, attachment], JSON.stringify(stored.json));
+  const update = await http("POST", `${core}/zero_talks/${stored.json.id}`, { as: "admin", body: { meta: { image: 999_999_999 } } });
+  assert.deepEqual([update.status, update.json.data?.pointer], [422, "/image"]);
+  assert.equal((await ok("GET", `/talks/${stored.json.id}`)).image, attachment, "a refused update changes nothing");
 });

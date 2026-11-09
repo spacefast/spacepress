@@ -72,7 +72,7 @@ and an npm lockfile.
 static files are published as they are, and does not require committing Vite
 output. Run `npm --prefix web ci && npm --prefix web run build` from this
 example before publishing. A successful Zero build must also commit
-`zero/client/`, `zero/_generated/migrations/`, `zero.gen.ts`, and `zero/wp-plugins.lock.json`.
+`zero/_generated/client/`, `zero/_generated/migrations/`, `zero/_generated/db.d.ts`, and `zero/_generated/wp-plugins.lock.json`.
 They cannot be generated from this config while the diagnostic remains.
 
 ## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
@@ -150,7 +150,7 @@ file-mode upload, rather than compiling a backend. A publish receipt marked
 |---|---|
 | Main compiler | Blocked by the diagnostic above. |
 | Final app startup and generated-file freshness | Blocked by compilation. |
-| Calendar and normalization tests | `node --test examples/subscriptions/lib/calendar.test.mjs` passes. Covers month ends, leap years, year boundaries, and fractional cents. |
+| Calendar and normalization tests | `node --test examples/subscriptions/zero/lib/calendar.test.mjs` passes. Covers month ends, leap years, year boundaries, and fractional cents. |
 | Agent protocol | A real, unchanged pantry `zero dev` site listed tools and executed a list tool. Exact output is in [the agent guide](../../docs/agents.md#verify-with-a-real-site). |
 | Frontend and other runtime paths | See the disposable contract proof below. It does not establish that the final app compiles. |
 

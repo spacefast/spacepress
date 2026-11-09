@@ -1,5 +1,5 @@
-import { createClient, type ClientOptions } from "../../zero/client/index.ts";
-import type { Collections } from "../../zero/client/types.ts";
+import { createClient, type ClientOptions } from "../../zero/_generated/client/index.ts";
+import type { Collections } from "../../zero/_generated/client/types.ts";
 
 const page = new URL(window.location.pathname, window.location.origin);
 const options = {

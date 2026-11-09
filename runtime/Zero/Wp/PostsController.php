@@ -53,7 +53,7 @@ final class PostsController extends \WP_REST_Posts_Controller
     {
         $viewer = CoreAccess::viewer() ?? throw new \LogicException('checked');
         try {
-            $query = ZeroQuery::keys($this->collection, $request, $viewer);
+            $query = ZeroQuery::keys($this->collection, $request, $viewer, searched: $searched);
         } catch (\Zero\HttpError $e) {
             return CoreAccess::error($e);
         }
@@ -68,8 +68,9 @@ final class PostsController extends \WP_REST_Posts_Controller
         }
         // Core maps the default empty `include` to post__in = [], which means no restriction.
         $ordered = $query !== null && $request['orderBy'] !== null;
-        $limit = static function (array $args) use ($keys, $ordered): array {
+        $limit = static function (array $args) use ($keys, $ordered, $searched): array {
             $in = !empty($args['post__in']) ? array_values(array_intersect($keys, array_map('intval', (array) $args['post__in']))) : $keys;
+            $args = $searched ? ZeroQuery::coreArgs($args) : $args;
 
             return ['post__in' => $in === [] ? [0] : $in] + ($ordered ? ['orderby' => 'post__in'] : []) + $args;
         };

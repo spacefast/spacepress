@@ -55,6 +55,7 @@ final class Builtins
         'column.$defaultFn' => null,
         'column.$onUpdate' => null,
         'column.$onUpdateFn' => null,
+        'column.was' => null,
         'column.references' => null,
         'constructor.HttpError' => null,
         'db.insert' => null,

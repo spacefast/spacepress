@@ -1,4 +1,4 @@
-//! WordPress abilities from `"php/wordpress"`: the committed lock `zero/abilities.json`, its JSON
+//! WordPress abilities from `"php/wordpress"`: the committed lock `zero/_generated/abilities.json`, its JSON
 //! Schemas as compiler types and TypeScript, and the app's own abilities typed from the schema.
 //!
 //! The lock is written by `zero abilities pull` (src/commands/abilities.rs). Building reads only the
@@ -33,7 +33,7 @@ pub fn own_inputs(schema: &Schema) -> BTreeMap<String, (Vec<String>, Vec<String>
 }
 
 /// Where the lock lives in a project.
-pub const LOCK: &str = "zero/abilities.json";
+pub const LOCK: &str = "zero/_generated/abilities.json";
 
 /// One locked ability: what `GET /wp-abilities/v1/abilities` returned for it.
 #[derive(Debug, Clone)]
@@ -518,7 +518,7 @@ pub fn kebab(name: &str) -> String {
     s
 }
 
-/// The `zero.gen.ts` block that types `abilities.call` for every catalog entry.
+/// The `zero/_generated/db.d.ts` block that types `abilities.call` for every catalog entry.
 pub fn gen_ts(catalog: &Catalog) -> String {
     if catalog.abilities.is_empty() {
         return String::new();

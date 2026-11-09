@@ -45,7 +45,7 @@ const run = async (args) => (await exec(zero, args, { timeout: 600000, maxBuffer
 test('TSX pages serve a full site from native WordPress with viewer-bound data', { timeout: 900000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'zero-pages-native-'));
   const project = join(root, 'site');
-  const content = join(project, '.zero/wp-content');
+  const content = join(project, 'zero/dist/wp-content');
   for (const entry of ['zero.config.ts', 'pages', 'components', 'islands', 'styles']) {
     await cp(join(example, entry), join(project, entry), { recursive: true });
   }

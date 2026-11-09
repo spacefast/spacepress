@@ -106,7 +106,7 @@ still a whole Zero app.
 ```text
 journal/
 ├── zero.config.ts                 # data, access, hooks, actions, jobs, pages switches, agents
-├── zero.gen.ts                    # generated; unchanged
+├── zero/_generated/db.d.ts                    # generated; unchanged
 ├── tsconfig.json                  # jsx: react-jsx; include pages, components, islands
 ├── agents/
 │   └── editor.md                  # instructions → the DM pipeline step's system prompt (§4.10)
@@ -815,7 +815,7 @@ rejection, conflict files, `resolve`) to pages. Nothing is replaced.
 
 ### 4.9 Build and publish, with hosting constraints
 
-`zero build` writes `.zero/wp-content/` locally. It never contacts or
+`zero build` writes `zero/dist/wp-content/` locally. It never contacts or
 mutates a site. With pages enabled it needs the pinned Node serializer;
 missing tools fail the build. Backend-only builds invoke no page tool.
 Platform plugins and the stable release bootstrap are installed and

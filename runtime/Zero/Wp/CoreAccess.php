@@ -620,12 +620,15 @@ final class CoreAccess
                         throw new HttpError(403, 'forbidden', "Submit $col only once", HttpError::seg((string) $col));
                     }
                     // The value as it will be saved (PostMeta::update_value normalizes the same way),
-                    // so a data-dependent rule sees the same data before and after the save. A value
-                    // that doesn't normalize is kept raw: the save refuses it with Zero's 422.
+                    // so a data-dependent rule sees the same data before and after the save. A group
+                    // declares only the sub-fields the request sent: the ones it leaves out are kept or
+                    // defaulted by the save, not written by this request. A value that doesn't
+                    // normalize is kept raw: the save refuses it with Zero's 422.
+                    $raw = \Zero\Seam::toPhp($meta[$col], $def);
                     try {
-                        $data[$col] = \Zero\Schema::normalize($def, \Zero\Seam::toPhp($meta[$col], $def), (string) $col, HttpError::seg((string) $col));
+                        $data[$col] = self::sent($def, \Zero\Schema::normalize($def, $raw, (string) $col, HttpError::seg((string) $col)), $raw);
                     } catch (HttpError) {
-                        $data[$col] = \Zero\Seam::toPhp($meta[$col], $def);
+                        $data[$col] = $raw;
                     }
                 }
             }
@@ -648,6 +651,22 @@ final class CoreAccess
         }
 
         return [$data, array_map('strval', array_keys($data))];
+    }
+
+    /** A normalized group value narrowed to the sub-fields $raw (the request's value) names, at any depth. */
+    private static function sent(array $def, mixed $norm, mixed $raw): mixed
+    {
+        if ($def['type'] !== 'group' || !is_array($norm) || !is_array($raw) || ($raw !== [] && array_is_list($raw))) {
+            return $norm;
+        }
+        $out = [];
+        foreach ($raw as $key => $value) {
+            if (array_key_exists($key, $norm) && isset($def['fields'][$key])) {
+                $out[$key] = self::sent($def['fields'][$key], $norm[$key], $value);
+            }
+        }
+
+        return $out;
     }
 
     // ================================================================ helpers

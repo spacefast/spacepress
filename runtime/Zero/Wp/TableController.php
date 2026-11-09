@@ -70,8 +70,9 @@ final class TableController extends \WP_REST_Controller
             $perPage = (int) $request['per_page'];
             $page = (int) $request['page'];
             $db = $this->db();
-            // The total over the same pipeline (rules, masks), selecting only primary keys.
-            $total = count($db->findMany($this->collection, array_intersect_key($opts, ['where' => true]) + ['columns' => [$this->pk() => true]], $viewer));
+            // The total over the same pipeline (read rule, query checks), counted in SQL.
+            $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer);
+            $total = (int) (Plugin::instance()?->connection()->run($count['sql'], $count['params'])[0]['n'] ?? 0);
             $rows = $db->findMany($this->collection, ['limit' => $perPage, 'offset' => ($page - 1) * $perPage] + $opts, $viewer);
             $items = [];
             foreach ($rows as $row) {
@@ -145,11 +146,8 @@ final class TableController extends \WP_REST_Controller
 
     public function prepare_item_for_response($item, $request)
     {
-        $data = PostMeta::values($this->collection, $item, array_map('strval', array_keys($item)));
-        if (!empty($request['_fields'])) {
-            $data = array_intersect_key($data, array_flip(wp_parse_list($request['_fields'])));
-        }
-        $response = rest_ensure_response($data);
+        // `_fields` (nested paths included) is core's own filter on the response (rest_filter_response_fields).
+        $response = rest_ensure_response(PostMeta::values($this->collection, $item, array_map('strval', array_keys($item))));
         $response->add_link('self', rest_url(sprintf('%s/%s/%s', $this->namespace, $this->rest_base, rawurlencode((string) ($item[$this->pk()] ?? '')))));
         $response->add_link('collection', rest_url(sprintf('%s/%s', $this->namespace, $this->rest_base)));
 
@@ -220,11 +218,14 @@ final class TableController extends \WP_REST_Controller
         }
     }
 
-    /** The JSON body as Zero reads it (`{}` stays an object inside json() values). */
+    /**
+     * The request body: JSON as Zero reads it (`{}` stays an object inside json() values); a form
+     * (urlencoded or multipart) as WordPress parsed it.
+     */
     private function input(\WP_REST_Request $request): array
     {
         $body = (string) $request->get_body();
-        if (trim($body) === '') {
+        if (!$request->is_json_content_type() && ($request->get_content_type() !== null || trim($body) === '')) {
             $params = $request->get_body_params();
 
             return is_array($params) ? $params : [];

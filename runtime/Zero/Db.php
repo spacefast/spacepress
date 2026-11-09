@@ -195,6 +195,41 @@ final class Db
     private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null): array
     {
         return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer): array {
+            $spec = $this->schema->hasCollection($collection) ? $this->schema->collection($collection) : null;
+            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer);
+            if ($partition !== null && $partition[1] === []) {
+                return [];
+            }
+            return array_map(
+                static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
+                $this->store->select($collection, $q),
+            );
+        });
+    }
+
+    /**
+     * `findMany($collection, ['where' => $where], $viewer)`'s row count as SQL (`n`): the same read
+     * rule, draft visibility and query extensions (a filter through a hidden field is the same 403),
+     * without reading the rows. Read extensions never drop rows (onRead keeps membership), so this is
+     * the list's count. The caller runs it on the store's connection.
+     *
+     * @return array{sql: string, params: list<int|float|string|null>}
+     */
+    public function countQuery(string $collection, mixed $where = null, ?Viewer $viewer = null): array
+    {
+        return $this->current(function () use ($collection, $where, $viewer): array {
+            $opts = Seam::query($collection, $where === null ? [] : ['where' => $where], $this->schema);
+            $q = $this->compileRead($collection, $opts, '', $viewer);
+            $q['sql'] = 'SELECT COUNT(*) AS n FROM (' . $q['sql'] . ') zero_count';
+
+            return $q;
+        });
+    }
+
+    /** One read compiled: query extensions, option checks, the viewer's read guards. */
+    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null): array
+    {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer): array {
             if (!$this->schema->hasCollection($collection)) {
                 throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
             }
@@ -210,15 +245,9 @@ final class Db
                 array_push($guards, ...$this->readGuards($collection, $viewer));
             }
             $filterViewer ??= $viewer;
-            $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
+
+            return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
                 $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
-            if ($partition !== null && $partition[1] === []) {
-                return [];
-            }
-            return array_map(
-                static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
-                $this->store->select($collection, $q),
-            );
         });
     }
 
@@ -943,6 +972,15 @@ final class Db
         foreach ($norm as $name => $v) {
             Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx, $columns);
         }
+        $this->checkMedia($columns, $norm);
+    }
+
+    /**
+     * Every media id in $norm (normalized values by column) names an existing attachment, of an
+     * accepted kind. Also for core REST `meta` writes, which store through the post store directly.
+     */
+    public function checkMedia(array $columns, array $norm): void
+    {
         $refs = [];
         foreach ($norm as $name => $v) {
             array_push($refs, ...Schema::mediaRefs($columns[$name], $v, HttpError::seg($name)));

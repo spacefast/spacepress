@@ -35,7 +35,7 @@ done
 "$zero" build "$work/one/storelane" --quiet >/dev/null
 mkdir -p "$work/content/plugins"
 cp "$here/store/host.php" "$work/content/plugins/zero-store-host.php"
-cp "$work/one/storelane/.zero/wp-content/zero-manifest.json" "$work/content/"
+cp "$work/one/storelane/zero/dist/wp-content/zero-manifest.json" "$work/content/"
 # The store lives in the bind-mounted plugins directory so the container sees it; ZERO_BUILD_STORE points at it.
 store="$work/content/plugins/zero-store"
 start=$(date +%s%N)

@@ -18,12 +18,15 @@ use Zero\Viewer;
 final class ZeroQuery
 {
     /**
-     * The ids `where`/`orderBy` select, in order, or null when the request has neither.
+     * The ids `where`/`orderBy`/`search` select, in order, or null when the request has none of them.
+     * $searched is set when Zero's search ran: the caller then drops core's own search from the
+     * query ({@see coreArgs()}). The request itself is left alone, so core's `Link` headers keep it.
      *
      * @return ?list<int>
      */
-    public static function keys(string $collection, \WP_REST_Request $request, Viewer $viewer, bool $search = true): ?array
+    public static function keys(string $collection, \WP_REST_Request $request, Viewer $viewer, bool $search = true, ?bool &$searched = null): ?array
     {
+        $searched = false;
         $given = self::given($request, ['where', 'orderBy']);
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No Zero app');
         $search = $search ? self::search($collection, $request, $viewer) : null;
@@ -34,17 +37,27 @@ final class ZeroQuery
         unset($opts['limit']);
         if ($search !== null) {
             $opts['where'] = isset($opts['where']) ? ['AND' => [$opts['where'], $search]] : $search;
-            // Zero's search replaces core's (title, content and excerpt only). `orderby=relevance`
-            // needs core's own term, so it becomes core's date order over the rows Zero matched.
-            $request->set_param('search', null);
-            if ($request['orderby'] === 'relevance') {
-                $request->set_param('orderby', 'date');
-            }
+            $searched = true;
         }
         $pk = $db->schema()->collection($collection)['primaryKey'];
         $rows = $db->findMany($collection, $opts + ['columns' => [$pk => true]] + self::allLocales($collection), $viewer);
 
         return array_map(static fn (array $r): int => (int) $r[$pk], $rows);
+    }
+
+    /**
+     * Core's WP_Query args once Zero's search selected the rows: Zero's search replaces core's (title,
+     * content and excerpt only), and `orderby=relevance` needs core's own term, so it becomes core's
+     * date order over the rows Zero matched.
+     */
+    public static function coreArgs(array $args): array
+    {
+        unset($args['s'], $args['search_columns'], $args['exact'], $args['sentence']);
+        if (($args['orderby'] ?? null) === 'relevance') {
+            $args['orderby'] = 'date';
+        }
+
+        return $args;
     }
 
     /**

@@ -35,6 +35,20 @@ pub struct Built {
     pub wordpress_uses: Vec<compile::WordPressUse>,
 }
 
+/// The schema ledger, committed with the project: `snapshot.json` and the numbered SQL that
+/// `Wp\Migrator` applies. Lives with the other generated files (spec §1).
+pub const LEDGER: &str = "zero/_generated/migrations";
+/// Where the ledger lived before `_generated/`. A project that still has it is refused (see
+/// [`moved_ledger`]) rather than built as a first build, which would plan every table again.
+pub const OLD_LEDGER: &str = "zero/migrations";
+
+/// The refusal for a project whose ledger is still at [`OLD_LEDGER`].
+pub fn moved_ledger() -> Diag {
+    Diag::new(Span::NONE, format!("{OLD_LEDGER}/ moved to {LEDGER}/")).help(format!(
+        "move it with `mkdir -p zero/_generated && rmdir {LEDGER} 2>/dev/null; git mv {OLD_LEDGER} {LEDGER}`, then build again"
+    ))
+}
+
 /// The last build, as the next one needs it: its snapshot and the number the next migration file gets.
 #[derive(Debug)]
 pub struct Previous {
@@ -50,25 +64,34 @@ impl Previous {
         Self::from_project(None, []).expect("an absent snapshot is valid")
     }
 
-    /// From a committed `zero/migrations/snapshot.json` (absent on a first build) and the names of
-    /// everything beside it in `zero/migrations/`. The numbering follows the files whether or not the
-    /// snapshot is there, so a deleted snapshot never produces a second `0001_init.sql` over the first.
-    /// An older snapshot or layout is refused rather than diffed: its shape would plan the wrong
-    /// migration.
+    /// From a committed `snapshot.json` in [`LEDGER`] (absent on a first build) and the names of
+    /// everything beside it. The numbering follows the files whether or not the snapshot is there, so
+    /// a deleted snapshot never produces a second `0001_init.sql` over the first. An older snapshot is
+    /// refused rather than diffed: its shape would plan the wrong migration.
     pub fn from_project<'a>(
         snapshot: Option<serde_json::Value>,
         migration_files: impl IntoIterator<Item = &'a str>,
     ) -> Result<Self, Diag> {
         let migration_files: Vec<&str> = migration_files.into_iter().collect();
-        // A checkout from before the flat layout (`wp/` and `sqlite/` subdirectories) is refused rather
-        // than read as "no migrations yet", which would restart the numbering at 0001 and ship an app
-        // plugin without its earlier files.
-        for legacy in ["wp", "sqlite"] {
-            if migration_files.contains(&legacy) {
+        // A ledger from before the flat layout (`wp/` and `sqlite/` subdirectories, moved here as-is
+        // by `git mv`), or the old ledger moved inside this one (`git mv` into an existing
+        // directory), is refused rather than read as "no migrations yet", which would restart the
+        // numbering at 0001 and ship an app plugin without its earlier files.
+        if migration_files.contains(&"migrations") {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("{LEDGER}/migrations/ is the old ledger moved one level too deep"),
+            )
+            .help(format!(
+                "move its contents up with `git mv {LEDGER}/migrations/* {LEDGER}/ && rmdir {LEDGER}/migrations`, then build again"
+            )));
+        }
+        for nested in ["wp", "sqlite"] {
+            if migration_files.contains(&nested) {
                 return Err(Diag::new(
                     Span::NONE,
                     format!(
-                        "zero/migrations/{legacy}/ is from an earlier layout; move zero/migrations/wp/*.sql into zero/migrations/, then delete the zero/migrations/wp/ and zero/migrations/sqlite/ directories (or delete zero/migrations/ to start over)"
+                        "{LEDGER}/{nested}/ is from an earlier layout; move {LEDGER}/wp/*.sql and {LEDGER}/wp/snapshot.json into {LEDGER}/, then delete the {LEDGER}/wp/ and {LEDGER}/sqlite/ directories"
                     ),
                 ));
             }
@@ -80,7 +103,7 @@ impl Previous {
                 return Err(Diag::new(
                     Span::NONE,
                     format!(
-                        "zero/migrations/snapshot.json is a version {} snapshot; this compiler writes version 2 (delete zero/migrations/ to start over)",
+                        "{LEDGER}/snapshot.json is a version {} snapshot; this compiler writes version 2 (delete {LEDGER}/ to start over)",
                         snapshot["version"]
                     ),
                 ));
@@ -124,6 +147,7 @@ pub fn build(
     let mut ext =
         extract::extract(&config, &mut ev, config_span, &dir_name).map_err(|d| d.phase(diag::Code::Schema))?;
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
@@ -212,6 +236,9 @@ pub fn build(
             Slot::JobHandler { job } => schema.jobs.get_mut(&job).expect("job").handler = name,
             Slot::RouteHandler { route } => schema.routes.get_mut(&route).expect("route").handler = name,
             Slot::WpHook { index } => schema.wp_hooks[index].handler = name,
+            Slot::Component { name: component } => {
+                schema.components.insert(component, name);
+            }
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
             Slot::Access { owner, op } => {
                 let rule = Access::Fn(name);
@@ -400,6 +427,33 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
     Ok(())
 }
 
+/// Every function exported from a `zero/components/` file under a capitalized name becomes a
+/// compiled component, called with one props object (docs/decisions/2026-11-08-tsx-to-php.md).
+/// The capital is React's own rule for what a JSX tag can name; other exports are helpers and are
+/// ignored, as in any module.
+fn components(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
+    use crate::value::Value;
+    for (path, module) in &program.components {
+        let exports = ev.run_module(*module)?;
+        for (export, value) in &exports {
+            let Value::Closure(closure) = value else { continue };
+            if !export.starts_with(|c: char| c.is_ascii_uppercase()) {
+                continue;
+            }
+            let stem = path.trim_end_matches(".tsx");
+            ext.roots.push(extract::Root {
+                closure: closure.clone(),
+                slot: Slot::Component {
+                    name: format!("{path}#{export}"),
+                },
+                name: format!("component__{}__{export}", extract::slugify_name(stem).replace('-', "_")),
+                plugin: None,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The committed plugin grant, read like the other compiler inputs; absent until the first build.
 fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<serde_json::Value>, Diag> {
     if !program.fs.exists(path) {
@@ -469,21 +523,26 @@ mod tests {
     }
 
     #[test]
-    fn the_earlier_migration_layout_is_refused_before_the_snapshot_is_read() {
-        let error =
-            Previous::from_project(Some(serde_json::json!({ "version": 1 })), ["wp", "snapshot.json"]).unwrap_err();
+    fn the_earlier_nested_layout_is_refused_before_the_snapshot_is_read() {
+        for nested in ["wp", "sqlite"] {
+            let error = Previous::from_project(None, [nested, "0001_init.sql"]).unwrap_err();
+            assert!(
+                error.message.starts_with(&format!(
+                    "zero/_generated/migrations/{nested}/ is from an earlier layout"
+                )),
+                "{}",
+                error.message
+            );
+        }
+    }
+
+    #[test]
+    fn the_old_ledger_moved_one_level_too_deep_is_refused() {
+        let error = Previous::from_project(None, ["migrations"]).unwrap_err();
         assert!(
             error
                 .message
-                .starts_with("zero/migrations/wp/ is from an earlier layout"),
-            "{}",
-            error.message
-        );
-        let error = Previous::from_project(None, ["sqlite"]).unwrap_err();
-        assert!(
-            error
-                .message
-                .starts_with("zero/migrations/sqlite/ is from an earlier layout"),
+                .ends_with("migrations/ is the old ledger moved one level too deep"),
             "{}",
             error.message
         );

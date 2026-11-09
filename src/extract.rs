@@ -49,6 +49,10 @@ pub enum Slot {
     WpHook {
         index: usize,
     },
+    /// A server component exported from `zero/components/`; `name` keys `Schema::components`.
+    Component {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -2159,6 +2163,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
         | ExprKind::IsNullish(x, _) => r(x),
         ExprKind::Index { obj, index, .. } => r(obj) || r(index),
         ExprKind::Template(_, xs) | ExprKind::Sequence(xs) => xs.iter().any(r),
+        ExprKind::Jsx(jsx) => jsx.exprs().into_iter().any(r),
         ExprKind::Array(items) => items
             .iter()
             .any(|a| matches!(a, ArrEl::Item(x) | ArrEl::Spread(x) if r(x))),

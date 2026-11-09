@@ -19,7 +19,7 @@ mkdir -p "$work/app" "$work/content"
 for step in initial additive required tighten rename drop adoptedField adoptedKind narrow retype retyped requiredNarrow toReal ratioText ratioReal memoText memoRef; do
   node "$here/steps.mjs" "$step" > "$work/app/zero.config.ts"
   "$target/debug/zero" build "$work/app" --quiet >/dev/null
-  rsync -a --delete "$work/app/.zero/wp-content/" "$work/content/$step/"
+  rsync -a --delete "$work/app/zero/dist/wp-content/" "$work/content/$step/"
 done
 # The stack mounts one plugins directory; the test swaps each step's app plugin into it.
 mkdir -p "$work/live"

@@ -286,13 +286,21 @@ final class MarkdownTwins
         }
         $data = $result->get_data();
         $id = is_array($data) ? (int) ($data['id'] ?? 0) : 0;
-        $post = $id > 0 && preg_match('#^/wp/v2/[^/]+/' . $id . '$#', $request->get_route()) === 1 ? get_post($id) : null;
+        $post = $id > 0 ? get_post($id) : null;
         if (!$post instanceof \WP_Post || !in_array($post->post_type, get_post_types(['show_in_rest' => true]), true)) {
+            return $served;
+        }
+        // Only the post's own item route: core already ran its permission check for this post there.
+        // Any other collection that answered 200 with the same numeric id (a category, a user) checked
+        // a different object, so its post would leak a draft or private body.
+        $type = get_post_type_object($post->post_type);
+        $base = $type?->rest_base ?: $post->post_type;
+        $namespace = $type?->rest_namespace ?: 'wp/v2';
+        if ($request->get_route() !== '/' . $namespace . '/' . $base . '/' . $id) {
             return $served;
         }
         // Core shows a protected body only to a request it lets in (the right `password`, or an editor
         // in the edit context): the same check here, on the route's own controller.
-        $type = get_post_type_object($post->post_type);
         $controller = $type?->get_rest_controller();
         if ($post->post_password !== '' && $controller instanceof \WP_REST_Posts_Controller && $controller->can_access_password_content($post, $request)) {
             add_filter('post_password_required', $unlock = static fn (bool $required, mixed $p): bool => get_post($p)?->ID === $post->ID ? false : $required, PHP_INT_MAX, 2);

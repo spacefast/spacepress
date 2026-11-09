@@ -172,18 +172,30 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields
             return null;
         }
         $fields = self::fields($this->spec());
-        $values = [];
+        $values = $norms = [];
         $zero = $this->input ?? $meta;
+        $db = Plugin::instance()?->db() ?? throw new \LogicException('No Zero app');
+        $viewer = CoreAccess::viewer();
+        $before = null;
         foreach (array_intersect_key($zero, $fields) as $col => $v) {
             $col = (string) $col;
             $def = $fields[$col];
             $ptr = HttpError::seg($col);
-            $norm = Schema::normalize($def, \Zero\Seam::toPhp($v, $def), $col, $ptr);
+            $v = \Zero\Seam::toPhp($v, $def);
+            if ($def['type'] === 'group' && $viewer !== null) {
+                // A partial group keeps the stored sub-fields this viewer can't read or set, as on /zero/v1.
+                $before ??= $db->editorRow($this->collection, (int) $object_id) ?? [];
+                $v = $db->current(static fn () => \Zero\FieldAccess::effectiveGroup('update', $def, $v, $before[$col] ?? null, $viewer));
+            }
+            $norm = Schema::normalize($def, $v, $col, $ptr);
             Schema::checkRules($def, $norm, $col, $ptr, ['data' => [$col => $norm], 'user' => WpAuth::current()]);
+            $norms[$col] = $norm;
             $values[$col] = Schema::store($def, $norm);
         }
+        // Media ids must name attachments (of an accepted kind), as every other write path checks.
+        $db->checkMedia($fields, $norms);
         if ($values !== []) {
-            $store = Plugin::instance()?->db()->store();
+            $store = $db->store();
             if (!$store instanceof CompositeStore) {
                 throw new \LogicException('Zero post meta needs the WordPress store');
             }

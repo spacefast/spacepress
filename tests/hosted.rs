@@ -15,9 +15,9 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(
         &project,
         "zero.config.ts",
-        "import { defineConfig, action, global, text } from 'zero'; import { message } from './src/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
+        "import { defineConfig, action, global, text } from 'zero'; import { message } from './zero/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
     );
-    write(&project, "src/message.ts", "export const message = 'v1';");
+    write(&project, "zero/message.ts", "export const message = 'v1';");
     write(
         &project,
         "node_modules/shared/package.json",
@@ -48,7 +48,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let app: zero::bundle::SourceBundle =
         serde_json::from_slice(&fs::read(first.join("app.zero.json")).unwrap()).unwrap();
     assert!(!app.files.contains_key("unrelated.ts"));
-    write(&project, "src/message.ts", "export const message = 'v2';");
+    write(&project, "zero/message.ts", "export const message = 'v2';");
     let second = work.path().join("second");
     let later = zero::bundle::sources(&project, &second).unwrap();
     assert_eq!(sources.vendor_sha256, later.vendor_sha256);
@@ -205,14 +205,63 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     }
 }
 
-/// A hosted compile types `abilities.call` from the captured `zero/abilities.json`: the bundle's
+/// A bundle captured before the `zero/` import fence keeps its helpers beside `zero.config.ts`
+/// (`./lib/message`). A stored bundle is frozen data, so the host recompiles it as captured; only a
+/// live project is held to the fence.
+#[test]
+fn a_bundle_captured_before_the_import_fence_still_compiles() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("app");
+    write(
+        &project,
+        "zero.config.ts",
+        "import { defineConfig, action } from 'zero'; import { message } from './zero/message'; export default defineConfig({ actions: { hello: action({ access: 'anyone', handler() { return message; } }) } });",
+    );
+    write(&project, "zero/message.ts", "export const message = 'kept';");
+    let bundle = work.path().join("bundle");
+    zero::bundle::sources(&project, &bundle).unwrap();
+    // Rewrite the capture to the layout an older compiler took: the helper at the project root.
+    let app = bundle.join(zero::bundle::APP_FILE);
+    let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
+    let old = |s: &str| {
+        s.replace("zero/message.ts", "lib/message.ts")
+            .replace("./zero/message", "./lib/message")
+    };
+    for map in ["files", "canonical"] {
+        let entries = captured[map].as_object_mut().unwrap();
+        let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
+            .into_iter()
+            .map(|(k, v)| (old(&k), v.as_str().map_or(v.clone(), |s| old(s).into())))
+            .collect();
+        entries.extend(moved);
+    }
+    assert!(captured["files"].get("lib/message.ts").is_some(), "{captured}");
+    let bytes = serde_json::to_vec(&captured).unwrap();
+    fs::write(&app, &bytes).unwrap();
+    let manifest_path = bundle.join(zero::bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    use sha2::Digest as _;
+    manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        .into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    fs::remove_dir_all(&project).unwrap();
+    let compiled = work.path().join("compiled");
+    if let Err(e) = zero::bundle::compile(&bundle, &compiled, &bundle, None) {
+        panic!("a stored pre-fence bundle must recompile: {}", e.message);
+    }
+}
+
+/// A hosted compile types `abilities.call` from the captured `zero/_generated/abilities.json`: the bundle's
 /// file system is rooted at its own module directory, not at the app's name.
 #[test]
 fn captured_ability_lock_types_hosted_calls() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("calls");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/abilities-call");
-    for file in ["zero.config.ts", "zero/abilities.json"] {
+    for file in ["zero.config.ts", "zero/_generated/abilities.json"] {
         write(&project, file, &fs::read_to_string(fixture.join(file)).unwrap());
     }
     let bundle = work.path().join("bundle");
@@ -221,6 +270,43 @@ fn captured_ability_lock_types_hosted_calls() {
     // Without the lock the call is `unknown ability \`acme/site-info\``, so compiling is the proof.
     let compiled = work.path().join("compiled");
     if let Err(e) = zero::bundle::compile(&bundle, &compiled, &bundle, None) {
+        panic!("{}", e.message);
+    }
+    // A bundle captured before `zero/_generated/` names the lock `zero/abilities.json`. Hosts keep
+    // stored bundles and recompile them, so it compiles the same.
+    let app = bundle.join(zero::bundle::APP_FILE);
+    let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
+    for map in ["files", "canonical"] {
+        let entries = captured[map].as_object_mut().unwrap();
+        let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
+            .into_iter()
+            .map(|(k, v)| {
+                let k = k.replace("zero/_generated/abilities.json", "zero/abilities.json");
+                let v = match v {
+                    serde_json::Value::String(s) => s
+                        .replace("zero/_generated/abilities.json", "zero/abilities.json")
+                        .into(),
+                    v => v,
+                };
+                (k, v)
+            })
+            .collect();
+        entries.extend(moved);
+    }
+    assert!(captured["files"].get("zero/abilities.json").is_some(), "{captured}");
+    let bytes = serde_json::to_vec(&captured).unwrap();
+    fs::write(&app, &bytes).unwrap();
+    let manifest_path = bundle.join(zero::bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    use sha2::Digest as _;
+    manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        .into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let older = work.path().join("compiled-older");
+    if let Err(e) = zero::bundle::compile(&bundle, &older, &bundle, None) {
         panic!("{}", e.message);
     }
 }

@@ -5,7 +5,7 @@
 import type { Anchors } from "../lib/excerpt.ts";
 import type { ExampleName } from "../lib/examples.ts";
 
-export type Artifact = "schema.php" | "functions.php" | "migration" | "types.ts" | "schema.ts" | "zero.gen.ts";
+export type Artifact = "schema.php" | "functions.php" | "migration" | "types.ts" | "schema.ts" | "zero/_generated/db.d.ts";
 
 export interface Pane {
   /** A source file of the example, or an artifact the compiler produced from it. */
@@ -63,7 +63,7 @@ export const tours: Tour[] = [
         config: { file: "zero.config.ts", lines: { from: 'export const items = table(', to: "}));" } },
         inputs: [
           { file: "zero.config.ts", lines: { from: "const named =", to: "const named =" } },
-          { file: "lib/fields.ts", lines: { from: "export const timestamps", toLine: "};" } },
+          { file: "zero/lib/fields.ts", lines: { from: "export const timestamps", toLine: "};" } },
         ],
         outputs: [{ file: { artifact: "migration" }, lines: { from: "CREATE TABLE `{prefix}zero_items`", to: "ENGINE=InnoDB" } }],
       },
@@ -112,8 +112,8 @@ export const tours: Tour[] = [
         slug: "the-client",
         title: "A typed client for any frontend",
         prose: [
-          "`zero/client/types.ts` is generated from the schema: a row type, an insert type, a patch type and a filter type per collection, plus the relations that `with` can load.",
-          "`zero/client/index.ts` is the runtime half, copied from the repository with the generated types beside it.",
+          "`zero/_generated/client/types.ts` is generated from the schema: a row type, an insert type, a patch type and a filter type per collection, plus the relations that `with` can load.",
+          "`zero/_generated/client/index.ts` is the runtime half, copied from the repository with the generated types beside it.",
         ],
         config: { file: "zero.config.ts", lines: { from: "export const relations", to: "}));" } },
         outputs: [

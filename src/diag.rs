@@ -58,7 +58,10 @@ pub enum Code {
     /// A plugin package imports the app's modules or another plugin's package.
     #[serde(rename = "Z1201")]
     PluginIsolation,
-    /// A plugin's compiled code uses a capability its `zero/plugins.lock.json` entry doesn't grant.
+    /// App source imports a file outside `zero/` (docs/spec/spec.md §1).
+    #[serde(rename = "Z1210")]
+    ImportFence,
+    /// A plugin's compiled code uses a capability its `zero/_generated/plugins.lock.json` entry doesn't grant.
     #[serde(rename = "Z4201")]
     PluginCapability,
 }

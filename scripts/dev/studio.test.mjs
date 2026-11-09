@@ -74,10 +74,10 @@ test('watch inputs include imported TypeScript and public files without reacting
     await rm(root, { recursive: true, force: true });
   });
   await mkdir(project);
-  await mkdir(join(project, 'lib'));
+  await mkdir(join(project, 'zero/lib'), { recursive: true });
   await mkdir(join(project, 'public'));
   await writeFile(join(project, 'zero.config.ts'), 'config');
-  await writeFile(join(project, 'lib/fields.ts'), 'first');
+  await writeFile(join(project, 'zero/lib/fields.ts'), 'first');
   const plugins = join(project, '.zero/dev/wordpress/wp-content/plugins');
   const generated = join(plugins, 'zero-app-watch');
   await mkdir(join(generated, 'blocks/deep/assets'), { recursive: true });
@@ -104,11 +104,12 @@ test('watch inputs include imported TypeScript and public files without reacting
       assert.equal(watchError, undefined);
     } finally { clearTimeout(timeout); }
   }
-  await writeFile(join(project, 'lib/fields.ts'), 'second');
+  await writeFile(join(project, 'zero/lib/fields.ts'), 'second');
   const second = await sourceDigest(project);
   assert.notEqual(second, first);
   await waitForDigest(second);
-  await writeFile(join(project, 'zero.gen.ts'), 'generated');
+  await mkdir(join(project, 'zero/_generated'), { recursive: true });
+  await writeFile(join(project, 'zero/_generated/db.d.ts'), 'generated');
   for (let build = 0; build < 16; build++) {
     const staged = join(plugins, `.zero-app-watch-${build}`);
     const previous = `${staged}.previous`;
@@ -118,14 +119,14 @@ test('watch inputs include imported TypeScript and public files without reacting
     await rename(staged, generated);
     await rm(previous, { recursive: true });
   }
-  for (const ignored of ['.git', 'node_modules', 'zero']) {
+  for (const ignored of ['.git', 'node_modules', 'zero/node_modules', 'zero/dist', 'zero/_generated/client']) {
     const directory = join(project, ignored, 'nested/generated');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'output.ts'), 'generated');
     await rm(join(project, ignored), { recursive: true });
   }
   assert.equal(await sourceDigest(project), second);
-  await writeFile(join(project, 'lib/fields.ts'), 'after generated plugin replacement');
+  await writeFile(join(project, 'zero/lib/fields.ts'), 'after generated plugin replacement');
   const afterBuild = await sourceDigest(project);
   assert.notEqual(afterBuild, second);
   await waitForDigest(afterBuild);

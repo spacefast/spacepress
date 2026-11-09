@@ -3,7 +3,7 @@
 // MySQL UNIQUE violation maps to a 409 `unique_violation` with the column pointer. Also: db.globals from
 // compiled code.
 import { test } from "node:test";
-import { createClient, ZeroError } from "./app/zero/client/index.ts";
+import { createClient, ZeroError } from "./app/zero/_generated/client/index.ts";
 import assert from "node:assert/strict";
 import { api, auth, core, harness, http, ok, problem, run, sql, wp, wpTry, zero } from "./env.ts";
 

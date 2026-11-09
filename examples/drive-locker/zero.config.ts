@@ -2,7 +2,7 @@ import {
   action, date, db, defineConfig, defineRelations, email, HttpError,
   integer, job, jobs, json, real, table, text, timestamp, userProjection, type AccessConfig,
 } from "zero";
-import { HEALTH } from "./lib/health";
+import { HEALTH } from "./zero/lib/health";
 
 const access = {
   read: ({ user }) => user ? { ownerId: user.id } : false,

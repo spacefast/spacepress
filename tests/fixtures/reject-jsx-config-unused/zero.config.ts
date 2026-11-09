@@ -1,3 +1,3 @@
 import { defineConfig } from "zero";
-import { label } from "./label";
+import { label } from "./zero/lib/label";
 export default defineConfig({ name: label });

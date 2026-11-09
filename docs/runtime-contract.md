@@ -19,7 +19,7 @@ Every Zero file starts with `declare(strict_types=1);`. Namespace `Zero`.
 ## Build output layout
 
 ```
-<out>/                                 (default: <project>/.zero/wp-content)
+<out>/                                 (default: <project>/zero/dist/wp-content)
   zero-manifest.json                   versions, runtime series, platform requirements, dependency checksums
   plugins/zero-runtime/
     zero-runtime.php                   plugin header; boots Wp\Plugin
@@ -547,7 +547,8 @@ The v2 app plugin registers these. A WordPress without a Zero app is unchanged.
   post type in REST): after core has run the route and its permission check,
   a 200 item response is sent as `MarkdownTwins::post()` in `text/markdown`.
   A password-protected post shows its body only when core would (the right
-  `password` parameter, or an editor in the edit context). Every refusal stays
+  `password` parameter, or an editor in the edit context). Core is asked only
+  for the item's `id` (`_fields=id`), so `the_content` runs once per request. Every refusal stays
   core's JSON error. List routes and other methods are unchanged. The
   `/__zero/api/v1` facade's item route should call `MarkdownTwins::post()` so
   that both give the same Markdown.
@@ -567,8 +568,7 @@ PHP API (all static):
 |---|---|
 | `MarkdownTwins::twin(string $url): string` | the twin URL: `/x/` → `/x.md`, home → `/index.md`; scheme, host and query kept. Purges use it to add each URL's `.md` twin. |
 | `MarkdownTwins::post(WP_Post $post): string` | `# Title` plus the post's content as Markdown, through `Markdown::renderPost()`. While `post_password_required()` holds, only the title and a note. It checks no other visibility; the caller does. |
-| `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses. Markdown is written from what WordPress renders, never from stored markup: each top-level block goes through `render_block()`, then `do_shortcode()`, and the rendered HTML is converted (`Sync\HtmlMarkdown`). So block render callbacks, block supports such as core's "Hide block", `render_block` filters and shortcodes decide what shows, exactly as on the HTML page. A block that renders nothing or throws shows nothing. A `<` that would start a tag outside code is escaped, so no HTML reaches the output. `fromBlocks()` (sync) still writes stored markup and refuses what Markdown can't carry. |
-| `Sync\Markdown::renderPost(WP_Post $post): string` | a post's content as WordPress shows it, in Markdown. It runs `setup_postdata()`, then the whole `the_content` filter, then converts the HTML; the global post is restored afterwards. So membership and paywall plugins that replace `the_content`, and filters that read `get_the_ID()`, decide what shows. The `.md` URLs, REST `?format=md`, listing summaries and `/llms.txt` all use it. |
+| `Sync\Markdown::renderPost(WP_Post $post): string` | a post's content as WordPress shows it, in Markdown. It runs `setup_postdata()`, then the whole `the_content` filter, then converts the HTML (`Sync\HtmlMarkdown`); the global post is restored afterwards. If that rendering throws, the post shows nothing. Text that a Markdown reader would take for structure (a heading, quote, list item, fence, rule or setext underline at a line start, or a `<` that could open a tag outside code) is escaped, so no HTML and no structure reaches the output that WordPress did not render. So membership and paywall plugins that replace `the_content`, and filters that read `get_the_ID()`, decide what shows. The `.md` URLs, REST `?format=md`, listing summaries and `/llms.txt` all use it. |
 | `MarkdownTwins::llms(): string` | the `/llms.txt` body |
 | `MarkdownTwins::negotiate(string $uri): ?array` | the engine's `Accept: text/markdown` answer, below |
 

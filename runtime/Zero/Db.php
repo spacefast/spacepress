@@ -972,6 +972,15 @@ final class Db
         foreach ($norm as $name => $v) {
             Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx, $columns);
         }
+        $this->checkMedia($columns, $norm);
+    }
+
+    /**
+     * Every media id in $norm (normalized values by column) names an existing attachment, of an
+     * accepted kind. Also for core REST `meta` writes, which store through the post store directly.
+     */
+    public function checkMedia(array $columns, array $norm): void
+    {
         $refs = [];
         foreach ($norm as $name => $v) {
             array_push($refs, ...Schema::mediaRefs($columns[$name], $v, HttpError::seg($name)));

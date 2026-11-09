@@ -644,6 +644,48 @@ $wp->exec('DELETE FROM {prefix}zero__migrations WHERE `app` = ? AND `id` LIKE ?'
 eq('with the file gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
     [['data' => ['applied' => []]], ['data' => [['name' => 'Hammer']]]]);
 
+// ================================================================ migrations: the deploy-time schema check on SQLite (spec §2.9)
+
+// Statements as `zero build` plans a `was` rename and a drop. The SQLite driver has no RENAME TABLE and
+// its RENAME COLUMN loses values, so the migrator copies the table and changes the column instead:
+// rows, the auto-increment, and a child's foreign key (dropped and added back as the plan does) survive.
+$wp->exec('CREATE TABLE {prefix}zero_sc_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT, `state` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+$wp->exec('CREATE TABLE {prefix}zero_sc_kids (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `zero_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}zero_sc_notes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
+$wp->exec("INSERT INTO {prefix}zero_sc_notes (`body`, `state`) VALUES ('first', 'open'), ('second', NULL)");
+$wp->exec('INSERT INTO {prefix}zero_sc_kids (`noteId`) VALUES (1)');
+$checked = static fn (array $check, string $sql): string => '-- zero-check ' . json_encode($check, JSON_UNESCAPED_SLASHES) . "\n" . $sql;
+$p = '{prefix}';
+file_put_contents($wp->plugin()->dir . '/zero/app/migrations/0004_rename.sql', implode("\n--> statement-breakpoint\n", [
+    "ALTER TABLE `{$p}zero_sc_kids` DROP FOREIGN KEY `zero_sc_kids_noteId_fk`;",
+    $checked(['check' => 'rename', 'table' => "{$p}zero_sc_notes", 'to' => "{$p}zero_sc_memos"], "RENAME TABLE `{$p}zero_sc_notes` TO `{$p}zero_sc_memos`;"),
+    $checked(['check' => 'rename', 'name' => 'sc_memos.body', 'table' => "{$p}zero_sc_notes", 'column' => 'body', 'to' => 'text', 'definition' => '`text` LONGTEXT', 'adopted' => false],
+        "ALTER TABLE `{$p}zero_sc_memos` RENAME COLUMN `body` TO `text`;"),
+    "ALTER TABLE `{$p}zero_sc_kids` ADD CONSTRAINT `zero_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES `{$p}zero_sc_memos` (`id`) ON DELETE CASCADE;",
+]));
+// A second pending file drops a column under the new name: its check counts the rows still in sc_notes.
+file_put_contents($wp->plugin()->dir . '/zero/app/migrations/0005_drop.sql', $checked(
+    ['check' => 'drop', 'name' => 'sc_memos.state', 'table' => "{$p}zero_sc_memos", 'column' => 'state', 'adopted' => false],
+    "ALTER TABLE `{$p}zero_sc_memos` DROP COLUMN `state`;",
+));
+[$code, $out] = $wp->wpCli(['migrate']);
+eq('a drop pending behind a rename is counted under the old name, and refused with nothing run', [$code, $out['error']['code'] ?? null,
+    array_map(static fn (array $r): array => [$r['code'], $r['name'], $r['rows']], $out['error']['refusals'] ?? []), $out['error']['drop'] ?? null,
+    (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}zero_sc_notes')],
+    [1, 'schema_refused', [['drop_has_rows', 'sc_memos.state', 1]], ['sc_memos.state=1'], 2]);
+eq('a bare --drop is refused, not ignored', $wp->wpCli(['migrate'], ['drop' => true])[1]['error']['code'] ?? null, 'invalid_drop');
+eq('--drop with the live count applies both files', $wp->wpCli(['migrate'], ['drop' => 'sc_memos.state=1'])[1]['data']['applied'] ?? null, ['0004_rename', '0005_drop']);
+eq('the renamed table kept its rows, values and auto-increment, and its child kept its row and key', [
+    $wp->sql('SELECT `id`, `text` FROM {prefix}zero_sc_memos ORDER BY `id`'),
+    $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$wp->connection()->prefix() . 'zero_sc_notes']),
+    $wp->sql('SELECT `noteId` FROM {prefix}zero_sc_kids'),
+], [[['id' => 1, 'text' => 'first'], ['id' => 2, 'text' => 'second']], 0, [['noteId' => 1]]]);
+$wp->exec("INSERT INTO {prefix}zero_sc_memos (`text`) VALUES ('third')");
+eq('the copy keeps counting ids where the table left off', (int) $wp->scalar('SELECT MAX(`id`) FROM {prefix}zero_sc_memos'), 3);
+$wp->exec('DELETE FROM {prefix}zero_sc_memos WHERE `id` = 1');
+eq('the child key points at the renamed table (ON DELETE CASCADE fires)', (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}zero_sc_kids'), 0);
+$wp->exec('DROP TABLE {prefix}zero_sc_kids');
+$wp->exec('DROP TABLE {prefix}zero_sc_memos');
+
 // ================================================================ CLI
 
 $cli = fn (string ...$args) => $wp->cli(...$args);

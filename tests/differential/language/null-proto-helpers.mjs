@@ -37,6 +37,24 @@ function attempt(run) {
   try { return run(); } catch (error) { return `${error.name}`; }
 }
 
+// A null-prototype object whose methods read `this`: the compiler rebuilds it per request as a
+// receiver, which must keep the null prototype.
+const scoped = {
+  __proto__: null,
+  n: 1,
+  get(key) { return this[key]; },
+  has(key) { return key in this; },
+};
+
+export function thisNullProto(inputs) {
+  const names = [...inputs, 'n', 'get'];
+  return {
+    types: names.map((key) => typeof scoped.get(key)),
+    present: names.map((key) => scoped.has(key)),
+    constructor: typeof scoped.constructor,
+  };
+}
+
 /** picomatch lib/parse.js: `input = REPLACEMENTS[input] || input` and `POSIX_REGEX_SOURCE[rest]`. */
 export function picomatchLookups(inputs) {
   const { REPLACEMENTS } = constants;

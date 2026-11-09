@@ -5,7 +5,7 @@
 // evaluation, captured into PHP) and inside handlers. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical.
 import { action, defineConfig } from "zero";
-import { picomatchLookups, untypedNullProto } from "./null-proto-helpers.mjs";
+import { picomatchLookups, thisNullProto, untypedNullProto } from "./null-proto-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -69,5 +69,6 @@ export default defineConfig({
     nullProtoTypedMethod: run(() => typedMethodCall()),
     nullProtoPicomatch: run(() => picomatchLookups(INPUTS)),
     nullProtoUntyped: run(() => untypedNullProto()),
+    nullProtoThis: run(() => thisNullProto(INPUTS)),
   },
 });

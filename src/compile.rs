@@ -4444,10 +4444,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let name = self.unique_name("receiver");
         let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let arguments = if o.null_prototype() { "nullPrototype: true" } else { "" };
         let body = self.attempt(|this| {
             this.data_helpers.insert(key, name.clone());
             let mut body = format!(
-                "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject();\n"
+                "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject({arguments});\n"
             );
             for (key, member) in fields {
                 let member_path = format!("{path}.{key}");

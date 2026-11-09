@@ -58,11 +58,10 @@ no key and evaluates nothing (JavaScript sets the prototype when the literal is
 created, and defining the other keys never consults it). A second
 `__proto__:` in one literal is a JavaScript early error that oxc reports.
 
-**Build time.** The evaluator records null-prototype objects in a side table,
-`Evaluator::null_prototypes`, keyed by allocation and holding the `Rc` so the
-address is never reused. This is the pattern `namespace_imports` and
-`method_homes` already use; it leaves the `Obj` type and its ~100 users
-unchanged. A literal with the marker is added to the table. Then:
+**Build time.** `Obj` is `Rc<ObjCell>`, and `ObjCell` carries the same
+per-object `null_prototype` flag as `JsObject::$nullPrototype` in the PHP
+runtime (`src/value.rs`). A literal with the marker is created with the flag
+set. Then:
 
 - `get_prop` on a null-prototype object returns the own value or `undefined`,
   never the inherited-read refusal;

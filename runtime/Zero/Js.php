@@ -1813,7 +1813,6 @@ final class Js
 
     // ---------------------------------------------------------------- objects
 
-    /** Structural equality that tells `{}` from `[]` (two separately decoded `{}` handles are equal). */
     /** `{ __proto__: null, ... }`: the fresh literal inherits nothing from Object.prototype. */
     public static function nullPrototype(JsObject $object): JsObject
     {
@@ -1821,6 +1820,7 @@ final class Js
         return $object;
     }
 
+    /** Structural equality that tells `{}` from `[]` (two separately decoded `{}` handles are equal). */
     public static function obj(array ...$parts): JsObject
     {
         $out = new JsObject();

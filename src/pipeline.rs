@@ -134,6 +134,15 @@ pub fn build(
     previous: impl FnOnce() -> Result<Previous, Diag>,
     runtime: impl Fn(&str) -> Option<&'static [u8]>,
 ) -> Result<Built, Diag> {
+    // A checkout from before `zero/_generated/` would have its locks ignored (and replaced) and an old
+    // client loaded as app code. A stored source bundle maps those paths instead (`layout::current`).
+    let root = program.modules[program.entry]
+        .path
+        .parent()
+        .expect("the entry has a directory");
+    if let Some((message, help)) = crate::layout::old_in_checkout(|p| program.fs.exists(p), root) {
+        return Err(Diag::new(Span::NONE, message).help(help).phase(diag::Code::Schema));
+    }
     let mut ev = eval::Evaluator::new(program);
     let config = ev.run().map_err(|d| d.phase(diag::Code::Evaluation))?;
     let config_span = Span {

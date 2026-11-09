@@ -2002,6 +2002,13 @@ impl<'p> Evaluator<'p> {
                     "call generators inside hooks and actions, which run in PHP",
                 );
             }
+            ExprKind::Jsx(_) => {
+                return err_help(
+                    e.span,
+                    "JSX at the top level of a module",
+                    "Zero renders JSX only while a component runs; return it from a function, e.g. `const Icon = () => <svg …/>`",
+                );
+            }
             ExprKind::Await(_) => {
                 return err_help(
                     e.span,
@@ -3589,6 +3596,15 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "showIf" => c.show_if = Some(arg(0)),
         "ui" => c.ui = Some(arg(0)),
         "localized" => c.localized = true,
+        "was" => match arg(0) {
+            Value::Str(old) => c.was = Some(old.to_string()),
+            other => {
+                return err(
+                    span,
+                    format!("`.was()` needs the field's old name, not {}", other.describe()),
+                );
+            }
+        },
         "notNull" => c.not_null = true,
         "unique" => c.unique = true,
         "min" | "max" => {
@@ -3730,6 +3746,7 @@ const MODIFIERS: &[&str] = &[
     "showIf",
     "ui",
     "localized",
+    "was",
 ];
 
 /// "a text column", "an email column".
@@ -3800,6 +3817,7 @@ impl ColBuilder {
             ui: None,
             localized: false,
             bucket: None,
+            was: None,
             span,
             mods: Vec::new(),
         }

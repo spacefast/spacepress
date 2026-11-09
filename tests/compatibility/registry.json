@@ -697,6 +697,205 @@
       "evidence": "tests/compiler_contracts.rs",
       "test": "language_constructs_match_node_through_generated_php",
       "guidance": "An ordinary function or object-literal method that reads `this` gets its call receiver: the object for a method call (`obj.m()`, `obj[k]()`), the first argument of `call`/`apply`, and undefined for a plain call (strict mode). Arrows inside see the same `this`. In authored TypeScript, `this` is typed by a `this:` parameter, or for an object-literal method by the literal's own fields. `this` at module level, in a module-level arrow, or before `super()` in a derived constructor is refused with a fix."
+    },
+    {
+      "id": "tsx-server-components",
+      "status": "supported",
+      "evidence": "tests/compiler.rs",
+      "test": "compiled_tsx_renders_the_html_react_renders",
+      "guidance": "Functions exported under a capitalized name from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\\Zero\\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md."
+    },
+    {
+      "id": "jsx-unsafe-url",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-unsafe-url",
+      "message": "is an unsafe URL",
+      "guidance": "Use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`). A computed URL that fails the same check drops the attribute at render time."
+    },
+    {
+      "id": "jsx-server-event-handler",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-handler",
+      "message": "server components can't handle events",
+      "guidance": "Event handlers run in the browser; move them into a \"use client\" component."
+    },
+    {
+      "id": "jsx-dangerously-set-inner-html",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-inner-html",
+      "message": "`dangerouslySetInnerHTML` isn't supported",
+      "guidance": "Render the value as a child, which is escaped. Trusted markup will use `<Html>`."
+    },
+    {
+      "id": "jsx-object-child",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-object-child",
+      "message": "can't be rendered as a JSX child",
+      "guidance": "React throws on an object child; render one of its fields, or map a list to elements."
+    },
+    {
+      "id": "jsx-component-props",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-props",
+      "message": "but the component expects",
+      "guidance": "Props are type-checked against the component's annotation like any call; pass values of the declared types."
+    },
+    {
+      "id": "jsx-head-elements",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-head",
+      "message": "a component can't render `<title>`",
+      "guidance": "React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, and import styles and scripts as modules."
+    },
+    {
+      "id": "jsx-in-config",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-config",
+      "message": "JSX files can't be part of a Zero config",
+      "guidance": "JSX compiles in `zero/components/`, pages and \"use client\" files; modules the config imports stay plain TypeScript."
+    },
+    {
+      "id": "jsx-in-action-result",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-action",
+      "message": "JSX files can't be part of a Zero config",
+      "guidance": "Rendered JSX exists only while a page renders, so the config (and the actions it defines) can't import a component; return data from actions and render it in a component."
+    },
+    {
+      "id": "jsx-textarea-children",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-textarea",
+      "message": "`<textarea>` can't have children",
+      "guidance": "Set a textarea's text with `defaultValue` (or `value`), as React asks."
+    },
+    {
+      "id": "jsx-srcdoc-value",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-srcdoc",
+      "message": "`srcDoc` isn't supported",
+      "guidance": "`srcDoc` is a document parsed as HTML, so it is refused even as a literal. Link to the document with `src`; trusted markup will use `<Html>`."
+    },
+    {
+      "id": "jsx-raw-text-tag-case",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-script-case",
+      "message": "a component can't render",
+      "guidance": "Tag names are matched case-insensitively, as browsers read them: `<sCript>` is `<script>`."
+    },
+    {
+      "id": "jsx-raw-text-children",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-iframe-child",
+      "message": "takes only literal text",
+      "guidance": "`script`, `style`, `textarea`, `title`, `iframe`, `noscript`, `template`, `xmp`, `noembed`, `noframes`, `plaintext`, `object` and `embed` take only literal children, because their content isn't escaped text."
+    },
+    {
+      "id": "jsx-raw-text-close",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-raw-close",
+      "message": "closes",
+      "guidance": "A literal child of a raw-text tag can't contain that tag's closing `</tag`."
+    },
+    {
+      "id": "jsx-open-spread",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-open-spread",
+      "message": "into attributes",
+      "guidance": "Spread only objects whose type lists their keys; each key is checked as if written out. `Record<string, …>`, index signatures, `any` and `unknown` are refused."
+    },
+    {
+      "id": "jsx-spread-event-handler",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-spread-handler",
+      "message": "server components can't handle events",
+      "guidance": "A closed spread's keys meet the same rules as written attributes, so a spread can't add an event handler, `srcDoc` or an unsafe literal URL."
+    },
+    {
+      "id": "jsx-computed-style",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-style-keys",
+      "message": "`style` needs an object with fixed keys",
+      "guidance": "`style` takes an object whose keys are known at build time; values from data are escaped, and values that add declarations or load a `url(` are dropped."
+    },
+    {
+      "id": "jsx-attribute-name",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-attribute-name",
+      "message": "isn't a valid attribute name",
+      "guidance": "Attribute names match `[a-zA-Z_:][a-zA-Z0-9_.:-]*`."
+    },
+    {
+      "id": "jsx-svg-animation",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-svg-animate",
+      "message": "SVG animation of",
+      "guidance": "SVG `animate`/`set` can rewrite their target's attributes: they never target URL or event attributes, and `values`/`to`/`from`/`by`/`attributeName` must be literal."
+    },
+    {
+      "id": "jsx-use-client-pending",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-use-client",
+      "message": "\"use client\" components aren't compiled yet",
+      "guidance": "Interactive components arrive with the Interactivity API output; until then, remove the directive to render on the server."
+    },
+    {
+      "id": "jsx-children-type",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-children-object",
+      "message": "which JSX can't pass",
+      "guidance": "`children` is what JSX passes: type it `ReactNode`, `JSX.Element`, `string` or `number`. Taking rendered children apart isn't supported."
+    },
+    {
+      "id": "jsx-config-reachable",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-config-unused",
+      "message": "JSX files can't be part of a Zero config",
+      "guidance": "A `.tsx` module the config imports is refused even when its JSX never runs; components live in `zero/components/`."
+    },
+    {
+      "id": "jsx-use-client-after-prologue",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-use-client-prologue",
+      "message": "\"use client\" components aren't compiled yet",
+      "guidance": "The directive is found anywhere in the file's directive prologue, after comments and other directives such as `\"use strict\"`."
+    },
+    {
+      "id": "jsx-children-type-local",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-children-local",
+      "message": "which JSX can't pass",
+      "guidance": "Every component's `children`, exported or local, is checked where JSX calls it."
+    },
+    {
+      "id": "jsx-style-spelling",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-style-case",
+      "message": "is spelled `style`",
+      "guidance": "Browsers read `STYLE` and `Style` as `style`, which Zero narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key."
     }
   ],
   "zero08": [

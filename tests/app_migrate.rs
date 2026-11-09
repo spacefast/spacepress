@@ -1440,6 +1440,11 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let site = temp.path().join("site-src");
     copy_tree(&fixture("site"), &site);
     std::fs::write(site.join("shared/setup.ts"), "export {};\n").unwrap();
+    std::fs::write(
+        site.join("shared/meta.ts"),
+        "export const metadata = { title: \"About\" };\n",
+    )
+    .unwrap();
     let decoys = [
         "// from '../shared/plans' is where the tiers live",
         "const caption = \"from '../shared/plans'\";",
@@ -1448,7 +1453,7 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     std::fs::write(
         site.join("pages/about.tsx"),
         format!(
-            "import '../shared/setup';\n{}\n{}\nexport default function About() {{ return ({}); }}\n",
+            "import '../shared/setup';\nexport {{ metadata }} from '../shared/meta';\n{}\n{}\nexport default function About() {{ return ({}); }}\n",
             decoys[0], decoys[1], decoys[2]
         ),
     )
@@ -1458,6 +1463,11 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     assert!(ok, "{report:#}");
     let about = std::fs::read_to_string(moved.join("pages/about/page.tsx")).unwrap();
     assert!(about.contains("import '../../zero/shared/setup';"), "{about}");
+    // A re-export moves with its module too.
+    assert!(
+        about.contains("export { metadata } from '../../zero/shared/meta';"),
+        "{about}"
+    );
     assert!(moved.join("zero/shared/setup.ts").is_file());
     for decoy in decoys {
         assert!(about.contains(decoy), "rewrote non-import text {decoy:?}: {about}");

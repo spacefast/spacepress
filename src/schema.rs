@@ -179,6 +179,8 @@ pub struct Column {
     pub hidden: bool,
     /// `json().$type<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
+    /// `.was("old")`: the stored name before a rename (spec §2.5).
+    pub was: Option<String>,
 }
 
 impl Column {
@@ -209,6 +211,7 @@ impl Column {
             derived: false,
             hidden: false,
             ts_type: None,
+            was: None,
         }
     }
 
@@ -340,6 +343,8 @@ pub struct Collection {
     pub table: String,
     /// Exact SQL table binding, without the WordPress prefix. Must already exist.
     pub existing_table: Option<String>,
+    /// `was: "old"`: the stored name before a rename (spec §2.6).
+    pub was: Option<String>,
     pub label: String,
     pub editor: bool,
     pub drafts: bool,
@@ -463,6 +468,8 @@ pub struct Schema {
     pub routes: IndexMap<String, Route>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
+    /// Server components (`zero/components/<file>.tsx#<export>`) → their compiled PHP function.
+    pub components: IndexMap<String, String>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
     pub wp_views: bool,
     pub files: IndexMap<String, FileBucket>,
@@ -484,6 +491,7 @@ impl Default for Schema {
             jobs: IndexMap::new(),
             routes: IndexMap::new(),
             wp_hooks: Vec::new(),
+            components: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),

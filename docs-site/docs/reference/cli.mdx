@@ -21,8 +21,6 @@ These commands run on your machine, on the project's files.
 | `first doctor [dir] [--out dir] [--site url] [--json]` | Check a build, and a running site (FIRST_TOKEN) |
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD) |
-| `first migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space id] [--dry-run] [--json]` | Convert a Zero 0.8 app. |
-| `first migrate config --from emdash\|payload\|sanity\|zero <input> --out <new/first.config.ts>` | Import another CMS's schema. |
 | `first deploy <inspect\|publish\|init\|status\|backup\|restore> <options>` | Artifact preflight and offline workspaces (docs/deployment.md) |
 
 ## Site commands
@@ -43,13 +41,12 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | `wp first delete <collection> <where json>` | Delete records. |
 | `wp first publish-due` | Publish scheduled records that are due. |
 | `wp first identity account\|suspend\|restore\|revoke\|erase <user-id> \| app add --name=n --redirect=uri --origin=o [--id=app_id] \| webhook-add <url> \| webhook-remove <id> \| webhooks \| maintenance \| rotate-keys` | First Identity accounts, applications, webhooks and keys. |
-| `wp first migrate-legacy <content-model.php \| -> [--dry-run] [--space=id]` | Move content from an original Zero site. |
-| `wp first migrate-legacy-users --space=id [--dry-run]` | Move an original Zero site's users. |
-| `wp first migrate-spacefast --space=id --source-prefix=p --target-prefix=p [--dry-run \| --verify]` | Move a Spacefast-hosted Space's tables. |
 
 `first wp <WP-CLI arguments>` runs any WP-CLI command on the local site. For example, `first wp plugin list`.
 
 Site commands sign in with `FIRST_APP_PASSWORD` or `FIRST_TOKEN`.
+
+The commands that move an app or its content from another system are experimental and are not listed here.
 
 ## Create an app
 

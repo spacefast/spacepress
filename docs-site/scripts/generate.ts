@@ -149,9 +149,17 @@ const catalog = new Map(
 	[...read("docs/examples.md").matchAll(/^\| \[?`examples\/([a-z0-9-]+)\/`\]?(?:\([^)]*\))? \| (.+?) \|$/gm)].map((m) => [m[1]!, `${m[2]!.trim().replace(/\.$/, "")}.`]),
 );
 
+// Examples the site leaves out, with the reason. Their directories stay in the repository.
+const leftOut: Record<string, string> = {
+	emdash: "Migration from another CMS. Migrations are experimental.",
+};
+
 const exampleNames = readdirSync(path.join(repo, "examples"))
-	.filter((name) => statSync(path.join(repo, "examples", name)).isDirectory())
+	.filter((name) => statSync(path.join(repo, "examples", name)).isDirectory() && !(name in leftOut))
 	.sort();
+for (const name of Object.keys(leftOut)) {
+	if (!existsSync(path.join(repo, "examples", name))) throw new Error(`examples/${name} is gone; remove it from leftOut in scripts/generate.ts`);
+}
 const examples: ExampleInfo[] = [];
 
 for (const name of exampleNames) {
@@ -268,7 +276,14 @@ const sentence = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.)
 const usage = (prefix: string, c: Command) => `${prefix} ${c.name}${c.args ? ` ${c.args}` : ""}`;
 const commandRows = (prefix: string, rows: Command[]) =>
 	rows.map((c) => `| \`${cell(toFirst(usage(prefix, c)))}\` | ${cell(mdx(sentence(toFirst(c.summary))))} |`).join("\n");
-const siteRows = commands.site.filter((c) => c.via !== "wp");
+// Commands that move an app or its data from another system. Migrations are experimental, so the
+// reference leaves them out and says so. `migrate` (apply database migrations) is not one of them.
+const experimental = new Set(["migrate app", "migrate config", "migrate-legacy", "migrate-legacy-users", "migrate-spacefast"]);
+for (const name of experimental) {
+	if (![...commands.build, ...commands.site].some((c) => c.name === name)) throw new Error(`commands.json has no ${name}; update the experimental list in scripts/generate.ts`);
+}
+const buildRows = commands.build.filter((c) => !experimental.has(c.name));
+const siteRows = commands.site.filter((c) => c.via !== "wp" && !experimental.has(c.name));
 const createHelp = read("packages/create-zero/bin/create-zero.mjs");
 const noInstall = createHelp.includes("--no-install");
 
@@ -285,7 +300,7 @@ These commands run on your machine, on the project's files.
 
 | Command | What it does |
 | --- | --- |
-${commandRows("first", commands.build)}
+${commandRows("first", buildRows)}
 
 ## Site commands
 
@@ -298,6 +313,8 @@ ${commandRows("wp first", siteRows)}
 \`first wp <WP-CLI arguments>\` runs any WP-CLI command on the local site. For example, \`first wp plugin list\`.
 
 Site commands sign in with \`FIRST_APP_PASSWORD\` or \`FIRST_TOKEN\`.
+
+The commands that move an app or its content from another system are experimental and are not listed here.
 
 ## Create an app
 

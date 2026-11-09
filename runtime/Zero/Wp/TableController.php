@@ -146,10 +146,16 @@ final class TableController extends \WP_REST_Controller
 
     public function prepare_item_for_response($item, $request)
     {
-        // `_fields` (nested paths included) is core's own filter on the response (rest_filter_response_fields).
-        $response = rest_ensure_response(PostMeta::values($this->collection, $item, array_map('strval', array_keys($item))));
-        $response->add_link('self', rest_url(sprintf('%s/%s/%s', $this->namespace, $this->rest_base, rawurlencode((string) ($item[$this->pk()] ?? '')))));
-        $response->add_link('collection', rest_url(sprintf('%s/%s', $this->namespace, $this->rest_base)));
+        $data = PostMeta::values($this->collection, $item, array_map('strval', array_keys($item)));
+        if (!empty($request['_fields'])) {
+            $data = self::fields($data, self::fieldTree(wp_parse_list($request['_fields'])));
+        }
+        $response = rest_ensure_response($data);
+        $fields = $this->get_fields_for_response($request);
+        if (rest_is_field_included('_links', $fields) || rest_is_field_included('_embedded', $fields)) {
+            $response->add_link('self', rest_url(sprintf('%s/%s/%s', $this->namespace, $this->rest_base, rawurlencode((string) ($item[$this->pk()] ?? '')))));
+            $response->add_link('collection', rest_url(sprintf('%s/%s', $this->namespace, $this->rest_base)));
+        }
 
         return $response;
     }
@@ -183,6 +189,51 @@ final class TableController extends \WP_REST_Controller
     }
 
     // ================================================================ helpers
+
+    /**
+     * `_fields` as core reads it (`a`, `a.b`; a parent named whole wins over its sub-paths), as a tree.
+     * Core's own filter runs again after this one but only recurses into PHP arrays; Zero rows keep
+     * their objects (`{}` stays an object), so the nested paths are applied here.
+     */
+    private static function fieldTree(array $fields): array
+    {
+        $tree = [];
+        foreach (array_map('trim', $fields) as $field) {
+            $ref = &$tree;
+            $parts = explode('.', (string) $field);
+            while (count($parts) > 1) {
+                $next = array_shift($parts);
+                if (($ref[$next] ?? null) === true) {
+                    continue 2;
+                }
+                $ref[$next] ??= [];
+                $ref = &$ref[$next];
+            }
+            $ref[array_shift($parts)] = true;
+            unset($ref);
+        }
+
+        return $tree;
+    }
+
+    private static function fields(mixed $value, array $tree): mixed
+    {
+        if ($value instanceof \stdClass) {
+            return (object) self::fields(get_object_vars($value), $tree);
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+        if (array_is_list($value) && $value !== []) {
+            return array_map(static fn ($item) => self::fields($item, $tree), $value);
+        }
+        $out = [];
+        foreach (array_intersect_key($value, $tree) as $key => $v) {
+            $out[$key] = $tree[$key] === true ? $v : self::fields($v, $tree[$key]);
+        }
+
+        return $out;
+    }
 
     /**
      * One API operation: the kind must enable it, the account must not be suspended, and the

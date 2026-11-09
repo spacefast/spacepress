@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Extracts the constructor argument type using ConstructorArgumentTypeExtractorInterface implementations.
@@ -45,7 +45,7 @@ final class ConstructorExtractor implements PropertyTypeExtractorInterface
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         foreach ($this->extractors as $extractor) {
             $value = $extractor->getTypesFromConstructor($class, $property);

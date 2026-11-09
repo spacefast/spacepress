@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\Service;
+namespace Zero\Vendor\Symfony\Contracts\Service;
 
-use First\Vendor\Psr\Container\ContainerExceptionInterface;
-use First\Vendor\Psr\Container\NotFoundExceptionInterface;
+use Zero\Vendor\Psr\Container\ContainerExceptionInterface;
+use Zero\Vendor\Psr\Container\NotFoundExceptionInterface;
 
 // Help opcache.preload discover always-needed symbols
 class_exists(ContainerExceptionInterface::class);

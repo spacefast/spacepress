@@ -2,7 +2,7 @@
 // (app/lanes/media.ts) configures `card` (120x120 cover) and `wide` (200 wide, inside).
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { createClient, FirstError } from "./app/first/client/index.ts";
+import { createClient, FirstError } from "./app/first/_generated/client/index.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";

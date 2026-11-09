@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Extractor;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Extractor;
 
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
 
 /**
  * @author David Maicher <mail@dmaicher.de>

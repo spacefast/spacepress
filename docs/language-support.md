@@ -460,7 +460,7 @@ undefined denotes the built-in missing value. Runtime bindings named undefined a
 
 Status: **refused**. Diagnostic: `F4001`.
 
-abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in first/abilities.json by `first abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in first/_generated/abilities.json by `first abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
 
 [Evidence](../tests/fixtures/reject-ability-unknown)
 
@@ -484,7 +484,7 @@ The ability name must be written in place so the build can type the input and re
 
 Status: **supported**.
 
-abilities.call("vendor/name", input) compiles to First\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from first/abilities.json, which build and check read without touching the network. first.gen.ts carries the same types for the editor.
+abilities.call("vendor/name", input) compiles to First\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from first/_generated/abilities.json, which build and check read without touching the network. first/_generated/db.d.ts carries the same types for the editor.
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_abilities_are_typed_from_the_lock_and_the_schema`)
 
@@ -556,7 +556,7 @@ Allowlisted WordPress functions compile to First\Wp\Functions::call(name, [args]
 
 Status: **refused**. Diagnostic: `F4201`.
 
-A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed first/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed first/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
 
 [Evidence](../tests/fixtures/reject-plugin-write)
 

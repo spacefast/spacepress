@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\Attribute\OneAsymmetricKeyAttributes;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\Attribute\OneAsymmetricKeyAttributes;
 
 /**
  * PrivateKeyInfo was first introduced in RFC 5208, but later refined as OneAsymmetricKey in RFC 5958 with backwards

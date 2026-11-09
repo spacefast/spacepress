@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Idna;
+namespace Zero\Vendor\Rowbot\Idna;
 
 use function chr;
 use function mb_str_split;

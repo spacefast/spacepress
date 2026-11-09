@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid;
+namespace Zero\Identity\Vendor\Symfony\Component\Uid;
 
 /**
  * A v1 UUID contains a 60-bit timestamp and 62 extra unique bits.
@@ -25,7 +25,7 @@ class UuidV1 extends Uuid implements TimeBasedUidInterface
     public function __construct(?string $uuid = null)
     {
         if (null === $uuid) {
-            $this->uid = strtolower(first_identity_vendor_uuid_create(static::TYPE));
+            $this->uid = strtolower(zero_identity_vendor_uuid_create(static::TYPE));
         } else {
             parent::__construct($uuid, true);
         }
@@ -55,7 +55,7 @@ class UuidV1 extends Uuid implements TimeBasedUidInterface
 
     public static function generate(?\DateTimeInterface $time = null, ?Uuid $node = null): string
     {
-        $uuid = !$time || !$node ? first_identity_vendor_uuid_create(static::TYPE) : parent::NIL;
+        $uuid = !$time || !$node ? zero_identity_vendor_uuid_create(static::TYPE) : parent::NIL;
 
         if ($time) {
             if ($node) {

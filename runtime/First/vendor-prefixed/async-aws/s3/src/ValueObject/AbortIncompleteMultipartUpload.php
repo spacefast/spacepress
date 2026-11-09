@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * Specifies the days since the initiation of an incomplete multipart upload that Amazon S3 will wait before permanently

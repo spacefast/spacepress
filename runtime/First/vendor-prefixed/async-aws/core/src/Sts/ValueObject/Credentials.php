@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Sts\ValueObject;
+namespace Zero\Vendor\AsyncAws\Core\Sts\ValueObject;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * Amazon Web Services credentials for API authentication.

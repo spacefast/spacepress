@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Doctrine\Deprecations;
+namespace Zero\Identity\Vendor\Doctrine\Deprecations;
 
-use First\Identity\Vendor\Psr\Log\LoggerInterface;
+use Zero\Identity\Vendor\Psr\Log\LoggerInterface;
 
 use function array_key_exists;
 use function array_reduce;
@@ -30,13 +30,13 @@ use const E_USER_DEPRECATED;
  * following methods:
  *
  *  - Minimal collection of deprecations via getTriggeredDeprecations()
- *    \First\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableTrackingDeprecations();
+ *    \Zero\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableTrackingDeprecations();
  *
  *  - Uses @trigger_error with E_USER_DEPRECATED
- *    \First\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithTriggerError();
+ *    \Zero\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithTriggerError();
  *
  *  - Sends deprecation messages via a PSR-3 logger
- *    \First\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithPsrLogger($logger);
+ *    \Zero\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithPsrLogger($logger);
  *
  * Packages that trigger deprecations should use the `trigger()` or
  * `triggerIfCalledFromOutside()` methods.

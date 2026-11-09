@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Test\Http;
+namespace Zero\Vendor\AsyncAws\Core\Test\Http;
 
-use First\Vendor\AsyncAws\Core\Exception\LogicException;
-use First\Vendor\Symfony\Component\HttpClient\Response\MockResponse;
+use Zero\Vendor\AsyncAws\Core\Exception\LogicException;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
  * @final

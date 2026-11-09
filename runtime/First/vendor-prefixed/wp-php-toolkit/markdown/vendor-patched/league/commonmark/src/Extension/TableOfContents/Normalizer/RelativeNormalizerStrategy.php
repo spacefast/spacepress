@@ -11,16 +11,16 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer;
+namespace Zero\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
-use First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents;
 
 final class RelativeNormalizerStrategy implements NormalizerStrategyInterface
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents */
+     * @var \Zero\Vendor\League\CommonMark\Extension\TableOfContents\Node\TableOfContents */
     private $toc;
 
     /**

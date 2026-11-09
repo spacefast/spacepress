@@ -11,22 +11,22 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStart;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
-use First\Vendor\League\CommonMark\Util\RegexHelper;
-use First\Vendor\League\Config\ConfigurationAwareInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStart;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
+use Zero\Vendor\League\CommonMark\Util\RegexHelper;
+use Zero\Vendor\League\Config\ConfigurationAwareInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 final class ListBlockStartParser implements BlockStartParserInterface, ConfigurationAwareInterface
 {
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\Config\ConfigurationInterface|null */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface|null */
     private $config;
 
     /**

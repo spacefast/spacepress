@@ -21,13 +21,13 @@ import { defineConfig } from "first";
 export default defineConfig({ name: "abilities-lane" });
 TS
 "$first" build "$work/app" --quiet >/dev/null
-"$wp/harness.sh" up --wp-content "$work/app/.first/wp-content" > "$work/harness.json"
+"$wp/harness.sh" up --wp-content "$work/app/first/dist/wp-content" > "$work/harness.json"
 "$wp/harness.sh" compose cp "$here/mu-plugin.php" wordpress:/var/www/html/wp-content/mu-plugins/first-abilities-lane.php >/dev/null 2>&1
 url=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "$work/harness.json")
 password=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["users"]["admin"]["appPassword"])' "$work/harness.json")
 # The pull lists the site's abilities as an administrator, from the environment only.
 FIRST_APP_PASSWORD="admin:$password" "$first" abilities pull "$work/app" --site "$url" --only 'acme/*'
-python3 - "$work/app/first/abilities.json" <<'PY'
+python3 - "$work/app/first/_generated/abilities.json" <<'PY'
 import json, sys
 lock = json.load(open(sys.argv[1]))
 assert [a["name"] for a in lock["abilities"]] == ["acme/word-count"], lock
@@ -37,8 +37,8 @@ PY
 cp "$here/first.config.ts" "$work/app/first.config.ts"
 cp -r "$here/wp-hooks" "$work/app/wp-hooks"
 "$first" build "$work/app" --out "$work/next" --quiet >/dev/null
-rsync -a --delete "$work/next/plugins/first-app-abilities-lane/" "$work/app/.first/wp-content/plugins/first-app-abilities-lane/"
-grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/first.gen.ts"
+rsync -a --delete "$work/next/plugins/first-app-abilities-lane/" "$work/app/first/dist/wp-content/plugins/first-app-abilities-lane/"
+grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/first/_generated/db.d.ts"
 # Doctor reports the lock as satisfied, then the change once the site's schema moves.
 FIRST_APP_PASSWORD="admin:$password" "$first" doctor "$work/app" --out "$work/next" --site "$url" > "$work/doctor.txt" || true
 grep -q '✓ locked abilities: all present and unchanged' "$work/doctor.txt" || { cat "$work/doctor.txt" >&2; exit 1; }

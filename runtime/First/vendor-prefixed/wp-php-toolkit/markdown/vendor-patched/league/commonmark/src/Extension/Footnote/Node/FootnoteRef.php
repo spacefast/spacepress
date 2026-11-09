@@ -12,16 +12,16 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Footnote\Node;
+namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Node;
 
-use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
-use First\Vendor\League\CommonMark\Reference\ReferenceInterface;
-use First\Vendor\League\CommonMark\Reference\ReferenceableInterface;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceInterface;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceableInterface;
 
 final class FootnoteRef extends AbstractInline implements ReferenceableInterface
 {
     /**
-     * @var \First\Vendor\League\CommonMark\Reference\ReferenceInterface
+     * @var \Zero\Vendor\League\CommonMark\Reference\ReferenceInterface
      */
     private $reference;
 

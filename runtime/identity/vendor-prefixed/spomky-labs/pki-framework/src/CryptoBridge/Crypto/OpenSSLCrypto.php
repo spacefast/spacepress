@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
 
 use function array_key_exists;
 use function function_exists;
@@ -17,15 +17,15 @@ use const OPENSSL_ALGO_SHA512;
 use const OPENSSL_RAW_DATA;
 use const OPENSSL_ZERO_PADDING;
 use RuntimeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\BlockCipherAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\RC2CBCAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\BlockCipherAlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\RC2CBCAlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
 use function sprintf;
 use UnexpectedValueException;
 

@@ -36,7 +36,7 @@ in §1. Problem codes are RFC 9457 as in phase 1. New system tables are named
 | Area | Decision |
 |---|---|
 | Plugin set | Three plugins: **`first-runtime`** (shared PHP runtime, versioned with the `first` binary), **`first-identity`** (spacefast-identity, renamed, OIDC issuer + account screens), **`first-app-<name>`** (generated per app: schema.php, functions.php, migrations). No `mu-plugins`. One app plugin per site in phase 2. |
-| Build output (WP) | `first build --target wp` writes `.first/wp-content/plugins/{first-runtime,first-identity,first-app-<name>}/` plus one zip per plugin and `first-manifest.json`. Drop the tree onto any WordPress; the harness bind-mounts `plugins/`. |
+| Build output (WP) | `first build --target wp` writes `first/dist/wp-content/plugins/{first-runtime,first-identity,first-app-<name>}/` plus one zip per plugin and `first-manifest.json`. Drop the tree onto any WordPress; the harness bind-mounts `plugins/`. |
 | Standalone | Stays `.first/app`. Same runtime bytes. Supports features 1, 2, 3, 6, 7 fully (7 with First's own translation-group columns); feature 4 partially (password + guest sessions, no OIDC/passkeys/MFA); feature 5 not at all (abilities/MCP are WordPress APIs). |
 | schema.php | **Version 3** (§3.1). Additive keys; the runtime refuses v2. |
 | Required platform | WordPress ≥ 7.1, PHP ≥ 8.2, MySQL 8.0+/MariaDB 10.11+ InnoDB or SQLite Database Integration 3.1.2+; required plugins with minimum versions: `secure-custom-fields` 6.9.7, `action-scheduler` 4.2, `mcp-adapter` 0.7.1, and `polylang` 3.9 when `locales` is configured. Declared in plugin headers, checked on activation and by `first doctor`, provisioned by the harness and `first dev --wp` (§2.7). |
@@ -61,10 +61,10 @@ in §1. Problem codes are RFC 9457 as in phase 1. New system tables are named
 
 ### 2.1 The `wp-content/` artifact
 
-`first build --target wp [--out <dir>]` (default `<project>/.first/wp-content`) writes:
+`first build --target wp [--out <dir>]` (default `<project>/first/dist/wp-content`) writes:
 
 ```
-.first/wp-content/
+first/dist/wp-content/
   first-manifest.json                      {"first":"0.2.0","app":"blog","plugins":{"first-runtime":"0.2.0","first-identity":"0.2.0","first-app-blog":"0.2.0+<schemaHash>"},"requires":{"secure-custom-fields":">=6.9.7","action-scheduler":">=3.9"}}
   plugins/
     first-runtime/
@@ -205,7 +205,7 @@ requires it, identity only if the dir has it), then creates the four users
 with application passwords as today. `up` also registers a dev OIDC
 application (§3.4) and prints its `clientId` in the JSON line
 (`"identity":{"clientId":"app_…"}`). `first dev --wp` passes `--wp-content
-.first/wp-content`. `FIRST_WP_PLUGIN` / `--plugin` are removed (**CHANGES §8, §9.2**).
+first/dist/wp-content`. `FIRST_WP_PLUGIN` / `--plugin` are removed (**CHANGES §8, §9.2**).
 
 ### 2.5 `first doctor`
 
@@ -221,7 +221,7 @@ migrations. Standalone: PHP version, extensions (`pdo_sqlite`,
 ### 2.6 Migration from the single-plugin output
 
 `.first/wp/` is deleted by the next `first build`; `tests/wp/run.sh` stages
-`.first/wp-content` instead of `tests/wp/.plugin`. The phase-1 plugin's options
+`first/dist/wp-content` instead of `tests/wp/.plugin`. The phase-1 plugin's options
 (`first_<app>_schema`) keep their names; existing post types, meta keys, SCF keys
 and `table()` definitions are untouched, so activating `first-runtime` +
 `first-app-<name>` over a site that ran the phase-1 `first-<name>` plugin
@@ -331,7 +331,7 @@ plugins. The mechanism is the same for every plugin that needs a library:
    `{ "lock": "<sha256 of composer.lock>", "strauss": "0.31.1", "php": "8.2" }`
    and `vendor-prefixed/THIRD-PARTY-LICENSES.txt`.
 2. **Committed.** `vendor-prefixed/` trees are committed (they are build
-   artifacts of the repo, like `first/client/`). Drift guard
+   artifacts of the repo, like `first/_generated/client/`). Drift guard
    `tests/php/vendor_drift.php`: fails when `.manifest.json.lock` ≠
    sha256 of the current `composer.lock` for any root, or when a
    `composer.json` has no `vendor-prefixed/`. CI runs `scripts/vendor.sh all`
@@ -1318,7 +1318,7 @@ export interface ConfigInput { locales?: { default: Locale; all: Locale[]; /** R
 // ColumnBuilder gains (text, richText, json, select, group, repeater, blocks; not id/slug/system/media/file/numbers/booleans/dates):
 /** This column is translated per locale. Every other column of a localized collection is synced across its translations. */
 localized(): this-shaped builder;
-export type Locale = string;   // narrowed to the configured union in first.gen.ts via Register
+export type Locale = string;   // narrowed to the configured union in first/_generated/db.d.ts via Register
 
 // A collection with at least one localized column is a *localized collection* and gains two system columns:
 export type LocalizedColumns = { locale: Locale; /** locale → id of the translation (self included) */ translations: Partial<Record<Locale, number>> };

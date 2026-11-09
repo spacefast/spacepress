@@ -11,14 +11,14 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\AggregatedType;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\AggregatedType;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
 
 /**
  * Value Object representing the type `array-key`.

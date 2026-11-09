@@ -14,21 +14,21 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Renderer;
+namespace Zero\Vendor\League\CommonMark\Renderer;
 
-use First\Vendor\League\CommonMark\Environment\EnvironmentInterface;
-use First\Vendor\League\CommonMark\Event\DocumentPreRenderEvent;
-use First\Vendor\League\CommonMark\Event\DocumentRenderedEvent;
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use First\Vendor\League\CommonMark\Node\Block\Document;
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Output\RenderedContent;
-use First\Vendor\League\CommonMark\Output\RenderedContentInterface;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface;
+use Zero\Vendor\League\CommonMark\Event\DocumentPreRenderEvent;
+use Zero\Vendor\League\CommonMark\Event\DocumentRenderedEvent;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Output\RenderedContent;
+use Zero\Vendor\League\CommonMark\Output\RenderedContentInterface;
 
 final class HtmlRenderer implements DocumentRendererInterface, ChildNodeRendererInterface
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Environment\EnvironmentInterface */
+     * @var \Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface */
     private $environment;
 
     public function __construct(EnvironmentInterface $environment)

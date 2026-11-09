@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Brick\Math\Exception;
+namespace Zero\Vendor\Brick\Math\Exception;
 
-use First\Vendor\Brick\Math\NumberSyntax;
+use Zero\Vendor\Brick\Math\NumberSyntax;
 use RuntimeException;
 
 use function ord;

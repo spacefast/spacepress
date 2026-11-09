@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient;
+namespace Zero\Vendor\Symfony\Component\HttpClient;
 
 use Amp\CancelledException;
 use Amp\DeferredFuture;
@@ -19,25 +19,25 @@ use Amp\Http\Client\PooledHttpClient;
 use Amp\Http\Client\Request;
 use Amp\Http\HttpMessage;
 use Amp\Http\Tunnel\Http1TunnelConnector;
-use First\Vendor\Psr\Log\LoggerAwareInterface;
-use First\Vendor\Psr\Log\LoggerAwareTrait;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Component\HttpClient\Internal\AmpClientStateV4;
-use First\Vendor\Symfony\Component\HttpClient\Internal\AmpClientStateV5;
-use First\Vendor\Symfony\Component\HttpClient\Response\AmpResponseV4;
-use First\Vendor\Symfony\Component\HttpClient\Response\AmpResponseV5;
-use First\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
-use First\Vendor\Symfony\Contracts\Service\ResetInterface;
+use Zero\Vendor\Psr\Log\LoggerAwareInterface;
+use Zero\Vendor\Psr\Log\LoggerAwareTrait;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\AmpClientStateV4;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\AmpClientStateV5;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\AmpResponseV4;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\AmpResponseV5;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 if (!interface_exists(DelegateHttpClient::class)) {
-    throw new \LogicException('You cannot use "First\Vendor\Symfony\Component\HttpClient\AmpHttpClient" as the "amphp/http-client" package is not installed. Try running "composer require amphp/http-client:^5".');
+    throw new \LogicException('You cannot use "Zero\Vendor\Symfony\Component\HttpClient\AmpHttpClient" as the "amphp/http-client" package is not installed. Try running "composer require amphp/http-client:^5".');
 }
 
 if (\PHP_VERSION_ID < 80400 && is_subclass_of(Request::class, HttpMessage::class)) {
-    throw new \LogicException('Using "First\Vendor\Symfony\Component\HttpClient\AmpHttpClient" with amphp/http-client >= 5 requires PHP >= 8.4. Try running "composer require amphp/http-client:^4.2.1" or upgrade to PHP >= 8.4.');
+    throw new \LogicException('Using "Zero\Vendor\Symfony\Component\HttpClient\AmpHttpClient" with amphp/http-client >= 5 requires PHP >= 8.4. Try running "composer require amphp/http-client:^4.2.1" or upgrade to PHP >= 8.4.');
 }
 
 /**
@@ -79,7 +79,7 @@ final class AmpHttpClient implements HttpClientInterface, LoggerAwareInterface, 
             $this->multi = new AmpClientStateV5($clientConfigurator, $maxHostConnections, $maxPendingPushes, $this->logger);
         } else {
             if (\PHP_VERSION_ID >= 80400) {
-                first_vendor_trigger_deprecation('symfony/http-client', '7.4', 'Using amphp/http-client < 5 is deprecated. Try running "composer require amphp/http-client:^5".');
+                zero_vendor_trigger_deprecation('symfony/http-client', '7.4', 'Using amphp/http-client < 5 is deprecated. Try running "composer require amphp/http-client:^5".');
             }
             $this->multi = new AmpClientStateV4($clientConfigurator, $maxHostConnections, $maxPendingPushes, $this->logger);
         }

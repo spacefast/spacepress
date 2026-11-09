@@ -7,12 +7,12 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Schema\Elements;
+namespace Zero\Vendor\Nette\Schema\Elements;
 
-use First\Vendor\Nette;
-use First\Vendor\Nette\Schema\Context;
-use First\Vendor\Nette\Schema\Helpers;
-use First\Vendor\Nette\Schema\Schema;
+use Zero\Vendor\Nette;
+use Zero\Vendor\Nette\Schema\Context;
+use Zero\Vendor\Nette\Schema\Helpers;
+use Zero\Vendor\Nette\Schema\Schema;
 
 
 final class AnyOf implements Schema
@@ -31,7 +31,7 @@ final class AnyOf implements Schema
  public function __construct(...$set)
 	{
 		if (!$set) {
-			throw new \First\Vendor\Nette\InvalidStateException('The enumeration must not be empty.');
+			throw new \Zero\Vendor\Nette\InvalidStateException('The enumeration must not be empty.');
 		}
 
 		$this->set = $set;
@@ -54,7 +54,7 @@ final class AnyOf implements Schema
 
 	public function dynamic(): self
 	{
-		$this->set[] = new Type(\First\Vendor\Nette\Schema\DynamicParameter::class);
+		$this->set[] = new Type(\Zero\Vendor\Nette\Schema\DynamicParameter::class);
 		return $this;
 	}
 
@@ -128,14 +128,14 @@ final class AnyOf implements Schema
 					return $value;
 				}
 
-				$expecteds[] = \First\Vendor\Nette\Schema\Helpers::formatValue($item);
+				$expecteds[] = \Zero\Vendor\Nette\Schema\Helpers::formatValue($item);
 			}
 		}
 
 		if ($innerErrors) {
 			$context->errors = array_merge($context->errors, $innerErrors);
 		} else {
-			$context->addError('The %label% %path% expects to be %expected%, %value% given.', \First\Vendor\Nette\Schema\Message::TypeMismatch, [
+			$context->addError('The %label% %path% expects to be %expected%, %value% given.', \Zero\Vendor\Nette\Schema\Message::TypeMismatch, [
 					'value' => $value,
 					'expected' => implode('|', array_unique($expecteds)),
 				]);
@@ -151,7 +151,7 @@ final class AnyOf implements Schema
  public function completeDefault(Context $context)
 	{
 		if ($this->required) {
-			$context->addError('The mandatory item %path% is missing.', \First\Vendor\Nette\Schema\Message::MissingItem);
+			$context->addError('The mandatory item %path% is missing.', \Zero\Vendor\Nette\Schema\Message::MissingItem);
 			return null;
 		}
 

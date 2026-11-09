@@ -11,7 +11,7 @@ production data and may be rotated with the stack.
 ```sh
 cargo build
 target/debug/first build tests/wp/app
-tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/.first/wp-content"
+tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/first/dist/wp-content"
 tests/wp/harness.sh wp plugin list
 tests/wp/harness.sh down
 tests/wp/run.sh

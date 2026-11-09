@@ -1,9 +1,9 @@
 <?php
 
-namespace First\Vendor\WordPress\Merge\Validate;
+namespace Zero\Vendor\WordPress\Merge\Validate;
 
 use ReflectionClass;
-use First\Vendor\WordPress\DataLiberation\BlockMarkup\BlockMarkupProcessor;
+use Zero\Vendor\WordPress\DataLiberation\BlockMarkup\BlockMarkupProcessor;
 use WP_HTML_Processor;
 
 class BlockMarkupMergeValidator implements MergeValidator {

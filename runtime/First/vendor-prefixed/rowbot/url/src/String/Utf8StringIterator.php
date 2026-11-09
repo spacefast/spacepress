@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\String;
+namespace Zero\Vendor\Rowbot\URL\String;
 
 use function mb_str_split;
 

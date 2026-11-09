@@ -72,7 +72,7 @@ and an npm lockfile.
 static files are published as they are, and does not require committing Vite
 output. Run `npm --prefix web ci && npm --prefix web run build` from this
 example before publishing. A successful First build must also commit
-`first/client/`, `first/_generated/migrations/`, `first.gen.ts`, and `first/wp-plugins.lock.json`.
+`first/_generated/client/`, `first/_generated/migrations/`, `first/_generated/db.d.ts`, and `first/_generated/wp-plugins.lock.json`.
 They cannot be generated from this config while the diagnostic remains.
 
 ## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)

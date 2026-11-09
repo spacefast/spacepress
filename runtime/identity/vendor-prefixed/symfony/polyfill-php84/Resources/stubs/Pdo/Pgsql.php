@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Pdo;
+namespace Zero\Identity\Vendor\Pdo;
 
 if (\PHP_VERSION_ID < 80400 && \extension_loaded('pdo_pgsql')) {
     class Pgsql extends \PDO

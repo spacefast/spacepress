@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 /**
  * Writes and reads values to/from an object/array graph.
@@ -23,7 +23,7 @@ interface PropertyAccessorInterface
      *
      * Example:
      *
-     *     use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+     *     use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
      *
      *     $propertyAccessor = PropertyAccess::createPropertyAccessor();
      *
@@ -56,7 +56,7 @@ interface PropertyAccessorInterface
      *
      * Example:
      *
-     *     use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+     *     use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
      *
      *     $propertyAccessor = PropertyAccess::createPropertyAccessor();
      *

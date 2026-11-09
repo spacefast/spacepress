@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR;
+namespace Zero\Identity\Vendor\CBOR;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
+use Zero\Identity\Vendor\Brick\Math\BigInteger;
 use InvalidArgumentException;
 
 final class UnsignedIntegerObject extends AbstractCBORObject implements Normalizable

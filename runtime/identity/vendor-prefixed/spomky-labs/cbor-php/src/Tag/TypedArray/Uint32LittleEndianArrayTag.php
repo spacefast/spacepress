@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 70: an array of unsigned 32 bit integers, little endian.

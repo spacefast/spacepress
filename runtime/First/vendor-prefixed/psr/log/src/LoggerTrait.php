@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\Psr\Log;
+namespace Zero\Vendor\Psr\Log;
 
 /**
  * This is a simple Logger trait that classes unable to extend AbstractLogger
@@ -92,7 +92,7 @@ trait LoggerTrait
      *
      * @param mixed $level
      *
-     * @throws \First\Vendor\Psr\Log\InvalidArgumentException
+     * @throws \Zero\Vendor\Psr\Log\InvalidArgumentException
      */
     abstract public function log($level, string|\Stringable $message, array $context = []): void;
 }

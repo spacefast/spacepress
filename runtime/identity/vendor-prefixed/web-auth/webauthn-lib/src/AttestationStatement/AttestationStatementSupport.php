@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AttestationStatement;
+namespace Zero\Identity\Vendor\Webauthn\AttestationStatement;
 
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorData;
 
 interface AttestationStatementSupport
 {

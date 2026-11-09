@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Tests\WhatWg;
+namespace Zero\Vendor\Rowbot\URL\Tests\WhatWg;
 
 use PHPUnit\Framework\Attributes\DataProvider;
-use First\Vendor\Rowbot\URL\URL;
+use Zero\Vendor\Rowbot\URL\URL;
 
 /**
  * @see https://github.com/web-platform-tests/wpt/blob/master/url/url-statics-parse.any.js

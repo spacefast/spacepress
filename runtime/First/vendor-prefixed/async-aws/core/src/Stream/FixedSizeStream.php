@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Stream;
+namespace Zero\Vendor\AsyncAws\Core\Stream;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * A Stream decorator that return Chunk with the same exact size.

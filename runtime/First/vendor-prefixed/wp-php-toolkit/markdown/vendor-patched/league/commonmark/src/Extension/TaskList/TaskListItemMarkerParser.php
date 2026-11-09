@@ -11,13 +11,13 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\TaskList;
+namespace Zero\Vendor\League\CommonMark\Extension\TaskList;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
-use First\Vendor\League\CommonMark\Node\Block\Paragraph;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
-use First\Vendor\League\CommonMark\Parser\InlineParserContext;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use Zero\Vendor\League\CommonMark\Node\Block\Paragraph;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
+use Zero\Vendor\League\CommonMark\Parser\InlineParserContext;
 
 final class TaskListItemMarkerParser implements InlineParserInterface
 {

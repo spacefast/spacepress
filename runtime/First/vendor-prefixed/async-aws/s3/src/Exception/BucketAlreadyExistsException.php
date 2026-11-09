@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Exception;
+namespace Zero\Vendor\AsyncAws\S3\Exception;
 
-use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * The requested bucket name is not available. The bucket namespace is shared by all users of the system. Select a

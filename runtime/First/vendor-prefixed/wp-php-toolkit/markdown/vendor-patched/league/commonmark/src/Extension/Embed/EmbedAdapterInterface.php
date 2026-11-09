@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\Embed;
+namespace Zero\Vendor\League\CommonMark\Extension\Embed;
 
 /**
  * Interface for a service which updates the embed code(s) for the given array of embeds

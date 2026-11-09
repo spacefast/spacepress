@@ -12,17 +12,17 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Attributes\Event;
+namespace Zero\Vendor\League\CommonMark\Extension\Attributes\Event;
 
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\Attributes\Node\Attributes;
-use First\Vendor\League\CommonMark\Extension\Attributes\Node\AttributesInline;
-use First\Vendor\League\CommonMark\Extension\Attributes\Util\AttributesHelper;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\FencedCode;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
-use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
-use First\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\Attributes\Node\Attributes;
+use Zero\Vendor\League\CommonMark\Extension\Attributes\Node\AttributesInline;
+use Zero\Vendor\League\CommonMark\Extension\Attributes\Util\AttributesHelper;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\FencedCode;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListBlock;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use Zero\Vendor\League\CommonMark\Node\Node;
 
 final class AttributesListener
 {

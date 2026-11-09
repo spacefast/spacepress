@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Credentials;
+namespace Zero\Vendor\AsyncAws\Core\Credentials;
 
-use First\Vendor\AsyncAws\Core\EnvVar;
+use Zero\Vendor\AsyncAws\Core\EnvVar;
 use AsyncAws\SsoOidc\SsoOidcClient;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Psr\Log\NullLogger;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Psr\Log\NullLogger;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Load and refresh AWS SSO tokens.

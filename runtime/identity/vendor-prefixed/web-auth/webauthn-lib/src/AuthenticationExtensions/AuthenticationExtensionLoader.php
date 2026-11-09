@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace Zero\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticationExtensionException;
+use Zero\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\MapObject;
+use Zero\Identity\Vendor\Webauthn\Exception\AuthenticationExtensionException;
 
 abstract class AuthenticationExtensionLoader
 {

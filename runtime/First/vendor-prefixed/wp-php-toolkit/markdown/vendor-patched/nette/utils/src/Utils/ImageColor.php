@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Utils;
+namespace Zero\Vendor\Nette\Utils;
 
-use First\Vendor\Nette;
+use Zero\Vendor\Nette;
 
 
 /**
@@ -51,7 +51,7 @@ class ImageColor
 		} elseif ($len === 6 || $len === 8) {
 			return new self((int) hexdec($hex[0] . $hex[1]), (int) hexdec($hex[2] . $hex[3]), (int) hexdec($hex[4] . $hex[5]), (int) hexdec(($hex[6] ?? 'F') . ($hex[7] ?? 'F')) / 255);
 		} else {
-			throw new \First\Vendor\Nette\InvalidArgumentException('Invalid hex color format.');
+			throw new \Zero\Vendor\Nette\InvalidArgumentException('Invalid hex color format.');
 		}
 	}
 

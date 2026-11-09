@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService;
+namespace Zero\Identity\Vendor\Webauthn\MetadataService;
 
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\StatusReport;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\StatusReport;
 
 interface StatusReportRepository
 {

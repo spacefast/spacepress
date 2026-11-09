@@ -14,13 +14,13 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Renderer\Block;
+namespace Zero\Vendor\League\CommonMark\Renderer\Block;
 
-use First\Vendor\League\CommonMark\Node\Block\Document;
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
 
 final class DocumentRenderer implements NodeRendererInterface, XmlNodeRendererInterface
 {

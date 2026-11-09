@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Idna;
+namespace Zero\Vendor\Rowbot\Idna;
 
 class IdnaResult
 {
@@ -12,7 +12,7 @@ class IdnaResult
     protected string $domain;
 
     /**
-     * @var int-mask-of<\First\Vendor\Rowbot\Idna\Idna::ERROR_*>
+     * @var int-mask-of<\Zero\Vendor\Rowbot\Idna\Idna::ERROR_*>
      */
     protected int $errors;
 

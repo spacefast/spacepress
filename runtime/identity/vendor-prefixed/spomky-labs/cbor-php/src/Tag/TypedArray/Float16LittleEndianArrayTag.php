@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
 
 use function strrev;
 

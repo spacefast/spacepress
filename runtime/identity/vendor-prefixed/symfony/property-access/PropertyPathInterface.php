@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 /**
  * A sequence of property names or array indices.

@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
 
 use function array_key_exists;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BMPString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\T61String;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UniversalString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\TranscodeStep;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BMPString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\T61String;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UniversalString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\TranscodeStep;
 use function sprintf;
 use UnexpectedValueException;
 

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\OTPHP;
+namespace Zero\Identity\Vendor\OTPHP;
 
 use function is_int;
-use First\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
+use Zero\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
 
 /**
  * Note: This class is not marked as readonly because the verify() method

@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Param;
-use First\Identity\Vendor\phpDocumentor\Reflection\Exception\ParserException;
-use First\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\InvalidTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TypelessParamTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\OffsetAccessTypeNode;
-use First\Identity\Vendor\Webmozart\Assert\Assert;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Param;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Exception\ParserException;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\InvalidTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TypelessParamTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\OffsetAccessTypeNode;
+use Zero\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function is_string;
 use function trim;

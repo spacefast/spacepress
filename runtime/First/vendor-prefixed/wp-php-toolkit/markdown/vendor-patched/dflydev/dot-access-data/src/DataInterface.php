@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Dflydev\DotAccessData;
+namespace Zero\Vendor\Dflydev\DotAccessData;
 
-use First\Vendor\Dflydev\DotAccessData\Exception\DataException;
-use First\Vendor\Dflydev\DotAccessData\Exception\InvalidPathException;
+use Zero\Vendor\Dflydev\DotAccessData\Exception\DataException;
+use Zero\Vendor\Dflydev\DotAccessData\Exception\InvalidPathException;
 
 interface DataInterface
 {

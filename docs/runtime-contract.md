@@ -19,7 +19,7 @@ Every First file starts with `declare(strict_types=1);`. Namespace `First`.
 ## Build output layout
 
 ```
-<out>/                                 (default: <project>/.first/wp-content)
+<out>/                                 (default: <project>/first/dist/wp-content)
   first-manifest.json                   versions, runtime series, platform requirements, dependency checksums
   plugins/first-runtime/
     first-runtime.php                   plugin header; boots Wp\Plugin

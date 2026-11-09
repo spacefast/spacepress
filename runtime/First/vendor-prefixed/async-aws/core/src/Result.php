@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core;
+namespace Zero\Vendor\AsyncAws\Core;
 
-use First\Vendor\AsyncAws\Core\Exception\Http\HttpException;
-use First\Vendor\AsyncAws\Core\Exception\Http\NetworkException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\HttpException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\NetworkException;
 
 /**
  * Base class for all return values from a Api Client methods.
@@ -104,7 +104,7 @@ class Result
      * @return array{
      *                resolved: bool,
      *                body_downloaded: bool,
-     *                response: \First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface,
+     *                response: \Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface,
      *                status: int,
      *                }
      */

@@ -10,14 +10,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Webuni\FrontMatter\Markdown;
+namespace Zero\Vendor\Webuni\FrontMatter\Markdown;
 
-use First\Vendor\Dflydev\DotAccessData\Data;
-use First\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
-use First\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
-use First\Vendor\League\CommonMark\Extension\ExtensionInterface;
-use First\Vendor\League\CommonMark\Input\MarkdownInput;
-use First\Vendor\Webuni\FrontMatter\FrontMatterInterface;
+use Zero\Vendor\Dflydev\DotAccessData\Data;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
+use Zero\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\ExtensionInterface;
+use Zero\Vendor\League\CommonMark\Input\MarkdownInput;
+use Zero\Vendor\Webuni\FrontMatter\FrontMatterInterface;
 
 class FrontMatterLeagueCommonMarkExtension implements ExtensionInterface
 {

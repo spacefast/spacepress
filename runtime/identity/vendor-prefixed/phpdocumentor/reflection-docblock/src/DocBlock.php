@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\TagWithType;
-use First\Identity\Vendor\Webmozart\Assert\Assert;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\TagWithType;
+use Zero\Identity\Vendor\Webmozart\Assert\Assert;
 
 final class DocBlock
 {

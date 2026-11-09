@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\Service;
+namespace Zero\Vendor\Symfony\Contracts\Service;
 
-use First\Vendor\Symfony\Contracts\Service\Attribute\SubscribedService;
+use Zero\Vendor\Symfony\Contracts\Service\Attribute\SubscribedService;
 
 /**
  * A ServiceSubscriber exposes its dependencies via the static {@link getSubscribedServices} method.
@@ -36,24 +36,24 @@ interface ServiceSubscriberInterface
      *
      * For mandatory dependencies:
      *
-     *  * ['logger' => 'First\Vendor\Psr\Log\LoggerInterface'] means the objects use the "logger" name
-     *    internally to fetch a service which must implement First\Vendor\Psr\Log\LoggerInterface.
-     *  * ['loggers' => 'First\Vendor\Psr\Log\LoggerInterface[]'] means the objects use the "loggers" name
-     *    internally to fetch an iterable of First\Vendor\Psr\Log\LoggerInterface instances.
-     *  * ['First\Vendor\Psr\Log\LoggerInterface'] is a shortcut for
-     *  * ['First\Vendor\Psr\Log\LoggerInterface' => 'First\Vendor\Psr\Log\LoggerInterface']
+     *  * ['logger' => 'Zero\Vendor\Psr\Log\LoggerInterface'] means the objects use the "logger" name
+     *    internally to fetch a service which must implement Zero\Vendor\Psr\Log\LoggerInterface.
+     *  * ['loggers' => 'Zero\Vendor\Psr\Log\LoggerInterface[]'] means the objects use the "loggers" name
+     *    internally to fetch an iterable of Zero\Vendor\Psr\Log\LoggerInterface instances.
+     *  * ['Zero\Vendor\Psr\Log\LoggerInterface'] is a shortcut for
+     *  * ['Zero\Vendor\Psr\Log\LoggerInterface' => 'Zero\Vendor\Psr\Log\LoggerInterface']
      *
      * otherwise:
      *
-     *  * ['logger' => '?First\Vendor\Psr\Log\LoggerInterface'] denotes an optional dependency
-     *  * ['loggers' => '?First\Vendor\Psr\Log\LoggerInterface[]'] denotes an optional iterable dependency
-     *  * ['?First\Vendor\Psr\Log\LoggerInterface'] is a shortcut for
-     *  * ['First\Vendor\Psr\Log\LoggerInterface' => '?First\Vendor\Psr\Log\LoggerInterface']
+     *  * ['logger' => '?Zero\Vendor\Psr\Log\LoggerInterface'] denotes an optional dependency
+     *  * ['loggers' => '?Zero\Vendor\Psr\Log\LoggerInterface[]'] denotes an optional iterable dependency
+     *  * ['?Zero\Vendor\Psr\Log\LoggerInterface'] is a shortcut for
+     *  * ['Zero\Vendor\Psr\Log\LoggerInterface' => '?Zero\Vendor\Psr\Log\LoggerInterface']
      *
      * additionally, an array of {@see SubscribedService}'s can be returned:
      *
-     *  * [new SubscribedService('logger', First\Vendor\Psr\Log\LoggerInterface::class)]
-     *  * [new SubscribedService(type: First\Vendor\Psr\Log\LoggerInterface::class, nullable: true)]
+     *  * [new SubscribedService('logger', Zero\Vendor\Psr\Log\LoggerInterface::class)]
+     *  * [new SubscribedService(type: Zero\Vendor\Psr\Log\LoggerInterface::class, nullable: true)]
      *  * [new SubscribedService('http_client', HttpClientInterface::class, attributes: new Target('githubApi'))]
      *
      * @return string[]|SubscribedService[] The required service types, optionally keyed by service names

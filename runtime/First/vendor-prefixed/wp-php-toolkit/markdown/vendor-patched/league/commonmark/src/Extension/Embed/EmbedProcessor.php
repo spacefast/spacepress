@@ -11,13 +11,13 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\Embed;
+namespace Zero\Vendor\League\CommonMark\Extension\Embed;
 
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
-use First\Vendor\League\CommonMark\Node\Block\Paragraph;
-use First\Vendor\League\CommonMark\Node\Inline\Text;
-use First\Vendor\League\CommonMark\Node\NodeIterator;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
+use Zero\Vendor\League\CommonMark\Node\Block\Paragraph;
+use Zero\Vendor\League\CommonMark\Node\Inline\Text;
+use Zero\Vendor\League\CommonMark\Node\NodeIterator;
 
 final class EmbedProcessor
 {
@@ -25,7 +25,7 @@ final class EmbedProcessor
     public const FALLBACK_LINK   = 'link';
 
     /**
-     * @var \First\Vendor\League\CommonMark\Extension\Embed\EmbedAdapterInterface
+     * @var \Zero\Vendor\League\CommonMark\Extension\Embed\EmbedAdapterInterface
      */
     private $adapter;
     /**

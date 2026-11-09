@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Annotation\Ignore as LegacyIgnore;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Annotation\Ignore as LegacyIgnore;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
 
 /**
  * Converts between objects with getter and setter methods and arrays.

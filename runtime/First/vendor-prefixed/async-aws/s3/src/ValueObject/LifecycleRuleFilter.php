@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * The `Filter` is used to identify objects that a Lifecycle Rule applies to. A `Filter` can have exactly one of

@@ -14,14 +14,14 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Renderer\Inline;
+namespace Zero\Vendor\League\CommonMark\Renderer\Inline;
 
-use First\Vendor\League\CommonMark\Node\Inline\Text;
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use First\Vendor\League\CommonMark\Util\Xml;
-use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Node\Inline\Text;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Util\Xml;
+use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
 
 final class TextRenderer implements NodeRendererInterface, XmlNodeRendererInterface
 {

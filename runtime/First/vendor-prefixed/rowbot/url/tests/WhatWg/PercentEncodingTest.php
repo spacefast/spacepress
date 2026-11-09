@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Tests\WhatWg;
+namespace Zero\Vendor\Rowbot\URL\Tests\WhatWg;
 
 use PHPUnit\Framework\Attributes\DataProvider;
-use First\Vendor\Rowbot\URL\BasicURLParser;
-use First\Vendor\Rowbot\URL\String\EncodeSet;
-use First\Vendor\Rowbot\URL\String\PercentEncoder;
-use First\Vendor\Rowbot\URL\String\Utf8String;
+use Zero\Vendor\Rowbot\URL\BasicURLParser;
+use Zero\Vendor\Rowbot\URL\String\EncodeSet;
+use Zero\Vendor\Rowbot\URL\String\PercentEncoder;
+use Zero\Vendor\Rowbot\URL\String\Utf8String;
 
 class PercentEncodingTest extends WhatwgTestCase
 {

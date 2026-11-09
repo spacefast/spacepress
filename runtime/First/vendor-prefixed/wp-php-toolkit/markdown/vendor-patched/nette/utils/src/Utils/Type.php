@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Utils;
+namespace Zero\Vendor\Nette\Utils;
 
-use First\Vendor\Nette;
+use Zero\Vendor\Nette;
 
 
 /**
@@ -58,7 +58,7 @@ final class Type
    }, $type->getTypes()), $type instanceof \ReflectionUnionType ? '|' : '&');
 
 		} else {
-			throw new \First\Vendor\Nette\InvalidStateException('Unexpected type of ' . Reflection::toString($of));
+			throw new \Zero\Vendor\Nette\InvalidStateException('Unexpected type of ' . Reflection::toString($of));
 		}
 	}
 
@@ -69,7 +69,7 @@ final class Type
 	public static function fromString(string $type): self
 	{
 		if (!Validators::isTypeDeclaration($type)) {
-			throw new \First\Vendor\Nette\InvalidArgumentException("Invalid type '$type'.");
+			throw new \Zero\Vendor\Nette\InvalidArgumentException("Invalid type '$type'.");
 		}
 
 		if ($type[0] === '?') {

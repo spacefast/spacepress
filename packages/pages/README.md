@@ -7,7 +7,7 @@ An app without `pages/` is unaffected, and First core never depends on this.
 
 ```sh
 first build site            # the backend and its compiled schema
-first-pages build site      # site/.first/wp-content/plugins/first-pages-<app>/
+first-pages build site      # site/first/dist/wp-content/plugins/first-pages-<app>/
 ```
 
 The authoring guide, the supported subset and its limits are in

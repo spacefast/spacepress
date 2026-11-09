@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace Zero\Identity\Vendor\Webauthn\CeremonyStep;
 
 use function count;
 use function in_array;
-use First\Identity\Vendor\Psr\Log\LoggerInterface;
-use First\Identity\Vendor\Psr\Log\NullLogger;
+use Zero\Identity\Vendor\Psr\Log\LoggerInterface;
+use Zero\Identity\Vendor\Psr\Log\NullLogger;
 use function sprintf;
-use function first_identity_vendor_trigger_deprecation as trigger_deprecation;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
-use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use First\Identity\Vendor\Webauthn\CredentialRecord;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use First\Identity\Vendor\Webauthn\MetadataService\CanLogData;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
-use First\Identity\Vendor\Webauthn\MetadataService\MetadataStatementRepository;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
-use First\Identity\Vendor\Webauthn\MetadataService\StatusReportRepository;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
-use First\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
+use function zero_identity_vendor_trigger_deprecation as trigger_deprecation;
+use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use Zero\Identity\Vendor\Webauthn\CredentialRecord;
+use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Zero\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use Zero\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
+use Zero\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
+use Zero\Identity\Vendor\Webauthn\MetadataService\MetadataStatementRepository;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use Zero\Identity\Vendor\Webauthn\MetadataService\StatusReportRepository;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use Zero\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
 
 final class CheckMetadataStatement implements CeremonyStep, CanLogData
 {
@@ -69,7 +69,7 @@ final class CheckMetadataStatement implements CeremonyStep, CanLogData
         string $host
     ): void {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            first_identity_vendor_trigger_deprecation(
+            zero_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::process()" is deprecated, pass a CredentialRecord instead.',

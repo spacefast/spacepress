@@ -9,7 +9,7 @@ or provisions a host.
 Inspect a build with the installed CLI:
 
 ```sh
-first deploy inspect --artifact ./app/.first/wp-content
+first deploy inspect --artifact ./app/first/dist/wp-content
 ```
 
 All commands emit one JSON `{ data }` or `{ error }` receipt. `--json` is accepted
@@ -21,8 +21,8 @@ with SQLite3 and ZipArchive. `php -m` lists extensions. The binary uses
 
 ```sh
 first deploy inspect \
-  --artifact ./candidate/.first/wp-content \
-  --baseline ./previous/.first/wp-content
+  --artifact ./candidate/first/dist/wp-content \
+  --baseline ./previous/first/dist/wp-content
 ```
 
 The report includes a SHA-256 inventory digest, total bytes and file count,
@@ -52,7 +52,7 @@ ownership claim, or authorization to install the artifact.
 ## Publish capability boundary
 
 ```sh
-first deploy publish --artifact ./app/.first/wp-content
+first deploy publish --artifact ./app/first/dist/wp-content
 ```
 
 This command **refuses** with `host_capability_missing` and attaches the concrete
@@ -99,7 +99,7 @@ first deploy init \
   --wordpress /tmp/first-local-recovery/wordpress \
   --sqlite /tmp/first-local-recovery/sqlite-database-integration \
   --wp-cli /path/to/wp-cli.phar \
-  --artifact ./app/.first/wp-content
+  --artifact ./app/first/dist/wp-content
 ```
 
 The destination must not exist. This creates private local files, config salts,

@@ -2,12 +2,12 @@
 /**
  * Media thumbnail field definition for core media fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'media',
-	'label'         => __( 'Thumbnail', 'first-admin' ),
+	'label'         => __( 'Thumbnail', 'zero-admin' ),
 	'enableSorting' => false,
 	'elements'      => array(),
 );

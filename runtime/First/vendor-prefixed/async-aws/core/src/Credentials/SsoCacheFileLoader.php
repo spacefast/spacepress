@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Credentials;
+namespace Zero\Vendor\AsyncAws\Core\Credentials;
 
-use First\Vendor\AsyncAws\Core\EnvVar;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Psr\Log\NullLogger;
+use Zero\Vendor\AsyncAws\Core\EnvVar;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Psr\Log\NullLogger;
 
 /**
  * Load and parse AWS SSO cache file.

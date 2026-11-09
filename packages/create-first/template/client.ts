@@ -1,4 +1,4 @@
-import { createClient } from './first/client/index.ts';
+import { createClient } from './first/_generated/client/index.ts';
 
 // Generated types follow your schema. Import this client in an optional TS frontend.
 export const client = createClient({ url: '/wp-json/first/v1' });

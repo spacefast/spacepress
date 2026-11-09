@@ -11,13 +11,13 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Footnote\Event;
+namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Event;
 
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
-use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
-use First\Vendor\League\CommonMark\Node\Block\Document;
-use First\Vendor\League\CommonMark\Node\Inline\Text;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\Footnote;
+use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
+use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use Zero\Vendor\League\CommonMark\Node\Inline\Text;
 
 final class FixOrphanedFootnotesAndRefsListener
 {

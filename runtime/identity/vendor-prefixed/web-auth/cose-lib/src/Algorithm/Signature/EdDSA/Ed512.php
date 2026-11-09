@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
 
-use First\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\Cose\Key\Key;
 use const E_USER_WARNING;
 use function hash;
 use function trigger_error;
@@ -14,7 +14,7 @@ use function trigger_error;
  *
  * Despite its name this is not EdDSA with Curve448, and it rejects an Ed448 key: the signature is computed by
  * {@see EdDSA}, whose curve check accepts Ed25519 only. EdDSA with Curve448, RFC 8032 section 5.2, is
- * {@see \First\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed448} (-53).
+ * {@see \Zero\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed448} (-53).
  *
  * The construction is defined by no specification. It is neither the EdDSA of RFC 8032, section 5.1 - which signs the
  * message itself - nor Ed25519ph of the same section, whose challenge covers a "dom2" prefix this class does not add.

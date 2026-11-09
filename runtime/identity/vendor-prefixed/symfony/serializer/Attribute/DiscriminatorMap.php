@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Attribute;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
 
 /**
  * @author Samuel Roze <samuel.roze@gmail.com>
@@ -63,6 +63,6 @@ class DiscriminatorMap
     }
 }
 
-if (!class_exists(\First\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class, false)) {
-    class_alias(DiscriminatorMap::class, \First\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class);
+if (!class_exists(\Zero\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class, false)) {
+    class_alias(DiscriminatorMap::class, \Zero\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class);
 }

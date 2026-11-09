@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\Yaml\Exception;
+namespace Zero\Vendor\Symfony\Component\Yaml\Exception;
 
 /**
  * Exception class thrown when an error occurs during dumping.

@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
+namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
 use function implode;
 
 class DoctrineAnnotation implements Node

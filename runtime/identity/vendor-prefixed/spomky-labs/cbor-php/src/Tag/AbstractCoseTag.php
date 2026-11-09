@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace Zero\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\DecoderInterface;
-use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use First\Identity\Vendor\CBOR\ListObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\OtherObject\NullObject;
-use First\Identity\Vendor\CBOR\StringStream;
-use First\Identity\Vendor\CBOR\Tag;
+use Zero\Identity\Vendor\CBOR\ByteStringObject;
+use Zero\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\Decoder;
+use Zero\Identity\Vendor\CBOR\DecoderInterface;
+use Zero\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use Zero\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use Zero\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use Zero\Identity\Vendor\CBOR\ListObject;
+use Zero\Identity\Vendor\CBOR\MapObject;
+use Zero\Identity\Vendor\CBOR\Normalizable;
+use Zero\Identity\Vendor\CBOR\OtherObject\NullObject;
+use Zero\Identity\Vendor\CBOR\StringStream;
+use Zero\Identity\Vendor\CBOR\Tag;
 use function count;
 use InvalidArgumentException;
 use function sprintf;

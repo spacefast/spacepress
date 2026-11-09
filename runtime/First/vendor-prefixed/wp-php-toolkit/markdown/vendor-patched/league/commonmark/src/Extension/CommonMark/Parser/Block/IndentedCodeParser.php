@@ -11,19 +11,19 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\IndentedCode;
-use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Util\ArrayCollection;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\IndentedCode;
+use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Util\ArrayCollection;
 
 final class IndentedCodeParser extends AbstractBlockContinueParser
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\IndentedCode */
+     * @var \Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\IndentedCode */
     private $block;
 
     /** @var ArrayCollection<string> */
@@ -35,7 +35,7 @@ final class IndentedCodeParser extends AbstractBlockContinueParser
         $this->strings = new ArrayCollection();
     }
 
-    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }

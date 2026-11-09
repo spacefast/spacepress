@@ -9,24 +9,24 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext;
+namespace Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TypeAliasImportTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TypeAliasTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\RuntimeException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\StringTypeResolver;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TypeAliasImportTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TypeAliasTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\RuntimeException;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\StringTypeResolver;
 
 /**
  * Creates a type resolving context.

@@ -6,4 +6,5 @@ node_modules/
 .DS_Store
 *.log
 
-# Keep first/_generated/migrations, first/client and first.gen.ts in version control.
+# first/_generated/ is committed; first/dist/ is build output.
+first/dist/

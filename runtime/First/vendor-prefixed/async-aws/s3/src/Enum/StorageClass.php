@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Enum;
+namespace Zero\Vendor\AsyncAws\S3\Enum;
 
 final class StorageClass
 {

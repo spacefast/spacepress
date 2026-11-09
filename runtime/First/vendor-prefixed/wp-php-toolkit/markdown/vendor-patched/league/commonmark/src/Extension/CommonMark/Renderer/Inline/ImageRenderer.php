@@ -14,25 +14,25 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Renderer\Inline;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Renderer\Inline;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Image;
-use First\Vendor\League\CommonMark\Node\Inline\Newline;
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Node\NodeIterator;
-use First\Vendor\League\CommonMark\Node\StringContainerInterface;
-use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use First\Vendor\League\CommonMark\Util\HtmlElement;
-use First\Vendor\League\CommonMark\Util\RegexHelper;
-use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
-use First\Vendor\League\Config\ConfigurationAwareInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Image;
+use Zero\Vendor\League\CommonMark\Node\Inline\Newline;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Node\NodeIterator;
+use Zero\Vendor\League\CommonMark\Node\StringContainerInterface;
+use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Util\HtmlElement;
+use Zero\Vendor\League\CommonMark\Util\RegexHelper;
+use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use Zero\Vendor\League\Config\ConfigurationAwareInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 final class ImageRenderer implements NodeRendererInterface, XmlNodeRendererInterface, ConfigurationAwareInterface
 {
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\Config\ConfigurationInterface */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     /**

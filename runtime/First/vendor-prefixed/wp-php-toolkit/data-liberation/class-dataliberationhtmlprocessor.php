@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\WordPress\DataLiberation;
+namespace Zero\Vendor\WordPress\DataLiberation;
 
 use WP_HTML_Processor;
 use WP_HTML_Tag_Processor;

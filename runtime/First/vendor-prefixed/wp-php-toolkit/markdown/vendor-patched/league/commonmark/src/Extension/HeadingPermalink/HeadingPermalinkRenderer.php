@@ -11,15 +11,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\HeadingPermalink;
+namespace Zero\Vendor\League\CommonMark\Extension\HeadingPermalink;
 
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use First\Vendor\League\CommonMark\Util\HtmlElement;
-use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
-use First\Vendor\League\Config\ConfigurationAwareInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Util\HtmlElement;
+use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use Zero\Vendor\League\Config\ConfigurationAwareInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 /**
  * Renders the HeadingPermalink elements
@@ -29,7 +29,7 @@ final class HeadingPermalinkRenderer implements NodeRendererInterface, XmlNodeRe
     public const DEFAULT_SYMBOL = '¶';
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\Config\ConfigurationInterface */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     public function setConfiguration(ConfigurationInterface $configuration): void

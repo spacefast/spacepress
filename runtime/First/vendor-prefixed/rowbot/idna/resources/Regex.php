@@ -4,7 +4,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Idna\Resource;
+namespace Zero\Vendor\Rowbot\Idna\Resource;
 
 final class Regex
 {

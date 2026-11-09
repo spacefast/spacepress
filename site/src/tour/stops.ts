@@ -5,7 +5,7 @@
 import type { Anchors } from "../lib/excerpt.ts";
 import type { ExampleName } from "../lib/examples.ts";
 
-export type Artifact = "schema.php" | "functions.php" | "migration" | "types.ts" | "schema.ts" | "first.gen.ts";
+export type Artifact = "schema.php" | "functions.php" | "migration" | "types.ts" | "schema.ts" | "first/_generated/db.d.ts";
 
 export interface Pane {
   /** A source file of the example, or an artifact the compiler produced from it. */
@@ -112,8 +112,8 @@ export const tours: Tour[] = [
         slug: "the-client",
         title: "A typed client for any frontend",
         prose: [
-          "`first/client/types.ts` is generated from the schema: a row type, an insert type, a patch type and a filter type per collection, plus the relations that `with` can load.",
-          "`first/client/index.ts` is the runtime half, copied from the repository with the generated types beside it.",
+          "`first/_generated/client/types.ts` is generated from the schema: a row type, an insert type, a patch type and a filter type per collection, plus the relations that `with` can load.",
+          "`first/_generated/client/index.ts` is the runtime half, copied from the repository with the generated types beside it.",
         ],
         config: { file: "first.config.ts", lines: { from: "export const relations", to: "}));" } },
         outputs: [

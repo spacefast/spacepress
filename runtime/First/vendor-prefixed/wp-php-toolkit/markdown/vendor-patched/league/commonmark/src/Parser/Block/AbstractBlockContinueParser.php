@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
 
 /**
  * Base class for a block parser

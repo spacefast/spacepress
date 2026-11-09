@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Base interface for ASN.1 type elements.

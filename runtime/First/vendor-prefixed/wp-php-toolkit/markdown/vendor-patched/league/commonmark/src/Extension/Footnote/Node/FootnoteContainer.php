@@ -12,9 +12,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Footnote\Node;
+namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Node;
 
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
 
 final class FootnoteContainer extends AbstractBlock
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR;
+namespace Zero\Identity\Vendor\CBOR;
 
 use function array_key_exists;
 use ArrayAccess;

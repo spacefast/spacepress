@@ -1,10 +1,10 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
-use First\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
-use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use First\Vendor\AsyncAws\S3\Enum\ObjectStorageClass;
+use Zero\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
+use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use Zero\Vendor\AsyncAws\S3\Enum\ObjectStorageClass;
 
 /**
  * An object consists of data and its descriptive metadata.

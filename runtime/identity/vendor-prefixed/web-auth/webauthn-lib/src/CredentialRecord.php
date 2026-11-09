@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
-use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use First\Identity\Vendor\Webauthn\TrustPath\TrustPath;
+use Zero\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use Zero\Identity\Vendor\Webauthn\TrustPath\TrustPath;
 
 /**
  * Credential Record represents a stored credential on the server side.

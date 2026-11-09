@@ -32,7 +32,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     } else project = arg;
   }
   const root = path.resolve(project);
-  const result = await buildPages({ project: root, out: out ?? path.join(root, ".first/wp-content") });
+  const result = await buildPages({ project: root, out: out ?? path.join(root, "first/dist/wp-content") });
   if (json) {
     console.log(JSON.stringify({ ok: result.ok, pages: result.pages, plugin: result.plugin ?? null, diagnostics: result.diagnostics }));
   } else {

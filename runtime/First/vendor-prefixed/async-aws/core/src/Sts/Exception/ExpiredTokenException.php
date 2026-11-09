@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Sts\Exception;
+namespace Zero\Vendor\AsyncAws\Core\Sts\Exception;
 
-use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * The web identity token that was passed is expired or is not valid. Get a new identity token from the identity

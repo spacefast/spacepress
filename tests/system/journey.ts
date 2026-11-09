@@ -22,7 +22,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FirstError, type Client, type PostInsert } from "../../examples/site/first/client/index.ts";
+import { FirstError, type Client, type PostInsert } from "../../examples/site/first/_generated/client/index.ts";
 import { pngCentre, splitPng, type Delivery } from "./project.ts";
 
 export type Role = "anonymous" | "subscriber" | "author" | "editor" | "admin";

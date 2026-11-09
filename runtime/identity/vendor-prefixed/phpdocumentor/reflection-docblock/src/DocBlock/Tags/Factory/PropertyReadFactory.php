@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\PropertyRead;
-use First\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PropertyTagValueNode;
-use First\Identity\Vendor\Webmozart\Assert\Assert;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\PropertyRead;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PropertyTagValueNode;
+use Zero\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function is_string;
 use function trim;

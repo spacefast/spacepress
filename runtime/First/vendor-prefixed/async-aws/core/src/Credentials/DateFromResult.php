@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Credentials;
+namespace Zero\Vendor\AsyncAws\Core\Credentials;
 
-use First\Vendor\AsyncAws\Core\Result;
+use Zero\Vendor\AsyncAws\Core\Result;
 
 /**
  * @internal

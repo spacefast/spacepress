@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * Contains the elements that set the ACL permissions for an object per grantee.

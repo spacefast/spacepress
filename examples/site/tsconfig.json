@@ -11,5 +11,5 @@
       "first": ["../../types/first/index.d.ts"]
     }
   },
-  "include": ["first.config.ts", "first.gen.ts"]
+  "include": ["first.config.ts", "first/_generated/db.d.ts"]
 }

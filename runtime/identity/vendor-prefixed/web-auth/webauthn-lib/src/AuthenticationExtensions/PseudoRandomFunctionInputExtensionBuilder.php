@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace Zero\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
 use function array_key_exists;
-use First\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
 
 final class PseudoRandomFunctionInputExtensionBuilder
 {

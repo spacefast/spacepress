@@ -14,20 +14,20 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Renderer\Inline;
+namespace Zero\Vendor\League\CommonMark\Renderer\Inline;
 
-use First\Vendor\League\CommonMark\Node\Inline\Newline;
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
-use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
-use First\Vendor\League\Config\ConfigurationAwareInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\CommonMark\Node\Inline\Newline;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Renderer\ChildNodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface;
+use Zero\Vendor\League\Config\ConfigurationAwareInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 final class NewlineRenderer implements NodeRendererInterface, XmlNodeRendererInterface, ConfigurationAwareInterface
 {
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\Config\ConfigurationInterface */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     public function setConfiguration(ConfigurationInterface $configuration): void

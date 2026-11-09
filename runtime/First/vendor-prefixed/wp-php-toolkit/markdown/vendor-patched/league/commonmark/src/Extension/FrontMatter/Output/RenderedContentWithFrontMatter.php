@@ -11,11 +11,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\FrontMatter\Output;
+namespace Zero\Vendor\League\CommonMark\Extension\FrontMatter\Output;
 
-use First\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterProviderInterface;
-use First\Vendor\League\CommonMark\Node\Block\Document;
-use First\Vendor\League\CommonMark\Output\RenderedContent;
+use Zero\Vendor\League\CommonMark\Extension\FrontMatter\FrontMatterProviderInterface;
+use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use Zero\Vendor\League\CommonMark\Output\RenderedContent;
 
 /**
  * @psalm-immutable

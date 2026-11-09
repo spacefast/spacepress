@@ -1,1 +1,1 @@
-<?php return array('name' => '@first-admin/attachment-importer', 'dependencies' => array('wp-api-fetch', 'wp-core-data', 'wp-notices'), 'moduleDependencies' => array(), 'version' => 'a49d9be4daedf9f2d414');
+<?php return array('name' => '@zero-admin/attachment-importer', 'dependencies' => array('wp-api-fetch', 'wp-core-data', 'wp-notices'), 'moduleDependencies' => array(), 'version' => '0dcfcee1de39d03efecd');

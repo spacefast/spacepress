@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\HttpClient\Exception;
+namespace Zero\Vendor\Symfony\Contracts\HttpClient\Exception;
 
 /**
  * When an idle timeout occurs.

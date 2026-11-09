@@ -10,9 +10,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\Types;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\Types;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 /**
  * Value Object representing a Intersection Type.

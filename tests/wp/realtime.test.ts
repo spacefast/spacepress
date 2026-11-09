@@ -3,7 +3,7 @@
 // reports too; and the generated client's watch() re-reads through the API when a notice arrives.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "./app/first/client/index.ts";
+import { createClient } from "./app/first/_generated/client/index.ts";
 import { api, auth, ok, problem, run, wp } from "./env.ts";
 
 type Notice = { id: string; at: string; changes: { collection: string; ops: string[]; ids: (number | string)[] | null }[] };

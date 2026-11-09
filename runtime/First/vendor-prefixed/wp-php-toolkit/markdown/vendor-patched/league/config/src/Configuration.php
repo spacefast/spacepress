@@ -11,24 +11,24 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\Config;
+namespace Zero\Vendor\League\Config;
 
-use First\Vendor\Dflydev\DotAccessData\Data;
-use First\Vendor\Dflydev\DotAccessData\DataInterface;
-use First\Vendor\Dflydev\DotAccessData\Exception\DataException;
-use First\Vendor\Dflydev\DotAccessData\Exception\InvalidPathException;
-use First\Vendor\Dflydev\DotAccessData\Exception\MissingPathException;
-use First\Vendor\League\Config\Exception\UnknownOptionException;
-use First\Vendor\League\Config\Exception\ValidationException;
-use First\Vendor\Nette\Schema\Expect;
-use First\Vendor\Nette\Schema\Processor;
-use First\Vendor\Nette\Schema\Schema;
-use First\Vendor\Nette\Schema\ValidationException as NetteValidationException;
+use Zero\Vendor\Dflydev\DotAccessData\Data;
+use Zero\Vendor\Dflydev\DotAccessData\DataInterface;
+use Zero\Vendor\Dflydev\DotAccessData\Exception\DataException;
+use Zero\Vendor\Dflydev\DotAccessData\Exception\InvalidPathException;
+use Zero\Vendor\Dflydev\DotAccessData\Exception\MissingPathException;
+use Zero\Vendor\League\Config\Exception\UnknownOptionException;
+use Zero\Vendor\League\Config\Exception\ValidationException;
+use Zero\Vendor\Nette\Schema\Expect;
+use Zero\Vendor\Nette\Schema\Processor;
+use Zero\Vendor\Nette\Schema\Schema;
+use Zero\Vendor\Nette\Schema\ValidationException as NetteValidationException;
 
 final class Configuration implements ConfigurationBuilderInterface, ConfigurationInterface
 {
     /** @psalm-readonly
-     * @var \First\Vendor\Dflydev\DotAccessData\Data */
+     * @var \Zero\Vendor\Dflydev\DotAccessData\Data */
     private $userConfig;
 
     /**
@@ -39,7 +39,7 @@ final class Configuration implements ConfigurationBuilderInterface, Configuratio
     private $configSchemas = [];
 
     /** @psalm-allow-private-mutation
-     * @var \First\Vendor\Dflydev\DotAccessData\Data */
+     * @var \Zero\Vendor\Dflydev\DotAccessData\Data */
     private $finalConfig;
 
     /**
@@ -50,7 +50,7 @@ final class Configuration implements ConfigurationBuilderInterface, Configuratio
     private $cache = [];
 
     /** @psalm-readonly
-     * @var \First\Vendor\League\Config\ConfigurationInterface */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
     private $reader;
 
     /**

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\HttpClient;
+namespace Zero\Vendor\Symfony\Contracts\HttpClient;
 
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Test\HttpClientTestCase;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Test\HttpClientTestCase;
 
 /**
  * Provides flexible methods for requesting HTTP resources synchronously or asynchronously.

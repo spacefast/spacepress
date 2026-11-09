@@ -1,6 +1,6 @@
 // Client runtime request building, against an in-process node:http server with canned responses.
 // The runtime is copied next to a fixture schema.ts/types.ts in the exact layout `first build` emits
-// (first/client/{index,schema,types}.ts), then imported for real.
+// (first/_generated/client/{index,schema,types}.ts), then imported for real.
 //
 // Run: node --test runtime/client/index.test.ts   (Node 22 strips types)
 

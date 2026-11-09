@@ -12,11 +12,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Footnote\Node;
+namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Node;
 
-use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
-use First\Vendor\League\CommonMark\Reference\ReferenceInterface;
-use First\Vendor\League\CommonMark\Reference\ReferenceableInterface;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceInterface;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceableInterface;
 
 /**
  * Link from the footnote on the bottom of the document back to the reference
@@ -24,7 +24,7 @@ use First\Vendor\League\CommonMark\Reference\ReferenceableInterface;
 final class FootnoteBackref extends AbstractInline implements ReferenceableInterface
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Reference\ReferenceInterface */
+     * @var \Zero\Vendor\League\CommonMark\Reference\ReferenceInterface */
     private $reference;
 
     public function __construct(ReferenceInterface $reference)

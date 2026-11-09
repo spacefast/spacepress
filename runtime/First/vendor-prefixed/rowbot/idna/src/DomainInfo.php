@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Idna;
+namespace Zero\Vendor\Rowbot\Idna;
 
 class DomainInfo
 {
     protected bool $bidiDomain;
 
     /**
-     * @var int-mask-of<\First\Vendor\Rowbot\Idna\Idna::ERROR_*>
+     * @var int-mask-of<\Zero\Vendor\Rowbot\Idna\Idna::ERROR_*>
      */
     protected int $errors;
 
@@ -26,7 +26,7 @@ class DomainInfo
     }
 
     /**
-     * @param int-mask-of<\First\Vendor\Rowbot\Idna\Idna::ERROR_*> $errors
+     * @param int-mask-of<\Zero\Vendor\Rowbot\Idna\Idna::ERROR_*> $errors
      */
     public function addError(int $errors): void
     {
@@ -35,7 +35,7 @@ class DomainInfo
     }
 
     /**
-     * @return int-mask-of<\First\Vendor\Rowbot\Idna\Idna::ERROR_*>
+     * @return int-mask-of<\Zero\Vendor\Rowbot\Idna\Idna::ERROR_*>
      */
     public function getErrors(): int
     {

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Serializer;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Serializer;
 
 /**
  * A helper providing autocompletion for available Serializer options.

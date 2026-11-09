@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Exception;
+namespace Zero\Vendor\League\CommonMark\Exception;
 
 final class UnexpectedEncodingException extends \RuntimeException implements CommonMarkException
 {

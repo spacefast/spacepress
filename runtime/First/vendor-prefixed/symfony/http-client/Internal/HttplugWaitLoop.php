@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Internal;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
 
 use Http\Client\Exception\NetworkException;
 use Http\Promise\Promise;
@@ -17,11 +17,11 @@ use Psr\Http\Message\RequestInterface as Psr7RequestInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface as Psr7ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
-use First\Vendor\Symfony\Component\HttpClient\Response\StreamableInterface;
-use First\Vendor\Symfony\Component\HttpClient\Response\StreamWrapper;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\StreamableInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\StreamWrapper;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

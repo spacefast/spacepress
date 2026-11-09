@@ -26,10 +26,10 @@ export interface Example {
  * plus the committed abilities lock, the one compiler input under `first/`.
  */
 export function sources(dir: string): Request["files"] {
-  const skip = new Set(["first", ".first", "node_modules", "first.gen.ts", "public", "client-tests", "content"]);
+  const skip = new Set(["first", ".first", "node_modules", "public", "client-tests", "content"]);
   const files: Request["files"] = {};
-  const lock = path.join(dir, "first/abilities.json");
-  if (existsSync(lock)) files["first/abilities.json"] = readFileSync(lock, "utf8");
+  const lock = path.join(dir, "first/_generated/abilities.json");
+  if (existsSync(lock)) files["first/_generated/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
       if (skip.has(name)) continue;

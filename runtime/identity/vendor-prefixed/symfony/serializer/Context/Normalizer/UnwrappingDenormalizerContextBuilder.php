@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UnwrappingDenormalizer;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UnwrappingDenormalizer;
 
 /**
  * A helper providing autocompletion for available UnwrappingDenormalizer options.

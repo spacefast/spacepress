@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\ExtensionDescriptor;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\ExtensionDescriptor;
 
 final class ExtensionDescriptorDenormalizer implements DenormalizerInterface
 {

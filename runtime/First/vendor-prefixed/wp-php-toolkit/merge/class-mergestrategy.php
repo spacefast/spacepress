@@ -1,13 +1,13 @@
 <?php
 
-namespace First\Vendor\WordPress\Merge;
+namespace Zero\Vendor\WordPress\Merge;
 
-use First\Vendor\WordPress\Merge\Diff\Differ;
-use First\Vendor\WordPress\Merge\Merge\MergeConflict;
-use First\Vendor\WordPress\Merge\Merge\Merger;
-use First\Vendor\WordPress\Merge\Merge\MergeResult;
-use First\Vendor\WordPress\Merge\Validate\InvalidMergeException;
-use First\Vendor\WordPress\Merge\Validate\MergeValidator;
+use Zero\Vendor\WordPress\Merge\Diff\Differ;
+use Zero\Vendor\WordPress\Merge\Merge\MergeConflict;
+use Zero\Vendor\WordPress\Merge\Merge\Merger;
+use Zero\Vendor\WordPress\Merge\Merge\MergeResult;
+use Zero\Vendor\WordPress\Merge\Validate\InvalidMergeException;
+use Zero\Vendor\WordPress\Merge\Validate\MergeValidator;
 
 class MergeStrategy {
 	private $differ;

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Retry;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Retry;
 
-use First\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\AsyncContext;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * @author Jérémy Derussé <jeremy@derusse.com>

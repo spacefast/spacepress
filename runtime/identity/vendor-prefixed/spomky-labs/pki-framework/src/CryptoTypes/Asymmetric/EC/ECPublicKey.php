@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\EC;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\EC;
 
 use function array_key_exists;
 use function in_array;
@@ -11,15 +11,15 @@ use LogicException;
 use function mb_strlen;
 use function ord;
 use RuntimeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Asymmetric\ECPublicKeyAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKey;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Asymmetric\ECPublicKeyAlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKey;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
 use UnexpectedValueException;
 
 /**

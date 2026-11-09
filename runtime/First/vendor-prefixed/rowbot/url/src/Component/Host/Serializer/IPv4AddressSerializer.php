@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Component\Host\Serializer;
+namespace Zero\Vendor\Rowbot\URL\Component\Host\Serializer;
 
-use First\Vendor\Rowbot\URL\Component\Host\Math\NumberFactory;
+use Zero\Vendor\Rowbot\URL\Component\Host\Math\NumberFactory;
 
 /**
  * @see https://url.spec.whatwg.org/#concept-ipv4-serializer

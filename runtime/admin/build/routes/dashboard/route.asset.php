@@ -1,1 +1,1 @@
-<?php return array('name' => 'dashboard', 'dependencies' => array('wp-data'), 'moduleDependencies' => array('@first-admin/boot', '@wordpress/route'), 'version' => '6ce65f060878fca5cfad');
+<?php return array('name' => 'dashboard', 'dependencies' => array('wp-data'), 'moduleDependencies' => array('@wordpress/route', '@zero-admin/boot'), 'version' => '772c328897930c525c6e');

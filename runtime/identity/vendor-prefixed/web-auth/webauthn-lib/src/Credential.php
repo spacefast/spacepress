@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
 /**
  * @see https://w3c.github.io/webappsec-credential-management/#credential

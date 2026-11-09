@@ -11,20 +11,20 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\DescriptionList;
+namespace Zero\Vendor\League\CommonMark\Extension\DescriptionList;
 
-use First\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Event\ConsecutiveDescriptionListMerger;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Event\LooseDescriptionHandler;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Node\Description;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionList;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionTerm;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Parser\DescriptionStartParser;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Renderer\DescriptionListRenderer;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Renderer\DescriptionRenderer;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Renderer\DescriptionTermRenderer;
-use First\Vendor\League\CommonMark\Extension\ExtensionInterface;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Event\ConsecutiveDescriptionListMerger;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Event\LooseDescriptionHandler;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node\Description;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionList;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionTerm;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Parser\DescriptionStartParser;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Renderer\DescriptionListRenderer;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Renderer\DescriptionRenderer;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Renderer\DescriptionTermRenderer;
+use Zero\Vendor\League\CommonMark\Extension\ExtensionInterface;
 
 final class DescriptionListExtension implements ExtensionInterface
 {

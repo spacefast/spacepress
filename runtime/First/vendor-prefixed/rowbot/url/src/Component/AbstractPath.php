@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Component;
+namespace Zero\Vendor\Rowbot\URL\Component;
 
-use First\Vendor\Rowbot\URL\String\Exception\UndefinedIndexException;
+use Zero\Vendor\Rowbot\URL\String\Exception\UndefinedIndexException;
 
 use function count;
 
 abstract class AbstractPath implements PathInterface
 {
     /**
-     * @var list<\First\Vendor\Rowbot\URL\Component\PathSegment>
+     * @var list<\Zero\Vendor\Rowbot\URL\Component\PathSegment>
      */
     protected array $list;
 
     /**
-     * @param list<\First\Vendor\Rowbot\URL\Component\PathSegment> $paths
+     * @param list<\Zero\Vendor\Rowbot\URL\Component\PathSegment> $paths
      */
     public function __construct(array $paths = [])
     {

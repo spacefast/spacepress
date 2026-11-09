@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\WordPress\Merge\Diff;
+namespace Zero\Vendor\WordPress\Merge\Diff;
 
 class LineDiffer implements Differ {
 	public function diff( string $old_string, string $new_string ): Diff {

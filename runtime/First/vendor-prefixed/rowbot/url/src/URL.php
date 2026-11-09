@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL;
+namespace Zero\Vendor\Rowbot\URL;
 
 use InvalidArgumentException;
 use JsonSerializable;
-use First\Vendor\Psr\Log\LoggerAwareInterface;
-use First\Vendor\Psr\Log\LoggerAwareTrait;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Rowbot\URL\Component\PathList;
-use First\Vendor\Rowbot\URL\Component\QueryList;
-use First\Vendor\Rowbot\URL\Exception\TypeError;
-use First\Vendor\Rowbot\URL\String\Utf8String;
+use Zero\Vendor\Psr\Log\LoggerAwareInterface;
+use Zero\Vendor\Psr\Log\LoggerAwareTrait;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Rowbot\URL\Component\PathList;
+use Zero\Vendor\Rowbot\URL\Component\QueryList;
+use Zero\Vendor\Rowbot\URL\Exception\TypeError;
+use Zero\Vendor\Rowbot\URL\String\Utf8String;
 use Stringable;
 use Throwable;
 
@@ -39,7 +39,7 @@ use const JSON_UNESCAPED_SLASHES;
  * @property string                      $port
  * @property string                      $pathname
  * @property string                      $search
- * @property \First\Vendor\Rowbot\URL\URLSearchParams $searchParams
+ * @property \Zero\Vendor\Rowbot\URL\URLSearchParams $searchParams
  * @property string                      $hash
  */
 class URL implements JsonSerializable, LoggerAwareInterface, Stringable
@@ -51,9 +51,9 @@ class URL implements JsonSerializable, LoggerAwareInterface, Stringable
     private URLRecord $url;
 
     /**
-     * @param array{logger?: \First\Vendor\Psr\Log\LoggerInterface|null} $options
+     * @param array{logger?: \Zero\Vendor\Psr\Log\LoggerInterface|null} $options
      *
-     * @throws \First\Vendor\Rowbot\URL\Exception\TypeError
+     * @throws \Zero\Vendor\Rowbot\URL\Exception\TypeError
      */
     public function __construct(string|Stringable $url, string|Stringable|null $base = null, array $options = [])
     {
@@ -288,7 +288,7 @@ class URL implements JsonSerializable, LoggerAwareInterface, Stringable
 
     /**
      * @throws \InvalidArgumentException       When an invalid $name or $value value is passed.
-     * @throws \First\Vendor\Rowbot\URL\Exception\TypeError Only when trying to set URL::$searchParams
+     * @throws \Zero\Vendor\Rowbot\URL\Exception\TypeError Only when trying to set URL::$searchParams
      */
     public function __set(string $name, string $value): void
     {

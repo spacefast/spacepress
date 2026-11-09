@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\WordPress\DataLiberation\DataFormatProducer;
+namespace Zero\Vendor\WordPress\DataLiberation\DataFormatProducer;
 
-use First\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
+use Zero\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
 use WP_HTML_Tag_Processor;
 
 /**

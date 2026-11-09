@@ -1,14 +1,14 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Input;
+namespace Zero\Vendor\AsyncAws\S3\Input;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\Core\Input;
-use First\Vendor\AsyncAws\Core\Request;
-use First\Vendor\AsyncAws\Core\Stream\StreamFactory;
-use First\Vendor\AsyncAws\S3\Enum\EncodingType;
-use First\Vendor\AsyncAws\S3\Enum\OptionalObjectAttributes;
-use First\Vendor\AsyncAws\S3\Enum\RequestPayer;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Input;
+use Zero\Vendor\AsyncAws\Core\Request;
+use Zero\Vendor\AsyncAws\Core\Stream\StreamFactory;
+use Zero\Vendor\AsyncAws\S3\Enum\EncodingType;
+use Zero\Vendor\AsyncAws\S3\Enum\OptionalObjectAttributes;
+use Zero\Vendor\AsyncAws\S3\Enum\RequestPayer;
 
 final class ListObjectVersionsRequest extends Input
 {

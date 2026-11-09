@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\HttpClient\Exception;
+namespace Zero\Vendor\Symfony\Contracts\HttpClient\Exception;
 
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * Base interface for HTTP-related exceptions.

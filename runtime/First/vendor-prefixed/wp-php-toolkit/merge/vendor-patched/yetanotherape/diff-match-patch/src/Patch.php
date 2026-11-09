@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-namespace First\Vendor\DiffMatchPatch;
+namespace Zero\Vendor\DiffMatchPatch;
 
 /**
  * Patch offers methods for create a patch. Applies the patch onto another text, allowing for errors.

@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * Describes the cross-origin access configuration for objects in an Amazon S3 bucket. For more information, see

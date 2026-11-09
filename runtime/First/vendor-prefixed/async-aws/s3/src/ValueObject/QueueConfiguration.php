@@ -1,9 +1,9 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\S3\Enum\Event;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\S3\Enum\Event;
 
 /**
  * Specifies the configuration for publishing messages to an Amazon Simple Queue Service (Amazon SQS) queue when Amazon

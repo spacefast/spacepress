@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Signal;
+namespace Zero\Identity\Vendor\Webauthn\Signal;
 
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
 
 readonly class AllAcceptedCredentials implements Signal
 {

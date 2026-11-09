@@ -1,1 +1,1 @@
-<?php return array('name' => 'user', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/core-data-next', '@wordpress/route'), 'version' => 'e8f34beb816eed2cdb1b');
+<?php return array('name' => 'user', 'dependencies' => array(), 'moduleDependencies' => array('@wordpress/route', '@zero-admin/core-data-next'), 'version' => 'dc15c040d73ae19a31f5');

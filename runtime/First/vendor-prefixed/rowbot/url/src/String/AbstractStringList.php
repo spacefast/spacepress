@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\String;
+namespace Zero\Vendor\Rowbot\URL\String;
 
 use Generator;
-use First\Vendor\Rowbot\URL\String\Exception\UndefinedIndexException;
+use Zero\Vendor\Rowbot\URL\String\Exception\UndefinedIndexException;
 
 use function array_pop;
 use function count;

@@ -14,10 +14,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block;
 
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use First\Vendor\League\CommonMark\Node\Block\TightBlockInterface;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\TightBlockInterface;
 
 class ListBlock extends AbstractBlock implements TightBlockInterface
 {
@@ -32,7 +32,7 @@ class ListBlock extends AbstractBlock implements TightBlockInterface
      */
     protected $tight = false; // TODO Make lists tight by default in v3
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData */
+     * @var \Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListData */
     protected $listData;
 
     public function __construct(ListData $listData)

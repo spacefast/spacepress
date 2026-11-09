@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Parser;
+namespace Zero\Vendor\League\CommonMark\Parser;
 
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
 
 /**
  * Parser for inline content (text, links, emphasized text, etc).

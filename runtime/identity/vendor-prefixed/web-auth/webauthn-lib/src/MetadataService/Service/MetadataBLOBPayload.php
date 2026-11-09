@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace Zero\Identity\Vendor\Webauthn\MetadataService\Service;
 
 class MetadataBLOBPayload
 {

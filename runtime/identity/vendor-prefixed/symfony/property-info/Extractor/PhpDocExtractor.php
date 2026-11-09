@@ -9,23 +9,23 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactoryInterface;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\ContextFactory;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDescriptionExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDocBlockExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Util\PhpDocTypeHelper;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactoryInterface;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\ContextFactory;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDescriptionExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDocBlockExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Util\PhpDocTypeHelper;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
 
 /**
  * Extracts data using a PHPDoc parser.
@@ -120,7 +120,7 @@ class PhpDocExtractor implements PropertyDescriptionExtractorInterface, Property
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         /** @var DocBlock $docBlock */
         [$docBlock, $source, $prefix, $declaringClass] = $this->findDocBlock($class, $property);
@@ -181,7 +181,7 @@ class PhpDocExtractor implements PropertyDescriptionExtractorInterface, Property
      */
     public function getTypesFromConstructor(string $class, string $property): ?array
     {
-        first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
+        zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
 
         $docBlock = $this->getDocBlockFromConstructor($class, $property);
 

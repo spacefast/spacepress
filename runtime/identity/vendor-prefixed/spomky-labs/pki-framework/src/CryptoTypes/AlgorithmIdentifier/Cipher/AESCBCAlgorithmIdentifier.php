@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher;
 
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
 
 /*
  * From RFC 3565 - 4.1. AES Algorithm Identifiers and Parameters:

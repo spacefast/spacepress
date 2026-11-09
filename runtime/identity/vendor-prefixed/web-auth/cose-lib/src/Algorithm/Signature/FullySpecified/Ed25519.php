@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified;
 
-use First\Identity\Vendor\Cose\Algorithm\Signature\EdDSA\EdDSA;
+use Zero\Identity\Vendor\Cose\Algorithm\Signature\EdDSA\EdDSA;
 
 /**
  * EdDSA using the Ed25519 parameter set of RFC 8032, section 5.1.

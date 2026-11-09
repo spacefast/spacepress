@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\String;
+namespace Zero\Identity\Vendor\Symfony\Component\String;
 
-use First\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
-use First\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
+use Zero\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
 
 /**
  * Represents a string of Unicode code points encoded as UTF-8.

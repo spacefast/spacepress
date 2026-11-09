@@ -24,7 +24,7 @@ A runnable collection example is in `examples/wp-plugins/first.config.ts`:
 cargo run -- build examples/wp-plugins
 ```
 
-Commit the generated `first/wp-plugins.lock.json` with the config. For an exact
+Commit the generated `first/_generated/wp-plugins.lock.json` with the config. For an exact
 WordPress.org slug/version, the first successful build records the archive's
 SHA-256; this first acquisition trusts the HTTPS response from WordPress.org.
 Subsequent builds enforce that checksum even after deleting the download cache.
@@ -117,7 +117,7 @@ as a deployment activation order, though the build never activates plugins.
 
 ## Output and failure behavior
 
-WordPress builds use `.first/wp-content` (`--out` selects
+WordPress builds use `first/dist/wp-content` (`--out` selects
 the content root), containing `plugins/<dependency>` alongside the generated app
 plugin. Acquired ZIPs live in `.first/cache/plugins/<sha256>.zip`; locked archives
 can be reused offline. A corrupt cache entry fails rather than trusting or
@@ -169,7 +169,7 @@ manifest using resolved metadata; publish; persist the project lock. Preserve
 unrelated plugins and serialize the project lock/output while publishing.
 
 Every WordPress build now uses this assembler, including configurations without
-`plugins`. The default output is `.first/wp-content`; `--out` selects another
+`plugins`. The default output is `first/dist/wp-content`; `--out` selects another
 wp-content root. `first dev` synchronizes its managed plugins into the
 project’s persistent WordPress Studio site, retaining unrelated installed plugins.
 Required platform pins come from `src/platform.rs`, checked against the PHP policy and

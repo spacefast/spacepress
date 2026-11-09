@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Component\Host;
+namespace Zero\Vendor\Rowbot\URL\Component\Host;
 
-use First\Vendor\Rowbot\URL\Component\Host\Serializer\HostSerializerInterface;
-use First\Vendor\Rowbot\URL\Component\Host\Serializer\StringHostSerializer;
-use First\Vendor\Rowbot\URL\String\Utf8String;
+use Zero\Vendor\Rowbot\URL\Component\Host\Serializer\HostSerializerInterface;
+use Zero\Vendor\Rowbot\URL\Component\Host\Serializer\StringHostSerializer;
+use Zero\Vendor\Rowbot\URL\String\Utf8String;
 
 /**
  * @see https://url.spec.whatwg.org/#concept-domain

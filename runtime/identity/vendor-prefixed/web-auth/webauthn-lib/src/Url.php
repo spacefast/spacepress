@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
 /**
  * Represents a URL that can be either an absolute HTTPS URL or a Symfony route name.

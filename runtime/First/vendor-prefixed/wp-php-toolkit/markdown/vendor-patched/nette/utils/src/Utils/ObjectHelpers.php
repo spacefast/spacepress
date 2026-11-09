@@ -7,19 +7,19 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Utils;
+namespace Zero\Vendor\Nette\Utils;
 
-use First\Vendor\Nette;
-use First\Vendor\Nette\MemberAccessException;
+use Zero\Vendor\Nette;
+use Zero\Vendor\Nette\MemberAccessException;
 
 
 /**
- * First\Vendor\Nette\SmartObject helpers.
+ * Zero\Vendor\Nette\SmartObject helpers.
  * @internal
  */
 final class ObjectHelpers
 {
-	use \First\Vendor\Nette\StaticClass;
+	use \Zero\Vendor\Nette\StaticClass;
 
 	/**
 	 * @return never

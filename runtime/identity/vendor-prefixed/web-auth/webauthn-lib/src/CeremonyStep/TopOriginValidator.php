@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace Zero\Identity\Vendor\Webauthn\CeremonyStep;
 
 interface TopOriginValidator
 {

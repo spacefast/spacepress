@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\HttpClient\Exception;
+namespace Zero\Vendor\Symfony\Contracts\HttpClient\Exception;
 
 /**
  * When a 3xx response is returned and the "max_redirects" option has been reached.

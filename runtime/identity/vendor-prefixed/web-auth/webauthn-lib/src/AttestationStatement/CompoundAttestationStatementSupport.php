@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AttestationStatement;
+namespace Zero\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
 use function count;
 use InvalidArgumentException;
 use function is_array;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
 use function sprintf;
 use Throwable;
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
-use First\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use First\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorData;
+use Zero\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
+use Zero\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use Zero\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use Zero\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
+use Zero\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
+use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use Zero\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
 
 /**
  * Compound Attestation Statement Support

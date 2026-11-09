@@ -11,12 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\Autolink;
+namespace Zero\Vendor\League\CommonMark\Extension\Autolink;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
-use First\Vendor\League\CommonMark\Parser\InlineParserContext;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
+use Zero\Vendor\League\CommonMark\Parser\InlineParserContext;
 
 final class UrlAutolinkParser implements InlineParserInterface
 {

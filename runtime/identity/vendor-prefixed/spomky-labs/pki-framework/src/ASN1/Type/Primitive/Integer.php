@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
-use First\Identity\Vendor\Brick\Math\Exception\MathException;
+use Zero\Identity\Vendor\Brick\Math\BigInteger;
+use Zero\Identity\Vendor\Brick\Math\Exception\MathException;
 use function gettype;
 use InvalidArgumentException;
 use function is_int;
@@ -13,14 +13,14 @@ use function is_scalar;
 use function is_string;
 use function mb_strlen;
 use function ord;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
 use function sprintf;
 
 /**

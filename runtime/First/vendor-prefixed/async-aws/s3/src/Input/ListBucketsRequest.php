@@ -1,10 +1,10 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Input;
+namespace Zero\Vendor\AsyncAws\S3\Input;
 
-use First\Vendor\AsyncAws\Core\Input;
-use First\Vendor\AsyncAws\Core\Request;
-use First\Vendor\AsyncAws\Core\Stream\StreamFactory;
+use Zero\Vendor\AsyncAws\Core\Input;
+use Zero\Vendor\AsyncAws\Core\Request;
+use Zero\Vendor\AsyncAws\Core\Stream\StreamFactory;
 
 final class ListBucketsRequest extends Input
 {

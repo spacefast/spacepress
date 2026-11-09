@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Response;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
 
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Symfony\Component\HttpClient\Chunk\DataChunk;
-use First\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
-use First\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
-use First\Vendor\Symfony\Component\HttpClient\Chunk\LastChunk;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Component\HttpClient\Internal\Canary;
-use First\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\DataChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\LastChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\Canary;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
 
 /**
  * Implements common logic for transport-level response classes.

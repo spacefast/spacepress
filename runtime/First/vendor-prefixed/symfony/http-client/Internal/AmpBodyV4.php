@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Internal;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
 
 use Amp\ByteStream\InputStream;
 use Amp\ByteStream\ResourceInputStream;
 use Amp\Http\Client\RequestBody;
 use Amp\Promise;
 use Amp\Success;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

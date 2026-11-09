@@ -11,11 +11,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Float_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Float_;
 
 /** @psalm-immutable */
 class FloatValue extends Float_ implements PseudoType

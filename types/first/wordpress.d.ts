@@ -5,11 +5,11 @@
  * "paths": { "first": [".../types/index.d.ts"], "php/wordpress": [".../types/wordpress.d.ts"] }
  * ```
  *
- * `first build` augments `Abilities` in `first.gen.ts` with the app's own abilities and those locked in
- * `first/abilities.json` (`first abilities pull --site <url>`).
+ * `first build` augments `Abilities` in `first/_generated/db.d.ts` with the app's own abilities and those locked in
+ * `first/_generated/abilities.json` (`first abilities pull --site <url>`).
  */
 
-/** Ability name → `{ input; output }`, generated into `first.gen.ts`. */
+/** Ability name → `{ input; output }`, generated into `first/_generated/db.d.ts`. */
 export interface Abilities {}
 
 export type AbilityName = keyof Abilities & string;

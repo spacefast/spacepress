@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Exception;
+namespace Zero\Vendor\AsyncAws\Core\Exception;
 
 class MissingDependency extends \RuntimeException implements Exception
 {

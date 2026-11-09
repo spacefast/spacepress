@@ -11,20 +11,20 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\DescriptionList\Parser;
+namespace Zero\Vendor\League\CommonMark\Extension\DescriptionList\Parser;
 
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionTerm;
-use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserWithInlinesInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\InlineParserEngineInterface;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionTerm;
+use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserWithInlinesInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\InlineParserEngineInterface;
 
 final class DescriptionTermContinueParser extends AbstractBlockContinueParser implements BlockContinueParserWithInlinesInterface
 {
     /**
-     * @var \First\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionTerm
+     * @var \Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionTerm
      */
     private $block;
 
@@ -39,7 +39,7 @@ final class DescriptionTermContinueParser extends AbstractBlockContinueParser im
         $this->term  = $term;
     }
 
-    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }

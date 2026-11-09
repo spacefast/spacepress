@@ -1,15 +1,15 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Result;
+namespace Zero\Vendor\AsyncAws\S3\Result;
 
-use First\Vendor\AsyncAws\Core\Response;
-use First\Vendor\AsyncAws\Core\Result;
-use First\Vendor\AsyncAws\S3\Enum\Permission;
-use First\Vendor\AsyncAws\S3\Enum\RequestCharged;
-use First\Vendor\AsyncAws\S3\Enum\Type;
-use First\Vendor\AsyncAws\S3\ValueObject\Grant;
-use First\Vendor\AsyncAws\S3\ValueObject\Grantee;
-use First\Vendor\AsyncAws\S3\ValueObject\Owner;
+use Zero\Vendor\AsyncAws\Core\Response;
+use Zero\Vendor\AsyncAws\Core\Result;
+use Zero\Vendor\AsyncAws\S3\Enum\Permission;
+use Zero\Vendor\AsyncAws\S3\Enum\RequestCharged;
+use Zero\Vendor\AsyncAws\S3\Enum\Type;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Grant;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Grantee;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Owner;
 
 class GetObjectAclOutput extends Result
 {

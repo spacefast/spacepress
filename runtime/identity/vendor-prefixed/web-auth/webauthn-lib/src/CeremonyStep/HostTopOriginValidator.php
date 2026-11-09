@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace Zero\Identity\Vendor\Webauthn\CeremonyStep;
 
-use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
 
 final readonly class HostTopOriginValidator implements TopOriginValidator
 {

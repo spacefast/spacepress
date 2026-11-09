@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception;
 
 use RuntimeException;
 

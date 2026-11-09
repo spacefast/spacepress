@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Enum;
+namespace Zero\Vendor\AsyncAws\S3\Enum;
 
 /**
  * Confirms that the requester knows that they will be charged for the request. Bucket owners need not specify this

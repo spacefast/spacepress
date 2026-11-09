@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core;
+namespace Zero\Vendor\AsyncAws\Core;
 
 use AsyncAws\AppSync\AppSyncClient;
 use AsyncAws\Athena\AthenaClient;
@@ -18,12 +18,12 @@ use AsyncAws\CodeCommit\CodeCommitClient;
 use AsyncAws\CodeDeploy\CodeDeployClient;
 use AsyncAws\CognitoIdentityProvider\CognitoIdentityProviderClient;
 use AsyncAws\Comprehend\ComprehendClient;
-use First\Vendor\AsyncAws\Core\Credentials\CacheProvider;
-use First\Vendor\AsyncAws\Core\Credentials\ChainProvider;
-use First\Vendor\AsyncAws\Core\Credentials\CredentialProvider;
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\Core\Exception\MissingDependency;
-use First\Vendor\AsyncAws\Core\Sts\StsClient;
+use Zero\Vendor\AsyncAws\Core\Credentials\CacheProvider;
+use Zero\Vendor\AsyncAws\Core\Credentials\ChainProvider;
+use Zero\Vendor\AsyncAws\Core\Credentials\CredentialProvider;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Exception\MissingDependency;
+use Zero\Vendor\AsyncAws\Core\Sts\StsClient;
 use AsyncAws\DynamoDb\DynamoDbClient;
 use AsyncAws\Ec2\Ec2Client;
 use AsyncAws\Ecr\EcrClient;
@@ -42,7 +42,7 @@ use AsyncAws\MediaConvert\MediaConvertClient;
 use AsyncAws\RdsDataService\RdsDataServiceClient;
 use AsyncAws\Rekognition\RekognitionClient;
 use AsyncAws\Route53\Route53Client;
-use First\Vendor\AsyncAws\S3\S3Client;
+use Zero\Vendor\AsyncAws\S3\S3Client;
 use AsyncAws\S3Vectors\S3VectorsClient;
 use AsyncAws\Scheduler\SchedulerClient;
 use AsyncAws\SecretsManager\SecretsManagerClient;
@@ -57,10 +57,10 @@ use AsyncAws\TimestreamQuery\TimestreamQueryClient;
 use AsyncAws\TimestreamWrite\TimestreamWriteClient;
 use AsyncAws\Translate\TranslateClient;
 use AsyncAws\XRay\XRayClient;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Psr\Log\NullLogger;
-use First\Vendor\Symfony\Component\HttpClient\HttpClient;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Psr\Log\NullLogger;
+use Zero\Vendor\Symfony\Component\HttpClient\HttpClient;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Factory that instantiate API clients.

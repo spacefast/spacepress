@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/route-settings-general",
+	"name": "@zero-admin/route-settings-general",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -11,9 +11,9 @@
 		}
 	},
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/design-system": "workspace:*",
+		"@zero-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

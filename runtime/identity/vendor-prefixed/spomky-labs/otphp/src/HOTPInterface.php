@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\OTPHP;
+namespace Zero\Identity\Vendor\OTPHP;
 
 interface HOTPInterface extends OTPInterface
 {

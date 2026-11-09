@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Parser\InlineParserEngineInterface;
+use Zero\Vendor\League\CommonMark\Parser\InlineParserEngineInterface;
 
 interface BlockContinueParserWithInlinesInterface extends BlockContinueParserInterface
 {

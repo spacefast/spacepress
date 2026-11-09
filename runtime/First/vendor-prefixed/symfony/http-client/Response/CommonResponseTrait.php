@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Response;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
 
-use First\Vendor\Symfony\Component\HttpClient\Exception\ClientException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\JsonException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\RedirectionException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\ServerException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\ClientException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\JsonException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\RedirectionException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\ServerException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * Implements common logic for response classes.

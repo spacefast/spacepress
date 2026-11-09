@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\Types;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\Types;
 
 use InvalidArgumentException;
-use First\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 use function strpos;
 

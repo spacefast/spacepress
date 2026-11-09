@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/post-importer",
+	"name": "@zero-admin/post-importer",
 	"version": "1.0.0",
 	"description": "Post importer",
 	"type": "module",

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Response;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
 
 use Amp\ByteStream\StreamException;
 use Amp\DeferredCancellation;
@@ -18,18 +18,18 @@ use Amp\Future;
 use Amp\Http\Client\HttpException;
 use Amp\Http\Client\Request;
 use Amp\Http\Client\Response;
-use First\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Psr\Log\LoggerInterface;
 use Revolt\EventLoop;
-use First\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
-use First\Vendor\Symfony\Component\HttpClient\Chunk\InformationalChunk;
-use First\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Component\HttpClient\HttpClientTrait;
-use First\Vendor\Symfony\Component\HttpClient\Internal\AmpBodyV5;
-use First\Vendor\Symfony\Component\HttpClient\Internal\AmpClientStateV5;
-use First\Vendor\Symfony\Component\HttpClient\Internal\Canary;
-use First\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\InformationalChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\HttpClientTrait;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\AmpBodyV5;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\AmpClientStateV5;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\Canary;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 use function Amp\delay;
 use function Amp\Future\awaitFirst;

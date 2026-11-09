@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Node;
+namespace Zero\Vendor\League\CommonMark\Node;
 
 /**
  * Interface for a node which contains raw, unprocessed markup (like HTML)

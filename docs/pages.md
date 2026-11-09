@@ -69,7 +69,7 @@ export default function NotePage({ item, cheers }: Props) {
 
 ```sh
 first build site                     # the backend, and the compiled schema pages read
-first-pages build site               # writes site/.first/wp-content/plugins/first-pages-<app>/
+first-pages build site               # writes site/first/dist/wp-content/plugins/first-pages-<app>/
 ```
 
 `first-pages build [project] [--out <wp-content>] [--json]` exits `0` when it
@@ -106,7 +106,7 @@ refuses an artifact that names a non-asset file, PHP, an unknown island or
 action, or a route WordPress owns. An uploaded artifact can only carry markup
 and static assets, never server code.
 
-Pages read the app's schema from `first build` output (`first/client/schema.ts`,
+Pages read the app's schema from `first build` output (`first/_generated/client/schema.ts`,
 `first/_generated/migrations/snapshot.json`). They never execute `first.config.ts`, and a
 page cannot import runtime values from `"first"`; use type imports and name
 collections as strings.

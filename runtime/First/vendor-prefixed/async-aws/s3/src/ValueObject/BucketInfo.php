@@ -1,10 +1,10 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\S3\Enum\BucketType;
-use First\Vendor\AsyncAws\S3\Enum\DataRedundancy;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\S3\Enum\BucketType;
+use Zero\Vendor\AsyncAws\S3\Enum\DataRedundancy;
 
 /**
  * Specifies the information about the bucket that will be created. For more information about directory buckets, see

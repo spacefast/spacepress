@@ -16,14 +16,14 @@ import { repo, firstBinary, wasmPath } from "./helpers.ts";
  */
 function sources(dir: string): Request["files"] {
   const files: Request["files"] = {};
-  for (const input of ["first/abilities.json", "first/plugins.lock.json"]) {
+  for (const input of ["first/_generated/abilities.json", "first/_generated/plugins.lock.json"]) {
     const lock = path.join(dir, input);
     if (statSync(lock, { throwIfNoEntry: false })?.isFile()) files[input] = readFileSync(lock, "utf8");
   }
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
       // `first/` holds generated output, except `first/components/`: server components are sources.
-      if ((name === "first" && sub === "") || name === ".first" || name === "first.gen.ts") continue;
+      if ((name === "first" && sub === "") || name === ".first") continue;
       const rel = sub ? `${sub}/${name}` : name;
       const full = path.join(dir, rel);
       const stat = lstatSync(full);
@@ -68,9 +68,9 @@ test("a config that builds on the command line builds in the browser, to the sam
   // A first build: everything is one init migration, from the same snapshot the example commits.
   assert.deepEqual(output.snapshot, JSON.parse(readFileSync(path.join(dir, "first/_generated/migrations/snapshot.json"), "utf8")));
   assert.deepEqual(output.migrations.map(([name]) => name), ["0001_init.sql"]);
-  assert.equal(output.client["types.ts"], readFileSync(path.join(dir, "first/client/types.ts"), "utf8"));
-  assert.equal(output.client["schema.ts"], readFileSync(path.join(dir, "first/client/schema.ts"), "utf8"));
-  assert.equal(output.genTs, readFileSync(path.join(dir, "first.gen.ts"), "utf8"));
+  assert.equal(output.client["types.ts"], readFileSync(path.join(dir, "first/_generated/client/types.ts"), "utf8"));
+  assert.equal(output.client["schema.ts"], readFileSync(path.join(dir, "first/_generated/client/schema.ts"), "utf8"));
+  assert.equal(output.genTs, readFileSync(path.join(dir, "first/_generated/db.d.ts"), "utf8"));
   // Class lowering and inference run through this same core in both environments.
   const classDir = path.join(repo, "tests/differential");
   const classFiles = { "first.config.ts": readFileSync(path.join(classDir, "classes.ts"), "utf8") };
@@ -182,12 +182,12 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     assert.ok(output);
     const built = spawnSync(firstBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(built.status, 0, built.stderr);
-    const plugins = path.join(dir, ".first/wp-content/plugins");
+    const plugins = path.join(dir, "first/dist/wp-content/plugins");
     const app = readdirSync(plugins).find((name) => name.startsWith("first-app-"));
     assert.ok(app);
     assert.equal(output.functionsPhp, readFileSync(path.join(plugins, app, "first/app/functions.php"), "utf8"));
     for (const [name, text] of Object.entries(output.client)) {
-      assert.equal(text, readFileSync(path.join(dir, "first/client", name), "utf8"));
+      assert.equal(text, readFileSync(path.join(dir, "first/_generated/client", name), "utf8"));
     }
     const typed = spawnSync(process.execPath, [tsc, "-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(typed.status, 0, typed.stdout + typed.stderr);
@@ -230,7 +230,7 @@ export default defineConfig({ tables: { documents, source }, users: { members },
     assert.equal(stored.check.ok, true, stored.envelope);
     const storedBuild = spawnSync(firstBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(storedBuild.status, 0, storedBuild.stderr);
-    writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./first/client/types";
+    writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./first/_generated/client/types";
 const wire: Document["payload"] = { title: "wire", state: undefined, items: [{ label: undefined }] };
 // @ts-expect-error optional string values do not admit null
 const invalidWire: Document["payload"] = { title: "wire", items: [{ label: null }] };
@@ -240,7 +240,7 @@ const translated: Document["inserted"] = { body: wire, translationOf: 1 };
 void selected; void inserted; void invalidWire;`);
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { first: [path.join(repo, "types/first/index.d.ts")] } },
-      include: ["first.config.ts", "first.gen.ts", "stored-client.ts"],
+      include: ["first.config.ts", "first/_generated/db.d.ts", "stored-client.ts"],
     }));
     const storedTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(storedTypes.status, 0, storedTypes.stdout + storedTypes.stderr);
@@ -393,7 +393,7 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
     assert.ok(output);
     const built = spawnSync(firstBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(built.status, 0, built.stderr);
-    const app = path.join(dir, ".first/wp-content/plugins/first-app-builtinparity/first/app");
+    const app = path.join(dir, "first/dist/wp-content/plugins/first-app-builtinparity/first/app");
     assert.equal(output.functionsPhp, readFileSync(path.join(app, "functions.php"), "utf8"));
     assert.equal(output.schemaPhp, readFileSync(path.join(app, "schema.php"), "utf8"));
   } finally {

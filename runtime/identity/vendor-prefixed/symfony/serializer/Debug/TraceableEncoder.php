@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Debug;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Debug;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\DataCollector\SerializerDataCollector;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\DecoderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\EncoderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\NormalizationAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\DataCollector\SerializerDataCollector;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\DecoderInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\EncoderInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\NormalizationAwareInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
 
 /**
  * Collects some data about encoding.

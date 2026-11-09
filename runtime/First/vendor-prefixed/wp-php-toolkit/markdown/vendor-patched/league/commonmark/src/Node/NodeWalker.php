@@ -14,18 +14,18 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Node;
+namespace Zero\Vendor\League\CommonMark\Node;
 
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
 
 final class NodeWalker
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Node\Node */
+     * @var \Zero\Vendor\League\CommonMark\Node\Node */
     private $root;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Node\Node|null */
+     * @var \Zero\Vendor\League\CommonMark\Node\Node|null */
     private $current;
 
     /** @psalm-readonly-allow-private-mutation

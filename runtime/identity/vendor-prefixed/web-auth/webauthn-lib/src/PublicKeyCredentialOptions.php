@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
 use function in_array;
 use InvalidArgumentException;
 use function is_string;
 use function sprintf;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtension;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtension;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
 
 abstract class PublicKeyCredentialOptions
 {

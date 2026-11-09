@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Tests;
+namespace Zero\Vendor\Rowbot\URL\Tests;
 
 use ArrayObject;
 use Countable;
 use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use First\Vendor\Rowbot\URL\Exception\TypeError;
-use First\Vendor\Rowbot\URL\URL;
-use First\Vendor\Rowbot\URL\URLSearchParams;
+use Zero\Vendor\Rowbot\URL\Exception\TypeError;
+use Zero\Vendor\Rowbot\URL\URL;
+use Zero\Vendor\Rowbot\URL\URLSearchParams;
 
 class URLSearchParamsTest extends TestCase
 {

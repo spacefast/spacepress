@@ -12,14 +12,14 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Footnote\Parser;
+namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Parser;
 
-use First\Vendor\League\CommonMark\Parser\Block\BlockStart;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
-use First\Vendor\League\CommonMark\Reference\Reference;
-use First\Vendor\League\CommonMark\Util\RegexHelper;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStart;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
+use Zero\Vendor\League\CommonMark\Reference\Reference;
+use Zero\Vendor\League\CommonMark\Util\RegexHelper;
 
 final class FootnoteStartParser implements BlockStartParserInterface
 {

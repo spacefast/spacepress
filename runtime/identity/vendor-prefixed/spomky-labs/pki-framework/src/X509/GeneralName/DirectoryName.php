@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
 
 /**
  * Implements *directoryName* CHOICE type of *GeneralName*.

@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace Zero\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\DecoderInterface;
-use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use First\Identity\Vendor\CBOR\StringStream;
-use First\Identity\Vendor\CBOR\Tag;
+use Zero\Identity\Vendor\CBOR\ByteStringObject;
+use Zero\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\Decoder;
+use Zero\Identity\Vendor\CBOR\DecoderInterface;
+use Zero\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use Zero\Identity\Vendor\CBOR\StringStream;
+use Zero\Identity\Vendor\CBOR\Tag;
 use InvalidArgumentException;
 use function strlen;
 use function substr;

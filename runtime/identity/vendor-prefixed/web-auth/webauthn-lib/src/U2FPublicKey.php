@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\MapItem;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\NegativeIntegerObject;
-use First\Identity\Vendor\CBOR\UnsignedIntegerObject;
-use First\Identity\Vendor\Cose\Algorithms;
-use First\Identity\Vendor\Cose\Key\Ec2Key;
+use Zero\Identity\Vendor\CBOR\ByteStringObject;
+use Zero\Identity\Vendor\CBOR\MapItem;
+use Zero\Identity\Vendor\CBOR\MapObject;
+use Zero\Identity\Vendor\CBOR\NegativeIntegerObject;
+use Zero\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use Zero\Identity\Vendor\Cose\Algorithms;
+use Zero\Identity\Vendor\Cose\Key\Ec2Key;
 use function strlen;
 
 /**

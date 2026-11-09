@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
 use function count;
 use function ord;
 use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Component\HttpFoundation\Request;
-use function first_identity_vendor_trigger_deprecation as trigger_deprecation;
+use function zero_identity_vendor_trigger_deprecation as trigger_deprecation;
 
 final readonly class SimpleFakeCredentialGenerator implements FakeCredentialGenerator
 {
@@ -17,7 +17,7 @@ final readonly class SimpleFakeCredentialGenerator implements FakeCredentialGene
         private string $secret = '',
     ) {
         if ($secret === '') {
-            first_identity_vendor_trigger_deprecation(
+            zero_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3.5',
                 'Instantiating "%s" without a secret is deprecated since 5.3.5 and a non-empty secret will be required in 6.0.0. With an empty secret the generated fake credentials depend only on the username and become predictable, which lets an unauthenticated requester tell fake responses from real ones and defeats the username enumeration protection. Provide a non-empty secret, for example the application secret.',

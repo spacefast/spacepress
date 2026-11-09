@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 use Psr\Cache\CacheItemPoolInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
 
 /**
  * A configurable builder to create a PropertyAccessor.

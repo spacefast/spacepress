@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Brick\Math;
+namespace Zero\Vendor\Brick\Math;
 
-use First\Vendor\Brick\Math\Exception\DivisionByZeroException;
-use First\Vendor\Brick\Math\Exception\InvalidArgumentException;
-use First\Vendor\Brick\Math\Exception\MathException;
-use First\Vendor\Brick\Math\Exception\RoundingNecessaryException;
-use First\Vendor\Brick\Math\Internal\DecimalHelper;
-use First\Vendor\Brick\Math\Internal\Safe;
+use Zero\Vendor\Brick\Math\Exception\DivisionByZeroException;
+use Zero\Vendor\Brick\Math\Exception\InvalidArgumentException;
+use Zero\Vendor\Brick\Math\Exception\MathException;
+use Zero\Vendor\Brick\Math\Exception\RoundingNecessaryException;
+use Zero\Vendor\Brick\Math\Internal\DecimalHelper;
+use Zero\Vendor\Brick\Math\Internal\Safe;
 use LogicException;
 use Override;
 

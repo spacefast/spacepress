@@ -11,17 +11,17 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\FrontMatter;
+namespace Zero\Vendor\League\CommonMark\Extension\FrontMatter;
 
-use First\Vendor\League\CommonMark\Extension\FrontMatter\Data\FrontMatterDataParserInterface;
-use First\Vendor\League\CommonMark\Extension\FrontMatter\Exception\InvalidFrontMatterException;
-use First\Vendor\League\CommonMark\Extension\FrontMatter\Input\MarkdownInputWithFrontMatter;
-use First\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Data\FrontMatterDataParserInterface;
+use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Exception\InvalidFrontMatterException;
+use Zero\Vendor\League\CommonMark\Extension\FrontMatter\Input\MarkdownInputWithFrontMatter;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
 
 final class FrontMatterParser implements FrontMatterParserInterface
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Extension\FrontMatter\Data\FrontMatterDataParserInterface */
+     * @var \Zero\Vendor\League\CommonMark\Extension\FrontMatter\Data\FrontMatterDataParserInterface */
     private $frontMatterParser;
 
     private const REGEX_FRONT_MATTER = '/^---\\R.*?\\R---\\R/s';

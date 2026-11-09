@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose;
+namespace Zero\Identity\Vendor\Cose;
 
 use function array_key_exists;
-use First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1;
+use Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1;
 use const E_USER_WARNING;
 use InvalidArgumentException;
 use const OPENSSL_ALGO_SHA1;
@@ -171,7 +171,7 @@ abstract class Algorithms
      * openssl_verify() called with an OPENSSL_ALGO_* digest implies PKCS #1 v1.5 padding, so PS256, PS384 and PS512
      * (RSASSA-PSS) are deliberately absent, and so are EdDSA (-8), Ed25519 (-19) and Ed448 (-53), which are one-shot
      * schemes that hash the message themselves. Verifying with one of those identifiers goes through the matching
-     * First\Identity\Vendor\Cose\Algorithm\Signature\Signature class instead - First\Identity\Vendor\Cose\Algorithm\Signature\CertificateSignatureVerifier
+     * Zero\Identity\Vendor\Cose\Algorithm\Signature\Signature class instead - Zero\Identity\Vendor\Cose\Algorithm\Signature\CertificateSignatureVerifier
      * does exactly that for a signature made by the key of an X.509 certificate.
      *
      * @internal this constant bypasses getOpensslAlgorithmFor() and the acknowledgement it requires for RS1; it will
@@ -232,7 +232,7 @@ abstract class Algorithms
      *
      * @see self::COSE_ALGORITHM_MAP for the identifiers this covers, and for those it deliberately does not
      *
-     * @param bool $acknowledgeInsecureAlgorithm see First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1: SHA-1 is only handed out
+     * @param bool $acknowledgeInsecureAlgorithm see Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1: SHA-1 is only handed out
      * against an explicit acknowledgement, as creating the RS1 algorithm itself is
      *
      * @throws InvalidArgumentException when the identifier is not one this map describes
@@ -254,7 +254,7 @@ abstract class Algorithms
      *
      * @see self::COSE_HASH_MAP for the identifiers this covers, and for those it deliberately does not
      *
-     * @param bool $acknowledgeInsecureAlgorithm see First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1: SHA-1 is only handed out
+     * @param bool $acknowledgeInsecureAlgorithm see Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1: SHA-1 is only handed out
      * against an explicit acknowledgement, as creating the RS1 algorithm itself is
      *
      * @throws InvalidArgumentException when the identifier is not one this map describes

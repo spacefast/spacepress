@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
 
 /**
  * Parses a tag definition for a DocBlock.

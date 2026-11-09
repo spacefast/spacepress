@@ -8,15 +8,15 @@
 //! Request:
 //! ```json
 //! { "name": "pantry",
-//!   "files": { "first.config.ts": "…", "lib/fields.ts": "…", "first/abilities.json": "…",
-//!              "first/plugins.lock.json": "…" },,
+//!   "files": { "first.config.ts": "…", "lib/fields.ts": "…", "first/_generated/abilities.json": "…",
+//!              "first/_generated/plugins.lock.json": "…" },,
 //!   "previous": null, "migrationFiles": [], "frozen": false }
 //! ```
 //! `previous` is the last build's `first/_generated/migrations/snapshot.json` (null for a first build) and
 //! `migrationFiles` the names beside it, which number the next migration like `first build` does.
-//! `files` carries every compiler input, including the committed `first/abilities.json` lock that
+//! `files` carries every compiler input, including the committed `first/_generated/abilities.json` lock that
 //! types `abilities.call` from "php/wordpress".
-//! `first/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
+//! `first/_generated/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
 //! `first check --frozen` (or `CI`) does.
 //! Directories exist as the parents of files: a project in memory has no empty directory, and git
 //! cannot hold one either, so that is the one shape of project the disk can have and this cannot.
@@ -528,7 +528,10 @@ export default defineConfig({ actions: { a: action({ input: {}, access: "anyone"
                 .to_string()
         };
         assert_eq!(
-            message(serde_json::json!({"first.config.ts": config, "first/abilities.json": lock.to_string()})),
+            message(serde_json::Value::Object(serde_json::Map::from_iter([
+                ("first.config.ts".to_string(), config.into()),
+                (crate::wordpress::abilities::LOCK.to_string(), lock.to_string().into()),
+            ]))),
             "`acme/info` takes { field: \"name\" }, not { field: \"title\" }"
         );
         assert_eq!(

@@ -2,30 +2,30 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Xml;
+namespace Zero\Vendor\League\CommonMark\Xml;
 
-use First\Vendor\League\CommonMark\Environment\EnvironmentInterface;
-use First\Vendor\League\CommonMark\Event\DocumentPreRenderEvent;
-use First\Vendor\League\CommonMark\Exception\InvalidArgumentException;
-use First\Vendor\League\CommonMark\Node\Block\Document;
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Node\StringContainerInterface;
-use First\Vendor\League\CommonMark\Output\RenderedContent;
-use First\Vendor\League\CommonMark\Output\RenderedContentInterface;
-use First\Vendor\League\CommonMark\Renderer\DocumentRendererInterface;
-use First\Vendor\League\CommonMark\Util\Xml;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface;
+use Zero\Vendor\League\CommonMark\Event\DocumentPreRenderEvent;
+use Zero\Vendor\League\CommonMark\Exception\InvalidArgumentException;
+use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Node\StringContainerInterface;
+use Zero\Vendor\League\CommonMark\Output\RenderedContent;
+use Zero\Vendor\League\CommonMark\Output\RenderedContentInterface;
+use Zero\Vendor\League\CommonMark\Renderer\DocumentRendererInterface;
+use Zero\Vendor\League\CommonMark\Util\Xml;
 
 final class XmlRenderer implements DocumentRendererInterface
 {
     private const INDENTATION = '    ';
 
     /**
-     * @var \First\Vendor\League\CommonMark\Environment\EnvironmentInterface
+     * @var \Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface
      */
     private $environment;
 
     /**
-     * @var \First\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface
+     * @var \Zero\Vendor\League\CommonMark\Xml\XmlNodeRendererInterface
      */
     private $fallbackRenderer;
 

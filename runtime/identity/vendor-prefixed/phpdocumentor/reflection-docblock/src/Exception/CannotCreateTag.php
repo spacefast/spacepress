@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\Exception;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\Exception;
 
 use LogicException;
 

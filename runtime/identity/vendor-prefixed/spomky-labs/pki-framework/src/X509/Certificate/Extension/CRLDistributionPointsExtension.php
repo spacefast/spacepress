@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
 use UnexpectedValueException;
 
 /**

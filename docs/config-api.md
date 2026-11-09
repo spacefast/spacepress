@@ -135,7 +135,7 @@ export default defineConfig({ collections: { posts }, tables: { stock } });
 ```
 
 Definitions need no exports. Backend-only config is sufficient; `first build`
-emits `first.gen.ts` to type `db.query` without importing authored definitions.
+emits `first/_generated/db.d.ts` to type `db.query` without importing authored definitions.
 An `id: id()` primary key is implicit. Tables may declare a custom single primary
 key; collections and user projections use the native integer `id`.
 
@@ -182,6 +182,23 @@ engine checks include these tables. Uninstall retains their rows like normal tab
 An [adopted application table](migrating-from-zero.md#application-source-migration)
 keeps its TEXT/DOUBLE storage and string response IDs.
 
+### Files that moved into `first/_generated/`
+
+A checkout from before `first/_generated/` is refused until its committed
+files move. Each refusal prints the `git mv` that fixes it.
+
+| Before | Now | Left in place, it would be |
+|---|---|---|
+| `first/migrations/` | `first/_generated/migrations/` | read as a first build |
+| `first/plugins.lock.json` | `first/_generated/plugins.lock.json` | ignored, and a new lock granting everything written |
+| `first/wp-plugins.lock.json` | `first/_generated/wp-plugins.lock.json` | ignored, and its plugins resolved again |
+| `first/abilities.json` | `first/_generated/abilities.json` | ignored, so its abilities are unknown |
+| `first/client/` | `first/_generated/client/` | loaded as app code |
+| `first.gen.ts` | `first/_generated/db.d.ts` | stale editor types |
+
+A source bundle a host stored earlier is read on the new layout instead, and
+is never refused.
+
 ### Upgrading authoring
 
 Replace named builders with unnamed `collection()` or `table()` and register
@@ -214,7 +231,7 @@ revision ownership; relations and client properties still use logical keys.
    `first build .`. This authoring-only transition must leave the snapshot and
    historical SQL unchanged and produce no new numbered SQL. Review with
    `git diff -- first/_generated/migrations` before deployment.
-3. Deploy the generated `.first/wp-content` plugins together as an ordinary
+3. Deploy the generated `first/dist/wp-content` plugins together as an ordinary
    file-copy update to the existing site. The runtime keeps the app's migration
    ledger, rows, reference targets and revision identities; it has no data
    migration to apply. Verify existing reads, relations and revision history
@@ -300,7 +317,7 @@ export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Si
   and `once()` keys are its own.
 
 There is no capability list to write. `first build` infers each plugin's
-grant and writes `first/plugins.lock.json`:
+grant and writes `first/_generated/plugins.lock.json`:
 
 ```json
 { "version": 1, "plugins": { "seo": {
@@ -709,14 +726,14 @@ export default defineConfig({
 - The app's own abilities (`<app>/<collection>-list`, `<app>/<action>`, ...)
   are typed from the schema with nothing else to do. An action's result is
   `unknown`: its ability publishes no output schema.
-- Other abilities come from `first/abilities.json`, which you commit.
+- Other abilities come from `first/_generated/abilities.json`, which you commit.
   `first abilities pull [dir] --site <url>` writes it from a running site;
   `--only acme/*` (repeatable) keeps matching names. The pull signs in only
   with `FIRST_APP_PASSWORD=user:application-password` from the environment.
   `first build` and `first check` read the lock and never contact the site.
 - Map `"php/wordpress"` in tsconfig.json next to `"first"`
   (`types/wordpress.d.ts` in the CLI package); `first build` writes the ability
-  types into `first.gen.ts` when the app imports the module.
+  types into `first/_generated/db.d.ts` when the app imports the module.
 - The call runs core's `WP_Ability::execute()` for the current WordPress user:
   core validates the input, runs the ability's permission check and validates
   the output. It runs inside the handler's transaction, so the ability's

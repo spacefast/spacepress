@@ -35,7 +35,7 @@ done
 "$first" build "$work/one/storelane" --quiet >/dev/null
 mkdir -p "$work/content/plugins"
 cp "$here/store/host.php" "$work/content/plugins/first-store-host.php"
-cp "$work/one/storelane/.first/wp-content/first-manifest.json" "$work/content/"
+cp "$work/one/storelane/first/dist/wp-content/first-manifest.json" "$work/content/"
 # The store lives in the bind-mounted plugins directory so the container sees it; FIRST_BUILD_STORE points at it.
 store="$work/content/plugins/first-store"
 start=$(date +%s%N)

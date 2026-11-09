@@ -12,11 +12,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Footnote\Event;
+namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Event;
 
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
-use First\Vendor\League\CommonMark\Reference\Reference;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
+use Zero\Vendor\League\CommonMark\Reference\Reference;
 
 final class NumberFootnotesListener
 {

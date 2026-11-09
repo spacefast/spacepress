@@ -2,12 +2,12 @@
 /**
  * Locale field definition for core user fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Admin language', 'first-admin' ),
+	'label'         => __( 'Admin language', 'zero-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 	'enableHiding'  => false,

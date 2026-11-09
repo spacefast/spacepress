@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\AwsError;
+namespace Zero\Vendor\AsyncAws\Core\AwsError;
 
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 interface AwsErrorFactoryInterface
 {

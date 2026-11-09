@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Signature;
 
-use First\Identity\Vendor\Cose\Algorithm\Manager;
-use First\Identity\Vendor\Cose\Key\Key;
-use First\Identity\Vendor\Cose\Key\PublicKeyLoader;
+use Zero\Identity\Vendor\Cose\Algorithm\Manager;
+use Zero\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\Cose\Key\PublicKeyLoader;
 use InvalidArgumentException;
 use function sprintf;
 
@@ -19,7 +19,7 @@ use function sprintf;
  * describe - ECDSA and RSASSA-PKCS1-v1_5 - because that digest implies PKCS #1 v1.5 padding; ES256K is missing from
  * the map altogether, and RSASSA-PSS, EdDSA, Ed25519 and Ed448 cannot be expressed by it at all.
  *
- * This class takes the other route: the certificate's key becomes a First\Identity\Vendor\Cose\Key\Key and the Signature class registered
+ * This class takes the other route: the certificate's key becomes a Zero\Identity\Vendor\Cose\Key\Key and the Signature class registered
  * for the identifier verifies with it. Three consequences are worth stating.
  *
  * First, the set of acceptable algorithms is the Manager the operator built, not a constant of this library: an

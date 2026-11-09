@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Brick\Math;
+namespace Zero\Identity\Vendor\Brick\Math;
 
 /**
  * Specifies rounding behavior by defining how discarded digits affect the returned result when an exact value cannot

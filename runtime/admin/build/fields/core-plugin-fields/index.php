@@ -2,7 +2,7 @@
 /**
  * Core plugin fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(

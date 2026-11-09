@@ -1,5 +1,5 @@
 //! `first abilities pull [dir] --site <url> [--only vendor/*]...`: list a site's abilities over
-//! `wp-abilities/v1` and write the committed lock `first/abilities.json`. Credentials come only from
+//! `wp-abilities/v1` and write the committed lock `first/_generated/abilities.json`. Credentials come only from
 //! `FIRST_APP_PASSWORD` (`user:application-password`), never a flag that lands in shell history.
 
 use crate::wordpress::abilities::{self, LOCK};

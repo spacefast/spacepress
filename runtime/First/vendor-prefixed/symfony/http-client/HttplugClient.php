@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient;
+namespace Zero\Vendor\Symfony\Component\HttpClient;
 
 use GuzzleHttp\Promise\Promise as GuzzlePromise;
 use GuzzleHttp\Promise\RejectedPromise;
@@ -31,19 +31,19 @@ use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Message\UriInterface;
-use First\Vendor\Symfony\Component\HttpClient\Internal\HttplugWaitLoop;
-use First\Vendor\Symfony\Component\HttpClient\Response\HttplugPromise;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use First\Vendor\Symfony\Contracts\Service\ResetInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\HttplugWaitLoop;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\HttplugPromise;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 if (!interface_exists(HttpAsyncClient::class)) {
-    throw new \LogicException('You cannot use "First\Vendor\Symfony\Component\HttpClient\HttplugClient" as the "php-http/httplug" package is not installed. Try running "composer require php-http/discovery php-http/async-client-implementation:*".');
+    throw new \LogicException('You cannot use "Zero\Vendor\Symfony\Component\HttpClient\HttplugClient" as the "php-http/httplug" package is not installed. Try running "composer require php-http/discovery php-http/async-client-implementation:*".');
 }
 
 if (!interface_exists(RequestFactoryInterface::class)) {
-    throw new \LogicException('You cannot use the "First\Vendor\Symfony\Component\HttpClient\HttplugClient" as the "psr/http-factory" package is not installed. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
+    throw new \LogicException('You cannot use the "Zero\Vendor\Symfony\Component\HttpClient\HttplugClient" as the "psr/http-factory" package is not installed. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
 }
 
 /**
@@ -82,7 +82,7 @@ final class HttplugClient implements ClientInterface, HttpAsyncClient, RequestFa
             } elseif (class_exists(NyholmPsr17Factory::class)) {
                 $psr17Factory = new NyholmPsr17Factory();
             } else {
-                throw new \LogicException('You cannot use the "First\Vendor\Symfony\Component\HttpClient\HttplugClient" as no PSR-17 factories have been provided. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
+                throw new \LogicException('You cannot use the "Zero\Vendor\Symfony\Component\HttpClient\HttplugClient" as no PSR-17 factories have been provided. Try running "composer require php-http/discovery psr/http-factory-implementation:*".');
             }
 
             $responseFactory ??= $psr17Factory;

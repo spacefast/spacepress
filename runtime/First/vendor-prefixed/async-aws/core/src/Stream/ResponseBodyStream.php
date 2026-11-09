@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Stream;
+namespace Zero\Vendor\AsyncAws\Core\Stream;
 
-use First\Vendor\AsyncAws\Core\Exception\LogicException;
-use First\Vendor\AsyncAws\Core\Exception\RuntimeException;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use Zero\Vendor\AsyncAws\Core\Exception\LogicException;
+use Zero\Vendor\AsyncAws\Core\Exception\RuntimeException;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
 
 /**
  * Stream a HTTP response body.

@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\Service;
+namespace Zero\Vendor\Symfony\Contracts\Service;
 
-use First\Vendor\Psr\Container\ContainerInterface;
+use Zero\Vendor\Psr\Container\ContainerInterface;
 
 /**
  * Implemented by objects that expose a service container.

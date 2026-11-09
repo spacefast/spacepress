@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\AwsError;
+namespace Zero\Vendor\AsyncAws\Core\AwsError;
 
 final class AwsError
 {

@@ -17,9 +17,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Delimiter\Processor;
+namespace Zero\Vendor\League\CommonMark\Delimiter\Processor;
 
-use First\Vendor\League\CommonMark\Exception\InvalidArgumentException;
+use Zero\Vendor\League\CommonMark\Exception\InvalidArgumentException;
 
 final class DelimiterProcessorCollection implements DelimiterProcessorCollectionInterface
 {

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Tests;
+namespace Zero\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use First\Vendor\Rowbot\URL\Component\OpaquePath;
-use First\Vendor\Rowbot\URL\Component\PathSegment;
-use First\Vendor\Rowbot\URL\Component\Scheme;
-use First\Vendor\Rowbot\URL\Exception\URLException;
+use Zero\Vendor\Rowbot\URL\Component\OpaquePath;
+use Zero\Vendor\Rowbot\URL\Component\PathSegment;
+use Zero\Vendor\Rowbot\URL\Component\Scheme;
+use Zero\Vendor\Rowbot\URL\Exception\URLException;
 
 class PathTest extends TestCase
 {

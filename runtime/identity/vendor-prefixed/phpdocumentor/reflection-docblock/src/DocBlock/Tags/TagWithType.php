@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 abstract class TagWithType extends BaseTag
 {

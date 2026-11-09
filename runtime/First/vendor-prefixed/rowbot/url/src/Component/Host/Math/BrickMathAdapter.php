@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Component\Host\Math;
+namespace Zero\Vendor\Rowbot\URL\Component\Host\Math;
 
-use First\Vendor\Brick\Math\BigInteger;
-use First\Vendor\Brick\Math\RoundingMode;
+use Zero\Vendor\Brick\Math\BigInteger;
+use Zero\Vendor\Brick\Math\RoundingMode;
 use ReflectionEnum;
-use First\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException;
+use Zero\Vendor\Rowbot\URL\Component\Host\Math\Exception\MathException;
 use Stringable;
 
 use function is_string;

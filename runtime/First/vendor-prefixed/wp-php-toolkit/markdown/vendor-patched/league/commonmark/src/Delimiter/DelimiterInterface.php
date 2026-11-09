@@ -14,9 +14,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Delimiter;
+namespace Zero\Vendor\League\CommonMark\Delimiter;
 
-use First\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
 
 interface DelimiterInterface
 {

@@ -1,9 +1,9 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\S3\Enum\FilterRuleName;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\S3\Enum\FilterRuleName;
 
 /**
  * Specifies the Amazon S3 object key name to filter on. An object key name is the name assigned to an object in your

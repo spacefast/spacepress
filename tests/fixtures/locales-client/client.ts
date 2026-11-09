@@ -1,5 +1,5 @@
 // Generated client types for localized collections (§7.3).
-import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./first/client/types";
+import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./first/_generated/client/types";
 import "./first.gen";
 import { db } from "first";
 

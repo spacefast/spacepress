@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\Service\Attribute;
+namespace Zero\Vendor\Symfony\Contracts\Service\Attribute;
 
 /**
  * A required dependency.

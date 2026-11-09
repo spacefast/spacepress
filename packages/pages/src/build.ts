@@ -3,7 +3,7 @@
  *
  * Steps, each one only when the previous produced no error:
  *
- * 1. Read the app's schema from `first build` output (`first/client/schema.ts`
+ * 1. Read the app's schema from `first build` output (`first/_generated/client/schema.ts`
  *    and `first/_generated/migrations/snapshot.json`); pages never execute
  *    `first.config.ts`.
  * 2. Discover routes, layouts and `not-found.tsx` (routes.ts).
@@ -137,14 +137,14 @@ export interface AppSchema {
 }
 
 async function loadSchema(project: string): Promise<AppSchema | PagesDiagnostic> {
-  const clientFile = path.join(project, "first/client/schema.ts");
+  const clientFile = path.join(project, "first/_generated/client/schema.ts");
   const snapshotFile = path.join(project, "first/_generated/migrations/snapshot.json");
   if (!(await exists(clientFile)) || !(await exists(snapshotFile))) {
     return error("config", "Pages build from the app's compiled schema; run `first build` first.", path.join(project, "first.config.ts"));
   }
   const client = await readFile(clientFile, "utf8");
   const match = /export const SCHEMA = (\{[\s\S]*\}) as const;/.exec(client);
-  if (match === null) return error("config", "first/client/schema.ts is not the shape `first build` writes; rebuild the app.", clientFile);
+  if (match === null) return error("config", "first/_generated/client/schema.ts is not the shape `first build` writes; rebuild the app.", clientFile);
   const described = JSON.parse(match[1]!) as { name: string; collections: Record<string, unknown>; actions: string[] };
   const snapshot = JSON.parse(await readFile(snapshotFile, "utf8")) as {
     tables: Record<string, { editor?: boolean; columns: Record<string, { type: string }> }>;

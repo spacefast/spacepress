@@ -11,7 +11,7 @@ Edit `first.config.ts` for your backend and `public/` for your frontend. First r
 ```sh
 npm run check                 # compiler diagnostics, without writing output
 npm run typecheck             # generate and check backend + client types
-npm run build                # WordPress plugin artifact in .first/wp-content
+npm run build                # WordPress plugin artifact in first/dist/wp-content
 npm run dev -- --port 9123    # choose an available port
 npm run status
 npm run wp -- core version   # WordPress's own WP-CLI
@@ -20,4 +20,4 @@ npm run stop                 # stop the site, preserve its SQLite data
 
 `client.ts` demonstrates the generated typed client. The static frontend uses same-origin REST directly. Backend TypeScript compiles to PHP and supports a documented subset; it is not a Node.js server. Run `npm run check` when adding library code.
 
-Commit `first/_generated/migrations/`, `first/client/` and `first.gen.ts`. `.first/` is local state and build output. Do not deploy local SQLite files or development credentials. See the First installation guide for release availability, compiler overrides and production deployment prerequisites.
+Commit `first/_generated/migrations/`, `first/_generated/client/` and `first/_generated/db.d.ts`. `.first/` is local state and build output. Do not deploy local SQLite files or development credentials. See the First installation guide for release availability, compiler overrides and production deployment prerequisites.

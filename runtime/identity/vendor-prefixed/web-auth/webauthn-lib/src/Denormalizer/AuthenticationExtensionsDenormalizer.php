@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
 use function is_array;
 use function is_string;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtension;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtension;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
 
 final class AuthenticationExtensionsDenormalizer implements DenormalizerInterface, NormalizerInterface
 {

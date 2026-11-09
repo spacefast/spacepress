@@ -1,21 +1,21 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Result;
+namespace Zero\Vendor\AsyncAws\S3\Result;
 
-use First\Vendor\AsyncAws\Core\Response;
-use First\Vendor\AsyncAws\Core\Result;
-use First\Vendor\AsyncAws\S3\Enum\ExpirationStatus;
-use First\Vendor\AsyncAws\S3\Enum\TransitionDefaultMinimumObjectSize;
-use First\Vendor\AsyncAws\S3\Enum\TransitionStorageClass;
-use First\Vendor\AsyncAws\S3\ValueObject\AbortIncompleteMultipartUpload;
-use First\Vendor\AsyncAws\S3\ValueObject\LifecycleExpiration;
-use First\Vendor\AsyncAws\S3\ValueObject\LifecycleRule;
-use First\Vendor\AsyncAws\S3\ValueObject\LifecycleRuleAndOperator;
-use First\Vendor\AsyncAws\S3\ValueObject\LifecycleRuleFilter;
-use First\Vendor\AsyncAws\S3\ValueObject\NoncurrentVersionExpiration;
-use First\Vendor\AsyncAws\S3\ValueObject\NoncurrentVersionTransition;
-use First\Vendor\AsyncAws\S3\ValueObject\Tag;
-use First\Vendor\AsyncAws\S3\ValueObject\Transition;
+use Zero\Vendor\AsyncAws\Core\Response;
+use Zero\Vendor\AsyncAws\Core\Result;
+use Zero\Vendor\AsyncAws\S3\Enum\ExpirationStatus;
+use Zero\Vendor\AsyncAws\S3\Enum\TransitionDefaultMinimumObjectSize;
+use Zero\Vendor\AsyncAws\S3\Enum\TransitionStorageClass;
+use Zero\Vendor\AsyncAws\S3\ValueObject\AbortIncompleteMultipartUpload;
+use Zero\Vendor\AsyncAws\S3\ValueObject\LifecycleExpiration;
+use Zero\Vendor\AsyncAws\S3\ValueObject\LifecycleRule;
+use Zero\Vendor\AsyncAws\S3\ValueObject\LifecycleRuleAndOperator;
+use Zero\Vendor\AsyncAws\S3\ValueObject\LifecycleRuleFilter;
+use Zero\Vendor\AsyncAws\S3\ValueObject\NoncurrentVersionExpiration;
+use Zero\Vendor\AsyncAws\S3\ValueObject\NoncurrentVersionTransition;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Tag;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Transition;
 
 class GetBucketLifecycleConfigurationOutput extends Result
 {

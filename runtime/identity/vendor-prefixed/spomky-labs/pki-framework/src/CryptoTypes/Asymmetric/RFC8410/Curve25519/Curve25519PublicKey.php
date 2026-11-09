@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410\Curve25519;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410\Curve25519;
 
 use function mb_strlen;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410\RFC8410PublicKey;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410\RFC8410PublicKey;
 use UnexpectedValueException;
 
 /**

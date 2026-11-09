@@ -45,7 +45,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\AsyncAws\\Core\\": "src"
+                    "Zero\\Vendor\\AsyncAws\\Core\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -113,7 +113,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\AsyncAws\\S3\\": "src"
+                    "Zero\\Vendor\\AsyncAws\\S3\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -171,7 +171,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Brick\\Math\\": "src/"
+                    "Zero\\Vendor\\Brick\\Math\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -234,7 +234,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Psr\\Cache\\": "src/"
+                    "Zero\\Vendor\\Psr\\Cache\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -286,7 +286,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Psr\\Container\\": "src/"
+                    "Zero\\Vendor\\Psr\\Container\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -342,7 +342,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Psr\\Log\\": "src"
+                    "Zero\\Vendor\\Psr\\Log\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -402,8 +402,8 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Rowbot\\Idna\\": "src/",
-                    "First\\Vendor\\Rowbot\\Idna\\Resource\\": "resources/"
+                    "Zero\\Vendor\\Rowbot\\Idna\\": "src/",
+                    "Zero\\Vendor\\Rowbot\\Idna\\Resource\\": "resources/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -462,7 +462,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Rowbot\\Punycode\\": "src/"
+                    "Zero\\Vendor\\Rowbot\\Punycode\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -525,7 +525,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Rowbot\\URL\\": "src/"
+                    "Zero\\Vendor\\Rowbot\\URL\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -685,7 +685,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Symfony\\Component\\HttpClient\\": ""
+                    "Zero\\Vendor\\Symfony\\Component\\HttpClient\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -765,7 +765,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Symfony\\Contracts\\HttpClient\\": ""
+                    "Zero\\Vendor\\Symfony\\Contracts\\HttpClient\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Test/"
@@ -853,7 +853,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Vendor\\Symfony\\Polyfill\\Intl\\Normalizer\\": ""
+                    "Zero\\Vendor\\Symfony\\Polyfill\\Intl\\Normalizer\\": ""
                 },
                 "classmap": [
                     "Resources/stubs"
@@ -938,7 +938,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Vendor\\Symfony\\Polyfill\\Php83\\": ""
+                    "Zero\\Vendor\\Symfony\\Polyfill\\Php83\\": ""
                 },
                 "classmap": [
                     "Resources/stubs"
@@ -1026,7 +1026,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Vendor\\Symfony\\Contracts\\Service\\": ""
+                    "Zero\\Vendor\\Symfony\\Contracts\\Service\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Test/"

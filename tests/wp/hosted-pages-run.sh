@@ -22,7 +22,7 @@ python3 "$here/hosted-pages-probes.py" "$app/project/first.config.ts"
 # The harness installs the pinned platform plugins from a native build's lock; it never serves them.
 "$target/debug/first" build "$app/project" --quiet >/dev/null
 mkdir -p "$app/content/plugins"
-cp "$app/project/.first/wp-content/first-manifest.json" "$app/content/"
+cp "$app/project/first/dist/wp-content/first-manifest.json" "$app/content/"
 rm -rf "$app/project"
 "$target/debug/first" compile-sources "$app/source" "$app/compiled" "$app/source"
 rsync -a "$app/compiled/plugins/" "$app/content/plugins/"

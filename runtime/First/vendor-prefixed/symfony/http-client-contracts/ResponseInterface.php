@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\HttpClient;
+namespace Zero\Vendor\Symfony\Contracts\HttpClient;
 
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * A (lazily retrieved) HTTP response.

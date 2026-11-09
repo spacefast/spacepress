@@ -207,7 +207,7 @@ async function serve(options) {
       const result = await buildApp({ app: candidate, first, files: request.files, log });
       assertAdditive(before.previous, result.manifest.previous);
       assertStructuredFields(
-        await readAppSchema(join(app, ".first/wp-content/plugins/first-app-showcase")),
+        await readAppSchema(join(app, "first/dist/wp-content/plugins/first-app-showcase")),
         await readAppSchema(result.plugin),
       );
       for (const name of result.manifest.migrationFiles) {

@@ -165,7 +165,7 @@ redaction through their existing test owners.
 ```text
 shop/
 ├── first.config.ts             # required: content, tables, access and backend behavior
-├── first.gen.ts                # generated editor types; never hand-edit
+├── first/_generated/db.d.ts                # generated editor types; never hand-edit
 ├── tsconfig.json
 ├── lib/                      # ordinary imported TS; no discovery conventions
 │   └── pricing.ts

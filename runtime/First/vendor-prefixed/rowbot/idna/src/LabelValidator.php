@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Idna;
+namespace Zero\Vendor\Rowbot\Idna;
 
 use Normalizer;
-use First\Vendor\Rowbot\Idna\Resource\Regex;
+use Zero\Vendor\Rowbot\Idna\Resource\Regex;
 
 use function ord;
 use function preg_match;
@@ -20,7 +20,7 @@ use const PREG_OFFSET_CAPTURE;
 class LabelValidator
 {
     /**
-     * @var \First\Vendor\Rowbot\Idna\DomainInfo
+     * @var \Zero\Vendor\Rowbot\Idna\DomainInfo
      */
     protected $info;
 

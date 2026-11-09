@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Credentials;
+namespace Zero\Vendor\AsyncAws\Core\Credentials;
 
-use First\Vendor\AsyncAws\Core\Configuration;
-use First\Vendor\AsyncAws\Core\Exception\RuntimeException;
-use First\Vendor\AsyncAws\Core\Sts\StsClient;
+use Zero\Vendor\AsyncAws\Core\Configuration;
+use Zero\Vendor\AsyncAws\Core\Exception\RuntimeException;
+use Zero\Vendor\AsyncAws\Core\Sts\StsClient;
 use AsyncAws\Sso\SsoClient;
 use AsyncAws\SsoOidc\SsoOidcClient;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Psr\Log\NullLogger;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Psr\Log\NullLogger;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Provides Credentials from standard AWS ini file.

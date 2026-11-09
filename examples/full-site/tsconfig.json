@@ -37,7 +37,7 @@
   },
   "include": [
     "first.config.ts",
-    "first.gen.ts",
+    "first/_generated/db.d.ts",
     "pages",
     "components",
     "islands",

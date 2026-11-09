@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Test;
+namespace Zero\Vendor\AsyncAws\Core\Test;
 
-use First\Vendor\AsyncAws\Core\Exception\RuntimeException;
-use First\Vendor\AsyncAws\Core\Stream\ResultStream;
+use Zero\Vendor\AsyncAws\Core\Exception\RuntimeException;
+use Zero\Vendor\AsyncAws\Core\Stream\ResultStream;
 
 /**
  * Simple streamable body used for testing.

@@ -14,7 +14,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Util;
+namespace Zero\Vendor\League\CommonMark\Util;
 
 /**
  * @psalm-immutable

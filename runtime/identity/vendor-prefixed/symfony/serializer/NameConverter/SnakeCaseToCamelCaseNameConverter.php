@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedPropertyException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedPropertyException;
 
 /**
  * Underscore to camelCase name converter.

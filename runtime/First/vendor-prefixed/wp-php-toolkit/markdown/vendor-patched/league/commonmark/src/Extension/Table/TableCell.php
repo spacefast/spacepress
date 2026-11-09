@@ -13,9 +13,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\Table;
+namespace Zero\Vendor\League\CommonMark\Extension\Table;
 
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
 
 final class TableCell extends AbstractBlock
 {

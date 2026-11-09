@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Stream;
+namespace Zero\Vendor\AsyncAws\Core\Stream;
 
 /**
  * Stream for a Result.

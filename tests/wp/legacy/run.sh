@@ -31,7 +31,7 @@ sed -i 's|  "cover": media(),|  "cover": media({ accept: "image" }),|' "$app/fir
 sed -i 's|  "notes": text({ multiline: true }),|  "notes": text({ multiline: true }).validate((value, ctx) => value === null \|\| ctx.data.status !== "published" \|\| value !== value.toUpperCase() \|\| "Don'"'"'t shout"),|' "$app/first.config.ts"
 "$first" build "$app" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-legacy"
-rsync -a --delete "$app/.first/wp-content/" "$wp/.wp-content-legacy/"
+rsync -a --delete "$app/first/dist/wp-content/" "$wp/.wp-content-legacy/"
 
 "$wp/harness.sh" down
 "$wp/harness.sh" up --wp-content "$wp/.wp-content-legacy" > "$wp/.harness-legacy.json"
@@ -57,6 +57,6 @@ export default capsule({collections:{posts:{publicRead:true}}});
 TS
 "$first" migrate app --from zero-0.8 "$app/native" --out "$app/native-out" >/dev/null
 "$first" build "$app/native-out" --quiet >/dev/null
-docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$app/native-out/.first/wp-content/plugins/first-app-migrated-app/first/app/schema.php" cli:/tmp/first-native-posts-schema.php >/dev/null 2>&1
+docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$app/native-out/first/dist/wp-content/plugins/first-app-migrated-app/first/app/schema.php" cli:/tmp/first-native-posts-schema.php >/dev/null 2>&1
 docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" cp "$here/native.php" cli:/tmp/first-native-posts-proof.php >/dev/null 2>&1
 "$wp/harness.sh" wp eval-file /tmp/first-native-posts-proof.php

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\HttpClient\Test;
+namespace Zero\Vendor\Symfony\Contracts\HttpClient\Test;
 
 use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;

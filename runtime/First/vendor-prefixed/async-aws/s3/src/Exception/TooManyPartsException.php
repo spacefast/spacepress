@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Exception;
+namespace Zero\Vendor\AsyncAws\S3\Exception;
 
-use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * You have attempted to add more parts than the maximum of 10000 that are allowed for this object. You can use the

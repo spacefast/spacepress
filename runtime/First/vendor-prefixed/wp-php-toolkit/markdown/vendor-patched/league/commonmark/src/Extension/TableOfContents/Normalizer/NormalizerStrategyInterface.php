@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer;
+namespace Zero\Vendor\League\CommonMark\Extension\TableOfContents\Normalizer;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
 
 interface NormalizerStrategyInterface
 {

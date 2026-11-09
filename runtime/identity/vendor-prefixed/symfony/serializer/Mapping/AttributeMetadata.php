@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
 
 /**
  * @author Kévin Dunglas <dunglas@gmail.com>

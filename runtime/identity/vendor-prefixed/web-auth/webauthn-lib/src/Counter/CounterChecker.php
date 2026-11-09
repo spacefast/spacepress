@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Counter;
+namespace Zero\Identity\Vendor\Webauthn\Counter;
 
-use First\Identity\Vendor\Webauthn\CredentialRecord;
+use Zero\Identity\Vendor\Webauthn\CredentialRecord;
 
 interface CounterChecker
 {

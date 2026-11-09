@@ -2,26 +2,26 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace Zero\Identity\Vendor\Webauthn\CeremonyStep;
 
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\Cose\Algorithms;
-use First\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\CBOR\Decoder;
+use Zero\Identity\Vendor\CBOR\Normalizable;
+use Zero\Identity\Vendor\Cose\Algorithms;
+use Zero\Identity\Vendor\Cose\Key\Key;
 use function count;
 use function in_array;
 use function is_array;
 use function sprintf;
-use function first_identity_vendor_trigger_deprecation as trigger_deprecation;
-use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use First\Identity\Vendor\Webauthn\CredentialRecord;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
-use First\Identity\Vendor\Webauthn\StringStream;
-use First\Identity\Vendor\Webauthn\U2FPublicKey;
+use function zero_identity_vendor_trigger_deprecation as trigger_deprecation;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use Zero\Identity\Vendor\Webauthn\CredentialRecord;
+use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use Zero\Identity\Vendor\Webauthn\StringStream;
+use Zero\Identity\Vendor\Webauthn\U2FPublicKey;
 
 class CheckAlgorithm implements CeremonyStep
 {
@@ -33,7 +33,7 @@ class CheckAlgorithm implements CeremonyStep
         string $host
     ): void {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            first_identity_vendor_trigger_deprecation(
+            zero_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::process()" is deprecated, pass a CredentialRecord instead.',

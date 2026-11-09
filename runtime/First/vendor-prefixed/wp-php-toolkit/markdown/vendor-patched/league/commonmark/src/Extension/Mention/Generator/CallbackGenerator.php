@@ -11,11 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\Mention\Generator;
+namespace Zero\Vendor\League\CommonMark\Extension\Mention\Generator;
 
-use First\Vendor\League\CommonMark\Exception\LogicException;
-use First\Vendor\League\CommonMark\Extension\Mention\Mention;
-use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use Zero\Vendor\League\CommonMark\Exception\LogicException;
+use Zero\Vendor\League\CommonMark\Extension\Mention\Mention;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
 
 final class CallbackGenerator implements MentionGeneratorInterface
 {

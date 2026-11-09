@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
 use function array_key_last;
 use function get_class;

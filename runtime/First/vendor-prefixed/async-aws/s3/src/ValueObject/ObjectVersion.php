@@ -1,10 +1,10 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
-use First\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
-use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use First\Vendor\AsyncAws\S3\Enum\ObjectVersionStorageClass;
+use Zero\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
+use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use Zero\Vendor\AsyncAws\S3\Enum\ObjectVersionStorageClass;
 
 /**
  * The version of an object.

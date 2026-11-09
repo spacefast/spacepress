@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace First\Vendor\Psr\EventDispatcher;
+namespace Zero\Vendor\Psr\EventDispatcher;
 
 /**
  * Defines a dispatcher for events.

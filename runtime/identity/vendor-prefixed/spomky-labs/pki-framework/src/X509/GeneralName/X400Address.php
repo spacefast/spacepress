@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Implements *x400Address* CHOICE type of *GeneralName*.

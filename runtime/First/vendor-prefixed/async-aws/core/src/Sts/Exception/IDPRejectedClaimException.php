@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Sts\Exception;
+namespace Zero\Vendor\AsyncAws\Core\Sts\Exception;
 
-use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
 
 /**
  * The identity provider (IdP) reported that authentication failed. This might be because the claim is invalid.

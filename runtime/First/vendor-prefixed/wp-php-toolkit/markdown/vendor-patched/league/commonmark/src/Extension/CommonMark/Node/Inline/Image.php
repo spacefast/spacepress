@@ -14,9 +14,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
 
-use First\Vendor\League\CommonMark\Node\Inline\Text;
+use Zero\Vendor\League\CommonMark\Node\Inline\Text;
 
 class Image extends AbstractWebResource
 {

@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Internal;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
 
-use First\Vendor\Symfony\Component\HttpClient\Response\CurlResponse;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\CurlResponse;
 
 /**
  * A pushed response with its request headers.

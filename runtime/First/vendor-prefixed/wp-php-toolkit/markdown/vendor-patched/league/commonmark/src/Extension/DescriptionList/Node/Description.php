@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\DescriptionList\Node;
+namespace Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node;
 
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use First\Vendor\League\CommonMark\Node\Block\TightBlockInterface;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Node\Block\TightBlockInterface;
 
 class Description extends AbstractBlock implements TightBlockInterface
 {

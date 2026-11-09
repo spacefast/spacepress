@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
 
-use First\Identity\Vendor\Cose\Key\Ec2Key;
+use Zero\Identity\Vendor\Cose\Key\Ec2Key;
 use const OPENSSL_ALGO_SHA512;
 
 final class ES512 extends ECDSA

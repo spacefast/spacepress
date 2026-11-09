@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\Psr\Cache;
+namespace Zero\Vendor\Psr\Cache;
 
 /**
  * CacheItemPoolInterface generates CacheItemInterface objects.
@@ -23,7 +23,7 @@ interface CacheItemPoolInterface
      *   The key for which to return the corresponding Cache Item.
      *
      * @throws InvalidArgumentException
-     *   If the $key string is not a legal value a \First\Vendor\Psr\Cache\InvalidArgumentException
+     *   If the $key string is not a legal value a \Zero\Vendor\Psr\Cache\InvalidArgumentException
      *   MUST be thrown.
      *
      * @return CacheItemInterface
@@ -38,7 +38,7 @@ interface CacheItemPoolInterface
      *   An indexed array of keys of items to retrieve.
      *
      * @throws InvalidArgumentException
-     *   If any of the keys in $keys are not a legal value a \First\Vendor\Psr\Cache\InvalidArgumentException
+     *   If any of the keys in $keys are not a legal value a \Zero\Vendor\Psr\Cache\InvalidArgumentException
      *   MUST be thrown.
      *
      * @return iterable
@@ -60,7 +60,7 @@ interface CacheItemPoolInterface
      *   The key for which to check existence.
      *
      * @throws InvalidArgumentException
-     *   If the $key string is not a legal value a \First\Vendor\Psr\Cache\InvalidArgumentException
+     *   If the $key string is not a legal value a \Zero\Vendor\Psr\Cache\InvalidArgumentException
      *   MUST be thrown.
      *
      * @return bool
@@ -83,7 +83,7 @@ interface CacheItemPoolInterface
      *   The key to delete.
      *
      * @throws InvalidArgumentException
-     *   If the $key string is not a legal value a \First\Vendor\Psr\Cache\InvalidArgumentException
+     *   If the $key string is not a legal value a \Zero\Vendor\Psr\Cache\InvalidArgumentException
      *   MUST be thrown.
      *
      * @return bool
@@ -98,7 +98,7 @@ interface CacheItemPoolInterface
      *   An array of keys that should be removed from the pool.
      *
      * @throws InvalidArgumentException
-     *   If any of the keys in $keys are not a legal value a \First\Vendor\Psr\Cache\InvalidArgumentException
+     *   If any of the keys in $keys are not a legal value a \Zero\Vendor\Psr\Cache\InvalidArgumentException
      *   MUST be thrown.
      *
      * @return bool

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Dflydev\DotAccessData\Exception;
+namespace Zero\Vendor\Dflydev\DotAccessData\Exception;
 
 /**
  * Base runtime exception type thrown by this library

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Polyfill\Php84;
+namespace Zero\Identity\Vendor\Symfony\Polyfill\Php84;
 
 /**
  * @author Ayesh Karunaratne <ayesh@aye.sh>
@@ -43,7 +43,7 @@ final class Php84
         }
 
         $firstChar = mb_substr($string, 0, 1, $encoding);
-        $firstChar = mb_convert_case($firstChar, \FIRST_IDENTITY_VENDOR_MB_CASE_TITLE, $encoding);
+        $firstChar = mb_convert_case($firstChar, \ZERO_IDENTITY_VENDOR_MB_CASE_TITLE, $encoding);
 
         return $firstChar.mb_substr($string, 1, null, $encoding);
     }
@@ -72,7 +72,7 @@ final class Php84
         }
 
         $firstChar = mb_substr($string, 0, 1, $encoding);
-        $firstChar = mb_convert_case($firstChar, \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
+        $firstChar = mb_convert_case($firstChar, \ZERO_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
 
         return $firstChar.mb_substr($string, 1, null, $encoding);
     }

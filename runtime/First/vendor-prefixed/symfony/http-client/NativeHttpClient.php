@@ -9,19 +9,19 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient;
+namespace Zero\Vendor\Symfony\Component\HttpClient;
 
-use First\Vendor\Psr\Log\LoggerAwareInterface;
-use First\Vendor\Psr\Log\LoggerAwareTrait;
-use First\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Component\HttpClient\Internal\NativeClientState;
-use First\Vendor\Symfony\Component\HttpClient\Response\NativeResponse;
-use First\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
-use First\Vendor\Symfony\Contracts\Service\ResetInterface;
+use Zero\Vendor\Psr\Log\LoggerAwareInterface;
+use Zero\Vendor\Psr\Log\LoggerAwareTrait;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\NativeClientState;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\NativeResponse;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\ResponseStream;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use Zero\Vendor\Symfony\Contracts\Service\ResetInterface;
 
 /**
  * A portable implementation of the HttpClientInterface contracts based on PHP stream wrappers.

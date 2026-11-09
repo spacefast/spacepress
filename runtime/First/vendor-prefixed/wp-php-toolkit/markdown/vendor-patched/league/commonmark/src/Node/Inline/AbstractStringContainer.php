@@ -14,9 +14,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Node\Inline;
+namespace Zero\Vendor\League\CommonMark\Node\Inline;
 
-use First\Vendor\League\CommonMark\Node\StringContainerInterface;
+use Zero\Vendor\League\CommonMark\Node\StringContainerInterface;
 
 abstract class AbstractStringContainer extends AbstractInline implements StringContainerInterface
 {

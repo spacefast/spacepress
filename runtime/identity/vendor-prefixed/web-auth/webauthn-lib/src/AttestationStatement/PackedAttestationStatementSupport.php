@@ -2,40 +2,40 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AttestationStatement;
+namespace Zero\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\Cose\Algorithm\Manager;
-use First\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use First\Identity\Vendor\Cose\Algorithms;
-use First\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\CBOR\Decoder;
+use Zero\Identity\Vendor\CBOR\MapObject;
+use Zero\Identity\Vendor\Cose\Algorithm\Manager;
+use Zero\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use Zero\Identity\Vendor\Cose\Algorithms;
+use Zero\Identity\Vendor\Cose\Key\Key;
 use function count;
 use function is_array;
 use function is_string;
 use function openssl_verify;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\TBSCertificate;
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
-use First\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
-use First\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
-use First\Identity\Vendor\Webauthn\StringStream;
-use First\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
-use First\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
-use First\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
+use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\TBSCertificate;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorData;
+use Zero\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
+use Zero\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use Zero\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use Zero\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
+use Zero\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
+use Zero\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
+use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use Zero\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
+use Zero\Identity\Vendor\Webauthn\StringStream;
+use Zero\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
+use Zero\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
+use Zero\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
 
 final class PackedAttestationStatementSupport implements AttestationStatementSupport, CanDispatchEvents
 {

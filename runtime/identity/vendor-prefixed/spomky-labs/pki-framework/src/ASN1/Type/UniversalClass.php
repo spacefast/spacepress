@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
 
 /**
  * Trait for types of universal class.

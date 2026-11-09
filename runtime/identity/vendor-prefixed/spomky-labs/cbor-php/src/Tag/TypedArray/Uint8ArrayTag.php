@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 64: an array of unsigned 8 bit integers.

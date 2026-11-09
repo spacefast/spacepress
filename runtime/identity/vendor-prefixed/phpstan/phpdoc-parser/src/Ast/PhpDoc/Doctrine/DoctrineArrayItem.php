@@ -1,13 +1,13 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
+namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 
 /**
  * @phpstan-import-type ValueType from DoctrineArgument

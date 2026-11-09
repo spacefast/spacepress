@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
 
 /**
  * Base class implementing *IetfAttrSyntax* ASN.1 type used by attribute certificate attribute values.

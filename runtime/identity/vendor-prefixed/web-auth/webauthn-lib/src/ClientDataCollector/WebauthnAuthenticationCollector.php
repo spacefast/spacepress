@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\ClientDataCollector;
+namespace Zero\Identity\Vendor\Webauthn\ClientDataCollector;
 
 use function in_array;
 use function sprintf;
-use First\Identity\Vendor\Webauthn\AuthenticatorResponse;
-use First\Identity\Vendor\Webauthn\CollectedClientData;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorResponse;
+use Zero\Identity\Vendor\Webauthn\CollectedClientData;
+use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
 
 final class WebauthnAuthenticationCollector implements ClientDataCollector
 {

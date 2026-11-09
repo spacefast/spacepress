@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Tests;
+namespace Zero\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
-use First\Vendor\Rowbot\URL\Support\EncodingHelper;
+use Zero\Vendor\Rowbot\URL\Support\EncodingHelper;
 
 class EncodingHelperTest extends TestCase
 {

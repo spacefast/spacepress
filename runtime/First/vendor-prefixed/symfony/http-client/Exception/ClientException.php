@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Exception;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Exception;
 
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 
 /**
  * Represents a 4xx response.

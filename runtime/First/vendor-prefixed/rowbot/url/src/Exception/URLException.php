@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Exception;
+namespace Zero\Vendor\Rowbot\URL\Exception;
 
 use Exception;
 

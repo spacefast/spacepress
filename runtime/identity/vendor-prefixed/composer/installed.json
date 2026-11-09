@@ -28,7 +28,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Brick\\Math\\": "src/"
+                    "Zero\\Identity\\Vendor\\Brick\\Math\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -99,7 +99,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Doctrine\\Deprecations\\": "src"
+                    "Zero\\Identity\\Vendor\\Doctrine\\Deprecations\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -152,7 +152,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Firebase\\JWT\\": "src"
+                    "Zero\\Identity\\Vendor\\Firebase\\JWT\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -212,7 +212,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\ParagonIE\\ConstantTime\\": "src/"
+                    "Zero\\Identity\\Vendor\\ParagonIE\\ConstantTime\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -283,7 +283,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\phpDocumentor\\Reflection\\": "src/"
+                    "Zero\\Identity\\Vendor\\phpDocumentor\\Reflection\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -355,7 +355,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\phpDocumentor\\Reflection\\": "src"
+                    "Zero\\Identity\\Vendor\\phpDocumentor\\Reflection\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -420,7 +420,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\phpDocumentor\\Reflection\\": "src"
+                    "Zero\\Identity\\Vendor\\phpDocumentor\\Reflection\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -474,7 +474,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\PHPStan\\PhpDocParser\\": [
+                    "Zero\\Identity\\Vendor\\PHPStan\\PhpDocParser\\": [
                         "src/"
                     ]
                 }
@@ -513,7 +513,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Psr\\Clock\\": "src/"
+                    "Zero\\Identity\\Vendor\\Psr\\Clock\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -569,7 +569,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Psr\\Container\\": "src/"
+                    "Zero\\Identity\\Vendor\\Psr\\Container\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -625,7 +625,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Psr\\EventDispatcher\\": "src/"
+                    "Zero\\Identity\\Vendor\\Psr\\EventDispatcher\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -678,7 +678,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Psr\\Log\\": "src"
+                    "Zero\\Identity\\Vendor\\Psr\\Log\\": "src"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -739,7 +739,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\CBOR\\": "src/"
+                    "Zero\\Identity\\Vendor\\CBOR\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -807,7 +807,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\OTPHP\\": "src/"
+                    "Zero\\Identity\\Vendor\\OTPHP\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -900,7 +900,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\SpomkyLabs\\Pki\\": "src/"
+                    "Zero\\Identity\\Vendor\\SpomkyLabs\\Pki\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -995,7 +995,7 @@
                     "Resources/now.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Component\\Clock\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Component\\Clock\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -1157,7 +1157,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Polyfill\\Ctype\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Polyfill\\Ctype\\": ""
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -1240,7 +1240,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Polyfill\\Intl\\Grapheme\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Polyfill\\Intl\\Grapheme\\": ""
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -1325,7 +1325,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Polyfill\\Intl\\Normalizer\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Polyfill\\Intl\\Normalizer\\": ""
                 },
                 "classmap": [
                     "Resources/stubs"
@@ -1417,7 +1417,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Polyfill\\Mbstring\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Polyfill\\Mbstring\\": ""
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -1498,7 +1498,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Polyfill\\Php83\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Polyfill\\Php83\\": ""
                 },
                 "classmap": [
                     "Resources/stubs"
@@ -1581,7 +1581,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Polyfill\\Php84\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Polyfill\\Php84\\": ""
                 },
                 "classmap": [
                     "Resources/stubs"
@@ -1670,7 +1670,7 @@
                     "bootstrap.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Polyfill\\Uuid\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Polyfill\\Uuid\\": ""
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -1746,7 +1746,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Component\\PropertyAccess\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Component\\PropertyAccess\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -1842,7 +1842,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Component\\PropertyInfo\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Component\\PropertyInfo\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -1957,7 +1957,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Component\\Serializer\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Component\\Serializer\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -2043,7 +2043,7 @@
                     "Resources/functions.php"
                 ],
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Component\\String\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Component\\String\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -2127,7 +2127,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Component\\TypeInfo\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Component\\TypeInfo\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -2209,7 +2209,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Symfony\\Component\\Uid\\": ""
+                    "Zero\\Identity\\Vendor\\Symfony\\Component\\Uid\\": ""
                 },
                 "exclude-from-classmap": [
                     "/Tests/"
@@ -2305,7 +2305,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Cose\\": "src/"
+                    "Zero\\Identity\\Vendor\\Cose\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -2394,7 +2394,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Webauthn\\": "src/"
+                    "Zero\\Identity\\Vendor\\Webauthn\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -2473,7 +2473,7 @@
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
-                    "First\\Identity\\Vendor\\Webmozart\\Assert\\": "src/"
+                    "Zero\\Identity\\Vendor\\Webmozart\\Assert\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",

@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-namespace First\Vendor\DiffMatchPatch;
+namespace Zero\Vendor\DiffMatchPatch;
 
 /**
  * Diff offers methods for compute the difference between two texts.
@@ -145,7 +145,7 @@ class Diff
     }
 
     /**
-     * @return \First\Vendor\DiffMatchPatch\DiffToolkit
+     * @return \Zero\Vendor\DiffMatchPatch\DiffToolkit
      */
     public function getToolkit()
     {
@@ -155,7 +155,7 @@ class Diff
 
 
     /**
-     * @param \First\Vendor\DiffMatchPatch\DiffToolkit $toolkit
+     * @param \Zero\Vendor\DiffMatchPatch\DiffToolkit $toolkit
      *
      * @return $this
      */

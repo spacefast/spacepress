@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\StringPrepMatchingRule;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\StringPrepMatchingRule;
 use Stringable;
 
 /**

@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Annotation;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Annotation;
 
-class_exists(\First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath::class);
+class_exists(\Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath::class);
 
 if (false) {
     /**
-     * @deprecated since Symfony 7.4, use {@see \First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath} instead
+     * @deprecated since Symfony 7.4, use {@see \Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath} instead
      */
     #[\Attribute(\Attribute::TARGET_METHOD | \Attribute::TARGET_PROPERTY)]
-    class SerializedPath extends \First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath
+    class SerializedPath extends \Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath
     {
     }
 }

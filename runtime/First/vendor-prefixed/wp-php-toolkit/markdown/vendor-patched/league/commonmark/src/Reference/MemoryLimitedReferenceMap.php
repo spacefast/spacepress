@@ -11,12 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Reference;
+namespace Zero\Vendor\League\CommonMark\Reference;
 
 final class MemoryLimitedReferenceMap implements ReferenceMapInterface
 {
     /**
-     * @var \First\Vendor\League\CommonMark\Reference\ReferenceMapInterface
+     * @var \Zero\Vendor\League\CommonMark\Reference\ReferenceMapInterface
      */
     private $decorated;
 

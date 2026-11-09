@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Chunk;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Chunk;
 
-use First\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

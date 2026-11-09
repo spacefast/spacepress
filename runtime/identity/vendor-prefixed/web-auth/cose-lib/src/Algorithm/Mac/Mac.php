@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Mac;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Mac;
 
-use First\Identity\Vendor\Cose\Algorithm\Algorithm;
-use First\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\Cose\Algorithm\Algorithm;
+use Zero\Identity\Vendor\Cose\Key\Key;
 use InvalidArgumentException;
 
 interface Mac extends Algorithm

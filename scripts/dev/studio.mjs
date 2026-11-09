@@ -190,7 +190,7 @@ export async function sourceDigest(project) {
     entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       const name = prefix + entry.name;
-      if (['.first', '.git', 'node_modules', 'first'].includes(entry.name) || name === 'first.gen.ts' || entry.isSymbolicLink()) continue;
+      if (['.first', '.git', 'node_modules', 'first'].includes(entry.name) || entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path, `${name}/`);
       else if (/\.[cm]?[jt]sx?$/.test(name) || name.startsWith('public/')) {
@@ -235,7 +235,6 @@ export async function watchSources(project, onChange, onError) {
               const watcher = watch(directory, (event, filename) => {
                 if (closed || !filename || ignored.has(String(filename))) return;
                 const name = relative(project, join(directory, String(filename)));
-                if (name === 'first.gen.ts') return;
                 if (event === 'rename') {
                   // Discover new directories before notifying: files may have been created
                   // before their directory acquired its own watch handle.

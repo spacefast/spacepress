@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient;
+namespace Zero\Vendor\Symfony\Component\HttpClient;
 
-use First\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Component\HttpClient\Internal\Dechunker;
-use First\Vendor\Symfony\Component\HttpClient\Response\StreamableInterface;
-use First\Vendor\Symfony\Component\HttpClient\Response\StreamWrapper;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\Dechunker;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\StreamableInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\StreamWrapper;
 use Symfony\Component\Mime\MimeTypes;
 
 /**

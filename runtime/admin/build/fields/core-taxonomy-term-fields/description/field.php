@@ -2,12 +2,12 @@
 /**
  * Description field definition for core taxonomy term fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Description', 'first-admin' ),
+	'label'              => __( 'Description', 'zero-admin' ),
 	'enableSorting'      => false,
 	'filterBy'           => false,
 	'enableGlobalSearch' => true,

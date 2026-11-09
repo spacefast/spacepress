@@ -1,3 +1,4 @@
-/first.gen.ts
-/first/client/
+/first/_generated/db.d.ts
+/first/_generated/client/
 /first/_generated/migrations/
+/first/dist/

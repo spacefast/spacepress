@@ -14,10 +14,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Node\Block;
+namespace Zero\Vendor\League\CommonMark\Node\Block;
 
-use First\Vendor\League\CommonMark\Exception\InvalidArgumentException;
-use First\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Exception\InvalidArgumentException;
+use Zero\Vendor\League\CommonMark\Node\Node;
 
 /**
  * Block-level element

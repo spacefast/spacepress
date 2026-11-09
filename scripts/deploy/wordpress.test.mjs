@@ -32,7 +32,7 @@ async function sources(root) {
     await cp(join(repo, 'examples/blog/first.config.ts'), join(project, 'first.config.ts'), { recursive: true });
     const built = spawnSync(process.env.FIRST_BIN || resolve(repo, 'target/debug/first'), ['build', project], { encoding: 'utf8', timeout: 180000 });
     assert.equal(built.status, 0, built.stdout + built.stderr);
-    artifact = join(project, '.first/wp-content');
+    artifact = join(project, 'first/dist/wp-content');
   }
   return { wordpress: process.env.FIRST_DEPLOY_TEST_WORDPRESS || core, sqlite: process.env.FIRST_DEPLOY_TEST_SQLITE || integration, wpCli, artifact };
 }

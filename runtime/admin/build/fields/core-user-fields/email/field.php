@@ -2,12 +2,12 @@
 /**
  * Email field definition for core user fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'email',
-	'label'         => __( 'Email', 'first-admin' ),
+	'label'         => __( 'Email', 'zero-admin' ),
 	'enableSorting' => true,
 	'isValid'       => array(
 		'required' => true,

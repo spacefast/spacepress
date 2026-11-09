@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Signature;
+namespace Zero\Identity\Vendor\Cose\Signature;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\ListObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\OtherObject\OtherObjectManager;
-use First\Identity\Vendor\CBOR\StringStream;
-use First\Identity\Vendor\CBOR\Tag;
-use First\Identity\Vendor\CBOR\Tag\CoseSign1Tag as UpstreamTag;
-use First\Identity\Vendor\CBOR\Tag\TagManager;
+use Zero\Identity\Vendor\CBOR\ByteStringObject;
+use Zero\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\Decoder;
+use Zero\Identity\Vendor\CBOR\ListObject;
+use Zero\Identity\Vendor\CBOR\MapObject;
+use Zero\Identity\Vendor\CBOR\OtherObject\OtherObjectManager;
+use Zero\Identity\Vendor\CBOR\StringStream;
+use Zero\Identity\Vendor\CBOR\Tag;
+use Zero\Identity\Vendor\CBOR\Tag\CoseSign1Tag as UpstreamTag;
+use Zero\Identity\Vendor\CBOR\Tag\TagManager;
 use const E_USER_DEPRECATED;
 use InvalidArgumentException;
 use function sprintf;
@@ -22,7 +22,7 @@ use function trigger_error;
 /**
  * A tagged COSE_Sign1 (RFC 9052, CBOR tag 18).
  *
- * @deprecated since 4.8.0, use \First\Identity\Vendor\CBOR\Tag\CoseSign1Tag from spomky-labs/cbor-php 3.4.0 or later instead. Will be removed
+ * @deprecated since 4.8.0, use \Zero\Identity\Vendor\CBOR\Tag\CoseSign1Tag from spomky-labs/cbor-php 3.4.0 or later instead. Will be removed
  * in 5.0.0.
  *
  * The six COSE structures were ported upstream in cbor-php 3.4.0, where they share AbstractCoseTag and are
@@ -30,7 +30,7 @@ use function trigger_error;
  * this class rejects -- a zero-length protected header, a detached (nil) payload, the indefinite-length encodings --
  * and reads every item through the list it carries, so its accessors cannot drift from the bytes it serializes.
  *
- * What does not move upstream is the RFC 9052 layer above the CBOR shape, and that stays here: {@see \First\Identity\Vendor\Cose\Structure\CoseHeaders}
+ * What does not move upstream is the RFC 9052 layer above the CBOR shape, and that stays here: {@see \Zero\Identity\Vendor\Cose\Structure\CoseHeaders}
  * for header labels typed as RFC 9052 section 1.5 defines them, and the Sig_structure, MAC_structure and
  * Enc_structure builders that a signature or a MAC is actually computed over. Both work on the upstream classes.
  *

@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
 
 use RuntimeException;
 use function sprintf;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractor;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UidNormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Serializer;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UidNormalizer;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Serializer;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
 
 final readonly class WebauthnSerializerFactory
 {

@@ -45,7 +45,7 @@ const run = async (args) => (await exec(first, args, { timeout: 600000, maxBuffe
 test('TSX pages serve a full site from native WordPress with viewer-bound data', { timeout: 900000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'first-pages-native-'));
   const project = join(root, 'site');
-  const content = join(project, '.first/wp-content');
+  const content = join(project, 'first/dist/wp-content');
   for (const entry of ['first.config.ts', 'pages', 'components', 'islands', 'styles']) {
     await cp(join(example, entry), join(project, entry), { recursive: true });
   }

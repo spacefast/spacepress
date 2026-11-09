@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
 use UnexpectedValueException;
 
 /**

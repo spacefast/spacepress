@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy;
 
 use function count;
 use function in_array;
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\ValidatorState;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\ValidatorState;
 
 final class PolicyTree
 {

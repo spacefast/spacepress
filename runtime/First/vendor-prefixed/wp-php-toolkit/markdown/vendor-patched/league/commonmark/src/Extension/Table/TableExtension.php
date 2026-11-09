@@ -13,13 +13,13 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\Table;
+namespace Zero\Vendor\League\CommonMark\Extension\Table;
 
-use First\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
-use First\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
-use First\Vendor\League\CommonMark\Renderer\HtmlDecorator;
-use First\Vendor\League\Config\ConfigurationBuilderInterface;
-use First\Vendor\Nette\Schema\Expect;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
+use Zero\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
+use Zero\Vendor\League\CommonMark\Renderer\HtmlDecorator;
+use Zero\Vendor\League\Config\ConfigurationBuilderInterface;
+use Zero\Vendor\Nette\Schema\Expect;
 
 final class TableExtension implements ConfigurableExtensionInterface
 {

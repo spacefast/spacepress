@@ -9,17 +9,17 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 /**
  * Denormalizes arrays of objects.

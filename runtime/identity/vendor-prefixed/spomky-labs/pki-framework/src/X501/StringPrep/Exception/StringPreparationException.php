@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception;
 
 use UnexpectedValueException;
 

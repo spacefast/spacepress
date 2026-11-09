@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\ValueObject;
+namespace Zero\Vendor\AsyncAws\S3\ValueObject;
 
 /**
  * Specifies when noncurrent object versions expire. Upon expiration, Amazon S3 permanently deletes the noncurrent

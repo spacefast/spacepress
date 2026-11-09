@@ -11,19 +11,19 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\BlockQuote;
-use First\Vendor\League\CommonMark\Node\Block\AbstractBlock;
-use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\BlockQuote;
+use Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock;
+use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
 
 final class BlockQuoteParser extends AbstractBlockContinueParser
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\BlockQuote */
+     * @var \Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\BlockQuote */
     private $block;
 
     public function __construct()
@@ -31,7 +31,7 @@ final class BlockQuoteParser extends AbstractBlockContinueParser
         $this->block = new BlockQuote();
     }
 
-    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }

@@ -14,30 +14,30 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Parser\Inline;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Parser\Inline;
 
-use First\Vendor\League\CommonMark\Delimiter\Bracket;
-use First\Vendor\League\CommonMark\Environment\EnvironmentAwareInterface;
-use First\Vendor\League\CommonMark\Environment\EnvironmentInterface;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\AbstractWebResource;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Image;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
-use First\Vendor\League\CommonMark\Extension\Mention\Mention;
-use First\Vendor\League\CommonMark\Node\Inline\AdjacentTextMerger;
-use First\Vendor\League\CommonMark\Node\Inline\Text;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
-use First\Vendor\League\CommonMark\Parser\InlineParserContext;
-use First\Vendor\League\CommonMark\Reference\ReferenceInterface;
-use First\Vendor\League\CommonMark\Reference\ReferenceMapInterface;
-use First\Vendor\League\CommonMark\Util\LinkParserHelper;
-use First\Vendor\League\CommonMark\Util\RegexHelper;
+use Zero\Vendor\League\CommonMark\Delimiter\Bracket;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentAwareInterface;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\AbstractWebResource;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Image;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
+use Zero\Vendor\League\CommonMark\Extension\Mention\Mention;
+use Zero\Vendor\League\CommonMark\Node\Inline\AdjacentTextMerger;
+use Zero\Vendor\League\CommonMark\Node\Inline\Text;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
+use Zero\Vendor\League\CommonMark\Parser\InlineParserContext;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceInterface;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceMapInterface;
+use Zero\Vendor\League\CommonMark\Util\LinkParserHelper;
+use Zero\Vendor\League\CommonMark\Util\RegexHelper;
 
 final class CloseBracketParser implements InlineParserInterface, EnvironmentAwareInterface
 {
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Environment\EnvironmentInterface */
+     * @var \Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface */
     private $environment;
 
     public function getMatchDefinition(): InlineParserMatch

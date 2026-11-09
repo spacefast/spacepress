@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use function trim;
 
 class TypeAliasImportTagValueNode implements PhpDocTagValueNode

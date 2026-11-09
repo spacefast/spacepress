@@ -232,7 +232,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.path().join(".first/wp-content"))
+        .arg(project.path().join("first/dist/wp-content"))
         .env("FIRST_WP_CLI", "1")
         .env("FIRST_WP_IDENTITY", "1")
         .stdout(Stdio::piped())

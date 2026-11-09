@@ -1,12 +1,12 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Sts\Input;
+namespace Zero\Vendor\AsyncAws\Core\Sts\Input;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\Core\Input;
-use First\Vendor\AsyncAws\Core\Request;
-use First\Vendor\AsyncAws\Core\Stream\StreamFactory;
-use First\Vendor\AsyncAws\Core\Sts\ValueObject\PolicyDescriptorType;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Input;
+use Zero\Vendor\AsyncAws\Core\Request;
+use Zero\Vendor\AsyncAws\Core\Stream\StreamFactory;
+use Zero\Vendor\AsyncAws\Core\Sts\ValueObject\PolicyDescriptorType;
 
 final class AssumeRoleWithWebIdentityRequest extends Input
 {

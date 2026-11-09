@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\State;
+namespace Zero\Vendor\Rowbot\URL\State;
 
 enum StatusCode
 {

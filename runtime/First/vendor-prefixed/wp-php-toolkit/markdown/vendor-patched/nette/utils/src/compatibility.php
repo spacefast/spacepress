@@ -7,23 +7,23 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Utils;
+namespace Zero\Vendor\Nette\Utils;
 
-use First\Vendor\Nette;
+use Zero\Vendor\Nette;
 
 if (false) {
-	/** @deprecated use First\Vendor\Nette\HtmlStringable */
-	interface IHtmlString extends \First\Vendor\Nette\HtmlStringable
+	/** @deprecated use Zero\Vendor\Nette\HtmlStringable */
+	interface IHtmlString extends \Zero\Vendor\Nette\HtmlStringable
 	{
 	}
 } elseif (!interface_exists(IHtmlString::class)) {
-	class_alias(\First\Vendor\Nette\HtmlStringable::class, IHtmlString::class);
+	class_alias(\Zero\Vendor\Nette\HtmlStringable::class, IHtmlString::class);
 }
 
-namespace First\Vendor\Nette\Localization;
+namespace Zero\Vendor\Nette\Localization;
 
 if (false) {
-	/** @deprecated use First\Vendor\Nette\Localization\Translator */
+	/** @deprecated use Zero\Vendor\Nette\Localization\Translator */
 	interface ITranslator extends Translator
 	{
 	}

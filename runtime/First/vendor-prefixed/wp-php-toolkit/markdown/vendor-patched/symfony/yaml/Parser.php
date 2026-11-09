@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\Yaml;
+namespace Zero\Vendor\Symfony\Component\Yaml;
 
-use First\Vendor\Symfony\Component\Yaml\Exception\ParseException;
-use First\Vendor\Symfony\Component\Yaml\Tag\TaggedValue;
+use Zero\Vendor\Symfony\Component\Yaml\Exception\ParseException;
+use Zero\Vendor\Symfony\Component\Yaml\Tag\TaggedValue;
 
 /**
  * Parser parses YAML strings to convert them to PHP arrays.
@@ -339,7 +339,7 @@ class Parser
                         // But overwriting is allowed when a merge node is used in current block.
                         if ($allowOverwrite || !isset($data[$key])) {
                             if (!$allowOverwrite && \array_key_exists($key, $data)) {
-                                first_vendor_trigger_deprecation('symfony/yaml', '7.2', 'Duplicate key "%s" detected on line %d whilst parsing YAML. Silent handling of duplicate mapping keys in YAML is deprecated and will throw a ParseException in 8.0.', $key, $this->getRealCurrentLineNb() + 1);
+                                zero_vendor_trigger_deprecation('symfony/yaml', '7.2', 'Duplicate key "%s" detected on line %d whilst parsing YAML. Silent handling of duplicate mapping keys in YAML is deprecated and will throw a ParseException in 8.0.', $key, $this->getRealCurrentLineNb() + 1);
                             }
 
                             if (null !== $subTag) {
@@ -364,7 +364,7 @@ class Parser
                             $data += $value;
                         } elseif ($allowOverwrite || !isset($data[$key])) {
                             if (!$allowOverwrite && \array_key_exists($key, $data)) {
-                                first_vendor_trigger_deprecation('symfony/yaml', '7.2', 'Duplicate key "%s" detected on line %d whilst parsing YAML. Silent handling of duplicate mapping keys in YAML is deprecated and will throw a ParseException in 8.0.', $key, $this->getRealCurrentLineNb() + 1);
+                                zero_vendor_trigger_deprecation('symfony/yaml', '7.2', 'Duplicate key "%s" detected on line %d whilst parsing YAML. Silent handling of duplicate mapping keys in YAML is deprecated and will throw a ParseException in 8.0.', $key, $this->getRealCurrentLineNb() + 1);
                             }
 
                             // Spec: Keys MUST be unique; first one wins.
@@ -384,7 +384,7 @@ class Parser
                     // But overwriting is allowed when a merge node is used in current block.
                     if ($allowOverwrite || !isset($data[$key])) {
                         if (!$allowOverwrite && \array_key_exists($key, $data)) {
-                            first_vendor_trigger_deprecation('symfony/yaml', '7.2', 'Duplicate key "%s" detected on line %d whilst parsing YAML. Silent handling of duplicate mapping keys in YAML is deprecated and will throw a ParseException in 8.0.', $key, $this->getRealCurrentLineNb() + 1);
+                            zero_vendor_trigger_deprecation('symfony/yaml', '7.2', 'Duplicate key "%s" detected on line %d whilst parsing YAML. Silent handling of duplicate mapping keys in YAML is deprecated and will throw a ParseException in 8.0.', $key, $this->getRealCurrentLineNb() + 1);
                         }
 
                         $data[$key] = $value;

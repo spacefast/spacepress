@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo;
+namespace Zero\Identity\Vendor\Symfony\Component\TypeInfo;
 
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\CompositeTypeInterface;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\CompositeTypeInterface;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
 
 /**
  * @author Mathias Arlaud <mathias.arlaud@gmail.com>

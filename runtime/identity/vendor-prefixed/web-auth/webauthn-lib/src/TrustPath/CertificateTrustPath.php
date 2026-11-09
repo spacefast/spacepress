@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\TrustPath;
+namespace Zero\Identity\Vendor\Webauthn\TrustPath;
 
 final readonly class CertificateTrustPath implements TrustPath
 {

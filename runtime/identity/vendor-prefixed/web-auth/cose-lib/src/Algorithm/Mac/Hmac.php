@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Mac;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Mac;
 
-use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use First\Identity\Vendor\Cose\Key\Key;
-use First\Identity\Vendor\Cose\Key\SymmetricKey;
+use Zero\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use Zero\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use Zero\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\Cose\Key\SymmetricKey;
 use const E_USER_WARNING;
 use function hash;
 use function hash_hmac;
@@ -31,7 +31,7 @@ use function trigger_error;
  * that are transported or derived by a recipient algorithm - neither of which this library implements. A shorter key
  * is therefore accepted, but it emits an E_USER_WARNING unless the caller explicitly acknowledges the risk by
  * creating the algorithm with `acknowledgeShortKey: true`, following the same shape as
- * First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1. From v5.0.0 the same call without that acknowledgement will throw an
+ * Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1. From v5.0.0 the same call without that acknowledgement will throw an
  * InvalidArgumentException instead of warning.
  *
  * @see https://www.rfc-editor.org/rfc/rfc9053#section-3.1

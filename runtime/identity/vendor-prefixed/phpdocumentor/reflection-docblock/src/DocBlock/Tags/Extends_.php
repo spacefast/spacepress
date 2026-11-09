@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 /**
  * Reflection class for a {@}extends tag in a Docblock.

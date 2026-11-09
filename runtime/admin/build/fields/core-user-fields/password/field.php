@@ -2,12 +2,12 @@
 /**
  * Password field definition for core user fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'password',
-	'label'         => __( 'Password', 'first-admin' ),
+	'label'         => __( 'Password', 'zero-admin' ),
 	'enableSorting' => true,
 	'enableHiding'  => false,
 	'isValid'       => array(

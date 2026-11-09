@@ -10,10 +10,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\MethodParameterFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\MethodParameterFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 final class MethodParameter
 {

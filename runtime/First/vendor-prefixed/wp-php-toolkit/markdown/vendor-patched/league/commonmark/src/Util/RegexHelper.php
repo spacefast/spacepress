@@ -14,10 +14,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Util;
+namespace Zero\Vendor\League\CommonMark\Util;
 
-use First\Vendor\League\CommonMark\Exception\InvalidArgumentException;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\HtmlBlock;
+use Zero\Vendor\League\CommonMark\Exception\InvalidArgumentException;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\HtmlBlock;
 
 /**
  * Provides regular expressions and utilities for parsing Markdown

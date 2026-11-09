@@ -7,7 +7,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Schema;
+namespace Zero\Vendor\Nette\Schema;
 
 
 interface DynamicParameter

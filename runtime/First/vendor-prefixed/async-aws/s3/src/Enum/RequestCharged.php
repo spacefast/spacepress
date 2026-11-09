@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Enum;
+namespace Zero\Vendor\AsyncAws\S3\Enum;
 
 /**
  * If present, indicates that the requester was successfully charged for the request. For more information, see Using

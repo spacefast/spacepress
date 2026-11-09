@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
 use function ord;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
 
 /**
  * @see https://www.w3.org/TR/webauthn/#sec-authenticator-data

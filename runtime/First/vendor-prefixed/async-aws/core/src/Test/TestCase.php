@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Test;
+namespace Zero\Vendor\AsyncAws\Core\Test;
 
-use First\Vendor\AsyncAws\Core\Request;
+use Zero\Vendor\AsyncAws\Core\Request;
 use PHPUnit\Framework\TestCase as PHPUnitTestCase;
 
 class TestCase extends PHPUnitTestCase

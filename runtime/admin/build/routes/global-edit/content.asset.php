@@ -1,1 +1,1 @@
-<?php return array('name' => 'global-edit', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '87628038f3573c2be5e1');
+<?php return array('name' => 'global-edit', 'dependencies' => array(), 'moduleDependencies' => array('@zero-admin/schema'), 'version' => '33e891847a5c45de21dd');

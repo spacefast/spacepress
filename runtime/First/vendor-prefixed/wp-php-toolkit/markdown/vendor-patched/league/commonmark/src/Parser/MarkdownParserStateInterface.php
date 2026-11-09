@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Parser;
+namespace Zero\Vendor\League\CommonMark\Parser;
 
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
 
 interface MarkdownParserStateInterface
 {

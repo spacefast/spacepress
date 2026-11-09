@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Exception\Http;
+namespace Zero\Vendor\AsyncAws\Core\Exception\Http;
 
-use First\Vendor\AsyncAws\Core\Exception\Exception;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\AsyncAws\Core\Exception\Exception;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 /**
  * Request could not be sent due network error.

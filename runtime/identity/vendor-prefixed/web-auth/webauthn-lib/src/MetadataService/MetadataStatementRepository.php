@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService;
+namespace Zero\Identity\Vendor\Webauthn\MetadataService;
 
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 interface MetadataStatementRepository
 {

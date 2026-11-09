@@ -11,7 +11,7 @@ export interface Request {
   previous?: unknown;
   /** The file names beside that snapshot; they number the next migration like `first build` does. */
   migrationFiles?: string[];
-  /** Refuse plugin grants beyond `first/plugins.lock.json` in `files`, like `first check --frozen` and CI. */
+  /** Refuse plugin grants beyond `first/_generated/plugins.lock.json` in `files`, like `first check --frozen` and CI. */
   frozen?: boolean;
 }
 

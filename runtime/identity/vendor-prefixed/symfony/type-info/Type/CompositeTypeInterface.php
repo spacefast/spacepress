@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+namespace Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Represents a type composed of several other types.

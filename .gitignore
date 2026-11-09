@@ -36,3 +36,4 @@ runtime/identity/apps/node_modules/
 
 /tests/wp/.wp-content-spacefast/
 /tests/host-types/node_modules/
+**/first/dist/

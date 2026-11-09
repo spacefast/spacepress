@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Internal;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
 
 use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableIterableStream;
@@ -17,7 +17,7 @@ use Amp\ByteStream\ReadableResourceStream;
 use Amp\ByteStream\ReadableStream;
 use Amp\Cancellation;
 use Amp\Http\Client\HttpContent;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

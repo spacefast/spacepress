@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Normalizer;
+namespace Zero\Vendor\League\CommonMark\Normalizer;
 
-use First\Vendor\League\Config\ConfigurationAwareInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\Config\ConfigurationAwareInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 /**
  * Creates URL-friendly strings based on the given string input

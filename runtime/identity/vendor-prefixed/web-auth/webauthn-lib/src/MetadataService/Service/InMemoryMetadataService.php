@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace Zero\Identity\Vendor\Webauthn\MetadataService\Service;
 
 use function array_key_exists;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use Zero\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use Zero\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
+use Zero\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use Zero\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 final class InMemoryMetadataService implements MetadataService, CanDispatchEvents
 {

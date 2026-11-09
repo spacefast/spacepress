@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Event;
+namespace Zero\Identity\Vendor\Webauthn\Event;
 
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
+use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
 
 class AttestationObjectLoaded implements WebauthnEvent
 {

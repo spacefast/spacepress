@@ -2,13 +2,13 @@
 /**
  * Caption field definition for core media fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'placeholder'   => __( 'No caption', 'first-admin' ),
-	'label'         => __( 'Caption', 'first-admin' ),
+	'placeholder'   => __( 'No caption', 'zero-admin' ),
+	'label'         => __( 'Caption', 'zero-admin' ),
 	'enableSorting' => true,
 	'filterBy'      => false,
 );

@@ -56,7 +56,7 @@ format.
 - `F3001`: schema extraction failure.
 - `F4001`: handler type checking or PHP compilation failure.
 - `F1201`: a plugin package imports the app's modules or another plugin's package.
-- `F4201`: a plugin's compiled code needs a capability its `first/plugins.lock.json` entry doesn't grant.
+- `F4201`: a plugin's compiled code needs a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
 
 Specific, fixture-backed codes take precedence over phase codes. The growing
 [tested compatibility inventory](language-support.md) lists those codes and

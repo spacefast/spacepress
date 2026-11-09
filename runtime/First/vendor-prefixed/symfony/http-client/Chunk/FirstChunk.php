@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Chunk;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Chunk;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

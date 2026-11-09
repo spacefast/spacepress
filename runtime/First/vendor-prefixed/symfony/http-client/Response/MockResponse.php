@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Response;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
 
-use First\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
-use First\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
-use First\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\ErrorChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Chunk\FirstChunk;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\Internal\ClientState;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * A test-friendly response.

@@ -30,7 +30,7 @@ cargo build --locked
 ./target/debug/first dev examples/stuff-drawer --no-watch --port 8897
 ```
 
-These commands currently stop at the diagnostic below. Once main supports this source, `first build` produces `first.gen.ts`, `first/client/`, `first/_generated/migrations/`, and the pinned WordPress plugin lock. They are not fabricated or copied from another app here.
+These commands currently stop at the diagnostic below. Once main supports this source, `first build` produces `first/_generated/db.d.ts`, `first/_generated/client/`, `first/_generated/migrations/`, and the pinned WordPress plugin lock. They are not fabricated or copied from another app here.
 
 The required plugins are Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, and MCP Adapter 0.7.1. First builds and installs their pinned packages. This app does not use locales or a second identity system.
 
@@ -160,24 +160,24 @@ The app checks the number of active loans before inserting or editing a loan. Ma
 
 ### TypeScript checks require the missing generated schema
 
-`tsc -p examples/stuff-drawer` cannot type `db.query` without the `first.gen.ts` that the failed build would emit. Its current diagnostics are:
+`tsc -p examples/stuff-drawer` cannot type `db.query` without the `first/_generated/db.d.ts` that the failed build would emit. Its current diagnostics are:
 
 ```text
-examples/stuff-drawer/first.config.ts(64,35): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(72,39): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(73,40): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(79,41): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(64,35): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(72,39): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(73,40): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(79,41): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
 examples/stuff-drawer/first.config.ts(82,39): error TS7006: Parameter 'entry' implicitly has an 'any' type.
-examples/stuff-drawer/first.config.ts(99,41): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(100,42): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(121,47): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(159,49): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(164,72): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(165,47): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(183,43): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(194,46): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(204,46): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
-examples/stuff-drawer/first.config.ts(206,46): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first.gen.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(99,41): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(100,42): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(121,47): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(159,49): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(164,72): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(165,47): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(183,43): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(194,46): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(204,46): error TS2339: Property 'findFirst' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
+examples/stuff-drawer/first.config.ts(206,46): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections"'.
 ```
 
 ## Spacefast verification

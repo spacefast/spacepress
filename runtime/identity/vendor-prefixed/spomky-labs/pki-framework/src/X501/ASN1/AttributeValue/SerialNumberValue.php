@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\PrintableStringValue;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\PrintableStringValue;
 
 /**
  * 'serialNumber' attribute value.

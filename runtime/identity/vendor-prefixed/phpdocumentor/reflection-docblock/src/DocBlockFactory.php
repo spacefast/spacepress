@@ -11,16 +11,16 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection;
 
 use InvalidArgumentException;
 use LogicException;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\StandardTagFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\TagFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\Factory;
-use First\Identity\Vendor\Webmozart\Assert\Assert;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\StandardTagFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\TagFactory;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\Factory;
+use Zero\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function array_shift;
 use function count;

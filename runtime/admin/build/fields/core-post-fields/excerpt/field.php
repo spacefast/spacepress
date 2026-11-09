@@ -2,12 +2,12 @@
 /**
  * Excerpt field definition for core post fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Excerpt', 'first-admin' ),
+	'label'              => __( 'Excerpt', 'zero-admin' ),
 	'enableSorting'      => false,
 	'enableHiding'       => true,
 	'enableGlobalSearch' => true,

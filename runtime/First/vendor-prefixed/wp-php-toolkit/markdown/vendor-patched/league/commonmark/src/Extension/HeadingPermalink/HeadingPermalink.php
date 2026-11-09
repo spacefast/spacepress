@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\HeadingPermalink;
+namespace Zero\Vendor\League\CommonMark\Extension\HeadingPermalink;
 
-use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
 
 /**
  * Represents an anchor link within a heading

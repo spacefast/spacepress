@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Signature;
 
-use First\Identity\Vendor\Cose\Algorithm\Algorithm;
-use First\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\Cose\Algorithm\Algorithm;
+use Zero\Identity\Vendor\Cose\Key\Key;
 use InvalidArgumentException;
 
 interface Signature extends Algorithm

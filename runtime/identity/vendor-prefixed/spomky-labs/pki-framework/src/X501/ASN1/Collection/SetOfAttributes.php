@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Set;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Set;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
 
 /**
  * Implements *Attributes* ASN.1 type as a *SET OF Attribute*.

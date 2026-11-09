@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Renderer;
+namespace Zero\Vendor\League\CommonMark\Renderer;
 
-use First\Vendor\League\CommonMark\Exception\LogicException;
+use Zero\Vendor\League\CommonMark\Exception\LogicException;
 
 class NoMatchingRendererException extends LogicException
 {

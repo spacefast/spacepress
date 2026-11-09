@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
+use Zero\Identity\Vendor\Brick\Math\BigInteger;
 use function chr;
 use function count;
 use const E_USER_DEPRECATED;
 use InvalidArgumentException;
 use LogicException;
 use function ord;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\UniqueIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\UniqueIdentifier;
 use function sprintf;
 use function strval;
 use UnexpectedValueException;

@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/term-edit",
+	"name": "@zero-admin/term-edit",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -12,21 +12,21 @@
 		}
 	},
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/fields-next": "workspace:*",
-		"@first-admin/views": "workspace:*",
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/core-data-next": "workspace:*",
+		"@zero-admin/design-system": "workspace:*",
+		"@zero-admin/fields-next": "workspace:*",
+		"@zero-admin/views": "workspace:*",
 		"@wordpress/route": "catalog:",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@zero-admin/dataviews": "workspace:*",
 		"@wordpress/element": "catalog:",
 		"@wordpress/html-entities": "catalog:",
 		"@wordpress/i18n": "catalog:",
 		"@wordpress/icons": "catalog:",
 		"@wordpress/notices": "catalog:",
-		"@first-admin/telemetry": "workspace:*"
+		"@zero-admin/telemetry": "workspace:*"
 	}
 }

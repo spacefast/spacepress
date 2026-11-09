@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation;
 
 use function count;
 use function in_array;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\AttributeCertificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation\Exception\ACValidationException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target\Targets;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\TargetInformationExtension;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\SignaturePolicy;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\AttributeCertificate;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation\Exception\ACValidationException;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target\Targets;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\TargetInformationExtension;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\SignaturePolicy;
 use function sprintf;
 
 /**

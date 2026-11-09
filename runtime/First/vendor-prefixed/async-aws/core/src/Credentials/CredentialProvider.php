@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Credentials;
+namespace Zero\Vendor\AsyncAws\Core\Credentials;
 
-use First\Vendor\AsyncAws\Core\Configuration;
+use Zero\Vendor\AsyncAws\Core\Configuration;
 
 /**
  * Interface for providing Credential.

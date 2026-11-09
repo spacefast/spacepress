@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\WordPress\Merge;
+namespace Zero\Vendor\WordPress\Merge;
 
 use Exception;
 

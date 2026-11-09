@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/term-add",
+	"name": "@zero-admin/term-add",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -12,12 +12,12 @@
 		}
 	},
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/fields-next": "workspace:*",
-		"@first-admin/views": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/core-data-next": "workspace:*",
+		"@zero-admin/design-system": "workspace:*",
+		"@zero-admin/fields-next": "workspace:*",
+		"@zero-admin/views": "workspace:*",
+		"@zero-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Test;
+namespace Zero\Vendor\AsyncAws\Core\Test;
 
-use First\Vendor\AsyncAws\Core\Exception\LogicException;
-use First\Vendor\AsyncAws\Core\Response;
-use First\Vendor\AsyncAws\Core\Result;
-use First\Vendor\AsyncAws\Core\Test\Http\SimpleMockedResponse;
-use First\Vendor\AsyncAws\Core\Waiter;
-use First\Vendor\Psr\Log\NullLogger;
-use First\Vendor\Symfony\Component\HttpClient\MockHttpClient;
+use Zero\Vendor\AsyncAws\Core\Exception\LogicException;
+use Zero\Vendor\AsyncAws\Core\Response;
+use Zero\Vendor\AsyncAws\Core\Result;
+use Zero\Vendor\AsyncAws\Core\Test\Http\SimpleMockedResponse;
+use Zero\Vendor\AsyncAws\Core\Waiter;
+use Zero\Vendor\Psr\Log\NullLogger;
+use Zero\Vendor\Symfony\Component\HttpClient\MockHttpClient;
 
 /**
  * An easy way to create Result objects for your tests.

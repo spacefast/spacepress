@@ -1,10 +1,10 @@
 <?php
 
-namespace First\Vendor\Rowbot\URL\Tests\WhatWg;
+namespace Zero\Vendor\Rowbot\URL\Tests\WhatWg;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use First\Vendor\Rowbot\URL\URLSearchParams;
+use Zero\Vendor\Rowbot\URL\URLSearchParams;
 
 use function in_array;
 

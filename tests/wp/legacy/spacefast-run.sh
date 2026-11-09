@@ -32,7 +32,7 @@ TS
 "$target/debug/first" migrate app --from zero-0.8 "$app/source" --out "$app/converted" --users >/dev/null
 "$target/debug/first" build "$app/converted" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-spacefast"
-rsync -a --delete "$app/converted/.first/wp-content/" "$wp/.wp-content-spacefast/"
+rsync -a --delete "$app/converted/first/dist/wp-content/" "$wp/.wp-content-spacefast/"
 "$wp/harness.sh" down
 "$wp/harness.sh" up --wp-content "$wp/.wp-content-spacefast" > "$app/harness.json"
 "$wp/harness.sh" wp first migrate >/dev/null

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use First\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use Zero\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use const OPENSSL_ALGO_SHA384;
 
 final class RS384 extends RSA

@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\Exception\PcreException;
-use First\Identity\Vendor\Webmozart\Assert\Assert;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Exception\PcreException;
+use Zero\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function preg_last_error;
 use function preg_split as php_preg_split;

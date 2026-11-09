@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Tests;
+namespace Zero\Vendor\Rowbot\URL\Tests;
 
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
-use First\Vendor\Rowbot\URL\URL;
+use Zero\Vendor\Rowbot\URL\URL;
 
 /**
  * @see https://github.com/web-platform-tests/wpt/blob/master/url/url-statics-canparse.any.js

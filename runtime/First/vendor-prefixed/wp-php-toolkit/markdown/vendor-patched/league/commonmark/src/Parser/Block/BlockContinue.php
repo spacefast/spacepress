@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\CursorState;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\CursorState;
 
 /**
  * Result object for continuing parsing of a block; see static methods for constructors.
@@ -24,7 +24,7 @@ use First\Vendor\League\CommonMark\Parser\CursorState;
 final class BlockContinue
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Parser\CursorState|null */
+     * @var \Zero\Vendor\League\CommonMark\Parser\CursorState|null */
     private $cursorState;
 
     /** @psalm-readonly

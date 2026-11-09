@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-namespace First\Vendor\DiffMatchPatch;
+namespace Zero\Vendor\DiffMatchPatch;
 
 /**
  * Class representing one patch operation.

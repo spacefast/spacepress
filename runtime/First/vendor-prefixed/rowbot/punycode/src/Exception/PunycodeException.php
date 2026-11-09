@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Punycode\Exception;
+namespace Zero\Vendor\Rowbot\Punycode\Exception;
 
 use Exception;
 

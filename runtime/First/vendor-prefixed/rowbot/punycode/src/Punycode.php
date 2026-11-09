@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Punycode;
+namespace Zero\Vendor\Rowbot\Punycode;
 
-use First\Vendor\Rowbot\Punycode\Exception\InvalidInputException;
-use First\Vendor\Rowbot\Punycode\Exception\OutputSizeExceededException;
-use First\Vendor\Rowbot\Punycode\Exception\OverflowException;
+use Zero\Vendor\Rowbot\Punycode\Exception\InvalidInputException;
+use Zero\Vendor\Rowbot\Punycode\Exception\OutputSizeExceededException;
+use Zero\Vendor\Rowbot\Punycode\Exception\OverflowException;
 
 use function array_map;
 use function array_splice;

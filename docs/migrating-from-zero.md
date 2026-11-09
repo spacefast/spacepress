@@ -440,7 +440,7 @@ collection, for example:
 first build app
 ```
 
-Deactivate the original runtime, upload `app/.first/wp-content/plugins/`, and
+Deactivate the original runtime, upload `app/first/dist/wp-content/plugins/`, and
 activate the dependencies, then `first-runtime`, then `first-app-<name>`. The new
 post types exist now, but your content is still tagged with the original
 `zero_collection` taxonomy, so they're empty.

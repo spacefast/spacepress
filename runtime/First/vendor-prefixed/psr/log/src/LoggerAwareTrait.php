@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\Psr\Log;
+namespace Zero\Vendor\Psr\Log;
 
 /**
  * Basic Implementation of LoggerAwareInterface.

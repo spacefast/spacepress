@@ -11,13 +11,13 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
 
 /**
  * Value Object representing the `properties-of` type.

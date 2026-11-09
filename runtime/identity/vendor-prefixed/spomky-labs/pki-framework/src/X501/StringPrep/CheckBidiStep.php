@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
 
 /**
  * Implements 'Check bidi' step of the Internationalized String Preparation as specified by RFC 4518.

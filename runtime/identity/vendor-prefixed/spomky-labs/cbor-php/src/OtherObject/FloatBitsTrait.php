@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\OtherObject;
+namespace Zero\Identity\Vendor\CBOR\OtherObject;
 
 use InvalidArgumentException;
 use function is_float;

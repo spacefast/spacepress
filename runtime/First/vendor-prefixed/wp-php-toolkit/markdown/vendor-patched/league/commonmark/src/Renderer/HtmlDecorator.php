@@ -11,15 +11,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Renderer;
+namespace Zero\Vendor\League\CommonMark\Renderer;
 
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Util\HtmlElement;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Util\HtmlElement;
 
 final class HtmlDecorator implements NodeRendererInterface
 {
     /**
-     * @var \First\Vendor\League\CommonMark\Renderer\NodeRendererInterface
+     * @var \Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface
      */
     private $inner;
     /**

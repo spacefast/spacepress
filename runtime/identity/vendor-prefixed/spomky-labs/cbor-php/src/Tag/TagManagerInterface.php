@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace Zero\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\CBORObject;
 
 interface TagManagerInterface
 {

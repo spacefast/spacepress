@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL;
+namespace Zero\Vendor\Rowbot\URL;
 
-use First\Vendor\Psr\Log\LoggerAwareInterface;
-use First\Vendor\Psr\Log\LoggerAwareTrait;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Rowbot\URL\State\StatusCode;
-use First\Vendor\Rowbot\URL\String\StringBuffer;
-use First\Vendor\Rowbot\URL\String\USVStringInterface;
+use Zero\Vendor\Psr\Log\LoggerAwareInterface;
+use Zero\Vendor\Psr\Log\LoggerAwareTrait;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Rowbot\URL\State\StatusCode;
+use Zero\Vendor\Rowbot\URL\String\StringBuffer;
+use Zero\Vendor\Rowbot\URL\String\USVStringInterface;
 
 use function mb_strlen;
 use function strlen;
@@ -33,9 +33,9 @@ class BasicURLParser implements LoggerAwareInterface
      *
      * @see https://url.spec.whatwg.org/#concept-basic-url-parser
      *
-     * @param \First\Vendor\Rowbot\URL\String\USVStringInterface $input            A UTF-8 encoded string consisting of only scalar
+     * @param \Zero\Vendor\Rowbot\URL\String\USVStringInterface $input            A UTF-8 encoded string consisting of only scalar
      *                                                                values, excluding surrogates.
-     * @param \First\Vendor\Rowbot\URL\URLRecord|null            $base             (optional) This represents the base URL, which in
+     * @param \Zero\Vendor\Rowbot\URL\URLRecord|null            $base             (optional) This represents the base URL, which in
      *                                                                most cases, is the document's URL, it may also be
      *                                                                a node's base URI or whatever base URL you wish to
      *                                                                resolve relative URLs against. Default is null.
@@ -43,11 +43,11 @@ class BasicURLParser implements LoggerAwareInterface
      *                                                                which is UTF-8. This option exists solely for the
      *                                                                use of the HTML specification and should never be
      *                                                                changed.
-     * @param \First\Vendor\Rowbot\URL\URLRecord|null            $url              (optional) This represents an existing URL record
+     * @param \Zero\Vendor\Rowbot\URL\URLRecord|null            $url              (optional) This represents an existing URL record
      *                                                                object that should be modified based on the input
      *                                                                URL and optional base URL. Default is null.
-     * @param \First\Vendor\Rowbot\URL\ParserState|null          $stateOverride    (optional) An object implementing the
-     *                                                                \First\Vendor\Rowbot\URL\ParserState interface that overrides
+     * @param \Zero\Vendor\Rowbot\URL\ParserState|null          $stateOverride    (optional) An object implementing the
+     *                                                                \Zero\Vendor\Rowbot\URL\ParserState interface that overrides
      *                                                                the default start state, which is the Scheme Start
      *                                                                State. Default is null.
      */

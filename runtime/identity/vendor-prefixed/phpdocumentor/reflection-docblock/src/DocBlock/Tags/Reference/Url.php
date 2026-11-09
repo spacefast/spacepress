@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
 
-use First\Identity\Vendor\Webmozart\Assert\Assert;
+use Zero\Identity\Vendor\Webmozart\Assert\Assert;
 
 /**
- * Url reference used by {@see \First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
+ * Url reference used by {@see \Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
  */
 final class Url implements Reference
 {

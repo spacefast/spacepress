@@ -12,9 +12,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Attributes\Node;
+namespace Zero\Vendor\League\CommonMark\Extension\Attributes\Node;
 
-use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
 
 final class AttributesInline extends AbstractInline
 {

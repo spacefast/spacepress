@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\WordPress\Merge\Merge;
+namespace Zero\Vendor\WordPress\Merge\Merge;
 
 class Chunk {
 

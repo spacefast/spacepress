@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace Zero\Identity\Vendor\Webauthn\CeremonyStep;
 
 use function is_string;
-use function first_identity_vendor_trigger_deprecation as trigger_deprecation;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
-use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use First\Identity\Vendor\Webauthn\CredentialRecord;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
-use First\Identity\Vendor\Webauthn\U2FPublicKey;
+use function zero_identity_vendor_trigger_deprecation as trigger_deprecation;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use Zero\Identity\Vendor\Webauthn\CredentialRecord;
+use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use Zero\Identity\Vendor\Webauthn\U2FPublicKey;
 
 final class CheckRelyingPartyIdIdHash implements CeremonyStep
 {
@@ -26,7 +26,7 @@ final class CheckRelyingPartyIdIdHash implements CeremonyStep
         string $host
     ): void {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            first_identity_vendor_trigger_deprecation(
+            zero_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::process()" is deprecated, pass a CredentialRecord instead.',

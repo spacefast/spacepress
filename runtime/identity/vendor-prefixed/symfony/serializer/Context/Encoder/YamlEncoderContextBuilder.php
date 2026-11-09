@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\YamlEncoder;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\YamlEncoder;
 use Symfony\Component\Yaml\Yaml;
 
 /**

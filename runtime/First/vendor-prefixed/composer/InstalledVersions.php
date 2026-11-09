@@ -10,10 +10,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Composer;
+namespace Zero\Vendor\Composer;
 
-use First\Vendor\Composer\Autoload\ClassLoader;
-use First\Vendor\Composer\Semver\VersionParser;
+use Zero\Vendor\Composer\Autoload\ClassLoader;
+use Zero\Vendor\Composer\Semver\VersionParser;
 
 /**
  * This class is copied in every Composer installed project and available to all
@@ -121,7 +121,7 @@ class InstalledVersions
      *
      * e.g. If you want to know whether version 2.3+ of package foo/bar is installed, you would call:
      *
-     *   First\Vendor\Composer\InstalledVersions::satisfies(new VersionParser, 'foo/bar', '^2.3')
+     *   Zero\Vendor\Composer\InstalledVersions::satisfies(new VersionParser, 'foo/bar', '^2.3')
      *
      * @param  VersionParser $parser      Install composer/semver to have access to this class and functionality
      * @param  string        $packageName
@@ -347,7 +347,7 @@ class InstalledVersions
     private static function getInstalled()
     {
         if (null === self::$canGetVendors) {
-            self::$canGetVendors = method_exists('First\Vendor\Composer\Autoload\ClassLoader', 'getRegisteredLoaders');
+            self::$canGetVendors = method_exists('Zero\Vendor\Composer\Autoload\ClassLoader', 'getRegisteredLoaders');
         }
 
         $installed = array();

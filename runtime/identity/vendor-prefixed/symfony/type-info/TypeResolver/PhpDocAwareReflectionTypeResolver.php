@@ -9,21 +9,21 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
+namespace Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
 
 /**
  * Resolves type on reflection prioriziting PHP documentation.

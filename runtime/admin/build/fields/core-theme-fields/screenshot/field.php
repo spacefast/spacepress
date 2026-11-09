@@ -2,12 +2,12 @@
 /**
  * Screenshot field definition for core theme fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Screenshot', 'first-admin' ),
+	'label'         => __( 'Screenshot', 'zero-admin' ),
 	'enableHiding'  => false,
 	'enableSorting' => false,
 	'filterBy'      => false,

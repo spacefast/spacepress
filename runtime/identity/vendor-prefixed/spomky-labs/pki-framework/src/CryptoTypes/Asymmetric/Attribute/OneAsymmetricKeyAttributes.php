@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\Attribute;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\Attribute;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection\SetOfAttributes;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection\SetOfAttributes;
 
 /**
  * Implements *OneAsymmetricKey*'s *Attribute* ASN.1 type.

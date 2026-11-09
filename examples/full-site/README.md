@@ -17,7 +17,7 @@ pnpm build
 cd ../..
 first dev examples/full-site --port 8872 --no-watch
 node packages/pages/bin/first-pages.mjs build examples/full-site
-cp -R examples/full-site/.first/wp-content/plugins/first-pages-fullsite \
+cp -R examples/full-site/first/dist/wp-content/plugins/first-pages-fullsite \
   examples/full-site/.first/dev/wordpress/wp-content/plugins/
 first wp --site examples/full-site plugin activate first-pages-fullsite
 ```

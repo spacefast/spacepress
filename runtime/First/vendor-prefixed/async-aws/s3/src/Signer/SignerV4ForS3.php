@@ -1,19 +1,19 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Signer;
+namespace Zero\Vendor\AsyncAws\S3\Signer;
 
-use First\Vendor\AsyncAws\Core\Configuration;
-use First\Vendor\AsyncAws\Core\Credentials\Credentials;
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\Core\Request;
-use First\Vendor\AsyncAws\Core\RequestContext;
-use First\Vendor\AsyncAws\Core\Signer\SignerV4;
-use First\Vendor\AsyncAws\Core\Signer\SigningContext;
-use First\Vendor\AsyncAws\Core\Stream\FixedSizeStream;
-use First\Vendor\AsyncAws\Core\Stream\IterableStream;
-use First\Vendor\AsyncAws\Core\Stream\ReadOnceResultStream;
-use First\Vendor\AsyncAws\Core\Stream\RequestStream;
-use First\Vendor\AsyncAws\Core\Stream\RewindableStream;
+use Zero\Vendor\AsyncAws\Core\Configuration;
+use Zero\Vendor\AsyncAws\Core\Credentials\Credentials;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Request;
+use Zero\Vendor\AsyncAws\Core\RequestContext;
+use Zero\Vendor\AsyncAws\Core\Signer\SignerV4;
+use Zero\Vendor\AsyncAws\Core\Signer\SigningContext;
+use Zero\Vendor\AsyncAws\Core\Stream\FixedSizeStream;
+use Zero\Vendor\AsyncAws\Core\Stream\IterableStream;
+use Zero\Vendor\AsyncAws\Core\Stream\ReadOnceResultStream;
+use Zero\Vendor\AsyncAws\Core\Stream\RequestStream;
+use Zero\Vendor\AsyncAws\Core\Stream\RewindableStream;
 
 /**
  * Version4 of signer dedicated for service S3.

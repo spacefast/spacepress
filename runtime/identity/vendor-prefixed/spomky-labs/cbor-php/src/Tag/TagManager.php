@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace Zero\Identity\Vendor\CBOR\Tag;
 
 use function array_key_exists;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\Utils;
+use Zero\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\Utils;
 use InvalidArgumentException;
 
 final class TagManager implements TagManagerInterface

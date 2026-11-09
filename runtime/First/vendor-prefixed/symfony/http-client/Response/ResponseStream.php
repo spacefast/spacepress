@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Response;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Response;
 
-use First\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ChunkInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseStreamInterface;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

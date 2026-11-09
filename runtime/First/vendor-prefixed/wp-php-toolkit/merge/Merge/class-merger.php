@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\WordPress\Merge\Merge;
+namespace Zero\Vendor\WordPress\Merge\Merge;
 
-use First\Vendor\WordPress\Merge\Diff\Diff;
+use Zero\Vendor\WordPress\Merge\Diff\Diff;
 
 interface Merger {
 	/**

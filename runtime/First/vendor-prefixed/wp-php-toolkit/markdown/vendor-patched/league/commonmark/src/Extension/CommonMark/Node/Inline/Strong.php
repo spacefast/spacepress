@@ -14,10 +14,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
 
-use First\Vendor\League\CommonMark\Node\Inline\AbstractInline;
-use First\Vendor\League\CommonMark\Node\Inline\DelimitedInterface;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractInline;
+use Zero\Vendor\League\CommonMark\Node\Inline\DelimitedInterface;
 
 final class Strong extends AbstractInline implements DelimitedInterface
 {

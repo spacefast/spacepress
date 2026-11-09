@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Clock;
+namespace Zero\Identity\Vendor\Symfony\Component\Clock;
 
-use First\Identity\Vendor\Psr\Clock\ClockInterface as PsrClockInterface;
+use Zero\Identity\Vendor\Psr\Clock\ClockInterface as PsrClockInterface;
 
 /**
  * A global clock.

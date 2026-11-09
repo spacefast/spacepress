@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
 use function array_column;
 use function array_filter;
 use function array_map;

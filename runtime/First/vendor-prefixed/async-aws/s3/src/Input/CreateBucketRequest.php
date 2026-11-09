@@ -1,15 +1,15 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Input;
+namespace Zero\Vendor\AsyncAws\S3\Input;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\Core\Input;
-use First\Vendor\AsyncAws\Core\Request;
-use First\Vendor\AsyncAws\Core\Stream\StreamFactory;
-use First\Vendor\AsyncAws\S3\Enum\BucketCannedACL;
-use First\Vendor\AsyncAws\S3\Enum\BucketNamespace;
-use First\Vendor\AsyncAws\S3\Enum\ObjectOwnership;
-use First\Vendor\AsyncAws\S3\ValueObject\CreateBucketConfiguration;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Input;
+use Zero\Vendor\AsyncAws\Core\Request;
+use Zero\Vendor\AsyncAws\Core\Stream\StreamFactory;
+use Zero\Vendor\AsyncAws\S3\Enum\BucketCannedACL;
+use Zero\Vendor\AsyncAws\S3\Enum\BucketNamespace;
+use Zero\Vendor\AsyncAws\S3\Enum\ObjectOwnership;
+use Zero\Vendor\AsyncAws\S3\ValueObject\CreateBucketConfiguration;
 
 final class CreateBucketRequest extends Input
 {

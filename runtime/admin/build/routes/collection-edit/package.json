@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/route-collection-edit",
+	"name": "@zero-admin/route-collection-edit",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -7,7 +7,7 @@
 	},
 	"license": "GPL-2.0-or-later",
 	"dependencies": {
-		"@first-admin/schema": "workspace:*",
+		"@zero-admin/schema": "workspace:*",
 		"@wordpress/route": "catalog:"
 	}
 }

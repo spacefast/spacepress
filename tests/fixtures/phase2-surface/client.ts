@@ -1,4 +1,4 @@
-import type { Author, Post, WidenedOutput } from "./first/client/types";
+import type { Author, Post, WidenedOutput } from "./first/_generated/client/types";
 
 const sample: WidenedOutput = { values: ["other"], choice: "other", finite: ["a", "b"], nested: [["other", "later"]], callbacks: [null], tuples: ["other"], finiteDefaults: ["a", "b"], defaultTuple: "other", reduced: "other", reducedNested: ["other", "later"], numeric: { value: 2, count: 2, item: 1, keep: 0 }, effects: { captured: 2, invoked: 2, loop: 2, helper: { count: 3, captured: 3, keep: 0 }, maybeCaptured: undefined, maybeHelper: undefined, shadow: 1, early: 0, byValue: 1, passed: { scalar: undefined, member: undefined, object: { maybe: undefined, keep: 0 }, destructured: { maybe: undefined, keep: 0 } }, callback: 2, defaulted: 2, localDefaulted: 2, logical: { nullish: 2, or: 2, and: 1, guarded: 3, absent: 0, nested: 4 }, nullableArguments: { local: 1, module: 2, absent: undefined, sibling: 3, stable: "a", unchecked: { empty: undefined, shortened: undefined, tail: [null], reversed: "b", captured: "b", forwarded: "b", grown: "a", optional: undefined, present: true, defaulted: true, moduleDefaulted: true, moduleProvided: false, destructuredDefault: true, destructuredProvided: false, early: null, late: "b" }, ordered: 4, looped: "b", earlier: 0 } }, formatted: "-1", inferredNumber: "0", functionMaybe: undefined, defaultMaybe: undefined, maybe: undefined };
 const values: string[] = sample.values;
@@ -31,15 +31,15 @@ const seo: Seo = { kind: "a", enabled: true };
 void [email, alwaysEmail, seo];
 
 // A possibly hidden media column stays optional when `with` populates it.
-import type { RowWith } from "./first/client/index.ts";
+import type { RowWith } from "./first/_generated/client/index.ts";
 declare const withAvatar: RowWith<"authors", { avatar: true }>;
-const avatar: import("./first/client/types").Media | null | undefined = withAvatar.avatar;
+const avatar: import("./first/_generated/client/types").Media | null | undefined = withAvatar.avatar;
 // @ts-expect-error a populated hidden media column may be absent
-const alwaysAvatar: import("./first/client/types").Media | null = withAvatar.avatar;
+const alwaysAvatar: import("./first/_generated/client/types").Media | null = withAvatar.avatar;
 void [avatar, alwaysAvatar];
 
 // §7.3: the generated client types localized collections (posts) and keeps others (audit) plain.
-import type { Locale as ClientLocale, PostInsert, PostPatch, PostFilter } from "./first/client/types";
+import type { Locale as ClientLocale, PostInsert, PostPatch, PostFilter } from "./first/_generated/client/types";
 const locales: ClientLocale[] = ["en", "de"];
 // @ts-expect-error a locale outside the config
 const badLocale: ClientLocale = "fr";

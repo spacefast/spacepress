@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm;
+namespace Zero\Identity\Vendor\Cose\Algorithm;
 
 interface Algorithm
 {

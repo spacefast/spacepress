@@ -2,12 +2,12 @@
 /**
  * Username field definition for core user fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Username', 'first-admin' ),
+	'label'              => __( 'Username', 'zero-admin' ),
 	'enableSorting'      => true,
 	'enableHiding'       => false,
 	'enableGlobalSearch' => true,

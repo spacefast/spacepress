@@ -11,11 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
-use First\Vendor\League\CommonMark\Util\RegexHelper;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
+use Zero\Vendor\League\CommonMark\Util\RegexHelper;
 
 /**
  * @internal

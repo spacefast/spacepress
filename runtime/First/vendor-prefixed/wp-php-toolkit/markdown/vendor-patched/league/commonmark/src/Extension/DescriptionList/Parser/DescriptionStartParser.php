@@ -11,14 +11,14 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\DescriptionList\Parser;
+namespace Zero\Vendor\League\CommonMark\Extension\DescriptionList\Parser;
 
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Node\Description;
-use First\Vendor\League\CommonMark\Node\Block\Paragraph;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStart;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node\Description;
+use Zero\Vendor\League\CommonMark\Node\Block\Paragraph;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStart;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
 
 final class DescriptionStartParser implements BlockStartParserInterface
 {

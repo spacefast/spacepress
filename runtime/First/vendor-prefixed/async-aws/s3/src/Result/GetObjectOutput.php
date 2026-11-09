@@ -1,18 +1,18 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Result;
+namespace Zero\Vendor\AsyncAws\S3\Result;
 
-use First\Vendor\AsyncAws\Core\Response;
-use First\Vendor\AsyncAws\Core\Result;
-use First\Vendor\AsyncAws\Core\Stream\ResultStream;
-use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use First\Vendor\AsyncAws\S3\Enum\ObjectLockEventHold;
-use First\Vendor\AsyncAws\S3\Enum\ObjectLockLegalHoldStatus;
-use First\Vendor\AsyncAws\S3\Enum\ObjectLockMode;
-use First\Vendor\AsyncAws\S3\Enum\ReplicationStatus;
-use First\Vendor\AsyncAws\S3\Enum\RequestCharged;
-use First\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
-use First\Vendor\AsyncAws\S3\Enum\StorageClass;
+use Zero\Vendor\AsyncAws\Core\Response;
+use Zero\Vendor\AsyncAws\Core\Result;
+use Zero\Vendor\AsyncAws\Core\Stream\ResultStream;
+use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use Zero\Vendor\AsyncAws\S3\Enum\ObjectLockEventHold;
+use Zero\Vendor\AsyncAws\S3\Enum\ObjectLockLegalHoldStatus;
+use Zero\Vendor\AsyncAws\S3\Enum\ObjectLockMode;
+use Zero\Vendor\AsyncAws\S3\Enum\ReplicationStatus;
+use Zero\Vendor\AsyncAws\S3\Enum\RequestCharged;
+use Zero\Vendor\AsyncAws\S3\Enum\ServerSideEncryption;
+use Zero\Vendor\AsyncAws\S3\Enum\StorageClass;
 
 class GetObjectOutput extends Result
 {

@@ -1,24 +1,24 @@
 <?php
 
-namespace First\Vendor\WordPress\Markdown;
+namespace Zero\Vendor\WordPress\Markdown;
 
-use First\Vendor\League\CommonMark\Environment\Environment;
-use First\Vendor\League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block as ExtensionBlock;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline as ExtensionInline;
-use First\Vendor\League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
-use First\Vendor\League\CommonMark\Extension\Strikethrough\Strikethrough;
-use First\Vendor\League\CommonMark\Extension\Table\Table;
-use First\Vendor\League\CommonMark\Extension\Table\TableCell;
-use First\Vendor\League\CommonMark\Extension\Table\TableRow;
-use First\Vendor\League\CommonMark\Extension\Table\TableSection;
-use First\Vendor\League\CommonMark\Node\Block;
-use First\Vendor\League\CommonMark\Node\Inline;
-use First\Vendor\League\CommonMark\Parser\MarkdownParser;
-use First\Vendor\WordPress\DataLiberation\BlockMarkup\BlockObject;
-use First\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
-use First\Vendor\WordPress\DataLiberation\DataFormatConsumer\DataFormatConsumer;
-use First\Vendor\WordPress\DataLiberation\Importer\ImportUtils;
+use Zero\Vendor\League\CommonMark\Environment\Environment;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block as ExtensionBlock;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline as ExtensionInline;
+use Zero\Vendor\League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
+use Zero\Vendor\League\CommonMark\Extension\Strikethrough\Strikethrough;
+use Zero\Vendor\League\CommonMark\Extension\Table\Table;
+use Zero\Vendor\League\CommonMark\Extension\Table\TableCell;
+use Zero\Vendor\League\CommonMark\Extension\Table\TableRow;
+use Zero\Vendor\League\CommonMark\Extension\Table\TableSection;
+use Zero\Vendor\League\CommonMark\Node\Block;
+use Zero\Vendor\League\CommonMark\Node\Inline;
+use Zero\Vendor\League\CommonMark\Parser\MarkdownParser;
+use Zero\Vendor\WordPress\DataLiberation\BlockMarkup\BlockObject;
+use Zero\Vendor\WordPress\DataLiberation\DataFormatConsumer\BlocksWithMetadata;
+use Zero\Vendor\WordPress\DataLiberation\DataFormatConsumer\DataFormatConsumer;
+use Zero\Vendor\WordPress\DataLiberation\Importer\ImportUtils;
 use WP_HTML_Tag_Processor;
 
 /**
@@ -76,8 +76,8 @@ class MarkdownConsumer implements DataFormatConsumer {
 		$environment->addExtension( new CommonMarkCoreExtension() );
 		$environment->addExtension( new GithubFlavoredMarkdownExtension() );
 		$environment->addExtension(
-			new \First\Vendor\Webuni\FrontMatter\Markdown\FrontMatterLeagueCommonMarkExtension(
-				new \First\Vendor\Webuni\FrontMatter\FrontMatter()
+			new \Zero\Vendor\Webuni\FrontMatter\Markdown\FrontMatterLeagueCommonMarkExtension(
+				new \Zero\Vendor\Webuni\FrontMatter\FrontMatter()
 			)
 		);
 

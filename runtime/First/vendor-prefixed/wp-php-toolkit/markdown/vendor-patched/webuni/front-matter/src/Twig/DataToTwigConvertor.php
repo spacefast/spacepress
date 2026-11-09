@@ -10,7 +10,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Webuni\FrontMatter\Twig;
+namespace Zero\Vendor\Webuni\FrontMatter\Twig;
 
 use DateTimeInterface;
 

@@ -11,11 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\ExternalLink;
+namespace Zero\Vendor\League\CommonMark\Extension\ExternalLink;
 
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Link;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 final class ExternalLinkProcessor
 {
@@ -25,7 +25,7 @@ final class ExternalLinkProcessor
     public const APPLY_INTERNAL = 'internal';
 
     /** @psalm-readonly
-     * @var \First\Vendor\League\Config\ConfigurationInterface */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     public function __construct(ConfigurationInterface $config)

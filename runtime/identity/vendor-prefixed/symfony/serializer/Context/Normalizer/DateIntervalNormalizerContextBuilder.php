@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DateIntervalNormalizer;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DateIntervalNormalizer;
 
 /**
  * A helper providing autocompletion for available DateIntervalNormalizer options.

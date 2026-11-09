@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Brick\Math;
+namespace Zero\Identity\Vendor\Brick\Math;
 
-use First\Identity\Vendor\Brick\Math\Exception\DivisionByZeroException;
-use First\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
-use First\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Brick\Math\Exception\MathException;
-use First\Identity\Vendor\Brick\Math\Exception\NegativeNumberException;
-use First\Identity\Vendor\Brick\Math\Exception\NoInverseException;
-use First\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
-use First\Identity\Vendor\Brick\Math\Exception\PlatformException;
-use First\Identity\Vendor\Brick\Math\Exception\RandomSourceException;
-use First\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
-use First\Identity\Vendor\Brick\Math\Internal\Calculator;
-use First\Identity\Vendor\Brick\Math\Internal\CalculatorRegistry;
-use First\Identity\Vendor\Brick\Math\Internal\Safe;
+use Zero\Identity\Vendor\Brick\Math\Exception\DivisionByZeroException;
+use Zero\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use Zero\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Brick\Math\Exception\MathException;
+use Zero\Identity\Vendor\Brick\Math\Exception\NegativeNumberException;
+use Zero\Identity\Vendor\Brick\Math\Exception\NoInverseException;
+use Zero\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
+use Zero\Identity\Vendor\Brick\Math\Exception\PlatformException;
+use Zero\Identity\Vendor\Brick\Math\Exception\RandomSourceException;
+use Zero\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
+use Zero\Identity\Vendor\Brick\Math\Internal\Calculator;
+use Zero\Identity\Vendor\Brick\Math\Internal\CalculatorRegistry;
+use Zero\Identity\Vendor\Brick\Math\Internal\Safe;
 use LogicException;
 use Override;
 use Throwable;

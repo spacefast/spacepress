@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Exception;
+namespace Zero\Identity\Vendor\Webauthn\Exception;
 
 use Throwable;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
+use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
 
 final class InvalidAttestationStatementException extends AttestationStatementException
 {

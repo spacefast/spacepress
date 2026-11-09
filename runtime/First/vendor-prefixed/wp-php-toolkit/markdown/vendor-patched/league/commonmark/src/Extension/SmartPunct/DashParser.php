@@ -14,12 +14,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\SmartPunct;
+namespace Zero\Vendor\League\CommonMark\Extension\SmartPunct;
 
-use First\Vendor\League\CommonMark\Node\Inline\Text;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
-use First\Vendor\League\CommonMark\Parser\InlineParserContext;
+use Zero\Vendor\League\CommonMark\Node\Inline\Text;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
+use Zero\Vendor\League\CommonMark\Parser\InlineParserContext;
 
 final class DashParser implements InlineParserInterface
 {

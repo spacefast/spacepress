@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Psr\Container;
+namespace Zero\Vendor\Psr\Container;
 
 /**
  * Describes the interface of a container that exposes methods to read its entries.

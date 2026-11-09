@@ -32,10 +32,10 @@ an installer's payload is to the installer: distributed together, but
 separate works. The compiler's sources stay MIT, and because the packaged
 crate carries the embedded runtime, Cargo.toml declares the package as
 MIT AND GPL-2.0-or-later. The plugins written under
-.first/wp-content/plugins (first-runtime, first-identity, first-app-<name>) are
+first/dist/wp-content/plugins (first-runtime, first-identity, first-app-<name>) are
 GPL-2.0-or-later and each carries the license text. Files the compiler
 generates from your first.config.ts (schema.php, functions.php, migrations,
-first.gen.ts, first/client/types.ts and schema.ts) are yours. The client's
+first/_generated/db.d.ts, first/_generated/client/types.ts and schema.ts) are yours. The client's
 index.ts and README.md are copied from runtime/client/ and stay MIT; the
 copy ships with its LICENSE.
 

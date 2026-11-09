@@ -16,7 +16,7 @@ compose() { docker compose -p "${FIRST_WP_PROJECT:-first-wp-test}" "$@"; }
 
 "$first" build "$here/members" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-members"
-rsync -a --delete "$here/members/.first/wp-content/" "$wp/.wp-content-members/"
+rsync -a --delete "$here/members/first/dist/wp-content/" "$wp/.wp-content-members/"
 "$wp/harness.sh" down
 "$wp/harness.sh" up --wp-content "$wp/.wp-content-members" > "$wp/.harness-members.json"
 if [[ -n ${ZERO_ORIGINAL:-} ]]; then

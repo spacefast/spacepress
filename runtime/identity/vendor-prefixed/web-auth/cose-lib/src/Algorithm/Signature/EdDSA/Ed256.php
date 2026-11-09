@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
+namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
 
-use First\Identity\Vendor\Cose\Key\Key;
+use Zero\Identity\Vendor\Cose\Key\Key;
 use const E_USER_WARNING;
 use function hash;
 use function trigger_error;
@@ -22,8 +22,8 @@ use function trigger_error;
  * a COSE object signed here is read as WalnutDSA by every conforming implementation, and a genuine WalnutDSA object
  * is routed to this class. No WebAuthn authenticator emits -260, so the only deployments this construction can serve
  * are those that use it on both ends. The fully-specified EdDSA identifiers are
- * {@see \First\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed25519} (-19) and
- * {@see \First\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed448} (-53).
+ * {@see \Zero\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed25519} (-19) and
+ * {@see \Zero\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed448} (-53).
  *
  * Because of that, creating this algorithm emits an E_USER_WARNING unless the caller explicitly acknowledges what it
  * is by passing `acknowledgeNonStandardAlgorithm: true`. From v5.0.0 the same call without that acknowledgement will

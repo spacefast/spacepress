@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo;
 
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Type Extractor Interface.

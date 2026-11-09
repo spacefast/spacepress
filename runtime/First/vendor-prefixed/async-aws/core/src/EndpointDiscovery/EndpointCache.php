@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\EndpointDiscovery;
+namespace Zero\Vendor\AsyncAws\Core\EndpointDiscovery;
 
-use First\Vendor\AsyncAws\Core\Exception\LogicException;
+use Zero\Vendor\AsyncAws\Core\Exception\LogicException;
 
 /**
  * @author Jérémy Derussé <jeremy@derusse.com>

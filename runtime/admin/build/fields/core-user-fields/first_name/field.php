@@ -2,11 +2,11 @@
 /**
  * First name field definition for core user fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'First Name', 'first-admin' ),
+	'label'         => __( 'First Name', 'zero-admin' ),
 	'enableSorting' => true,
 );

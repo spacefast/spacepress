@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace Zero\Identity\Vendor\Webauthn;
 
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use First\Identity\Vendor\Psr\Log\LoggerInterface;
-use First\Identity\Vendor\Psr\Log\NullLogger;
+use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use Zero\Identity\Vendor\Psr\Log\LoggerInterface;
+use Zero\Identity\Vendor\Psr\Log\NullLogger;
 use Throwable;
-use First\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
-use First\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationFailedEvent;
-use First\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationSucceededEvent;
-use First\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
-use First\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use First\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use Zero\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
+use Zero\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationFailedEvent;
+use Zero\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationSucceededEvent;
+use Zero\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
+use Zero\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
+use Zero\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use Zero\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Zero\Identity\Vendor\Webauthn\MetadataService\CanLogData;
 
 class AuthenticatorAttestationResponseValidator implements CanLogData, CanDispatchEvents
 {

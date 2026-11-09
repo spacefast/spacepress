@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\HttpClient;
+namespace Zero\Vendor\AsyncAws\Core\HttpClient;
 
 /**
  * @author Jérémy Derussé <jeremy@derusse.com>

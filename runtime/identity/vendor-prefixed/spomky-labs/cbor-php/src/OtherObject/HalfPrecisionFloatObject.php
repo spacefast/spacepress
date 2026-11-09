@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\OtherObject;
+namespace Zero\Identity\Vendor\CBOR\OtherObject;
 
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\OtherObject as Base;
+use Zero\Identity\Vendor\CBOR\Normalizable;
+use Zero\Identity\Vendor\CBOR\OtherObject as Base;
 use const INF;
 use InvalidArgumentException;
 use const NAN;

@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid;
+namespace Zero\Identity\Vendor\Symfony\Component\Uid;
 
-use First\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
 
 /**
  * @author Grégoire Pineau <lyrixx@lyrixx.info>
@@ -173,7 +173,7 @@ class Uuid extends AbstractUid
 
     public function compare(AbstractUid $other): int
     {
-        if (false !== $cmp = first_identity_vendor_uuid_compare($this->uid, $other->uid)) {
+        if (false !== $cmp = zero_identity_vendor_uuid_compare($this->uid, $other->uid)) {
             return $cmp;
         }
 

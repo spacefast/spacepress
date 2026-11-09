@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core\Credentials;
+namespace Zero\Vendor\AsyncAws\Core\Credentials;
 
-use First\Vendor\AsyncAws\Core\Configuration;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Psr\Log\NullLogger;
-use First\Vendor\Symfony\Component\HttpClient\Exception\JsonException;
-use First\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
-use First\Vendor\Symfony\Component\HttpClient\HttpClient;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\AsyncAws\Core\Configuration;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Psr\Log\NullLogger;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\JsonException;
+use Zero\Vendor\Symfony\Component\HttpClient\Exception\TransportException;
+use Zero\Vendor\Symfony\Component\HttpClient\HttpClient;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * Provides Credentials from the running EC2 metadata server using the IMDSv1 and IMDSv2.

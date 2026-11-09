@@ -205,14 +205,14 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     }
 }
 
-/// A hosted compile types `abilities.call` from the captured `first/abilities.json`: the bundle's
+/// A hosted compile types `abilities.call` from the captured `first/_generated/abilities.json`: the bundle's
 /// file system is rooted at its own module directory, not at the app's name.
 #[test]
 fn captured_ability_lock_types_hosted_calls() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("calls");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/abilities-call");
-    for file in ["first.config.ts", "first/abilities.json"] {
+    for file in ["first.config.ts", "first/_generated/abilities.json"] {
         write(&project, file, &fs::read_to_string(fixture.join(file)).unwrap());
     }
     let bundle = work.path().join("bundle");
@@ -221,6 +221,43 @@ fn captured_ability_lock_types_hosted_calls() {
     // Without the lock the call is `unknown ability \`acme/site-info\``, so compiling is the proof.
     let compiled = work.path().join("compiled");
     if let Err(e) = first::bundle::compile(&bundle, &compiled, &bundle, None) {
+        panic!("{}", e.message);
+    }
+    // A bundle captured before `first/_generated/` names the lock `first/abilities.json`. Hosts keep
+    // stored bundles and recompile them, so it compiles the same.
+    let app = bundle.join(first::bundle::APP_FILE);
+    let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
+    for map in ["files", "canonical"] {
+        let entries = captured[map].as_object_mut().unwrap();
+        let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
+            .into_iter()
+            .map(|(k, v)| {
+                let k = k.replace("first/_generated/abilities.json", "first/abilities.json");
+                let v = match v {
+                    serde_json::Value::String(s) => s
+                        .replace("first/_generated/abilities.json", "first/abilities.json")
+                        .into(),
+                    v => v,
+                };
+                (k, v)
+            })
+            .collect();
+        entries.extend(moved);
+    }
+    assert!(captured["files"].get("first/abilities.json").is_some(), "{captured}");
+    let bytes = serde_json::to_vec(&captured).unwrap();
+    fs::write(&app, &bytes).unwrap();
+    let manifest_path = bundle.join(first::bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    use sha2::Digest as _;
+    manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        .into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let older = work.path().join("compiled-older");
+    if let Err(e) = first::bundle::compile(&bundle, &older, &bundle, None) {
         panic!("{}", e.message);
     }
 }

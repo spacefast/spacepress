@@ -11,18 +11,18 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ThematicBreak;
-use First\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinue;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ThematicBreak;
+use Zero\Vendor\League\CommonMark\Parser\Block\AbstractBlockContinueParser;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinue;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
 
 final class ThematicBreakParser extends AbstractBlockContinueParser
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ThematicBreak */
+     * @var \Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\ThematicBreak */
     private $block;
 
     public function __construct()
@@ -30,7 +30,7 @@ final class ThematicBreakParser extends AbstractBlockContinueParser
         $this->block = new ThematicBreak();
     }
 
-    public function getBlock(): \First\Vendor\League\CommonMark\Node\Block\AbstractBlock
+    public function getBlock(): \Zero\Vendor\League\CommonMark\Node\Block\AbstractBlock
     {
         return $this->block;
     }

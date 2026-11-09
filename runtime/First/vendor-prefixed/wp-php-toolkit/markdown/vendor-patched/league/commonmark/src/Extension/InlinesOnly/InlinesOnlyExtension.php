@@ -11,15 +11,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\InlinesOnly;
+namespace Zero\Vendor\League\CommonMark\Extension\InlinesOnly;
 
-use First\Vendor\League\CommonMark as Core;
-use First\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
-use First\Vendor\League\CommonMark\Extension\CommonMark;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Delimiter\Processor\EmphasisDelimiterProcessor;
-use First\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
-use First\Vendor\League\Config\ConfigurationBuilderInterface;
-use First\Vendor\Nette\Schema\Expect;
+use Zero\Vendor\League\CommonMark as Core;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentBuilderInterface;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Delimiter\Processor\EmphasisDelimiterProcessor;
+use Zero\Vendor\League\CommonMark\Extension\ConfigurableExtensionInterface;
+use Zero\Vendor\League\Config\ConfigurationBuilderInterface;
+use Zero\Vendor\Nette\Schema\Expect;
 
 final class InlinesOnlyExtension implements ConfigurableExtensionInterface
 {

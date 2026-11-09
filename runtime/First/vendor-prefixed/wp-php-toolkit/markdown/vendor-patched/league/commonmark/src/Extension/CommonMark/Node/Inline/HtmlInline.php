@@ -14,10 +14,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline;
 
-use First\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
-use First\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
+use Zero\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
 
 final class HtmlInline extends AbstractStringContainer implements RawMarkupContainerInterface
 {

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
 
 /**
  * Implements *UniqueIdentifier* ASN.1 type.

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\Yaml\Tag;
+namespace Zero\Vendor\Symfony\Component\Yaml\Tag;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

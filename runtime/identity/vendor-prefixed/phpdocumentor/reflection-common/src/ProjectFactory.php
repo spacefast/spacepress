@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection;
+namespace Zero\Identity\Vendor\phpDocumentor\Reflection;
 
 /**
  * Interface for project factories. A project factory shall convert a set of files

@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid;
+namespace Zero\Identity\Vendor\Symfony\Component\Uid;
 
-use First\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
 
 /**
  * A ULID is lexicographically sortable and contains a 48-bit timestamp and 80-bit of crypto-random entropy.

@@ -14,15 +14,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Node;
+namespace Zero\Vendor\League\CommonMark\Node;
 
-use First\Vendor\Dflydev\DotAccessData\Data;
-use First\Vendor\League\CommonMark\Exception\InvalidArgumentException;
+use Zero\Vendor\Dflydev\DotAccessData\Data;
+use Zero\Vendor\League\CommonMark\Exception\InvalidArgumentException;
 
 abstract class Node
 {
     /** @psalm-readonly
-     * @var \First\Vendor\Dflydev\DotAccessData\Data */
+     * @var \Zero\Vendor\Dflydev\DotAccessData\Data */
     public $data;
 
     /** @psalm-readonly-allow-private-mutation
@@ -30,23 +30,23 @@ abstract class Node
     protected $depth = 0;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Node\Node|null */
+     * @var \Zero\Vendor\League\CommonMark\Node\Node|null */
     protected $parent;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Node\Node|null */
+     * @var \Zero\Vendor\League\CommonMark\Node\Node|null */
     protected $previous;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Node\Node|null */
+     * @var \Zero\Vendor\League\CommonMark\Node\Node|null */
     protected $next;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Node\Node|null */
+     * @var \Zero\Vendor\League\CommonMark\Node\Node|null */
     protected $firstChild;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Node\Node|null */
+     * @var \Zero\Vendor\League\CommonMark\Node\Node|null */
     protected $lastChild;
 
     public function __construct()

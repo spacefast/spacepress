@@ -1,19 +1,19 @@
 <?php
 
-namespace First\Vendor\AsyncAws\S3\Result;
+namespace Zero\Vendor\AsyncAws\S3\Result;
 
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\Core\Response;
-use First\Vendor\AsyncAws\Core\Result;
-use First\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
-use First\Vendor\AsyncAws\S3\Enum\ChecksumType;
-use First\Vendor\AsyncAws\S3\Enum\RequestCharged;
-use First\Vendor\AsyncAws\S3\Enum\StorageClass;
-use First\Vendor\AsyncAws\S3\Input\ListPartsRequest;
-use First\Vendor\AsyncAws\S3\S3Client;
-use First\Vendor\AsyncAws\S3\ValueObject\Initiator;
-use First\Vendor\AsyncAws\S3\ValueObject\Owner;
-use First\Vendor\AsyncAws\S3\ValueObject\Part;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Response;
+use Zero\Vendor\AsyncAws\Core\Result;
+use Zero\Vendor\AsyncAws\S3\Enum\ChecksumAlgorithm;
+use Zero\Vendor\AsyncAws\S3\Enum\ChecksumType;
+use Zero\Vendor\AsyncAws\S3\Enum\RequestCharged;
+use Zero\Vendor\AsyncAws\S3\Enum\StorageClass;
+use Zero\Vendor\AsyncAws\S3\Input\ListPartsRequest;
+use Zero\Vendor\AsyncAws\S3\S3Client;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Initiator;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Owner;
+use Zero\Vendor\AsyncAws\S3\ValueObject\Part;
 
 /**
  * @implements \IteratorAggregate<Part>

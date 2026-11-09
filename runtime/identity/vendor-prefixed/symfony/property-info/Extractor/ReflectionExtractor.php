@@ -9,30 +9,30 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyAccessExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInitializableExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use First\Identity\Vendor\Symfony\Component\String\Inflector\EnglishInflector;
-use First\Identity\Vendor\Symfony\Component\String\Inflector\InflectorInterface;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionParameterTypeResolver;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionPropertyTypeResolver;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionReturnTypeResolver;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolver;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolverInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyAccessExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInitializableExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use Zero\Identity\Vendor\Symfony\Component\String\Inflector\EnglishInflector;
+use Zero\Identity\Vendor\Symfony\Component\String\Inflector\InflectorInterface;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionParameterTypeResolver;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionPropertyTypeResolver;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionReturnTypeResolver;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolver;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolverInterface;
 
 /**
  * Extracts data using the reflection API.
@@ -161,7 +161,7 @@ class ReflectionExtractor implements PropertyListExtractorInterface, PropertyTyp
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         if ($fromMutator = $this->extractFromMutator($class, $property)) {
             return $fromMutator;
@@ -198,7 +198,7 @@ class ReflectionExtractor implements PropertyListExtractorInterface, PropertyTyp
      */
     public function getTypesFromConstructor(string $class, string $property): ?array
     {
-        first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
+        zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
 
         try {
             $reflection = new \ReflectionClass($class);

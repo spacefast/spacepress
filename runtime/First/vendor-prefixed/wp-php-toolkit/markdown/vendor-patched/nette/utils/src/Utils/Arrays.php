@@ -7,10 +7,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Utils;
+namespace Zero\Vendor\Nette\Utils;
 
 use JetBrains\PhpStorm\Language;
-use First\Vendor\Nette;
+use Zero\Vendor\Nette;
 use function is_array, is_int, is_object, count;
 
 
@@ -19,7 +19,7 @@ use function is_array, is_int, is_object, count;
  */
 class Arrays
 {
-	use \First\Vendor\Nette\StaticClass;
+	use \Zero\Vendor\Nette\StaticClass;
 
 	/**
   * Returns item from array. If it does not exist, it throws an exception, unless a default value is set.
@@ -28,7 +28,7 @@ class Arrays
   * @param  array-key|array-key[]  $key
   * @param mixed $default
   * @return ?T
-  * @throws First\Vendor\Nette\InvalidArgumentException if item does not exist and default value is not provided
+  * @throws Zero\Vendor\Nette\InvalidArgumentException if item does not exist and default value is not provided
   */
  public static function get(array $array, $key, $default = null)
 	{
@@ -37,7 +37,7 @@ class Arrays
 				$array = $array[$k];
 			} else {
 				if (func_num_args() < 3) {
-					throw new \First\Vendor\Nette\InvalidArgumentException("Missing item '$k'.");
+					throw new \Zero\Vendor\Nette\InvalidArgumentException("Missing item '$k'.");
 				}
 
 				return $default;
@@ -54,7 +54,7 @@ class Arrays
 	 * @param  array<T>  $array
 	 * @param  array-key|array-key[]  $key
 	 * @return ?T
-	 * @throws First\Vendor\Nette\InvalidArgumentException if traversed item is not an array
+	 * @throws Zero\Vendor\Nette\InvalidArgumentException if traversed item is not an array
 	 */
 	public static function &getRef(array &$array, $key)
 	{
@@ -62,7 +62,7 @@ class Arrays
 			if (is_array($array) || $array === null) {
 				$array = &$array[$k];
 			} else {
-				throw new \First\Vendor\Nette\InvalidArgumentException('Traversed item is not an array.');
+				throw new \Zero\Vendor\Nette\InvalidArgumentException('Traversed item is not an array.');
 			}
 		}
 
@@ -324,7 +324,7 @@ class Arrays
 			: preg_split('#(\[\]|->|=|\|)#', $path, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
 
 		if (!$parts || $parts === ['->'] || $parts[0] === '=' || $parts[0] === '|') {
-			throw new \First\Vendor\Nette\InvalidArgumentException("Invalid path '$path'.");
+			throw new \Zero\Vendor\Nette\InvalidArgumentException("Invalid path '$path'.");
 		}
 
 		$res = $parts[0] === '->' ? new \stdClass : [];
@@ -389,7 +389,7 @@ class Arrays
   * @param  array<T>  $array
   * @param mixed $default
   * @return ?T
-  * @throws First\Vendor\Nette\InvalidArgumentException if item does not exist and default value is not provided
+  * @throws Zero\Vendor\Nette\InvalidArgumentException if item does not exist and default value is not provided
   * @param string|int $key
   */
  public static function pick(array &$array, $key, $default = null)
@@ -400,7 +400,7 @@ class Arrays
 			return $value;
 
 		} elseif (func_num_args() < 3) {
-			throw new \First\Vendor\Nette\InvalidArgumentException("Missing item '$key'.");
+			throw new \Zero\Vendor\Nette\InvalidArgumentException("Missing item '$key'.");
 
 		} else {
 			return $default;

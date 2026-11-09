@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace Zero\Identity\Vendor\Webauthn\MetadataService\Service;
 
 use function count;
 use function is_string;
-use First\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\BiometricStatusReport;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\StatusReport;
+use Zero\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\BiometricStatusReport;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\StatusReport;
 
 class MetadataBLOBPayloadEntry
 {

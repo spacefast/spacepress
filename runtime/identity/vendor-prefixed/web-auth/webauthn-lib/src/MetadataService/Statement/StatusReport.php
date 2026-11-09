@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService\Statement;
+namespace Zero\Identity\Vendor\Webauthn\MetadataService\Statement;
 
 use function in_array;
-use First\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
+use Zero\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
 
 readonly class StatusReport
 {

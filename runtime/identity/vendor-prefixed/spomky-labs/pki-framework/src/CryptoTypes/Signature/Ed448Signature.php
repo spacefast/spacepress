@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature;
 
 use InvalidArgumentException;
 use function mb_strlen;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
 
 /**
  * Implements Ed448 signature value.

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
 
 /**
  * Implements 'targetGroup' CHOICE of the *Target* ASN.1 type.

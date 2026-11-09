@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace Zero\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\NegativeIntegerObject;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\OtherObject\DoublePrecisionFloatObject;
-use First\Identity\Vendor\CBOR\OtherObject\HalfPrecisionFloatObject;
-use First\Identity\Vendor\CBOR\OtherObject\SinglePrecisionFloatObject;
-use First\Identity\Vendor\CBOR\Tag;
-use First\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use Zero\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\NegativeIntegerObject;
+use Zero\Identity\Vendor\CBOR\Normalizable;
+use Zero\Identity\Vendor\CBOR\OtherObject\DoublePrecisionFloatObject;
+use Zero\Identity\Vendor\CBOR\OtherObject\HalfPrecisionFloatObject;
+use Zero\Identity\Vendor\CBOR\OtherObject\SinglePrecisionFloatObject;
+use Zero\Identity\Vendor\CBOR\Tag;
+use Zero\Identity\Vendor\CBOR\UnsignedIntegerObject;
 use DateTimeImmutable;
 use DateTimeInterface;
 use function floor;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Component\Host\Math;
+namespace Zero\Vendor\Rowbot\URL\Component\Host\Math;
 
 use const PHP_INT_SIZE;
 

@@ -16,7 +16,7 @@ The creator installs the matching `@spacefast/first-cli` version and TypeScript.
 
 Open `/wp-content/plugins/first-app-my-app/public/index.html` on the WordPress URL printed in the terminal. Your public frontend, API, login and native WordPress admin share that origin. WordPress's theme retains its homepage. Add a note through “Write a note”; the example permits public reads and restricts writes to WordPress editors. Use the local admin credentials printed by First only for development.
 
-Edit `public/` for the frontend and `first.config.ts` for the backend. First watches both. Refresh to see changes. The generated client in `first/client/` is ready for a TypeScript frontend, and `client.ts` demonstrates its types. A frontend framework is optional. Backend TypeScript compiles to PHP; unsupported language/library behavior fails compiler checks rather than becoming a Node.js service.
+Edit `public/` for the frontend and `first.config.ts` for the backend. First watches both. Refresh to see changes. The generated client in `first/_generated/client/` is ready for a TypeScript frontend, and `client.ts` demonstrates its types. A frontend framework is optional. Backend TypeScript compiles to PHP; unsupported language/library behavior fails compiler checks rather than becoming a Node.js service.
 
 ```sh
 npm run check
@@ -27,7 +27,7 @@ npm run wp -- core version
 npm run stop
 ```
 
-Stopping preserves your local SQLite content. Commit generated migrations and client files; keep `.first/`, dependencies and secrets out of Git. The emitted deployment artifact is `.first/wp-content`, not the local Studio database. Production provisioning and data migration require the deployment lifecycle for your target WordPress site.
+Stopping preserves your local SQLite content. Commit generated migrations and client files; keep `.first/`, dependencies and secrets out of Git. The emitted deployment artifact is `first/dist/wp-content`, not the local Studio database. Production provisioning and data migration require the deployment lifecycle for your target WordPress site.
 
 Use `npm create @spacefast/first@0.3.0 my-app -- --no-install` to scaffold without installing dependencies. Choose a new directory: existing empty directories, populated directories and symbolic links are all refused. An installation failure preserves the newly created app for a retry.
 

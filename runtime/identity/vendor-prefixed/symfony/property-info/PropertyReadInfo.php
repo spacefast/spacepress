@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo;
 
 /**
  * The property read info tells how a property can be read.

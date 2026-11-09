@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Identity\Vendor\Psr\Log;
+namespace Zero\Identity\Vendor\Psr\Log;
 
 /**
  * Describes a logger-aware instance.

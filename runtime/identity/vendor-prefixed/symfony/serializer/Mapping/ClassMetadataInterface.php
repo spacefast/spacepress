@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping;
 
 /**
  * Stores metadata needed for serializing and deserializing objects of specific class.

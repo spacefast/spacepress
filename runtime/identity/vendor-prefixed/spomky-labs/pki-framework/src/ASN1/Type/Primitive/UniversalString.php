@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
 use function mb_strlen;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
 use function unpack;
 
 /**

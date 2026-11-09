@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/views",
+	"name": "@zero-admin/views",
 	"version": "1.0.0",
 	"description": "View persistence and management for WordPress DataViews",
 	"type": "module",
@@ -11,11 +11,11 @@
 		"build"
 	],
 	"dependencies": {
-		"@first-admin/core-data-next": "workspace:*",
+		"@zero-admin/core-data-next": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/data": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
+		"@zero-admin/dataviews": "workspace:*",
+		"@zero-admin/design-system": "workspace:*",
 		"@wordpress/element": "catalog:",
 		"@wordpress/preferences": "catalog:",
 		"dequal": "catalog:"

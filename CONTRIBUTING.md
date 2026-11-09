@@ -38,7 +38,7 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
    the types make it safe, `First\Js` helpers where JavaScript and PHP differ,
    and a build error where neither is sound.
 5. **Emit.** The output is MySQL migrations (diffed against one committed
-   snapshot), `schema.php`, `functions.php`, `first.gen.ts` (types `db` in your
+   snapshot), `schema.php`, `functions.php`, `first/_generated/db.d.ts` (types `db` in your
    editor), the typed client, and the PHP runtime: the database layer, the
    REST API, the hook pipeline, and the JS-semantics helpers.
 
@@ -60,7 +60,7 @@ files under `runtime/` are picked up without code changes.
 `first help` prints every command, grouped. **Build** commands (`dev`, `build`,
 `check`, `doctor`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `first`
 binary against the project's files (`abilities pull` reads a site's abilities
-into the committed `first/abilities.json`). **Site** commands (`migrate`, `seed`,
+into the committed `first/_generated/abilities.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp first <command>` in
 the `first-runtime` plugin; `first <command>` forwards to it unchanged, and
 `first wp <args>` forwards any WP-CLI command. `--site` picks the site: absent,
@@ -71,10 +71,10 @@ or a WP-CLI `@alias`. Credentials come only from `FIRST_APP_PASSWORD` or
 there and one PHP handler.
 
 `first build` writes new migrations to `first/_generated/migrations/`, the typed client to
-`first/client/`, `first.gen.ts`, `first/wp-plugins.lock.json` and, with plugin
-packages, `first/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
+`first/_generated/client/`, `first/_generated/db.d.ts`, `first/_generated/wp-plugins.lock.json` and, with plugin
+packages, `first/_generated/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
 plugin grants the lock doesn't hold),
-and the artifact to `.first/wp-content`: plugin folders, ZIPs, pinned
+and the artifact to `first/dist/wp-content`: plugin folders, ZIPs, pinned
 dependencies and one `first-manifest.json`. `first dev` installs that artifact
 into a persistent Studio site at `<project>/.first/dev/wordpress`, activates
 its manifest plugins, and watches TypeScript, config and public files. It
@@ -202,8 +202,8 @@ checks remain available. They are not dependencies of `spacefast`.
 | `src/extract.rs` | evaluated config → schema + functions to compile |
 | `src/compile.rs`, `src/types.rs` | typed TS → PHP compiler |
 | `src/migrate.rs` | snapshots and migration planning |
-| `src/schema_php.rs` | `schema.php` and `first.gen.ts` |
-| `src/client.rs` | `first/client/types.ts` and `schema.ts` |
+| `src/schema_php.rs` | `schema.php` and `first/_generated/db.d.ts` |
+| `src/client.rs` | `first/_generated/client/types.ts` and `schema.ts` |
 | `src/wp_plugins/` | plugin acquisition, checksums and the lock |
 | `src/sync/` | the `first sync` CLI |
 | `src/cli.rs`, `src/commands/site.rs` | the command table, and forwarding to WP-CLI |

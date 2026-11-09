@@ -17,15 +17,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Delimiter\Processor;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Delimiter\Processor;
 
-use First\Vendor\League\CommonMark\Delimiter\DelimiterInterface;
-use First\Vendor\League\CommonMark\Delimiter\Processor\CacheableDelimiterProcessorInterface;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Emphasis;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Strong;
-use First\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
-use First\Vendor\League\Config\ConfigurationAwareInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\CommonMark\Delimiter\DelimiterInterface;
+use Zero\Vendor\League\CommonMark\Delimiter\Processor\CacheableDelimiterProcessorInterface;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Emphasis;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Inline\Strong;
+use Zero\Vendor\League\CommonMark\Node\Inline\AbstractStringContainer;
+use Zero\Vendor\League\Config\ConfigurationAwareInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 final class EmphasisDelimiterProcessor implements CacheableDelimiterProcessorInterface, ConfigurationAwareInterface
 {
@@ -34,7 +34,7 @@ final class EmphasisDelimiterProcessor implements CacheableDelimiterProcessorInt
     private $char;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\Config\ConfigurationInterface */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     /**

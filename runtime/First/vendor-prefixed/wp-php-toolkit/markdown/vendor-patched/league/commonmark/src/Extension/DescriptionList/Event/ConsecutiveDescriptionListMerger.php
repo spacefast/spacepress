@@ -11,11 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\DescriptionList\Event;
+namespace Zero\Vendor\League\CommonMark\Extension\DescriptionList\Event;
 
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionList;
-use First\Vendor\League\CommonMark\Node\NodeIterator;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\DescriptionList\Node\DescriptionList;
+use Zero\Vendor\League\CommonMark\Node\NodeIterator;
 
 final class ConsecutiveDescriptionListMerger
 {

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
 
 /**
  * Base class for attribute values having *PrintableString* syntax.

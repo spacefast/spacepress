@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\String;
+namespace Zero\Identity\Vendor\Symfony\Component\String;
 
-use First\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
-use First\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
+use Zero\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
+use Zero\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
 
 /**
  * Represents a string of abstract Unicode characters.
@@ -164,7 +164,7 @@ abstract class AbstractUnicodeString extends AbstractString
         $str->string = str_replace(' ', '', preg_replace_callback('/\b.(?!\p{Lu})/u', static function ($m) {
             static $i = 0;
 
-            return 1 === ++$i ? ('İ' === $m[0] ? 'i̇' : mb_strtolower($m[0], 'UTF-8')) : mb_convert_case($m[0], \FIRST_IDENTITY_VENDOR_MB_CASE_TITLE, 'UTF-8');
+            return 1 === ++$i ? ('İ' === $m[0] ? 'i̇' : mb_strtolower($m[0], 'UTF-8')) : mb_convert_case($m[0], \ZERO_IDENTITY_VENDOR_MB_CASE_TITLE, 'UTF-8');
         }, preg_replace('/[^\pL0-9]++/u', ' ', $this->string)));
 
         return $str;
@@ -379,7 +379,7 @@ abstract class AbstractUnicodeString extends AbstractString
 
         $limit = $allWords ? -1 : 1;
 
-        $str->string = preg_replace_callback('/\b./u', static fn (array $m): string => mb_convert_case($m[0], \FIRST_IDENTITY_VENDOR_MB_CASE_TITLE, 'UTF-8'), $str->string, $limit);
+        $str->string = preg_replace_callback('/\b./u', static fn (array $m): string => mb_convert_case($m[0], \ZERO_IDENTITY_VENDOR_MB_CASE_TITLE, 'UTF-8'), $str->string, $limit);
 
         return $str;
     }

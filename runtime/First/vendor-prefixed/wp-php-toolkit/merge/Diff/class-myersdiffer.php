@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\WordPress\Merge\Diff;
+namespace Zero\Vendor\WordPress\Merge\Diff;
 
-use First\Vendor\DiffMatchPatch\DiffMatchPatch;
+use Zero\Vendor\DiffMatchPatch\DiffMatchPatch;
 
 class MyersDiffer implements Differ {
 	private $dmp;

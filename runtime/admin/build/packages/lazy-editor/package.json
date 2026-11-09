@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/lazy-editor",
+	"name": "@zero-admin/lazy-editor",
 	"version": "1.0.0",
 	"description": "A lazy editor loader that provides editor settings and assets loading hooks.",
 	"type": "module",
@@ -11,11 +11,11 @@
 		"build"
 	],
 	"dependencies": {
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/global-styles-engine": "workspace:*",
-		"@first-admin/load-assets": "workspace:*",
-		"@first-admin/theme": "workspace:*",
-		"@first-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/core-data-next": "workspace:*",
+		"@zero-admin/global-styles-engine": "workspace:*",
+		"@zero-admin/load-assets": "workspace:*",
+		"@zero-admin/theme": "workspace:*",
+		"@zero-admin/admin-toolkit": "workspace:*",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",
 		"@wordpress/element": "catalog:",

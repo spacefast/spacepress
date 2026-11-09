@@ -8,7 +8,7 @@ App metadata is read from that schema rather than global `FIRST_APP_*` constants
 so trying to activate another app produces a located runtime notice without
 redefining the first app's global state.
 
-`first build` writes these under `.first/wp-content/plugins`, alongside
+`first build` writes these under `first/dist/wp-content/plugins`, alongside
 the identity bundle, acquired dependencies and generated ZIPs. One
 `first-manifest.json` describes the complete artifact. App-specific schema,
 functions, MySQL migrations and public files live in `first-app-<name>`; shared

@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\AsyncAws\Core;
+namespace Zero\Vendor\AsyncAws\Core;
 
-use First\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
-use First\Vendor\AsyncAws\Core\AwsError\ChainAwsErrorFactory;
-use First\Vendor\AsyncAws\Core\EndpointDiscovery\EndpointCache;
-use First\Vendor\AsyncAws\Core\Exception\Exception;
-use First\Vendor\AsyncAws\Core\Exception\Http\ClientException;
-use First\Vendor\AsyncAws\Core\Exception\Http\HttpException;
-use First\Vendor\AsyncAws\Core\Exception\Http\NetworkException;
-use First\Vendor\AsyncAws\Core\Exception\Http\RedirectionException;
-use First\Vendor\AsyncAws\Core\Exception\Http\ServerException;
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
-use First\Vendor\AsyncAws\Core\Exception\LogicException;
-use First\Vendor\AsyncAws\Core\Exception\RuntimeException;
-use First\Vendor\AsyncAws\Core\Exception\UnparsableResponse;
-use First\Vendor\AsyncAws\Core\Stream\ResponseBodyStream;
-use First\Vendor\AsyncAws\Core\Stream\ResultStream;
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Psr\Log\LogLevel;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
-use First\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
+use Zero\Vendor\AsyncAws\Core\AwsError\AwsErrorFactoryInterface;
+use Zero\Vendor\AsyncAws\Core\AwsError\ChainAwsErrorFactory;
+use Zero\Vendor\AsyncAws\Core\EndpointDiscovery\EndpointCache;
+use Zero\Vendor\AsyncAws\Core\Exception\Exception;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\ClientException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\HttpException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\NetworkException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\RedirectionException;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\ServerException;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Exception\LogicException;
+use Zero\Vendor\AsyncAws\Core\Exception\RuntimeException;
+use Zero\Vendor\AsyncAws\Core\Exception\UnparsableResponse;
+use Zero\Vendor\AsyncAws\Core\Stream\ResponseBodyStream;
+use Zero\Vendor\AsyncAws\Core\Stream\ResultStream;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Psr\Log\LogLevel;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * The response provides a facade to manipulate HttpResponses.

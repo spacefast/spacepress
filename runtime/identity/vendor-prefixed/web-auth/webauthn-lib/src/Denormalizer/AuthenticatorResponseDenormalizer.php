@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use First\Identity\Vendor\Webauthn\AuthenticatorResponse;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorResponse;
+use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 final class AuthenticatorResponseDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface
 {

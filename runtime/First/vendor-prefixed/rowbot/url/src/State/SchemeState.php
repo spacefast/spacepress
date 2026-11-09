@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\State;
+namespace Zero\Vendor\Rowbot\URL\State;
 
-use First\Vendor\Rowbot\URL\Component\OpaquePath;
-use First\Vendor\Rowbot\URL\Component\PathSegment;
-use First\Vendor\Rowbot\URL\ParserContext;
-use First\Vendor\Rowbot\URL\ParserState;
-use First\Vendor\Rowbot\URL\String\CodePoint;
+use Zero\Vendor\Rowbot\URL\Component\OpaquePath;
+use Zero\Vendor\Rowbot\URL\Component\PathSegment;
+use Zero\Vendor\Rowbot\URL\ParserContext;
+use Zero\Vendor\Rowbot\URL\ParserState;
+use Zero\Vendor\Rowbot\URL\String\CodePoint;
 
 use function assert;
 use function strpbrk;

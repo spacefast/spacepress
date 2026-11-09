@@ -11,12 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
+namespace Zero\Vendor\League\CommonMark\Extension\CommonMark\Parser\Block;
 
-use First\Vendor\League\CommonMark\Parser\Block\BlockStart;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStart;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Parser\MarkdownParserStateInterface;
 
 final class BlockQuoteStartParser implements BlockStartParserInterface
 {

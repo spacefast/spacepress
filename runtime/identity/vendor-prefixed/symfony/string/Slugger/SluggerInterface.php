@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\String\Slugger;
+namespace Zero\Identity\Vendor\Symfony\Component\String\Slugger;
 
-use First\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
+use Zero\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
 
 /**
  * Creates a URL-friendly slug from a given string.

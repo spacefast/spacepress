@@ -75,7 +75,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         if mode == "start" {
             command
                 .arg(std::env::current_exe().map_err(|e| e.to_string())?)
-                .arg(args.out.clone().unwrap_or_else(|| project.join(".first/wp-content")))
+                .arg(args.out.clone().unwrap_or_else(|| project.join("first/dist/wp-content")))
                 .arg(args.port.to_string());
             if args.no_watch {
                 command.arg("--no-watch");

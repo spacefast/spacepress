@@ -11,12 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\SmartPunct;
+namespace Zero\Vendor\League\CommonMark\Extension\SmartPunct;
 
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Node\Inline\AdjacentTextMerger;
-use First\Vendor\League\CommonMark\Node\Inline\Text;
-use First\Vendor\League\CommonMark\Node\Query;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Node\Inline\AdjacentTextMerger;
+use Zero\Vendor\League\CommonMark\Node\Inline\Text;
+use Zero\Vendor\League\CommonMark\Node\Query;
 
 /**
  * Identifies any lingering Quote nodes that were missing pairs and converts them into Text nodes

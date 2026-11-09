@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL;
+namespace Zero\Vendor\Rowbot\URL;
 
 use Stringable;
 

@@ -308,7 +308,7 @@ function main() {
   for (const [from, to] of moves) {
     if (dry) continue;
     mkdirSync(dirname(join(root, to)), { recursive: true });
-    git('mv', '-k', '--', from, to);
+    git('mv', '-f', '--', from, to); // -f: a tracked file under an ignored path (node_modules fixtures) still moves
   }
   // 2. Text.
   const changed = [];

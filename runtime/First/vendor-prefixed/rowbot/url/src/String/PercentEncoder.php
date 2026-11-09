@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\String;
+namespace Zero\Vendor\Rowbot\URL\String;
 
-use First\Vendor\Rowbot\URL\String\Exception\RegexException;
-use First\Vendor\Rowbot\URL\Support\EncodingHelper;
+use Zero\Vendor\Rowbot\URL\String\Exception\RegexException;
+use Zero\Vendor\Rowbot\URL\Support\EncodingHelper;
 
 use function bin2hex;
 use function hexdec;

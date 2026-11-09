@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\DependencyInjection;
+namespace Zero\Vendor\Symfony\Component\HttpClient\DependencyInjection;
 
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Reference;
-use First\Vendor\Symfony\Component\HttpClient\TraceableHttpClient;
+use Zero\Vendor\Symfony\Component\HttpClient\TraceableHttpClient;
 
 final class HttpClientPass implements CompilerPassInterface
 {

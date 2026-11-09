@@ -1,9 +1,9 @@
-// The typed client over the generated first/client/types.ts + schema.ts (design §7):
+// The typed client over the generated first/_generated/client/types.ts + schema.ts (design §7):
 // positive checks that results carry the shapes `with` asks for, and one @ts-expect-error per real mistake.
 import {
   createClient, FirstError,
   type Author, type Comment, type Media, type Post, type RevisionSummary, type Settings, type User,
-} from "../first/client/index.ts";
+} from "../first/_generated/client/index.ts";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 declare function expectType<T extends true>(): void;

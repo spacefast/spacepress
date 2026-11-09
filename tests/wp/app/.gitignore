@@ -1,4 +1,5 @@
 first/
-first.gen.ts
+first/_generated/db.d.ts
 .first/*
 !.first/sync-base.json
+first/dist/

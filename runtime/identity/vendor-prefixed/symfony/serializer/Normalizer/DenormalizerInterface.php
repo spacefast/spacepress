@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\ExceptionInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\ExceptionInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

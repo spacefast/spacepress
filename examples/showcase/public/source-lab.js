@@ -598,7 +598,7 @@ async function start() {
           'schema.php': result.output.schemaPhp,
           'functions.php': result.output.functionsPhp,
           ...Object.fromEntries(Object.entries(result.output.client).map(([name, contents]) => [`client/${name}`, contents])),
-          'first.gen.ts': result.output.genTs,
+          'first/_generated/db.d.ts': result.output.genTs,
           'snapshot.json': `${JSON.stringify(result.output.snapshot, null, 2)}\n`,
           ...Object.fromEntries(result.output.migrations.map(([name, contents]) => [`migrations/${name}`, contents])),
         };

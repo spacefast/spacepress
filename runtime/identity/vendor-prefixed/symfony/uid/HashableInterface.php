@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid;
+namespace Zero\Identity\Vendor\Symfony\Component\Uid;
 
 if (interface_exists(\Ds\Key::class)) {
     /**

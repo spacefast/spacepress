@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient\Internal;
+namespace Zero\Vendor\Symfony\Component\HttpClient\Internal;
 
-use First\Vendor\Psr\Log\LoggerInterface;
-use First\Vendor\Symfony\Component\HttpClient\Response\CurlResponse;
+use Zero\Vendor\Psr\Log\LoggerInterface;
+use Zero\Vendor\Symfony\Component\HttpClient\Response\CurlResponse;
 
 /**
  * Internal representation of the cURL client's state.

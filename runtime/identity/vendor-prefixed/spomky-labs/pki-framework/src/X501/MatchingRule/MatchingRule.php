@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule;
 
 /**
  * Base class for attribute matching rules.

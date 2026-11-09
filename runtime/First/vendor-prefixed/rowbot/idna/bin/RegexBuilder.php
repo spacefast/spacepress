@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\Idna\Bin;
+namespace Zero\Vendor\Rowbot\Idna\Bin;
 
 use function array_filter;
 use function assert;

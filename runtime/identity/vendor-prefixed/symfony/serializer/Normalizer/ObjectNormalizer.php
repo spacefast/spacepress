@@ -9,24 +9,24 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidArgumentException as PropertyAccessInvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidTypeException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccessorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\AccessorCollisionResolverTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidArgumentException as PropertyAccessInvalidArgumentException;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidTypeException;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccessorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\AccessorCollisionResolverTrait;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
 
 /**
  * Converts between objects and arrays using the PropertyAccess component.

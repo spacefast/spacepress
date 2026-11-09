@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR;
+namespace Zero\Identity\Vendor\CBOR;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
-use First\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
-use First\Identity\Vendor\Brick\Math\Exception\MathException;
+use Zero\Identity\Vendor\Brick\Math\BigInteger;
+use Zero\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use Zero\Identity\Vendor\Brick\Math\Exception\MathException;
 use InvalidArgumentException;
 use function is_string;
 use function ord;

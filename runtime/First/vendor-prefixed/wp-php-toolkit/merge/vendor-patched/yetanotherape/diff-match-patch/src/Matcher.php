@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-namespace First\Vendor\DiffMatchPatch;
+namespace Zero\Vendor\DiffMatchPatch;
 
 /**
  * Match offers methods for fuzzy search string in a block of plain text.

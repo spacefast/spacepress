@@ -1,8 +1,8 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core\Stream;
+namespace Zero\Vendor\AsyncAws\Core\Stream;
 
-use First\Vendor\AsyncAws\Core\Exception\RuntimeException;
+use Zero\Vendor\AsyncAws\Core\Exception\RuntimeException;
 
 /**
  * Provides a Stream that can be read several time.

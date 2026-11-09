@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Component;
+namespace Zero\Vendor\Rowbot\URL\Component;
 
-use First\Vendor\Rowbot\URL\Component\Host\HostInterface;
-use First\Vendor\Rowbot\URL\Origin;
+use Zero\Vendor\Rowbot\URL\Component\Host\HostInterface;
+use Zero\Vendor\Rowbot\URL\Origin;
 
 /**
  * @see https://html.spec.whatwg.org/multipage/origin.html#concept-origin-tuple

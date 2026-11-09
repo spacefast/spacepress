@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Contracts\Service\Test;
+namespace Zero\Vendor\Symfony\Contracts\Service\Test;
 
 /**
  * @deprecated since PHPUnit 9.6

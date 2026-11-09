@@ -9,27 +9,27 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
+namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\ConstExpression;
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Generic;
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\List_;
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Scalar;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type as DocType;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Collection;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Null_;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Nullable;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Scalar as LegacyScalar;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\ConstExpression;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Generic;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\List_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Scalar;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Type as DocType;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Collection;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Null_;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Nullable;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Scalar as LegacyScalar;
+use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
+use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 // Workaround for phpdocumentor/type-resolver < 1.6
 // We trigger the autoloader here, so we don't need to trigger it inside the loop later.
@@ -52,7 +52,7 @@ final class PhpDocTypeHelper
      */
     public function getTypes(DocType $varType): array
     {
-        first_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        zero_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         if ($varType instanceof ConstExpression) {
             // It's safer to fall back to other extractors here, as resolving const types correctly is not easy at the moment

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid\Exception;
+namespace Zero\Identity\Vendor\Symfony\Component\Uid\Exception;
 
 class LogicException extends \LogicException
 {

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\VerificationMethodANDCombinations;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\VerificationMethodDescriptor;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\VerificationMethodANDCombinations;
+use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\VerificationMethodDescriptor;
 
 final class VerificationMethodANDCombinationsDenormalizer implements NormalizerInterface, NormalizerAwareInterface
 {

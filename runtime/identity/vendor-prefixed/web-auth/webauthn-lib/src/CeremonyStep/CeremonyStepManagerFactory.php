@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace Zero\Identity\Vendor\Webauthn\CeremonyStep;
 
-use First\Identity\Vendor\Cose\Algorithm\Manager;
-use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
-use First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
-use First\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\ExtensionOutputCheckerHandler;
-use First\Identity\Vendor\Webauthn\Counter\CounterChecker;
-use First\Identity\Vendor\Webauthn\Counter\ThrowExceptionIfInvalid;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
-use First\Identity\Vendor\Webauthn\MetadataService\MetadataStatementRepository;
-use First\Identity\Vendor\Webauthn\MetadataService\StatusReportRepository;
+use Zero\Identity\Vendor\Cose\Algorithm\Manager;
+use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
+use Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
+use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use Zero\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\ExtensionOutputCheckerHandler;
+use Zero\Identity\Vendor\Webauthn\Counter\CounterChecker;
+use Zero\Identity\Vendor\Webauthn\Counter\ThrowExceptionIfInvalid;
+use Zero\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
+use Zero\Identity\Vendor\Webauthn\MetadataService\MetadataStatementRepository;
+use Zero\Identity\Vendor\Webauthn\MetadataService\StatusReportRepository;
 
 final class CeremonyStepManagerFactory
 {

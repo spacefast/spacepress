@@ -11,17 +11,17 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Environment;
+namespace Zero\Vendor\League\CommonMark\Environment;
 
-use First\Vendor\League\CommonMark\Delimiter\Processor\DelimiterProcessorCollection;
-use First\Vendor\League\CommonMark\Extension\ExtensionInterface;
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use First\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
-use First\Vendor\League\Config\ConfigurationProviderInterface;
-use First\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use Zero\Vendor\League\CommonMark\Delimiter\Processor\DelimiterProcessorCollection;
+use Zero\Vendor\League\CommonMark\Extension\ExtensionInterface;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use Zero\Vendor\League\CommonMark\Renderer\NodeRendererInterface;
+use Zero\Vendor\League\Config\ConfigurationProviderInterface;
+use Zero\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
 
 interface EnvironmentInterface extends ConfigurationProviderInterface, EventDispatcherInterface
 {

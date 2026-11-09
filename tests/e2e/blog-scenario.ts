@@ -15,7 +15,7 @@
 // Each step is a `t.test` subtest when a node:test context is passed, so failures name the step.
 
 import assert from "node:assert/strict";
-import { FirstError, type Client, type Media, type Post } from "../wp/app/first/client/index.ts";
+import { FirstError, type Client, type Media, type Post } from "../wp/app/first/_generated/client/index.ts";
 
 export type ScenarioRole = "anonymous" | "subscriber" | "author" | "editor" | "admin";
 

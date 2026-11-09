@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Rowbot\URL\Component\Host;
+namespace Zero\Vendor\Rowbot\URL\Component\Host;
 
-use First\Vendor\Psr\Log\LogLevel;
-use First\Vendor\Rowbot\URL\Component\Host\Math\NumberFactory;
-use First\Vendor\Rowbot\URL\ParserContext;
-use First\Vendor\Rowbot\URL\String\CodePoint;
-use First\Vendor\Rowbot\URL\String\StringListInterface;
-use First\Vendor\Rowbot\URL\String\USVStringInterface;
+use Zero\Vendor\Psr\Log\LogLevel;
+use Zero\Vendor\Rowbot\URL\Component\Host\Math\NumberFactory;
+use Zero\Vendor\Rowbot\URL\ParserContext;
+use Zero\Vendor\Rowbot\URL\String\CodePoint;
+use Zero\Vendor\Rowbot\URL\String\StringListInterface;
+use Zero\Vendor\Rowbot\URL\String\USVStringInterface;
 
 use function array_pop;
 use function array_reduce;
@@ -135,7 +135,7 @@ class IPv4AddressParser
          * 9. Let ipv4 be the last item in numbers.
          * 10. Remove the last item from numbers.
          *
-         * @var \First\Vendor\Rowbot\URL\Component\Host\Math\NumberInterface $ipv4
+         * @var \Zero\Vendor\Rowbot\URL\Component\Host\Math\NumberInterface $ipv4
          */
         $ipv4 = array_pop($numbers);
 
@@ -187,7 +187,7 @@ class IPv4AddressParser
     /**
      * @see https://url.spec.whatwg.org/#ipv4-number-parser
      *
-     * @return array{0: \First\Vendor\Rowbot\URL\Component\Host\Math\NumberInterface, 1: bool}|false
+     * @return array{0: \Zero\Vendor\Rowbot\URL\Component\Host\Math\NumberInterface, 1: bool}|false
      */
     private static function parseIPv4Number(USVStringInterface $input): array|false
     {

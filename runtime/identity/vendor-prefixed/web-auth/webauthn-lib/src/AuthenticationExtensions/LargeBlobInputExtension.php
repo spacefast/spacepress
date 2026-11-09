@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace Zero\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
 use function assert;
 use function in_array;

@@ -11,18 +11,18 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Extension\HeadingPermalink;
+namespace Zero\Vendor\League\CommonMark\Extension\HeadingPermalink;
 
-use First\Vendor\League\CommonMark\Environment\EnvironmentAwareInterface;
-use First\Vendor\League\CommonMark\Environment\EnvironmentInterface;
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\Heading;
-use First\Vendor\League\CommonMark\Node\NodeIterator;
-use First\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
-use First\Vendor\League\CommonMark\Node\StringContainerHelper;
-use First\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
-use First\Vendor\League\Config\Exception\InvalidConfigurationException;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentAwareInterface;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Extension\CommonMark\Node\Block\Heading;
+use Zero\Vendor\League\CommonMark\Node\NodeIterator;
+use Zero\Vendor\League\CommonMark\Node\RawMarkupContainerInterface;
+use Zero\Vendor\League\CommonMark\Node\StringContainerHelper;
+use Zero\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\Config\Exception\InvalidConfigurationException;
 
 /**
  * Searches the Document for Heading elements and adds HeadingPermalinks to each one
@@ -34,11 +34,11 @@ final class HeadingPermalinkProcessor implements EnvironmentAwareInterface
     public const INSERT_NONE   = 'none';
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface */
+     * @var \Zero\Vendor\League\CommonMark\Normalizer\TextNormalizerInterface */
     private $slugNormalizer;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\Config\ConfigurationInterface */
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface */
     private $config;
 
     public function setEnvironment(EnvironmentInterface $environment): void

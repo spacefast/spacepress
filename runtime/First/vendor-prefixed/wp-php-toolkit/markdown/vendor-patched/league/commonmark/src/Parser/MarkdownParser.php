@@ -17,29 +17,29 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Parser;
+namespace Zero\Vendor\League\CommonMark\Parser;
 
-use First\Vendor\League\CommonMark\Environment\EnvironmentInterface;
-use First\Vendor\League\CommonMark\Event\DocumentParsedEvent;
-use First\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
-use First\Vendor\League\CommonMark\Exception\CommonMarkException;
-use First\Vendor\League\CommonMark\Input\MarkdownInput;
-use First\Vendor\League\CommonMark\Node\Block\Document;
-use First\Vendor\League\CommonMark\Node\Block\Paragraph;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
-use First\Vendor\League\CommonMark\Parser\Block\BlockContinueParserWithInlinesInterface;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStart;
-use First\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
-use First\Vendor\League\CommonMark\Parser\Block\DocumentBlockParser;
-use First\Vendor\League\CommonMark\Parser\Block\ParagraphParser;
-use First\Vendor\League\CommonMark\Reference\MemoryLimitedReferenceMap;
-use First\Vendor\League\CommonMark\Reference\ReferenceInterface;
-use First\Vendor\League\CommonMark\Reference\ReferenceMap;
+use Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface;
+use Zero\Vendor\League\CommonMark\Event\DocumentParsedEvent;
+use Zero\Vendor\League\CommonMark\Event\DocumentPreParsedEvent;
+use Zero\Vendor\League\CommonMark\Exception\CommonMarkException;
+use Zero\Vendor\League\CommonMark\Input\MarkdownInput;
+use Zero\Vendor\League\CommonMark\Node\Block\Document;
+use Zero\Vendor\League\CommonMark\Node\Block\Paragraph;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockContinueParserWithInlinesInterface;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStart;
+use Zero\Vendor\League\CommonMark\Parser\Block\BlockStartParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Block\DocumentBlockParser;
+use Zero\Vendor\League\CommonMark\Parser\Block\ParagraphParser;
+use Zero\Vendor\League\CommonMark\Reference\MemoryLimitedReferenceMap;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceInterface;
+use Zero\Vendor\League\CommonMark\Reference\ReferenceMap;
 
 final class MarkdownParser implements MarkdownParserInterface
 {
     /** @psalm-readonly
-     * @var \First\Vendor\League\CommonMark\Environment\EnvironmentInterface */
+     * @var \Zero\Vendor\League\CommonMark\Environment\EnvironmentInterface */
     private $environment;
 
     /** @psalm-readonly-allow-private-mutation
@@ -47,7 +47,7 @@ final class MarkdownParser implements MarkdownParserInterface
     private $maxNestingLevel;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Reference\ReferenceMap */
+     * @var \Zero\Vendor\League\CommonMark\Reference\ReferenceMap */
     private $referenceMap;
 
     /** @psalm-readonly-allow-private-mutation
@@ -55,7 +55,7 @@ final class MarkdownParser implements MarkdownParserInterface
     private $lineNumber = 0;
 
     /** @psalm-readonly-allow-private-mutation
-     * @var \First\Vendor\League\CommonMark\Parser\Cursor */
+     * @var \Zero\Vendor\League\CommonMark\Parser\Cursor */
     private $cursor;
 
     /**

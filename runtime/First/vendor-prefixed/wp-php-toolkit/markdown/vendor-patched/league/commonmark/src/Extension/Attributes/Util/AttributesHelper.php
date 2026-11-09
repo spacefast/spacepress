@@ -12,11 +12,11 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Attributes\Util;
+namespace Zero\Vendor\League\CommonMark\Extension\Attributes\Util;
 
-use First\Vendor\League\CommonMark\Node\Node;
-use First\Vendor\League\CommonMark\Parser\Cursor;
-use First\Vendor\League\CommonMark\Util\RegexHelper;
+use Zero\Vendor\League\CommonMark\Node\Node;
+use Zero\Vendor\League\CommonMark\Parser\Cursor;
+use Zero\Vendor\League\CommonMark\Util\RegexHelper;
 
 /**
  * @internal

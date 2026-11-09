@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\OtherObject;
+namespace Zero\Identity\Vendor\CBOR\OtherObject;
 
-use First\Identity\Vendor\CBOR\CBORObject;
+use Zero\Identity\Vendor\CBOR\CBORObject;
 
 interface OtherObjectInterface extends CBORObject
 {

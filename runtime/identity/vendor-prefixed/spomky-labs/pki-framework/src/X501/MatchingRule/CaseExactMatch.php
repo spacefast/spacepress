@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\StringPreparer;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\StringPreparer;
 
 /**
  * Implements 'caseExactMatch' matching rule.

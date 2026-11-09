@@ -2,11 +2,11 @@
 /**
  * Website field definition for core user fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'url',
-	'label'         => __( 'Website', 'first-admin' ),
+	'label'         => __( 'Website', 'zero-admin' ),
 	'enableSorting' => true,
 );

@@ -12,20 +12,20 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\League\CommonMark\Extension\Footnote\Parser;
+namespace Zero\Vendor\League\CommonMark\Extension\Footnote\Parser;
 
-use First\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
-use First\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
-use First\Vendor\League\CommonMark\Parser\InlineParserContext;
-use First\Vendor\League\CommonMark\Reference\Reference;
-use First\Vendor\League\Config\ConfigurationAwareInterface;
-use First\Vendor\League\Config\ConfigurationInterface;
+use Zero\Vendor\League\CommonMark\Extension\Footnote\Node\FootnoteRef;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserInterface;
+use Zero\Vendor\League\CommonMark\Parser\Inline\InlineParserMatch;
+use Zero\Vendor\League\CommonMark\Parser\InlineParserContext;
+use Zero\Vendor\League\CommonMark\Reference\Reference;
+use Zero\Vendor\League\Config\ConfigurationAwareInterface;
+use Zero\Vendor\League\Config\ConfigurationInterface;
 
 final class FootnoteRefParser implements InlineParserInterface, ConfigurationAwareInterface
 {
     /**
-     * @var \First\Vendor\League\Config\ConfigurationInterface
+     * @var \Zero\Vendor\League\Config\ConfigurationInterface
      */
     private $config;
 

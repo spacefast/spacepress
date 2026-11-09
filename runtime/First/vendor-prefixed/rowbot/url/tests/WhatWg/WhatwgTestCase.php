@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\Rowbot\URL\Tests\WhatWg;
+namespace Zero\Vendor\Rowbot\URL\Tests\WhatWg;
 
 use GuzzleHttp\Client;
 use PHPUnit\Framework\TestCase;

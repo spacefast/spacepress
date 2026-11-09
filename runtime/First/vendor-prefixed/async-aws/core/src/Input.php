@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core;
+namespace Zero\Vendor\AsyncAws\Core;
 
 /**
  * Representation of a AWS Request.

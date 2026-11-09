@@ -7,9 +7,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Nette\Utils;
+namespace Zero\Vendor\Nette\Utils;
 
-use First\Vendor\Nette;
+use Zero\Vendor\Nette;
 
 
 /**
@@ -24,7 +24,7 @@ use First\Vendor\Nette;
  */
 class Finder implements \IteratorAggregate
 {
-	use \First\Vendor\Nette\SmartObject;
+	use \Zero\Vendor\Nette\SmartObject;
 
 	/** @var array<array{string, string}> */
 	private $find = [];
@@ -126,7 +126,7 @@ class Finder implements \IteratorAggregate
 				$mask = rtrim($mask, '/');
 			}
 			if ($mask === '' || ($mode === 'file' && substr_compare($mask, '/', -strlen('/')) === 0)) {
-				throw new \First\Vendor\Nette\InvalidArgumentException("Invalid mask '$mask'");
+				throw new \Zero\Vendor\Nette\InvalidArgumentException("Invalid mask '$mask'");
 			}
 			if (strncmp($mask, '**/', strlen('**/')) === 0) {
 				$mask = substr($mask, 3);
@@ -167,7 +167,7 @@ class Finder implements \IteratorAggregate
 	{
 		foreach ($paths as $path) {
 			if ($path === '') {
-				throw new \First\Vendor\Nette\InvalidArgumentException("Invalid directory '$path'");
+				throw new \Zero\Vendor\Nette\InvalidArgumentException("Invalid directory '$path'");
 			}
 			$path = rtrim(FileSystem::unixSlashes($path), '/');
 			$this->in[] = $path . $ext;
@@ -250,7 +250,7 @@ class Finder implements \IteratorAggregate
 		foreach ($masks as $mask) {
 			$mask = FileSystem::unixSlashes($mask);
 			if (!preg_match('~^/?(\*\*/)?(.+)(/\*\*|/\*|/|)$~D', $mask, $m)) {
-				throw new \First\Vendor\Nette\InvalidArgumentException("Invalid mask '$mask'");
+				throw new \Zero\Vendor\Nette\InvalidArgumentException("Invalid mask '$mask'");
 			}
 			$end = $m[3];
 			$re = $this->buildPattern($m[2]);
@@ -312,7 +312,7 @@ class Finder implements \IteratorAggregate
 	{
 		if (func_num_args() === 1) { // in $operator is predicate
 			if (!preg_match('#^(?:([=<>!]=?|<>)\s*)?((?:\d*\.)?\d+)\s*(K|M|G|)B?$#Di', $operator, $matches)) {
-				throw new \First\Vendor\Nette\InvalidArgumentException('Invalid size predicate format.');
+				throw new \Zero\Vendor\Nette\InvalidArgumentException('Invalid size predicate format.');
 			}
 
 			[, $operator, $size, $unit] = $matches;
@@ -336,7 +336,7 @@ class Finder implements \IteratorAggregate
 	{
 		if (func_num_args() === 1) { // in $operator is predicate
 			if (!preg_match('#^(?:([=<>!]=?|<>)\s*)?(.+)$#Di', $operator, $matches)) {
-				throw new \First\Vendor\Nette\InvalidArgumentException('Invalid date predicate format.');
+				throw new \Zero\Vendor\Nette\InvalidArgumentException('Invalid date predicate format.');
 			}
 
 			[, $operator, $date] = $matches;
@@ -392,7 +392,7 @@ class Finder implements \IteratorAggregate
 		if ($this->maxDepth >= 0 && count($subdirs) > $this->maxDepth) {
 			return;
 		} elseif (!is_dir($dir)) {
-			throw new \First\Vendor\Nette\InvalidStateException(sprintf("Directory '%s' does not exist.", rtrim($dir, '/\\')));
+			throw new \Zero\Vendor\Nette\InvalidStateException(sprintf("Directory '%s' does not exist.", rtrim($dir, '/\\')));
 		}
 
 		try {
@@ -401,7 +401,7 @@ class Finder implements \IteratorAggregate
 			if ($this->ignoreUnreadableDirs) {
 				return;
 			} else {
-				throw new \First\Vendor\Nette\InvalidStateException($e->getMessage());
+				throw new \Zero\Vendor\Nette\InvalidStateException($e->getMessage());
 			}
 		}
 
@@ -481,7 +481,7 @@ class Finder implements \IteratorAggregate
 			$splits = [];
 			if (FileSystem::isAbsolute($mask)) {
 				if ($this->in) {
-					throw new \First\Vendor\Nette\InvalidStateException("You cannot combine the absolute path in the mask '$mask' and the directory to search '{$this->in[0]}'.");
+					throw new \Zero\Vendor\Nette\InvalidStateException("You cannot combine the absolute path in the mask '$mask' and the directory to search '{$this->in[0]}'.");
 				}
 				$splits[] = self::splitRecursivePart($mask);
 			} else {
@@ -498,7 +498,7 @@ class Finder implements \IteratorAggregate
 					: [strtr($base, ['[[]' => '[', '[]]' => ']'])]); // unescape [ and ]
 
 				if (!$dirs) {
-					throw new \First\Vendor\Nette\InvalidStateException(sprintf("Directory '%s' does not exist.", rtrim($base, '/\\')));
+					throw new \Zero\Vendor\Nette\InvalidStateException(sprintf("Directory '%s' does not exist.", rtrim($base, '/\\')));
 				}
 
 				$search = (object) ['pattern' => $this->buildPattern($rest), 'mode' => $mode, 'recursive' => $recursive];

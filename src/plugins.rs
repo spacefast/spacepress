@@ -1,6 +1,6 @@
 //! Plugin packages: who a plugin is, what its compiled code uses, and the committed lock that grants
 //! it. The compiler is the boundary: every capability-bearing call in a plugin's compiled code is
-//! recorded here as a [`Use`], and `first/plugins.lock.json` decides which of them are granted.
+//! recorded here as a [`Use`], and `first/_generated/plugins.lock.json` decides which of them are granted.
 //! See docs/decisions/2026-11-07-plugin-capabilities.md.
 
 use crate::diag::{Code, Diag, Result, Span};
@@ -34,7 +34,7 @@ pub const KINDS: &[(&str, &str)] = &[
     ("php", "calls the PHP function"),
 ];
 
-pub const LOCK_PATH: &str = "first/plugins.lock.json";
+pub const LOCK_PATH: &str = "first/_generated/plugins.lock.json";
 
 /// One registered plugin package.
 #[derive(Debug, Clone)]

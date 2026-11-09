@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\UniformResourceIdentifier;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\UniformResourceIdentifier;
 
 /**
  * Implements 'fullName' ASN.1 CHOICE type of *DistributionPointName* used by 'CRL Distribution Points' certificate

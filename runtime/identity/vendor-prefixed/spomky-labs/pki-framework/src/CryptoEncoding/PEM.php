@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding;
+namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding;
 
 use function is_string;
 use function mb_strlen;

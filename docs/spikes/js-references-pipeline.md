@@ -61,9 +61,12 @@ export CARGO_TARGET_DIR="$PWD/target"
 cargo build --locked
 mkdir -p .first/refs-pipeline
 cp docs/spikes/js-references-pipeline.config.ts .first/refs-pipeline/first.config.ts
-target/debug/first build .first/refs-pipeline --quiet
-php docs/spikes/js-references-pipeline.php "$PWD/.first/refs-pipeline/.first/wp-content"
+target/debug/first build .first/refs-pipeline --out .first/refs-pipeline/wp-content --quiet
+php docs/spikes/js-references-pipeline.php "$PWD/.first/refs-pipeline/wp-content"
 ```
+
+`--out` names the artifact explicitly: compilers before `first/dist/` wrote it
+to `.first/wp-content`, so this one path works in both worktrees.
 
 The fixture and PHP runner are introduced by the switch: copy both unchanged
 into the baseline worktree before building. Alternate the last command across

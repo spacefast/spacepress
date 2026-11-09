@@ -23,7 +23,7 @@ require __DIR__ . "/../src/Diff.php";
 require __DIR__ . "/../src/DiffToolkit.php";
 require __DIR__ . "/../src/Utils.php";
 
-use First\Vendor\DiffMatchPatch\Diff;
+use Zero\Vendor\DiffMatchPatch\Diff;
 
 $size = 'M';
 $text1 = file_get_contents(__DIR__ . "/fixtures/{$size}_performance1.txt");

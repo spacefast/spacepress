@@ -1,9 +1,9 @@
 <?php
 
-namespace First\Vendor\AsyncAws\Core;
+namespace Zero\Vendor\AsyncAws\Core;
 
-use First\Vendor\AsyncAws\Core\Exception\Http\HttpException;
-use First\Vendor\AsyncAws\Core\Exception\InvalidArgument;
+use Zero\Vendor\AsyncAws\Core\Exception\Http\HttpException;
+use Zero\Vendor\AsyncAws\Core\Exception\InvalidArgument;
 
 /**
  * Contains contextual information alongside a request.

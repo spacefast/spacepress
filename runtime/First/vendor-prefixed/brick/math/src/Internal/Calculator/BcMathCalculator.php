@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Brick\Math\Internal\Calculator;
+namespace Zero\Vendor\Brick\Math\Internal\Calculator;
 
-use First\Vendor\Brick\Math\Internal\Calculator;
+use Zero\Vendor\Brick\Math\Internal\Calculator;
 use Override;
 
 use function bcadd;

@@ -208,7 +208,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_API",
         feature: "0.8 client API without a v2 bridge",
-        v2: "the generated v2 client in first/client/",
+        v2: "the generated v2 client in first/_generated/client/",
         fix: "Port the call to the generated v2 client; the bridge covers the 0.8 hooks, useAuth, signOut and the router.",
         test: |_, r| r.starts_with(client::TAG_API),
         example: ("/client/index.tsx", "0.8 client API without a v2 bridge: x"),

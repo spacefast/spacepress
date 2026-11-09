@@ -1,6 +1,6 @@
 # The examples
 
-The pantry, blog and site examples commit `first/client/` and `first/_generated/migrations/`
+The pantry, blog and site examples commit `first/_generated/client/` and `first/_generated/migrations/`
 as produced by `first build`, so a fresh build changes nothing. The showcase
 builds its disposable app under `.first/showcase/`, leaving its sources unchanged.
 

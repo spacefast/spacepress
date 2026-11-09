@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\ListObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\NegativeIntegerObject;
-use First\Identity\Vendor\CBOR\TextStringObject;
-use First\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use Zero\Identity\Vendor\CBOR\ByteStringObject;
+use Zero\Identity\Vendor\CBOR\Decoder;
+use Zero\Identity\Vendor\CBOR\ListObject;
+use Zero\Identity\Vendor\CBOR\MapObject;
+use Zero\Identity\Vendor\CBOR\NegativeIntegerObject;
+use Zero\Identity\Vendor\CBOR\TextStringObject;
+use Zero\Identity\Vendor\CBOR\UnsignedIntegerObject;
 use function chr;
 use function is_string;
 use function ord;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use First\Identity\Vendor\Webauthn\AttestedCredentialData;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensionLoader;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use First\Identity\Vendor\Webauthn\StringStream;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Zero\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use Zero\Identity\Vendor\Webauthn\AttestedCredentialData;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensionLoader;
+use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use Zero\Identity\Vendor\Webauthn\AuthenticatorData;
+use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use Zero\Identity\Vendor\Webauthn\StringStream;
 
 final class AuthenticatorDataDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface
 {

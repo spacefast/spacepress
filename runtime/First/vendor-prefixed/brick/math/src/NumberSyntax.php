@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Vendor\Brick\Math;
+namespace Zero\Vendor\Brick\Math;
 
 /**
  * A syntax feature that {@see BigNumber::parse()} can accept.

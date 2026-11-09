@@ -2,12 +2,12 @@
 /**
  * Version field definition for core theme fields collection
  *
- * @package First_Admin
+ * @package Zero_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Version', 'first-admin' ),
+	'label'         => __( 'Version', 'zero-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

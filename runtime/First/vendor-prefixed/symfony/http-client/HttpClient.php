@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\Symfony\Component\HttpClient;
+namespace Zero\Vendor\Symfony\Component\HttpClient;
 
 use Amp\Http\Client\Request as AmpRequest;
 use Amp\Http\HttpMessage;
-use First\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
+use Zero\Vendor\Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * A factory to instantiate the best possible HTTP client for the runtime.

@@ -11,9 +11,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace First\Vendor\League\CommonMark\Input;
+namespace Zero\Vendor\League\CommonMark\Input;
 
-use First\Vendor\League\CommonMark\Exception\UnexpectedEncodingException;
+use Zero\Vendor\League\CommonMark\Exception\UnexpectedEncodingException;
 
 class MarkdownInput implements MarkdownInputInterface
 {

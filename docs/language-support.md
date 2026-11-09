@@ -772,7 +772,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-A `const` or `let` whose whole initializer is an arrow or function expression (optionally under `as`, `satisfies` or `!`) can be named inside that function, so `const fact = (n) => (n <= 1 ? 1 : n * fact(n - 1))` recurses as in JavaScript. Nothing inside the function can run before the binding holds it, so no runtime check is needed. A parameter or inner binding of the same name shadows it. In typed TypeScript the self-reference is typed by the function's own parameter and return annotations, or by a function-type annotation on the declaration; without them it is refused. Direct reads during initialization and closures created any other way in the initializer stay refused. Mutual recursion between `const` bindings is a forward reference and is refused; use function declarations. See docs/decisions/2026-11-09-self-referencing-bindings.md.
+A `const` or `let` whose whole initializer is an arrow or function expression (optionally under `as`, `satisfies` or `!`) can be named inside that function, so `const fact = (n) => (n <= 1 ? 1 : n * fact(n - 1))` recurses as in JavaScript. Nothing inside the function can run before the binding holds it, so no runtime check is needed. A parameter or inner binding of the same name shadows it. In typed TypeScript the self-reference is typed by the function's own parameter and return annotations, or by a function-type annotation on the declaration; without them it is refused. A `let` can be reassigned before its closure runs, so its self-reference reads as the declared type (dynamic in imported JavaScript): calling it after it was set to a non-function throws a TypeError, as in JavaScript. Direct reads during initialization and closures created any other way in the initializer stay refused. Mutual recursion between `const` bindings is a forward reference and is refused; use function declarations. See docs/decisions/2026-11-09-self-referencing-bindings.md.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
@@ -791,6 +791,14 @@ Status: **refused**. Diagnostic: `Z4001`.
 A closure that captures its own binding but is created inside a larger initializer, such as an immediately called function, could run before the binding is assigned, where JavaScript throws a ReferenceError. Only a closure that is the whole initializer may capture its binding; restructure so the function is assigned directly.
 
 [Evidence](../tests/fixtures/reject-self-reference-called-in-initializer)
+
+## self-reference-nullable-let
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+A `let` can be reassigned before its closure calls it, so the self-call is checked against the declared type, as TypeScript does. Check the binding first (`if (f) f(n - 1)`), declare it as a function type, or use `const`.
+
+[Evidence](../tests/fixtures/reject-self-reference-nullable-let)
 
 ## self-reference-untyped
 

@@ -2,7 +2,7 @@
 // contain. Every action runs under Node and as compiled PHP; the JSON results must be
 // byte-identical.
 import { action, defineConfig } from "zero";
-import { fastpath, hoistedVar, named, recursiveLocal, selfBound, selfBoundSuspending } from "./function-expressions-helpers.mjs";
+import { fastpath, hoistedVar, named, recursiveLocal, selfBound, selfBoundReassigned, selfBoundSuspending } from "./function-expressions-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -40,6 +40,7 @@ export default defineConfig({
     functionTyped: run(() => typedRecursion()),
     functionHoistedVar: run(() => hoistedVar()),
     functionSelfBound: run(() => selfBound()),
+    functionSelfBoundReassigned: run(() => selfBoundReassigned()),
     functionSelfBoundTyped: run(() => typedSelfBound()),
     functionSelfBoundSuspending: action({ input: {}, handler: async () => await selfBoundSuspending() }),
     functionFastpath: run(() => fastpath("*.ts")),

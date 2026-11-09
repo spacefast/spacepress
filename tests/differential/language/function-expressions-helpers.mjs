@@ -45,6 +45,25 @@ export function selfBound() {
   ];
 }
 
+// A `let` that names itself and is then reassigned to something that isn't a function: the old
+// closure's self-call reads the binding as it is now, so it must throw a catchable TypeError, never
+// call a PHP function named by a string or fail as a PHP error.
+export function selfBoundReassigned() {
+  const outcome = (run) => { try { return run(); } catch (error) { return [error.name, error instanceof TypeError]; } };
+  let byName = s => (s.length > 3 ? byName(s.slice(1)) : s);
+  const keepName = byName;
+  byName = "strtoupper";
+  let toNull = n => (n <= 0 ? "done" : toNull(n - 1));
+  const keepNull = toNull;
+  toNull = null;
+  let toNumber = n => (n <= 0 ? "done" : toNumber(n - 1));
+  const keepNumber = toNumber;
+  toNumber = 5;
+  let selfAssigns = () => { selfAssigns = 3; return 1; };
+  const first = selfAssigns();
+  return [outcome(() => keepName("hello")), outcome(() => keepNull(2)), outcome(() => keepNumber(2)), keepName("abc"), keepNull(0), [first, selfAssigns]];
+}
+
 // Async and generator function expressions naming their own binding.
 export async function selfBoundSuspending() {
   const depth = async n => (n <= 0 ? 0 : 1 + (await depth(n - 1)));

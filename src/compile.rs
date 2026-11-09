@@ -1670,8 +1670,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => None,
                 };
                 if let (Pat::Id(name, binding), Some(f)) = (pat, init.as_ref().and_then(function_initializer)) {
+                    // A self-reference reads the binding as it is when the closure runs. A `const`, or a
+                    // typed `let` whose later assignments are held to the function's own type, still
+                    // holds this function then. Any other `let` may hold something else: it reads as
+                    // its declared type, or as a dynamic value in imported JavaScript.
+                    let reassignable = *kind == DeclKind::Let;
                     let ty = match &declared {
                         Some(d @ Ty::Fn(..)) => d.clone(),
+                        Some(d) if reassignable => d.clone(),
+                        None if reassignable && javascript => Ty::Dynamic,
                         _ => self.declared_signature(f)?.unwrap_or(Ty::Unknown),
                     };
                     if let Some(local) = self.fx().scopes.last_mut().expect("scope").get_mut(name)

@@ -82,8 +82,14 @@ diagnostic:
     return annotations (`declared_signature`), or from the declaration's
     annotation when that is a function type. Without either, the reference is
     refused: "`fact` refers to itself before its type is known", fix "annotate
-    its parameters and return type, e.g. `const fact = (n: number): number =>
-    …`". Non-recursive unannotated arrows are unaffected.
+    every parameter and the return type, e.g. `const fact = (n: number):
+    number => ...`". Non-recursive unannotated arrows are unaffected.
+  - A `let` may be reassigned before its closure runs, so the self-reference
+    reads as the binding's declared type when it has one, and as dynamic in
+    imported JavaScript. A call through it then goes through the checked
+    dynamic call and throws a TypeError for a non-function, as JavaScript does.
+    A `const`, or an unannotated typed `let` (whose later assignments must
+    match the function's type), keeps the function's own signature.
 - **Shadowing.** Parameters and inner bindings are found first by the normal
   scope walk, so a parameter named `fact` shadows the outer `fact`.
 

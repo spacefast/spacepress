@@ -3,7 +3,7 @@
 //! back to arguments without treating scalar parameter assignment as a write.
 
 use super::*;
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Step {
@@ -78,19 +78,19 @@ fn callable_at(value: &Place, callee: &Place) -> bool {
 
 #[derive(Default)]
 pub(super) struct Effects {
-    reassigned: HashSet<Span>,
-    captured: HashSet<Span>,
-    captured_data: HashMap<(u8, usize), Place>,
-    numeric: HashMap<Span, HashSet<Vec<Step>>>,
-    incoming: HashMap<Span, HashSet<Vec<Step>>>,
-    incoming_writes: HashMap<Span, HashSet<Vec<Step>>>,
-    capture_writes: HashMap<Span, Places>,
-    events: HashMap<Span, Places>,
-    write_events: HashMap<Span, Places>,
-    expression_writes: HashMap<Span, Places>,
-    loop_writes: HashMap<Span, Places>,
+    reassigned: IndexSet<Span>,
+    captured: IndexSet<Span>,
+    captured_data: IndexMap<(u8, usize), Place>,
+    numeric: IndexMap<Span, IndexSet<Vec<Step>>>,
+    incoming: IndexMap<Span, IndexSet<Vec<Step>>>,
+    incoming_writes: IndexMap<Span, IndexSet<Vec<Step>>>,
+    capture_writes: IndexMap<Span, Places>,
+    events: IndexMap<Span, Places>,
+    write_events: IndexMap<Span, Places>,
+    expression_writes: IndexMap<Span, Places>,
+    loop_writes: IndexMap<Span, Places>,
     /// Every reachable write, by the binding it starts from.
-    binding_writes: HashMap<Span, HashSet<Vec<Step>>>,
+    binding_writes: IndexMap<Span, IndexSet<Vec<Step>>>,
 }
 
 impl Effects {
@@ -169,9 +169,19 @@ impl Effects {
         }
         #[cfg(debug_assertions)]
         PROJECTIONS.with(|count| count.set(0));
-        let effects = graph.solve();
+        // A solve that finds a JavaScript-owned binding past the widening threshold stops; the next
+        // solve starts again from the initial graph with that binding widened. See `WIDEN_ABOVE`.
+        let mut widened = IndexSet::new();
+        let effects = loop {
+            let mut attempt = graph.clone();
+            attempt.widened = widened.clone();
+            match attempt.solve() {
+                Ok(effects) => break effects,
+                Err(more) => widened.extend(more),
+            }
+        };
         #[cfg(debug_assertions)]
-        debug_dump(&effects, PROJECTIONS.with(std::cell::Cell::get));
+        debug_dump(&effects, PROJECTIONS.with(std::cell::Cell::get), &widened);
         effects
     }
 
@@ -470,6 +480,27 @@ fn bounded(mut p: Place, max_depth: usize) -> Place {
     p
 }
 
+/// A group is the places of one set with two or more steps below one binding. When a group of a
+/// JavaScript-owned binding grows past this, the binding is widened: its places keep their first
+/// step and end in `DynamicDescendants`, which covers every place they replace. The largest such
+/// group in the repository's programs is 42 (`tests/differential/cases.ts`); picomatch's parser
+/// reaches thousands. See docs/decisions/2026-11-08-effects-widening.md.
+const WIDEN_ABOVE: usize = 64;
+
+/// Coarsens a place of a widened binding to its first step and everything below it.
+fn coarsened(mut p: Place, widened: &IndexSet<Span>) -> Place {
+    if p.path.len() > 1 && widened.contains(&p.binding) {
+        p.path.truncate(1);
+        p.path.push(Step::DynamicDescendants);
+    }
+    p
+}
+
+/// A place a solver rule derives into an effect set: cut at the depth bound, then coarsened.
+fn derived(p: Place, max_depth: usize, widened: &IndexSet<Span>) -> Place {
+    coarsened(bounded(p, max_depth), widened)
+}
+
 /// The elements of an insertion-ordered set from position `from` up to `to`.
 fn unread<T>(set: &IndexSet<T>, from: usize, to: usize) -> impl Iterator<Item = &T> {
     set.get_range(from..to).into_iter().flat_map(|slice| slice.iter())
@@ -479,33 +510,33 @@ fn unread<T>(set: &IndexSet<T>, from: usize, to: usize) -> impl Iterator<Item = 
 #[derive(Default)]
 struct Solved {
     /// Call edges whose argument, `arguments` and result copies exist.
-    linked: HashSet<(usize, Span)>,
+    linked: IndexSet<(usize, Span)>,
     viewed_incoming: usize,
     viewed_incoming_writes: usize,
-    numeric_from: HashMap<Span, usize>,
-    writes_from: HashMap<Span, usize>,
+    numeric_from: IndexMap<Span, usize>,
+    writes_from: IndexMap<Span, usize>,
     numeric_incoming: usize,
     /// Escaped places already turned into `Descendants` writes at unknown calls.
     invalidated: usize,
     /// Write events that already received their owner's external `Descendants` places.
-    external_added: HashSet<Span>,
+    external_added: IndexSet<Span>,
     /// Places and escapes a write event was checked against without changing an external value.
-    external_checked: HashMap<Span, (usize, usize)>,
+    external_checked: IndexMap<Span, (usize, usize)>,
     /// Reachable copies already in `aliases`, by position in `copies`.
-    aliased: HashSet<usize>,
-    aliases: HashMap<Span, Vec<(Place, Place)>>,
+    aliased: IndexSet<usize>,
+    aliases: IndexMap<Span, Vec<(Place, Place)>>,
     /// Places of each set already closed under aliases: numeric, writes, events, write events.
-    expanded: [HashMap<Span, usize>; 4],
-    edges: HashMap<(usize, Span), EdgeRead>,
+    expanded: [IndexMap<Span, usize>; 4],
+    edges: IndexMap<(usize, Span), EdgeRead>,
     /// `events` and `write_events`, each event's places by binding.
-    event_bindings: [HashMap<Span, ByBinding>; 2],
+    event_bindings: [IndexMap<Span, ByBinding>; 2],
 }
 
 /// Positions in an insertion-ordered places set, by binding.
 #[derive(Default)]
 struct ByBinding {
     indexed: usize,
-    positions: HashMap<Span, Vec<usize>>,
+    positions: IndexMap<Span, Vec<usize>>,
 }
 
 impl ByBinding {
@@ -535,21 +566,22 @@ struct EdgeRead {
     incoming_writes: usize,
     numeric: usize,
     writes: usize,
-    events: HashMap<Span, usize>,
-    write_events: HashMap<Span, usize>,
+    events: IndexMap<Span, usize>,
+    write_events: IndexMap<Span, usize>,
     function_numeric: usize,
     function_writes: usize,
 }
 
+#[derive(Clone)]
 struct Call {
     receiver: Option<Place>,
     callee: Place,
     args: Vec<Option<Place>>,
-    spreads: HashSet<usize>,
+    spreads: IndexSet<usize>,
     result: Place,
     owner: Span,
     span: Span,
-    prior: HashSet<Span>,
+    prior: IndexSet<Span>,
 }
 
 impl Call {
@@ -567,52 +599,54 @@ impl Call {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Graph {
-    javascript_modules: HashSet<usize>,
-    javascript_functions: HashSet<Span>,
-    scalar_functions: HashSet<Span>,
-    classes: HashSet<usize>,
-    methods: HashSet<Span>,
-    captured: HashSet<Span>,
-    roots: HashSet<Span>,
-    reachable: HashSet<Span>,
+    javascript_modules: IndexSet<usize>,
+    javascript_functions: IndexSet<Span>,
+    scalar_functions: IndexSet<Span>,
+    classes: IndexSet<usize>,
+    methods: IndexSet<Span>,
+    captured: IndexSet<Span>,
+    roots: IndexSet<Span>,
+    reachable: IndexSet<Span>,
     incoming: Places,
     incoming_writes: Places,
-    history: HashMap<Span, HashSet<Span>>,
-    created_prior: HashMap<Span, HashSet<Span>>,
-    created_by: HashMap<Span, Span>,
-    expression_events: HashMap<Span, HashSet<Span>>,
-    loop_events: HashMap<Span, HashSet<Span>>,
-    functions: HashMap<Span, Vec<Place>>,
-    argument_values: HashMap<Span, Place>,
-    argument_reads: HashSet<Span>,
-    rest_parameters: HashMap<Span, usize>,
+    history: IndexMap<Span, IndexSet<Span>>,
+    created_prior: IndexMap<Span, IndexSet<Span>>,
+    created_by: IndexMap<Span, Span>,
+    expression_events: IndexMap<Span, IndexSet<Span>>,
+    loop_events: IndexMap<Span, IndexSet<Span>>,
+    functions: IndexMap<Span, Vec<Place>>,
+    argument_values: IndexMap<Span, Place>,
+    argument_reads: IndexSet<Span>,
+    rest_parameters: IndexMap<Span, usize>,
     values: IndexSet<(Place, Span)>,
     slice_methods: Places,
     borrowed_slices: Vec<(Place, Place, Place, Span)>,
     copies: IndexSet<(Place, Place, Span)>,
-    captured_data: HashMap<(u8, usize), Place>,
-    external: HashSet<Span>,
+    captured_data: IndexMap<(u8, usize), Place>,
+    external: IndexSet<Span>,
     escaped: Places,
-    call_events: HashMap<Span, Span>,
-    event_owners: HashMap<Span, Span>,
+    call_events: IndexMap<Span, Span>,
+    event_owners: IndexMap<Span, Span>,
     calls: Vec<Call>,
     numeric: Places,
     writes: Places,
     max_depth: usize,
-    bindings: HashMap<Span, Span>,
-    parameter_views: HashMap<Span, Place>,
-    function_numeric: HashMap<Span, Places>,
-    function_writes: HashMap<Span, Places>,
-    events: HashMap<Span, Places>,
-    write_events: HashMap<Span, Places>,
+    bindings: IndexMap<Span, Span>,
+    parameter_views: IndexMap<Span, Place>,
+    function_numeric: IndexMap<Span, Places>,
+    function_writes: IndexMap<Span, Places>,
+    events: IndexMap<Span, Places>,
+    write_events: IndexMap<Span, Places>,
+    /// JavaScript-owned bindings whose effect places are coarsened; fixed for one solve.
+    widened: IndexSet<Span>,
 }
 
-type Names = Vec<HashMap<String, Place>>;
+type Names = Vec<IndexMap<String, Place>>;
 
 impl Graph {
-    fn function(&mut self, f: &Rc<Func>, outer: &[HashMap<String, Place>], env: &Rc<Scope>) -> Place {
+    fn function(&mut self, f: &Rc<Func>, outer: &[IndexMap<String, Place>], env: &Rc<Scope>) -> Place {
         let owner = f.span;
         if self.javascript_modules.contains(&f.module) {
             self.javascript_functions.insert(owner);
@@ -630,7 +664,7 @@ impl Graph {
             self.rest_parameters.insert(f.span, index);
         }
         let mut names = outer.to_vec();
-        names.push(HashMap::new());
+        names.push(IndexMap::new());
         if let Some(name) = &f.name {
             names.last_mut().unwrap().insert(name.clone(), value.clone());
         }
@@ -1186,7 +1220,7 @@ impl Graph {
                         ArrEl::Spread(expr) => self.expr(expr, names, env, owner).map(|value| value.at(Step::Index)),
                     })
                     .collect();
-                let spreads: HashSet<_> = args
+                let spreads: IndexSet<_> = args
                     .iter()
                     .enumerate()
                     .filter_map(|(index, arg)| matches!(arg, ArrEl::Spread(_)).then_some(index))
@@ -1240,7 +1274,7 @@ impl Graph {
                                     .at(Step::Field(":fields".into()))
                                     .at(Step::Field(field.name.clone())),
                                 args: vec![],
-                                spreads: HashSet::new(),
+                                spreads: IndexSet::new(),
                                 result: value.at(Step::Field(field.name.clone())),
                                 owner,
                                 span: e.span,
@@ -1380,7 +1414,7 @@ impl Graph {
                                 receiver: None,
                                 callee: callback.clone(),
                                 args: vec![Some(result.clone()), element.clone(), None, recv.clone()],
-                                spreads: HashSet::new(),
+                                spreads: IndexSet::new(),
                                 result: result.clone(),
                                 owner,
                                 span: e.span,
@@ -1398,7 +1432,7 @@ impl Graph {
                             receiver: None,
                             callee: callback.clone(),
                             args,
-                            spreads: HashSet::new(),
+                            spreads: IndexSet::new(),
                             result: result.clone(),
                             owner,
                             span: e.span,
@@ -1580,7 +1614,7 @@ impl Graph {
     }
 
     fn block(&mut self, body: &[Stmt], names: &mut Names, env: &Rc<Scope>, owner: Span) {
-        names.push(HashMap::new());
+        names.push(IndexMap::new());
         for s in body {
             match s {
                 Stmt::Decl { kind, pat, .. } if *kind != DeclKind::Var => self.bind(pat, names, owner),
@@ -1668,7 +1702,7 @@ impl Graph {
                 body,
                 span,
             } => {
-                names.push(HashMap::new());
+                names.push(IndexMap::new());
                 if let Some(init) = init {
                     if let Stmt::Decl { kind, pat, .. } = init.as_ref()
                         && *kind != DeclKind::Var
@@ -1697,7 +1731,7 @@ impl Graph {
                 let src = self.expr(iter, names, env, owner).map(|p| p.at(Step::Index));
                 let first_call = self.calls.len();
                 let before = self.history.get(&owner).cloned().unwrap_or_default();
-                names.push(HashMap::new());
+                names.push(IndexMap::new());
                 if *kind != DeclKind::Var {
                     self.bind(pat, names, owner);
                 }
@@ -1724,7 +1758,7 @@ impl Graph {
                 self.expr(iter, names, env, owner);
                 let first_call = self.calls.len();
                 let before = self.history.get(&owner).cloned().unwrap_or_default();
-                names.push(HashMap::new());
+                names.push(IndexMap::new());
                 if matches!(kind, Some(DeclKind::Let | DeclKind::Const))
                     && let ExprKind::Ident(name) = &target.kind
                 {
@@ -1750,7 +1784,7 @@ impl Graph {
             } => {
                 self.block(block, names, env, owner);
                 if let Some(body) = handler {
-                    names.push(HashMap::new());
+                    names.push(IndexMap::new());
                     if let Some((name, span)) = param {
                         names.last_mut().unwrap().insert(name.clone(), Place::new(*span));
                     }
@@ -1779,10 +1813,6 @@ impl Graph {
             | Stmt::ExportNames { .. }
             | Stmt::ExportAll { .. } => {}
         }
-    }
-
-    fn bounded(&self, p: Place) -> Place {
-        bounded(p, self.max_depth)
     }
 
     fn call_bindings(&self, call: &Call, function: Span) -> Vec<(Option<Place>, Place)> {
@@ -1834,7 +1864,7 @@ impl Graph {
                     }
                     let mut target = argument.as_ref()?.clone();
                     target.path.extend_from_slice(suffix);
-                    Some(self.bounded(target))
+                    Some(derived(target, self.max_depth, &self.widened))
                 })
                 .collect()
         } else if self.bindings.get(&effect.binding) != Some(&function) {
@@ -1844,8 +1874,8 @@ impl Graph {
         }
     }
 
-    fn loop_history(&mut self, owner: Span, first_call: usize, before: &HashSet<Span>, key: Span) {
-        let events: HashSet<_> = self
+    fn loop_history(&mut self, owner: Span, first_call: usize, before: &IndexSet<Span>, key: Span) {
+        let events: IndexSet<_> = self
             .history
             .get(&owner)
             .into_iter()
@@ -1862,8 +1892,9 @@ impl Graph {
     fn expand_aliases(
         paths: &mut Places,
         mut pending: Vec<Place>,
-        aliases: &HashMap<Span, Vec<(Place, Place)>>,
+        aliases: &IndexMap<Span, Vec<(Place, Place)>>,
         max_depth: usize,
+        widened: &IndexSet<Span>,
     ) {
         while let Some(place) = pending.pop() {
             for (source, target) in aliases.get(&place.binding).into_iter().flatten() {
@@ -1876,7 +1907,7 @@ impl Graph {
                 }
                 let mut alias = target.clone();
                 alias.path.extend_from_slice(suffix);
-                let alias = bounded(alias, max_depth);
+                let alias = derived(alias, max_depth, widened);
                 if paths.insert(alias.clone()) {
                     pending.push(alias);
                 }
@@ -1886,12 +1917,12 @@ impl Graph {
 
     /// Every (call, callee) pair: a call in reachable code and a function value at its callee.
     fn call_edges(&self) -> Vec<(usize, Span)> {
-        let mut values: HashMap<Span, Vec<&(Place, Span)>> = HashMap::new();
+        let mut values: IndexMap<Span, Vec<&(Place, Span)>> = IndexMap::new();
         for value in &self.values {
             values.entry(value.0.binding).or_default().push(value);
         }
         let mut edges = Vec::new();
-        let mut linked = HashSet::new();
+        let mut linked = IndexSet::new();
         for (index, call) in self.calls.iter().enumerate() {
             if !self.reachable.contains(&call.owner) {
                 continue;
@@ -1909,6 +1940,7 @@ impl Graph {
     /// each edge hasn't read yet. Every output is a function of the edge and one input place.
     fn call_summaries(&mut self, solved: &mut Solved) {
         let max_depth = self.max_depth;
+        let widened = &self.widened;
         for edge in self.call_edges() {
             let (index, function) = edge;
             let call = &self.calls[index];
@@ -1932,7 +1964,7 @@ impl Graph {
                         {
                             let mut target = (*param).clone();
                             target.path.extend_from_slice(path);
-                            out.push(bounded(target, max_depth));
+                            out.push(derived(target, max_depth, widened));
                         }
                     }
                 }
@@ -1966,7 +1998,7 @@ impl Graph {
                         let mut inputs = arguments
                             .iter()
                             .map(|(arg, _, _)| arg.binding)
-                            .collect::<HashSet<_>>()
+                            .collect::<IndexSet<_>>()
                             .into_iter()
                             .flat_map(|binding| index.unread(binding, *cursor))
                             .map(|position| &set[position]);
@@ -2005,7 +2037,7 @@ impl Graph {
     }
 
     fn sizes(&self) -> [usize; 13] {
-        let total = |sets: &HashMap<Span, Places>| sets.values().map(IndexSet::len).sum::<usize>();
+        let total = |sets: &IndexMap<Span, Places>| sets.values().map(IndexSet::len).sum::<usize>();
         [
             self.reachable.len(),
             self.incoming.len(),
@@ -2028,7 +2060,43 @@ impl Graph {
     /// rule applications. That lets each pass skip work an earlier pass already did: places
     /// sets are insertion-ordered, and `Solved` records how much of each set a rule has read.
     /// See docs/decisions/2026-11-08-effects-solver-scale.md.
-    fn solve(mut self) -> Effects {
+    /// JavaScript-owned bindings, not yet widened, whose group in some effect set is larger
+    /// than `WIDEN_ABOVE`.
+    fn widening_candidates(&self) -> IndexSet<Span> {
+        let javascript = |binding: &Span| {
+            self.javascript_functions.contains(binding)
+                || self
+                    .bindings
+                    .get(binding)
+                    .is_some_and(|owner| self.javascript_functions.contains(owner))
+        };
+        let sets = self
+            .events
+            .values()
+            .chain(self.write_events.values())
+            .chain(self.function_numeric.values())
+            .chain(self.function_writes.values())
+            .chain([&self.numeric, &self.writes, &self.incoming, &self.incoming_writes]);
+        let mut over = IndexSet::new();
+        for set in sets {
+            let mut groups: IndexMap<Span, usize> = IndexMap::new();
+            for p in set {
+                if p.path.len() > 1 && !self.widened.contains(&p.binding) {
+                    *groups.entry(p.binding).or_default() += 1;
+                }
+            }
+            over.extend(
+                groups
+                    .into_iter()
+                    .filter(|(binding, size)| *size > WIDEN_ABOVE && javascript(binding))
+                    .map(|(binding, _)| binding),
+            );
+        }
+        over
+    }
+
+    /// Solves with `self.widened` fixed, or returns the bindings that must be widened as well.
+    fn solve(mut self) -> std::result::Result<Effects, IndexSet<Span>> {
         self.max_depth = self
             .copies
             .iter()
@@ -2039,10 +2107,25 @@ impl Graph {
             .unwrap_or(0)
             + 1;
         let max_depth = self.max_depth;
+        if !self.widened.is_empty() {
+            let widened = &self.widened;
+            let coarsen = |set: &mut Places| *set = set.drain(..).map(|p| coarsened(p, widened)).collect();
+            for sets in [
+                &mut self.events,
+                &mut self.write_events,
+                &mut self.function_numeric,
+                &mut self.function_writes,
+            ] {
+                sets.values_mut().for_each(coarsen);
+            }
+            for set in [&mut self.incoming, &mut self.incoming_writes, &mut self.writes] {
+                coarsen(set);
+            }
+        }
         // `numeric` is the reachable functions' numeric places plus the incoming views, rebuilt
         // below. Construction also put every place it holds in its function's `function_numeric`.
         self.numeric.clear();
-        let mut views: HashMap<Span, Vec<(Span, Place)>> = HashMap::new();
+        let mut views: IndexMap<Span, Vec<(Span, Place)>> = IndexMap::new();
         for (binding, view) in &self.parameter_views {
             views.entry(view.binding).or_default().push((*binding, view.clone()));
         }
@@ -2074,7 +2157,7 @@ impl Graph {
             }
             self.copies.extend(linked);
             // Function values and slice methods flow along every reachable copy.
-            let mut sources: HashMap<Span, Vec<(&Place, &Place)>> = HashMap::new();
+            let mut sources: IndexMap<Span, Vec<(&Place, &Place)>> = IndexMap::new();
             for (src, dest, owner) in &self.copies {
                 if self.reachable.contains(owner) {
                     sources.entry(src.binding).or_default().push((src, dest));
@@ -2120,10 +2203,13 @@ impl Graph {
                     *read += 1;
                     for (binding, view) in views.get(&p.binding).into_iter().flatten() {
                         if let Some(path) = projected_suffix(&p.path, &view.path) {
-                            incoming.insert(Place {
-                                binding: *binding,
-                                path: path.to_vec(),
-                            });
+                            incoming.insert(coarsened(
+                                Place {
+                                    binding: *binding,
+                                    path: path.to_vec(),
+                                },
+                                &self.widened,
+                            ));
                         }
                     }
                 }
@@ -2165,11 +2251,11 @@ impl Graph {
                             .get(&p.binding)
                             .is_none_or(|binding_owner| binding_owner == owner)
                     })
-                    .map(|p| p.at(Step::Descendants));
+                    .map(|p| coarsened(p.at(Step::Descendants), &self.widened));
                 self.write_events.entry(*event).or_default().extend(invalidated);
             }
             solved.invalidated = end;
-            let mut by_binding: HashMap<Span, Vec<(usize, &Place)>> = HashMap::new();
+            let mut by_binding: IndexMap<Span, Vec<(usize, &Place)>> = IndexMap::new();
             for (index, e) in self.escaped.iter().enumerate() {
                 by_binding.entry(e.binding).or_default().push((index, e));
             }
@@ -2194,7 +2280,7 @@ impl Graph {
                     let external = self
                         .external
                         .iter()
-                        .filter(|binding| owner.is_some() && self.bindings.get(binding) == owner)
+                        .filter(|binding| owner.is_some() && self.bindings.get(*binding) == owner)
                         .map(|binding| Place::new(*binding).at(Step::Descendants));
                     paths.extend(external);
                     solved.external_added.insert(*event);
@@ -2202,7 +2288,7 @@ impl Graph {
                     solved.external_checked.insert(*event, (paths.len(), end));
                 }
             }
-            let mut aliased = HashSet::new();
+            let mut aliased = IndexSet::new();
             for (index, (a, b, owner)) in self.copies.iter().enumerate() {
                 if self.reachable.contains(owner) && solved.aliased.insert(index) {
                     solved
@@ -2234,20 +2320,24 @@ impl Graph {
                         .chain(unread(paths, 0, seen).filter(|p| aliased.contains(&p.binding)))
                         .cloned()
                         .collect();
-                    Self::expand_aliases(paths, pending, &solved.aliases, max_depth);
+                    Self::expand_aliases(paths, pending, &solved.aliases, max_depth, &self.widened);
                     expanded.insert(*key, paths.len());
                 }
             }
             // Entry views only flow from a caller's prior events into that
             // invocation. Expanding them back through callback aliases would
             // move writes performed inside a function before its own entry.
+            let over = self.widening_candidates();
+            if !over.is_empty() {
+                return Err(over);
+            }
             if before == self.sizes() {
                 break;
             }
         }
-        let mut entry_history: HashMap<Span, HashSet<Span>> = HashMap::new();
+        let mut entry_history: IndexMap<Span, IndexSet<Span>> = IndexMap::new();
         loop {
-            let before = entry_history.values().map(HashSet::len).sum::<usize>();
+            let before = entry_history.values().map(IndexSet::len).sum::<usize>();
             for call in &self.calls {
                 if !self.reachable.contains(&call.owner) {
                     continue;
@@ -2258,7 +2348,7 @@ impl Graph {
                     entry_history.entry(*function).or_default().extend(&prior);
                 }
             }
-            if before == entry_history.values().map(HashSet::len).sum::<usize>() {
+            if before == entry_history.values().map(IndexSet::len).sum::<usize>() {
                 break;
             }
         }
@@ -2266,17 +2356,17 @@ impl Graph {
         // entry may be discounted at creation: two calls can create different
         // instances of the same lexical closure. Loop events may repeat after
         // creation, so they are never creation predecessors.
-        let repeating: HashSet<_> = self.loop_events.values().flatten().copied().collect();
+        let repeating: IndexSet<_> = self.loop_events.values().flatten().copied().collect();
         let mut creation_entries = entry_history.clone();
         for events in creation_entries.values_mut() {
             events.retain(|event| !repeating.contains(event));
         }
         for root in &self.roots {
-            creation_entries.insert(*root, HashSet::new());
+            creation_entries.insert(*root, IndexSet::new());
         }
         loop {
-            let mut next: HashMap<Span, HashSet<Span>> =
-                self.roots.iter().map(|root| (*root, HashSet::new())).collect();
+            let mut next: IndexMap<Span, IndexSet<Span>> =
+                self.roots.iter().map(|root| (*root, IndexSet::new())).collect();
             for call in &self.calls {
                 if !self.reachable.contains(&call.owner) {
                     continue;
@@ -2296,13 +2386,13 @@ impl Graph {
         }
         // Event histories share most of their events, so union them by place number.
         let mut known: IndexSet<&Place> = IndexSet::new();
-        let numbered: HashMap<Span, Vec<usize>> = self
+        let numbered: IndexMap<Span, Vec<usize>> = self
             .write_events
             .iter()
             .map(|(event, places)| (*event, places.iter().map(|p| known.insert_full(p).0).collect()))
             .collect();
         let union = |events: &mut dyn Iterator<Item = &Span>, out: &mut Places| {
-            let mut seen = HashSet::new();
+            let mut seen = IndexSet::new();
             for event in events {
                 for &id in numbered.get(event).into_iter().flatten() {
                     if seen.insert(id) && !out.contains(known[id]) {
@@ -2323,7 +2413,7 @@ impl Graph {
                 union(&mut events, capture_writes.entry(*function).or_default());
             }
         }
-        let summaries = |histories: &HashMap<Span, HashSet<Span>>| {
+        let summaries = |histories: &IndexMap<Span, IndexSet<Span>>| {
             histories
                 .iter()
                 .map(|(span, events)| {
@@ -2335,7 +2425,7 @@ impl Graph {
         };
         let expression_writes = summaries(&self.expression_events);
         let loop_writes = summaries(&self.loop_events);
-        let mut binding_writes: HashMap<Span, HashSet<Vec<Step>>> = HashMap::new();
+        let mut binding_writes: IndexMap<Span, IndexSet<Vec<Step>>> = IndexMap::new();
         for (owner, paths) in &self.function_writes {
             if self.reachable.contains(owner) {
                 for p in paths {
@@ -2354,9 +2444,9 @@ impl Graph {
                 .collect(),
             captured: self.captured,
             captured_data: self.captured_data,
-            numeric: HashMap::new(),
-            incoming: HashMap::new(),
-            incoming_writes: HashMap::new(),
+            numeric: IndexMap::new(),
+            incoming: IndexMap::new(),
+            incoming_writes: IndexMap::new(),
             capture_writes,
             events: self.events,
             write_events: self.write_events,
@@ -2372,7 +2462,7 @@ impl Graph {
         for p in self.incoming_writes {
             effects.incoming_writes.entry(p.binding).or_default().insert(p.path);
         }
-        effects
+        Ok(effects)
     }
 }
 
@@ -2381,7 +2471,7 @@ impl Graph {
 /// result program by program. `ZERO_DEBUG_EFFECTS_WORK=<file>` appends one
 /// `projections=<n> facts=<n>` line per solve instead. Release builds never read either.
 #[cfg(debug_assertions)]
-fn debug_dump(effects: &Effects, projections: u64) {
+fn debug_dump(effects: &Effects, projections: u64, widened: &IndexSet<Span>) {
     use std::collections::BTreeSet;
     use std::io::Write as _;
     let append = |path: &std::ffi::OsStr| {
@@ -2392,8 +2482,8 @@ fn debug_dump(effects: &Effects, projections: u64) {
             .expect("the effects debug file is writable")
     };
     if let Some(path) = std::env::var_os("ZERO_DEBUG_EFFECTS_WORK") {
-        let places = |map: &HashMap<Span, Places>| map.values().map(IndexSet::len).sum::<usize>();
-        let paths = |map: &HashMap<Span, HashSet<Vec<Step>>>| map.values().map(HashSet::len).sum::<usize>();
+        let places = |map: &IndexMap<Span, Places>| map.values().map(IndexSet::len).sum::<usize>();
+        let paths = |map: &IndexMap<Span, IndexSet<Vec<Step>>>| map.values().map(IndexSet::len).sum::<usize>();
         let facts = places(&effects.capture_writes)
             + places(&effects.events)
             + places(&effects.write_events)
@@ -2411,6 +2501,9 @@ fn debug_dump(effects: &Effects, projections: u64) {
     let span = |s: &Span| format!("{}:{}-{}", s.file, s.start, s.end);
     let place = |p: &Place| format!("{}{:?}", span(&p.binding), p.path);
     let mut lines = BTreeSet::new();
+    for s in widened {
+        lines.insert(format!("widened {}", span(s)));
+    }
     for s in &effects.reassigned {
         lines.insert(format!("reassigned {}", span(s)));
     }

@@ -3609,6 +3609,122 @@ fn language_constructs_match_node_through_generated_php() {
 
 /// Type-level rules of the language constructs added for 0.8 apps (zero#138): each source either
 /// checks cleanly or is refused with the named diagnostic, matching TypeScript or JavaScript.
+/// A token parser shaped like picomatch's `parse()`: each branch writes through `prev`,
+/// `prev.prev` and `prev.prev.prev`, so the effect places below those bindings multiply past
+/// the solver's widening threshold. The solve restarts with them widened
+/// (docs/decisions/2026-11-08-effects-widening.md). Debug builds name the widened bindings in
+/// the `ZERO_DEBUG_EFFECTS` dump, which must be the same on every run, and the generated PHP
+/// must still compute what Node computes.
+#[test]
+fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut body = String::from(
+        "export function run(input) {
+  const words = input.split(' ');
+  const state = { index: -1, output: '', prev: null, depth: 0, opened: [] };
+  const bos = { type: 'bos', value: '', output: '', prev: null };
+  const tokens = [bos];
+  let prev = bos;
+  const push = tok => {
+    if (prev.type === tok.type && tok.type === 'text') { prev.value += tok.value; prev.output += tok.value; return; }
+    tok.prev = prev; tokens.push(tok); prev = tok; state.prev = tok;
+  };
+  while (state.index < words.length - 1) {
+    const value = words[++state.index];
+",
+    );
+    let fields = ["type", "value", "output", "inner", "close", "depth"];
+    for (i, (set, read)) in fields
+        .iter()
+        .flat_map(|set| fields[..2].iter().map(move |read| (set, read)))
+        .enumerate()
+    {
+        body.push_str(&format!(
+            "    if (value === 't{i}') {{ const t = {{ type: '{set}', value, output: prev.{read} + value, prev: prev.prev }}; if (prev.prev) {{ prev.prev.{set} = prev.{read}; if (prev.prev.prev) prev.prev.prev.{read} = value; }} push(t); state.opened.push(t); state.depth++; continue; }}\n"
+        ));
+    }
+    body.push_str(
+        "    push({ type: 'text', value, output: value });
+  }
+  return tokens.map(t => String(t.type) + '=' + String(t.output) + '/' + String(t.value)).join(',') + '|' + state.depth + '|' + state.opened.length;
+}
+",
+    );
+    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"import { action, defineConfig, text } from "zero";
+import { run } from "./run.mjs";
+export default defineConfig({ name: "tokens", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+"#,
+    )
+    .unwrap();
+
+    if cfg!(debug_assertions) {
+        let dump = |run: usize| {
+            let file = tmp.path().join(format!("effects-{run}.txt"));
+            let out = zero()
+                .args(["check", "--json"])
+                .arg(tmp.path())
+                .env("ZERO_DEBUG_EFFECTS", &file)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+            std::fs::read_to_string(file).expect("debug builds dump the solved effects")
+        };
+        let first = dump(0);
+        let widened = first.lines().filter(|line| line.starts_with("widened ")).count();
+        assert!(widened > 0, "the program no longer reaches the widening threshold");
+        // A fresh process has fresh hash seeds; the widened bindings and every place must not move.
+        assert_eq!(first, dump(1), "the widened effects depend on the run");
+    }
+
+    let inputs = [
+        "t0 t3 x t7 t11 y t2 t9 t9 t5",
+        "",
+        "t1 t1 t1",
+        "a b c t4 t6 t8 t10",
+        "t11 t10 t9 t8 t7 t6 t5 t4 t3 t2 t1 t0",
+        "x y t3 z t3 w",
+    ];
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args(["--input-type=module", "-e"])
+        .arg(format!(
+            "import {{ run }} from './run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            serde_json::to_string(&inputs).unwrap()
+        ))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        &format!(
+            r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$fn = '\\ZeroApp\\' . $schema['actions']['a']['handler'];
+$out = [];
+foreach (json_decode('{}') as $s) {{
+    $input = new \Zero\JsObject();
+    $input->p['s'] = $s;
+    $out[] = json_decode(\Zero\Js::jsonStringify($fn($input, new \Zero\JsObject())));
+}}
+echo json_encode($out);
+"#,
+            serde_json::to_string(&inputs).unwrap()
+        ),
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-tokens/zero/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+}
+
 #[test]
 fn language_construct_type_rules() {
     let cases: &[(&str, &str, Option<&str>)] = &[

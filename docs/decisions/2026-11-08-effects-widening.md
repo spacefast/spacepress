@@ -1,6 +1,7 @@
 # Widening large JavaScript place sets in the effects solver
 
-Status: design, not implemented. Follows
+Status: implemented. The read-side fix landed separately in #239; the widening is in the PR
+stacked on it. Follows
 [2026-11-08-effects-solver-scale.md](2026-11-08-effects-solver-scale.md),
 whose "Not solved here" section this addresses.
 
@@ -121,20 +122,18 @@ into `Ty::Dynamic`.
   string there on a later iteration. **Without a consumer change, the widening is not
   sound.**
 
-**Fix (part of this change):** `read_view_type` and `write_type` use one helper. A place
-matches a view when its path starts with the view, as today, or when its path has
-`DynamicDescendants` at a position `i < view.len()` and `path[..i] == view[..i]`. In the
-second case the view becomes `widen(ty, [DynamicDescendants])`, which is `Ty::Dynamic`.
+**Fix (#239, landed first as its own PR):** `read_view_type` and `write_type` use one
+helper, `below_view`. A place matches a view when its path starts with the view, as
+before, or when its path has `Descendants` or `DynamicDescendants` at a position
+`i < view.len()` and `path[..i] == view[..i]`. In the second case the view is widened by that
+tail: `Descendants` widens numbers inside the view, and `DynamicDescendants` turns it into
+`Ty::Dynamic`. That is the same coverage `projected_suffix` already gives these steps.
 
-Main already has `DynamicDescendants` places: `bounded()` cuts dynamic paths at `max_depth`,
-which produces 3,465 dump lines over the 106 programs. So this fix also closes the same
-latent gap for those places, and it can change PHP on main where such a place lies inside a
-narrowed member view deeper than `max_depth`. I expect no current program to change. Phase 2
-compares the generated PHP of every program to confirm it.
-
-The same latent gap exists on main for `Descendants` (non-dynamic) depth cuts in
-`read_view_type`: numeric widening below the cut is missed. Widening never produces
-`Descendants`, so this change doesn't fix that. It needs a separate issue.
+Main already has both kinds of cut places: `bounded()` cuts paths at `max_depth`, and
+`DynamicDescendants` alone accounts for 3,465 dump lines over the 106 programs. So #239 also
+closes this gap for depth cuts. No program reproduces the gap on main; #239 pins the rule
+with unit tests. Building all 200 programs with `origin/main` and with #239 gives
+byte-identical output trees and identical refusals.
 
 ## The widening rule
 
@@ -174,13 +173,16 @@ For example, a typed handler passes `o` to a JavaScript `touch(o)` that writes `
 `o.a.b`. That is coarser, and it can cause a refusal where a typed sink receives the value.
 It cannot cause a wrong result.
 
-**When it fires.** At the end of each solver pass, the solver counts every group of every
-JavaScript-owned binding that is not yet widened. If any group is larger than `N`, all such
-bindings join the widened set `W`, and the solve **restarts from the initial graph** with
-the larger `W`. The initial sets are rewritten through the widening once, and `bounded()`
-applies it to every place it derives. `values` and `slice_methods` stay exact (`bounded`
-without widening), because they decide call edges and were never large (68 values, 2,184
-slice methods in `parse.js`).
+**When it fires.** At the end of each solver pass, `Graph::widening_candidates` counts
+every group of every JavaScript-owned binding that is not yet widened. If any group is
+larger than `N` (`WIDEN_ABOVE`), all such bindings join the widened set `W`, `solve` returns
+them, and `Effects::analyze` **restarts from a clone of the initial graph** with the larger
+`W`. At the start of a solve the initial effect sets are coarsened once. After that, every
+place a rule derives into an effect set goes through `derived` (cut at the depth bound,
+then coarsened): call summaries, entry views, `caller_effects`, alias expansion, the
+`Descendants` writes for escaped places at unknown calls, and parameter views. `values` and
+`slice_methods` stay exact (`bounded` without widening), because they decide call edges and
+were never large (68 values, 2,184 slice methods in `parse.js`).
 
 **Why restart instead of widening during the solve.** #227 reads each set through cursors
 that assume the set only grows, so exact places can't be removed once they are in it. With
@@ -201,16 +203,24 @@ compiler more conservative, given the `read_view_type` fix.
 
 **Determinism.** The final effects are the least fixpoint for the final `W`, so they depend
 only on `W`. `W` depends on which groups exceed `N` at the end of each pass. Today those
-intermediate states can depend on `HashMap` iteration order, because the solver's maps
+intermediate states could depend on `HashMap` iteration order, because the solver's maps
 (`events`, `write_events`, `function_numeric`, `function_writes`, `call_events`, `Call::prior`
-and `external`) use std's random seed. Three runs of `pm3` gave the same `W` (394 bindings)
-and the same result, but that does not prove the result is deterministic. Phase 2 makes every
-collection that `solve` iterates either insertion-ordered (`IndexMap` / `IndexSet`) or sorted
-before iterating, so `W`, and therefore the PHP, is a function of the program. That also
-keeps native and WASM output identical. This doesn't change any fixpoint, because the
-fixpoint never depended on order.
+and `external`) used std's random seed. Every map and set in `effects.rs` is now an
+`IndexMap` / `IndexSet`. Graph construction walks the program in source order, so every
+collection the solver iterates has an order that is a function of the program, and so are
+`W` and the PHP. That also keeps native and WASM output identical. It changes no fixpoint,
+because the fixpoint never depended on order. All 106 effects dumps are byte-identical to
+`origin/main`.
 
-**Threshold.** I recommend `N = 64`, applied per group.
+`widened_effects_are_deterministic_and_keep_php_equal_to_node` in
+`tests/compiler_contracts.rs` dumps a widened program twice in separate processes (fresh hash
+seeds) and requires identical dumps. It fails if the choice of bindings depends on hash
+order. I checked this by making `solve` return one binding taken from a `std::HashSet`: three
+of three runs failed. It also fails if the threshold is disabled (`usize::MAX`), because its
+program must reach widening.
+
+**Threshold.** `N = 64` (decided), applied per group, with a restart from scratch. The
+measurements below come from the prototype that preceded the implementation.
 
 | `N` | `pm3` time | `pm3` peak RSS | restarts | widened bindings |
 | ---: | ---: | ---: | ---: | ---: |
@@ -219,8 +229,10 @@ fixpoint never depended on order.
 | 256 | 63 s | 10.8 GB | 3 | 214 |
 | widen every JavaScript-owned binding from the start | 3.3 s | 0.63 GB | 0 | all |
 
-The largest JavaScript-owned group in any existing program is 42 (`cases.ts`), so 64
-leaves a margin of 1.5×. The first diagnostic with widening is `` `SyntaxError` isn't
+The largest JavaScript-owned group in any existing program is 42 (`cases.ts`); the next are
+22 (`language/bitwise.ts`) and 15 (`language/destructuring-assignment.ts`). So 64 leaves a
+margin of 1.5× over the largest. Widening every JavaScript-owned binding from the start was
+rejected, because it refuses `language/bitwise.ts`. The first diagnostic with widening is `` `SyntaxError` isn't
 defined ``. For `pm5` it is at `parse.js:368`. For `pm3` it is at `parse.js:1344`, the same
 `throw new SyntaxError(...)` in `parse.fastpaths`, which `makeRe` reaches first. The
 expected `parse.js:368` applies to the `parse()`-only repro.
@@ -230,12 +242,10 @@ expected `parse.js:368` applies to the `parse()`-only repro.
 1. **Programs where no JavaScript-owned group exceeds `N`.** This is all 106 measured
    programs (largest 42). `W` stays empty, the widening is the identity, and nothing
    restarts, so the `ZERO_DEBUG_EFFECTS` dumps are byte-identical. The determinism change
-   doesn't alter any fixpoint. Phase 2 checks both claims.
-2. **The `read_view_type` / `write_type` fix** can change PHP on main wherever a
-   `DynamicDescendants` place from a depth cut lies inside a narrowed member view. The
-   change makes the read `Ty::Dynamic`: checked helpers, or a new refusal in typed code. I
-   expect zero programs. Phase 2 compares the generated PHP of every program before and
-   after, and lists any that change.
+   doesn't alter any fixpoint. Both are checked; see Result.
+2. **The `read_view_type` / `write_type` fix** (#239) could have changed PHP on main
+   wherever a cut place lies inside a narrowed member view. No program changes: all 200
+   build to byte-identical output.
 3. **Programs above the threshold.** Today these are only apps that import large JavaScript
    such as picomatch. They don't finish on main, so nothing they produce today can regress.
    Once they compile:
@@ -254,6 +264,23 @@ expected `parse.js:368` applies to the `parse()`-only repro.
    - `hook_writes` can request `*` instead of single fields for a plugin before-hook that
      passes `data` into widened JavaScript, which means a broader grant or a refusal.
 
+## Result
+
+Release build, Apple Silicon, two runs each. Both picomatch apps use 4.0.7 with the two
+`__proto__: null` lines removed from `lib/constants.js` by hand.
+
+| program | `origin/main` | this change | first diagnostic |
+| --- | --- | --- | --- |
+| `picomatch.makeRe("src/*.ts", { dot: true }).source + String(picomatch("*.md")(s))` | not finished (784 s, 9.9 GB in #227) | 16.3 to 16.9 s, 2.9 GB | `Z4001` `` `SyntaxError` isn't defined `` at `parse.js:1344:15` |
+| `parse(s, {}).output` (`picomatch/lib/parse.js` only) | 13 s, 5.0 GB | 3.5 s, 0.98 GB | `Z4001` `` `SyntaxError` isn't defined `` at `parse.js:368:15` |
+| the regression test's token parser | 1.35 s, 0.14 GB | 0.29 s, 0.06 GB, 34 bindings widened | none; PHP equals Node on 6 inputs, with and without widening |
+
+Programs under the threshold are unchanged:
+
+- The `ZERO_DEBUG_EFFECTS` dumps of all 106 programs that reach the solver are
+  byte-identical to `origin/main`, and so are their `zero check --json` outputs.
+- `zero build` of all 200 programs gives byte-identical output trees and identical refusals.
+
 ## Not solved here
 
 - Typed bindings are never widened. A typed program whose own groups grow like `parse.js`
@@ -262,12 +289,6 @@ expected `parse.js:368` applies to the `parse()`-only repro.
 - A single pass can grow 100× (in `pm3`, pass 3 goes from 43k to 4.6M facts in 2 s). At
   `N = 64` that stays under 3 GB. If a later program overshoots inside one pass, the
   threshold check can move from the end of the pass to the end of each phase within it.
-- The `Descendants` depth-cut gap in `read_view_type` described above.
-
-## Open questions for review
-
-1. **`N = 64` with restarts (recommended)**, or `N = 128` (28 s, 5 GB, more margin over 42).
-2. Widening every JavaScript-owned binding from the start is 5× faster on `pm3`, but it
-   changes `language/bitwise.ts` from passing to refused. I don't recommend it.
-3. Whether the `read_view_type` fix for `DynamicDescendants` should land as its own PR
-   first, since it closes a latent gap on main independently of widening.
+- The files-sdk path still stops earlier on `Z1002` for picomatch's `__proto__: null`
+  object literals, so it does not reach the solver on main. After that is fixed, the next
+  refusal is `` `SyntaxError` isn't defined ``.

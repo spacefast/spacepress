@@ -7,7 +7,9 @@ $wpdb->set_prefix('adopt_');
 $db = new \Zero\Wp\Connection($wpdb);
 $schema = \Zero\Schema::load('/tmp/zero-app-migrate-indexes/zero/app/schema.php');
 $dir = '/tmp/zero-app-migrate-indexes/zero/app/migrations';
-$migrator = new \Zero\Wp\Migrator($db, $dir, $schema);
+// The second migration drops parentId's reference, which changes its type on a table Zero didn't
+// create: the schema check refuses that until the deploy confirms it, as a real one would.
+$migrator = new \Zero\Wp\Migrator($db, $dir, $schema, drops: \Zero\Wp\SchemaCheck::drops(['contacts.parentId=0']));
 $ledger = $db->prefix() . 'zero__migrations';
 $table = 'sf_migrate_index_contacts';
 $otherDatabase = 'zero_adopt_other';

@@ -66,7 +66,7 @@ pub fn help() -> String {
         }
     }
     out.push_str(
-        "\nzero help <command> shows its arguments. Credentials come from FIRST_APP_PASSWORD or FIRST_TOKEN.\n",
+        "\nfirst help <command> shows its arguments. Credentials come from FIRST_APP_PASSWORD or FIRST_TOKEN.\n",
     );
     out
 }
@@ -131,7 +131,7 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
                     .ok_or_else(|| fail("--port needs a number between 1 and 65535".into()))?;
             }
             "--quiet" | "-q" if command == "build" => args.quiet = true,
-            other if other.starts_with('-') => return Err(fail(format!("unknown option {other} for zero {command}"))),
+            other if other.starts_with('-') => return Err(fail(format!("unknown option {other} for first {command}"))),
             other => args.project = PathBuf::from(other),
         }
     }

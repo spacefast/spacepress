@@ -1,0 +1,179 @@
+[
+  {
+    "component": "components/children.tsx#Values",
+    "props": {
+      "n": 42,
+      "s": "<script>alert('x') & \"y\"</script>",
+      "items": [
+        "a",
+        "b"
+      ]
+    }
+  },
+  {
+    "component": "components/children.tsx#Conditions",
+    "props": {
+      "count": 0,
+      "dek": null,
+      "flag": false
+    }
+  },
+  {
+    "component": "components/children.tsx#Conditions",
+    "props": {
+      "count": 1,
+      "dek": "",
+      "label": "L",
+      "flag": true
+    }
+  },
+  {
+    "component": "components/children.tsx#Conditions",
+    "props": {
+      "count": 3,
+      "dek": "A dek",
+      "flag": true
+    }
+  },
+  {
+    "component": "components/children.tsx#Methods",
+    "props": {
+      "query": "  Ze ",
+      "notes": [
+        {
+          "id": 1,
+          "title": "First ships",
+          "tags": [
+            "release",
+            "php"
+          ],
+          "body": "Today we shipped."
+        },
+        {
+          "id": 2,
+          "title": "Other",
+          "tags": [],
+          "body": "Nothing"
+        },
+        {
+          "id": 3,
+          "title": "ZEBRA <crossing>",
+          "tags": [],
+          "body": "Stripes & more"
+        }
+      ]
+    }
+  },
+  {
+    "component": "components/children.tsx#Methods",
+    "props": {
+      "query": "none",
+      "notes": []
+    }
+  },
+  {
+    "component": "components/attributes.tsx#Attributes",
+    "props": {
+      "id": "q\"1",
+      "on": true,
+      "n": 3,
+      "text": "it's <here>",
+      "color": "red",
+      "size": 12
+    }
+  },
+  {
+    "component": "components/attributes.tsx#Attributes",
+    "props": {
+      "id": "q2",
+      "on": false,
+      "n": 0,
+      "text": "",
+      "color": "blue",
+      "size": 0
+    }
+  },
+  {
+    "component": "components/attributes.tsx#Spread",
+    "props": {
+      "extra": {
+        "title": "spread",
+        "id": "s"
+      },
+      "title": "explicit"
+    }
+  },
+  {
+    "component": "components/composition.tsx#Composition",
+    "props": {
+      "ids": [
+        7,
+        8
+      ],
+      "title": "Frame & co"
+    }
+  },
+  {
+    "component": "components/composition.tsx#Composition",
+    "props": {
+      "ids": [],
+      "title": ""
+    }
+  },
+  {
+    "component": "components/whitespace.tsx#Whitespace",
+    "props": {}
+  },
+  {
+    "component": "components/review.tsx#Children",
+    "props": {
+      "s": "",
+      "n": 0,
+      "flag": false
+    }
+  },
+  {
+    "component": "components/review.tsx#Children",
+    "props": {
+      "s": "x",
+      "n": 2,
+      "flag": true
+    }
+  },
+  {
+    "component": "components/review.tsx#Inputs",
+    "props": {}
+  },
+  {
+    "component": "components/review.tsx#Inputs",
+    "props": {
+      "v": "set",
+      "c": false
+    }
+  },
+  {
+    "component": "components/review.tsx#Pre",
+    "props": {
+      "s": "\nfoo"
+    }
+  },
+  {
+    "component": "components/review.tsx#EmptyUrls",
+    "props": {
+      "e": ""
+    }
+  },
+  {
+    "component": "components/review.tsx#Entities",
+    "props": {}
+  },
+  {
+    "component": "components/review.tsx#Keys",
+    "props": {
+      "ids": [
+        1,
+        2
+      ]
+    }
+  }
+]

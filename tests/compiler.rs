@@ -57,6 +57,160 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects("reject-infinite-loop", "step budget exceeded", "first.config.ts:2:");
 }
 
+/// JSX outside the subset fails the build at its source, saying what to write instead
+/// (docs/decisions/2026-11-08-tsx-to-php.md, "Errors").
+#[test]
+fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
+    rejects(
+        "reject-jsx-unsafe-url",
+        "`href` is an unsafe URL",
+        "first/components/Link.tsx:2:18",
+    );
+    rejects(
+        "reject-jsx-handler",
+        "server components can't handle events (`onClick`)",
+        "first/components/Button.tsx:2:18",
+    );
+    rejects(
+        "reject-jsx-inner-html",
+        "`dangerouslySetInnerHTML` isn't supported",
+        "first/components/Raw.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-object-child",
+        "{ title: string } can't be rendered as a JSX child",
+        "first/components/Show.tsx:2:14",
+    );
+    rejects(
+        "reject-jsx-props",
+        "these props are { text: number }, but the component expects { text: string }",
+        "first/components/Card.tsx:6:10",
+    );
+    rejects(
+        "reject-jsx-head",
+        "a component can't render `<title>`",
+        "first/components/Head.tsx:2:10",
+    );
+    rejects(
+        "reject-jsx-config",
+        "JSX files can't be part of a First config",
+        "view.tsx:1:1",
+    );
+    // An action can't return rendered JSX: the config never reaches a component module.
+    rejects(
+        "reject-jsx-action",
+        "JSX files can't be part of a First config",
+        "first/components/Badge.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-textarea",
+        "`<textarea>` can't have children",
+        "first/components/Area.tsx:2:10",
+    );
+    rejects(
+        "reject-jsx-srcdoc",
+        "`srcDoc` isn't supported",
+        "first/components/Frame.tsx:2:18",
+    );
+    // The record's "Contexts text escaping can't make safe": tag and attribute names in any case,
+    // raw-text tags, closed and open spreads, computed styles, names, SVG animation.
+    rejects(
+        "reject-jsx-script-case",
+        "a component can't render `<sCript>`",
+        "first/components/Search.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-iframe-child",
+        "`<iframe>` takes only literal text",
+        "first/components/Frame.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-raw-close",
+        "this text closes `<xmp>` early",
+        "first/components/Code.tsx:2:16",
+    );
+    rejects(
+        "reject-jsx-open-spread",
+        "can't spread Record<string, string> into attributes",
+        "first/components/Link.tsx:2:17",
+    );
+    rejects(
+        "reject-jsx-spread-handler",
+        "server components can't handle events (`onClick`)",
+        "first/components/Button.tsx:2:22",
+    );
+    rejects(
+        "reject-jsx-style-keys",
+        "`style` needs an object with fixed keys",
+        "first/components/Box.tsx:2:22",
+    );
+    rejects(
+        "reject-jsx-attribute-name",
+        "`a b` isn't a valid attribute name",
+        "first/components/Odd.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-svg-animate",
+        "SVG animation of `href`",
+        "first/components/Anim.tsx:2:27",
+    );
+    rejects(
+        "reject-jsx-use-client",
+        "\"use client\" components aren't compiled yet",
+        "first/components/Counter.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-children-object",
+        "`children` is typed { title: string }, which JSX can't pass",
+        "first/components/Wrap.tsx:1:22",
+    );
+    rejects(
+        "reject-jsx-config-unused",
+        "JSX files can't be part of a First config",
+        "label.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-use-client-prologue",
+        "\"use client\" components aren't compiled yet",
+        "first/components/Toggle.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-style-case",
+        "`STYLE` is spelled `style`",
+        "first/components/Box.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-style-case-spread",
+        "`STYLE` is spelled `style`",
+        "first/components/Box.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-style-case-custom",
+        "`Style` is spelled `style`",
+        "first/components/Widget.tsx:2:17",
+    );
+    rejects(
+        "reject-jsx-children-local",
+        "this component types `children` as { title: string }, which JSX can't pass",
+        "first/components/Page.tsx:6:11",
+    );
+    // The folders that admit JSX are matched below the project, not anywhere in its path.
+    let nested = std::env::temp_dir().join(format!("first-jsx-app-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&nested);
+    copy(
+        &root().join("tests/fixtures/reject-jsx-config"),
+        &nested.join("app/project"),
+    );
+    let out = first()
+        .args(["check"])
+        .arg(nested.join("app/project"))
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&nested);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("JSX files can't be part of a First config"));
+}
+
 #[test]
 fn a_catch_all_route_segment_comes_last() {
     rejects(
@@ -985,6 +1139,243 @@ fn compiled_php_matches_node_on_every_differential_case() {
         "compiled PHP disagrees with Node:\n{}",
         mismatches.join("\n")
     );
+}
+
+/// Every case in tests/differential/html/cases.json renders a compiled TSX component under PHP
+/// and the same TSX under React 19 (react-dom/static `prerender`); the HTML must be identical
+/// (docs/decisions/2026-11-08-tsx-to-php.md, "Parity tests"). Two things are normalized: React's
+/// `<!-- -->` text separators, and the `<link rel="preload" as="image">` React hoists for an
+/// eager `<img>`, which the page head will own.
+#[test]
+fn compiled_tsx_renders_the_html_react_renders() {
+    let dir = root().join("tests/differential/html");
+    assert!(
+        dir.join("node_modules/react-dom").is_dir(),
+        "run: npm ci --prefix tests/differential/html"
+    );
+    let tmp = std::env::temp_dir().join(format!("first-tsx-parity-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&dir.join("project"), &tmp);
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(
+        built.status.success(),
+        "build failed:\n{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let node = Command::new("node")
+        .arg(dir.join("render-node.mjs"))
+        .arg(&tmp)
+        .arg(dir.join("cases.json"))
+        .output()
+        .expect("node is required for differential tests");
+    assert!(
+        node.status.success(),
+        "node failed:\n{}",
+        String::from_utf8_lossy(&node.stderr)
+    );
+    let plugins = tmp.join(".first/wp-content/plugins");
+    let app = plugins.join(format!(
+        "first-app-{}",
+        tmp.file_name().unwrap().to_string_lossy().replace('_', "-")
+    ));
+    let php = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("first-runtime"))
+        .arg(&app)
+        .arg(dir.join("cases.json"))
+        .output()
+        .unwrap();
+    assert!(
+        php.status.success() && php.stderr.is_empty(),
+        "php failed:\n{}{}",
+        String::from_utf8_lossy(&php.stdout),
+        String::from_utf8_lossy(&php.stderr)
+    );
+    let react: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
+    let compiled: serde_json::Value = serde_json::from_slice(&php.stdout).unwrap();
+    let cases = react.as_object().expect("case map");
+    assert!(!cases.is_empty());
+    let mut mismatches = Vec::new();
+    for (index, want) in cases {
+        let want = match want.get("html").and_then(serde_json::Value::as_str) {
+            Some(html) => serde_json::json!({ "html": without_image_preloads(&html.replace("<!-- -->", "")) }),
+            None => want.clone(),
+        };
+        let got = &compiled[index];
+        if *got != want {
+            mismatches.push(format!("case {index}\n  react: {want}\n  php:   {got}"));
+        }
+    }
+    // React rewrites `javascript:` URLs; First drops any URL attribute outside its policy.
+    let urls = [
+        "javascript:alert(1)",
+        " JavaScript:x",
+        "java\tscript:x",
+        "data:text/html,x",
+        "//evil.example",
+        "/\\evil.example",
+        "https://ok.example/?a=1&b=2",
+        "mailto:a@b.c",
+        "/root",
+        "?page=2",
+        "posts/1",
+        "#top",
+        "a/b:c",
+    ];
+    let file = tmp.join("urls.json");
+    let cases = serde_json::json!([{ "component": "components/urls.tsx#Links", "props": { "urls": urls } }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("first-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dropped = [
+        "javascript:alert(1)",
+        " JavaScript:x",
+        "java\tscript:x",
+        "data:text/html,x",
+        "//evil.example",
+        "/\\evil.example",
+    ]
+    .map(|u| format!("<a>{u}</a>"))
+    .concat();
+    let kept = [
+        ("https://ok.example/?a=1&amp;b=2", "https://ok.example/?a=1&amp;b=2"),
+        ("mailto:a@b.c", "mailto:a@b.c"),
+        ("/root", "/root"),
+        ("?page=2", "?page=2"),
+        ("posts/1", "posts/1"),
+        ("#top", "#top"),
+        ("a/b:c", "a/b:c"),
+    ]
+    .map(|(href, text)| format!("<a href=\"{href}\">{text}</a>"))
+    .concat();
+    assert_eq!(rendered["0"]["html"], format!("<p>{dropped}{kept}</p>"));
+    // The same policy whatever the name's spelling: letter case, an `xlink:` prefix, a closed
+    // spread, and custom elements. (Open spreads and named `on*` attributes are build errors.)
+    let extra = serde_json::json!({ "Href": "javascript:alert(1)", "title": "kept" });
+    let cases = serde_json::json!([{
+        "component": "components/urls.tsx#Variants",
+        "props": { "u": "javascript:alert(1)", "extra": extra },
+    }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("first-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div><a title=\"kept\">spread</a><my-el title=\"kept\"></my-el><a>upper</a><button>lower</button>\
+         <object></object><my-el></my-el><svg><use></use></svg></div>"
+    );
+    let cases = serde_json::json!([{ "component": "components/urls.tsx#TagCase", "props": {} }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("first-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div>a<br/>b<svg><foreignObject></foreignObject></svg></div>"
+    );
+    // Extra keys in decoded JSON never reach `style` or a spread's attributes.
+    let evil = "url(//evil.example/t)";
+    let cases = serde_json::json!([{
+        "component": "components/urls.tsx#ExtraKeys",
+        "props": {
+            "s": { "color": "red", "backgroundImage": evil, "position": "fixed", "inset": "0" },
+            "extra": {
+                "title": "t",
+                "onclick": "alert(1)",
+                "href": "javascript:alert(1)",
+                "style": { "color": "blue", "position": "fixed" },
+            },
+        },
+    }]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("first-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        rendered["0"]["html"],
+        "<div><p style=\"color:red\">style</p><p title=\"t\" style=\"color:blue\">spread</p></div>"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(
+        mismatches.is_empty(),
+        "compiled TSX disagrees with React:\n{}",
+        mismatches.join("\n")
+    );
+}
+
+/// Drops `<link rel="preload" as="image" …/>`, which React emits ahead of an eager `<img>`.
+/// `\First\Html` keeps its own attribute checks even though the compiler refuses these names and
+/// spreads at build time: a value that reaches it another way (an imported JavaScript object)
+/// still can't set a URL, an event handler or `srcdoc` (PHP's `$` matches before a final `\n`,
+/// so the name pattern must be anchored with `\z`).
+#[test]
+fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
+    let runtime = root().join("runtime/First/bootstrap.php");
+    let script = r#"
+        require $argv[1];
+        $attrs = ["href\n" => "javascript:alert(1)", "style\n" => "position:fixed", "onclick" => "x",
+            "ONMOUSEOVER" => "x", "Href" => "javascript:alert(1)", "srcdoc" => "<p>", "a b" => "x",
+            "title" => "kept"];
+        echo \First\Html::element("a", $attrs, "x")->html(), "\n";
+        echo \First\Html::element("my-el", $attrs)->html(), "\n";
+        $style = new \First\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px",
+            "x:y;position" => "fixed", "inset\n" => "0", "--ok" => "1"]);
+        echo \First\Html::element("div", ["style" => $style])->html(), "\n";
+        // Every spelling of `style` goes through the style filter, and a string is never CSS.
+        $css = "position:fixed;inset:0;background:url(//evil)";
+        echo \First\Html::element("div", ["Style" => $style])->html(), "\n";
+        // A string `style` throws, as React does, so it never reaches the attribute.
+        try { \First\Html::element("div", ["STYLE" => $css])->html(); echo "rendered\n"; }
+        catch (\First\JsError $e) { echo "refused\n"; }
+        echo \First\Html::element("my-el", ["STYLE" => $style])->html(), "\n";
+        var_export(\First\Html::styleOf($css, ["position"]) === \First\JsUndefined::Value);
+        echo "\n";
+        // `styleOf` keeps only the names the compiler saw in the style's type.
+        $extra = new \First\JsObject(["color" => "red", "position" => "fixed", "inset" => "0"]);
+        echo \First\Html::element("p", ["style" => \First\Html::styleOf($extra, ["color"])])->html(), "\n";
+    "#;
+    let out = Command::new("php").args(["-r", script]).arg(&runtime).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "<a title=\"kept\">x</a>\n<my-el title=\"kept\"></my-el>\n<div style=\"width:1px;--ok:1\"></div>\n\
+         <div style=\"width:1px;--ok:1\"></div>\nrefused\n<my-el style=\"width:1px;--ok:1\"></my-el>\ntrue\n\
+         <p style=\"color:red\"></p>\n"
+    );
+}
+
+fn without_image_preloads(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find("<link rel=\"preload\" as=\"image\"") {
+        out.push_str(&rest[..at]);
+        let end = rest[at..].find("/>").expect("closed link") + at + 2;
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn php_case(runtime: &Path, app: &Path, case: &str, args: serde_json::Value) -> std::process::Output {

@@ -517,6 +517,114 @@ always logged to `error_log`).
 JSON responses are encoded with `Js::jsonStringify` (so integral floats
 print without `.0`).
 
+## Markdown twins (`Wp\MarkdownTwins`)
+
+The v2 app plugin registers these. A WordPress without a First app is unchanged.
+
+- **`/x.md`** answers for every public URL WordPress renders. On
+  `do_parse_request` (priority 1, after app routes), it is parsed as `/x`. On
+  `wp`, after the main query and before any template or redirect, First answers
+  it. The answer is `text/markdown; charset=UTF-8` with
+  `Link: <html>; rel="canonical"`, the same for every visitor. A page with no
+  public content (404, draft, preview, private post, feed, First collection,
+  pages-add-on code Page) gets a 404. Nothing varies on `Accept`. Batcache and
+  the edge key on the URL, so the twin is a separate cache entry.
+- **Twin requests are anonymous.** From `do_parse_request` on, the request
+  runs as a signed-out visitor, whatever cookies it carries. The main query,
+  pagination and every dynamic block see what a signed-out visitor sees.
+  Every password-protected post stays locked, even with a `wp-postpass_*`
+  cookie, including a protected post's body inside a Query Loop. A feed,
+  embed, preview or trackback query becomes a 404 before
+  `WP::send_headers()`, so WordPress never answers a twin URL itself (a
+  feed's 304, for example).
+- **HTML pages** with a twin send
+  `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
+  `<link>` in `wp_head`.
+- **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
+  `/llms.txt`, and a `robots.txt` line). The `first_content_signal` filter
+  changes the value; `''` sends none.
+- **`?format=md` on core item routes** (`GET /wp-json/wp/v2/<type>/<id>`, any
+  post type in REST): after core has run the route and its permission check,
+  a 200 item response is sent as `MarkdownTwins::post()` in `text/markdown`.
+  A password-protected post shows its body only when core would (the right
+  `password` parameter, or an editor in the edit context). Every refusal stays
+  core's JSON error. List routes and other methods are unchanged. The
+  `/__first/api/v1` facade's item route should call `MarkdownTwins::post()` so
+  that both give the same Markdown.
+- **Listing and `/llms.txt` summaries** come from the hand-written excerpt or
+  from `Markdown::renderPost()` of the post, never from its raw stored markup. So
+  anything that hides content from signed-out visitors (a block's render
+  callback, "Hide block", a `render_block` filter, a shortcode, a
+  `the_content` paywall) hides it there too. Each post is set up while it
+  renders, as in a loop.
+- **`first_markdown_twin` filter** (`bool $twin, WP_Post $post`): return false
+  when a URL shows something other than the post's stored content. The pages
+  add-on uses it for code Pages.
+
+PHP API (all static):
+
+| Call | Returns |
+|---|---|
+| `MarkdownTwins::twin(string $url): string` | the twin URL: `/x/` → `/x.md`, home → `/index.md`; scheme, host and query kept. Purges use it to add each URL's `.md` twin. |
+| `MarkdownTwins::post(WP_Post $post): string` | `# Title` plus the post's content as Markdown, through `Markdown::renderPost()`. While `post_password_required()` holds, only the title and a note. It checks no other visibility; the caller does. |
+| `Sync\Markdown::render(string $blocks): string` | stored blocks as Markdown for reading. It never refuses. Markdown is written from what WordPress renders, never from stored markup: each top-level block goes through `render_block()`, then `do_shortcode()`, and the rendered HTML is converted (`Sync\HtmlMarkdown`). So block render callbacks, block supports such as core's "Hide block", `render_block` filters and shortcodes decide what shows, exactly as on the HTML page. A block that renders nothing or throws shows nothing. A `<` that would start a tag outside code is escaped, so no HTML reaches the output. `fromBlocks()` (sync) still writes stored markup and refuses what Markdown can't carry. |
+| `Sync\Markdown::renderPost(WP_Post $post): string` | a post's content as WordPress shows it, in Markdown. It runs `setup_postdata()`, then the whole `the_content` filter, then converts the HTML; the global post is restored afterwards. So membership and paywall plugins that replace `the_content`, and filters that read `get_the_ID()`, decide what shows. The `.md` URLs, REST `?format=md`, listing summaries and `/llms.txt` all use it. |
+| `MarkdownTwins::llms(): string` | the `/llms.txt` body |
+| `MarkdownTwins::negotiate(string $uri): ?array` | the engine's `Accept: text/markdown` answer, below |
+
+**`negotiate()`, for the engine's Accept lane.** Batcache keys on the URL and
+answers inside WordPress's boot, so `Accept: text/markdown` on `/x` is answered
+by the engine instead, never from a page cache:
+
+1. The engine sees `Accept: text/markdown` on a v2 Space's HTML URL. If the
+   build has a prebuilt `/x.md` file, it serves that.
+2. Otherwise it loads `wp-load.php` (which calls `batcache_cancel()`), then
+   calls `\First\Wp\MarkdownTwins::negotiate($requestUri)` before anything
+   runs the main query or prints.
+3. `null` means no First app is active: the engine serves the request as it
+   would have.
+4. Otherwise the engine sends `['status' => int, 'headers' => array, 'body' => string]`.
+   It sends the status with `status_header()`, because WordPress may already
+   have set one, and each header replacing any of the same name. The answer is
+   exactly what `/x.md` answers, plus `Cache-Control: private, no-store`,
+   `Vary: Accept` and `Content-Location: <twin URL>`. An app `route.ts` at that
+   path answers and exits as on any request.
+
+`negotiate()` calls `batcache_cancel()` itself and prints nothing. It sends
+`Cache-Control: private, no-store`, `Vary: Accept` and `Content-Location`
+before running any hook, so nothing that exits early can leave a shared copy.
+It runs WordPress's own request parsing and main query for the URI (query
+values slashed as WordPress expects), as a signed-out visitor, and suppresses
+the headers WordPress would send for the HTML page. Call it at most once per
+request.
+
+## URL purges (`Wp\Purges`)
+
+After a committed write to public content, the v2 app plugin announces the
+URLs it changed on the host's `first_purge_urls` action:
+`do_action('first_purge_urls', list<string> $paths)`. On Spacefast the engine
+listens and purges those URLs from Batcache and the edge. With no listener
+(`has_action` is false), nothing is collected or announced.
+
+- **Writes covered:** posts and pages of public post types (create, update,
+  publish, unpublish, trash, delete), term assignments, and term edits and
+  deletes in public taxonomies. Drafts that stay drafts and First collections
+  (not public) announce nothing.
+- **Paths, root-relative with their query:** the item's URL before and after
+  the write (a slug change purges both), the home page, the posts page, the
+  post type archive, every term archive the post had or has, the author
+  archive, page 2 of each listing, the feed, `/llms.txt`, and every page
+  URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
+  slug change purges both the old and the new archive. Adding or removing a
+  post's terms (`wp_set_object_terms()`, `wp_remove_object_terms()`) purges
+  page 1 and page 2 of every term archive it joined or left. Deeper listing pages fall back to the edge's `s-maxage`
+  window.
+- **When:** once per request, after the outermost First transaction commits,
+  or at `shutdown` for writes made outside one (wp-admin, core REST). A
+  rolled-back transaction announces nothing.
+- `Purges::paths(array $urls): list<string>` turns URLs into the announced
+  paths, `.md` twins included.
+
 ## CLI (`wp first`)
 
 ```

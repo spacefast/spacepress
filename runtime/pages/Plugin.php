@@ -70,6 +70,8 @@ final class Plugin
         add_filter('page_link', [$this, 'pageLink'], 10, 2);
         add_filter('post_type_link', [$this, 'itemLink'], 10, 3);
         add_filter('get_canonical_url', [$this, 'canonicalUrl'], 10, 2);
+        // A code Page's stored body is a template, not what its URL shows: no Markdown twin for it.
+        add_filter('first_markdown_twin', fn (bool $twin, \WP_Post $post): bool => $twin && !$this->routes->isCodePage($post->ID), 10, 2);
         // Hidden outside the editing workspace: admin lists, edit-context REST and pickers.
         add_action('pre_get_posts', [$this, 'hideFromAdmin']);
         add_filter('rest_page_query', [$this, 'hideFromRest'], 10, 2);

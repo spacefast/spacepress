@@ -118,6 +118,17 @@ final class Schema
         return $this->raw['routes'] ?? [];
     }
 
+    /**
+     * Server components: `components/<file>.tsx#<export>` => the compiled function in `FirstApp`,
+     * which takes the props object and returns `\First\Html`.
+     *
+     * @return array<string, string>
+     */
+    public function components(): array
+    {
+        return $this->raw['components'] ?? [];
+    }
+
     /** @return list<array{hook: string, filter: bool, priority: int, args: int, handler: string}> */
     public function wpHooks(): array
     {

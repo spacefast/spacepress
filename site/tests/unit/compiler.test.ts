@@ -22,7 +22,8 @@ function sources(dir: string): Request["files"] {
   }
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
-      if (name === "first" || name === ".first" || name === "first.gen.ts") continue;
+      // `first/` holds generated output, except `first/components/`: server components are sources.
+      if ((name === "first" && sub === "") || name === ".first" || name === "first.gen.ts") continue;
       const rel = sub ? `${sub}/${name}` : name;
       const full = path.join(dir, rel);
       const stat = lstatSync(full);
@@ -31,6 +32,7 @@ function sources(dir: string): Request["files"] {
     }
   };
   walk("");
+  if (statSync(path.join(dir, "first/components"), { throwIfNoEntry: false })?.isDirectory()) walk("first/components");
   return files;
 }
 

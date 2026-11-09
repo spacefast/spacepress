@@ -84,6 +84,8 @@ pub enum Ty {
     Host(HostTy),
     /// A caught exception.
     Error,
+    /// Rendered, already escaped HTML from JSX (`\First\Html`).
+    Html,
     // First runtime values
     Collection(String),
     Db,
@@ -320,6 +322,7 @@ impl Ty {
             Ty::Regex => "RegExp".into(),
             Ty::Host(h) => h.name().into(),
             Ty::Error => "Error".into(),
+            Ty::Html => "JSX.Element".into(),
             Ty::Collection(t) => format!("collection \"{t}\""),
             Ty::Db => "db".into(),
             Ty::DbQuery => "db.query".into(),

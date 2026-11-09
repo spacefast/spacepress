@@ -65,6 +65,111 @@ final class Markdown
     }
 
     /**
+     * Stored blocks as Markdown for reading: the page's `.md` twin and `?format=md`. Never refuses.
+     *
+     * Markdown is written from what WordPress renders, never from stored markup, so everything that
+     * decides what a visitor sees decides it here too: each block's render callback and supports
+     * (core's "Hide block"), `render_block` filters, shortcodes, embeds. Each top-level block goes
+     * through render_block() on its own, and its HTML becomes Markdown; one that renders nothing
+     * shows nothing, one that throws shows nothing and the rest still render. Shortcodes run on the
+     * rendered HTML, as the_content runs do_shortcode after do_blocks; classic content gets wpautop
+     * first, as there.
+     *
+     * No HTML reaches the output: a `<` that would start a tag outside code is escaped, whether it
+     * came from markup (a custom HTML block) or from text (`&lt;script&gt;`).
+     */
+    public static function render(string $blocks): string
+    {
+        Blocks::boot();
+        $parts = [];
+        foreach (has_blocks($blocks) ? Blocks::parse($blocks) : [['blockName' => null, 'innerHTML' => $blocks]] as $block) {
+            try {
+                // As the_content orders it: blocks (do_blocks, 9), then paragraphs for classic content
+                // (wpautop, 10), then shortcodes over the result (do_shortcode, 11).
+                $html = ($block['blockName'] ?? null) === null
+                    ? do_shortcode(wpautop((string) ($block['innerHTML'] ?? '')))
+                    : do_shortcode(render_block($block));
+                $part = trim(HtmlMarkdown::convert($html));
+            } catch (\Throwable) {
+                $part = '';
+            }
+            if ($part !== '') {
+                $parts[] = $part;
+            }
+        }
+
+        return $parts === [] ? '' : self::escapeTags(implode("\n\n", $parts)) . "\n";
+    }
+
+    /**
+     * A post's content as Markdown for reading, exactly as WordPress shows it: the post is set up
+     * (setup_postdata), so get_the_ID() and every per-post check see it; then the whole the_content
+     * filter runs (blocks, shortcodes, embeds, and the filters membership and paywall plugins use to
+     * replace content for visitors who may not read it), and its HTML becomes Markdown. A post whose
+     * rendering throws shows nothing. The global post is restored afterwards.
+     */
+    public static function renderPost(\WP_Post $subject): string
+    {
+        Blocks::boot();
+        global $post;
+        $previous = $post ?? null;
+        $post = $subject;
+        setup_postdata($subject);
+        try {
+            $html = (string) apply_filters('the_content', (string) $subject->post_content);
+            $markdown = trim(HtmlMarkdown::convert($html));
+        } catch (\Throwable) {
+            $markdown = '';
+        } finally {
+            $post = $previous;
+            if ($previous instanceof \WP_Post) {
+                setup_postdata($previous);
+            } else {
+                wp_reset_postdata();
+            }
+        }
+
+        return $markdown === '' ? '' : self::escapeTags($markdown) . "\n";
+    }
+
+    /**
+     * `\<` for every `<` that a Markdown renderer could read as the start of raw HTML (a tag, a
+     * comment, a declaration), outside fenced code and code spans, where it is shown as written.
+     */
+    private static function escapeTags(string $markdown): string
+    {
+        $out = [];
+        $fence = null;
+        foreach (explode("\n", $markdown) as $line) {
+            if (preg_match('/^ {0,3}(`{3,}|~{3,})/', $line, $m) === 1) {
+                if ($fence === null) {
+                    $fence = $m[1];
+                } elseif (str_starts_with(ltrim($line), $fence) && trim(ltrim($line), $fence[0]) === '') {
+                    $fence = null;
+                }
+                $out[] = $line;
+                continue;
+            }
+            if ($fence !== null) {
+                $out[] = $line;
+                continue;
+            }
+            $parts = preg_split('/((`+).+?\2)/', $line, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $escaped = '';
+            for ($i = 0, $n = count($parts); $i < $n; $i++) {
+                if ($i % 3 === 0) {
+                    $escaped .= (string) preg_replace('/(?<!\\\\)<(?=[A-Za-z\/!?])/', '\\<', $parts[$i]);
+                } elseif ($i % 3 === 1) {
+                    $escaped .= $parts[$i];
+                }
+            }
+            $out[] = $escaped;
+        }
+
+        return implode("\n", $out);
+    }
+
+    /**
      * The first block Markdown has no syntax for. The producer would fence such a block's raw markup
      * (```block), which reads back but is not Markdown anyone can edit.
      */

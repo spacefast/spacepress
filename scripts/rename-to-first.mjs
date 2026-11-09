@@ -162,6 +162,9 @@ const CODE_RULES = [
   [/\bsf zero\b/g, 'sf first'],
   [/(?<=--bin[ =])zero\b/g, 'first'],
   [new RegExp(`(?<![\\w@.\\/\\\\-])zero(?=\\s+(?:${COMMANDS})(?![\\w-]))`, 'g'), 'first'],
+  // The binary in messages: `for zero {command}`, `\nzero help`.
+  [/(?<=\bfor )zero(?= \{)/g, 'first'],
+  [/(?<=\\n)zero(?= (?:help|<command>))/g, 'first'],
   [/(?<=`)zero(?=[`\s])/g, 'first'],
   [/(?<=\[)zero(?=\])/g, 'first'],
   [/(\\?["'])zero\1/g, '$1first$1'],

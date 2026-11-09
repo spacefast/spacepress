@@ -245,6 +245,24 @@ impl Compiler<'_, '_> {
                     ("URL", []) => Ty::Url,
                     ("URLSearchParams", []) => Ty::UrlParams,
                     ("Error", []) => Ty::Error,
+                    // JSX's result type, with the names TypeScript's React typings use for it.
+                    ("JSX.Element" | "React.JSX.Element" | "React.ReactElement" | "ReactElement", []) => Ty::Html,
+                    // Anything React can render. Arrays nest one level here; deeper nesting is `unknown`.
+                    ("React.ReactNode" | "ReactNode", []) => {
+                        let leaf = Ty::union([
+                            Ty::Html,
+                            Ty::Str,
+                            Ty::Num,
+                            Ty::BigInt,
+                            Ty::Bool,
+                            Ty::Null,
+                            Ty::Undefined,
+                        ]);
+                        Ty::union([
+                            leaf.clone(),
+                            Ty::Array(Box::new(Ty::union([leaf, Ty::Array(Box::new(Ty::Unknown))]))),
+                        ])
+                    }
                     ("Record", [k, v]) => {
                         let keys = self.resolve_ann(k, module, generics)?;
                         let value = self.resolve_ann(v, module, generics)?;

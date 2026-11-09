@@ -238,7 +238,10 @@ pub fn ty_schema(t: &Ty) -> Option<Value> {
                 let s = ty_schema(item)?;
                 let item_kinds: Vec<String> = match s.get("type")? {
                     Value::String(k) => vec![k.clone()],
-                    Value::Array(ks) => ks.iter().map(|k| k.as_str().map(str::to_string)).collect::<Option<_>>()?,
+                    Value::Array(ks) => ks
+                        .iter()
+                        .map(|k| k.as_str().map(str::to_string))
+                        .collect::<Option<_>>()?,
                     _ => return None,
                 };
                 if item_kinds.iter().any(|k| matches!(k.as_str(), "object" | "array")) {
@@ -580,8 +583,14 @@ mod tests {
             Some(json!({ "type": ["number", "null", "string"] }))
         );
         // Integer literals: exact up to 2^53; beyond it the literal number itself, never a saturated i64.
-        assert_eq!(ty_schema(&Ty::NumLit(42.0)), Some(json!({ "type": "integer", "enum": [42] })));
-        assert_eq!(ty_schema(&Ty::NumLit(1e20)), Some(json!({ "type": "number", "enum": [1e20] })));
+        assert_eq!(
+            ty_schema(&Ty::NumLit(42.0)),
+            Some(json!({ "type": "integer", "enum": [42] }))
+        );
+        assert_eq!(
+            ty_schema(&Ty::NumLit(1e20)),
+            Some(json!({ "type": "number", "enum": [1e20] }))
+        );
         assert_eq!(
             ty_schema(&Ty::union([Ty::NumLit(1.0), Ty::NumLit(-1e300)])),
             Some(json!({ "type": ["number"], "enum": [1, -1e300] }))

@@ -1052,6 +1052,10 @@ export declare function action<TInput extends ColumnsConfig, TResult>(definition
   access?: GateRule<InferActionInput<TInput>>;
   agents?: boolean;
   idempotent?: boolean;
+  /** Only reads: the Ability is annotated `readonly` (run over GET) and implies `idempotent`. */
+  readonly?: boolean;
+  /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
+  destructive?: boolean;
   signature?: { secret: EnvValue; header: string; scheme: "zero" | "hmac-sha256" };
   handler: (input: InferActionInput<TInput>, ctx: HookCtx) => Awaitable<TResult>;
 }): Action<TInput, TResult>;

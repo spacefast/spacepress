@@ -410,6 +410,13 @@ pub fn render(schema: &Schema) -> String {
         let _ = writeln!(out, "            'access' => {},", access(&a.access));
         let _ = writeln!(out, "            'agents' => {},", a.agents);
         let _ = writeln!(out, "            'idempotent' => {},", a.idempotent);
+        let _ = writeln!(out, "            'readonly' => {},", a.readonly);
+        let _ = writeln!(out, "            'destructive' => {},", a.destructive);
+        let _ = writeln!(
+            out,
+            "            'output' => {},",
+            a.output.as_ref().map(php_json).unwrap_or_else(|| "null".into())
+        );
         let _ = writeln!(
             out,
             "            'signature' => {},",

@@ -341,6 +341,12 @@ pub fn build(
         let name = if n == 1 { "init" } else { "update" };
         migrations.push((format!("{n:04}_{name}.sql"), migrate::render(&statements)));
     }
+    // Each action's Ability publishes its result type as an output schema (spec §3a).
+    for (name, ty) in &action_results {
+        if let Some(action) = schema.actions.get_mut(name) {
+            action.output = crate::wordpress::abilities::ty_schema(ty);
+        }
+    }
     let client_files = client::files(&schema, &action_results, runtime);
     let unsupported_plugins = ext.plugins.as_ref().map(wp_plugins::unsupported).unwrap_or_default();
     // Only a project that imports "php/wordpress" maps it in tsconfig, so only then is it augmented.

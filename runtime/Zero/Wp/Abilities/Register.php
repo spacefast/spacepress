@@ -362,9 +362,15 @@ final class Register
         return [
             'name' => "$app/" . self::kebab($name), 'op' => 'run', 'agents' => (bool) ($action['agents'] ?? true),
             'label' => "Run $name", 'description' => "Run the $name action of the $appLabel app.",
-            'input' => JsonSchema::input($props, $required), 'output' => [],
-            // §7.1's destructive flag needs the compiler's `writes` (handler calls db.delete); schema.php v3 has none yet.
-            'annotations' => ($action['idempotent'] ?? false) ? ['idempotent' => true] : [],
+            // The result type, as the compiler inferred it from the handler (none when it has no JSON shape).
+            'input' => JsonSchema::input($props, $required), 'output' => is_array($action['output'] ?? null) ? $action['output'] : [],
+            // The action's own options (spec §3a). Core's run route picks the method from them: GET for
+            // readonly, DELETE for destructive + idempotent, POST otherwise.
+            'annotations' => array_filter([
+                'readonly' => (bool) ($action['readonly'] ?? false),
+                'destructive' => (bool) ($action['destructive'] ?? false),
+                'idempotent' => (bool) ($action['idempotent'] ?? false) || (bool) ($action['readonly'] ?? false),
+            ]),
             'rule' => [$action['access'] ?? Access::DEFAULT_WRITE, 'create', "run $name"],
             // A signature replaces the access check (§6.1); the action path verifies it, so nothing is judged early.
             'defer' => ($action['signature'] ?? null) !== null,

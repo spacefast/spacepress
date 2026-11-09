@@ -55,12 +55,12 @@ plugins and their activation.
 
 ```sh
 cargo build --locked
-./target/debug/zero build examples/subscriptions
+./target/debug/first build examples/subscriptions
 npm --prefix examples/subscriptions/web ci
 npm --prefix examples/subscriptions/web run build
-./target/debug/zero build examples/subscriptions
-./target/debug/zero dev examples/subscriptions --no-watch --port 8794
-./target/debug/zero identity --site examples/subscriptions app add \
+./target/debug/first build examples/subscriptions
+./target/debug/first dev examples/subscriptions --no-watch --port 8794
+./target/debug/first identity --site examples/subscriptions app add \
   --name=Subscriptions --id=app_subscriptions \
   --redirect=http://localhost:8794/wp-content/plugins/first-app-subscriptions/public/index.html \
   --origin=http://localhost:8794
@@ -75,10 +75,10 @@ The frontend stores no application password.
 For the Vite loop, register its origin and callback, then start Vite:
 
 ```sh
-./target/debug/zero identity --site examples/subscriptions app add \
+./target/debug/first identity --site examples/subscriptions app add \
   --name=Subscriptions --id=app_subscriptions_vite \
   --redirect=http://127.0.0.1:5173/ --origin=http://127.0.0.1:5173
-VITE_ZERO_APP_ID=app_subscriptions_vite npm --prefix examples/subscriptions/web run dev
+VITE_FIRST_APP_ID=app_subscriptions_vite npm --prefix examples/subscriptions/web run dev
 ```
 
 Keep `first dev examples/subscriptions --port 8794` running in another terminal
@@ -97,7 +97,7 @@ They cannot be generated from this config while the diagnostic remains.
 
 ## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
 
-`./target/debug/zero check examples/subscriptions --json` exits 1. The error
+`./target/debug/first check examples/subscriptions --json` exits 1. The error
 count is `diagnostics.filter(d => d.severity === "error").length = 1` in
 [`verification/compiler.json`](https://github.com/spacefast/zero/blob/main/examples/subscriptions/verification/compiler.json). The diagnostic is
 verbatim:
@@ -152,7 +152,7 @@ The installed `spacefast/0.8.0` CLI also refuses the deploy guide's preflight:
 {
   "error": {
     "code": "validation_error",
-    "message": "Unknown command `sf first check examples/subscriptions`. Did you mean `sf first ls`? Run `sf help zero` for available commands.",
+    "message": "Unknown command `sf first check examples/subscriptions`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.",
     "type": "https://spacefast.com/docs/errors/validation_error",
     "retryable": false,
     "recovery": "Adjust the request, then retry"
@@ -260,7 +260,7 @@ are not claimed as live-verified while this example cannot build.
 
 ## Publish and live status
 
-After resolving the compiler and CLI gaps, build the frontend, run `sf first
+After resolving the compiler and CLI gaps, build the frontend, run `sf zero
 check` from this directory, and publish to a new team-only Space with an explicit
 resolved team ID:
 

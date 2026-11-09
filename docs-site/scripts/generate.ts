@@ -99,12 +99,12 @@ function configComment(text: string): string {
 
 /**
  * Markdown from the repository, as a page here shows it: relative links point at the file on
- * GitHub, and the text reads with First names. URLs keep the paths the files have on main, so a
- * link never points at a file that doesn't exist yet.
+ * GitHub, and the text reads with First names. GitHub URLs keep the paths the files have on main,
+ * so a link never points at a file that doesn't exist yet.
  */
 function prose(markdown: string, from: string): string {
 	const urls: string[] = [];
-	const held = repoLinks(markdown, from).replace(/\]\(([^)\s]+)\)/g, (_, url: string) => `](\u0000${urls.push(url) - 1}\u0000)`);
+	const held = repoLinks(markdown, from).replace(/\]\((https:\/\/github\.com\/[^)\s]+)\)/g, (_, url: string) => `](\u0000${urls.push(url) - 1}\u0000)`);
 	return toFirst(held).replace(/\u0000(\d+)\u0000/g, (_, i: string) => urls[Number(i)]!);
 }
 

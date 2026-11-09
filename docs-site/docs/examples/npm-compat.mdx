@@ -47,7 +47,7 @@ hashes must match `provenance.json`; changed installed bytes fail verification.
 The verifier executes a private compiler snapshot, so another build cannot
 replace the binary between routes.
 
-`FIRST_BIN` defaults to this checkout's `target/debug/zero`. PHP CLI needs the
+`FIRST_BIN` defaults to this checkout's `target/debug/first`. PHP CLI needs the
 runtime's normal extensions, including mbstring. No WordPress site, database,
 network request, or JavaScript process participates in the PHP execution.
 `run-php.php` loads the generated runtime and calls the generated action handler.

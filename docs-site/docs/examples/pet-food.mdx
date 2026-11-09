@@ -58,9 +58,9 @@ From the repository root:
 
 ```sh
 cargo build --locked
-./target/debug/zero check examples/pet-food --json
-./target/debug/zero build examples/pet-food
-./target/debug/zero dev examples/pet-food --port 8897 --no-watch
+./target/debug/first check examples/pet-food --json
+./target/debug/first build examples/pet-food
+./target/debug/first dev examples/pet-food --port 8897 --no-watch
 ```
 
 These commands currently stop at the diagnostic below. Once main accepts the
@@ -69,14 +69,14 @@ Admin is included by `admin: true`. When installing elsewhere, follow the
 generated manifest's activation order and enable pretty permalinks.
 
 Sign in at `http://localhost:8897/wp-admin/` with the disposable local account
-`admin` / `zero-test-admin`. Use `/first-admin/` for Pantry stock, Feeding history,
+`admin` / `first-test-admin`. Use `/first-admin/` for Pantry stock, Feeding history,
 and Shopping list. Pets, Foods, and Vet notes have native wp-admin menus.
 WordPress sign-in needs no custom frontend or OAuth client registration.
 
 Create an application password and run the real HTTP verifier:
 
 ```sh
-./target/debug/zero dev wp examples/pet-food -- user application-password create admin pet-food-local --porcelain
+./target/debug/first dev wp examples/pet-food -- user application-password create admin pet-food-local --porcelain
 read -rs 'FIRST_AUTH?WordPress username:application-password: '; echo
 export FIRST_AUTH
 FIRST_SITE=http://localhost:8897 node examples/pet-food/verify.mjs
@@ -92,8 +92,8 @@ It retains fixtures for screenshots. Reruns create independent fixtures.
 After the verifier succeeds, execute the queued Action Scheduler jobs:
 
 ```sh
-./target/debug/zero dev wp examples/pet-food -- action-scheduler run --group=zero-pet-food --force
-./target/debug/zero dev wp examples/pet-food -- first jobs list
+./target/debug/first dev wp examples/pet-food -- action-scheduler run --group=zero-pet-food --force
+./target/debug/first dev wp examples/pet-food -- first jobs list
 curl --fail-with-body -u "$FIRST_AUTH" 'http://localhost:8897/wp-json/first/v1/shopping_list'
 unset FIRST_AUTH FIRST_OTHER_AUTH
 ```
@@ -190,7 +190,7 @@ verified:
 
 | View | Route |
 | --- | --- |
-| Native Pets list | `/wp-admin/edit.php?post_type=zero_pets` |
+| Native Pets list | `/wp-admin/edit.php?post_type=first_pets` |
 | Pet edit screen with SCF fields | `/wp-admin/post.php?post=ID&action=edit`, using a real pet's WordPress post ID |
 | First Admin stock table | `/first-admin/`, then Pantry stock |
 
@@ -243,7 +243,7 @@ The installed `spacefast/0.8.0` CLI rejected the documented `sf first check`
 preflight with this exact message:
 
 ```text
-Unknown command `sf first check`. Did you mean `sf first ls`? Run `sf help zero` for available commands.
+Unknown command `sf first check`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.
 ```
 
 From `examples/pet-food`, publication used the requested CLI and team access:
@@ -286,7 +286,7 @@ sf fetch /wp-admin/ --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
 The action attempt was:
 
 ```sh
-sf first call pet-food/restock-list --space spc_429d2abd17024946a1cda69e5322ed2c --input '{}' --json
+sf zero call pet-food/restock-list --space spc_429d2abd17024946a1cda69e5322ed2c --input '{}' --json
 ```
 
 It returned `validation_error` with this exact message:

@@ -36,25 +36,25 @@ From the repository root, build the compiler and app, then build the frontend:
 
 ```sh
 cargo build --release
-./target/release/zero build examples/drive-locker
+./target/release/first build examples/drive-locker
 npm --prefix examples/drive-locker/web ci
 npm --prefix examples/drive-locker/web run build
-./target/release/zero dev examples/drive-locker --port 8796 --no-watch
-./target/release/zero identity app add --site examples/drive-locker \
+./target/release/first dev examples/drive-locker --port 8796 --no-watch
+./target/release/first identity app add --site examples/drive-locker \
 	--name='Drive Locker' --id=app_drive_locker \
 	--redirect=http://127.0.0.1:5196/ --origin=http://127.0.0.1:5196
 npm --prefix examples/drive-locker/web run dev
 ```
 
 Open `http://127.0.0.1:5196/`. Sign in with the disposable Studio account
-`admin` / `zero-test-admin`, choose password sign-in, and approve the application.
+`admin` / `first-test-admin`, choose password sign-in, and approve the application.
 Do not use these credentials outside local development. Sessions stay in
 session storage, and the callback removes the authorization code from the URL.
 
 For the watched development loop, run these commands in separate terminals:
 
 ```sh
-./target/release/zero dev examples/drive-locker --port 8796
+./target/release/first dev examples/drive-locker --port 8796
 npm --prefix examples/drive-locker/web run dev
 ```
 
@@ -64,7 +64,7 @@ Register the exact Vite URL and origin if you change its address. Studio keeps a
 existing site's original port. To stop this example's backend:
 
 ```sh
-./target/release/zero dev stop examples/drive-locker
+./target/release/first dev stop examples/drive-locker
 ```
 
 Vite builds into `public/` with relative asset paths. `public/` is ignored because
@@ -141,7 +141,7 @@ owner rules apply. Do not put that password in a prompt or source file. To
 create a disposable application password on the local Studio site:
 
 ```sh
-./target/release/zero wp --site examples/drive-locker \
+./target/release/first wp --site examples/drive-locker \
 	user application-password create admin drive-locker-agent --porcelain
 ```
 
@@ -167,8 +167,8 @@ request is in [the local transcript](https://github.com/spacefast/zero/blob/main
 From the repository root:
 
 ```sh
-./target/release/zero check examples/drive-locker --json
-./target/release/zero build examples/drive-locker --frozen
+./target/release/first check examples/drive-locker --json
+./target/release/first build examples/drive-locker --frozen
 tsc -p examples/drive-locker
 npm --prefix examples/drive-locker/web run build
 node examples/drive-locker/verify.mjs

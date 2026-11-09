@@ -45,28 +45,28 @@ From the repository root, build the compiler from main and then the example:
 
 ```sh
 cargo build --locked
-./target/debug/zero check examples/stuff-drawer --json
-./target/debug/zero build examples/stuff-drawer
-./target/debug/zero dev examples/stuff-drawer --no-watch --port 8897
+./target/debug/first check examples/stuff-drawer --json
+./target/debug/first build examples/stuff-drawer
+./target/debug/first dev examples/stuff-drawer --no-watch --port 8897
 ```
 
 These commands currently stop at the diagnostic below. Once main supports this source, `first build` produces `first.gen.ts`, `first/client/`, `first/_generated/migrations/`, and the pinned WordPress plugin lock. They are not fabricated or copied from another app here.
 
 The required plugins are Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, and MCP Adapter 0.7.1. First builds and installs their pinned packages. This app does not use locales or a second identity system.
 
-After a successful start, sign into `/wp-admin/` with Studio's disposable `admin` / `zero-test-admin` account. Visit `/first-admin/` with the same account. Use the URL printed by Studio if the existing site has another port.
+After a successful start, sign into `/wp-admin/` with Studio's disposable `admin` / `first-test-admin` account. Visit `/first-admin/` with the same account. Use the URL printed by Studio if the existing site has another port.
 
 Create an application password with WP-CLI. Capture it in your secret manager or environment, rather than committing it:
 
 ```sh
-./target/debug/zero wp --site examples/stuff-drawer user application-password create admin stuff-drawer --porcelain
+./target/debug/first wp --site examples/stuff-drawer user application-password create admin stuff-drawer --porcelain
 ```
 
 Set `FIRST_SITE` to Studio's URL and `FIRST_APP_PASSWORD` to `admin:<application-password>`, then run:
 
 ```sh
 node examples/stuff-drawer/verify.mjs
-./target/debug/zero wp --site examples/stuff-drawer action-scheduler run
+./target/debug/first wp --site examples/stuff-drawer action-scheduler run
 node examples/stuff-drawer/verify.mjs --stamps
 ```
 
@@ -214,7 +214,7 @@ Run with --help to see the supported usage.
 A later invocation of `sf first check examples/stuff-drawer` returned:
 
 ```text
-Unknown command `sf first check examples/stuff-drawer`. Did you mean `sf first ls`? Run `sf help zero` for available commands.
+Unknown command `sf first check examples/stuff-drawer`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.
 ```
 
 The native check above was used to inspect main. Publication used only `sf publish`, including a remote-detection attempt:

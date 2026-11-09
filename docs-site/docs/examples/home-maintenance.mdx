@@ -35,14 +35,14 @@ From the repository root:
 
 ```sh
 cargo build --locked --bin zero
-./target/debug/zero build examples/home-maintenance
-./target/debug/zero check examples/home-maintenance --json
+./target/debug/first build examples/home-maintenance
+./target/debug/first check examples/home-maintenance --json
 tsc -p examples/home-maintenance
-./target/debug/zero dev examples/home-maintenance --port 8896 --no-watch
+./target/debug/first dev examples/home-maintenance --port 8896 --no-watch
 ```
 
 Open `http://localhost:8896/wp-admin/` or `http://localhost:8896/first-admin/`.
-The disposable Studio account is `admin` with password `zero-test-admin`.
+The disposable Studio account is `admin` with password `first-test-admin`.
 Studio activates the generated artifact, including Secure Custom Fields,
 Action Scheduler, MCP Adapter, First Identity, and First Admin.
 
@@ -116,7 +116,7 @@ On a WordPress host, keep Action Scheduler running through its normal host
 integration. To deliver currently due jobs locally:
 
 ```sh
-./target/debug/zero wp --site examples/home-maintenance action-scheduler run --hooks=zero_job --force
+./target/debug/first wp --site examples/home-maintenance action-scheduler run --hooks=first_job --force
 ```
 
 ### Private manuals

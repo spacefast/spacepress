@@ -119,6 +119,9 @@ const KEEP = [
   // A hash input: changing it would change every derived file uid (tests/fixtures/sync-file-uid.json).
   /\bzero-sync-file\b/g,
 ];
+// tests/config_migrate.rs passes the converter's source kind as the first argument or tuple
+// member: `"zero"` there is `--from zero`, the Zero 0.8 capsule source.
+const KEEP_FROM_ZERO = [/(?<=(?:migrate|refused|migrated_app)\(\s*)"zero"(?=,)/g, /(?<=\(\s*)"zero"(?=,\s*(?:"legacy-zero\.ts"|"export default))/g, /(?<=for \(from, source, pointer\) in \[\s*\(\s*)"zero"/g, /(?<=\),\s*\(\s*)"zero"(?=,\s*"export default)/g];
 const KEEP_08_META = [/'_zero_'|\\\\?_zero\\\\?_%?|\b_+zero_\w*/g];
 
 const COMMANDS = 'build|check|dev|migrate|migrate-legacy|migrate-legacy-users|migrate-spacefast|sync|doctor|abilities|deploy|sources|compile-sources|compile-to-store|help|wp|run|jobs|identity|publish-due|find|insert|update|delete|action|seed|pull|init|import|types|--help|--version|-h|-V|<command>|<site|<cmd>|\\.\\.\\.';
@@ -224,7 +227,8 @@ const unshield = (text, slots) => {
 export function rename(text, path = '') {
   if (!/zero|Z\d{4}|startswith\("Z"\)/i.test(text)) return text;
   const slots = [];
-  let out = shield(text, KEEP, slots);
+  let out = path === 'tests/config_migrate.rs' ? shield(text, KEEP_FROM_ZERO, slots) : text;
+  out = shield(out, KEEP, slots);
   if (ZERO_08_META.some((r) => r.test(path))) out = shield(out, KEEP_08_META, slots);
   const prose08 = ZERO_08_PROSE.some((r) => r.test(path));
   for (const [pattern, replacement] of CODE_RULES) {

@@ -59,7 +59,7 @@ fn each_source_compiles_with_its_storage_and_access() {
         ("emdash", "emdash.json", "first-app-imported", false),
         ("payload", "payload.ts", "first-app-imported", true),
         ("sanity", "sanity.ts", "first-app-imported", false),
-        ("first", "legacy-zero.ts", "first-app-notes", true),
+        ("zero", "legacy-zero.ts", "first-app-notes", true),
     ] {
         let (dir, report) = migrate_fixture(from, file);
         assert_eq!(report["status"], "written");
@@ -283,13 +283,13 @@ fn refuses_unsupported_constructs_at_their_pointer_without_output() {
     let out = dir.path().join("migrated/first.config.ts");
     for (from, source, pointer) in [
         (
-            "first",
+            "zero",
             "export default { collections: {}, queries: { mine: () => [] } };",
             "/queries/mine",
         ),
-        ("first", "export default { collections: {}, schema: {} };", "/schema"),
+        ("zero", "export default { collections: {}, schema: {} };", "/schema"),
         (
-            "first",
+            "zero",
             "export default {collections:{posts:{fields:{}}}};",
             "/collections/posts",
         ),
@@ -736,7 +736,7 @@ fn json_defaults_keep_numeric_keyed_objects() {
 /// plus one project, a helper task and a task pointing at both.
 fn reference_app() -> (tempfile::TempDir, PathBuf) {
     migrated_app(
-        "first",
+        "zero",
         "capsule.ts",
         r#"import { capsule } from "@spacefast/zero/server";
 export default capsule({ collections: {
@@ -765,7 +765,7 @@ export default capsule({ collections: {
     )
     .unwrap();
     let config = dir.path().join("app/first.config.ts");
-    assert!(migrate("first", &input, &config).status.success());
+    assert!(migrate("zero", &input, &config).status.success());
     let types = Path::new(env!("CARGO_MANIFEST_DIR")).join("types/first/index.d.ts");
     std::fs::write(
         dir.path().join("app/tsconfig.json"),
@@ -827,7 +827,7 @@ fn original_zero_optional_references_clear_when_their_target_goes() {
 #[test]
 fn original_zero_media_fields_keep_their_cardinality() {
     let (_dir, app) = migrated_app(
-        "first",
+        "zero",
         "capsule.ts",
         r#"import { capsule } from "@spacefast/zero/server";
 export default capsule({ collections: { notes: { fields: { title: { kind: "text", required: true }, cover: { kind: "media" }, gallery: { kind: "media", multiple: true, required: true } } } } });"#,
@@ -844,7 +844,7 @@ export default capsule({ collections: { notes: { fields: { title: { kind: "text"
 #[test]
 fn original_zero_multiple_references_are_refused_at_the_field() {
     let error = refused(
-        "first",
+        "zero",
         "capsule.ts",
         r#"import { capsule } from "@spacefast/zero/server";
 export default capsule({ collections: { notes: { fields: { title: { kind: "text", required: true }, related: { kind: "reference", to: "notes", multiple: true } } } } });"#,

@@ -2481,6 +2481,7 @@ impl Rewrite<'_> {
                             self.expr(v)?;
                         }
                         Prop::Spread(e) => self.expr(e)?,
+                        Prop::NullPrototype => {}
                     }
                 }
             }

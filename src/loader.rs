@@ -1235,6 +1235,7 @@ impl CommonJsScope<'_> {
                             self.expression(value)?;
                         }
                         Prop::Spread(value) => self.expression(value)?,
+                        Prop::NullPrototype => {}
                     }
                 }
             }

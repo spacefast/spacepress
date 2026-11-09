@@ -2200,6 +2200,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
             .any(|a| matches!(a, ArrEl::Item(x) | ArrEl::Spread(x) if r(x))),
         ExprKind::Object(props) => props.iter().any(|p| match p {
             Prop::KV(_, x) | Prop::Spread(x) => r(x),
+            Prop::NullPrototype => false,
         }),
         _ => false,
     }

@@ -1121,6 +1121,7 @@ fn data_initializer(expr: &Expr) -> bool {
         ExprKind::Object(props) => props.iter().all(|prop| match prop {
             Prop::KV(PropKey::Static(_), e) | Prop::Spread(e) => data_initializer(e),
             Prop::KV(PropKey::Computed(k), e) => data_initializer(k) && data_initializer(e),
+            Prop::NullPrototype => true,
         }),
         ExprKind::Unary(_, e) | ExprKind::As(e, _) | ExprKind::NonNull(e) | ExprKind::Chain(e) => data_initializer(e),
         ExprKind::Member { obj, .. } => data_initializer(obj),

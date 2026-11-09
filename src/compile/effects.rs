@@ -1575,6 +1575,7 @@ impl Graph {
                             let src = self.expr(e, names, env, owner);
                             self.copy(src, Some(value.clone()), owner);
                         }
+                        Prop::NullPrototype => {}
                     }
                 }
             }

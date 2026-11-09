@@ -3226,7 +3226,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Object(props)
                 if self.javascript_module(self.fx.as_ref().expect("fn").module)
-                    && props.iter().any(|p| !matches!(p, Prop::KV(PropKey::Static(_), _))) =>
+                    && props
+                        .iter()
+                        .any(|p| matches!(p, Prop::KV(PropKey::Computed(_), _) | Prop::Spread(_))) =>
             {
                 self.javascript_object(props)?
             }
@@ -3306,6 +3308,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             }
                             parts.push(format!("({})->p ?? []", v.wrapped()));
                         }
+                        // The type stays the own fields: TypeScript's `__proto__: null` field
+                        // isn't an own property, so it isn't added.
+                        Prop::NullPrototype => {}
                     }
                 }
                 if !deferred.is_empty() {
@@ -3395,9 +3400,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Obj(fields)
                 };
-                let php = if props.iter().all(|p| matches!(p, Prop::KV(PropKey::Static(_), _))) {
+                let null_prototype = props.iter().any(|p| matches!(p, Prop::NullPrototype));
+                let php = if props
+                    .iter()
+                    .all(|p| matches!(p, Prop::KV(PropKey::Static(_), _) | Prop::NullPrototype))
+                {
                     let fields = parts.iter().map(|p| &p[1..p.len() - 1]).collect::<Vec<_>>().join(", ");
-                    format!("(new \\Zero\\JsObject([{fields}]))")
+                    if null_prototype {
+                        format!("(new \\Zero\\JsObject([{fields}], nullPrototype: true))")
+                    } else {
+                        format!("(new \\Zero\\JsObject([{fields}]))")
+                    }
+                } else if null_prototype {
+                    format!("\\Zero\\Js::nullPrototype(\\Zero\\Js::obj({}))", parts.join(", "))
                 } else {
                     format!("\\Zero\\Js::obj({})", parts.join(", "))
                 };
@@ -4283,6 +4298,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
             None if !function && crate::builtins::contract("object", prop).is_some() => {
+                if matches!(&receiver, Value::Object(o) if o.null_prototype()) {
+                    // A `__proto__: null` object inherits nothing.
+                    return Ok(Some((path, Value::Undef, Binding { ann: None, ..binding })));
+                }
                 return err_help(
                     prop_span,
                     format!("`{path}` reads an inherited property, which isn't supported"),
@@ -4339,8 +4358,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let class = if array { "JsArray" } else { "JsObject" };
         let storage = if array { "a" } else { "p" };
+        let arguments = match value {
+            Value::Object(o) if o.null_prototype() => "nullPrototype: true",
+            _ => "",
+        };
         let mut body = format!(
-            "function {name}(): \\Zero\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{class}();\n"
+            "function {name}(): \\Zero\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;

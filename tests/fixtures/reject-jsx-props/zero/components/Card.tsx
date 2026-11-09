@@ -1,0 +1,7 @@
+function Title({ text }: { text: string }) {
+  return <h1>{text}</h1>;
+}
+
+export function Card() {
+  return <Title text={1} />;
+}

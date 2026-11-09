@@ -136,7 +136,10 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     crate::pages::check(&*recording, &project, &built)?;
     let mut app = SourceBundle::default();
     let mut vendor = SourceBundle::default();
-    let migration_dir = project.join("zero/migrations");
+    if fs.exists(&project.join(crate::pipeline::OLD_LEDGER)) {
+        return Err(crate::pipeline::moved_ledger());
+    }
+    let migration_dir = project.join(crate::pipeline::LEDGER);
     if fs.is_dir(&migration_dir) {
         for path in fs.read_dir(&migration_dir).map_err(io)? {
             safe_migration_name(&path.file_name().unwrap_or_default().to_string_lossy())?;
@@ -451,7 +454,14 @@ pub(crate) fn compile_tree(
     let source_migrations = sources
         .files
         .iter()
-        .filter_map(|(path, text)| path.strip_prefix("zero/migrations/").map(|name| (name, text)))
+        // A capture is frozen: one taken by an older compiler keeps its ledger at the old path, and
+        // its archive must survive a recompile (docs/spacefast-deploy.md).
+        .filter_map(|(path, text)| {
+            [crate::pipeline::LEDGER, crate::pipeline::OLD_LEDGER]
+                .iter()
+                .find_map(|ledger| path.strip_prefix(ledger)?.strip_prefix('/'))
+                .map(|name| (name, text))
+        })
         .map(|(name, text)| {
             safe_migration_name(name)?;
             Ok((name.to_owned(), text.clone()))
@@ -586,8 +596,36 @@ pub(crate) fn compile_tree(
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
+    // The app's zero.config.ts routes and TSX pages, so the host can tell which of its URLs outside
+    // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the pages
+    // plugin's assets/ are the host's own and not listed. Both lists use the route path grammar: a
+    // leading `/`, no trailing slash except `/`, literal segments, `:name` for one segment and a
+    // final `*name` for one or more. A host matching against them should:
+    // - trim one trailing `/` from the request path first (pages canonicalize `/about/` to `/about`);
+    // - treat HEAD as GET, as Zero\App::routeFor does;
+    // - hand over any request whose path matches an entry, whatever its method, so a known path with
+    //   the wrong method gets the runtime's 405 rather than the host's 404.
+    // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
+    let mut routes: Vec<(&str, &str)> = built
+        .schema
+        .routes
+        .values()
+        .map(|r| (r.path.as_str(), r.method.as_str()))
+        .collect();
+    routes.sort();
+    routes.dedup();
+    let routes: Vec<_> = routes
+        .iter()
+        .map(|(path, method)| serde_json::json!({"method": method, "path": path}))
+        .collect();
+    let mut page_paths: Vec<String> = pages
+        .as_ref()
+        .map(|p| p.patterns.iter().map(|pattern| page_path(pattern)).collect())
+        .unwrap_or_default();
+    page_paths.sort();
+    page_paths.dedup();
     let manifest = serde_json::json!({"format":"zero.hosted.v1", "compiler":VERSION, "app":built.schema.name,
-        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("zero-pages-{}", p.app)), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("zero-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths, "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -668,4 +706,15 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// A page route pattern (`/notes/[]`, whose last segment is an item) in the route path grammar
+/// (`/notes/:item`), so one matcher serves `routes` and `pagePaths`.
+#[cfg(feature = "host")]
+fn page_path(pattern: &str) -> String {
+    pattern
+        .split('/')
+        .map(|segment| if segment == "[]" { ":item" } else { segment })
+        .collect::<Vec<_>>()
+        .join("/")
 }

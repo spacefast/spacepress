@@ -30,7 +30,7 @@ cargo build --locked
 ./target/debug/zero dev examples/stuff-drawer --no-watch --port 8897
 ```
 
-These commands currently stop at the diagnostic below. Once main supports this source, `zero build` produces `zero.gen.ts`, `zero/client/`, `zero/migrations/`, and the pinned WordPress plugin lock. They are not fabricated or copied from another app here.
+These commands currently stop at the diagnostic below. Once main supports this source, `zero build` produces `zero.gen.ts`, `zero/client/`, `zero/_generated/migrations/`, and the pinned WordPress plugin lock. They are not fabricated or copied from another app here.
 
 The required plugins are Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, and MCP Adapter 0.7.1. Zero builds and installs their pinned packages. This app does not use locales or a second identity system.
 

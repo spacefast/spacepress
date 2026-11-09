@@ -1,13 +1,14 @@
 # Migrating from Zero 0.8
 
-Migrate a Spacefast app with the hosted operation below. It converts supported
-source, preserves content and user IDs, and carries existing logins into v2.
+This guide covers the hosted migration operation, which isn't shipped yet. Once
+it is, it converts supported source, preserves content and user IDs, and carries
+existing logins into v2.
 Generated endpoints, actions, [HTTP routes](config-api.md#http-routes) and
 [live updates](realtime.md) work on Spacefast. [TSX pages](pages.md) do not
 yet: the Spacefast host mounts the runtime, the app and identity for a v2
 version, but not the compiled pages plugin, and it does not serve its assets.
-Until it does, keep any 0.8 Space whose visitors depend on its pages on 0.8;
-this guide's commit step retires the 0.8 site.
+Until it does, a 0.8 app with pages stays on 0.8: its publish ships as 0.8 and
+reports `Z08_LOCAL_PAGES`. This guide's commit step retires the 0.8 site.
 
 The baseline is `@spacefast/zero` and `@spacefast/zero-compile` 0.8.1. A
 successful source conversion proves that the candidate compiles. Complete the
@@ -15,10 +16,19 @@ data copy, access review, client changes, and runtime checks before calling an
 application migrated. [Coverage](#coverage) lists what each 0.8 capability
 becomes.
 
-For a standalone WordPress site, use the config and in-place data commands
-later in this guide. Both paths report unsupported behavior with pointers.
+On Spacefast, a publish from the CLI runs this conversion on its own and ships
+as v2 when nothing is refused ([coexistence](spec/coexistence.md)). To preview
+the candidate first, run `zero migrate app --from zero-0.8 … --dry-run`
+([below](#convert-source-locally-for-review)). The hosted operation in the next section
+(`sf zero migrate --space`, `migrateSpaceZero`, `POST
+/v1/spaces/{id}/zero/migration`) hasn't shipped yet. For a standalone WordPress
+site, use the config and in-place data commands later in this guide. Both paths
+report unsupported behavior with pointers.
 
 ## Migrate a Spacefast app
+
+**Not shipped yet.** `sf zero migrate --space`, `migrateSpaceZero` and the
+migration route below don't exist on Spacefast today.
 
 Use this procedure for a user's Spacefast 0.8 app. The hosted operation converts
 source, copies scoped data, and commits the one-way transition together. The
@@ -92,7 +102,7 @@ not restore the database.
 
 ### Convert source locally for review
 
-If you need to inspect or port a candidate before the hosted operation, run:
+To inspect a candidate, run:
 
 ```sh
 sf zero migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example --dry-run --json
@@ -102,10 +112,10 @@ sf zero check ./candidate
 
 Add `--users` when Space Users is enabled without a capsule `auth` declaration.
 Each destination must be new. A dry run writes no candidate. Keep all generated
-source, the adoption snapshot, and `connector-roles.json` together. Submit a
-manual v2 port through the hosted migration operation so its data moves before
-the generation change. A normal v2 publish on a legacy Space is refused with
-`zero_migration_required`.
+source, the adoption snapshot, and `connector-roles.json` together. A candidate
+you publish by hand is a normal v2 publish, and on a legacy Space that is refused
+with `zero_migration_required`. Publish the 0.8 app instead, and the publish
+converts it.
 
 ### Copy data under the host's migration lock
 
@@ -158,10 +168,10 @@ A capsule with a schema needs a table mode, set by one of two flags:
 
 - `--space <id>` adopts the published Space's existing 0.8 tables
   (`sf_<space>_<table>_<hash>`). The first migration is
-  `zero/migrations/0001_adopt.sql`.
+  `zero/_generated/migrations/0001_adopt.sql`.
 - `--fresh` declares plain v2 tables and creates them empty. Use it for a Space
   that has no 0.8 tables yet. The first migration is
-  `zero/migrations/0001_init.sql`, and no rows are copied.
+  `zero/_generated/migrations/0001_init.sql`, and no rows are copied.
 
 The two flags exclude each other. With neither, the schema is refused with
 `Z08_SPACE_REQUIRED`. The browser build takes the same choice as
@@ -257,8 +267,8 @@ Each error has this shape:
 Compiler failures point to the generated source and refuse the whole candidate.
 A `written` candidate can still contain review entries. It is not a live deployment.
 
-The command writes compiler-readable TypeScript, `zero/migrations/0001_adopt.sql`,
-and `zero/migrations/snapshot.json`. It does not connect to a database. The SQL
+The command writes compiler-readable TypeScript, `zero/_generated/migrations/0001_adopt.sql`,
+and `zero/_generated/migrations/snapshot.json`. It does not connect to a database. The SQL
 checks that the existing table and columns exist and creates v2's revisions
 system table. It does not copy rows, rename columns, or convert column types.
 `zero build` accepts this snapshot without generating a second initial migration.

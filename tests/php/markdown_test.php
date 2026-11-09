@@ -236,28 +236,52 @@ file_put_contents("$site->content/mu-plugins/engine-accept-lane.php", <<<'PHP'
         }
     });
     PHP);
-// A members-only block (renders nothing for anyone signed out) on the site, as a plugin would add it:
-// no listing summary, /llms.txt line or REST Markdown may show what its HTML page hides.
+// Every way WordPress hides content from a signed-out visitor hides it from every Markdown surface too:
+// the twin, listings, search, /llms.txt and REST ?format=md render first and convert what rendered.
 file_put_contents("$site->content/mu-plugins/members-block.php", <<<'PHP'
     <?php
     add_action('init', static fn () => register_block_type('zero-test/members-site', [
         'render_callback' => static fn (array $a, string $content): string => is_user_logged_in() ? $content : '',
     ]));
+    // A plugin hiding blocks by class through render_block, and a members shortcode.
+    add_filter('render_block', static fn (string $html, array $block): string => !is_user_logged_in() && str_contains((string) ($block['attrs']['className'] ?? ''), 'members-only') ? '' : $html, 10, 2);
+    add_shortcode('members', static fn (array|string $atts, ?string $content = null): string => is_user_logged_in() ? (string) $content : '');
     PHP);
+$hiders = [
+    'a members-only dynamic block' => '<!-- wp:zero-test/members-site --><div><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:zero-test/members-site -->',
+    'core\'s Hide block on a paragraph' => '<!-- wp:paragraph {"metadata":{"blockVisibility":false}} --><p>SECRET-%s</p><!-- /wp:paragraph -->',
+    'core\'s Hide block on a group' => '<!-- wp:group {"metadata":{"blockVisibility":false}} --><div class="wp-block-group"><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:group -->',
+    'a render_block filter on a group' => '<!-- wp:group {"className":"members-only"} --><div class="wp-block-group members-only"><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:group -->',
+    'a render_block filter on a paragraph' => '<!-- wp:paragraph {"className":"members-only"} --><p class="members-only">SECRET-%s</p><!-- /wp:paragraph -->',
+    'a [members] shortcode in a paragraph' => '<!-- wp:paragraph --><p>[members]SECRET-%s[/members]</p><!-- /wp:paragraph -->',
+];
 wp_set_current_user(1);
-$members = $insert(['post_title' => 'Members', 'post_name' => 'members', 'post_date' => '2026-11-05 10:00:00', 'post_content' => '<!-- wp:paragraph --><p>Public intro.</p><!-- /wp:paragraph -->'
-    . '<!-- wp:zero-test/members-site --><div><!-- wp:paragraph --><p>SECRET-MEMBERS-TEXT</p><!-- /wp:paragraph --></div><!-- /wp:zero-test/members-site -->']);
-wp_set_current_user(0);
-$surfaces = ['the HTML page' => fetch("$url/members/")['body'], 'its twin' => fetch("$url/members.md")['body'], 'the blog index twin' => fetch("$url/index.md")['body'],
-    '/llms.txt' => fetch("$url/llms.txt")['body'], 'search' => fetch("$url/index.md?s=public+intro")['body'], 'REST ?format=md' => fetch("$url/wp-json/wp/v2/posts/$members?format=md")['body']];
-foreach ($surfaces as $where => $body) {
-    check("a members-only block stays hidden in $where", !str_contains($body, 'SECRET-MEMBERS-TEXT'), $body);
+$hidden = [];
+$day = 5;
+foreach ($hiders as $how => $markup) {
+    $marker = 'SECRET-' . strtoupper(substr(md5($how), 0, 8));
+    $id = $insert(['post_title' => "Members $day", 'post_name' => "members-$day", 'post_date' => sprintf('2026-10-%02d 10:00:00', $day),
+        'post_content' => '<!-- wp:paragraph --><p>Public intro.</p><!-- /wp:paragraph -->' . sprintf($markup, substr($marker, 7))]);
+    $hidden[$how] = [$id, "members-$day", $marker];
+    $day++;
 }
-check('the listing summary is the rendered text', str_contains($surfaces['the blog index twin'], "[Members]($url/members.md): Public intro."), $surfaces['the blog index twin']);
+$members = $hidden['a members-only dynamic block'][0];
+wp_set_current_user(0);
+$shared = ['the blog index twin' => fetch("$url/index.md")['body'] . fetch("$url/page/2.md")['body'] . fetch("$url/page/3.md")['body'] . fetch("$url/page/4.md")['body'],
+    '/llms.txt' => fetch("$url/llms.txt")['body'], 'search' => fetch("$url/index.md?s=public+intro")['body'] . fetch("$url/index.md?s=public+intro&paged=2")['body'] . fetch("$url/index.md?s=public+intro&paged=3")['body']];
+foreach ($hidden as $how => [$id, $slug, $marker]) {
+    $surfaces = ['the HTML page' => fetch("$url/$slug/")['body'], 'its twin' => fetch("$url/$slug.md")['body'], 'REST ?format=md' => fetch("$url/wp-json/wp/v2/posts/$id?format=md")['body']] + $shared;
+    foreach ($surfaces as $where => $body) {
+        check("$how stays hidden in $where", !str_contains($body, $marker) && !str_contains($body, '[members]'), $body);
+    }
+    check("$how: the rest of the post still shows", str_contains(fetch("$url/$slug.md")['body'], 'Public intro.'), fetch("$url/$slug.md")['body']);
+}
+$surfaces = ['the blog index twin' => fetch("$url/index.md?s=public+intro")['body']];
+check('the listing summary is the rendered text', (bool) preg_match('#\[Members \d+\]\(' . preg_quote($url, '#') . '/members-\d+\.md\): Public intro\.\n#', $surfaces['the blog index twin']), $surfaces['the blog index twin']);
 wp_set_current_user(1);
 wp_update_post(['ID' => $members, 'post_excerpt' => 'Hand <b>&lt;i&gt;</b> excerpt.']);
 wp_set_current_user(0);
-check('a hand-written excerpt is plain text, a spelled tag kept inert', str_contains(fetch("$url/index.md")['body'], '): Hand &lt;i> excerpt.'), fetch("$url/index.md")['body']);
+check('a hand-written excerpt is plain text, a spelled tag kept inert', str_contains(fetch("$url/llms.txt")['body'], '): Hand &lt;i> excerpt.'), fetch("$url/llms.txt")['body']);
 
 // ?format=md on core item routes: the item as post(), after core's own permission check.
 $rest = fetch("$url/wp-json/wp/v2/posts/$hello?format=md");

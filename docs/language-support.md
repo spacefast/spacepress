@@ -764,7 +764,7 @@ Event handlers run in the browser; move them into a "use client" component.
 
 Status: **refused**. Diagnostic: `Z4001`.
 
-Render the value as a child, which is escaped. Raw HTML output isn't supported yet.
+Render the value as a child, which is escaped. Trusted markup will use `<Html>`.
 
 [Evidence](../tests/fixtures/reject-jsx-inner-html)
 
@@ -802,9 +802,9 @@ JSX compiles in `zero/components/`, pages and "use client" files; modules the co
 
 ## jsx-in-action-result
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `Z1003`.
 
-Rendered JSX exists only while a page renders; return data from actions and JSON.stringify, and render it in a component.
+Rendered JSX exists only while a page renders, so the config (and the actions it defines) can't import a component; return data from actions and render it in a component.
 
 [Evidence](../tests/fixtures/reject-jsx-action)
 
@@ -820,6 +820,94 @@ Set a textarea's text with `defaultValue` (or `value`), as React asks.
 
 Status: **refused**. Diagnostic: `Z4001`.
 
-`srcDoc` is HTML; write it as a string literal, or link to the document with `src`.
+`srcDoc` is a document parsed as HTML, so it is refused even as a literal. Link to the document with `src`; trusted markup will use `<Html>`.
 
 [Evidence](../tests/fixtures/reject-jsx-srcdoc)
+
+## jsx-raw-text-tag-case
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Tag names are matched case-insensitively, as browsers read them: `<sCript>` is `<script>`.
+
+[Evidence](../tests/fixtures/reject-jsx-script-case)
+
+## jsx-raw-text-children
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`script`, `style`, `textarea`, `title`, `iframe`, `noscript`, `template`, `xmp`, `noembed`, `noframes`, `plaintext`, `object` and `embed` take only literal children, because their content isn't escaped text.
+
+[Evidence](../tests/fixtures/reject-jsx-iframe-child)
+
+## jsx-raw-text-close
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+A literal child of a raw-text tag can't contain that tag's closing `</tag`.
+
+[Evidence](../tests/fixtures/reject-jsx-raw-close)
+
+## jsx-open-spread
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Spread only objects whose type lists their keys; each key is checked as if written out. `Record<string, …>`, index signatures, `any` and `unknown` are refused.
+
+[Evidence](../tests/fixtures/reject-jsx-open-spread)
+
+## jsx-spread-event-handler
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+A closed spread's keys meet the same rules as written attributes, so a spread can't add an event handler, `srcDoc` or an unsafe literal URL.
+
+[Evidence](../tests/fixtures/reject-jsx-spread-handler)
+
+## jsx-computed-style
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`style` takes an object whose keys are known at build time; values from data are escaped, and values that add declarations or load a `url(` are dropped.
+
+[Evidence](../tests/fixtures/reject-jsx-style-keys)
+
+## jsx-attribute-name
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Attribute names match `[a-zA-Z_:][a-zA-Z0-9_.:-]*`.
+
+[Evidence](../tests/fixtures/reject-jsx-attribute-name)
+
+## jsx-svg-animation
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+SVG `animate`/`set` can rewrite their target's attributes: they never target URL or event attributes, and `values`/`to`/`from`/`by`/`attributeName` must be literal.
+
+[Evidence](../tests/fixtures/reject-jsx-svg-animate)
+
+## jsx-use-client-pending
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+Interactive components arrive with the Interactivity API output; until then, remove the directive to render on the server.
+
+[Evidence](../tests/fixtures/reject-jsx-use-client)
+
+## jsx-children-type
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+`children` is what JSX passes: type it `ReactNode`, `JSX.Element`, `string` or `number`. Taking rendered children apart isn't supported.
+
+[Evidence](../tests/fixtures/reject-jsx-children-object)
+
+## jsx-config-reachable
+
+Status: **refused**. Diagnostic: `Z1003`.
+
+A `.tsx` module the config imports is refused even when its JSX never runs; components live in `zero/components/`.
+
+[Evidence](../tests/fixtures/reject-jsx-config-unused)

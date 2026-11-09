@@ -384,7 +384,11 @@ final class Html
                 continue;
             }
             if (str_starts_with($name, '--')) {
-                $parts[] = self::escape($name) . ':' . self::escape(trim(Js::str($value)));
+                $raw = trim(Js::str($value));
+                if (str_contains($raw, ';') || stripos($raw, 'url(') !== false || str_contains($raw, '\\')) {
+                    continue;
+                }
+                $parts[] = self::escape($name) . ':' . self::escape($raw);
                 continue;
             }
             $css = self::escape(strtolower((string) preg_replace('/([A-Z])/', '-$1', $name)));
@@ -392,7 +396,13 @@ final class Html
             if (is_int($value) || is_float($value)) {
                 $text = ($value == 0 || isset(self::UNITLESS[$name])) ? Js::str($value) : Js::str($value) . 'px';
             } else {
-                $text = self::escape(trim(Js::str($value)));
+                $raw = trim(Js::str($value));
+                // A value can't add declarations or leave the attribute: the compiler fixes the
+                // property names, so a `;` (React warns about it) or `url(` from data is dropped.
+                if (str_contains($raw, ';') || stripos($raw, 'url(') !== false || stripos($raw, 'expression(') !== false || str_contains($raw, '\\')) {
+                    continue;
+                }
+                $text = self::escape($raw);
             }
             $parts[] = $css . ':' . $text;
         }

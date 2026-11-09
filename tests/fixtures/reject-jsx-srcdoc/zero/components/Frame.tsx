@@ -1,3 +1,3 @@
-export function Frame({ s }: { s: string }) {
-  return <iframe srcDoc={s} />;
+export function Frame() {
+  return <iframe srcDoc="<p>hi</p>" />;
 }

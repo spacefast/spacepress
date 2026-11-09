@@ -1040,6 +1040,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "annotate them, e.g. `({ title }: { title: string })`",
                 );
             }
+            // `children` holds what JSX renders (text, numbers, rendered JSX, arrays of those). It
+            // can be read as its type (`children.toUpperCase()` on string children), as in React,
+            // but never as a structure to take apart (`Children.map`, `cloneElement`).
+            if let Some(p) = f.params.first()
+                && let Some(ann) = &p.ann
+                && let Ty::Obj(fields) = self.resolve_runtime_ann(ann, f.module)?
+                && let Some((children, _)) = fields.get("children")
+                && self.jsx_child_type(children, p.span).is_err()
+            {
+                return err_help(
+                    p.span,
+                    format!("`children` is typed {}, which JSX can't pass", children.describe()),
+                    "type it `ReactNode`, `JSX.Element`, `string` or `number`",
+                );
+            }
         }
         let mut param_tys = Vec::new();
         // A module-level literal's method types its hidden receiver as its object (see
@@ -6371,75 +6386,97 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn jsx_element(&mut self, tag: &str, jsx: &Jsx, span: Span) -> Result<Out> {
+        // Browsers lowercase tag names, so every tag rule matches the lowercased name
+        // (docs/decisions/2026-11-08-tsx-to-php.md, "Contexts text escaping can't make safe").
+        let folded_tag = tag.to_ascii_lowercase();
         // React hoists or preloads these into the document head, which a fragment of a page can't
         // reproduce; workstream 6's root layout owns the head.
-        if matches!(tag, "title" | "meta" | "link" | "script" | "style" | "base") {
+        if matches!(
+            folded_tag.as_str(),
+            "title" | "meta" | "link" | "script" | "style" | "base"
+        ) {
             return err_help(
                 span,
                 format!("a component can't render `<{tag}>`"),
                 "set titles and meta tags with `export const metadata`, and import styles and scripts as modules",
             );
         }
-        if tag == "textarea" && !jsx.children.is_empty() {
+        if folded_tag == "textarea" && !jsx.children.is_empty() {
             return err_help(
                 span,
                 "`<textarea>` can't have children",
                 "set its text with `defaultValue`",
             );
         }
-        if tag == "select"
-            && let Some(JsxAttr::Named { span, .. }) = jsx
-                .attrs
-                .iter()
-                .find(|a| matches!(a, JsxAttr::Named { name, .. } if name == "value" || name == "defaultValue"))
-        {
-            return err_help(*span, "`value` on `<select>`", "mark the chosen option with `selected`");
+        // Raw-text and embedding elements: text escaping can't make an expression safe inside them.
+        if RAW_TEXT_TAGS.contains(&folded_tag.as_str()) {
+            for child in &jsx.children {
+                match &child.kind {
+                    ExprKind::Str(text) if !text.to_ascii_lowercase().contains(&format!("</{folded_tag}")) => {}
+                    ExprKind::Str(_) => {
+                        return err_help(
+                            child.span,
+                            format!("this text closes `<{tag}>` early"),
+                            format!("remove `</{folded_tag}` from the text"),
+                        );
+                    }
+                    _ => {
+                        return err_help(
+                            child.span,
+                            format!("`<{tag}>` takes only literal text"),
+                            "its content isn't parsed as escaped text, so values can't be placed in it safely",
+                        );
+                    }
+                }
+            }
         }
         let mut entries = Vec::new();
         let mut spread = false;
         for attr in &jsx.attrs {
             match attr {
                 JsxAttr::Named { name, value, span } => {
-                    if name == "dangerouslySetInnerHTML" {
-                        return err_help(
-                            *span,
-                            "`dangerouslySetInnerHTML` isn't supported",
-                            "render the value as a child, which is escaped; raw HTML output isn't supported yet",
-                        );
-                    }
-                    let folded = name.to_ascii_lowercase();
-                    if folded.starts_with("on") && folded.len() > 2 {
-                        return err_help(
-                            *span,
-                            format!("server components can't handle events (`{name}`)"),
-                            "move the handler into a \"use client\" component",
-                        );
-                    }
-                    if folded == "srcdoc" && !matches!(value.kind, ExprKind::Str(_)) {
-                        return err_help(
-                            *span,
-                            "`srcDoc` from a value isn't supported",
-                            "write the document as a string literal, or link to it with `src`",
-                        );
-                    }
-                    if is_url_attribute(&folded)
-                        && let ExprKind::Str(url) = &value.kind
-                        && !safe_url(url)
-                    {
-                        return err_help(
-                            value.span,
-                            format!("`{name}` is an unsafe URL"),
-                            "use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`)",
-                        );
-                    }
+                    let literal = match &value.kind {
+                        ExprKind::Str(text) => Some(text.as_str()),
+                        _ => None,
+                    };
+                    self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
                     let v = self.expr(value)?;
                     let v = self.finish_value(v, value.span)?;
+                    if name.eq_ignore_ascii_case("style") {
+                        self.jsx_style_type(&v.ty, value.span)?;
+                    }
                     entries.push(format!("{} => {}", php_str(name), v.php));
                 }
                 JsxAttr::Spread(value) => {
                     let v = self.expr(value)?;
-                    if !matches!(v.ty.non_null(), Ty::Obj(_) | Ty::Map(_) | Ty::Dynamic) {
-                        return err(value.span, format!("can't spread {} into attributes", v.ty.describe()));
+                    let v = self.finish_value(v, value.span)?;
+                    // Only a spread with a closed set of keys: each key meets the rules as if written out.
+                    let fields = match v.ty.non_null() {
+                        Ty::Obj(fields) => fields,
+                        Ty::Instance(_, fields) => match *fields {
+                            Ty::Obj(fields) => fields,
+                            other => {
+                                return err(value.span, format!("can't spread {} into attributes", other.describe()));
+                            }
+                        },
+                        other => {
+                            return err_help(
+                                value.span,
+                                format!("can't spread {} into attributes", other.describe()),
+                                "spread an object whose type lists its keys, or write the attributes out",
+                            );
+                        }
+                    };
+                    for (key, (ty, _)) in &fields {
+                        let literal = match ty {
+                            Ty::StrLit(text) | Ty::FreshStrLit(text) => Some(text.as_str()),
+                            _ => None,
+                        };
+                        self.jsx_attribute_rule(&folded_tag, key, literal, value, value.span)
+                            .map_err(|d| d.help(format!("the spread sets `{key}`; write the attributes out")))?;
+                        if key.eq_ignore_ascii_case("style") {
+                            self.jsx_style_type(ty, value.span)?;
+                        }
                     }
                     spread = true;
                     entries.push(format!("...(({})->p ?? [])", v.wrapped()));
@@ -6478,6 +6515,102 @@ impl<'a, 'p> Compiler<'a, 'p> {
             format!("\\Zero\\Html::element({})", args.join(", ")),
             Ty::Html,
         ))
+    }
+
+    /// One attribute of an intrinsic element, named in the source or set by a closed spread,
+    /// against the record's build-time rules. `literal` is its value when that is a known string.
+    fn jsx_attribute_rule(&self, tag: &str, name: &str, literal: Option<&str>, value: &Expr, span: Span) -> Result<()> {
+        if !valid_attribute_name(name) {
+            return err_help(
+                span,
+                format!("`{name}` isn't a valid attribute name"),
+                "attribute names start with a letter, `_` or `:`, then letters, digits, `_`, `.`, `:` or `-`",
+            );
+        }
+        let folded = name.to_ascii_lowercase();
+        if folded == "dangerouslysetinnerhtml" {
+            return err_help(
+                span,
+                "`dangerouslySetInnerHTML` isn't supported",
+                "render the value as a child, which is escaped; trusted markup will use `<Html>`",
+            );
+        }
+        if folded == "srcdoc" {
+            return err_help(
+                span,
+                "`srcDoc` isn't supported",
+                "it is a document parsed as HTML; link to the document with `src`, and trusted markup will use `<Html>`",
+            );
+        }
+        if folded.starts_with("on") && folded.len() > 2 {
+            return if literal.is_some() || matches!(value.kind, ExprKind::Str(_) | ExprKind::Template(..)) {
+                err_help(
+                    span,
+                    format!("`{name}` with a string is inline script"),
+                    "handle events in a \"use client\" component with a function",
+                )
+            } else {
+                err_help(
+                    span,
+                    format!("server components can't handle events (`{name}`)"),
+                    "move the handler into a \"use client\" component",
+                )
+            };
+        }
+        if is_url_attribute(&folded)
+            && let Some(url) = literal
+            && !safe_url(url)
+        {
+            return err_help(
+                value.span,
+                format!("`{name}` is an unsafe URL"),
+                "use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`)",
+            );
+        }
+        // SVG animation can set any attribute of its target, URL attributes included, so it takes
+        // only literal values, and never targets a URL attribute.
+        if matches!(tag, "animate" | "set" | "animatemotion" | "animatetransform") {
+            if folded == "attributename"
+                && let Some(target) = literal
+                && (is_url_attribute(&target.to_ascii_lowercase()) || target.to_ascii_lowercase().starts_with("on"))
+            {
+                return err_help(
+                    span,
+                    format!("SVG animation of `{target}`"),
+                    "animate presentation attributes only",
+                );
+            }
+            if matches!(folded.as_str(), "attributename" | "values" | "to" | "from" | "by") && literal.is_none() {
+                return err_help(
+                    span,
+                    format!("`{name}` on `<{tag}>` must be literal"),
+                    "SVG animation can rewrite its target's attributes, so its values can't come from data",
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// `style` takes an object whose keys are known at build time, so request data can only fill
+    /// values (which `\Zero\Html` escapes), never choose properties.
+    fn jsx_style_type(&self, ty: &Ty, span: Span) -> Result<()> {
+        match ty.non_null() {
+            Ty::Obj(fields)
+                if fields.values().all(|(t, _)| {
+                    t.all(|t| {
+                        t.is_str() || t.is_num() || matches!(t, Ty::Undefined | Ty::Null | Ty::Bool | Ty::BoolLit(_))
+                    })
+                }) =>
+            {
+                Ok(())
+            }
+            Ty::Undefined | Ty::Never => Ok(()),
+            other => err_help(
+                span,
+                format!("`style` needs an object with fixed keys, not {}", other.describe()),
+                "write the properties out, e.g. `style={{ color: c }}`",
+            ),
+        }
     }
 
     fn await_expr(&mut self, x: &Expr, span: Span) -> Result<Out> {
@@ -10731,4 +10864,30 @@ fn safe_url(url: &str) -> bool {
         }
         _ => true,
     }
+}
+
+/// Elements whose content isn't escaped text: they take only literal children.
+const RAW_TEXT_TAGS: &[&str] = &[
+    "script",
+    "style",
+    "textarea",
+    "title",
+    "iframe",
+    "noscript",
+    "template",
+    "xmp",
+    "noembed",
+    "noframes",
+    "plaintext",
+    "object",
+    "embed",
+];
+
+/// `[a-zA-Z_:][a-zA-Z0-9_.:-]*`.
+fn valid_attribute_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == ':')
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
 }

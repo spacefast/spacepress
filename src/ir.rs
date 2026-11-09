@@ -24,6 +24,10 @@ pub struct Module {
     /// Type declarations erased from a dynamic module. Imports and re-exports
     /// of these names are elided, as TypeScript elides them.
     pub type_names: std::collections::HashSet<String>,
+    /// A `.tsx` source: it may contain JSX (docs/decisions/2026-11-08-tsx-to-php.md).
+    pub jsx: bool,
+    /// The source starts with the `"use client"` directive.
+    pub use_client: bool,
 }
 
 /// Raw JavaScript and installed package TypeScript (not declarations) share

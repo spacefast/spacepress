@@ -149,10 +149,62 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
     if diagnostics.is_empty() {
+        diagnostics.extend(jsx_reachability(&program));
+    }
+    if diagnostics.is_empty() {
         Ok(program)
     } else {
         Err(diagnostics)
     }
+}
+
+/// JSX belongs to components: a `.tsx` module that `zero.config.ts` (or a `wp-hooks/` handler)
+/// reaches through its imports is refused, even if its JSX never runs at build time, and a
+/// `"use client"` file is refused until generator B compiles it.
+fn jsx_reachability(program: &Program) -> Vec<Diag> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut stack: Vec<usize> = std::iter::once(program.entry)
+        .chain(program.wp_hooks.iter().map(|h| h.module))
+        .collect();
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        let module = &program.modules[id];
+        if module.jsx {
+            out.push(
+                Diag::new(
+                    Span {
+                        file: module.file,
+                        start: 0,
+                        end: 0,
+                    },
+                    "JSX files can't be part of a Zero config",
+                )
+                .help("JSX compiles in components (`zero/components/`), which the config doesn't import")
+                .code(diag::Code::Import),
+            );
+            continue;
+        }
+        stack.extend(
+            program
+                .resolved
+                .iter()
+                .filter(|((from, _), _)| *from == id)
+                .map(|(_, to)| *to),
+        );
+    }
+    for module in &program.modules {
+        if module.use_client {
+            out.push(
+                Diag::new(Span { file: module.file, start: 0, end: 0 }, "\"use client\" components aren't compiled yet")
+                    .help("remove the directive to render it on the server; interactive components land with the Interactivity API output")
+                    .code(diag::Code::Import),
+            );
+        }
+    }
+    out
 }
 
 /// Server components compiled to PHP, under the Zero root (`zero/components/`).
@@ -276,6 +328,8 @@ fn load_module(
         commonjs,
         dynamic: crate::ir::dynamic_source(path),
         type_names,
+        jsx: path.extension().is_some_and(|e| e == "tsx"),
+        use_client: use_client_directive(&source),
     }));
     for (index, (spec, span)) in imports.into_iter().enumerate() {
         if builtin_module(&spec) {
@@ -412,12 +466,13 @@ fn jsx_admitted(path: &Path, source: &str) -> bool {
     let in_folder = path
         .components()
         .any(|part| matches!(part.as_os_str().to_str(), Some("components" | "pages" | "app")));
-    let use_client = source
-        .trim_start_matches('\u{feff}')
-        .trim_start()
-        .strip_prefix(['"', '\''])
-        .is_some_and(|rest| rest.starts_with("use client"));
-    in_folder || use_client
+    in_folder || use_client_directive(source)
+}
+
+/// Whether a source starts with the `"use client"` directive.
+fn use_client_directive(source: &str) -> bool {
+    let rest = source.trim_start_matches('\u{feff}').trim_start();
+    ["\"use client\"", "'use client'"].iter().any(|d| rest.starts_with(d))
 }
 
 /// Whether a source can be CommonJS before it's lowered: `.cjs`, or `.js` with no import/export

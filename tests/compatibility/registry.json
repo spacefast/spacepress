@@ -719,7 +719,7 @@
       "code": "Z4001",
       "fixture": "tests/fixtures/reject-jsx-inner-html",
       "message": "`dangerouslySetInnerHTML` isn't supported",
-      "guidance": "Render the value as a child, which is escaped. Raw HTML output isn't supported yet."
+      "guidance": "Render the value as a child, which is escaped. Trusted markup will use `<Html>`."
     },
     {
       "id": "jsx-object-child",
@@ -756,10 +756,10 @@
     {
       "id": "jsx-in-action-result",
       "status": "refused",
-      "code": "Z4001",
+      "code": "Z1003",
       "fixture": "tests/fixtures/reject-jsx-action",
-      "message": "rendered JSX can't be serialized as JSON",
-      "guidance": "Rendered JSX exists only while a page renders; return data from actions and JSON.stringify, and render it in a component."
+      "message": "JSX files can't be part of a Zero config",
+      "guidance": "Rendered JSX exists only while a page renders, so the config (and the actions it defines) can't import a component; return data from actions and render it in a component."
     },
     {
       "id": "jsx-textarea-children",
@@ -774,8 +774,96 @@
       "status": "refused",
       "code": "Z4001",
       "fixture": "tests/fixtures/reject-jsx-srcdoc",
-      "message": "`srcDoc` from a value isn't supported",
-      "guidance": "`srcDoc` is HTML; write it as a string literal, or link to the document with `src`."
+      "message": "`srcDoc` isn't supported",
+      "guidance": "`srcDoc` is a document parsed as HTML, so it is refused even as a literal. Link to the document with `src`; trusted markup will use `<Html>`."
+    },
+    {
+      "id": "jsx-raw-text-tag-case",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-script-case",
+      "message": "a component can't render",
+      "guidance": "Tag names are matched case-insensitively, as browsers read them: `<sCript>` is `<script>`."
+    },
+    {
+      "id": "jsx-raw-text-children",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-iframe-child",
+      "message": "takes only literal text",
+      "guidance": "`script`, `style`, `textarea`, `title`, `iframe`, `noscript`, `template`, `xmp`, `noembed`, `noframes`, `plaintext`, `object` and `embed` take only literal children, because their content isn't escaped text."
+    },
+    {
+      "id": "jsx-raw-text-close",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-raw-close",
+      "message": "closes",
+      "guidance": "A literal child of a raw-text tag can't contain that tag's closing `</tag`."
+    },
+    {
+      "id": "jsx-open-spread",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-open-spread",
+      "message": "into attributes",
+      "guidance": "Spread only objects whose type lists their keys; each key is checked as if written out. `Record<string, …>`, index signatures, `any` and `unknown` are refused."
+    },
+    {
+      "id": "jsx-spread-event-handler",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-spread-handler",
+      "message": "server components can't handle events",
+      "guidance": "A closed spread's keys meet the same rules as written attributes, so a spread can't add an event handler, `srcDoc` or an unsafe literal URL."
+    },
+    {
+      "id": "jsx-computed-style",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-style-keys",
+      "message": "`style` needs an object with fixed keys",
+      "guidance": "`style` takes an object whose keys are known at build time; values from data are escaped, and values that add declarations or load a `url(` are dropped."
+    },
+    {
+      "id": "jsx-attribute-name",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-attribute-name",
+      "message": "isn't a valid attribute name",
+      "guidance": "Attribute names match `[a-zA-Z_:][a-zA-Z0-9_.:-]*`."
+    },
+    {
+      "id": "jsx-svg-animation",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-svg-animate",
+      "message": "SVG animation of",
+      "guidance": "SVG `animate`/`set` can rewrite their target's attributes: they never target URL or event attributes, and `values`/`to`/`from`/`by`/`attributeName` must be literal."
+    },
+    {
+      "id": "jsx-use-client-pending",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-use-client",
+      "message": "\"use client\" components aren't compiled yet",
+      "guidance": "Interactive components arrive with the Interactivity API output; until then, remove the directive to render on the server."
+    },
+    {
+      "id": "jsx-children-type",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-jsx-children-object",
+      "message": "which JSX can't pass",
+      "guidance": "`children` is what JSX passes: type it `ReactNode`, `JSX.Element`, `string` or `number`. Taking rendered children apart isn't supported."
+    },
+    {
+      "id": "jsx-config-reachable",
+      "status": "refused",
+      "code": "Z1003",
+      "fixture": "tests/fixtures/reject-jsx-config-unused",
+      "message": "JSX files can't be part of a Zero config",
+      "guidance": "A `.tsx` module the config imports is refused even when its JSX never runs; components live in `zero/components/`."
     }
   ],
   "zero08": [

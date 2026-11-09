@@ -96,10 +96,11 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "JSX files can't be part of a Zero config",
         "view.tsx:1:1",
     );
+    // An action can't return rendered JSX: the config never reaches a component module.
     rejects(
         "reject-jsx-action",
-        "rendered JSX can't be serialized as JSON",
-        "zero.config.ts:5:50",
+        "JSX files can't be part of a Zero config",
+        "zero/components/Badge.tsx:1:1",
     );
     rejects(
         "reject-jsx-textarea",
@@ -108,8 +109,65 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     );
     rejects(
         "reject-jsx-srcdoc",
-        "`srcDoc` from a value isn't supported",
+        "`srcDoc` isn't supported",
         "zero/components/Frame.tsx:2:18",
+    );
+    // The record's "Contexts text escaping can't make safe": tag and attribute names in any case,
+    // raw-text tags, closed and open spreads, computed styles, names, SVG animation.
+    rejects(
+        "reject-jsx-script-case",
+        "a component can't render `<sCript>`",
+        "zero/components/Search.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-iframe-child",
+        "`<iframe>` takes only literal text",
+        "zero/components/Frame.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-raw-close",
+        "this text closes `<xmp>` early",
+        "zero/components/Code.tsx:2:16",
+    );
+    rejects(
+        "reject-jsx-open-spread",
+        "can't spread Record<string, string> into attributes",
+        "zero/components/Link.tsx:2:17",
+    );
+    rejects(
+        "reject-jsx-spread-handler",
+        "server components can't handle events (`onClick`)",
+        "zero/components/Button.tsx:2:22",
+    );
+    rejects(
+        "reject-jsx-style-keys",
+        "`style` needs an object with fixed keys",
+        "zero/components/Box.tsx:2:22",
+    );
+    rejects(
+        "reject-jsx-attribute-name",
+        "`a b` isn't a valid attribute name",
+        "zero/components/Odd.tsx:2:19",
+    );
+    rejects(
+        "reject-jsx-svg-animate",
+        "SVG animation of `href`",
+        "zero/components/Anim.tsx:2:27",
+    );
+    rejects(
+        "reject-jsx-use-client",
+        "\"use client\" components aren't compiled yet",
+        "zero/components/Counter.tsx:1:1",
+    );
+    rejects(
+        "reject-jsx-children-object",
+        "`children` is typed { title: string }, which JSX can't pass",
+        "zero/components/Wrap.tsx:1:22",
+    );
+    rejects(
+        "reject-jsx-config-unused",
+        "JSX files can't be part of a Zero config",
+        "label.tsx:1:1",
     );
     // The folders that admit JSX are matched below the project, not anywhere in its path.
     let nested = std::env::temp_dir().join(format!("zero-jsx-app-{}", std::process::id()));
@@ -1141,16 +1199,9 @@ fn compiled_tsx_renders_the_html_react_renders() {
     .map(|(href, text)| format!("<a href=\"{href}\">{text}</a>"))
     .concat();
     assert_eq!(rendered["0"]["html"], format!("<p>{dropped}{kept}</p>"));
-    // The same policy whatever the name's spelling: case, an `xlink:` prefix, a trailing newline
-    // in a spread key (PHP's `$` matches before it), custom elements, and `on*` attributes.
-    let extra = serde_json::json!({
-        "href\n": "javascript:alert(1)",
-        "style\n": "position:fixed",
-        "onclick": "alert(1)",
-        "ONMOUSEOVER": "alert(1)",
-        "Href": "javascript:alert(1)",
-        "title": "kept",
-    });
+    // The same policy whatever the name's spelling: letter case, an `xlink:` prefix, a closed
+    // spread, and custom elements. (Open spreads and named `on*` attributes are build errors.)
+    let extra = serde_json::json!({ "Href": "javascript:alert(1)", "title": "kept" });
     let cases = serde_json::json!([{
         "component": "components/urls.tsx#Variants",
         "props": { "u": "javascript:alert(1)", "extra": extra },
@@ -1178,6 +1229,31 @@ fn compiled_tsx_renders_the_html_react_renders() {
 }
 
 /// Drops `<link rel="preload" as="image" …/>`, which React emits ahead of an eager `<img>`.
+/// `\Zero\Html` keeps its own attribute checks even though the compiler refuses these names and
+/// spreads at build time: a value that reaches it another way (an imported JavaScript object)
+/// still can't set a URL, an event handler or `srcdoc` (PHP's `$` matches before a final `\n`,
+/// so the name pattern must be anchored with `\z`).
+#[test]
+fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
+    let runtime = root().join("runtime/Zero/bootstrap.php");
+    let script = r#"
+        require $argv[1];
+        $attrs = ["href\n" => "javascript:alert(1)", "style\n" => "position:fixed", "onclick" => "x",
+            "ONMOUSEOVER" => "x", "Href" => "javascript:alert(1)", "srcdoc" => "<p>", "a b" => "x",
+            "title" => "kept"];
+        echo \Zero\Html::element("a", $attrs, "x")->html(), "\n";
+        echo \Zero\Html::element("my-el", $attrs)->html(), "\n";
+        $style = new \Zero\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px"]);
+        echo \Zero\Html::element("div", ["style" => $style])->html(), "\n";
+    "#;
+    let out = Command::new("php").args(["-r", script]).arg(&runtime).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "<a title=\"kept\">x</a>\n<my-el title=\"kept\"></my-el>\n<div style=\"width:1px\"></div>\n"
+    );
+}
+
 fn without_image_preloads(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;

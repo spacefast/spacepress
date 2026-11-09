@@ -56,7 +56,7 @@ const { config } = data;
 				<label class="sr-only" for="source">Source code</label>
 				<div class="code-editor">
 					<pre class="diffs" aria-hidden="true"><code id="source-view"></code></pre>
-					<textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" disabled></textarea>
+					<textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="soft" disabled></textarea>
 				</div>
 			</section>
 			<section class="editor-pane" aria-labelledby="output-heading">
@@ -70,7 +70,7 @@ const { config } = data;
 				<label class="sr-only" for="generated">Generated code</label>
 				<div class="code-editor generated">
 					<pre class="diffs" aria-hidden="true"><code id="generated-view"></code></pre>
-					<textarea id="generated" readonly spellcheck="false" wrap="off" placeholder="Generated files appear here after a successful compile."></textarea>
+					<textarea id="generated" readonly spellcheck="false" wrap="soft" placeholder="Generated files appear here after a successful compile."></textarea>
 				</div>
 			</section>
 		</div>
@@ -107,17 +107,21 @@ const { config } = data;
 	.pane-heading { min-height: 3.5rem; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); background: var(--tint); flex-wrap: wrap; font-size: 0.8rem; }
 	.pane-heading h2 { font-size: 0.9rem; font-weight: 600; margin: 0; }
 	.pane-heading select { flex: 1; font-family: var(--mono); }
-	/* The textarea edits; the highlighted copy behind it shows its text, moved with the textarea's scroll. */
+	/* The textarea edits; the highlighted copy behind it shows its text. Both wrap the same way and
+	   grow to the whole file, so a config never scrolls inside its box. */
 	.code-editor { position: relative; background: #fff; }
 	.code-editor.generated { background: #fafaf9; }
-	.code-editor pre { position: absolute; inset: 0; margin: 0; border: 0; border-radius: 0; padding: 1rem; overflow: hidden; background: none; font: 0.8rem/1.65 var(--mono); tab-size: 2; pointer-events: none; }
-	.code-editor code { display: block; width: max-content; font: inherit; color: #161616; }
-	textarea { position: relative; display: block; width: 100%; height: 65dvh; min-height: 28rem; resize: vertical; border: 0; border-radius: 0; padding: 1rem; background: none; color: #161616; caret-color: #161616; font: 0.8rem/1.65 var(--mono); tab-size: 2; }
+	.code-editor pre { position: absolute; inset: 0; margin: 0; border: 0; border-radius: 0; padding: 1rem; overflow: hidden; background: none; font: 0.8rem/1.65 var(--mono); tab-size: 2; pointer-events: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+	.code-editor code { display: block; font: inherit; color: #161616; white-space: inherit; overflow-wrap: inherit; }
+	textarea { position: relative; display: block; width: 100%; min-height: 18rem; overflow: hidden; resize: none; border: 0; border-radius: 0; padding: 1rem; background: none; color: #161616; caret-color: #161616; font: 0.8rem/1.65 var(--mono); tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; }
+	:root[data-theme="dark"] .code-editor { background: #0a0a0a; }
+	:root[data-theme="dark"] .code-editor.generated { background: #111; }
+	:root[data-theme="dark"] .code-editor code, :root[data-theme="dark"] textarea { color: #ededed; caret-color: #ededed; }
 	textarea::placeholder { color: var(--muted); }
 	.code-editor[data-highlighted] textarea { color: transparent; }
 	.code-editor[data-highlighted] textarea::selection { color: transparent; background: #009fff33; }
 	.note { color: var(--muted); font-size: 0.85rem; margin-top: 0.8rem; }
 	.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 	@media (max-width: 64rem) { .intro { flex-direction: column; gap: 0.5rem; } }
-	@media (max-width: 48rem) { .editors { grid-template-columns: minmax(0, 1fr); } textarea { height: 28rem; min-height: 18rem; } }
+	@media (max-width: 48rem) { .editors { grid-template-columns: minmax(0, 1fr); } }
 </style>

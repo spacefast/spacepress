@@ -19,7 +19,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await expect(page.locator(".code-editor[data-highlighted] #source-view")).toHaveText(await source.inputValue());
   await expect(status).toHaveAttribute("data-state", "ok");
   await generatedFile.selectOption("first/app/schema.php");
-  await expect(generated).toHaveValue(/'postType' => 'zero_pages'/);
+  await expect(generated).toHaveValue(/'postType' => 'first_pages'/);
   await expect(generated).toHaveValue(/'admin' => true/);
 
   await page.getByRole("button", { name: "Post writes", exact: true }).click();
@@ -68,9 +68,9 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("recipes");
   await expect(status).toHaveAttribute("data-state", "ok");
   await expect(source).toHaveValue(/seoFields\(\)/);
-  await expect(generated).toHaveValue(/'postType' => 'zero_articles'/);
+  await expect(generated).toHaveValue(/'postType' => 'first_articles'/);
   await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("wp-plugins");
   await expect(status).toHaveAttribute("data-state", "ok");
   await expect(source).toHaveValue(/"classic-editor": "1.6.7"/);
-  await expect(generated).toHaveValue(/'postType' => 'zero_notes'/);
+  await expect(generated).toHaveValue(/'postType' => 'first_notes'/);
 });

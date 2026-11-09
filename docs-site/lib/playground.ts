@@ -1,5 +1,8 @@
 import { Compiler } from "./compiler.ts";
 import { highlightHtml, languageOf } from "./highlight.ts";
+import { toFirst } from "./names.ts";
+
+const dark = () => document.documentElement.dataset.theme === "dark";
 import { playgroundExamples, wordpressFiles } from "./playground-catalog.ts";
 
 function readFiles(value: unknown): Record<string, string> {
@@ -59,9 +62,10 @@ let pending: number | undefined;
 const paint = (area: HTMLTextAreaElement, view: HTMLElement, file: string) => {
   const editor = view.closest<HTMLElement>(".code-editor");
   if (!editor) return;
+  fit(area);
   const text = area.value;
   delete editor.dataset.highlighted;
-  void highlightHtml(text, languageOf(file)).then((html) => {
+  void highlightHtml(text, languageOf(file), dark()).then((html) => {
     if (area.value !== text) return;
     view.innerHTML = html;
     editor.dataset.highlighted = "";
@@ -71,11 +75,12 @@ const showSource = () => {
   source.value = files[sourceFile.value] ?? "";
   paint(source, sourceView, sourceFile.value);
 };
-for (const [area, view] of [[source, sourceView], [generated, generatedView]] as const) {
-  area.addEventListener("scroll", () => {
-    view.style.transform = `translate(${-area.scrollLeft}px, ${-area.scrollTop}px)`;
-  });
-}
+/** Grows a textarea to its whole text, so the file never scrolls inside its box. */
+const fit = (area: HTMLTextAreaElement) => {
+  area.style.height = "auto";
+  area.style.height = `${area.scrollHeight}px`;
+};
+addEventListener("resize", () => { fit(source); fit(generated); });
 
 const showGenerated = () => {
   generated.value = outputs[generatedFile.value] ?? runtime[generatedFile.value] ?? "";
@@ -128,12 +133,13 @@ const compile = () => {
       return;
     }
     const selected = generatedFile.value;
+    // Generated files read with First names, like every other file on the site.
     outputs = {
-      "first/app/functions.php": output.functionsPhp,
-      "first/app/schema.php": output.schemaPhp,
-      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`first/_generated/migrations/${name}`, sql])),
-      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`first/_generated/client/${name}`, text])),
-      "first/_generated/db.d.ts": output.genTs,
+      "first/app/functions.php": toFirst(output.functionsPhp),
+      "first/app/schema.php": toFirst(output.schemaPhp),
+      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`first/_generated/migrations/${name}`, toFirst(sql)])),
+      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`first/_generated/client/${name}`, toFirst(text)])),
+      "first/_generated/db.d.ts": toFirst(output.genTs),
       "first/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
     };
     updateFileMenu(selected);

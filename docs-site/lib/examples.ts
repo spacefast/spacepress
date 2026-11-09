@@ -4,7 +4,7 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { Compiler, type Output, type Request } from "./compiler.ts";
+import { Compiler, type Compiled, type Output, type Request } from "./compiler.ts";
 import type { playgroundExamples } from "./playground-catalog.ts";
 
 // Astro bundles this module at build time, so paths cannot come from import.meta.url. The build,
@@ -44,6 +44,17 @@ export function sources(dir: string): Request["files"] {
 }
 
 let compiler: Promise<Compiler> | undefined;
+
+/** Sources compiled from memory, with the compiler's diagnostics whether or not they compile. */
+export async function compileFiles(name: string, files: Record<string, string>): Promise<Compiled> {
+  compiler ??= Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));
+  return (await compiler).compile({ name, files, previous: null });
+}
+
+/** An example compiled as committed, with the compiler's diagnostics whether or not it compiles. */
+export async function compileExample(name: string): Promise<Compiled> {
+  return compileFiles(name, sources(path.join(repo, "examples", name)));
+}
 
 export async function example(name: ExampleName): Promise<Example> {
   compiler ??= Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));

@@ -188,7 +188,8 @@ for (const name of exampleNames) {
 		parts.push("This example has no `first.config.ts` of its own. It is a test harness that other examples or scripts use.");
 	}
 	if (info) parts.push(`## README\n\n${mdx(prose(info.body, `examples/${name}/README.md`))}`);
-	if (mainConfig) parts.push(`## \`first.config.ts\`\n\n${fence("ts", toFirst(mainConfig), 'title="first.config.ts"')}`);
+	// The whole config, rendered by the shared component with the compiler's diagnostics inline.
+	if (mainConfig) parts.push(`## \`first.config.ts\`\n\n<ExampleConfig name="${name}" />`);
 	page(`docs/examples/${name}.mdx`, { title, description: summary.slice(0, 300) }, `examples/${name}`, parts.join("\n\n"));
 }
 
@@ -244,9 +245,9 @@ The supported versions come from [\`src/wp_plugins/supported.json\`](${github}/s
 
 ## Add another plugin
 
-To add a plugin, name its WordPress.org slug and version under \`plugins\` in \`first.config.ts\`:
+To add a plugin, name its WordPress.org slug and version under \`plugins\` in \`first.config.ts\`. This is \`examples/wp-plugins\`:
 
-${fence("ts", `import { defineConfig } from "first";\n\nexport default defineConfig({\n\tname: "notes",\n\tplugins: {\n\t\t"classic-editor": "1.6.7",\n\t},\n});`, 'title="first.config.ts"')}
+<ExampleConfig name="wp-plugins" />
 
 The first build downloads the plugin and records its SHA-256 in \`first/wp-plugins.lock.json\`. Commit that file. Later builds refuse an archive whose checksum differs.
 

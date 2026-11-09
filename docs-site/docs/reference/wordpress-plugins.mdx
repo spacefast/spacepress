@@ -23,18 +23,9 @@ The supported versions come from [`src/wp_plugins/supported.json`](https://githu
 
 ## Add another plugin
 
-To add a plugin, name its WordPress.org slug and version under `plugins` in `first.config.ts`:
+To add a plugin, name its WordPress.org slug and version under `plugins` in `first.config.ts`. This is `examples/wp-plugins`:
 
-```ts title="first.config.ts"
-import { defineConfig } from "first";
-
-export default defineConfig({
-	name: "notes",
-	plugins: {
-		"classic-editor": "1.6.7",
-	},
-});
-```
+<ExampleConfig name="wp-plugins" />
 
 The first build downloads the plugin and records its SHA-256 in `first/wp-plugins.lock.json`. Commit that file. Later builds refuse an archive whose checksum differs.
 

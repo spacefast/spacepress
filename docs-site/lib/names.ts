@@ -19,6 +19,8 @@ const rules: [RegExp, string][] = [
 	[/zero-(app|pages)-(?=[a-z<{\\])/g, "first-$1-"],
 	[/\bzero-test-(admin|editor)\b/g, "first-test-$1"],
 	[/\bpost_type=zero_/g, "post_type=first_"],
+	// Post types, ACF groups and meta keys in generated PHP: 'zero_pages', 'group_zero_pages', 'zero_'.
+	[/'(group_|field_)?zero_(?=[a-z_]*')/g, "'$1first_"],
 	[/\bhooks=zero_/g, "hooks=first_"],
 	[/(target\/(?:debug|release))\/zero\b/g, "$1/first"],
 	[/\bVITE_ZERO_/g, "VITE_FIRST_"],
@@ -41,6 +43,9 @@ const rules: [RegExp, string][] = [
 	[/\bZ(\d{4})\b/g, "F$1"],
 	[/\bZero(Error|Config)\b/g, "First$1"],
 	[/\\Zero\\/g, "\\First\\"],
+	[/\bnamespace Zero(App)?\b/g, "namespace First$1"],
+	[/\bZeroApp\\/g, "FirstApp\\"],
+	[/`zero build`/g, "`first build`"],
 	[/\bZero_Admin/g, "First_Admin"],
 	[/\bX-Zero-/g, "X-First-"],
 	[/\bZero-(Signature|Event-Id)\b/g, "First-$1"],

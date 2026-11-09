@@ -1,21 +1,13 @@
 ---
-// One file excerpt with its name, highlighted.
-import { highlight } from "../lib/highlight.ts";
-import type { ResolvedPane } from "../lib/tour.ts";
+// One excerpt of a tour stop: a named range of a source or of a generated file. It renders through
+// the shared CodeFile, so it looks like every other file on the site and never scrolls.
+import CodeFile from "./CodeFile.astro";
+import type { ResolvedPane } from "./tour.ts";
 
 interface Props {
-  pane: ResolvedPane;
+	pane: ResolvedPane;
 }
 const { pane } = Astro.props;
 ---
 
-<figure class="pane">
-  <figcaption><code>{pane.label}</code></figcaption>
-  <Fragment set:html={await highlight(pane.code, pane.lang)} />
-</figure>
-
-<style>
-  .pane { margin: 0 0 0.75rem; }
-  figcaption { font-size: 0.8rem; color: var(--blume-muted-foreground); margin: 0 0 0.3rem; }
-  .pane :global(pre) { margin: 0; padding: 0.9rem 1rem; overflow: auto; border: 1px solid var(--blume-border); border-radius: 6px; background: #fafaf9; font: 0.8rem/1.5 var(--blume-font-mono); }
-</style>
+<CodeFile name={pane.label} contents={pane.code} />

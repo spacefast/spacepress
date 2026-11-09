@@ -83,6 +83,12 @@ export const steps = {
     "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: real(), ratio: text() });"], "memos, tags"),
   ratioReal: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
     "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: real(), ratio: real() });"], "memos, tags"),
+  // 14. Text becomes a reference to memos (BIGINT UNSIGNED). MariaDB's ALTER clamps text from 2^63
+  //     up to 2^63 - 1 even into an unsigned column, so those values refuse.
+  memoText: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: real(), ratio: real(), memo: text() });"], "memos, tags"),
+  memoRef: app(["const memos = table({ id: id(), text: text().max(5) }, { was: \"notes\" });",
+    "const tags = table({ id: id(), name: text().notNull().max(5), flag: boolean(), count: real(), ratio: real(), memo: integer().references(() => memos.id, { onDelete: \"set null\" }) });"], "memos, tags"),
 };
 
 if (process.argv[2] !== undefined) {

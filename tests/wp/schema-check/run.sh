@@ -16,7 +16,7 @@ trap cleanup EXIT
 mkdir -p "$work/app" "$work/content"
 # Each step is built into the same project in order, so its migration is planned against the
 # previous step's ledger, then staged as its own wp-content for the test to install.
-for step in initial additive required tighten rename drop adoptedField adoptedKind narrow retype retyped requiredNarrow toReal ratioText ratioReal; do
+for step in initial additive required tighten rename drop adoptedField adoptedKind narrow retype retyped requiredNarrow toReal ratioText ratioReal memoText memoRef; do
   node "$here/steps.mjs" "$step" > "$work/app/zero.config.ts"
   "$target/debug/zero" build "$work/app" --quiet >/dev/null
   rsync -a --delete "$work/app/.zero/wp-content/" "$work/content/$step/"

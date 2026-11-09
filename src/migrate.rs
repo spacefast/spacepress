@@ -498,22 +498,29 @@ fn fits(before: &Json, after: &Json) -> Option<String> {
         ("boolean", "bigint" | "unsigned" | "double") => None,
         // Not ABS(): it overflows on BIGINT's minimum, and an erroring count must never pass.
         ("bigint" | "unsigned", "double") => Some(format!("{col} BETWEEN -9007199254740992 AND 9007199254740992")),
+        // A DOUBLE above 2^53 isn't an exact integer (`9.2233720368547e18` becomes `…700032`), so a
+        // real converts to an integer only within ±2^53, and only when it is whole.
         ("double", "bigint") => Some(format!(
-            "{col} = FLOOR({col}) AND {col} >= -9223372036854775808 AND {col} < 9223372036854775808"
+            "{col} = FLOOR({col}) AND {col} BETWEEN -9007199254740992 AND 9007199254740992"
         )),
-        ("double", "unsigned") => Some(format!(
-            "{col} = FLOOR({col}) AND {col} >= 0 AND {col} < 18446744073709551616"
-        )),
+        ("double", "unsigned") => Some(format!("{col} = FLOOR({col}) AND {col} BETWEEN 0 AND 9007199254740992")),
         ("text", "boolean") => Some(format!("BINARY {col} IN ('0', '1')")),
         (_, "boolean") => Some(format!("{col} IN (0, 1)")),
         ("text", "bigint") => Some(round_trip("SIGNED")),
-        ("text", "unsigned") => Some(round_trip("UNSIGNED")),
-        // A decimal of at most 15 significant digits (what a DOUBLE holds exactly), no exponent: an
-        // exponent could overflow the conversion, and more digits would be rounded. `[.]`, not `\.`:
-        // MariaDB's string literal drops the backslash, leaving `.`, which matches any character.
-        // PCRE's `$` also matches before a final newline, so newlines are refused separately.
+        // MariaDB's ALTER clamps text past BIGINT's signed maximum to it even into BIGINT UNSIGNED
+        // (an INSERT would store it exactly), so unsigned text is capped at 2^63 - 1 too.
+        ("text", "unsigned") => Some(format!(
+            "{} AND CAST({col} AS UNSIGNED) <= 9223372036854775807",
+            round_trip("UNSIGNED")
+        )),
+        // The rule integers use: the value converts only when it reads back as the same text. A
+        // decimal in canonical form, at most 15 significant digits (what a DOUBLE holds exactly), no
+        // exponent (it could overflow the conversion), no `-0` (the pattern already refuses `-0.0`,
+        // which has a trailing zero), no trailing zeros after the point (`1.50` reads back as `1.5`). `[.]`, not `\.`: MariaDB's string literal drops the backslash,
+        // leaving `.`, which matches any character. PCRE's `$` also matches before a final newline,
+        // so newlines are refused separately.
         ("text", "double") => Some(format!(
-            "{col} REGEXP BINARY '^-?(0|[1-9][0-9]*)([.][0-9]+)?$' AND LOCATE(CHAR(10), {col}) = 0 AND CHAR_LENGTH(REPLACE(REPLACE(TRIM(LEADING '-' FROM {col}), '.', ''), '-', '')) <= 15"
+            "{col} REGEXP BINARY '^-?(0|[1-9][0-9]*)([.][0-9]*[1-9])?$' AND BINARY {col} <> '-0' AND LOCATE(CHAR(10), {col}) = 0 AND CHAR_LENGTH(REPLACE(REPLACE(TRIM(LEADING '-' FROM {col}), '.', ''), '-', '')) <= 15"
         )),
         _ => Some("false".into()),
     }
@@ -1255,9 +1262,24 @@ mod tests {
         );
         let real = fits_for("real");
         assert!(
-            real.contains("([.][0-9]+)?$'") && !real.contains("\\."),
+            real.contains("([.][0-9]*[1-9])?$'") && !real.contains("\\."),
             "a backslash-dot is any character in MariaDB: {real}"
         );
         assert!(real.contains("LOCATE(CHAR(10), {col}) = 0"), "{real}");
+        // MariaDB's ALTER clamps text past 2^63 - 1 even into BIGINT UNSIGNED.
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(json!({ "t": table(json!({ "id": id(), "v": col("text") })) }));
+        let mut v2 = v1.clone();
+        v2["tables"]["t"]["columns"]["v"]["type"] = json!("integer");
+        v2["tables"]["t"]["columns"]["v"]["references"] =
+            json!({ "table": "t", "column": "id", "onDelete": null, "onUpdate": null, "unsigned": true });
+        let unsigned = plan(&v1, &v2).iter().find_map(|s| check_of(s)).unwrap()["fits"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            unsigned.contains("CAST({col} AS UNSIGNED) <= 9223372036854775807"),
+            "{unsigned}"
+        );
     }
 }

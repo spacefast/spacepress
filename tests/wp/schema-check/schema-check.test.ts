@@ -324,14 +324,39 @@ test("text becoming a real converts only plain decimals: '1,5', '1e3' and '5\\n'
   sql("UPDATE wp_zero_tags SET ratio = '1.5' WHERE name = 'a'");
   sql("UPDATE wp_zero_tags SET ratio = '-0.25' WHERE name = 'b'");
   sql("INSERT INTO wp_zero_tags (name, flag, count, ratio) VALUES ('p', 0, 0, '1,5'), ('q', 0, 0, '1x5'), ('r', 0, 0, '12-34'), ('s', 0, 0, '3 5'), ('t', 0, 0, '1e3'), ('u', 0, 0, '5\n')");
+  // The rule integers follow: a value converts only when it reads back as the same text, so '-0',
+  // '-0.0' and '1.50' (read back as 0, 0 and 1.5) refuse. '-0.5' is canonical and converts.
+  sql("INSERT INTO wp_zero_tags (name, flag, count, ratio) VALUES ('v', 0, 0, '-0'), ('x', 0, 0, '-0.0'), ('y', 0, 0, '1.50'), ('z', 0, 0, '-0.5')");
   install("ratioReal");
   const before = sql("SELECT name, ratio FROM wp_zero_tags ORDER BY id");
   const error = refused();
-  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["value_does_not_fit", "tags.ratio", 6]]);
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["value_does_not_fit", "tags.ratio", 9]]);
   assert.deepEqual(sql("SELECT name, ratio FROM wp_zero_tags ORDER BY id"), before, "nothing was converted");
-  sql("DELETE FROM wp_zero_tags WHERE name IN ('p', 'q', 'r', 's', 't', 'u')");
+  sql("DELETE FROM wp_zero_tags WHERE name IN ('p', 'q', 'r', 's', 't', 'u', 'v', 'x', 'y')");
   assert.ok(applied().includes("0015_update"));
-  assert.deepEqual(sql("SELECT name, ratio FROM wp_zero_tags WHERE ratio IS NOT NULL ORDER BY id"), [{ name: "a", ratio: "1.5" }, { name: "b", ratio: "-0.25" }]);
+  assert.deepEqual(sql("SELECT name, ratio FROM wp_zero_tags WHERE ratio IS NOT NULL ORDER BY id"), [{ name: "a", ratio: "1.5" }, { name: "b", ratio: "-0.25" }, { name: "z", ratio: "-0.5" }]);
+});
+
+test("text becoming BIGINT UNSIGNED refuses values from 2^63, which ALTER would clamp", () => {
+  install("memoText");
+  assert.ok(applied().includes("0016_update"));
+  // 2^63 - 1 fits; 2^63 and 10^19 are valid BIGINT UNSIGNED, but MariaDB's ALTER clamps them to 2^63 - 1.
+  sql("DELETE FROM wp_zero_tags WHERE name = 'z'");
+  sql("UPDATE wp_zero_tags SET memo = '9223372036854775807' WHERE name = 'a'");
+  sql("UPDATE wp_zero_tags SET memo = '9223372036854775808' WHERE name = 'b'");
+  sql("UPDATE wp_zero_tags SET memo = '10000000000000000000' WHERE name = 'c'");
+  install("memoRef");
+  const before = sql("SELECT name, memo FROM wp_zero_tags ORDER BY id");
+  const error = refused();
+  // Two refuse: 2^63 - 1 fits.
+  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["value_does_not_fit", "tags.memo", 2]]);
+  assert.deepEqual(sql("SELECT name, memo FROM wp_zero_tags ORDER BY id"), before, "nothing was converted or clamped");
+  // Fixed: the reference points at a memo, and the rest are empty.
+  const memo = sql("SELECT MIN(id) AS id FROM wp_zero_memos")[0].id;
+  sql(`UPDATE wp_zero_tags SET memo = '${memo}' WHERE name = 'a'`);
+  sql("UPDATE wp_zero_tags SET memo = NULL WHERE name IN ('b', 'c')");
+  assert.ok(applied().includes("0017_update"));
+  assert.deepEqual(sql("SELECT name, memo FROM wp_zero_tags WHERE memo IS NOT NULL"), [{ name: "a", memo }]);
 });
 
 test("a migration that failed after a rename resumes: later checks find the table under its new name", () => {

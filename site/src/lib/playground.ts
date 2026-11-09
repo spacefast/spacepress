@@ -122,8 +122,8 @@ const compile = () => {
       "zero/app/functions.php": output.functionsPhp,
       "zero/app/schema.php": output.schemaPhp,
       ...Object.fromEntries(output.migrations.map(([name, sql]) => [`zero/_generated/migrations/${name}`, sql])),
-      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`zero/client/${name}`, text])),
-      "zero.gen.ts": output.genTs,
+      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`zero/_generated/client/${name}`, text])),
+      "zero/_generated/db.d.ts": output.genTs,
       "zero/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
     };
     updateFileMenu(selected);

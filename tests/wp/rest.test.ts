@@ -3,7 +3,7 @@
 // Promotion is WordPress's own: `future` post + its cron event, run through WP-CLI.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "./app/zero/client/index.ts";
+import { createClient } from "./app/zero/_generated/client/index.ts";
 import { blogScenario, type ScenarioRole } from "../e2e/blog-scenario.ts";
 import { api, auth, harness, ok, run, sql, wp, zero } from "./env.ts";
 

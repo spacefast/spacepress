@@ -194,7 +194,7 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
                 "--experimental-strip-types",
                 "--input-type=module",
                 "--eval",
-                "import { SCHEMA } from './zero/client/schema.ts'; console.log(JSON.stringify(SCHEMA));",
+                "import { SCHEMA } from './zero/_generated/client/schema.ts'; console.log(JSON.stringify(SCHEMA));",
             ])
             .current_dir(project.path())
             .output()
@@ -212,7 +212,7 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
     let output = success(
         Command::new("php")
             .arg(root().join("examples/app-services-ts/journey.php"))
-            .arg(project.path().join(".zero/wp-content"))
+            .arg(project.path().join("zero/dist/wp-content"))
             .arg(&evidence)
             .env(
                 "ZERO_WP_CACHE",

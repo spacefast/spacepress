@@ -12,7 +12,7 @@ test("a link to another doc goes to its page, keeping its anchor", () => {
 });
 
 test("a link to a repository file goes to GitHub", () => {
-  assert.equal(rewrite("../examples/recipes/seo.ts", fromDoc), "https://github.com/spacefast/zero/blob/main/examples/recipes/seo.ts");
+  assert.equal(rewrite("../examples/recipes/zero/seo.ts", fromDoc), "https://github.com/spacefast/zero/blob/main/examples/recipes/zero/seo.ts");
   assert.equal(rewrite("LICENSE", fromReadme), "https://github.com/spacefast/zero/blob/main/LICENSE");
   assert.equal(rewrite("examples/blog", fromReadme), "https://github.com/spacefast/zero/blob/main/examples/blog");
 });

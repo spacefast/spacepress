@@ -19,7 +19,7 @@ let counter = 0;
 /** A disposable copy of the full-site example (sources and its compiled schema), with files replaced. */
 async function project(files: Record<string, string | null> = {}): Promise<string> {
   const root = path.join(scratch, `p${counter++}`);
-  for (const entry of ["zero.config.ts", "pages", "components", "islands", "styles", "zero/client", "zero/_generated/migrations"]) {
+  for (const entry of ["zero.config.ts", "pages", "components", "islands", "styles", "zero/_generated/client", "zero/_generated/migrations"]) {
     await cp(path.join(example, entry), path.join(root, entry), { recursive: true });
   }
   for (const [file, contents] of Object.entries(files)) {

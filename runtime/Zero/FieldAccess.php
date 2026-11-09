@@ -307,6 +307,22 @@ final class FieldAccess
     }
 
     /**
+     * What a write of $value to a group column stores for $viewer, as /zero/v1 stores it: omitted
+     * sub-fields the viewer can't read or can't set keep their stored values ($before), defaults
+     * fill the rest. Other types are returned as given. For writes that bypass {@see checkWrite()}'s
+     * resolution (core REST `meta`).
+     */
+    public static function effectiveGroup(string $op, array $def, mixed $value, mixed $before, Viewer $viewer): mixed
+    {
+        if ($def['type'] !== 'group') {
+            return $value;
+        }
+        $page = [];
+
+        return self::resolveValue($op, $def, $value, $before, true, $viewer, $page);
+    }
+
+    /**
      * The value that will be stored, before any check: supplied values; in a group ($merge), omitted
      * sub-fields the viewer can't read or can't set keep their stored values; defaults (generated once)
      * fill the rest. A list item that leaves out such a field and matches what the viewer sees is the

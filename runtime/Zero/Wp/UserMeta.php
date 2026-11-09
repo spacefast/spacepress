@@ -34,8 +34,8 @@ final class UserMeta
         add_filter('rest_prepare_user', [self::class, 'prepare'], 20, 3);
         add_filter('rest_user_query', [self::class, 'query'], 20, 2);
         add_filter('rest_request_before_callbacks', [self::class, 'before'], 20, 3);
+        add_filter('rest_dispatch_request', [self::class, 'dispatch'], 20, 4);
         add_action('rest_after_insert_user', [self::class, 'inserted'], 10, 3);
-        add_filter('rest_request_after_callbacks', [self::class, 'after'], 0, 3);
     }
 
     public static function registerMeta(): void
@@ -125,21 +125,34 @@ final class UserMeta
 
     // ================================================================ writes
 
+    /** A users list with `where`/`orderBy`: Zero selects the ids before core's query. */
     public static function before(mixed $response, mixed $handler, mixed $request): mixed
     {
         if ($response === null && $request instanceof \WP_REST_Request && $request->get_method() === 'GET'
             && strtolower($request->get_route()) === '/wp/v2/users' && self::collection() !== null) {
             return self::select($request);
         }
-        if ($response !== null || !$request instanceof \WP_REST_Request || self::$open !== null
+
+        return $response;
+    }
+
+    /**
+     * rest_dispatch_request: a user create or update that carries member fields runs core's callback
+     * inside Zero's transaction. Here, after core's permission check, nothing is open until the save
+     * starts, and the callback runs under try/catch so a throw (core, another plugin's hook) can't
+     * leave the transaction or this save open.
+     */
+    public static function dispatch(mixed $result, mixed $request, mixed $route, mixed $handler): mixed
+    {
+        if ($result !== null || !$request instanceof \WP_REST_Request || self::$open !== null || !is_array($handler)
             || !in_array($request->get_method(), ['POST', 'PUT', 'PATCH'], true)
             || !preg_match(self::ROUTE, $request->get_route(), $m) || self::collection() === null) {
-            return $response;
+            return $result;
         }
         $meta = PostMeta::input($request);
         $fields = is_array($meta) ? array_intersect_key($meta, self::fields()) : [];
         if ($fields === []) {
-            return $response;
+            return $result;
         }
         $request->set_param('meta', array_diff_key((array) $request->get_param('meta'), $fields));
         $connection = self::plugin()->connection();
@@ -148,16 +161,25 @@ final class UserMeta
             $connection->begin();
         }
         self::$open = ['request' => $request, 'fields' => $fields, 'error' => null, 'began' => $began];
-        $id = isset($m[1]) ? (strtolower($m[1]) === 'me' ? get_current_user_id() : (int) $m[1]) : 0;
-        if ($id > 0) {
-            // An update: Zero decides before core writes anything.
-            self::apply($id);
-            if (self::$open['error'] !== null) {
-                return self::finish(null);
+        try {
+            $id = isset($m[1]) ? (strtolower($m[1]) === 'me' ? get_current_user_id() : (int) $m[1]) : 0;
+            if ($id > 0) {
+                // An update: Zero decides before core writes anything.
+                self::apply($id);
+                if (self::$open['error'] !== null) {
+                    return self::finish(null);
+                }
             }
+            $response = call_user_func($handler['callback'], $request);
+        } catch (\Throwable $e) {
+            self::$open = null;
+            if ($began) {
+                $connection->rollback();
+            }
+            throw $e; // inside an enclosing transaction, the throw is what rolls it back
         }
 
-        return $response;
+        return self::finish($response);
     }
 
     /** rest_after_insert_user: a create's member fields, once the user exists. */
@@ -166,15 +188,6 @@ final class UserMeta
         if ($creating && $user instanceof \WP_User && self::$open !== null && self::$open['request'] === $request) {
             self::apply((int) $user->ID);
         }
-    }
-
-    public static function after(mixed $response, mixed $handler, mixed $request): mixed
-    {
-        if (self::$open === null || self::$open['request'] !== $request) {
-            return $response;
-        }
-
-        return self::finish($response);
     }
 
     private static function apply(int $id): void
@@ -204,14 +217,26 @@ final class UserMeta
         if ($failed) {
             if ($began) {
                 $connection->rollback();
-            } elseif ($error !== null) {
-                throw $error; // an enclosing transaction is the only rollback point
+            } else {
+                // Core or a plugin may fail after the user or member fields were written: the enclosing
+                // transaction is the only rollback point, so its work is abandoned, not half-committed.
+                throw $error ?? self::failure($response);
             }
         } elseif ($began) {
             $connection->commit();
         }
 
         return $error === null ? $response : CoreAccess::error($error);
+    }
+
+    /** A failed core response as Zero's error, to abort the enclosing transaction with. */
+    private static function failure(mixed $response): HttpError
+    {
+        $error = $response instanceof \WP_Error ? $response : ($response instanceof \WP_REST_Response ? $response->as_error() : null);
+        $data = $error?->get_error_data();
+        $status = is_array($data) && is_int($data['status'] ?? null) ? $data['status'] : ($response instanceof \WP_REST_Response ? $response->get_status() : 500);
+
+        return new HttpError($status, (string) ($error?->get_error_code() ?: 'rest_error'), (string) ($error?->get_error_message() ?: 'The user save failed'));
     }
 
     private static function collection(): ?string

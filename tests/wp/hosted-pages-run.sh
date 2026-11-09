@@ -22,7 +22,7 @@ python3 "$here/hosted-pages-probes.py" "$app/project/zero.config.ts"
 # The harness installs the pinned platform plugins from a native build's lock; it never serves them.
 "$target/debug/zero" build "$app/project" --quiet >/dev/null
 mkdir -p "$app/content/plugins"
-cp "$app/project/.zero/wp-content/zero-manifest.json" "$app/content/"
+cp "$app/project/zero/dist/wp-content/zero-manifest.json" "$app/content/"
 rm -rf "$app/project"
 "$target/debug/zero" compile-sources "$app/source" "$app/compiled" "$app/source"
 rsync -a "$app/compiled/plugins/" "$app/content/plugins/"

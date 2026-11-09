@@ -53,7 +53,7 @@ final class PostsController extends \WP_REST_Posts_Controller
     {
         $viewer = CoreAccess::viewer() ?? throw new \LogicException('checked');
         try {
-            $query = ZeroQuery::keys($this->collection, $request, $viewer);
+            $query = ZeroQuery::keys($this->collection, $request, $viewer, searched: $searched);
         } catch (\Zero\HttpError $e) {
             return CoreAccess::error($e);
         }
@@ -71,8 +71,9 @@ final class PostsController extends \WP_REST_Posts_Controller
         // Rows Zero's query selected already passed its read rule and draft visibility: core's own
         // status filter (published only, for most viewers) must not drop them again.
         $statuses = $query !== null && !$request->has_param('status') ? ['post_status' => ['publish', 'future', 'draft', 'pending', 'private']] : [];
-        $limit = static function (array $args) use ($keys, $ordered, $statuses): array {
+        $limit = static function (array $args) use ($keys, $ordered, $statuses, $searched): array {
             $in = !empty($args['post__in']) ? array_values(array_intersect($keys, array_map('intval', (array) $args['post__in']))) : $keys;
+            $args = $searched ? ZeroQuery::coreArgs($args) : $args;
 
             return ['post__in' => $in === [] ? [0] : $in] + ($ordered ? ['orderby' => 'post__in'] : []) + $statuses + $args;
         };

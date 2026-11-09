@@ -1,6 +1,6 @@
 import { action, defineConfig, json } from "zero";
-import { DraftEntryView } from "./shapes";
-import type { Entry, Projection, Flags, Tags, Together, Absent, BoolChoice, LiteralCheck } from "./shapes";
+import { DraftEntryView } from "./zero/shapes";
+import type { Entry, Projection, Flags, Tags, Together, Absent, BoolChoice, LiteralCheck } from "./zero/shapes";
 
 type Draft = Entry;
 type Labels<T> = { [P in keyof T]: string };

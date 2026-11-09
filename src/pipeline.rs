@@ -45,7 +45,7 @@ pub const OLD_LEDGER: &str = "zero/migrations";
 /// The refusal for a project whose ledger is still at [`OLD_LEDGER`].
 pub fn moved_ledger() -> Diag {
     Diag::new(Span::NONE, format!("{OLD_LEDGER}/ moved to {LEDGER}/")).help(format!(
-        "move it with `mkdir -p zero/_generated && git mv {OLD_LEDGER} {LEDGER}`, then build again"
+        "move it with `mkdir -p zero/_generated && rmdir {LEDGER} 2>/dev/null; git mv {OLD_LEDGER} {LEDGER}`, then build again"
     ))
 }
 
@@ -74,8 +74,18 @@ impl Previous {
     ) -> Result<Self, Diag> {
         let migration_files: Vec<&str> = migration_files.into_iter().collect();
         // A ledger from before the flat layout (`wp/` and `sqlite/` subdirectories, moved here as-is
-        // by `git mv`) is refused rather than read as "no migrations yet", which would restart the
+        // by `git mv`), or the old ledger moved inside this one (`git mv` into an existing
+        // directory), is refused rather than read as "no migrations yet", which would restart the
         // numbering at 0001 and ship an app plugin without its earlier files.
+        if migration_files.contains(&"migrations") {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("{LEDGER}/migrations/ is the old ledger moved one level too deep"),
+            )
+            .help(format!(
+                "move its contents up with `git mv {LEDGER}/migrations/* {LEDGER}/ && rmdir {LEDGER}/migrations`, then build again"
+            )));
+        }
         for nested in ["wp", "sqlite"] {
             if migration_files.contains(&nested) {
                 return Err(Diag::new(
@@ -487,6 +497,18 @@ mod tests {
                 error.message
             );
         }
+    }
+
+    #[test]
+    fn the_old_ledger_moved_one_level_too_deep_is_refused() {
+        let error = Previous::from_project(None, ["migrations"]).unwrap_err();
+        assert!(
+            error
+                .message
+                .ends_with("migrations/ is the old ledger moved one level too deep"),
+            "{}",
+            error.message
+        );
     }
 
     #[test]

@@ -91,6 +91,9 @@ eq('text that starts like Markdown syntax stays text (as WordPress texturizes it
     "\\# not a heading\n\n\\> not a quote\n\n– not an item\n\n\\+ plus\n\n2026\\. A year\n\n1\\) first\n\nLine  \n– after a break\n\n## #hashtag heading\n\n\\~~~ tilde fence\n\n“\\`js not code\n\nTitle  \n\\===\n\nTitle  \n—\n\n—\n\n\\*\\*\\*\n\n\\_\\_\\_\n");
 eq('the converter escapes each marker itself, with no texturize in front', \Zero\Sync\HtmlMarkdown::convert('<p>- item</p><p>---</p><p>Title<br>---</p><p>~~~</p><p>1. one</p>'),
     "\\- item\n\n\\---\n\nTitle  \n\\---\n\n\\~~~\n\n1\\. one");
+// Strikethrough markup that lines up into a fence is escaped on the assembled line, not per text.
+eq('strikethrough tildes never open a fence', \Zero\Sync\HtmlMarkdown::convert('<p><del></del> x</p><p><del>~</del> y</p><p>~~<span>~</span> z</p><p>a<br><del></del>b</p>'),
+    "\\~~~~ x\n\n\\~~~~~ y\n\n\\~~~ z\n\na  \n\\~~~~b");
 eq('code keeps its angle brackets', md(Markdown::toBlocks("Use `<div>` here.\n\n```html\n<p>x</p>\n```\n")), "Use `<div>` here.\n\n```html\n<p>x</p>\n```\n");
 eq('a comparison is not a tag', md('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
 register_block_type('zero-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
@@ -328,6 +331,13 @@ eq('core\'s permission check decides: a draft is still 401 JSON', [fetch("$url/w
 $noteRest = fetch("$url/wp-json/wp/v2/zero_notes/$note?format=md");
 eq('a Zero collection row answers as core and its access rules decide (readable by anyone here)', [$noteRest['status'], $noteRest['body']], [200, MarkdownTwins::post(get_post($note))]);
 eq('a list route is not an item route: JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts?format=md")['headers']['content-type'][0] ?? '', 'application/json'), true);
+// ?format=md trims the response only where it then answers Markdown: other routes keep their JSON.
+$pagesList = json_decode(fetch("$url/wp-json/wp/v2/pages?format=md")['body'], true);
+check('a list route keeps every field with ?format=md', is_array($pagesList) && isset($pagesList[0]['title'], $pagesList[0]['link']), json_encode($pagesList));
+$typeObject = json_decode(fetch("$url/wp-json/wp/v2/types/post?format=md")['body'], true);
+eq('a non-post item route keeps its JSON with ?format=md', $typeObject['slug'] ?? null, 'post');
+$index = json_decode(fetch("$url/wp-json/?format=md")['body'], true);
+check('the REST index keeps its JSON with ?format=md', isset($index['namespaces']), substr(json_encode($index), 0, 200));
 // Another collection's item with a hidden post's numeric id: core checked that object, not the post.
 // Make categories until one has each hidden post's id, so the route answers 200.
 $shadowTerms = [];

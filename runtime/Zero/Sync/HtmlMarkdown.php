@@ -261,6 +261,9 @@ final class HtmlMarkdown
         if (trim($line) === '' || preg_match('/^#{1,6} *$/', $line) === 1) {
             return;
         }
+        // Strikethrough markup (`~~`) can line up into a `~~~` fence at a line start, which the
+        // per-text escape never sees: escape it on the assembled line, after each hard break too.
+        $line = (string) preg_replace('/(^|\n)(~{3,})/', '$1\\\\$2', $line);
         $this->push($line);
     }
 

@@ -127,6 +127,14 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
+    // A checkout from before `zero/_generated/` (a leftover `zero/client/`, an old lock) is refused
+    // before any module under `zero/` loads, so its message is the move, not whatever the stale
+    // files fail on. A stored bundle reads those paths on the new layout instead.
+    if !fs.frozen_capture()
+        && let Some((message, help)) = crate::layout::old_in_checkout(|p| fs.exists(p), &program.root)
+    {
+        return Err(vec![Diag::new(Span::NONE, message).help(help).code(diag::Code::Import)]);
+    }
     match app_files(&*fs, &program.root.join(crate::layout::ROOT)) {
         Ok(files) => {
             for path in files {

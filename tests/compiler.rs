@@ -1992,7 +1992,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         (
             "zero/client/index.ts",
             "zero/_generated/client/index.ts",
-            "export const stale = 1;\n",
+            "import { SCHEMA } from \"./schema.ts\";\nexport const stale = SCHEMA;\n",
         ),
     ] {
         let (old_dir, new_dir) = if old.starts_with("zero/client/") {

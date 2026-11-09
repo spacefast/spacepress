@@ -7,11 +7,10 @@ test("the landing page links to the guide, the playground and the examples", asy
 	await expect(page.getByRole("link", { name: /Playground/ }).first()).toHaveAttribute("href", "/playground");
 });
 
-test("an example page shows what the compiler made of the example", async ({ page }) => {
-	await page.goto("./examples/pantry");
-	await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-	await expect(page.getByRole("cell", { name: "Compiles" })).toBeVisible();
-	await expect(page.locator("pre").filter({ hasText: 'from "first"' }).first()).toBeVisible();
+test("the examples index lists only the site's examples", async ({ page }) => {
+	await page.goto("./examples");
+	const links = page.locator("main table").getByRole("link");
+	await expect(links).toHaveText(["Reading list", "Pantry", "Kitchen sink", "Reusable fields", "WordPress plugins"]);
 });
 
 test("the plugin list names every plugin first build installs", async ({ page }) => {

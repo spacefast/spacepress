@@ -20,6 +20,25 @@ First (formerly Zero v2) is a framework for building app backends in TypeScript.
 
 Rust runs only at build time. At runtime your app is plain PHP inside WordPress, with no Node.js server.
 
+## One app, every file
+
+This is [`examples/reading-list`](https://github.com/spacefast/zero/tree/main/examples/reading-list), a reading log. It uses each part of First once, in about 100 lines:
+
+| In the config | What it does at runtime |
+| --- | --- |
+| `books`, a `collection()` | WordPress posts, with the block editor, drafts and revisions |
+| `reads`, a `table()` | A MySQL table, created by the migration in `first/_generated/migrations/` |
+| `access` and `lib/owner.ts` | Anyone reads books. Each signed-in user sees only their own reads, and a client can't set `ownerId` |
+| `beforeCreate` and `afterCreate` | PHP that runs inside the write. Throwing rejects it with a 422 and rolls it back |
+| `logRead`, an `action()` | `POST /wp-json/first/v1/actions/logRead`, typed in the generated client |
+| `tally`, a `job()` | Runs after the request on Action Scheduler and stores each book's total |
+| `shelf`, a `route()` | `GET /shelf.html`, a public page outside `/wp-json` |
+| `escape-html` and `ms` | npm packages. The compiler turns their JavaScript into PHP with the rest of the app |
+
+Below is the config, then every file `first build` wrote for it when this site was built. Every file opens, and **Run in WordPress** starts the app in your browser.
+
+<Showcase name="reading-list" />
+
 ## Who it is for
 
 Use First when an app needs a backend with users, content and an admin, and you want to write it in TypeScript. Your frontend can be anything that can call `fetch`. WordPress gives you the admin screens, the media library and the user accounts.

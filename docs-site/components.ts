@@ -1,11 +1,14 @@
 import { defineComponents } from "blume";
 
-// Static components every MDX page can use without an import. Both render at build time and ship
-// no JavaScript.
+// Components every MDX page can use without an import. They render at build time. Only Showcase
+// ships a script, which switches the file it shows.
 export default defineComponents({
 	mdx: {
 		CodeFile: "./lib/CodeFile.astro",
+		CompiledExcerpt: "./lib/CompiledExcerpt.astro",
 		ExampleConfig: "./lib/ExampleConfig.astro",
+		PagesArtifact: "./lib/PagesArtifact.astro",
 		RepoFile: "./lib/RepoFile.astro",
+		Showcase: "./lib/Showcase.astro",
 	},
 });

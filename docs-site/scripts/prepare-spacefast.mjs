@@ -6,6 +6,8 @@
 //    headers on Blume's SVG assets. This drops every rule with a mid-segment wildcard and keeps the
 //    rest. It also sets `application/wasm` on the playground's compiler. Spacefast sends .wasm as
 //    application/octet-stream, which makes the browser read the whole file before compiling it.
+//    And it allows any origin to read /files/, where WordPress Playground fetches the examples'
+//    blueprints and plugin zips.
 // 2. Markdown: Spacefast renders each .md file into a page and keeps the .md itself private.
 //    Blume's .md files are the plain-Markdown copies agents read (`/getting-started.md`), so each
 //    one gets `raw: true` in its frontmatter, which tells Spacefast to serve the file as written.
@@ -23,7 +25,13 @@ for (const line of readFileSync(headersFile, "utf8").split("\n")) {
 }
 // A `*` is allowed only as the whole last segment: `/*` or `/assets/*`.
 const allowed = (pattern) => !pattern.includes("*") || /(^|\/)\*$/.test(pattern);
-const kept = [...rules.filter((rule) => allowed(rule.path)), { path: "/compiler.wasm", headers: ["  Content-Type: application/wasm"] }];
+const kept = [
+	...rules.filter((rule) => allowed(rule.path)),
+	{ path: "/compiler.wasm", headers: ["  Content-Type: application/wasm"] },
+	// WordPress Playground runs on playground.wordpress.net and fetches the example blueprints and
+	// plugin zips from here, which needs CORS.
+	{ path: "/files/*", headers: ["  Access-Control-Allow-Origin: *"] },
+];
 const dropped = [...new Set(rules.filter((rule) => !allowed(rule.path)).map((rule) => rule.path))];
 writeFileSync(headersFile, `${kept.map((rule) => [rule.path, ...rule.headers].join("\n")).join("\n")}\n`);
 console.log(`_headers: kept ${kept.length} rules, dropped ${dropped.join(", ")}`);

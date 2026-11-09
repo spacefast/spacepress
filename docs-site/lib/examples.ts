@@ -23,7 +23,9 @@ export interface Example {
 
 /**
  * Every file of an example a config can import (build output and the blog's web page left out),
- * plus the committed abilities lock, the one compiler input under `zero/`.
+ * plus the committed abilities lock, the one compiler input under `zero/`. The example's own
+ * `node_modules`, when installed, goes too: the compiler reads npm packages as sources. Nested
+ * ones (a web app's or a tool's) do not.
  */
 export function sources(dir: string): Request["files"] {
   const skip = new Set(["zero", ".zero", "node_modules", "public", "client-tests", "content"]);
@@ -32,7 +34,9 @@ export function sources(dir: string): Request["files"] {
   if (existsSync(lock)) files["zero/_generated/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
-      if (skip.has(name)) continue;
+      if (skip.has(name) && !(name === "node_modules" && sub === "")) continue;
+      // Of a package, the compiler reads its code and package.json; licenses and docs stay behind.
+      if (sub.startsWith("node_modules") && !/\.(c?m?js|json)$/.test(name) && !lstatSync(path.join(dir, sub, name)).isDirectory()) continue;
       const rel = sub ? `${sub}/${name}` : name;
       const stat = lstatSync(path.join(dir, rel));
       if (stat.isDirectory()) walk(rel);

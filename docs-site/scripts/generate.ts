@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { Compiler } from "../lib/compiler.ts";
 import { sources } from "../lib/examples.ts";
+import { siteExamples } from "../lib/site-examples.ts";
 import { toFirst } from "../lib/names.ts";
 
 const site = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -58,43 +59,17 @@ function fence(lang: string, code: string, meta = ""): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Examples: every directory under examples/, its README, its config and what the compiler makes
-// of it. Compiled here with the same browser build the playground runs.
+// Examples: the ones in lib/site-examples.ts, checked here with the browser build of the compiler
+// the playground runs, and shown in a file browser built from the native build.
 // ---------------------------------------------------------------------------------------------
-
-interface ExampleInfo {
-	name: string;
-	title: string;
-	summary: string;
-	configs: string[];
-}
 
 const compiler = await Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));
 
-function readme(dir: string): { title: string; summary: string; body: string } | null {
+/** A README without its title, which the page states itself. */
+function readme(dir: string): { body: string } | null {
 	const file = path.join(dir, "README.md");
 	if (!existsSync(file)) return null;
-	const text = readFileSync(file, "utf8");
-	const title = /^#\s+(.+)$/m.exec(text)?.[1]?.trim() ?? path.basename(dir);
-	const body = text.replace(/^#\s+.+\n+/, "");
-	// The first paragraph of prose, skipping code, tables, headings, and a line that only leads into a
-	// code block ("From the repository root:").
-	const summary = body.split(/\n\s*\n/).find((p) => p.trim() && !/^(```|\||#)/.test(p) && !p.trim().endsWith(":"))?.replace(/\s+/g, " ").trim() ?? "";
-	return { title, summary, body };
-}
-
-/** The leading `//` comment of a config, as a sentence. */
-function configComment(text: string): string {
-	const lines: string[] = [];
-	for (const line of text.split("\n")) {
-		if (line.startsWith("import") || line.startsWith("}") || line.trim() === "" || /^\s+[\w,\s{}]+,?$/.test(line)) {
-			if (lines.length) break;
-			continue;
-		}
-		if (!line.startsWith("//")) break;
-		lines.push(line.replace(/^\/\/\s?/, ""));
-	}
-	return lines.join(" ").trim();
+	return { body: readFileSync(file, "utf8").replace(/^#\s+.+\n+/, "") };
 }
 
 /**
@@ -116,21 +91,6 @@ function repoLinks(markdown: string, from: string): string {
 	});
 }
 
-function configsUnder(dir: string): string[] {
-	const found: string[] = [];
-	const walk = (sub: string, depth: number) => {
-		const full = path.join(dir, sub);
-		if (existsSync(path.join(full, "zero.config.ts"))) found.push(sub);
-		if (depth === 0) return;
-		for (const name of readdirSync(full)) {
-			if (name.startsWith(".") || name === "node_modules" || name === "zero") continue;
-			if (statSync(path.join(full, name)).isDirectory()) walk(sub ? `${sub}/${name}` : name, depth - 1);
-		}
-	};
-	walk("", 2);
-	return found.sort((a, b) => a.length - b.length || a.localeCompare(b));
-}
-
 function compileSummary(name: string, dir: string): { ok: boolean; text: string; counts?: Record<string, number> } {
 	const result = compiler.compile({ name, files: sources(dir), previous: null });
 	if (!result.output) {
@@ -141,68 +101,32 @@ function compileSummary(name: string, dir: string): { ok: boolean; text: string;
 	return { ok: true, text: `${result.output.migrations.map(([file]) => file).join(", ")}` };
 }
 
-/** `kitchen-sink` reads "Kitchen sink". */
-const humanize = (name: string) => `${name.charAt(0).toUpperCase()}${name.slice(1).replace(/-/g, " ")}`.replace(/\bWp\b/, "WordPress");
-
-/** The one-line descriptions in docs/examples.md, by example directory. */
-const catalog = new Map(
-	[...read("docs/examples.md").matchAll(/^\| \[?`examples\/([a-z0-9-]+)\/`\]?(?:\([^)]*\))? \| (.+?) \|$/gm)].map((m) => [m[1]!, `${m[2]!.trim().replace(/\.$/, "")}.`]),
-);
-
-// Examples the site leaves out, with the reason. Their directories stay in the repository.
-const leftOut: Record<string, string> = {
-	emdash: "Migration from another CMS. Migrations are experimental.",
-};
-
-const exampleNames = readdirSync(path.join(repo, "examples"))
-	.filter((name) => statSync(path.join(repo, "examples", name)).isDirectory() && !(name in leftOut))
-	.sort();
-for (const name of Object.keys(leftOut)) {
-	if (!existsSync(path.join(repo, "examples", name))) throw new Error(`examples/${name} is gone; remove it from leftOut in scripts/generate.ts`);
+// The examples the site shows (lib/site-examples.ts). Each page holds the example's README, if it
+// has one, and a file browser with every file the developer writes and every file `first build`
+// writes for them. The other directories under examples/ stay in the repository.
+for (const { name } of siteExamples) {
+	const result = compileSummary(name, path.join(repo, "examples", name));
+	if (!result.ok) throw new Error(`examples/${name} does not compile, so the site can't show it: ${result.text}`);
 }
-const examples: ExampleInfo[] = [];
 
-for (const name of exampleNames) {
-	const dir = path.join(repo, "examples", name);
-	const info = readme(dir);
-	const configs = configsUnder(dir);
-	const mainConfig = configs[0] === "" ? read(`examples/${name}/zero.config.ts`) : null;
-	const title = info?.title ? toFirst(info.title) : humanize(name);
-	const summary = info?.summary
-		? prose(info.summary, `examples/${name}/README.md`)
-		: prose(catalog.get(name) ?? (mainConfig ? configComment(mainConfig) : `The \`examples/${name}\` app.`), "docs/examples.md");
-	examples.push({ name, title, summary, configs });
-
+for (const { name, title, summary } of siteExamples) {
+	const info = readme(path.join(repo, "examples", name));
 	const parts: string[] = [];
-	parts.push(`Source: [\`examples/${name}\`](${tree}/examples/${name}).`);
-	if (configs.length) {
-		parts.push("## Compile it\n\nThe compiler in this site checked every config below when the site was built.\n");
-		const rows = configs.map((sub) => {
-			const rel = sub ? `examples/${name}/${sub}` : `examples/${name}`;
-			const result = compileSummary(sub ? `${name}-${sub.replace(/\//g, "-")}` : name, path.join(dir, sub));
-			return `| \`${rel}\` | ${result.ok ? "Compiles" : "Does not compile"} | ${cell(mdx(result.ok ? `Migrations: ${result.text}` : result.text))} |`;
-		});
-		parts.push(["| Config | Result | Output |", "| --- | --- | --- |", ...rows].join("\n"));
-		if (configs[0] === "") parts.push(`To edit this config and see the generated PHP, SQL and TypeScript, open the [playground](/playground?example=${name}).`);
-	} else {
-		parts.push("This example has no `first.config.ts` of its own. It is a test harness that other examples or scripts use.");
-	}
+	// The summary is the page's description, which Blume shows under the title.
+	parts.push(`Source: [\`examples/${name}\`](${tree}/examples/${name}). To edit the config and compile it in your browser, open it in the [playground](/playground?example=${name}).`);
+	parts.push(`<Showcase name="${name}" />`);
 	if (info) parts.push(`## README\n\n${mdx(prose(info.body, `examples/${name}/README.md`))}`);
-	// The whole config, rendered by the shared component with the compiler's diagnostics inline.
-	if (mainConfig) parts.push(`## \`first.config.ts\`\n\n<ExampleConfig name="${name}" />`);
-	page(`docs/examples/${name}.mdx`, { title, description: summary.slice(0, 300) }, `examples/${name}`, parts.join("\n\n"));
+	page(`docs/examples/${name}.mdx`, { title, description: summary }, `examples/${name}`, parts.join("\n\n"));
 }
 
 page(
 	"docs/examples/index.mdx",
-	{ title: "Examples", description: "Every example app in the First repository, compiled when this site is built." },
-	"examples/*",
+	{ title: "Examples", description: "Small First apps, each with every file it is built from and every file first build writes for it." },
+	"lib/site-examples.ts",
 	[
-		"Each page below is built from a directory in [`examples/`](" + tree + "/examples). Its config is compiled when this site is built, so the page shows what the compiler does with it today.",
-		"| Example | What it shows | Configs |",
-		"| --- | --- | --- |",
-		...examples.map((e) => `| [${cell(mdx(e.title))}](/examples/${e.name}) | ${cell(mdx(e.summary.length > 220 ? `${e.summary.slice(0, 217).replace(/\s+\S*$/, "")}…` : e.summary))} | ${e.configs.length} |`),
-	].join("\n"),
+		"Each example below is a directory in [`examples/`](" + tree + "/examples). Its page shows the files you write and every file `first build` writes for them, built when this site was built.",
+		["| Example | What it shows |", "| --- | --- |", ...siteExamples.map((e) => `| [${e.title}](/examples/${e.name}) | ${cell(e.summary)} |`)].join("\n"),
+	].join("\n\n"),
 );
 
 // ---------------------------------------------------------------------------------------------
@@ -402,6 +326,47 @@ ${refusals
 
 The codes come from the \`Code\` enum in [\`src/diag.rs\`](${github}/src/diag.rs). The refusals come from [\`tests/compatibility/registry.json\`](${github}/tests/compatibility/registry.json).
 `,
+);
+
+// ---------------------------------------------------------------------------------------------
+// Language support: tests/compatibility/registry.json, every construct the compiler has a test for,
+// by what happens to it. `cargo test --test compiler_contracts` runs the evidence behind each row.
+// ---------------------------------------------------------------------------------------------
+
+const languageGroups: { status: string; heading: string; intro: string }[] = [
+	{ status: "supported", heading: "Compiles", intro: "These compile to PHP that behaves like JavaScript. Each row names the test that compares the generated PHP with Node." },
+	{ status: "divergence", heading: "Compiles, and differs from JavaScript", intro: "These compile, and differ from JavaScript in the way described. The tests measure the difference." },
+	{ status: "refused", heading: "Refused", intro: "These fail the build at the line that uses them. Each row is the advice the compiler prints with the diagnostic." },
+];
+for (const entry of registry.entries) {
+	if (!languageGroups.some((g) => g.status === entry.status)) throw new Error(`tests/compatibility/registry.json has a new status ${entry.status}: add it in scripts/generate.ts`);
+}
+const languageTable = (status: string) => {
+	const rows = (registry.entries as { id: string; status: string; guidance: string; evidence?: string; test?: string }[]).filter((e) => e.status === status);
+	const evidence = status !== "refused";
+	return [
+		evidence ? "| Construct | What happens | Test |" : "| Construct | What to do instead |",
+		evidence ? "| --- | --- | --- |" : "| --- | --- |",
+		...rows.map((e) => {
+			const what = cell(mdx(prose(e.guidance, "tests/compatibility/registry.json")));
+			const test = e.test ? `[\`${e.test}\`](${github}/${e.evidence ?? "tests/compiler_contracts.rs"})` : "";
+			return evidence ? `| \`${e.id}\` | ${what} | ${test} |` : `| \`${e.id}\` | ${what} |`;
+		}),
+	].join("\n");
+};
+
+page(
+	"docs/reference/language-support.mdx",
+	{ title: "Language support", description: "Every TypeScript and JavaScript construct the compiler has a test for: what compiles, what differs from JavaScript, and what is refused." },
+	"tests/compatibility/registry.json",
+	[
+		`The compiler turns a subset of TypeScript and JavaScript into PHP. This page lists every construct with a test behind it, ${registry.entries.length} in all. It is not a full specification: a construct that is not listed may still compile. A difference from JavaScript that is not listed here is a bug. [TypeScript to PHP](/compiler) explains how the compiler works.`,
+		...languageGroups.map((g) => {
+			const count = registry.entries.filter((e) => e.status === g.status).length;
+			return `## ${g.heading} (${count})\n\n${g.intro}\n\n${languageTable(g.status)}`;
+		}),
+		`The rows come from [\`tests/compatibility/registry.json\`](${github}/tests/compatibility/registry.json).`,
+	].join("\n\n"),
 );
 
 // ---------------------------------------------------------------------------------------------
@@ -836,7 +801,7 @@ page(
 
 // Directories the generator owns outright, and generated files that share docs/reference with
 // hand-written ones. A file in an owned directory that the generator didn't write fails --check.
-const generatedRoots = ["docs/examples", "docs/changelog", "openapi", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx"];
+const generatedRoots = ["docs/examples", "docs/changelog", "openapi", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx", "docs/reference/language-support.mdx"];
 const onDisk = new Set<string>();
 for (const root of generatedRoots) {
 	const full = path.join(site, root);

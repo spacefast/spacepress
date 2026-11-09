@@ -52,6 +52,8 @@ jobs:
         working-directory: .
       - run: pnpm install --frozen-lockfile
       - run: pnpm wasm
+      # The landing page shows every file `first build` writes for examples/reading-list.
+      - run: pnpm showcase
       # Fails when a generated page no longer matches the code. Run `pnpm generate` and commit.
       - run: pnpm generate:check
       - run: pnpm test

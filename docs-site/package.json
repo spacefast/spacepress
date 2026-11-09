@@ -11,12 +11,13 @@
 	"scripts": {
 		"wasm": "node scripts/build-wasm.mjs",
 		"generate": "node scripts/generate.ts",
+		"showcase": "node scripts/build-showcase.ts",
 		"generate:check": "node scripts/generate.ts --check",
-		"dev": "pnpm wasm && pnpm generate && blume dev",
-		"build": "pnpm wasm && pnpm generate && blume build && node scripts/prepare-spacefast.mjs",
+		"dev": "pnpm wasm && pnpm showcase && pnpm generate && blume dev",
+		"build": "pnpm wasm && pnpm showcase && pnpm generate && blume build && node scripts/prepare-spacefast.mjs",
 		"test": "node --test tests/unit/*.test.ts",
 		"test:browser": "playwright test",
-		"check": "pnpm generate:check && pnpm test && blume validate && pnpm test:browser"
+		"check": "pnpm showcase && pnpm generate:check && pnpm test && blume validate && pnpm test:browser"
 	},
 	"dependencies": {
 		"@pierre/diffs": "1.6.4",

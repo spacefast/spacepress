@@ -1,4 +1,5 @@
 import { toFirst } from "./names.ts";
+import { siteExamples } from "./site-examples.ts";
 
 // The names the compiler on main reads for the entry file and the module a config imports. The
 // playground shows First names and hands the compiler these. After the rename lands on main, both
@@ -11,12 +12,11 @@ export function firstFiles(files: Record<string, string>): Record<string, string
   return Object.fromEntries(Object.entries(files).map(([file, text]) => [file === compilerEntry ? "first.config.ts" : file, toFirst(text)]));
 }
 
+// The site's examples (lib/site-examples.ts), the first one opened by default, plus the blog,
+// which the tour walks through.
 export const playgroundExamples = [
-  { name: "kitchen-sink", label: "Kitchen sink", description: "WordPress posts, revisions, users, custom fields, settings, media, translations, background jobs and plugin dependencies." },
+  ...siteExamples.map(({ name, title, summary }) => ({ name, label: title, description: summary })),
   { name: "blog", label: "Blog", description: "A publication with authors, localized posts, comments, moderation and member accounts." },
-  { name: "pantry", label: "Pantry", description: "Custom SQL tables, relations, hooks, actions and a stock notification job." },
-  { name: "recipes", label: "Reusable fields", description: "A WordPress article collection with an imported SEO field factory." },
-  { name: "wp-plugins", label: "Plugin dependencies", description: "A WordPress notes collection that pins the Classic Editor plugin." },
 ] as const;
 
 export const wordpressFiles = [

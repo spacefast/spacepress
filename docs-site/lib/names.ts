@@ -24,7 +24,10 @@ const rules: [RegExp, string][] = [
 	[/\bhooks=zero_/g, "hooks=first_"],
 	[/(target\/(?:debug|release))\/zero\b/g, "$1/first"],
 	[/\bVITE_ZERO_/g, "VITE_FIRST_"],
+	// Inside the runtime plugin, the PHP runtime folder: zero-runtime/zero/Db.php.
+	[/zero-runtime\/zero\//g, "first-runtime/first/"],
 	[/zero-runtime/g, "first-runtime"],
+	[/\bzero-(manifest|deployment)\.json\b/g, "first-$1.json"],
 	[/zero-admin/g, "first-admin"],
 	[/@spacefast\/zero-(cli|blocks|pages|wasm|bin-)/g, "@spacefast/first-$1"],
 	[/@spacefast\/create-zero/g, "@spacefast/create-first"],

@@ -21,6 +21,7 @@ const types = {
   ".txt": "text/plain; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
   ".xml": "application/xml",
+  ".zip": "application/zip",
 };
 
 /** The file a request names, or null when it is outside the site. */
@@ -43,7 +44,9 @@ http
     if (existsSync(file) && statSync(file).isDirectory()) file = path.join(file, "index.html");
     else if (!existsSync(file) && existsSync(`${file}.html`)) file = `${file}.html`;
     if (!existsSync(file) || !statSync(file).isFile()) return response.writeHead(404).end("not found");
-    response.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
+    // /files/ is read by WordPress Playground from another origin, as on the published site.
+    const cors = request.url?.startsWith(`${base}/files/`) ? { "access-control-allow-origin": "*" } : {};
+    response.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream", ...cors });
     createReadStream(file).pipe(response);
   })
   .listen(port, "127.0.0.1", () => console.log(`serving ${dist} at http://127.0.0.1:${port}${base}/`));

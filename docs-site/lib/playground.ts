@@ -1,3 +1,5 @@
+import { File } from "@pierre/diffs";
+
 import { Compiler } from "./compiler.ts";
 import { highlightHtml, languageOf } from "./highlight.ts";
 import { toFirst } from "./names.ts";
@@ -80,11 +82,21 @@ const fit = (area: HTMLTextAreaElement) => {
   area.style.height = "auto";
   area.style.height = `${area.scrollHeight}px`;
 };
-addEventListener("resize", () => { fit(source); fit(generated); });
+addEventListener("resize", () => fit(source));
+new MutationObserver(() => viewer?.setThemeType(dark() ? "dark" : "light")).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
+// The output pane renders with the diffs File component, the same renderer as every other file on
+// the site, and scrolls inside a fixed height. The textarea keeps the plain text, for the find
+// buttons below and for screen readers.
+let viewer: File | undefined;
 const showGenerated = () => {
   generated.value = outputs[generatedFile.value] ?? runtime[generatedFile.value] ?? "";
-  paint(generated, generatedView, generatedFile.value);
+  viewer?.cleanUp();
+  generatedView.replaceChildren();
+  if (generated.value) {
+    viewer = new File({ theme: { light: "pierre-light", dark: "pierre-dark" }, themeType: dark() ? "dark" : "light", overflow: "wrap", disableFileHeader: true });
+    viewer.render({ file: { name: generatedFile.value, contents: generated.value }, containerWrapper: generatedView });
+  }
   fileDescription.textContent = wordpressFiles.find(({ path }) => path === generatedFile.value)?.description
     ?? "Generated from your config. Changes as you edit.";
   download.disabled = !(generatedFile.value in outputs || generatedFile.value in runtime);
@@ -165,7 +177,12 @@ const loadExample = () => {
   files = drafts.get(example.value) ?? { ...original };
   drafts.set(example.value, files);
   exampleDescription.textContent = playgroundExamples.find(({ name }) => name === example.value)?.description ?? "";
-  const paths = Object.keys(files).sort((a, b) => {
+  // Every site example has a Playground blueprint; the blog, which only the tour uses, doesn't.
+  runWordPress.hidden = example.value === "blog";
+  wordpress.hidden = true;
+  frame.removeAttribute("src");
+  // Installed npm packages go to the compiler with the rest but aren't listed for editing.
+  const paths = Object.keys(files).filter((name) => !name.startsWith("node_modules/")).sort((a, b) => {
     if (a === entry) return -1;
     if (b === entry) return 1;
     return a.localeCompare(b);
@@ -174,6 +191,21 @@ const loadExample = () => {
   showSource();
   compile();
 };
+
+// WordPress Playground, embedded on request: it downloads WordPress and PHP (about 30 MB), so it
+// starts only when asked. The blueprint (public/files/<example>.blueprint.json, written by
+// scripts/build-showcase.ts) installs the plugins `first build` wrote for the committed example.
+const runWordPress = document.querySelector<HTMLButtonElement>("#run-wordpress")!;
+const wordpress = document.querySelector<HTMLElement>("#wordpress")!;
+const frame = document.querySelector<HTMLIFrameElement>("#wordpress-frame")!;
+const wordpressTab = document.querySelector<HTMLAnchorElement>("#wordpress-tab")!;
+runWordPress.addEventListener("click", () => {
+  const url = `https://playground.wordpress.net/?blueprint-url=${encodeURIComponent(`${runWordPress.dataset.site}/files/${example.value}.blueprint.json`)}`;
+  frame.src = url;
+  wordpressTab.href = url;
+  wordpress.hidden = false;
+  wordpress.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 sourceFile.addEventListener("change", showSource);
 generatedFile.addEventListener("change", showGenerated);
@@ -184,10 +216,12 @@ document.querySelectorAll<HTMLButtonElement>("[data-runtime-file]").forEach((but
     updateFileMenu(file.path);
     const start = generated.value.indexOf(file.find);
     if (start < 0) return;
-    generated.focus();
-    generated.setSelectionRange(start, start + file.find.length);
-    const line = generated.value.slice(0, start).split("\n").length - 1;
-    generated.scrollTop = Math.max(0, line * parseFloat(getComputedStyle(generated).lineHeight) - generated.clientHeight / 3);
+    // Scroll the rendered file to the line that holds the call.
+    const line = generated.value.slice(0, start).split("\n").length;
+    requestAnimationFrame(() => {
+      const row = generatedView.querySelector("diffs-container")?.shadowRoot?.querySelector(`[data-column-number="${line}"]`);
+      row?.scrollIntoView({ block: "center" });
+    });
   });
 });
 example.addEventListener("change", loadExample);

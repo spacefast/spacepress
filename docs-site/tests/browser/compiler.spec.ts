@@ -1,8 +1,15 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-test("the playground recompiles edited sources and replaces invalid output with diagnostics", async ({ page }) => {
+test("the playground opens the reading list by default", async ({ page }) => {
   await page.goto("./playground");
+  await expect(page.locator("#compile-status")).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
+  await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("reading-list");
+});
+
+test("the playground recompiles edited sources and replaces invalid output with diagnostics", async ({ page }) => {
+  // The default example is the reading list; this test reads the kitchen sink's output.
+  await page.goto("./playground?example=kitchen-sink");
   const status = page.locator("#compile-status");
   const source = page.getByRole("textbox", { name: "Source code", exact: true });
   const generated = page.getByRole("textbox", { name: "Generated code", exact: true });
@@ -12,7 +19,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await expect(generated).toHaveValue(/function action__publishPage/);
   const tokenColors = (view: string) => page.locator(`.code-editor[data-highlighted] ${view} .line > span`)
     .evaluateAll((spans) => new Set(spans.map((span) => getComputedStyle(span).color)).size);
-  await expect.poll(() => tokenColors("#generated-view")).toBeGreaterThan(3);
+  await expect(page.locator("#generated-view diffs-container")).toBeVisible();
   await expect.poll(() => tokenColors("#source-view")).toBeGreaterThan(3);
   await source.press("End");
   await source.pressSequentially(" // typed");

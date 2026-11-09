@@ -29,6 +29,8 @@ const cases: [string, string][] = [
 	['"zero" has no export named `fetch`', '"first" has no export named `fetch`'],
 	["plugins/zero-app-showcase/public and zero-pages-fullsite", "plugins/first-app-showcase/public and first-pages-fullsite"],
 	["admin / zero-test-admin", "admin / first-test-admin"],
+	["plugins/zero-runtime/zero/Db.php and zero-runtime.php", "plugins/first-runtime/first/Db.php and first-runtime.php"],
+	["wp-content/zero-manifest.json and zero-deployment.json", "wp-content/first-manifest.json and first-deployment.json"],
 	["edit.php?post_type=zero_pets", "edit.php?post_type=first_pets"],
 	["./target/debug/zero wp --hooks=zero_job", "./target/debug/first wp --hooks=first_job"],
 	["Costs per system, including zero-cost systems", "Costs per system, including zero-cost systems"],

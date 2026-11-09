@@ -13,6 +13,8 @@ const examples = Object.fromEntries(await Promise.all(
 ));
 const runtime = Object.fromEntries(wordpressFiles.map(({ path: file }) => [file, readFileSync(path.join(repo, file), "utf8")]));
 const { config } = data;
+// Playground fetches the blueprint from the published site.
+const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, "");
 ---
 
 <PageLayout
@@ -37,9 +39,18 @@ const { config } = data;
 				<label for="example">Example</label>
 				<select id="example">{playgroundExamples.map(({ name, label }) => <option value={name}>{label}</option>)}</select>
 				<button id="reset" type="button">Reset example</button>
+				<button id="run-wordpress" class="run" type="button" data-site={siteUrl}>Run in WordPress</button>
 			</div>
 		</div>
 		<p id="example-description" class="note">{playgroundExamples[0].description}</p>
+		<section id="wordpress" class="wordpress" hidden aria-labelledby="wordpress-heading">
+			<div class="pane-heading">
+				<h2 id="wordpress-heading">WordPress</h2>
+				<span class="wordpress-note">The example as committed, built when this site was built, running in <a href="https://wordpress.org/playground/">WordPress Playground</a> in your browser. Your edits don't apply here.</span>
+				<a id="wordpress-tab" target="_blank" rel="noopener">Open in a new tab ↗</a>
+			</div>
+			<iframe id="wordpress-frame" title="WordPress running the example"></iframe>
+		</section>
 		<nav class="wordpress-links" aria-label="WordPress integration">
 			<span>Inside WordPress</span>
 			{wordpressFiles.slice(0, 8).map(({ path: file, label }) => <button type="button" data-runtime-file={file}>{label}</button>)}
@@ -68,10 +79,8 @@ const { config } = data;
 				</div>
 				<p id="file-description" class="file-description">Generated from your config. Changes as you edit.</p>
 				<label class="sr-only" for="generated">Generated code</label>
-				<div class="code-editor generated">
-					<pre class="diffs" aria-hidden="true"><code id="generated-view"></code></pre>
-					<textarea id="generated" readonly spellcheck="false" wrap="soft" placeholder="Generated files appear here after a successful compile."></textarea>
-				</div>
+				<textarea id="generated" class="sr-only" readonly tabindex="-1"></textarea>
+				<div id="generated-view" class="output-view" aria-hidden="true"></div>
 			</section>
 		</div>
 		<p class="note">The file menu has the generated PHP, SQL and TypeScript, and the WordPress runtime that every app shares. Generated files change as you edit. Runtime files do not.</p>
@@ -92,6 +101,12 @@ const { config } = data;
 	.wordpress-links { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; font-size: 0.8rem; }
 	.wordpress-links span { color: var(--muted); margin-right: 0.2rem; }
 	.file-description { padding: 0.6rem 0.8rem; margin: 0; color: var(--muted); font-size: 0.8rem; min-height: 3.7rem; border-bottom: 1px solid var(--line); }
+	button.run { border-color: var(--blume-accent); background: var(--blume-accent); color: #fff; font-weight: 500; }
+	button.run:hover:enabled { background: var(--blume-accent); filter: brightness(1.08); }
+	.wordpress { margin-top: 1rem; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+	.wordpress .pane-heading { gap: 0.8rem; }
+	.wordpress-note { flex: 1; color: var(--muted); }
+	.wordpress iframe { display: block; width: 100%; height: min(52rem, calc(100vh - 10rem)); border: 0; background: var(--tint); }
 	select, button { border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; padding: 0.45rem 0.6rem; }
 	select { min-width: 0; }
 	button { cursor: pointer; white-space: nowrap; }
@@ -121,6 +136,11 @@ const { config } = data;
 	.code-editor[data-highlighted] textarea { color: transparent; }
 	.code-editor[data-highlighted] textarea::selection { color: transparent; background: #009fff33; }
 	.note { color: var(--muted); font-size: 0.85rem; margin-top: 0.8rem; }
+	/* Generated and runtime files can run to thousands of lines, so this pane scrolls; the config
+	   on the left grows to its whole length. */
+	.output-view { height: min(48rem, calc(100vh - 12rem)); overflow: auto; color-scheme: light; }
+	:root[data-theme="dark"] .output-view { color-scheme: dark; }
+	.output-view :global(diffs-container) { display: block; --diffs-font-family: var(--mono); --diffs-font-size: 12.5px; --diffs-line-height: 20px; }
 	.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 	@media (max-width: 64rem) { .intro { flex-direction: column; gap: 0.5rem; } }
 	@media (max-width: 48rem) { .editors { grid-template-columns: minmax(0, 1fr); } }

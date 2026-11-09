@@ -6,7 +6,7 @@ change notice carries no row data, so a viewer only ever sees rows its own read
 returns.
 
 ```ts
-import { createClient } from "./zero/client/index.ts";
+import { createClient } from "./zero/_generated/client/index.ts";
 
 const zero = createClient();
 const stop = zero.todos.watch({ where: { done: false }, orderBy: { createdAt: "asc" } }, (todos) => render(todos));
@@ -24,7 +24,7 @@ For reads a collection `watch` can't express, such as an action's result, a
 read depends on:
 
 ```ts
-import { createClient, watch } from "./zero/client/index.ts";
+import { createClient, watch } from "./zero/_generated/client/index.ts";
 
 const zero = createClient();
 watch(zero, ["todos"], () => zero.actions.openCount(), (count) => badge(count));
@@ -37,7 +37,7 @@ seconds. A host delivers notices with a transport. While it is live, reads
 refresh on notices plus a slow safety poll.
 
 ```ts
-import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./zero/client/index.ts";
+import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./zero/_generated/client/index.ts";
 
 const transport: RealtimeTransport = {
   connect(deliver, status) {

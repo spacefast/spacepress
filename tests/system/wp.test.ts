@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { createClient, type Client } from "../../examples/site/zero/client/index.ts";
+import { createClient, type Client } from "../../examples/site/zero/_generated/client/index.ts";
 import { siteJourney, type EditorPost, type Role } from "./journey.ts";
 import { clientOf, copySite, doctor, failing, receiver, repo, sync, upgrade, work, zero } from "./project.ts";
 

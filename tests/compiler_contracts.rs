@@ -36,7 +36,7 @@ fn php(script: &str, args: &[&Path]) -> Value {
 }
 
 fn build_wp(project: &Path) -> PathBuf {
-    let output = project.join(".zero/wp-content");
+    let output = project.join("zero/dist/wp-content");
     let out = zero().arg("build").arg(project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     output
@@ -1118,7 +1118,7 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     std::fs::write(
         tmp.path().join("class-client.ts"),
         r#"
-import type { Actions } from './zero/client/types';
+import type { Actions } from './zero/_generated/client/types';
 declare const instance: Actions['classesWire']['output'];
 const count: number = instance.count;
 const label: string = instance.label;
@@ -1535,7 +1535,7 @@ export default () => definePlugin({
         report["diagnostics"][0]["message"]
             .as_str()
             .unwrap()
-            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/plugins.lock.json"),
+            .contains("plugin \"sync\" (zero-plugin-sync@3.1.0) isn't in zero/_generated/plugins.lock.json"),
         "{report}"
     );
 }
@@ -3176,7 +3176,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
-/// compiler and for tsc (zero.gen.ts), and the compiled handler calls `Call::run` with the input as
+/// compiler and for tsc (zero/_generated/db.d.ts), and the compiled handler calls `Call::run` with the input as
 /// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
 #[test]
 fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
@@ -3220,7 +3220,7 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
                 "paths": { "zero": [root().join("types/zero/index.d.ts")], "php/wordpress": [root().join("types/zero/wordpress.d.ts")] }
             },
-            "files": ["zero.config.ts", "zero.gen.ts"]
+            "files": ["zero.config.ts", "zero/_generated/db.d.ts"]
         }))
         .unwrap(),
     )
@@ -4173,4 +4173,60 @@ fn language_refusals_carry_a_location_and_a_fix() {
         assert!(!help.trim().is_empty(), "{name}: refusal without a fix: {report}");
         assert!(help.contains(fix), "{name}: {report}");
     }
+}
+
+/// `.was()` renames a stored column, so it is refused where there's none to rename, and a `was`
+/// rename can't move a kind onto or off a table Zero didn't create (spec §2.5, §2.6, §2.9).
+#[test]
+fn was_renames_only_what_a_table_stores() {
+    let tmp = tempfile::tempdir().unwrap();
+    let build = |config: &str, previous: Option<Value>| -> Result<zero::pipeline::Built, String> {
+        std::fs::write(tmp.path().join("zero.config.ts"), config).unwrap();
+        let program = zero::loader::load(&tmp.path().join("zero.config.ts")).map_err(|d| d.message)?;
+        zero::pipeline::build(
+            tmp.path(),
+            &program,
+            || zero::pipeline::Previous::from_project(previous, []),
+            |_| None,
+        )
+        .map_err(|d| d.message)
+    };
+    let refused = |config: &str| build(config, None).err().unwrap_or_default();
+    let head = "import { defineConfig, collection, table, id, text, group } from 'zero';";
+    assert!(
+        refused(&format!("{head} const posts = collection({{ id: id(), title: text().notNull(), body: text().was('copy') }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ posts }} }});"))
+            .contains("`.was()` renames a column of a table()"),
+    );
+    assert!(
+        refused(&format!("{head} const notes = table({{ id: id(), meta: group({{ fields: {{ tag: text().was('label') }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"))
+            .contains("`.was()` renames a stored column"),
+    );
+    // A Zero-created table renamed onto an adopted one (or back) would alter a table Zero didn't create.
+    let first = build(
+        &format!("{head} const notes = table({{ id: id() }}); export default defineConfig({{ tables: {{ notes }} }});"),
+        None,
+    )
+    .unwrap();
+    let onto = build(
+        &format!(
+            "{head} const memos = table({{ id: id() }}, {{ was: 'notes', existingTable: 'sf_space_memos' }}); export default defineConfig({{ tables: {{ memos }} }});"
+        ),
+        Some(first.snapshot.clone()),
+    );
+    assert!(
+        onto.err()
+            .unwrap_or_default()
+            .contains("including through a `was` rename")
+    );
+    // The same rename between two Zero-created tables plans a RENAME, not a drop and a create.
+    let renamed = build(
+        &format!("{head} const memos = table({{ id: id() }}, {{ was: 'notes' }}); export default defineConfig({{ tables: {{ memos }} }});"),
+        Some(first.snapshot),
+    )
+    .unwrap();
+    let sql = &renamed.migrations[0].1;
+    assert!(
+        sql.contains("RENAME TABLE `{prefix}zero_notes` TO `{prefix}zero_memos`;") && !sql.contains("DROP TABLE"),
+        "{sql}"
+    );
 }

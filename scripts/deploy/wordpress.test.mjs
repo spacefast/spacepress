@@ -32,7 +32,7 @@ async function sources(root) {
     await cp(join(repo, 'examples/blog/zero.config.ts'), join(project, 'zero.config.ts'), { recursive: true });
     const built = spawnSync(process.env.ZERO_BIN || resolve(repo, 'target/debug/zero'), ['build', project], { encoding: 'utf8', timeout: 180000 });
     assert.equal(built.status, 0, built.stdout + built.stderr);
-    artifact = join(project, '.zero/wp-content');
+    artifact = join(project, 'zero/dist/wp-content');
   }
   return { wordpress: process.env.ZERO_DEPLOY_TEST_WORDPRESS || core, sqlite: process.env.ZERO_DEPLOY_TEST_SQLITE || integration, wpCli, artifact };
 }

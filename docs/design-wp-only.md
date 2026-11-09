@@ -68,7 +68,7 @@ standalone worker loop (`jobs work`), `App::boot` building its own services,
 `App::handleHttp` and the `/api` router, `Db::$target`.
 
 Compiler and CLI (`src/`): `Target`, `--target`, `--wp`, the SQLite dialect
-in `migrate.rs` and `zero/migrations/sqlite/`, `commands/{users,jobs}.rs`,
+in `migrate.rs` and `zero/_generated/migrations/sqlite/`, `commands/{users,jobs}.rs`,
 `dev::standalone`, the standalone half of `doctor`, the `/api` prefix in the
 client and `sync/client.rs`, `Credential::Token`, the standalone half of
 `config_migrate`.
@@ -79,7 +79,7 @@ of `tests/compiler.rs`, `tests/config_migrate.rs` and `tests/wp_plugins.rs`,
 
 Public text: `README.md`, `docs/*`, `runtime/client/README.md` and its three
 generated copies, `types/zero/index.d.ts`, the examples' committed
-`zero/migrations/sqlite/`, `.github/workflows/ci.yml` jobs.
+`zero/_generated/migrations/sqlite/`, `.github/workflows/ci.yml` jobs.
 
 ## 4. What stays, and where its proof moves
 
@@ -139,7 +139,7 @@ WordPress plus `zero-identity`. Noted for later, not in the cut: folding
    WordPress-on-SQLite site served or loaded by `tests/php/wp.php`; the
    differential rules run as pure PHP over the runtime plugin.
 3. **Compiler and CLI cut**: `Target`, `--target`, `--wp`, `users`, `tokens`,
-   `jobs`, SQLite migrations (`zero/migrations/` holds the MySQL files
+   `jobs`, SQLite migrations (`zero/_generated/migrations/` holds the MySQL files
    directly), the standalone half of doctor, the client's `/api` prefix and
    `token` option, `ctx.target`, the examples' committed output; the
    standalone legs of the compiler, importer and client tests go.

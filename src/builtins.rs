@@ -90,7 +90,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("field", &["integer", "real", "text", "boolean", "date", "timestamp", "json", "email", "url", "slug", "richText", "media"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["file", "select", "group", "repeater", "blocks"], overload("options: object", arity(1, 1), None, None)),
     ("column", &["localized", "notNull", "unique", "primaryKey", "defaultNow", "$type"], overload("no runtime arguments", arity(0, 0), None, None)),
-    ("column", &["access", "showIf", "ui", "min", "max", "pattern", "validate", "default", "$default", "$defaultFn", "$onUpdate", "$onUpdateFn"], overload("one value or callback", arity(1, 1), None, None)),
+    ("column", &["access", "showIf", "ui", "min", "max", "pattern", "validate", "default", "$default", "$defaultFn", "$onUpdate", "$onUpdateFn", "was"], overload("one value or callback", arity(1, 1), None, None)),
     ("column", &["references"], overload("target: function, options?: object", arity(1, 2), None, None)),
     ("constructor", &["HttpError"], overload("runtime-only status: number, code: string, message: string, details?: object", None, arity(3, 4), None)),
     ("db", &["insert", "update", "delete"], overload("collection: static registered Collection reference", None, arity(1, 1), None)),
@@ -370,6 +370,19 @@ pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Resul
             Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(custom),
             _ => false,
         }
+    }
+    fn html(ty: &Ty) -> bool {
+        match ty {
+            Ty::Html => true,
+            Ty::Obj(fields) => fields.values().any(|(ty, _)| html(ty)),
+            Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Map(t) | Ty::Instance(_, t) => html(t),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(html),
+            _ => false,
+        }
+    }
+    if html(ty) {
+        return Err(Diag::new(span, "rendered JSX can't be serialized as JSON")
+            .help("JSX renders only inside components; return the data, and render it in a component"));
     }
     if contains_typed_date(ty) {
         return Err(Diag::new(span, "typed Dates require explicit JSON serialization")

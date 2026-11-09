@@ -27,11 +27,11 @@ export async function buildApp({ app, zero, files, log = () => {} }) {
   for (const [name, source] of Object.entries(files)) await writeFile(join(app, name), source);
   const build = async () => log(await command(zero, ["build", app, "--quiet"]));
   await build();
-  const plugin = join(app, ".zero/wp-content/plugins/zero-app-showcase");
+  const plugin = join(app, "zero/dist/wp-content/plugins/zero-app-showcase");
   const generated = join(plugin, "zero/app");
   await mkdir(join(app, "public/client"), { recursive: true });
-  await copyFile(join(app, "zero/client/client.js"), join(app, "public/client/index.js"));
-  await copyFile(join(app, "zero/client/LICENSE"), join(app, "public/client/LICENSE"));
+  await copyFile(join(app, "zero/_generated/client/client.js"), join(app, "public/client/index.js"));
+  await copyFile(join(app, "zero/_generated/client/LICENSE"), join(app, "public/client/LICENSE"));
   await copyFile(join(app, "zero.config.ts"), join(app, "public/source.ts.txt"));
   await copyFile(join(app, "pantry.ts"), join(app, "public/pantry.ts.txt"));
   await copyFile(join(generated, "functions.php"), join(app, "public/compiled.php.txt"));
@@ -43,7 +43,7 @@ export async function buildApp({ app, zero, files, log = () => {} }) {
   for (const name of ["schema.php", "functions.php"])
     output[name] = await readFile(join(generated, name), "utf8");
   for (const name of ["types", "schema"])
-    output[`client/${name}.ts`] = await readFile(join(app, `zero/client/${name}.ts`), "utf8");
+    output[`client/${name}.ts`] = await readFile(join(app, `zero/_generated/client/${name}.ts`), "utf8");
   for (const name of migrationFiles)
     output[`migrations/${name}`] = await readFile(join(migrationDir, name), "utf8");
   const manifest = {

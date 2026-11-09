@@ -6,8 +6,8 @@ import { auth, core, harness, wp } from "../env.ts";
 import { loginCookie } from "../login.ts";
 
 const site = harness.url;
-const xmlrpc = (method: string) =>
-  fetch(`${site}/xmlrpc.php`, { method: "POST", headers: { "content-type": "text/xml" }, body: `<?xml version="1.0"?><methodCall><methodName>${method}</methodName><params></params></methodCall>` });
+const xmlrpc = (method: string, path = "/xmlrpc.php") =>
+  fetch(`${site}${path}`, { method: "POST", headers: { "content-type": "text/xml" }, body: `<?xml version="1.0"?><methodCall><methodName>${method}</methodName><params></params></methodCall>` });
 /** `current_user_can()` for the administrator, in a WP-CLI process that loads every active plugin. */
 const adminCan = (...caps: string[]) =>
   JSON.parse(wp("eval", `wp_set_current_user(${harness.users.admin.id}); echo wp_json_encode(array_map('current_user_can', json_decode('${JSON.stringify(caps)}')));`)) as boolean[];
@@ -36,6 +36,41 @@ test("xmlrpc: every call is refused, system methods included, and nothing advert
   const home = await page("/");
   assert.equal(home.headers.get("x-pingback"), null);
   assert.doesNotMatch(await home.text(), /EditURI|xmlrpc\.php\?rsd/);
+});
+
+// Jetpack 16.4 is active (run.sh); the site isn't connected to WordPress.com, so Jetpack offers only its
+// bootstrap methods to an unsigned request, the way WordPress.com first reaches a site to connect it.
+test("xmlrpc: Jetpack's connection still answers WordPress.com, on both of its endpoints, and nothing else does", async () => {
+  for (const path of ["/xmlrpc.php?for=jetpack", "/?for=jetpack&jetpack=comms"]) {
+    // Only Jetpack's bootstrap methods, plus the system.* callbacks the XML-RPC server class adds itself
+    // (they reach only these same methods).
+    const listed = await xmlrpc("system.listMethods", path);
+    assert.equal(listed.status, 200, path);
+    const methods = [...(await listed.text()).matchAll(/<string>([^<]+)<\/string>/g)].map((m) => m[1]).sort();
+    assert.deepEqual(methods, ["jetpack.remoteAuthorize", "jetpack.remoteRegister", "jetpack.verifyRegistration", "system.getCapabilities", "system.listMethods", "system.multicall"], path);
+    // Jetpack's own handler answers: the bootstrap method exists and rejects a request with no user.
+    // (Jetpack sends its faults with the fault's HTTP status, 400 here.)
+    const register = await xmlrpc("jetpack.remoteRegister", path);
+    const body = await register.text();
+    assert.equal(register.status, 400, `${path}: ${body}`);
+    assert.doesNotMatch(body, /-32601|XML-RPC is turned off/, `${path}: ${body}`);
+    assert.match(body, /Jetpack: \[local_user_missing\]/, `${path}: ${body}`);
+    // Signed methods need WordPress.com's signature, which an unsigned request doesn't carry.
+    assert.match(await (await xmlrpc("jetpack.testConnection", path)).text(), /-32601/, path);
+    // Core's methods aren't reachable through Jetpack's door.
+    assert.match(await (await xmlrpc("wp.getUsersBlogs", path)).text(), /-32601/, path);
+  }
+  const plain = await xmlrpc("jetpack.remoteRegister");
+  assert.equal(plain.status, 403, "without ?for=jetpack, XML-RPC stays off");
+  // The exception is Jetpack's connection, not the query string: without Jetpack, `?for=jetpack` is refused too.
+  wp("plugin", "deactivate", "jetpack");
+  try {
+    const spoofed = await xmlrpc("system.listMethods", "/xmlrpc.php?for=jetpack");
+    assert.equal(spoofed.status, 403);
+    assert.match(await spoofed.text(), /XML-RPC is turned off/);
+  } finally {
+    wp("plugin", "activate", "jetpack");
+  }
 });
 
 test("pings: pingbacks and trackbacks are closed, and none go out", () => {

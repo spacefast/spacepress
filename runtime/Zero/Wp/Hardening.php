@@ -41,26 +41,46 @@ final class Hardening
 
     // ================================================================ always disabled
 
-    /** XML-RPC answers nothing, `system.*` and `?rsd` included; no EditURI link or X-Pingback header. */
+    /**
+     * XML-RPC answers nothing, `system.*` and `?rsd` included; no EditURI link or X-Pingback header. One
+     * narrow exception: WordPress.com reaches a site's Jetpack connection over XML-RPC (`?for=jetpack`, on
+     * xmlrpc.php or Jetpack's own `?jetpack=comms` endpoint), and spam checks use the Akismet that connection
+     * sets up. While Jetpack's connection is loaded, such a request gets Jetpack's `jetpack.*` methods and
+     * nothing else; Jetpack decides which of them a request may call and checks its signature or secret.
+     */
     private static function xmlrpc(): void
     {
         add_filter('xmlrpc_enabled', '__return_false');
-        add_filter('xmlrpc_methods', '__return_empty_array', PHP_INT_MAX);
-        if (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) {
-            add_action('init', static function (): void {
-                status_header(403);
-                header('Content-Type: text/xml; charset=UTF-8');
-                echo '<?xml version="1.0"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><int>403</int></value></member>'
-                    . '<member><name>faultString</name><value><string>XML-RPC is turned off on this site.</string></value></member></struct></value></fault></methodResponse>';
-                exit;
-            }, 0);
-        }
+        add_filter('xmlrpc_methods', static fn (array $methods): array => self::jetpackXmlrpc()
+            ? array_filter($methods, static fn (string $name): bool => str_starts_with($name, 'jetpack.'), ARRAY_FILTER_USE_KEY)
+            : [], PHP_INT_MAX);
+        // At init: Jetpack defines XMLRPC_REQUEST for its alternate endpoint later than the app applies this.
+        add_action('init', static function (): void {
+            if (!defined('XMLRPC_REQUEST') || !XMLRPC_REQUEST || self::jetpackXmlrpc()) {
+                return;
+            }
+            status_header(403);
+            header('Content-Type: text/xml; charset=UTF-8');
+            echo '<?xml version="1.0"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><int>403</int></value></member>'
+                . '<member><name>faultString</name><value><string>XML-RPC is turned off on this site.</string></value></member></struct></value></fault></methodResponse>';
+            exit;
+        }, 0);
         remove_action('wp_head', 'rsd_link');
         add_filter('wp_headers', static function (array $headers): array {
             unset($headers['X-Pingback']);
             return $headers;
         }, PHP_INT_MAX);
         add_filter('bloginfo_url', static fn (string $url, string $show): string => $show === 'pingback_url' ? '' : $url, PHP_INT_MAX, 2);
+    }
+
+    /**
+     * A request for Jetpack's connection, while that connection has configured itself for this request.
+     * Jetpack fires this action after its connection Manager installed its own XML-RPC handlers; the class
+     * existing isn't enough, since other plugins bundle Jetpack's packages.
+     */
+    private static function jetpackXmlrpc(): bool
+    {
+        return ($_GET['for'] ?? null) === 'jetpack' && did_action('jetpack_feature_connection_enabled') > 0;
     }
 
     /** No pingbacks or trackbacks, in or out. */

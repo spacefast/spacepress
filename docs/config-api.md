@@ -30,7 +30,7 @@ isn't changed either. None of these switches can be turned off in
 
 | switch | effect |
 |---|---|
-| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header |
+| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working |
 | `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
 | `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
 | `fileEditors` | the plugin and theme file editors are refused to everyone |

@@ -17,4 +17,14 @@ mkdir "$work/app"
 cp "$here/zero.config.ts" "$work/app/"
 "$target/debug/zero" build "$work/app" --quiet >/dev/null
 "$wp/harness.sh" up --wp-content "$work/app/.zero/wp-content" > "$work/harness.json"
+# Jetpack, as a site that gets Akismet through it would run: the xmlrpc switch's one exception is its
+# connection. Pinned and checked like the platform plugins, into the harness's shared cache.
+jetpack="$wp/cache/jetpack.16.4.zip"
+if [[ ! -f $jetpack ]]; then
+  curl -sSfL -o "$jetpack.$$" https://downloads.wordpress.org/plugin/jetpack.16.4.zip
+  printf '%s  %s\n' 7252ef239f6763b6d09bdd5cbbaf6ed52e6e30044e1a48ae8fd10d16b075c9f2 "$jetpack.$$" | sha256sum -c --quiet || { rm -f "$jetpack.$$"; exit 1; }
+  mv -f "$jetpack.$$" "$jetpack"
+fi
+printf '%s  %s\n' 7252ef239f6763b6d09bdd5cbbaf6ed52e6e30044e1a48ae8fd10d16b075c9f2 "$jetpack" | sha256sum -c --quiet
+"$wp/harness.sh" wp plugin install /zero-cache/jetpack.16.4.zip --activate >/dev/null
 ZERO_WP_HARNESS="$work/harness.json" node --test --test-concurrency=1 "$here/hardening.test.ts"

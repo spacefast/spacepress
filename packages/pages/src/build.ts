@@ -4,7 +4,7 @@
  * Steps, each one only when the previous produced no error:
  *
  * 1. Read the app's schema from `zero build` output (`zero/client/schema.ts`
- *    and `zero/migrations/snapshot.json`); pages never execute
+ *    and `zero/_generated/migrations/snapshot.json`); pages never execute
  *    `zero.config.ts`.
  * 2. Discover routes, layouts and `not-found.tsx` (routes.ts).
  * 3. Bundle each route with esbuild and check every project file in its
@@ -138,7 +138,7 @@ export interface AppSchema {
 
 async function loadSchema(project: string): Promise<AppSchema | PagesDiagnostic> {
   const clientFile = path.join(project, "zero/client/schema.ts");
-  const snapshotFile = path.join(project, "zero/migrations/snapshot.json");
+  const snapshotFile = path.join(project, "zero/_generated/migrations/snapshot.json");
   if (!(await exists(clientFile)) || !(await exists(snapshotFile))) {
     return error("config", "Pages build from the app's compiled schema; run `zero build` first.", path.join(project, "zero.config.ts"));
   }

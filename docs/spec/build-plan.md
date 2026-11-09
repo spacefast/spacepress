@@ -28,11 +28,18 @@ many workstreams run at once.
                                     │ 7. Interactivity  │ └────────────────────┘
                                     └───────────────────┘
   9. Markdown + llms.txt (after 6)   10. Framework adapters (after 2)
-  11. Opinionated WordPress (any time)   12. Docs, examples, 0.8 migration (last, continuous)
+  11. Opinionated WordPress (any time)   12. Docs and examples (continuous)
 ```
 
-Start in parallel now: 1, 5 and 11. Then 2, 3 and 4 after 1. Then 6, 9 and 10.
-Then 7 and 8.
+Start in parallel now: 1, 2, 4, 5, 11 and the URL-purge half of 8. 2 and 4
+work on the runtime and migrator side and rebase onto 1's authoring surface as
+it lands. Then 3 after 1. Then 6, 9 and 10. Then 7 and the rest of 8.
+
+A 0.8 app migrates to v2 on its next publish when the converter and the
+publish checks refuse nothing ([coexistence.md](coexistence.md)). The converter
+tracks `main`: each workstream that changes what it emits updates it in the same
+PR.
+[coexistence.md](coexistence.md) lists the rules and the suites that hold them.
 
 ## 1. Authoring surface cutover
 
@@ -290,14 +297,15 @@ It also hardens WordPress:
 
 On Spacefast, the box image and Spacefast Access do the parts that belong to the host.
 
-## 12. Docs, examples, 0.8 migration
+## 12. Docs and examples
 
 **Build:**
 - **Docs:** rewrite `docs/config-api.md`, `docs/pages.md`, the README and the site to match the spec.
 - **Examples:** port every example.
-- **0.8 migration:** `zero migrate app --from zero-0.8` emits this layout
-  (the census decides which 0.8 features get converted; anything else means
-  rewriting it on v2).
+- **0.8 migration:** `zero migrate app --from zero-0.8` emits this layout, and a
+  0.8 publish from the CLI, local MCP or a source build runs it. The census
+  decides which 0.8 features get converted; anything else is a located refusal
+  with a fix, and that publish stays on 0.8.
 - **Monorepo:** `sf zero`, MCP and the Spacefast publish path follow the new layout.
 
 ## How fast
@@ -311,6 +319,8 @@ Nothing here is gated by typing speed. What sets the pace:
   agent PR is reviewed before merge, because reviews have found blocking bugs in
   "verified" green agent PRs before.
 - **Parallelism.** One agent per workstream, never two on the same files or tests.
+- **0.8 migration keeps working.** No workstream merges while it breaks the
+  converter or a rule in [coexistence.md](coexistence.md).
 
 First useful cut: 1 + 2 + 3 + 4 + 11. That gives the new authoring surface on
 core REST with the facade and WordPress rendering: a complete backend with

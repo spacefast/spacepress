@@ -1,13 +1,14 @@
 # Migrating from Zero 0.8
 
-Migrate a Spacefast app with the hosted operation below. It converts supported
-source, preserves content and user IDs, and carries existing logins into v2.
+This guide covers the hosted migration operation, which isn't shipped yet. Once
+it is, it converts supported source, preserves content and user IDs, and carries
+existing logins into v2.
 Generated endpoints, actions, [HTTP routes](config-api.md#http-routes) and
 [live updates](realtime.md) work on Spacefast. [TSX pages](pages.md) do not
 yet: the Spacefast host mounts the runtime, the app and identity for a v2
 version, but not the compiled pages plugin, and it does not serve its assets.
-Until it does, keep any 0.8 Space whose visitors depend on its pages on 0.8;
-this guide's commit step retires the 0.8 site.
+Until it does, a 0.8 app with pages stays on 0.8: its publish ships as 0.8 and
+reports `Z08_LOCAL_PAGES`. This guide's commit step retires the 0.8 site.
 
 The baseline is `@spacefast/zero` and `@spacefast/zero-compile` 0.8.1. A
 successful source conversion proves that the candidate compiles. Complete the
@@ -15,10 +16,19 @@ data copy, access review, client changes, and runtime checks before calling an
 application migrated. [Coverage](#coverage) lists what each 0.8 capability
 becomes.
 
-For a standalone WordPress site, use the config and in-place data commands
-later in this guide. Both paths report unsupported behavior with pointers.
+On Spacefast, a publish from the CLI runs this conversion on its own and ships
+as v2 when nothing is refused ([coexistence](spec/coexistence.md)). To preview
+the candidate first, run `zero migrate app --from zero-0.8 … --dry-run`
+([below](#convert-source-locally-for-review)). The hosted operation in the next section
+(`sf zero migrate --space`, `migrateSpaceZero`, `POST
+/v1/spaces/{id}/zero/migration`) hasn't shipped yet. For a standalone WordPress
+site, use the config and in-place data commands later in this guide. Both paths
+report unsupported behavior with pointers.
 
 ## Migrate a Spacefast app
+
+**Not shipped yet.** `sf zero migrate --space`, `migrateSpaceZero` and the
+migration route below don't exist on Spacefast today.
 
 Use this procedure for a user's Spacefast 0.8 app. The hosted operation converts
 source, copies scoped data, and commits the one-way transition together. The
@@ -92,7 +102,7 @@ not restore the database.
 
 ### Convert source locally for review
 
-If you need to inspect or port a candidate before the hosted operation, run:
+To inspect a candidate, run:
 
 ```sh
 sf zero migrate app --from zero-0.8 ./old-app --out ./candidate --space spc_example --dry-run --json
@@ -102,10 +112,10 @@ sf zero check ./candidate
 
 Add `--users` when Space Users is enabled without a capsule `auth` declaration.
 Each destination must be new. A dry run writes no candidate. Keep all generated
-source, the adoption snapshot, and `connector-roles.json` together. Submit a
-manual v2 port through the hosted migration operation so its data moves before
-the generation change. A normal v2 publish on a legacy Space is refused with
-`zero_migration_required`.
+source, the adoption snapshot, and `connector-roles.json` together. A candidate
+you publish by hand is a normal v2 publish, and on a legacy Space that is refused
+with `zero_migration_required`. Publish the 0.8 app instead, and the publish
+converts it.
 
 ### Copy data under the host's migration lock
 
@@ -158,10 +168,10 @@ A capsule with a schema needs a table mode, set by one of two flags:
 
 - `--space <id>` adopts the published Space's existing 0.8 tables
   (`sf_<space>_<table>_<hash>`). The first migration is
-  `zero/migrations/0001_adopt.sql`.
+  `zero/_generated/migrations/0001_adopt.sql`.
 - `--fresh` declares plain v2 tables and creates them empty. Use it for a Space
   that has no 0.8 tables yet. The first migration is
-  `zero/migrations/0001_init.sql`, and no rows are copied.
+  `zero/_generated/migrations/0001_init.sql`, and no rows are copied.
 
 The two flags exclude each other. With neither, the schema is refused with
 `Z08_SPACE_REQUIRED`. The browser build takes the same choice as
@@ -172,7 +182,10 @@ To start from what a 0.8 publish stored instead, pass its finalize payload:
 `--manifest finalize.json ./old-app` checks that every source file matches the
 published SHA-256 before converting, and `--manifest finalize.json` alone
 reports the manifest's own refusals and then refuses at `/source`, because the
-stored bundles are compiled JavaScript, not source.
+stored bundles are compiled JavaScript, not source. The manifest records only
+the capsule source, never the static files 0.8 served beside it, so each of
+those in `./old-app` is refused with `Z08_OMITTED_UNVERIFIED`: the candidate
+can't check it is the published file.
 
 The input may be a Spacefast 0.8 project root with `sf.jsonc`, a server entry
 and `content/`. The server entry is `sf.jsonc`'s `runtime.server`, or
@@ -187,6 +200,43 @@ The report contains `entries` with `mapped` or `review` outcomes, an `errors`
 list with RFC 6901 pointers, `adoption_sql`, and `connector_roles`. Pointers name
 capsule declarations; `/pages/...`, `/layouts/...`, and `/islands/...` name project
 files. All independently unsupported handlers and features are reported together.
+
+### Nothing is dropped silently
+
+A candidate replaces the published version, so whatever the 0.8 publish
+served that the candidate doesn't reproduce is an error, not a note. A
+candidate with no errors can be published in place of the 0.8 version.
+
+Static files that 0.8 served from the project root, such as `index.html`,
+`assets/*.css`, `assets/*.js` and `docs/guide.html`, are carried into the candidate's
+`public/`. v2 serves that directory at the same URLs. Files that are carried
+are UTF-8 text, aren't 0.8 source (TypeScript anywhere, or code under
+`client/`, `server/`, `shared/`, `pages/` or `content/`), repository files
+or config, and don't sit
+under a path WordPress or Zero owns. Each one gets a `mapped` entry. A client
+app without pages had an `index.html` that 0.8 generated, so the author's own
+`index.html` was never served there and isn't carried.
+
+Everything else gets a `Z08_OMITTED_*` error:
+
+| Code | What the candidate doesn't reproduce |
+| --- | --- |
+| `Z08_OMITTED_CLIENT` | The `client/` app 0.8 built into the Space's browser bundle. |
+| `Z08_OMITTED_PAGES` | A 0.8 page that has no other refusal and no v2 counterpart. |
+| `Z08_OMITTED_STATIC` | A static file that isn't UTF-8 text (images, fonts), or one under a path WordPress or Zero owns. |
+| `Z08_OMITTED_PUBLIC` | A file in the 0.8 project's `public/`, which 0.8 served at `/public/...`; v2 serves `public/` at the site root. |
+| `Z08_OMITTED_REDIRECTS` | `_redirects` and `_headers` rule files. Move redirects into `sf.jsonc` `redirects`, which carries over; port rewrites and headers to v2 routes. |
+| `Z08_OMITTED_SERVE` | `rewrites`, `headers`, `listing`, `fallback`, `serve` and `inject` in `sf.jsonc`. The engine checks a rewrite's path, and compiles a listing, against 0.8 pages only, so on v2 a catch-all rewrite or a root listing would take over the app's URLs; header rules reach only static files, not v2's WordPress-rendered pages. Move rewrites and headers into v2 routes. |
+| `Z08_OMITTED_CONFIG` | An `sf.jsonc` key the v2 app doesn't reproduce the same way, and `theme.json`, which 0.8 turned into the pages' `theme.css`. That covers `meta`, `theme`, `templates`, `superpowers`, `collab` and `markdownNegotiation`; path rules, because the app's data URLs move from 0.8's `/__zero/*` to v2's `/wp-json/zero/v1/*` (`cache`, `firewall`, and `access` with path patterns); `crons`, which on v2 doesn't send `CRON_SECRET`; `sell`, whose product file and paid assets would become public files; and the Space settings `network`, `dataSources` and `defaultDataSource`, which the file can't set. Set these again on the v2 Space. The keys that apply the same way travel unchanged in the candidate's `sf.jsonc`: `redirects` when every source is exactly `/` or starts with a plain literal segment that WordPress, Zero and the candidate don't use, `cleanUrls`, `index`, `analytics`, `system`, `build`, `placement`, and `access` as `"public"`. A redirect source counts as used when its first segment holds `:` or `*`, starts with `wp-`, is one WordPress or Zero reserves, or is a folder the candidate serves files from (`app/`, `zero/`, a converted client's stylesheet folders and the carried static files): on v2 those answer the app, while 0.8 kept its own files out of the redirect stage. |
+| `Z08_OMITTED_UNVERIFIED_CONFIG` | With `--manifest`, a Space config or `theme.json` the finalize manifest doesn't record. |
+| `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
+| `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/`, `.wrangler/`, `.vercel/`, `.netlify/`, `.turbo/`, `.cache/`, `.zero/`, `.gitignore` and `_routes.json` at any depth, and OS metadata are skipped without an error, as 0.8 never published them. |
+| `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |
+| `Z08_OMITTED_POSTS` | Files under `content/posts/`: 0.8 rebuilt them into the Space's posts on every publish. |
+| `Z08_OMITTED_SYNC` | Content sync of native posts. |
+
+When a later release carries one of these over, its error goes away and
+nothing changes for callers.
 
 Each error has this shape:
 
@@ -217,8 +267,8 @@ Each error has this shape:
 Compiler failures point to the generated source and refuse the whole candidate.
 A `written` candidate can still contain review entries. It is not a live deployment.
 
-The command writes compiler-readable TypeScript, `zero/migrations/0001_adopt.sql`,
-and `zero/migrations/snapshot.json`. It does not connect to a database. The SQL
+The command writes compiler-readable TypeScript, `zero/_generated/migrations/0001_adopt.sql`,
+and `zero/_generated/migrations/snapshot.json`. It does not connect to a database. The SQL
 checks that the existing table and columns exist and creates v2's revisions
 system table. It does not copy rows, rename columns, or convert column types.
 `zero build` accepts this snapshot without generating a second initial migration.

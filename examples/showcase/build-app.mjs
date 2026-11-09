@@ -35,7 +35,7 @@ export async function buildApp({ app, zero, files, log = () => {} }) {
   await copyFile(join(app, "zero.config.ts"), join(app, "public/source.ts.txt"));
   await copyFile(join(app, "pantry.ts"), join(app, "public/pantry.ts.txt"));
   await copyFile(join(generated, "functions.php"), join(app, "public/compiled.php.txt"));
-  const migrationDir = join(app, "zero/migrations");
+  const migrationDir = join(app, "zero/_generated/migrations");
   const migrationFiles = (await readdir(migrationDir))
     .filter((name) => name.endsWith(".sql"))
     .sort();

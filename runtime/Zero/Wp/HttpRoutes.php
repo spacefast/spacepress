@@ -79,8 +79,9 @@ final class HttpRoutes
         }
         // The raw query, not $_GET: PHP's parse_str renames `a.b` to `a_b`, drops `x[]` into arrays
         // and keeps the last of a repeated name.
-        $query = (string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? ''));
-        [$status, $out, $body] = $app->serveRoute($match, $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user);
+        $query = self::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
+        $url = self::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
+        [$status, $out, $body] = $app->serveRoute($match, $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user, $url);
         self::emit($status, $out, $body);
     }
 
@@ -126,6 +127,46 @@ final class HttpRoutes
         }
 
         return $path;
+    }
+
+    /** The query parameter that carries a Spacefast share-link secret. */
+    private const ACCESS_PARAM = '__';
+
+    /**
+     * `req.url`, as Zero 0.8 handed it to endpoints: `https://`, the hostname from `Host` (port and
+     * trailing dots dropped, lowercase), then the request URI with share-link secrets redacted, so a
+     * handler that echoes its own URL never echoes a share token: the `token=`, `purchaseToken=` and
+     * `__=` query values and the `/__/<token>` path segment (the `/__/collab` shell is not a secret).
+     */
+    public static function url(string $host, string $uri): string
+    {
+        $host = trim($host, " \t\n\f\r");
+        // Only a bracketed IPv6 literal may give up a trailing `:digits`; `::1` has no port.
+        if (preg_match('/\A(.*):\d+\z/s', $host, $match) === 1 && (!str_contains($match[1], ':') || str_ends_with($match[1], ']'))) {
+            $host = $match[1];
+        }
+        $host = strtolower(rtrim(trim($host, " \t\n\f\r"), '.'));
+        $uri = str_starts_with($uri, '/') ? $uri : '/' . $uri;
+        $uri = (string) preg_replace('~([?&](?:purchaseToken|token)=)[^&#]*~', '$1[redacted]', $uri);
+        $uri = (string) preg_replace('~(^|[?&])' . self::ACCESS_PARAM . '=[^&#]*~', '$1' . self::ACCESS_PARAM . '=[redacted]', $uri);
+        $uri = (string) preg_replace('~^/__/(?!collab([/?#]|$))[^/?#]+~', '/__/[redacted]', $uri);
+
+        return 'https://' . $host . $uri;
+    }
+
+    /** `req.query` without the share-link secret, so it is not a second way to read the token. */
+    public static function query(string $query): string
+    {
+        if ($query === '' || !str_contains($query, self::ACCESS_PARAM)) {
+            return $query;
+        }
+        $kept = array_filter(explode('&', $query), static function (string $part): bool {
+            $name = explode('=', $part, 2)[0];
+
+            return rawurldecode(str_replace('+', ' ', $name)) !== self::ACCESS_PARAM;
+        });
+
+        return implode('&', $kept);
     }
 
     /** @param array<string, string> $headers */

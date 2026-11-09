@@ -4,7 +4,7 @@
 //!
 //! A 0.8 Zero publish served the project root as static content, minus the capsule's own source
 //! (`client/`, `server/`, `shared/`, `pages/` and source code anywhere), repository files, its
-//! config and the platform's ignore list (first-compile's `isZeroPublicStaticPath`). Those static
+//! config and the platform's ignore list (zero-compile's `isZeroPublicStaticPath`). Those static
 //! files that v2 can serve unchanged are carried into the candidate's `public/`, which v2 serves at
 //! the same URLs. The rest are refused here with what replaces them.
 use super::super::{Failure, fail, pointer};
@@ -54,7 +54,7 @@ static IGNORED_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(IGNORED_PATH_
 /// publish-policy's `IGNORED_EXACT_PATHS` that the deny list doesn't already cover: 0.8 dropped
 /// a path when any lowercased segment equals one, at any depth.
 const IGNORED_EXACT_SEGMENTS: &[&str] = &[".gitignore", "_routes.json"];
-/// first-compile's `CAPSULE_TSCONFIG_FILE`.
+/// zero-compile's `CAPSULE_TSCONFIG_FILE`.
 static TSCONFIG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^tsconfig(?:\.[^/]+)?\.json$").expect("tsconfig"));
 // The paths 0.8's publish kept out as the runtime's own (`runtimeOwnedPaths`, the
 // `static_runtime_control_path_not_supported` paths of publish-policy's `staticUploadPathViolation`)
@@ -64,7 +64,7 @@ const STATIC_RUNTIME_CONTROL_SEGMENT_PREFIXES: &[&str] = &["__spacefast", "__sta
 const STATIC_RUNTIME_ROOT_SEGMENTS: &[&str] = &["__sf", "__span", "__zero"];
 const STATIC_RUNTIME_CONTROL_PATHS: &[&str] = &[".well-known/spacefast-runtime", ".well-known/stattic-runtime"];
 const STATIC_RUNTIME_CONTROL_PREFIXES: &[&str] = &[
-    ".first-compiled",
+    ".zero-compiled",
     ".spacefast/storage",
     ".spacefast/engine",
     ".stattic/storage",
@@ -109,9 +109,9 @@ const REPOSITORY_FILES: &[&str] = &[
     "package.json",
 ];
 const REPOSITORY_ROOTS: &[&str] = &[".github", "test", "tests", "tools"];
-/// first-compile's `ZERO_SOURCE_CODE_EXTENSIONS`.
+/// zero-compile's `ZERO_SOURCE_CODE_EXTENSIONS`.
 const CODE: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
-/// first-compile's `TYPESCRIPT_SOURCE_FILE`, never served wherever it is.
+/// zero-compile's `TYPESCRIPT_SOURCE_FILE`, never served wherever it is.
 const TYPESCRIPT: &[&str] = &["ts", "tsx", "mts", "cts"];
 /// The rule files 0.8 compiled into routing instead of serving. The candidate doesn't carry them:
 /// in public/ they would publish at the root, which this converter hasn't shown to apply the same.
@@ -258,7 +258,7 @@ fn policy(relative: &str) -> Policy {
     Policy::Keep
 }
 
-/// Whether 0.8 served `relative` as static content (first-compile's `isZeroPublicStaticPath`).
+/// Whether 0.8 served `relative` as static content (zero-compile's `isZeroPublicStaticPath`).
 fn served(relative: &str) -> bool {
     let root = relative.split('/').next().unwrap_or("");
     let extension = Path::new(relative).extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -513,7 +513,7 @@ pub(super) fn sweep(
     let mut client_reported = false;
     let mut posts_reported = false;
     // 0.8 built a client with no pages as the whole site and generated its index.html, shadowing
-    // the author's (first-compile's `standaloneClient`). The client is `runtime.client` wherever it
+    // the author's (zero-compile's `standaloneClient`). The client is `runtime.client` wherever it
     // lives, as the client conversion resolves it.
     let client_app = client_entry.is_some()
         && !files
@@ -541,7 +541,7 @@ pub(super) fn sweep(
             }
             continue;
         }
-        // first-compile's ZERO_STRUCTURAL_COLLECTIONS: without a declared `collections.posts`, 0.8
+        // zero-compile's ZERO_STRUCTURAL_COLLECTIONS: without a declared `collections.posts`, 0.8
         // rebuilt content/posts/ into the Space's native posts on every publish (and also served the
         // files). The candidate adopts the existing post rows but doesn't rebuild them, so its posts
         // would stop following these files. A declared `posts` collection had no such default:

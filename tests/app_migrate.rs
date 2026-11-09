@@ -330,7 +330,7 @@ fn omissions_are_errors_and_static_files_carry_over() {
         .filter(|e| e["reason"].as_str().unwrap().starts_with("static file carried over"))
         .map(|e| e["pointer"].as_str().unwrap())
         .collect();
-    // Plain JavaScript outside the source roots is content 0.8 served (first-compile's capsule test
+    // Plain JavaScript outside the source roots is content 0.8 served (zero-compile's capsule test
     // publishes assets/search.js); TypeScript is never served, wherever it is.
     assert_eq!(
         carried,
@@ -442,7 +442,7 @@ fn omissions_are_errors_and_static_files_carry_over() {
         "__spacefast_generated/old.txt",
         "__sf/a.txt",
         "identity/a.txt",
-        ".first-compiled/a.txt",
+        ".zero-compiled/a.txt",
         ".well-known/stattic-runtime",
         ".next/cache/a.txt",
         ".spacefast-0123456789abcdef01234567.lock",

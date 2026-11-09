@@ -63,6 +63,10 @@ const CODE = /\.(rs|ts|tsx|mts|cts|mjs|js|cjs|jsx|php|sh|py|toml|ya?ml|json|json
 const KEEP = [
   /formerly Zero v2/g,
   /@spacefast\/zero-compile\b/g,
+  /\bzero-compile(?=['`/ ])/g, // the 0.8 compiler package, also written bare
+  /(?<=packages\/\{zero,)zero-compile\b/g,
+  // 0.8's private capsule output, in the converter's copy of the 0.8 publish policy.
+  /"\.zero-compiled(?:\/[\w.]*)?"/g,
   /@spacefast\/zero(?![\w-])(?:\/[\w.\/-]*)?/g, // the 0.8 SDK and its subpaths
   /@spacefast\\\/zero(?![\w-])/g, // the same, escaped in a regular expression
   /(?:github\.com\/)?spacefast\/zero(?![\w-]|\/)(?:\.git)?/g, // the repository name

@@ -13,7 +13,7 @@ Preact client or Rust runner either has a PHP counterpart or is listed as
 missing. [Migrate from Zero](migrating-from-zero.md) has the procedure.
 
 Sources read: `spacefast/monorepo` branch `first-cutover` at `0cc0293a04`:
-`legacy/zero-0.8/packages/{zero,first-compile}/src`,
+`legacy/zero-0.8/packages/{zero,zero-compile}/src`,
 `runtime/engine/legacy/zero-0.8`, `crates/stattic-zero-runner/src/legacy/zero-0.8`
 and `packages/cli/src/first-commands.ts`.
 
@@ -56,7 +56,7 @@ finalize payload keeps:
   `sourceManifest.files` (each source file's path and SHA-256, without its
   bytes);
 - `bundles[0]` (`server.qjs.mjs`): esbuild's bundle of the server entry
-  (`createRuntimeBundle` in 0.8's `first-compile/src/compile.ts`). Every
+  (`createRuntimeBundle` in 0.8's `zero-compile/src/compile.ts`). Every
   local module is inlined, whitespace is removed and identifiers are kept,
   but TypeScript types are erased;
 - `endpointSources[]` and `runSources[]`: the same server code wrapped
@@ -311,7 +311,7 @@ source at all:
   the publisher uploaded. For a 0.8 Space (`start-map-studio`,
   `ver_cb889f98…`) that is the built shell, `client.js` and platform chunks:
   the 0.8 CLI compiles before uploading, and `isZeroProjectOnlyPath`
-  (`first-compile/src/capsule.ts`) excludes every `.ts`/`.tsx` file and
+  (`zero-compile/src/capsule.ts`) excludes every `.ts`/`.tsx` file and
   `server/`, `shared/` and `pages/` sources from the upload.
 - `GET /v1/spaces/{id}/source/archive` serves a hosted or connected
   repository. Of the account's three runtime Spaces only `batuhan-tasks` has

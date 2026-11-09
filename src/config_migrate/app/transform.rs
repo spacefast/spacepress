@@ -366,7 +366,7 @@ pub(super) struct Transformed {
     /// Each converted query, mutation and action, as the client bridge calls it.
     pub handlers: Vec<ClientHandler>,
     /// The capsule declared `collections.posts` itself, so 0.8 built no posts from content/posts/
-    /// (first-compile skips its structural default for a declared collection).
+    /// (zero-compile skips its structural default for a declared collection).
     pub declares_posts: bool,
 }
 

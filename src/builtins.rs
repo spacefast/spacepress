@@ -775,6 +775,23 @@ pub fn array_mutation(name: &str) -> Option<ArrayMutation> {
     })
 }
 
+/// `new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects (a
+/// `new Boolean(false)` is truthy); Zero has primitives only, so they're refused.
+pub fn wrapper_object_refusal(g: &str, span: Span) -> Diag {
+    Diag::new(
+        span,
+        format!("`new {g}(...)` creates a wrapper object, which isn't supported"),
+    )
+    .help(format!(
+        "call `{g}(value)` without `new` for a primitive {}",
+        match g {
+            "Boolean" => "boolean",
+            "String" => "string",
+            _ => "number",
+        }
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -824,21 +841,4 @@ mod tests {
             "regenerate the runtime contract"
         );
     }
-}
-
-/// `new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects (a
-/// `new Boolean(false)` is truthy); Zero has primitives only, so they're refused.
-pub fn wrapper_object_refusal(g: &str, span: Span) -> Diag {
-    Diag::new(
-        span,
-        format!("`new {g}(...)` creates a wrapper object, which isn't supported"),
-    )
-    .help(format!(
-        "call `{g}(value)` without `new` for a primitive {}",
-        match g {
-            "Boolean" => "boolean",
-            "String" => "string",
-            _ => "number",
-        }
-    ))
 }

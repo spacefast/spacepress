@@ -76,6 +76,7 @@ const KEEP = [
   /@spacefast\\\/zero(?![\w-])/g, // the same, escaped in a regular expression
   /(?:github\.com\/)?spacefast\/zero(?![\w-]|\/)(?:\.git)?/g, // the repository name
   /github\.com\/spacefast\/zero\b/g,
+  /(?<=owner: "spacefast", repo: )"zero"/g, // the repository, in the docs site's Blume config
   /__spacefast\/zero\b/g, // engine-owned paths
   /\/__zero\/(?:auth|run|config|realtime\/)[\w\/*.<>-]*/g, // 0.8 paths
   /\blegacy\/zero-0\.8\b/g,

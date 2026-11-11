@@ -7,7 +7,7 @@ picomatch 4.0.7 (a files-sdk dependency) uses the global `Boolean` twice:
 - `lib/parse.js:143`: `branches.map(normalizeSimpleBranch).filter(Boolean)` passes it as a value;
 - `lib/picomatch.js:155`: `isMatch: Boolean(match)` calls it.
 
-On main `6c55f778`, `first check` of picomatch's `makeRe` path stops at
+On main `6c55f778`, `zero check` of picomatch's `makeRe` path stops at
 `parse.js:143:61` with Z4001 "`Boolean` can't be used as a value; call one of
 its functions".
 

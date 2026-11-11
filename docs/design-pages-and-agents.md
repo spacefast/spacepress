@@ -813,7 +813,7 @@ rejection, conflict files, `resolve`) to pages. Nothing is replaced.
   base before receiving private write authorization. Turning page sync on
   establishes a base first; turning it off refuses unexported edits.
 
-### 4.9 Build and publish, with hosting constraints
+### 4.9 Build and publish, with runtime constraints
 
 `first build` writes `first/dist/wp-content/` locally. It never contacts or
 mutates a site. With pages enabled it needs the pinned Node serializer;

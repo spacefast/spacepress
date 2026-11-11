@@ -891,7 +891,11 @@ fn binary_data_matches_node_through_generated_php() {
         ],
     );
     for name in &names {
-        assert_eq!(actual[name.as_str()], expected[name.as_str()], "{name}: compiled byte behavior differs from Node");
+        assert_eq!(
+            actual[name.as_str()],
+            expected[name.as_str()],
+            "{name}: compiled byte behavior differs from Node"
+        );
     }
     // JSON has no byte type: an action result holding bytes is refused, with the text fix.
     let refused = php(

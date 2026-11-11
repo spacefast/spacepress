@@ -8151,7 +8151,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
             let argv = self.javascript_args(args)?;
-            return Ok(Out::atom(format!("\\First\\JsBinary::{g}(...({argv})->a)"), Ty::Dynamic));
+            return Ok(Out::atom(
+                format!("\\First\\JsBinary::{g}(...({argv})->a)"),
+                Ty::Dynamic,
+            ));
         }
         if g == "Symbol" {
             self.require_javascript_symbols(span)?;

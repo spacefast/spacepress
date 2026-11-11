@@ -97,6 +97,7 @@ const CONFIG_KEYS: &[&str] = &[
     "admin",
     "services",
     "use",
+    "frontend",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
@@ -113,6 +114,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "sync",
     "uid",
     "agents",
+    "url",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
@@ -203,6 +205,24 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.frontend = match cfg_map.get("frontend") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Bool(false)) => Some(crate::kind_url::Frontend::Off),
+        Some(Value::Str(url)) => Some(crate::kind_url::Frontend::External(
+            crate::kind_url::frontend_url(url)
+                .map_err(|e| Diag::new(span_of(ev, config, "frontend", config_span), e.message).help(e.help))?,
+        )),
+        Some(other) => {
+            return Err(Diag::new(
+                span_of(ev, config, "frontend", config_span),
+                format!(
+                    "`frontend` is `false` or the external site's URL, not {}",
+                    other.describe()
+                ),
+            )
+            .help("leave it out for the default: the theme, or first/app when it exists"));
+        }
+    };
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
         return Err(Diag::new(span, "duplicate plugins declaration"));
@@ -331,6 +351,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     auth: false,
                     agents: true,
                     localized: false,
+                    url: None,
                     api: Api {
                         list: true,
                         get: true,
@@ -342,6 +363,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             );
         }
     }
+    let mut url_shapes: Vec<(String, Vec<crate::kind_url::Segment>, Span)> = Vec::new();
     for c in out.collections.clone() {
         let owner = Owner::Collection(c.table().to_string());
         let mut columns = IndexMap::new();
@@ -387,6 +409,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.sync = opts.sync;
         coll.auth = opts.auth;
         coll.agents = opts.agents;
+        let key = coll.key.clone();
+        if let Some((pattern, shape, span)) = opts.url {
+            if let Some((other, ..)) = url_shapes.iter().find(|(_, s, _)| crate::kind_url::overlaps(s, &shape)) {
+                return Err(
+                    Diag::new(span, format!("\"{pattern}\" can match the same URLs as {other}'s url"))
+                        .help("give one of them a different literal segment, e.g. \"/blog/:slug\" and \"/docs/:slug\""),
+                );
+            }
+            url_shapes.push((format!("`{key}`"), shape, span));
+            coll.url = Some(pattern);
+        }
         coll.localized = coll.columns.values().any(has_localized);
         if coll.drafts {
             let mut status = Column::new("status", ColType::Text);
@@ -776,6 +809,8 @@ struct CollOpts {
     sync: Option<Json>,
     auth: bool,
     agents: bool,
+    /// The pattern, its segments (`kind_url::check`) and where it was written.
+    url: Option<(String, Vec<crate::kind_url::Segment>, Span)>,
 }
 
 fn collection_options(
@@ -1051,6 +1086,37 @@ fn collection_options(
         }
     }
 
+    // url (spec §2.7): post kinds only; tables have no public pages.
+    let url = match o.get("url") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(pattern)) if editor => {
+            let has_slug = |table: &str| {
+                out.collections
+                    .iter()
+                    .any(|c| c.table() == table && c.kind == StorageKind::Collection)
+            };
+            let kind = crate::kind_url::UrlKind {
+                columns,
+                dated: drafts,
+                hierarchical: false,
+                has_slug: &has_slug,
+            };
+            let shape =
+                crate::kind_url::check(pattern, &kind).map_err(|e| Diag::new(span("url"), e.message).help(e.help))?;
+            Some((pattern.to_string(), shape, span("url")))
+        }
+        Some(Value::Str(_)) => {
+            return Err(Diag::new(span("url"), "only collection() kinds have URLs")
+                .help("a table() has no public pages; serve its rows from an `app/` route instead"));
+        }
+        Some(other) => {
+            return Err(Diag::new(
+                span("url"),
+                format!("`url` must be a pattern like \"/blog/:slug\", not {}", other.describe()),
+            ));
+        }
+    };
+
     // access
     let owner = Owner::Collection(c.table().to_string());
     let mut access: IndexMap<String, Access> = ACCESS_OPS
@@ -1131,6 +1197,7 @@ fn collection_options(
         sync,
         auth,
         agents,
+        url,
     })
 }
 

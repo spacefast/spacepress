@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 
-app, first, harness = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+app, cli, harness = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 site = json.loads((app / 'harness.json').read_text())
 golden = json.loads((Path(__file__).parent / '../fixtures/sync-file-uid.json').read_text())
 uid = next(c['uid'] for c in golden if c['collection'] == 'posts' and c['basename'] == 'hello.md')
@@ -52,7 +52,7 @@ counts(seed(app / 'compiled-2/seed'), 'posts', unchanged=1)
 assert rows('posts') == [post], 'republishing preserves the only record'
 
 # Start with the original uid-less file, then let the actual sync command adopt the seeded record.
-run(first, 'sync', str(app / 'project'), '--site', site['url'], '--only', 'posts', '--no-commit', '--json',
+run(cli, 'sync', str(app / 'project'), '--site', site['url'], '--only', 'posts', '--no-commit', '--json',
     env={'FIRST_APP_PASSWORD': 'editor:' + site['users']['editor']['appPassword']})
 assert rows('posts') == [post], 'first sync after publish creates no duplicate or update'
 assert f'uid: {uid}' in (app / 'project/content/posts/hello.md').read_text()

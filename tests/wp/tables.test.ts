@@ -196,7 +196,7 @@ test("cascades and generated editor values cannot answer questions about hidden 
   }
   const empty = first("insert", "oracle_parents", JSON.stringify({ title: "Empty branch" }))[0];
   const parent = first("insert", "oracle_parents", JSON.stringify({ title: "With child" }))[0];
-  const child = first("insert", "oracle_children", JSON.stringify({ title: "Cascade", parentId: parent.id }))[0];
+  const child = first("insert", "oracle_kids", JSON.stringify({ title: "Cascade", parentId: parent.id }))[0];
   const nullEmpty = first("insert", "null_parents", JSON.stringify({ title: "No null children" }))[0];
   const nullParent = first("insert", "null_parents", JSON.stringify({ title: "Has null child" }))[0];
   const nullChild = first("insert", "null_children", JSON.stringify({ title: "Will null", parentId: nullParent.id, code: "original" }))[0];
@@ -206,11 +206,11 @@ test("cascades and generated editor values cannot answer questions about hidden 
   const secretA = first("insert", "secret_parents", JSON.stringify({ title: "Linked secret", secret: 99101 }))[0];
   const secretB = first("insert", "secret_parents", JSON.stringify({ title: "Unlinked secret", secret: 99102 }))[0];
   first("insert", "secret_links", JSON.stringify({ title: "Known link", secret: 99101 }));
-  const generated = first("insert", "oracle_defaults", JSON.stringify({ title: "Existing", code: "other" }))[0];
+  const generated = first("insert", "oracle_default", JSON.stringify({ title: "Existing", code: "other" }))[0];
   for (const populated of [false, true]) {
     if (populated) {
       first("insert", "oracle_grand", JSON.stringify({ title: "Hidden", childId: child.id }));
-      first("insert", "oracle_defaults", JSON.stringify({ title: "Taken defaults", touched: "reserved-update" }));
+      first("insert", "oracle_default", JSON.stringify({ title: "Taken defaults", touched: "reserved-update" }));
       first("insert", "null_children", JSON.stringify({ title: "Taken generated", code: "null-reserved" }));
       first("insert", "hook_children", JSON.stringify({ title: "Taken hook", code: "hook-reserved" }));
     }
@@ -234,10 +234,10 @@ test("cascades and generated editor values cannot answer questions about hidden 
       const r = await http("DELETE", `${core}/first_null_parents/${id}?force=true`, { as: "editor" });
       assert.deepEqual([r.status, r.json.code], [403, "forbidden"]);
     }
-    await problem("POST", "/oracle_defaults", { as: "editor", body: { title: "Probe" } }, { status: 403, code: "forbidden", pointer: "/code" });
-    const create = await http("POST", `${core}/first_oracle_defaults`, { as: "editor", body: { title: "Probe" } });
+    await problem("POST", "/oracle_default", { as: "editor", body: { title: "Probe" } }, { status: 403, code: "forbidden", pointer: "/code" });
+    const create = await http("POST", `${core}/first_oracle_default`, { as: "editor", body: { title: "Probe" } });
     assert.deepEqual([create.status, create.json.code], [403, "forbidden"]);
-    const update = await http("POST", `${core}/first_oracle_defaults/${generated.id}`, { as: "editor", body: { title: "Changed" } });
+    const update = await http("POST", `${core}/first_oracle_default/${generated.id}`, { as: "editor", body: { title: "Changed" } });
     assert.deepEqual([update.status, update.json.code], [403, "forbidden"]);
   }
   assert.equal(first("find", "null_children", JSON.stringify({ where: { id: nullChild.id } }))[0].parentId, nullParent.id);
@@ -252,8 +252,8 @@ test("cascades and generated editor values cannot answer questions about hidden 
     const coreDefault = await http("POST", `${core}/first_ref_defaults`, { as: "editor", body: { title: "Generated reference" } });
     assert.deepEqual([coreDefault.status, coreDefault.json.code], [409, "reference_violation"]);
   }
-  assert.equal(first("find", "oracle_defaults", JSON.stringify({ where: { id: generated.id } }))[0].title, "Existing");
-  assert.equal(first("find", "oracle_children", JSON.stringify({ where: { id: child.id } })).length, 1);
+  assert.equal(first("find", "oracle_default", JSON.stringify({ where: { id: generated.id } }))[0].title, "Existing");
+  assert.equal(first("find", "oracle_kids", JSON.stringify({ where: { id: child.id } })).length, 1);
 });
 
 // The one new core route (spec §3a): /wp/v2/<table> for a table() kind, in core's shape, answering

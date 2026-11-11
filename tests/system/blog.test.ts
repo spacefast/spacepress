@@ -27,9 +27,9 @@ test("the blog's committed posts sync into a fresh WordPress, once", async () =>
 
   const check = sync("--check");
   assert.equal(check.status, 2, check.stdout + check.stderr);
-  const first = sync();
-  assert.equal(first.status, 0, first.stdout + first.stderr);
-  assert.equal(JSON.parse(first.stdout).data.applied, 2);
+  const initial = sync();
+  assert.equal(initial.status, 0, initial.stdout + initial.stderr);
+  assert.equal(JSON.parse(initial.stdout).data.applied, 2);
   // A no-op: nothing applied, written, refused or in conflict.
   const again = sync();
   assert.equal(again.status, 0, again.stdout + again.stderr);

@@ -62,14 +62,14 @@ test("a failing job is retried through Action Scheduler with backoff, then dead 
   const note = await ok("POST", "/job_notes", { as: "editor", body: { title: `fail ${run}`, fail: true } });
   const [id] = jobFor(note.id);
   runQueue();
-  const first = jobRow(id);
-  assert.deepEqual({ state: first.state, attempts: first.attempts }, { state: "failed", attempts: "1" });
-  assert.match(first.lastError, /stamp failed on attempt 1/);
+  const initial = jobRow(id);
+  assert.deepEqual({ state: initial.state, attempts: initial.attempts }, { state: "failed", attempts: "1" });
+  assert.match(initial.lastError, /stamp failed on attempt 1/);
   // AS saw a completed action; First re-scheduled the retry one minute out.
   assert.deepEqual(actions(id), ["complete", "pending"]);
   const due = sql(`SELECT scheduled_date_gmt AS at FROM wp_actionscheduler_actions WHERE hook = 'first_job' AND status = 'pending' AND args = '{"id":"${id}"}'`)[0].at;
-  assert.equal(Date.parse(due + "Z"), Date.parse(first.runAt.replace(/\.\d+Z$/, "Z")), "AS fires at the job's backoff runAt");
-  assert.ok(Date.parse(first.runAt) - Date.now() > 50_000, "first backoff is about a minute");
+  assert.equal(Date.parse(due + "Z"), Date.parse(initial.runAt.replace(/\.\d+Z$/, "Z")), "AS fires at the job's backoff runAt");
+  assert.ok(Date.parse(initial.runAt) - Date.now() > 50_000, "first backoff is about a minute");
 
   runQueue();
   assert.deepEqual(actions(id), ["complete", "pending"], "the queue runner leaves the retry until its backoff is due");

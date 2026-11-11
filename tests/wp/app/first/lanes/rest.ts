@@ -107,13 +107,13 @@ export const oraclePeers = collection({
 } });
 export const oracleParents = collection({ id: id(), title: text().notNull() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
-export const oracleChildren = collection({
+export const oracleKids = collection({
   id: id(), title: text().notNull(), parentId: integer().references(() => oracleParents.id, { onDelete: "cascade" }),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const oracleGrandchildren = collection({
-  id: id(), title: text().notNull(), childId: integer().references(() => oracleChildren.id),
+  id: id(), title: text().notNull(), childId: integer().references(() => oracleKids.id),
 }, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
-export const oracleDefaults = collection({
+export const oracleDefault = collection({
   id: id(), title: text().notNull(),
   code: text().max(191).unique().default("reserved").access({ read: "admin" }),
   touched: text().max(191).unique().$onUpdate(() => "reserved-update").access({ read: "admin" }),
@@ -178,7 +178,7 @@ export const keyRoots = table({ id: id(), code: integer().unique() },
 export const keyLinks = table({ id: id(), rootCode: integer().references(() => keyRoots.code) },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
-export const collections = { vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleChildren, oracleGrand: oracleGrandchildren, oracleDefaults, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
+export const collections = { vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleKids, oracleGrand: oracleGrandchildren, oracleDefault, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
 export const tables = { fuseLog, keyRoots, keyLinks };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };

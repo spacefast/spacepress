@@ -70,8 +70,10 @@ for (const { name, landing, seed } of siteExamples) {
 
 	const locked = (JSON.parse(readFileSync(path.join(to, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string }[] }).plugins.map((p) => p.slug);
 	const published = thirdParty(locked);
-	const manifest: Manifest = { app: "", files: [] };
-	manifest.app = (JSON.parse(readFileSync(path.join(to, "first/dist/wp-content/first-manifest.json"), "utf8")) as { app: string }).app;
+	// `plugins` lists First's own plugins in the order `first build` writes them: the runtime, then
+	// the plugins that require it. WordPress refuses to activate a plugin before the ones it requires.
+	const built = JSON.parse(readFileSync(path.join(to, "first/dist/wp-content/first-manifest.json"), "utf8")) as { app: string; plugins: Record<string, string> };
+	const manifest: Manifest = { app: built.app, files: [] };
 	for (const file of walk(to).filter((file) => !file.startsWith("node_modules/") && !file.startsWith(".first/"))) {
 		const bytes = readFileSync(path.join(to, file));
 		const text = new TextDecoder("utf-8", { fatal: true });
@@ -97,7 +99,8 @@ for (const { name, landing, seed } of siteExamples) {
 	// The Playground blueprint: the plugin zips this build wrote, and the WordPress.org plugins at
 	// the versions in the app's lock.
 	const plugins = path.join(to, "first/dist/wp-content/plugins");
-	const generated = readdirSync(plugins).filter((file) => file.endsWith(".zip")).map((file) => file.slice(0, -4)).filter((slug) => !published.has(slug)).sort();
+	const generated = Object.keys(built.plugins).filter((slug) => !published.has(slug));
+	for (const slug of generated) if (!existsSync(path.join(plugins, `${slug}.zip`))) throw new Error(`examples/${name}: first build wrote no ${slug}.zip`);
 	mkdirSync(path.join(filesRoot, "plugins", name), { recursive: true });
 	// Copied as built: the folder inside each zip is the plugin's name, so the zip keeps it.
 	for (const slug of generated) cpSync(path.join(plugins, `${slug}.zip`), path.join(filesRoot, "plugins", name, `${slug}.zip`));

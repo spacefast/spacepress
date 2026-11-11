@@ -13,7 +13,7 @@ import { platformVersions } from "./platform.ts";
 export interface BlueprintInput {
 	/** URL the site serves the generated plugin zips from, ending in "/". */
 	zipBase: string;
-	/** The generated plugins, in activation order: runtime, identity, admin, then the app. */
+	/** The generated plugins, in activation order: runtime, identity, the app, then admin (first-manifest.json order). */
 	firstPlugins: string[];
 	/** WordPress.org plugins from the lock, with their exact versions. */
 	wordpressPlugins: { slug: string; version: string }[];

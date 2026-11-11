@@ -1,2 +1,6 @@
 minimumReleaseAgeExclude:
   - blume@2.2.7
+# @wp-playground/cli's file locking ships prebuilt binaries; its install script only checks that one
+# loads, falling back to node-gyp. The Playground boot test runs without it.
+allowBuilds:
+  fs-ext-extra-prebuilt: false

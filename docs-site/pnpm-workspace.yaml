@@ -4,3 +4,6 @@ minimumReleaseAgeExclude:
 # loads, falling back to node-gyp. The Playground boot test runs without it.
 allowBuilds:
   fs-ext-extra-prebuilt: false
+# async-lock 1.5.0 (2026-11-08) is days old and from a new publisher; 1.4.1 satisfies isomorphic-git's ^1.4.1.
+overrides:
+  async-lock: 1.4.1

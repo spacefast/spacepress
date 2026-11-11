@@ -37,7 +37,7 @@ function serveFiles(): Promise<http.Server> {
 /** fetch with a cookie jar, following redirects: Playground signs the visitor in with a redirect. */
 function browser(base: string) {
 	const cookies = new Map<string, string>();
-	return async (pathname: string): Promise<{ status: number; body: string }> => {
+	return async (pathname: string): Promise<{ status: number; body: string; url: string }> => {
 		let url = new URL(pathname, base);
 		for (let hop = 0; hop < 5; hop++) {
 			const response = await fetch(url, { redirect: "manual", headers: { cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
@@ -52,7 +52,7 @@ function browser(base: string) {
 				url = new URL(location, url);
 				continue;
 			}
-			return { status: response.status, body: await response.text() };
+			return { status: response.status, body: await response.text(), url: url.pathname };
 		}
 		throw new Error(`too many redirects from ${pathname}`);
 	};
@@ -91,6 +91,7 @@ for (const example of siteExamples) {
 		let wordpress: RunCLIServer;
 		let get: ReturnType<typeof browser>;
 		let app: string;
+		let installed: string[];
 
 		before(async () => {
 			const blueprintFile = path.join(files, `${example.name}.blueprint.json`);
@@ -98,6 +99,10 @@ for (const example of siteExamples) {
 			const { port } = zips.address() as AddressInfo;
 			// First's zips from the local server; every other URL as published.
 			const blueprint = JSON.parse(readFileSync(blueprintFile, "utf8").replace(/"https?:\/\/[^"]+?\/files\/plugins\//g, `"http://127.0.0.1:${port}/files/plugins/`));
+			// The plugin folder each installPlugin step unpacks: the zip's name without its version.
+			installed = (blueprint.steps as { step: string; pluginData?: { url: string } }[])
+				.filter((step) => step.step === "installPlugin")
+				.map((step) => path.basename(new URL(step.pluginData!.url).pathname, ".zip").replace(/\.\d[\w.-]*$/, ""));
 			app = (JSON.parse(readFileSync(path.join(files, `${example.name}.json`), "utf8")) as { app: string }).app;
 			// WordPress, PHP and the WordPress.org plugins come over the network. A download that fails
 			// is retried once; any other failure is the example's.
@@ -114,8 +119,9 @@ for (const example of siteExamples) {
 
 		test("First's plugins are active, and every collection answers on the REST API", async () => {
 			const described = JSON.parse((await wordpress.playground.run({ code: describeApp(app) })).text) as { active: string[]; collections: { key: string; postType: string | null }[] };
-			for (const plugin of ["first-runtime", "first-identity", `first-app-${app}`]) {
-				assert.ok(described.active.includes(`${plugin}/${plugin}.php`), `${plugin} is not active: ${described.active.join(", ")}`);
+			// Every plugin the blueprint installs, First's and WordPress.org's, is active.
+			for (const plugin of installed) {
+				assert.ok(described.active.some((file) => file.startsWith(`${plugin}/`)), `${plugin} is not active: ${described.active.join(", ")}`);
 			}
 			assert.ok(described.collections.length > 0);
 			const statuses = JSON.parse((await wordpress.playground.run({ code: restStatus(described.collections.map((c) => c.key)) })).text) as Record<string, number>;
@@ -135,10 +141,18 @@ for (const example of siteExamples) {
 			}
 		});
 
-		test("the landing page opens", async () => {
+		test("the landing page opens, signed in, with the example's data", async () => {
 			const landing = await get(example.landing);
 			assert.equal(landing.status, 200, `${example.landing}`);
+			assert.notEqual(landing.url, "/wp-login.php", `${example.landing} sent the visitor to sign in`);
 			assert.doesNotMatch(landing.body, /There has been a critical error|Fatal error/);
+			if (example.landing.startsWith("/wp-json/")) {
+				// A REST landing page answers JSON; with a seed, it holds the rows the seed wrote.
+				const json = JSON.parse(landing.body) as { data?: unknown[] } | unknown[];
+				const rows = Array.isArray(json) ? json : json.data;
+				assert.ok(Array.isArray(rows), `${example.landing} is not a list`);
+				if (example.seed) assert.ok(rows.length > 0, `${example.landing} is empty after the seed ran`);
+			}
 		});
 	});
 }

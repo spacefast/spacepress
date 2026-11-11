@@ -46,17 +46,21 @@ already=()
 # Squash merges leave the branch outside main's history, so a merged PR whose
 # head is the branch's current head also counts as already in main. Without this list every
 # squash-merged branch would be measured as unmerged, so a failed lookup stops the run.
-merged_heads=""
+listed=false
 for attempt in 1 2 3; do
   if merged_heads=$(gh pr list -R spacefast/zero --state merged --base main --limit 2000 --json headRefName,headRefOid \
     --jq '.[] | "\(.headRefName) \(.headRefOid)"'); then
+    listed=true
     break
   fi
-  merged_heads=""
-  sleep $((attempt * 10))
+  [ "$attempt" -lt 3 ] && sleep $((attempt * 10))
 done
-if [ -z "$merged_heads" ]; then
+if ! $listed; then
   echo "files-sdk-merged: could not list merged PRs (gh pr list failed 3 times)" >&2
+  exit 1
+fi
+if [ -z "$merged_heads" ]; then
+  echo "files-sdk-merged: gh pr list returned no merged PRs, which can't be right for this repo" >&2
   exit 1
 fi
 for branch in $branches; do

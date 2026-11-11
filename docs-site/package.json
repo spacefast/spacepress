@@ -17,7 +17,8 @@
 		"build": "pnpm wasm && pnpm showcase && pnpm generate && blume build && node scripts/prepare-spacefast.mjs",
 		"test": "node --test tests/unit/*.test.ts",
 		"test:browser": "playwright test",
-		"check": "pnpm wasm && pnpm showcase && pnpm generate:check && pnpm test && blume build && blume validate && pnpm test:browser"
+		"test:playground": "node --test --test-concurrency=1 tests/playground/*.test.ts",
+		"check": "pnpm wasm && pnpm showcase && pnpm generate:check && pnpm test && blume build && blume validate && pnpm test:browser && pnpm test:playground"
 	},
 	"dependencies": {
 		"@pierre/diffs": "1.6.4",
@@ -28,6 +29,7 @@
 		"@playwright/test": "1.64.1",
 		"@types/hast": "3.0.4",
 		"@types/node": "22.19.3",
+		"@wp-playground/cli": "3.1.62",
 		"typescript": "5.9.3"
 	}
 }

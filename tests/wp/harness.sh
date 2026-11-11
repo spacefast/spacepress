@@ -40,7 +40,7 @@ compose() {
   docker compose -p "$FIRST_WP_PROJECT" "${files[@]}" "$@"
 }
 wp() { compose exec -T cli wp "$@"; }
-sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch -e "$1"; }
+sql() { compose exec -T db mariadb -uwordpress -pfirst-test-db wordpress --batch -e "$1"; }
 
 # Provider provisioning is separate from installing/activating the WordPress artifact.
 # Only the named disposable resources are owned here; a repeated setup retains their bytes.

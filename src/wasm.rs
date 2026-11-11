@@ -355,7 +355,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                     Ok(serde_json::to_value(candidate).unwrap())
                 }
                 "migrateConfig" => {
-                    let source = crate::config_migrate::Source::parse(request["source"].as_str().unwrap_or("first"))
+                    let source = crate::config_migrate::Source::parse(request["source"].as_str().unwrap_or("zero"))
                         .ok_or("unknown source CMS")?;
                     let path = project.join(request["input"].as_str().unwrap_or("capsule.ts"));
                     let text = fs.read_to_string(&path).map_err(|e| e.to_string())?;

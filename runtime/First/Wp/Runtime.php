@@ -224,6 +224,6 @@ final class Runtime
 
     private static function notice(string $problem): void
     {
-        add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('First: ' . $problem . '. Rebuild with zero ' . self::SERIES . '.x.')));
+        add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('First: ' . $problem . '. Rebuild with first ' . self::SERIES . '.x.')));
     }
 }

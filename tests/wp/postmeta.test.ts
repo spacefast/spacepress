@@ -145,10 +145,10 @@ test("core list routes take First's where, orderBy and search", async () => {
     assert.deepEqual([r.status, r.json.map((s: any) => s.id)], [200, [staff]], JSON.stringify(extra));
   }
   // Paging links keep First's search: following `next` gives the next page of the same matches.
-  const first = await fetch(`${core}/first_events` + qs({ search: run, where: { id: { in: [ids.A, ids.B, noted.id] } }, orderBy: "title", per_page: "1" }));
-  assert.equal(first.headers.get("x-wp-total"), "3");
-  const next = /<([^>]+)>; rel="next"/.exec(first.headers.get("link") ?? "")?.[1];
-  assert.ok(next && new URL(next).searchParams.get("search") === run, first.headers.get("link") ?? "no Link header");
+  const searched = await fetch(`${core}/first_events` + qs({ search: run, where: { id: { in: [ids.A, ids.B, noted.id] } }, orderBy: "title", per_page: "1" }));
+  assert.equal(searched.headers.get("x-wp-total"), "3");
+  const next = /<([^>]+)>; rel="next"/.exec(searched.headers.get("link") ?? "")?.[1];
+  assert.ok(next && new URL(next).searchParams.get("search") === run, searched.headers.get("link") ?? "no Link header");
   const second = await fetch(next!);
   assert.deepEqual([second.headers.get("x-wp-total"), (await second.json()).map((e: any) => e.title.rendered[0])], ["3", ["B"]]);
   // The same refusals as /first/v1, as WP_Error.

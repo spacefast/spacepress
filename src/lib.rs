@@ -13,6 +13,7 @@ pub mod diag;
 pub mod eval;
 pub mod extract;
 pub mod ir;
+pub mod kind_url;
 pub mod layout;
 pub mod loader;
 pub mod lower;

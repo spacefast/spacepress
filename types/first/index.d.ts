@@ -422,6 +422,13 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   agents?: boolean;
   /** Shown in wp-admin menus and the typed client docs. */
   label?: string;
+  /**
+   * The item URL, one pattern for incoming URLs and outgoing links: `"/blog/:slug"`. Placeholders are
+   * `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field everyone can read
+   * (`:topic`), or the slug of a referenced collection item (`:byline.slug`), each used once; it must
+   * include `:slug` or `:id`, and can't overlap another kind's pattern. collection() only.
+   */
+  url?: `/${string}`;
   /** Native on collections; opt-in publication state on tables. */
   drafts?: boolean;
   /** Keep a revision per update. Default true for collections, false for tables. */
@@ -1124,6 +1131,11 @@ export interface ConfigInput<
   plugins?: Readonly<Record<string, WordPressPlugin>>;
   /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
   admin?: boolean;
+  /**
+   * Who renders the public site. Leave it out for the theme (or `first/app` when it exists); `false`
+   * for backend only; an external site's `https://` address to point links, previews and feeds there.
+   */
+  frontend?: false | `https://${string}` | `http://localhost${string}` | `http://127.0.0.1${string}`;
   /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `first/_generated/plugins.lock.json`.

@@ -246,6 +246,7 @@ registered once.
 | `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
+| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day` (from `publishedAt`), a scalar field, or a reference's `:field.slug`; it must contain `:slug` or `:id`. It can't start with a segment WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `__first`, ...), and two kinds can't share a pattern shape such as `/n/:slug` and `/n/:id` |
 
 Collections need a title and physical names of at most 15 characters (WordPress
 prefixes `first_`). Built-in route names are reserved. User projections retain
@@ -457,10 +458,13 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
-jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, use?, admin? })`. `name` (a slug,
+jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
-`first-admin`; by default the build emits none.
+`first-admin`; by default the build emits none. `frontend` says who renders the
+public site: leave it out for the theme (or `first/app` when it exists), `false`
+for backend only, or an external site's `https://` address (`http://` only on
+localhost) so links, previews and feeds point there.
 
 ## Plugin packages
 

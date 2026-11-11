@@ -195,13 +195,38 @@ final class Seam
         return $tree;
     }
 
+    /** Who compiled reads run as: null (trusted) unless a caller bound a visitor with asViewer(). */
+    private static ?Viewer $viewer = null;
+
+    /** The viewer compiled reads run as right now; null is trusted (spec §3). */
+    public static function viewer(): ?Viewer
+    {
+        return self::$viewer;
+    }
+
+    /**
+     * Runs $fn with compiled reads bound to $viewer (null: trusted), then restores the viewer that
+     * was bound before, also when $fn throws. A page render binds the visitor here, so drafts and
+     * hidden fields never reach its HTML.
+     */
+    public static function asViewer(?Viewer $viewer, callable $fn): mixed
+    {
+        $previous = self::$viewer;
+        self::$viewer = $viewer;
+        try {
+            return $fn();
+        } finally {
+            self::$viewer = $previous;
+        }
+    }
+
     public static function findMany(string $collection, mixed $opts = []): JsArray
     {
-        return new JsArray(array_map(static fn ($row) => self::rowToJs($collection, $row), Db::instance()->findMany($collection, $opts)));
+        return new JsArray(array_map(static fn ($row) => self::rowToJs($collection, $row), Db::instance()->findMany($collection, $opts, self::$viewer)));
     }
     public static function findFirst(string $collection, mixed $opts = []): ?JsObject
     {
-        $row = Db::instance()->findFirst($collection, $opts);
+        $row = Db::instance()->findFirst($collection, $opts, self::$viewer);
         return $row === null ? null : self::rowToJs($collection, $row);
     }
     public static function insert(string $collection, mixed $values, bool $returning = false): ?JsArray

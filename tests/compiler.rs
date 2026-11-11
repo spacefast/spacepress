@@ -2296,6 +2296,81 @@ fn builds_wordpress_and_knows_no_target_option() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
+/// A kind's `url` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at build time and
+/// emitted into schema.php, where the router and link filters read them.
+#[test]
+fn kind_urls_and_the_frontend_mode_reach_the_schema() {
+    rejects(
+        "reject-kind-url",
+        "`:titel` in \"/notes/:titel\" names no field of this kind",
+        "first.config.ts:2:69",
+    );
+    rejects(
+        "reject-kind-url-overlap",
+        "\"/n/:id\" matches the same URLs as `notes`'s url",
+        "first.config.ts:3:69",
+    );
+    rejects(
+        "reject-table-url",
+        "only collection() kinds have URLs",
+        "first.config.ts:2:64",
+    );
+    rejects(
+        "reject-frontend",
+        "`frontend` \"http://example.com\" uses http://; only localhost may",
+        "first.config.ts:2:59",
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let schema = |config: &str| -> serde_json::Value {
+        // A fresh project each time: these schemas are unrelated apps, not one app's history.
+        let project = tmp.path().join(format!("app-{}", config.len()));
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("first.config.ts"), config).unwrap();
+        let built = first().args(["build", "--quiet"]).arg(&project).output().unwrap();
+        assert!(
+            built.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&built.stdout),
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let app = project.join("first/dist/wp-content/plugins/first-app-kindurls");
+        let out = Command::new("php")
+            .args(["-r", "echo json_encode(require $argv[1]);"])
+            .arg(app.join("first/app/schema.php"))
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    let built = schema(
+        r#"import { collection, defineConfig, text } from "first";
+export const notes = collection({ title: text().notNull() }, { url: "/notes/:year/:slug" });
+export const plain = collection({ title: text().notNull() });
+export default defineConfig({ name: "kindurls", collections: { notes, plain }, frontend: "https://www.example.com/" });
+"#,
+    );
+    assert_eq!(built["collections"]["notes"]["url"], "/notes/:year/:slug");
+    assert!(built["collections"]["plain"].get("url").is_none(), "{built}");
+    assert_eq!(built["frontend"], "https://www.example.com");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", frontend: false });
+"#,
+    );
+    assert_eq!(built["frontend"], false);
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls" });
+"#,
+    );
+    assert!(built.get("frontend").is_none(), "{built}");
+}
+
 /// A project whose ledger is still at `first/migrations/` is refused, never read as a first build:
 /// the build stops before it writes, so the numbering cannot restart at 0001 and the plugin cannot
 /// ship without its earlier files. Following the fix in the message builds again with nothing new.

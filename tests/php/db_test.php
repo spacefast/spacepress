@@ -941,6 +941,19 @@ eq('a readable column filters normally; trusted filters see everything', [
     array_column($db->findMany('teams', ['where' => ['budget' => 1000]]), 'name'),
 ], [['Bob'], ['Core']]);
 
+// Compiled reads (Seam) are trusted unless a caller binds a visitor, as a page render does.
+$hasEmail = static fn (): array => array_values(array_unique(array_map(static fn ($row) => array_key_exists('email', $row->p), \First\Seam::findMany('profiles')->a)));
+$editor = new \First\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
+eq('Seam reads are trusted outside asViewer', [\First\Seam::viewer(), $hasEmail()], [null, [true]]);
+eq('asViewer binds an anonymous visitor: hidden fields stay out', \First\Seam::asViewer(new \First\Viewer(null), static fn () => [
+    array_key_exists('email', \First\Seam::findFirst('profiles')->p),
+    $hasEmail(),
+]), [false, [false]]);
+eq('asViewer binds an editor, who reads the field', \First\Seam::asViewer($editor, $hasEmail), [true]);
+problem('a visitor-bound read refuses a hidden column', fn () => \First\Seam::asViewer(new \First\Viewer(null), static fn () => \First\Seam::findMany('profiles', ['columns' => ['email' => true]])), 403, 'forbidden', '/columns/email');
+eq('the previous viewer is restored after a throw', \First\Seam::viewer(), null);
+eq('nested asViewer restores the outer viewer', \First\Seam::asViewer($editor, static fn () => [\First\Seam::asViewer(null, static fn () => \First\Seam::viewer()), \First\Seam::viewer() === $editor]), [null, true]);
+
 // Writes: a supplied key the viewer can't set → 403 at its pointer. Defaults and hooks are trusted.
 $faProblem('update rule (admin) refuses the owner', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['salary' => 99]), 403, 'forbidden', '/salary');
 eq('the refused update persisted nothing', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['salary'], 10);

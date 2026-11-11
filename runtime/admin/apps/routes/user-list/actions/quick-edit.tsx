@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from '@wordpress/route';
-import { useViewConfig } from '@zero-admin/views';
-import type { Action } from '@zero-admin/dataviews';
+import { useViewConfig } from '@first-admin/views';
+import type { Action } from '@first-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { pencil } from '@wordpress/icons';
@@ -27,7 +27,7 @@ export const useQuickEditAction = (): Action< User > | null => {
 
 		return {
 			id: 'quick-edit-user',
-			label: __( 'Quick Edit', 'zero-admin' ),
+			label: __( 'Quick Edit', 'first-admin' ),
 			isPrimary: true,
 			icon: pencil,
 			supportsBulk: true,

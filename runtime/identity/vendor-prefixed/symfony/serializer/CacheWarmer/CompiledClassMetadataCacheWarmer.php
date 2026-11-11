@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\CacheWarmer;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\CacheWarmer;
 
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpKernel\CacheWarmer\CacheWarmerInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryCompiler;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryCompiler;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
 
-zero_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataCacheWarmer::class);
+first_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataCacheWarmer::class);
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>

@@ -3,7 +3,7 @@ import { store as coreStore } from '@wordpress/core-data';
 import {
 	preloadFieldCollections,
 	loadViewConfig,
-} from '@zero-admin/core-data-next';
+} from '@first-admin/core-data-next';
 import { isInviteUser } from '../user/utils';
 
 export const route = {

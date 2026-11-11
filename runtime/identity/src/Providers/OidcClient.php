@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Providers;
+namespace First\Identity\Providers;
 
-use Zero\Identity\Failure;
-use Zero\Identity\Vendor\Firebase\JWT\JWK;
-use Zero\Identity\Vendor\Firebase\JWT\JWT;
+use First\Identity\Failure;
+use First\Identity\Vendor\Firebase\JWT\JWK;
+use First\Identity\Vendor\Firebase\JWT\JWT;
 
 /**
  * An OpenID Connect relying party for one external provider: discovery, an authorization request

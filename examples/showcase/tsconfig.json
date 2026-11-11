@@ -6,7 +6,7 @@
     "strict": true,
     "noEmit": true,
     "types": [],
-    "paths": { "zero": ["../../types/zero/index.d.ts"] }
+    "paths": { "first": ["../../types/first/index.d.ts"] }
   },
-  "include": ["zero.config.ts", "zero/pantry.ts", "zero/stories.ts", "zero/_generated/db.d.ts"]
+  "include": ["first.config.ts", "first/pantry.ts", "first/stories.ts", "first/_generated/db.d.ts"]
 }

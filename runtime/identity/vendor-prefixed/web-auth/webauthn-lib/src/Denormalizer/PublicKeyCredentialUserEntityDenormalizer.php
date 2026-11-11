@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
+namespace First\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
 use function assert;
-use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
-use Zero\Identity\Vendor\Webauthn\Util\Base64;
+use First\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
+use First\Identity\Vendor\Webauthn\Util\Base64;
 
 final class PublicKeyCredentialUserEntityDenormalizer implements DenormalizerInterface, NormalizerInterface
 {

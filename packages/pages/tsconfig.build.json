@@ -6,13 +6,13 @@
     "outDir": "dist",
     "rootDir": "src",
     "paths": {
-      "zero": [
-        "../../types/zero/index.d.ts"
+      "first": [
+        "../../types/first/index.d.ts"
       ],
-      "@spacefast/zero-blocks": [
+      "@spacefast/first-blocks": [
         "../blocks/dist/index.d.ts"
       ],
-      "@spacefast/zero-blocks/*": [
+      "@spacefast/first-blocks/*": [
         "../blocks/dist/*.d.ts"
       ]
     }

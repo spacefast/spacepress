@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/design-system",
+	"name": "@first-admin/design-system",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -19,7 +19,7 @@
 		"@wordpress/icons": "catalog:",
 		"@wordpress/primitives": "catalog:",
 		"@wordpress/ui": "catalog:",
-		"@zero-admin/theme": "workspace:*",
+		"@first-admin/theme": "workspace:*",
 		"clsx": "catalog:",
 		"dequal": "catalog:"
 	},

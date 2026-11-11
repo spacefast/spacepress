@@ -103,10 +103,10 @@ export default function PluginDetailModal( {
 
 	const title = useMemo( () => {
 		if ( isLoading ) {
-			return __( 'Loading plugin…', 'zero-admin' );
+			return __( 'Loading plugin…', 'first-admin' );
 		}
 		if ( error ) {
-			return __( 'Plugin not found', 'zero-admin' );
+			return __( 'Plugin not found', 'first-admin' );
 		}
 		return decodeEntities( data?.name || slug );
 	}, [ isLoading, error, data?.name, slug ] );
@@ -132,7 +132,7 @@ export default function PluginDetailModal( {
 				<div className="plugin-details-error">
 					{ __(
 						'There was an error fetching plugin details.',
-						'zero-admin'
+						'first-admin'
 					) }
 				</div>
 			) }

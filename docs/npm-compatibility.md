@@ -1,8 +1,8 @@
 # npm compatibility
 
-Zero compiles selected JavaScript and TypeScript package source into PHP. It does
+First compiles selected JavaScript and TypeScript package source into PHP. It does
 not run Node.js on the server. Install dependencies with npm, then import the
-qualified helpers from an ordinary Zero action.
+qualified helpers from an ordinary First action.
 
 `examples/npm-compat` compares pinned published packages under Node and freshly
 compiled PHP. Each successful route runs the generated action, not just the
@@ -10,7 +10,7 @@ compiler. Its provenance file pins the original source SHA-256 and npm tarball
 integrity; verification refuses changed source bytes even when the installed
 package reports the right version.
 
-The application example at `examples/npm-compat/app/zero.config.ts` builds a link
+The application example at `examples/npm-compat/app/first.config.ts` builds a link
 from user input with these unchanged published libraries:
 
 | Package | Qualified entry | Use | License |
@@ -23,20 +23,20 @@ from user input with these unchanged published libraries:
 values before interpolation. It also preserves upstream's falsy-value behavior:
 zero, false and missing values interpolate as empty strings.
 
-From `examples/npm-compat`, with `zero` on PATH:
+From `examples/npm-compat`, with `first` on PATH:
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
-ZERO_BIN="$(command -v zero)" npm run verify -- --isolated
-zero build app
-zero dev app --port "$PORT"
+FIRST_BIN="$(command -v first)" npm run verify -- --isolated
+first build app
+first dev app --port "$PORT"
 ```
 
 Choose an unused local port and set `PORT` first. Send an anonymous request to
-the website URL printed by `zero dev`:
+the website URL printed by `first dev`:
 
 ```sh
-curl "$SITE_URL/wp-json/zero/v1/actions/link" \
+curl "$SITE_URL/wp-json/first/v1/actions/link" \
   -H 'Content-Type: application/json' \
   --data '{"slug":"café & tea","title":"Tea & <scones>"}'
 ```
@@ -47,7 +47,7 @@ state. The generated PHP action executes the library algorithms.
 
 To verify in a separate npm installation without changing the example's shared
 `node_modules`, set `NPM_COMPAT_NODE_MODULES` to that installation's absolute
-`node_modules` path and use `--isolated`. Set `ZERO_WP_PLUGIN_CACHE` to a private
+`node_modules` path and use `--isolated`. Set `FIRST_WP_PLUGIN_CACHE` to a private
 cache when running concurrent builds. Reports and generated projects live under
 the printed temporary directory; `--only url-join --only just-template --only
 application-combined` selects the new library routes and their composition.
@@ -58,10 +58,10 @@ The probes qualify selected exports and representative inputs. They do not
 certify arbitrary npm packages, every export or every overload. Published ESM
 source routes preserve the original bytes. CommonJS source routes replace only
 the export assignment; typed routes add the explicitly recorded parameter
-annotations. Temporary `@zero-npm-compat/*` packages are typed adapters, not
+annotations. Temporary `@first-npm-compat/*` packages are typed adapters, not
 unchanged upstream packages. Declaration files are not automatically hydrated.
 Package TypeScript sources compile through the same checked JavaScript domain
-as `.js`: Zero erases their types instead of modelling them, so a package's
+as `.js`: First erases their types instead of modelling them, so a package's
 generic signatures, assertion functions, `this` types and symbol-keyed types no
 longer block compilation. Authored code receives JavaScript values from them and
 refines with `typeof`/`instanceof`.
@@ -77,11 +77,11 @@ stays statically checked.
 `ts-dedent` 2.3.0's published JavaScript passes the callable string probe; its
 published TypeScript source passes that probe too. Repeated array/interpolation
 calls still conservatively lose a captured string/nonempty proof and produce a
-located `Z4001` refusal in its interpolation callback. Tagged-template syntax
+located `F4001` refusal in its interpolation callback. Tagged-template syntax
 remains unsupported. No blanket array-index totality is assumed to bypass this.
 
 `fuzzysearch` 1.0.3 remains unsupported: its unchanged source uses a labeled loop,
-which produces a located `Z1002` diagnostic. It is not a qualified dependency.
+which produces a located `F1002` diagnostic. It is not a qualified dependency.
 Custom object `toString` during authored `String(value)` conversion remains a
 runtime limit. Browser/Node host APIs, asynchronous library effects, arbitrary
 prototypes/accessors and package declaration hydration remain outside the

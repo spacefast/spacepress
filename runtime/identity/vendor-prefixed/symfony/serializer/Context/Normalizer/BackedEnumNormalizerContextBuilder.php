@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
+use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
 
 /**
  * A helper providing autocompletion for available BackedEnumNormalizer options.

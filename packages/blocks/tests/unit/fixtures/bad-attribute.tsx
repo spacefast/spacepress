@@ -1,4 +1,4 @@
-import { blockComponent } from "@spacefast/zero-blocks";
+import { blockComponent } from "@spacefast/first-blocks";
 
 const Heading = blockComponent<{ level?: number; fmt?: string }>("core/heading");
 

@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser\ParserException;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ParserException;
 use function sprintf;
 use function trigger_error;
 use const E_USER_WARNING;

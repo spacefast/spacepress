@@ -1,4 +1,4 @@
-//! The Zero compiler: `zero.config.ts` in, WordPress plugins out.
+//! The First compiler: `first.config.ts` in, WordPress plugins out.
 //!
 //! The core (parse, lower, evaluate, extract, compile, migrate, client, schema.php) does no I/O of
 //! its own: sources arrive through [`loader::Fs`] and the previous snapshot is a value

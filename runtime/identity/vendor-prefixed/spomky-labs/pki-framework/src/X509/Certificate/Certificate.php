@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
 use RuntimeException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\SignedDER;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\SignedDER;
 use Stringable;
 use UnexpectedValueException;
 

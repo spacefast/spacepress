@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Signature;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Signature;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 use UnexpectedValueException;
 
 /**

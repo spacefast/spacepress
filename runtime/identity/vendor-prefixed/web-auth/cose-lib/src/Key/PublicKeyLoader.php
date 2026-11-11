@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Key;
+namespace First\Identity\Vendor\Cose\Key;
 
 use function array_key_exists;
 use function in_array;
@@ -10,10 +10,10 @@ use function intdiv;
 use InvalidArgumentException;
 use function ltrim;
 use function ord;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Asymmetric\ECPublicKeyAlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Asymmetric\ECPublicKeyAlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
 use function sprintf;
 use function str_contains;
 use function strlen;
@@ -21,7 +21,7 @@ use function substr;
 use Throwable;
 
 /**
- * Turns the public key of an X.509 certificate, or a bare SubjectPublicKeyInfo, into the Zero\Identity\Vendor\Cose\Key\Key the signature
+ * Turns the public key of an X.509 certificate, or a bare SubjectPublicKeyInfo, into the First\Identity\Vendor\Cose\Key\Key the signature
  * algorithms of this library take.
  *
  * WebAuthn Level 3 sections 8.2 to 8.4 ask a relying party to verify a certificate-based attestation statement "with
@@ -29,7 +29,7 @@ use Throwable;
  * covers ECDSA and RSASSA-PKCS1-v1_5, because an OPENSSL_ALGO_* digest implies PKCS #1 v1.5 padding; RSASSA-PSS and
  * the EdDSA family cannot be expressed that way. This loader is the missing half of the other route: it produces the
  * key, and the Signature class registered for the identifier does the verification. See
- * Zero\Identity\Vendor\Cose\Algorithm\Signature\CertificateSignatureVerifier for the two put together.
+ * First\Identity\Vendor\Cose\Algorithm\Signature\CertificateSignatureVerifier for the two put together.
  *
  * Both methods accept PEM or raw DER.
  *
@@ -171,7 +171,7 @@ final class PublicKeyLoader
      * The two INTEGERs are taken as the octet strings they already are, and never turned into numbers: brick/math
      * falls back to a pure PHP calculator whenever neither ext-gmp nor ext-bcmath is loaded, and its generic base
      * conversion is superlinear, so decoding an attacker supplied modulus into a decimal string and back would cost
-     * more than the verification it precedes. Zero\Identity\Vendor\Cose\Key\RsaKey builds its DER the same way, and for the same reason.
+     * more than the verification it precedes. First\Identity\Vendor\Cose\Key\RsaKey builds its DER the same way, and for the same reason.
      */
     private static function rsaKey(string $rsaPublicKey): RsaKey
     {

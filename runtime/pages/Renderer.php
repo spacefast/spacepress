@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Pages;
+namespace First\Pages;
 
 /**
  * Per-request rendering of compiled block markup.
@@ -16,7 +16,7 @@ namespace Zero\Pages;
  *   `set_attribute`, which escapes and runs `esc_url` for URL attributes.
  *   Values never pass through the block parser, so a value containing
  *   `<!-- wp:` or a token character cannot become structure.
- * - Region blocks (`zero-pages/each|show|island|rich-text`). They are
+ * - Region blocks (`first-pages/each|show|island|rich-text`). They are
  *   dynamic blocks whose inner blocks WordPress does not pre-render
  *   (`skip_inner_blocks`); the render callback evaluates the region for the
  *   request and renders its inner blocks once per row or not at all.
@@ -157,7 +157,7 @@ final class Renderer
         $inner = $this->fill($this->inner($block));
         // The Interactivity API escapes the JSON for the attribute; the server-side pass evaluates directives.
         $html = sprintf(
-            '<div class="zero-pages-island" data-wp-interactive="%s" %s>%s</div>',
+            '<div class="first-pages-island" data-wp-interactive="%s" %s>%s</div>',
             esc_attr((string) $region['namespace']),
             wp_interactivity_data_wp_context($context),
             $inner,
@@ -215,7 +215,7 @@ final class Renderer
             return $mode === 'string' ? ($value ? 'true' : 'false') : null;
         }
         if (is_int($value) || is_float($value) || is_string($value)) {
-            return class_exists(\Zero\Js::class) ? \Zero\Js::str($value) : (string) $value;
+            return class_exists(\First\Js::class) ? \First\Js::str($value) : (string) $value;
         }
         // Lists and objects have no text form a page should show.
         return null;
@@ -254,7 +254,7 @@ final class Renderer
         }
         $raw = [];
         // A fresh name per call: stored content can never spell the placeholder of another chunk.
-        $slot = 'zero-pages-raw-' . bin2hex(random_bytes(8));
+        $slot = 'first-pages-raw-' . bin2hex(random_bytes(8));
         $html = (string) preg_replace_callback('/\x{E000}raw\x{E001}([a-f0-9]+-[0-9]+)\x{E000}\/raw\x{E001}/u', function (array $m) use (&$raw, $slot): string {
             // A key this renderer did not issue (spelled by stored content) is dropped, not decoded.
             if (!array_key_exists($m[1], $this->raw)) {

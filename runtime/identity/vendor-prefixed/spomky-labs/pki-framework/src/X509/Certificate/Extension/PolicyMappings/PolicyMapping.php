@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappings;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappings;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
 
 /**
  * Implements ASN.1 type containing policy mapping values to be used in 'Policy Mappings' certificate extension.

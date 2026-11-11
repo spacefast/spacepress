@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../../runtime/Zero/bootstrap.php';
+require __DIR__ . '/../../runtime/First/bootstrap.php';
 require __DIR__ . '/harness.php';
 
-use Zero\Fetch;
-use Zero\HttpError;
+use First\Fetch;
+use First\HttpError;
 
 // The address policy, without a network: the same ranges the original Zero runtime denied.
 $denied = [
@@ -43,10 +43,10 @@ eq('URL policy: HTTPS only, no credentials, no local or platform hosts, every re
         'https://mixed.example/', 'https://v6.example/', 'https://127.0.0.1/', 'https://[::1]/', 'https://nowhere.example/',
         'https://169.254.169.254/latest/meta-data/',
     ]),
-    ['allowed', 'zero_fetch_scheme_denied', 'zero_fetch_scheme_denied', 'zero_fetch_credentials_denied',
-        'zero_fetch_host_denied', 'zero_fetch_host_denied', 'zero_fetch_host_denied', 'zero_fetch_address_denied',
-        'zero_fetch_address_denied', 'zero_fetch_address_denied', 'zero_fetch_address_denied', 'zero_fetch_address_denied',
-        'zero_fetch_upstream_unavailable', 'zero_fetch_address_denied']);
+    ['allowed', 'first_fetch_scheme_denied', 'first_fetch_scheme_denied', 'first_fetch_credentials_denied',
+        'first_fetch_host_denied', 'first_fetch_host_denied', 'first_fetch_host_denied', 'first_fetch_address_denied',
+        'first_fetch_address_denied', 'first_fetch_address_denied', 'first_fetch_address_denied', 'first_fetch_address_denied',
+        'first_fetch_upstream_unavailable', 'first_fetch_address_denied']);
 eq('a plugin\'s locked hosts are checked before resolution, on every hop',
     array_map(static function (string $url): string {
         try {
@@ -56,11 +56,11 @@ eq('a plugin\'s locked hosts are checked before resolution, on every hop',
             return $e->errorCode;
         }
     }, ['https://public.example/x', 'https://PUBLIC.example./y', 'https://other.example/', 'https://internal.example/']),
-    ['allowed', 'allowed', 'zero_fetch_host_denied', 'zero_fetch_host_denied']);
+    ['allowed', 'allowed', 'first_fetch_host_denied', 'first_fetch_host_denied']);
 eq('a trailing root dot and case name the same host the policy checks and the pin covers',
     [Fetch::target('https://PUBLIC.example./a'), $code('https://internal.example./'), $code('https://site.space.fast./'),
         $code('https://a..example/'), Fetch::target('https://public.example./', ['public.example'])],
-    [['public.example', 443, '93.184.216.34'], 'zero_fetch_address_denied', 'zero_fetch_host_denied', 'zero_fetch_host_denied',
+    [['public.example', 443, '93.184.216.34'], 'first_fetch_address_denied', 'first_fetch_host_denied', 'first_fetch_host_denied',
         ['public.example', 443, '93.184.216.34']]);
 eq('the checked address is the one the connection is pinned to',
     Fetch::target('https://public.example:8443/a'), ['public.example', 8443, '93.184.216.34']);
@@ -70,7 +70,7 @@ $type = static function (callable $f): string {
     try {
         $f();
         return 'ok';
-    } catch (\Zero\JsError $e) {
+    } catch (\First\JsError $e) {
         return $e->getMessage();
     } catch (HttpError $e) {
         return $e->errorCode;
@@ -84,19 +84,19 @@ eq('request shape is checked before any network work',
         $type(fn () => Fetch::call('https://a.example/', ['headers' => ['x-a' => "b\r\nInjected: 1"]])),
         $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => str_repeat('x', Fetch::MAX_BODY + 1)])),
         $type(fn () => Fetch::call('https://a.example/', ['redirect' => 'never'])),
-        $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => new \Zero\JsArray([])])),
+        $type(fn () => Fetch::call('https://a.example/', ['method' => 'POST', 'body' => new \First\JsArray([])])),
         $type(fn () => Fetch::call('https://a.example/', ['signal' => true])),
         $type(fn () => Fetch::call('https://a.example/', ['method' => 1])),
     ],
-    ['fetch() needs a URL string or URL', 'zero_fetch_method_denied', 'Request with GET method cannot have body.',
-        'Headers: invalid header value', 'zero_fetch_payload_too_large',
+    ['fetch() needs a URL string or URL', 'first_fetch_method_denied', 'Request with GET method cannot have body.',
+        'Headers: invalid header value', 'first_fetch_payload_too_large',
         "fetch() redirect must be 'follow', 'manual' or 'error'", 'fetch() body must be a string or URLSearchParams',
-        "fetch() init option signal isn't available in Zero code", 'fetch() method must be a string']);
+        "fetch() init option signal isn't available in First code", 'fetch() method must be a string']);
 
 // Headers, URLSearchParams and Response, as the WHATWG classes behave (Node prints the same).
-$h = new \Zero\FetchHeaders(new \Zero\JsArray([new \Zero\JsArray(['X-A', ' 1 ']), new \Zero\JsArray(['x-a', '2'])]));
-$p = \Zero\JsUrlSearchParams::construct('a=1&b=two+words&a=%C3%A9&c&%zz=%');
-$r = new \Zero\FetchResponse(200, 'OK', 'https://a.example/', false, \Zero\FetchHeaders::received(['x' => 'y']), '{"a":1}');
+$h = new \First\FetchHeaders(new \First\JsArray([new \First\JsArray(['X-A', ' 1 ']), new \First\JsArray(['x-a', '2'])]));
+$p = \First\JsUrlSearchParams::construct('a=1&b=two+words&a=%C3%A9&c&%zz=%');
+$r = new \First\FetchResponse(200, 'OK', 'https://a.example/', false, \First\FetchHeaders::received(['x' => 'y']), '{"a":1}');
 eq('Headers join repeated names; URLSearchParams parse and serialize like the URL Standard; a body reads once',
     [$h->get('x-A'), $h->sorted(), (string) $p, $p->getAll('a')->a, $p->get('%zz'),
         $r->ok, $r->json()->p, $r->bodyUsed(), $type(fn () => $r->text()), $type(fn () => $r->headers->set('x', 'z'))],

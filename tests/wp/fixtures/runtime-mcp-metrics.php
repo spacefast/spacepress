@@ -30,7 +30,7 @@ add_filter('rest_pre_serve_request', static function (mixed $served) use ($zeroB
         throw new RuntimeException('MCP init callback was not measured');
     }
     $phpMs = (hrtime(true) - $zeroBenchStart) / 1e6;
-    header('X-Zero-Bench: ' . json_encode([
+    header('X-First-Bench: ' . json_encode([
         'php_ms' => $phpMs,
         'peak_bytes' => memory_get_peak_usage(),
         'allocated_bytes' => memory_get_peak_usage(true),

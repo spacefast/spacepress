@@ -8,25 +8,25 @@ import { fileURLToPath } from "node:url";
 
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
-export const zero = resolve(process.env.ZERO_BIN ?? "target/debug/zero");
+export const first = resolve(process.env.FIRST_BIN ?? "target/debug/first");
 export const command = async (args) =>
   (
-    await exec(zero, args, { timeout: 600000, maxBuffer: 8 * 1024 * 1024 })
+    await exec(first, args, { timeout: 600000, maxBuffer: 8 * 1024 * 1024 })
   ).stdout.trim();
 export const wp = (project, ...args) =>
   command(['wp', '--site', project, ...args]);
 export async function installFrontend(project) {
-  const site = join(project, ".zero/dev/wordpress");
+  const site = join(project, ".first/dev/wordpress");
   await cp(
-    join(here, "wordpress/zero-marketing-frontend"),
-    join(site, "wp-content/plugins/zero-marketing-frontend"),
+    join(here, "wordpress/first-marketing-frontend"),
+    join(site, "wp-content/plugins/first-marketing-frontend"),
     { recursive: true },
   );
-  await wp(project, "plugin", "activate", "zero-marketing-frontend");
+  await wp(project, "plugin", "activate", "first-marketing-frontend");
 }
 export async function connect(project) {
   const status = JSON.parse(await command(["dev", "status", project]));
-  assert.equal(status.isOnline, true, "Start zero dev before setup");
+  assert.equal(status.isOnline, true, "Start first dev before setup");
   const base = status.siteUrl.replace(/\/$/, "");
   const credentialName = `marketing-local-${randomUUID()}`;
   const password = await wp(
@@ -67,7 +67,7 @@ export async function connect(project) {
     base,
     authorization,
     request,
-    api: (path, options) => request("/wp-json/zero/v1" + path, options),
+    api: (path, options) => request("/wp-json/first/v1" + path, options),
     dispose: async () => {
       const list = JSON.parse(
         await wp(
@@ -164,14 +164,14 @@ async function seed(client, seedFile) {
       continue;
     }
     const page = await materialize(source);
-    const saved = await client.request("/wp-json/wp/v2/zero_pages", {
+    const saved = await client.request("/wp-json/wp/v2/first_pages", {
       method: "POST",
       body: {
         title: page.title,
         slug: page.slug,
         status: "publish",
         acf: {
-          zero_sections: page.sections.map(({ layout, ...fields }) => ({
+          first_sections: page.sections.map(({ layout, ...fields }) => ({
             acf_fc_layout: layout,
             ...fields,
           })),

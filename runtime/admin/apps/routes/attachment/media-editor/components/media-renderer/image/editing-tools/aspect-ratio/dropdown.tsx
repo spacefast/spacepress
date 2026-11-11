@@ -100,19 +100,19 @@ export default function AspectRatioDropdown( {
 		const name = aspectRatio?.slug
 			? findAspectRatioBySlug( aspectRatio.slug, allRatios )?.name
 			: undefined;
-		setAspectRatioName( name || __( 'Aspect Ratio', 'zero-admin' ) );
+		setAspectRatioName( name || __( 'Aspect Ratio', 'first-admin' ) );
 	}, [ aspectRatio?.slug, allRatios ] );
 
 	return (
 		<DropdownMenu
 			icon={ aspectRatioIcon }
-			label={ __( 'Aspect Ratio', 'zero-admin' ) }
+			label={ __( 'Aspect Ratio', 'first-admin' ) }
 			popoverProps={ { placement: 'bottom-start' } }
 			text={ displayAspectRatioName ? aspectRatioName : undefined }
 			toggleProps={ {
 				variant: 'tertiary',
 				className:
-					'zero-admin-media-editor__aspect-ratio-dropdown-button',
+					'first-admin-media-editor__aspect-ratio-dropdown-button',
 			} }
 		>
 			{ ( { onClose } ) => (
@@ -128,7 +128,7 @@ export default function AspectRatioDropdown( {
 					/>
 					{ themeRatios?.length > 0 && (
 						<AspectRatioGroup
-							label={ __( 'Theme', 'zero-admin' ) }
+							label={ __( 'Theme', 'first-admin' ) }
 							onClick={ ( newAspectRatio ) => {
 								onChange( newAspectRatio );
 								onClose();
@@ -140,7 +140,7 @@ export default function AspectRatioDropdown( {
 					) }
 					{ landscapeRatios?.length > 0 && (
 						<AspectRatioGroup
-							label={ __( 'Landscape', 'zero-admin' ) }
+							label={ __( 'Landscape', 'first-admin' ) }
 							onClick={ ( newAspectRatio ) => {
 								onChange( newAspectRatio );
 								onClose();
@@ -152,7 +152,7 @@ export default function AspectRatioDropdown( {
 					) }
 					{ portraitRatios?.length > 0 && (
 						<AspectRatioGroup
-							label={ __( 'Portrait', 'zero-admin' ) }
+							label={ __( 'Portrait', 'first-admin' ) }
 							onClick={ ( newAspectRatio ) => {
 								onChange( newAspectRatio );
 								onClose();

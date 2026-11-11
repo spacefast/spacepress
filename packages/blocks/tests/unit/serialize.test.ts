@@ -311,7 +311,7 @@ test("every problem in a tree is reported in one pass, and nothing is written", 
 
 test("a save() that throws is a located error instead of silent empty markup", async () => {
   await withBlockApi((api) =>
-    api.registerBlockType("zero-test/explodes", {
+    api.registerBlockType("first-test/explodes", {
       apiVersion: 3,
       title: "Explodes",
       category: "widgets",
@@ -321,7 +321,7 @@ test("a save() that throws is a located error instead of silent empty markup", a
       },
     }),
   );
-  const { markup, diagnostics } = await serializeBlocks([at(block("zero-test/explodes", { n: 1 }), 9)]);
+  const { markup, diagnostics } = await serializeBlocks([at(block("first-test/explodes", { n: 1 }), 9)]);
   assert.equal(markup, "");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map(brief), [{ code: "save_failed", severity: "error", file: "/t/page.tsx", line: 9, column: 5 }]);
   assert.match(diagnostics.find((d) => d.code === "save_failed")!.message, /no save for you/);
@@ -342,7 +342,7 @@ test("a third-party block is written as authored at any depth, reported once as 
 });
 
 test("the attribute the passthrough keeps its body in cannot be authored", async () => {
-  const { diagnostics } = await serializeBlocks([at(block("acme/x", { "zero-blocks:inner-html": "AUTHORED" }, [text("BODY")]), 2)]);
+  const { diagnostics } = await serializeBlocks([at(block("acme/x", { "first-blocks:inner-html": "AUTHORED" }, [text("BODY")]), 2)]);
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["unknown_attribute", 2]]);
 });
 

@@ -5,9 +5,9 @@ $input = json_decode(stream_get_contents(STDIN), true);
 echo "READY\n";
 flush();
 try {
-    \Zero\Identity\Plugin::$accounts->provider('https://issuer.test', $input['subject'], null, '', $input['uid'], $input['session']);
+    \First\Identity\Plugin::$accounts->provider('https://issuer.test', $input['subject'], null, '', $input['uid'], $input['session']);
     echo "LINKED\n";
     exit(1);
-} catch (\Zero\Identity\Failure $e) {
+} catch (\First\Identity\Failure $e) {
     echo $e->kind . "\n";
 }

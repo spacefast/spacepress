@@ -1,5 +1,5 @@
 import { __ } from '@wordpress/i18n';
-import type { View } from '@zero-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 
 const DEFAULT_TABLE_FIELDS = [
 	'status',
@@ -70,12 +70,12 @@ type PluginTabData = {
 // Map each tab to its data object (label + optional filtering key/value).
 // This map is consumed by the tabs UI below, and by stage.tsx to build queries.
 export const pluginTabs = new Map< PluginTab, PluginTabData >( [
-	[ PluginTab.ALL, { tab: PluginTab.ALL, label: __( 'All', 'zero-admin' ) } ],
+	[ PluginTab.ALL, { tab: PluginTab.ALL, label: __( 'All', 'first-admin' ) } ],
 	[
 		PluginTab.ACTIVE,
 		{
 			tab: PluginTab.ACTIVE,
-			label: __( 'Active', 'zero-admin' ),
+			label: __( 'Active', 'first-admin' ),
 			filterBy: 'status',
 			filterValue: 'active',
 		},
@@ -84,7 +84,7 @@ export const pluginTabs = new Map< PluginTab, PluginTabData >( [
 		PluginTab.INACTIVE,
 		{
 			tab: PluginTab.INACTIVE,
-			label: __( 'Inactive', 'zero-admin' ),
+			label: __( 'Inactive', 'first-admin' ),
 			filterBy: 'status',
 			filterValue: 'inactive',
 		},
@@ -93,7 +93,7 @@ export const pluginTabs = new Map< PluginTab, PluginTabData >( [
 		PluginTab.RECENTLY_ACTIVE,
 		{
 			tab: PluginTab.RECENTLY_ACTIVE,
-			label: __( 'Recently Active', 'zero-admin' ),
+			label: __( 'Recently Active', 'first-admin' ),
 			filterBy: 'recently_active',
 			filterValue: true,
 		},
@@ -102,7 +102,7 @@ export const pluginTabs = new Map< PluginTab, PluginTabData >( [
 		PluginTab.UPDATE_AVAILABLE,
 		{
 			tab: PluginTab.UPDATE_AVAILABLE,
-			label: __( 'Update Available', 'zero-admin' ),
+			label: __( 'Update Available', 'first-admin' ),
 			filterBy: 'update_available',
 			filterValue: true,
 		},
@@ -111,7 +111,7 @@ export const pluginTabs = new Map< PluginTab, PluginTabData >( [
 		PluginTab.AUTO_UPDATES_ENABLED,
 		{
 			tab: PluginTab.AUTO_UPDATES_ENABLED,
-			label: __( 'Auto-Updates Enabled', 'zero-admin' ),
+			label: __( 'Auto-Updates Enabled', 'first-admin' ),
 			filterBy: 'auto_update',
 			filterValue: true,
 		},
@@ -120,7 +120,7 @@ export const pluginTabs = new Map< PluginTab, PluginTabData >( [
 		PluginTab.AUTO_UPDATES_DISABLED,
 		{
 			tab: PluginTab.AUTO_UPDATES_DISABLED,
-			label: __( 'Auto-Updates Disabled', 'zero-admin' ),
+			label: __( 'Auto-Updates Disabled', 'first-admin' ),
 			filterBy: 'auto_update',
 			filterValue: false,
 		},

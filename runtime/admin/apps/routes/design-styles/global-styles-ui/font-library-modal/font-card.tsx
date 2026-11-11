@@ -54,7 +54,7 @@ function FontCard( {
 										'%d variant',
 										'%d variants',
 										variantsCount,
-										'zero-admin'
+										'first-admin'
 									),
 									variantsCount
 								) }

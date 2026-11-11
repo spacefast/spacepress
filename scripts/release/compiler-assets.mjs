@@ -7,8 +7,8 @@ import { releaseVersion } from "./version.mjs";
 const [directory, revision] = process.argv.slice(2);
 if (!directory || !/^[a-f0-9]{40}$/.test(revision ?? "")) throw new Error("Usage: compiler-assets.mjs <assets-directory> <source-revision>");
 const version = await releaseVersion();
-const names = (await readdir(directory)).filter(name => name === "zero.wasm" || /^zero-v.+\.tar\.gz$/.test(name));
-if (!names.includes("zero.wasm")) throw new Error("Missing wasm compiler");
+const names = (await readdir(directory)).filter(name => name === "first.wasm" || /^first-v.+\.tar\.gz$/.test(name));
+if (!names.includes("first.wasm")) throw new Error("Missing wasm compiler");
 const files = {};
 for (const name of names.sort()) {
   files[name] = createHash("sha256").update(await readFile(path.join(directory, name))).digest("hex");

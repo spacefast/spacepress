@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag;
+namespace First\Identity\Vendor\CBOR\Tag;
 
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
-use Zero\Identity\Vendor\CBOR\Tag;
-use Zero\Identity\Vendor\CBOR\TextStringObject;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
+use First\Identity\Vendor\CBOR\Tag;
+use First\Identity\Vendor\CBOR\TextStringObject;
 use InvalidArgumentException;
 
 final class Base64UrlTag extends Tag

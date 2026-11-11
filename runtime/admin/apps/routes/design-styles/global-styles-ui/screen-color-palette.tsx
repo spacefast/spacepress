@@ -1,6 +1,6 @@
 import { __ } from '@wordpress/i18n';
 import { privateApis as componentsPrivateApis } from '@wordpress/components';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import { ScreenHeader } from './screen-header';
 import ColorPalettePanel from './color-palette-panel';
 import GradientPalettePanel from './gradients-palette-panel';
@@ -11,19 +11,19 @@ function ScreenColorPalette( { name }: { name?: string } ) {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Edit palette', 'zero-admin' ) }
+				title={ __( 'Edit palette', 'first-admin' ) }
 				description={ __(
 					'The combination of colors used across the site and in color pickers.',
-					'zero-admin'
+					'first-admin'
 				) }
 			/>
 			<Tabs>
 				<Tabs.TabList>
 					<Tabs.Tab tabId="color">
-						{ __( 'Color', 'zero-admin' ) }
+						{ __( 'Color', 'first-admin' ) }
 					</Tabs.Tab>
 					<Tabs.Tab tabId="gradient">
-						{ __( 'Gradient', 'zero-admin' ) }
+						{ __( 'Gradient', 'first-admin' ) }
 					</Tabs.Tab>
 				</Tabs.TabList>
 				<Tabs.TabPanel tabId="color" focusable={ false }>

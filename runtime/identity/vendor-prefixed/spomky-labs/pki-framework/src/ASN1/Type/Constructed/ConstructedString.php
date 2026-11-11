@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed;
 
 use function count;
 use LogicException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
 use function sprintf;
 use Stringable;
 

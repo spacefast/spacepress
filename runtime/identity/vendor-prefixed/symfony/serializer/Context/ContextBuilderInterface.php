@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Context;
 
 /**
  * Common interface for context builders.

@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 use Symfony\Component\VarExporter\VarExporter;
 
-zero_identity_vendor_trigger_deprecation('symfony/serializer', '7.4', 'The "%s" class is deprecated.', ClassMetadataFactoryCompiler::class);
+first_identity_vendor_trigger_deprecation('symfony/serializer', '7.4', 'The "%s" class is deprecated.', ClassMetadataFactoryCompiler::class);
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>

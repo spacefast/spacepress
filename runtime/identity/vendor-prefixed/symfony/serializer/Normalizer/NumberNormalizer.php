@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
 use BcMath\Number;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
 
 /**
  * Normalizes {@see Number} and {@see \GMP} to a string.

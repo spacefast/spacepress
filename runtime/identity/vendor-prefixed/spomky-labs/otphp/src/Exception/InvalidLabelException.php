@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\OTPHP\Exception;
+namespace First\Identity\Vendor\OTPHP\Exception;
 
 use InvalidArgumentException;
 use Throwable;

@@ -1,7 +1,7 @@
 import type {
 	DashboardWidget,
 	RegisteredDashboardWidgetType,
-} from '@zero-admin/dashboard';
+} from '@first-admin/dashboard';
 import type {
 	Route,
 	FlatMenuItem,

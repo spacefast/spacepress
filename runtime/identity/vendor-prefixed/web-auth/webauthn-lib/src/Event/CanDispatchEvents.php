@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Event;
+namespace First\Identity\Vendor\Webauthn\Event;
 
-use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
 
 interface CanDispatchEvents
 {

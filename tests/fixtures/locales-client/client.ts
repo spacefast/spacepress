@@ -1,7 +1,7 @@
 // Generated client types for localized collections (§7.3).
-import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./zero/_generated/client/types";
-import "./zero.gen";
-import { db } from "zero";
+import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./first/_generated/client/types";
+import "./first.gen";
+import { db } from "first";
 
 async function registryTranslations() {
   for (const row of await db.query.guides.findMany()) {

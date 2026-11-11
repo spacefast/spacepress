@@ -1,7 +1,7 @@
-# Disposable WordPress + MariaDB + Mailpit for the zero-identity acceptance suite (design §3, §9.5).
+# Disposable WordPress + MariaDB + Mailpit for the first-identity acceptance suite (design §3, §9.5).
 # Credentials are intentionally tracked: they apply only to this throwaway local stack, which holds
 # no customer data and is deleted after every run.
-name: ${IDENTITY_PROJECT:-zero-identity-test}
+name: ${IDENTITY_PROJECT:-first-identity-test}
 services:
   database:
     image: mariadb:11.4
@@ -46,7 +46,7 @@ services:
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('ZERO_IDENTITY_DEV_HTTP', true);
+        define('FIRST_IDENTITY_DEV_HTTP', true);
     healthcheck:
       test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
       interval: 1s
@@ -55,7 +55,7 @@ services:
       - "${IDENTITY_PORT:-8814}:80"
     volumes: &wordpress-volumes
       - wordpress:/var/www/html
-      - ${IDENTITY_PLUGIN_DIR:?run tests/identity/run.sh}:/var/www/html/wp-content/plugins/zero-identity:ro
+      - ${IDENTITY_PLUGIN_DIR:?run tests/identity/run.sh}:/var/www/html/wp-content/plugins/first-identity:ro
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./:/opt/identity-tests:ro
   cli:

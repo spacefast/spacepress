@@ -1,0 +1,232 @@
+// A small publication: authors write posts with rich fields in English and German, readers sign in
+// as members and leave comments that editors moderate through an action, and editors keep the site
+// settings. tests/system drives a whole user journey through this app on WordPress.
+import {
+  collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
+  repeater, group, blocks, email, url, defineRelations, defineConfig, action, job, jobs, env, file, files, db, HttpError,
+  table, userProjection,
+} from "first";
+
+// Who works on the site. Everyone else (anonymous readers, guests, signed-in members) is a reader.
+const STAFF = ["author", "editor", "admin"];
+
+export const authors = collection({
+  name: text().notNull().max(80),
+  bio: text({ multiline: true }).max(500),
+  avatar: media({ accept: "image" }),
+  userId: integer(),                       // the User.id that writes as this author
+}, { label: "Authors", title: "name", uid: true, access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
+
+export const posts = collection({
+  // Translated per locale. The other fields are shared by a post's translations, except each
+  // row's own slug, status and dates.
+  title: text().notNull().min(1).max(120).localized(),
+  slug: slug({ source: "title" }),
+  body: richText().localized(),
+  dek: text({ multiline: true }).max(240).localized(),
+  cover: media({ accept: "image" }),
+  // The author's draft manuscript: a private file, readable by its uploader and the desk.
+  manuscript: file({ bucket: "manuscripts" }),
+  topics: select({ options: ["culture", "science", "tech"], multiple: true }).notNull().default([]),
+  featured: boolean().notNull().default(false),
+  // The desk's private notes: staff read and write them; readers' rows never carry the column.
+  deskNotes: text({ multiline: true }).max(2000).access({ read: "author", create: "editor", update: "editor" }),
+  authorId: integer().references(() => authors.id, { onDelete: "set null" }),
+  // The editor shows metaTitle only while the post is indexable (SCF conditional logic).
+  seo: group({ fields: { noindex: boolean().notNull().default(false), metaTitle: text().max(70).showIf({ noindex: false }) } }),
+  related: repeater({ fields: { label: text().notNull().max(80), href: url().notNull() } }).max(6),
+  sections: blocks({ layouts: {
+    pullQuote: { text: text({ multiline: true }).notNull(), cite: text().max(80) },
+    figure: { image: media({ accept: "image" }).notNull(), caption: text().max(160) },
+  } }),
+  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
+}, {
+  label: "Posts",
+  title: "title",
+  content: "body",
+  // Writers can draft in Markdown in the repo: `first sync` keeps content/posts/*.md and the site in step.
+  sync: "content/posts/*.md",
+  access: {
+    read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { status: "published" },
+    create: "author",
+    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { author: { userId: ctx.user?.id ?? -1 } },
+    delete: "editor",
+  },
+});
+
+export const comments = table({
+  postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
+  name: text().notNull().max(60),
+  body: text({ multiline: true }).notNull().min(1).max(2000),
+  approved: boolean().notNull().default(false),
+  createdAt: timestamp().notNull().defaultNow(),
+}, {
+  access: { read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
+});
+
+// Newsletter sign-ups are acknowledged by subscribeNewsletter and processed privately on the queue.
+// Direct writes and subscriber identities stay admin-only.
+export const subscribers = table({
+  email: email().notNull().unique().max(191),
+  postId: integer().references(() => posts.id, { onDelete: "set null" }),
+  createdAt: timestamp().notNull().defaultNow(),
+}, { access: { create: "admin", read: "admin", update: "admin", delete: "admin" } });
+
+// Staff see announcement receipts; exact counts stay with the subscriber administrators.
+export const announcements = table({
+  postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
+  recipients: integer().notNull().access({ read: "admin", update: "admin" }),
+  attempt: integer().notNull(),
+}, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
+
+// Readers who sign in: WordPress users through the first-identity screens. Readers see and edit their own row; administrators can read the identities they manage.
+export const members = userProjection({
+  email: email().notNull().unique().max(191),
+  name: text().notNull().max(80),
+  plan: select({ options: ["free", "supporter"] }).notNull().default("free"),
+}, { access: { read: (ctx) => ctx.user?.role === "admin" ? true : ctx.user ? { id: ctx.user.id } : false, update: "self", create: "admin", delete: "admin" } });
+
+export const collections = { authors, posts };
+export const tables = { comments, subscribers, announcements };
+export const users = { members };
+export const entities = { ...collections, ...tables, ...users };
+
+export const relations = defineRelations(entities, (r) => ({
+  posts: {
+    author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }),
+    comments: r.many.comments(),
+    subscribers: r.many.subscribers({ from: r.posts.id, to: r.subscribers.postId }),
+  },
+  authors: { posts: r.many.posts() },
+  comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
+  subscribers: { post: r.one.posts({ from: r.subscribers.postId, to: r.posts.id }) },
+  announcements: { post: r.one.posts({ from: r.announcements.postId, to: r.posts.id }) },
+}));
+
+export const settings = global("settings", {
+  siteTitle: text().notNull().default("The First Review").max(80),
+  tagline: text().max(160),
+  commentsOpen: boolean().notNull().default(true),
+  social: repeater({ fields: { label: text().notNull().max(40), href: url().notNull() } }),
+}, { label: "Site settings" });
+
+export default defineConfig({
+  name: "site",
+  collections, tables, users,
+  relations,
+  globals: { settings },
+  locales: { default: "en", all: ["en", "de"] },
+  // A square `card` crop of every image for listings, centred on the image's focal point.
+  media: { sizes: { card: { width: 120, height: 120, fit: "cover" } } },
+  // Private: never a public URL; signed 5-minute download links for whoever may read them.
+  files: {
+    manuscripts: files("manuscripts", {
+      accept: ["text/plain", "application/pdf"],
+      maxBytes: 1_000_000,
+      access: { create: "author", read: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor", delete: "editor" },
+    }),
+  },
+  // Every new comment is POSTed, signed, to the moderation tool at SITE_HOOK_URL (retried on failure).
+  webhooks: [{ url: env("SITE_HOOK_URL"), secret: env("SITE_HOOK_SECRET"), events: ["comments.created"] }],
+  jobs: {
+    subscribeReader: job({
+      input: { email: email().notNull().max(191), postId: integer() },
+      agents: false,
+      async handler({ email, postId }) {
+        if (await db.query.subscribers.findFirst({ where: { email } })) return;
+        const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" }, locale: "*" });
+        await db.insert(subscribers).values({ email, postId: post?.id ?? null });
+      },
+    }),
+    // Runs after the publishing request commits, on the queue (Action Scheduler on WordPress).
+    notifyReaders: job({
+      input: { postId: integer().notNull() },
+      retries: 3,
+      handler: async ({ postId }, ctx) => {
+        const readers = await db.query.subscribers.findMany({ columns: { id: true } });
+        await db.insert(announcements).values({ postId, recipients: readers.length, attempt: ctx.attempt });
+      },
+    }),
+  },
+  hooks: {
+    subscribers: {
+      beforeCreate(data) { data.email = data.email.toLowerCase(); },
+      beforeUpdate(data) { const email = data.email; if (email != null) data.email = email.toLowerCase(); },
+    },
+    posts: {
+      // Each time a post becomes published (through the API or the editor) readers hear about it;
+      // the job key collapses repeats still waiting on the queue. Scheduled posts that the clock
+      // publishes run no hooks (both targets), so they announce nothing.
+      async afterCreate(row) {
+        if (row.status === "published") await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
+      },
+      async afterUpdate(row, previous) {
+        if (row.status === "published" && previous.status !== "published") {
+          await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
+        }
+      },
+      async beforeCreate(data, ctx) {
+        if (data.authorId == null && ctx.user) {
+          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+          if (author) data.authorId = author.id;
+        }
+      },
+    },
+    comments: {
+      // Editors can close comments site-wide; readers can't approve their own; staff skip the queue.
+      async beforeCreate(data, ctx) {
+        const site = await db.globals.settings.get();
+        if (!site.commentsOpen) throw new HttpError(403, "comments_closed", "Comments are closed on this site");
+        if (!STAFF.includes(ctx.user?.role ?? "")) data.approved = false;
+      },
+      async afterCreate(row, ctx) {
+        if (STAFF.includes(ctx.user?.role ?? "")) {
+          await db.update(comments).set({ approved: true }).where({ id: row.id });
+        }
+      },
+    },
+  },
+  actions: {
+    subscribeNewsletter: action({
+      input: { email: email().notNull().max(191), postId: integer() },
+      access: "anyone",
+      async handler({ email, postId }) {
+        const normalized = email.toLowerCase();
+        await jobs.subscribeReader.enqueue({ email: normalized, postId }, { key: normalized });
+        return { accepted: true };
+      },
+    }),
+    // Editors may remove posts and detach private subscriptions; no subscription data is returned.
+    removePost: action({
+      input: { id: integer().notNull() },
+      access: "editor",
+      async handler({ id }) {
+        const [gone] = await db.delete(posts).where({ id }).returning();
+        if (!gone) throw new HttpError(404, "not_found", `No post ${id}`);
+        return { id: gone.id };
+      },
+    }),
+    moderateComment: action({
+      input: { id: integer().notNull(), decision: select({ options: ["approve", "reject"] }).notNull() },
+      access: "editor",
+      async handler({ id, decision }) {
+        if (decision === "reject") {
+          const [gone] = await db.delete(comments).where({ id }).returning();
+          if (!gone) throw new HttpError(404, "not_found", `No comment ${id}`);
+          return { id, approved: false, removed: true };
+        }
+        const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+        if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
+        return { id, approved: true, removed: false };
+      },
+    }),
+    frontPage: action({
+      input: {},
+      access: "anyone",
+      async handler() {
+        const featured = await db.query.posts.findMany({ where: { status: "published", featured: true }, columns: { id: true } });
+        return { featured: featured.map((p) => p.id) };
+      },
+    }),
+  },
+});

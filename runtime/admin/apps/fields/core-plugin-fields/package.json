@@ -2,9 +2,9 @@
 	"name": "core-plugin-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@zero-admin/design-system": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
 		"@wordpress/core-data": "catalog:",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/i18n": "catalog:",
 		"@wordpress/ui": "catalog:"
 	}

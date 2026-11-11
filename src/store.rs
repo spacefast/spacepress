@@ -1,7 +1,7 @@
 //! The build store: immutable, content-addressed compiled builds on disk.
 //!
 //! ```text
-//! <root>/runtime/<revision>/   zero-loader.php, zero-runtime/, zero-identity/, zero-admin/
+//! <root>/runtime/<revision>/   first-loader.php, first-runtime/, first-identity/, first-admin/
 //! <root>/app/<hash>/           the app tree compile_sources writes, minus the runtime plugins
 //! <root>/build/<id>.json       BuildManifest; <id> is the SHA-256 of these bytes
 //! <root>/ready/<id>.json       written by the loader once the build initialized on this site
@@ -9,7 +9,7 @@
 //!
 //! Everything is written below `<root>/.tmp/` and renamed into place, then never edited, so file
 //! paths stay valid for the opcode cache. Writers and the collector hold `flock(<root>/.lock)`,
-//! the same lock `Zero\Loader\Store` takes in PHP.
+//! the same lock `First\Loader\Store` takes in PHP.
 use crate::{
     bundle,
     diag::{Diag, Span},
@@ -22,14 +22,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const FORMAT: &str = "zero.build.v1";
+pub const FORMAT: &str = "first.build.v1";
 
 /// One build: which runtime tree and which app tree a request mounts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildManifest {
     pub format: String,
-    /// The app name (`zero-app-<name>`).
+    /// The app name (`first-app-<name>`).
     pub name: String,
     /// The compiler's Cargo version.
     pub compiler: String,
@@ -37,11 +37,11 @@ pub struct BuildManifest {
     pub runtime: String,
     /// `app/<hash>/`
     pub app: String,
-    /// Mount `zero-identity` (the app has an auth collection).
+    /// Mount `first-identity` (the app has an auth collection).
     pub identity: bool,
-    /// Mount `zero-admin`.
+    /// Mount `first-admin`.
     pub admin: bool,
-    /// `zero-pages-<name>` when the app has pages.
+    /// `first-pages-<name>` when the app has pages.
     pub pages: Option<String>,
     /// The app's schema snapshot, relative to the store root.
     pub snapshot: String,

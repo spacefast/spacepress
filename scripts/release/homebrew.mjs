@@ -29,7 +29,7 @@ export async function formula({ directory }) {
   }
   const asset = (target, indent) => `${indent}url "https://github.com/spacefast/zero/releases/download/v${version}/${assetName({ version, target })}"\n${indent}sha256 "${checksums.get(target)}"`;
   return `# Generated from verified release archives. Publish those exact archives before using this formula.
-class Zero < Formula
+class First < Formula
   desc "Compile a typed backend and run native WordPress locally"
   homepage "https://github.com/spacefast/zero"
   version "${version}"
@@ -54,16 +54,16 @@ ${asset(targets['linux-x64'], '      ')}
   end
 
   def install
-    bin.install "zero"
+    bin.install "first"
     pkgshare.install "LICENSE", "LICENSE-MIT", "LICENSE-GPL", "Cargo.lock", "SOURCE.json", "licenses"
   end
 
   test do
-    (testpath/"zero.config.ts").write <<~TS
-      import { defineConfig, table, text } from 'zero';
+    (testpath/"first.config.ts").write <<~TS
+      import { defineConfig, table, text } from 'first';
       export default defineConfig({ tables: { notes: table({ title: text().notNull() }) } });
     TS
-    system "#{bin}/zero", "check", testpath
+    system "#{bin}/first", "check", testpath
   end
 end
 `;

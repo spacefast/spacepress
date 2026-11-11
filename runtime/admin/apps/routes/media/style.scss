@@ -49,8 +49,8 @@
 	}
 }
 
-.zero-admin-post-list-inspector__form {
-	// Fix tertiary button styles that differ between the Zero Admin design system and Gutenberg.
+.first-admin-post-list-inspector__form {
+	// Fix tertiary button styles that differ between the First Admin design system and Gutenberg.
 	// This ensures readonly fields display as simple data, and don't look like a disabled button.
 	.dataforms-layouts-panel__field-control
 		.components-button.is-tertiary[aria-disabled="true"] {

@@ -94,7 +94,7 @@ export const createInvite =
 			dispatch.receiveCreateInviteError(
 				extractErrorMessage(
 					error,
-					__( 'Failed to create invite', 'zero-admin' )
+					__( 'Failed to create invite', 'first-admin' )
 				)
 			);
 			throw error;
@@ -130,7 +130,7 @@ export const deleteInvites =
 			dispatch.receiveDeleteInvitesError(
 				extractErrorMessage(
 					error,
-					__( 'Failed to delete invites', 'zero-admin' )
+					__( 'Failed to delete invites', 'first-admin' )
 				)
 			);
 			throw error;

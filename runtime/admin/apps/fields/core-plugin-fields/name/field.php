@@ -2,12 +2,12 @@
 /**
  * Name field definition for core plugins fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Plugin Name', 'zero-admin' ),
+	'label'              => __( 'Plugin Name', 'first-admin' ),
 	'enableHiding'       => true,
 	'filterBy'           => array(
 		'operators' => array( 'contains', 'startsWith', 'is', 'isNot' ),

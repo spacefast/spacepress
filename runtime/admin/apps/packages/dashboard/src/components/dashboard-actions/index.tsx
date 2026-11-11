@@ -56,7 +56,7 @@ const DashboardActions = ( {
 						onOpenWidgetsModal();
 					} }
 				>
-					{ __( 'Add widgets', 'zero-admin' ) }
+					{ __( 'Add widgets', 'first-admin' ) }
 				</Button>
 			</Stack>
 		);
@@ -79,7 +79,7 @@ const DashboardActions = ( {
 							onOpenWidgetsModal();
 						} }
 					>
-						{ __( 'Add widget', 'zero-admin' ) }
+						{ __( 'Add widget', 'first-admin' ) }
 					</Button>
 					<Button
 						variant="minimal"
@@ -89,7 +89,7 @@ const DashboardActions = ( {
 							onCancel();
 						} }
 					>
-						{ __( 'Cancel', 'zero-admin' ) }
+						{ __( 'Cancel', 'first-admin' ) }
 					</Button>
 				</>
 			) }
@@ -104,8 +104,8 @@ const DashboardActions = ( {
 				} }
 			>
 				{ editMode
-					? __( 'Done', 'zero-admin' )
-					: __( 'Customize', 'zero-admin' ) }
+					? __( 'Done', 'first-admin' )
+					: __( 'Customize', 'first-admin' ) }
 			</Button>
 		</Stack>
 	);

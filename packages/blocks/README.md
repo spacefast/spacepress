@@ -1,13 +1,13 @@
-# @spacefast/zero-blocks
+# @spacefast/first-blocks
 
 Write Gutenberg content in TSX and compile it to block markup that opens valid
 in the WordPress editor. An optional add-on for WordPress sites, including
-sites built with Zero; nothing in Zero depends on it.
+sites built with First; nothing in First depends on it.
 
 **Status: phase 1.** This release compiles single TSX files to block markup.
 Typed `Block.Core.*` components, block themes (`theme.json`, templates, parts,
 patterns) and the WordPress proof suite follow in later releases; the design
-is in the Zero repository under `docs/design-blocks.md`.
+is in the First repository under `docs/design-blocks.md`.
 
 Requires Node 22. Output targets WordPress 7.1: the serializer runs the block
 library WordPress 7.1 bundles, so the markup is what that editor's own `save()`
@@ -16,12 +16,12 @@ produces.
 ## Use
 
 ```sh
-pnpm add -D @spacefast/zero-blocks
+pnpm add -D @spacefast/first-blocks
 ```
 
 ```tsx
 // pricing.tsx
-import { Block } from "@spacefast/zero-blocks";
+import { Block } from "@spacefast/first-blocks";
 import { plans } from "./plans";
 
 export default function Pricing() {
@@ -42,13 +42,13 @@ export default function Pricing() {
 ```
 
 ```sh
-zero-blocks content pricing.tsx --out pricing.html
+first-blocks content pricing.tsx --out pricing.html
 ```
 
 `tsconfig.json` for the authored files:
 
 ```json
-{ "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "@spacefast/zero-blocks" } }
+{ "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "@spacefast/first-blocks" } }
 ```
 
 The file's default export runs once, at build time. Imports, loops and
@@ -119,7 +119,7 @@ install (`scripts/bundle-wp.mjs`) so one copy of each package exists.
 ```sh
 pnpm install          # also prebundles the pinned @wordpress packages into vendor/
 pnpm check            # typecheck + unit tests
-pnpm build            # dist/ for the published package and the zero-blocks bin
+pnpm build            # dist/ for the published package and the first-blocks bin
 ```
 
 ## License

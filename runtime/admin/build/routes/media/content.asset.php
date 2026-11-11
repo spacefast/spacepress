@@ -1,1 +1,1 @@
-<?php return array('name' => 'media', 'dependencies' => array(), 'moduleDependencies' => array('@zero-admin/schema'), 'version' => '67a006fa13bf429fb72e');
+<?php return array('name' => 'media', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '0dbe2fa9c3841a4564cb');

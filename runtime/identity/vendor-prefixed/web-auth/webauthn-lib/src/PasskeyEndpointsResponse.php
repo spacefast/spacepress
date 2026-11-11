@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
 /**
  * Represents the Passkey Endpoints response as defined in the W3C Passkey Endpoints specification.

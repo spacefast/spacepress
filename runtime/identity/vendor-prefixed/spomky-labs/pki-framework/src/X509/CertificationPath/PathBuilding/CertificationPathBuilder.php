@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding;
 
 use function count;
 use function hash;
 use function spl_object_id;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathBuildingException;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathBuildingException;
 
 /**
  * Class for resolving certification paths.

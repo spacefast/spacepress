@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
 
 /**
  * @see https://tools.ietf.org/html/rfc5280#section-4.2.2.1

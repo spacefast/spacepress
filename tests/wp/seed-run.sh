@@ -5,14 +5,14 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-wp-seed}"
-export ZERO_WP_PORT="${ZERO_WP_PORT:-8897}"
+export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-seed}"
+export FIRST_WP_PORT="${FIRST_WP_PORT:-8897}"
 app="$(mktemp -d)"
 cleanup() { "$here/harness.sh" down; rm -rf "$app"; }
 trap cleanup EXIT
 mkdir -p "$app/project/content/posts" "$app/project/content/locked" "$app/content/plugins"
-cat > "$app/project/zero.config.ts" <<'TS'
-import { defineConfig, collection, table, id, text, richText, slug } from 'zero';
+cat > "$app/project/first.config.ts" <<'TS'
+import { defineConfig, collection, table, id, text, richText, slug } from 'first';
 const posts = collection({ id: id(), title: text().notNull(), body: richText(), slug: slug({ source: 'title' }) }, {
   title: 'title', content: 'body', drafts: true, sync: 'content/posts/*.md',
   access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' },
@@ -37,15 +37,15 @@ title: Locked
 ---
 Original locked body.
 MD
-"$target/debug/zero" sources "$app/project" --out "$app/source-1"
-"$target/debug/zero" compile-sources "$app/source-1" "$app/compiled-1" "$app/source-1"
+"$target/debug/first" sources "$app/project" --out "$app/source-1"
+"$target/debug/first" compile-sources "$app/source-1" "$app/compiled-1" "$app/source-1"
 # Native build acquires the harness's pinned platform dependencies; execute the hosted plugins.
-"$target/debug/zero" build "$app/project" --quiet >/dev/null
-rsync -a "$app/project/zero/dist/wp-content/" "$app/content/"
+"$target/debug/first" build "$app/project" --quiet >/dev/null
+rsync -a "$app/project/first/dist/wp-content/" "$app/content/"
 rsync -a "$app/compiled-1/plugins/" "$app/content/plugins/"
 "$here/harness.sh" up --wp-content "$app/content" > "$app/harness.json"
-"$here/harness.sh" wp zero migrate > /dev/null
+"$here/harness.sh" wp first migrate > /dev/null
 # Recompile the same version through the publish pipeline, retaining the host-owned baseline.
-"$target/debug/zero" sources "$app/project" --out "$app/source-2"
-"$target/debug/zero" compile-sources "$app/source-2" "$app/compiled-2" "$app/source-2" "$app/compiled-1"
-python3 "$here/seed-proof.py" "$app" "$target/debug/zero" "$here/harness.sh"
+"$target/debug/first" sources "$app/project" --out "$app/source-2"
+"$target/debug/first" compile-sources "$app/source-2" "$app/compiled-2" "$app/source-2" "$app/compiled-1"
+python3 "$here/seed-proof.py" "$app" "$target/debug/first" "$here/harness.sh"

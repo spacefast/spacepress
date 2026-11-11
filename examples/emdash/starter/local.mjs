@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 const execute = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 export const repository = resolve(here, '../../..');
-export const zero = resolve(process.env.ZERO_BIN ?? join(repository, 'target/debug/zero'));
+export const first = resolve(process.env.FIRST_BIN ?? join(repository, 'target/debug/first'));
 export async function command(args) {
-  return (await execute(zero, args, { cwd: repository, timeout: 600000, maxBuffer: 8 * 1024 * 1024 })).stdout.trim();
+  return (await execute(first, args, { cwd: repository, timeout: 600000, maxBuffer: 8 * 1024 * 1024 })).stdout.trim();
 }
 export const wp = (project, ...args) => command(['wp', '--site', project, ...args]);
 async function freePort() {
@@ -24,15 +24,15 @@ async function freePort() {
 }
 export async function makeProject(mode) {
   if (!['blank', 'starter', 'blog'].includes(mode)) throw new Error('Unknown example.');
-  const project = await mkdtemp(join(tmpdir(), `zero-emdash-${mode}-`));
-  await cp(join(here, '..', mode, 'zero.config.ts'), join(project, 'zero.config.ts'));
+  const project = await mkdtemp(join(tmpdir(), `first-emdash-${mode}-`));
+  await cp(join(here, '..', mode, 'first.config.ts'), join(project, 'first.config.ts'));
   return project;
 }
 export async function install(project, mode) {
-  const owner = JSON.parse(await readFile(join(project, '.zero/dev/owner.json'), 'utf8'));
-  const expectedSite = join(project, '.zero/dev/wordpress');
-  if (owner.project !== await realpath(project) || owner.site !== expectedSite) throw new Error('Zero project ownership does not match.');
-  const theme = join(expectedSite, 'wp-content/themes/zero-publication');
+  const owner = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
+  const expectedSite = join(project, '.first/dev/wordpress');
+  if (owner.project !== await realpath(project) || owner.site !== expectedSite) throw new Error('First project ownership does not match.');
+  const theme = join(expectedSite, 'wp-content/themes/first-publication');
   await mkdir(theme, { recursive: true });
   await cp(join(here, 'theme'), theme, { recursive: true });
   await wp(project, 'eval-file', join(here, 'configure.php'), mode, expectedSite);
@@ -43,11 +43,11 @@ export async function start(project, mode) {
   await install(project, mode);
   const status = JSON.parse(await command(['dev', 'status', project]));
   if (status.isOnline !== true || typeof status.siteUrl !== 'string') throw new Error('Studio did not report an online WordPress site.');
-  return { project, site: join(project, '.zero/dev/wordpress'), base: status.siteUrl.replace(/\/$/, ''), mode };
+  return { project, site: join(project, '.first/dev/wordpress'), base: status.siteUrl.replace(/\/$/, ''), mode };
 }
 export async function cleanup(project) {
-  const owner = JSON.parse(await readFile(join(project, '.zero/dev/owner.json'), 'utf8'));
-  const site = join(project, '.zero/dev/wordpress');
+  const owner = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
+  const site = join(project, '.first/dev/wordpress');
   if (owner.project !== project || owner.site !== site) throw new Error('Refusing to clean another project.');
   await command(['dev', 'stop', project]);
   const status = JSON.parse(await command(['dev', 'status', project]));
@@ -69,14 +69,14 @@ export async function launch(mode) {
     const receipt = await start(project, mode);
     await writeFile(join(project, 'example.json'), JSON.stringify(receipt, null, 2) + '\n');
     console.log(JSON.stringify({ ...receipt, admin: `${receipt.base}/wp-admin/`,
-      initialLocalLogin: 'admin / zero-test-admin (disposable project only)',
+      initialLocalLogin: 'admin / first-test-admin (disposable project only)',
       cleanup: `node ${join(here, '..', mode, 'run.mjs')} cleanup ${project}` }, null, 2));
   } catch (error) {
     let owner;
-    try { owner = await readFile(join(project, '.zero/dev/owner.json')); }
+    try { owner = await readFile(join(project, '.first/dev/owner.json')); }
     catch (readError) { if (readError.code !== 'ENOENT') throw readError; }
     if (!owner) {
-      // Studio creation starts only after Zero has written its ownership marker.
+      // Studio creation starts only after First has written its ownership marker.
       await rm(project, { recursive: true });
       console.error(`Startup failed before site ownership; removed unused project ${project}.`);
     } else {

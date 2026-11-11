@@ -10,19 +10,19 @@
 //                       editor's REST save with SCF `acf` fields), exactly as wp-admin does.
 //   runJobs()           run every due background job (Action Scheduler's queue runner, as cron would).
 //   runRetries()        run every failed job's pending retry now instead of after its backoff.
-//   sync(dir)           run `zero sync` for posts between `dir` and the site, as the editor.
+//   sync(dir)           run `first sync` for posts between `dir` and the site, as the editor.
 //   deliveries          the signed webhooks the site's moderation tool (project.ts `receiver`) got.
 //   promoteDue(at)      publish the post scheduled for `at` (its cron event); may return the client to read with.
 //   upgrade()           rebuild the app with project.ts's additive `upgrade`, install it, prove the
 //                       migration ran, and return clients for the new build.
-//   signIn(email, pw)   a reader signs in (the zero-identity screens' authorization-code flow,
+//   signIn(email, pw)   a reader signs in (the first-identity screens' authorization-code flow,
 //                       finished by the client's own handleCallback()) and gets a client holding that session.
 
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ZeroError, type Client, type PostInsert } from "../../examples/site/zero/_generated/client/index.ts";
+import { FirstError, type Client, type PostInsert } from "../../examples/site/first/_generated/client/index.ts";
 import { pngCentre, splitPng, type Delivery } from "./project.ts";
 
 export type Role = "anonymous" | "subscriber" | "author" | "editor" | "admin";
@@ -67,19 +67,19 @@ interface Steps {
 const PNG_1X1 = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
 
 /**
- * The ZeroError `fn` throws; fails when it resolves or throws anything else. Matched by name, since
- * the upgraded build's client is a second copy of the module with its own ZeroError class.
+ * The FirstError `fn` throws; fails when it resolves or throws anything else. Matched by name, since
+ * the upgraded build's client is a second copy of the module with its own FirstError class.
  */
-export async function rejects(fn: () => Promise<unknown>, expect: { status: number; code: string; pointer?: string }): Promise<ZeroError> {
+export async function rejects(fn: () => Promise<unknown>, expect: { status: number; code: string; pointer?: string }): Promise<FirstError> {
   let thrown: unknown;
   try {
     await fn();
   } catch (e) {
     thrown = e;
   }
-  assert.ok(thrown instanceof Error && thrown.name === ZeroError.name, `expected ZeroError ${expect.status} ${expect.code}, got ${String(thrown)}`);
+  assert.ok(thrown instanceof Error && thrown.name === FirstError.name, `expected FirstError ${expect.status} ${expect.code}, got ${String(thrown)}`);
   assert.ok(thrown instanceof Error && "status" in thrown && "code" in thrown && "detail" in thrown);
-  const problem = thrown as ZeroError;
+  const problem = thrown as FirstError;
   assert.deepEqual({ status: problem.status, code: problem.code, pointer: problem.pointer }, { pointer: undefined, ...expect }, problem.detail);
   return problem;
 }
@@ -222,7 +222,7 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
   });
 
   await t.test("a writer drafts in Markdown: posts sync to files and an edit syncs back", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "zero-system-sync-"));
+    const dir = mkdtempSync(join(tmpdir(), "first-system-sync-"));
     try {
       const pulled = env.sync(dir);
       assert.deepEqual([pulled.conflicts, pulled.refused], [[], []], "every post is representable as Markdown");
@@ -412,7 +412,7 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
   });
 
   await t.test("editors update the site settings; others can't", async () => {
-    assert.deepEqual(await anon.globals.settings.get(), { siteTitle: "The Zero Review", tagline: null, commentsOpen: true, social: null });
+    assert.deepEqual(await anon.globals.settings.get(), { siteTitle: "The First Review", tagline: null, commentsOpen: true, social: null });
     await rejects(() => author.globals.settings.update({ tagline: "x" }), { status: 403, code: "forbidden" });
     tagline = `Notes ${run}`;
     const updated = await editor.globals.settings.update({ tagline, social: [{ label: "Feed", href: "https://example.com/feed" }] });

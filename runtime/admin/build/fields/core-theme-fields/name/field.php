@@ -2,12 +2,12 @@
 /**
  * Name field definition for core theme fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Theme', 'zero-admin' ),
+	'label'              => __( 'Theme', 'first-admin' ),
 	'enableHiding'       => false,
 	'enableGlobalSearch' => true,
 	'filterBy'           => false,

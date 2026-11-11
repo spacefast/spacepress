@@ -1,7 +1,7 @@
 {
-	"name": "@zero-admin/admin-toolkit",
+	"name": "@first-admin/admin-toolkit",
 	"version": "1.0.0",
-	"description": "Shared components and utilities for Zero Admin",
+	"description": "Shared components and utilities for First Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -11,10 +11,10 @@
 		"build"
 	],
 	"dependencies": {
-		"@zero-admin/private-apis": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/theme": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/private-apis": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/theme": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/a11y": "catalog:",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/components": "catalog:",

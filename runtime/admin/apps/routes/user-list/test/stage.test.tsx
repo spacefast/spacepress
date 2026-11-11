@@ -14,7 +14,7 @@ jest.mock( '@wordpress/route', () => ( {
 	Link: ( { children }: { children: React.ReactNode } ) => children,
 } ) );
 
-jest.mock( '@zero-admin/views', () => ( {
+jest.mock( '@first-admin/views', () => ( {
 	DataViews: ( { tabs }: { tabs?: React.ReactNode } ) => (
 		<div>
 			{ tabs }
@@ -44,11 +44,11 @@ jest.mock( '@zero-admin/views', () => ( {
 	} ),
 } ) );
 
-jest.mock( '@zero-admin/core-data-next', () => ( {
+jest.mock( '@first-admin/core-data-next', () => ( {
 	useFieldCollections: () => [],
 } ) );
 
-jest.mock( '@zero-admin/admin-toolkit', () => ( {
+jest.mock( '@first-admin/admin-toolkit', () => ( {
 	Page: ( { children }: { children: React.ReactNode } ) => (
 		<div>{ children }</div>
 	),
@@ -82,7 +82,7 @@ jest.mock( '@wordpress/components', () => ( {
 	),
 } ) );
 
-jest.mock( '@zero-admin/telemetry', () => ( {
+jest.mock( '@first-admin/telemetry', () => ( {
 	normalizeLabel: ( value: string ) => value,
 	serializeFilters: () => '',
 	usePageView: jest.fn(),

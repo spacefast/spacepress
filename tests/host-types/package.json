@@ -1,7 +1,7 @@
 {
-  "name": "zero-host-types",
+  "name": "first-host-types",
   "private": true,
-  "description": "The standard Node declarations that type-check fetch, crypto, process and node:crypto in Zero handlers",
+  "description": "The standard Node declarations that type-check fetch, crypto, process and node:crypto in First handlers",
   "devDependencies": {
     "@types/node": "22.19.17"
   }

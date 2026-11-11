@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
 
 /**
  * @author Samuel Roze <samuel.roze@gmail.com>

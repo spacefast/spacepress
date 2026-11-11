@@ -1,6 +1,6 @@
 import clsx from 'clsx';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
 import { __experimentalHeading as Heading } from '@wordpress/components';
 import { SidebarToggleSlot } from './sidebar-toggle-slot';
 
@@ -24,14 +24,14 @@ export default function Header( {
 	return (
 		<Stack
 			direction="column"
-			className={ clsx( 'zero-admin-page__header', {
+			className={ clsx( 'first-admin-page__header', {
 				'has-tabs': tabs,
 			} ) }
 			render={ <header /> }
 		>
 			<Stack
 				direction="row"
-				className="zero-admin-page__header-title"
+				className="first-admin-page__header-title"
 				justify="space-between"
 				gap={ 2 }
 				align="center"
@@ -40,7 +40,7 @@ export default function Header( {
 					{ showSidebarToggle && (
 						<SidebarToggleSlot
 							bubblesVirtually
-							className="zero-admin-page__sidebar-toggle-slot"
+							className="first-admin-page__sidebar-toggle-slot"
 						/>
 					) }
 					{ title && (
@@ -61,7 +61,7 @@ export default function Header( {
 				</Stack>
 			</Stack>
 			{ subTitle && (
-				<p className="zero-admin-page__header-subtitle">{ subTitle }</p>
+				<p className="first-admin-page__header-subtitle">{ subTitle }</p>
 			) }
 			{ tabs }
 		</Stack>

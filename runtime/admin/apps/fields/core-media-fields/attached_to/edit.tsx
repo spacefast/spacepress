@@ -7,7 +7,7 @@ import { __ } from '@wordpress/i18n';
 import { useState, createInterpolateElement } from '@wordpress/element';
 import { debounce } from '@wordpress/compose';
 import { useSelect } from '@wordpress/data';
-import type { DataFormControlProps } from '@zero-admin/dataviews';
+import type { DataFormControlProps } from '@first-admin/dataviews';
 import type { MediaItem } from '../types';
 import { getRenderedContent } from '../utils/get-rendered-content';
 
@@ -144,7 +144,7 @@ export default function MediaAttachedToEdit( {
 		? createInterpolateElement(
 				__(
 					'Search for a post or page to attach this media to or <button>detach current</button>.',
-					'zero-admin'
+					'first-admin'
 				),
 				{
 					button: (
@@ -159,7 +159,7 @@ export default function MediaAttachedToEdit( {
 		  )
 		: __(
 				'Search for a post or page to attach this media to.',
-				'zero-admin'
+				'first-admin'
 		  );
 
 	return (
@@ -168,7 +168,7 @@ export default function MediaAttachedToEdit( {
 			__nextHasNoMarginBottom
 			__next40pxDefaultSize
 			isLoading={ isLoading }
-			label={ __( 'Attached to', 'zero-admin' ) }
+			label={ __( 'Attached to', 'first-admin' ) }
 			help={ help }
 			value={ value }
 			options={ options }

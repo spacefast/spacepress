@@ -1,11 +1,11 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
 
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 
 /**
  * @phpstan-type ValueType = DoctrineAnnotation|IdentifierTypeNode|DoctrineArray|ConstExprNode

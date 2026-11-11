@@ -14,7 +14,7 @@ async function action(name: string, input: object): Promise<unknown> {
 
 test("migrated ctx.crypto calls give 0.8's digests and MACs, checked against Node", async () => {
   // Multi-byte UTF-8, so the digest is proven over bytes, not code units.
-  const text = "zero 0.8 → v2 ✓ 😀";
+  const text = "first 0.8 → v2 ✓ 😀";
   assert.equal(await action("digest", { text }), createHash("sha256").update(text, "utf8").digest("hex"));
   const payload = '{"event":"paid","amount":1900}';
   // WEBHOOK_SECRET is a wp-config constant with surrounding spaces; 0.8 trimmed named keys.

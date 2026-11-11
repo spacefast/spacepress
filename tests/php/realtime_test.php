@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 /*
  * Change notices on WordPress, in-process (tests/php/wp.php): one batch per committed transaction,
- * ids only, nothing on rollback, the zero_realtime_changes action, a failing publisher that never
+ * ids only, nothing on rollback, the first_realtime_changes action, a failing publisher that never
  * fails the write, and the shared-room projection that drops ids a visitor could not list.
  */
 
-use Zero\Realtime\Module as Realtime;
-use Zero\Realtime\Publisher;
+use First\Realtime\Module as Realtime;
+use First\Realtime\Publisher;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -86,19 +86,19 @@ eq('past MAX_IDS a collection is listed without ids', $sent[0]['changes'] ?? nul
 // lists its collection without ids, and a transaction over MAX_COLLECTIONS is several notices.
 $sent = [];
 $db->transaction(static function () use ($db): void {
-    \Zero\Realtime\Module::written('create', 'comments', ['id' => str_repeat('k', Realtime::MAX_ID_LENGTH + 1)], null);
+    \First\Realtime\Module::written('create', 'comments', ['id' => str_repeat('k', Realtime::MAX_ID_LENGTH + 1)], null);
 });
 eq('an over-long id lists its collection without ids', $sent[0]['changes'] ?? null, [['collection' => 'comments', 'ops' => ['create'], 'ids' => null]]);
 $wide = $schema;
 foreach (range(1, Realtime::MAX_COLLECTIONS + 1) as $n) {
     $wide['collections']["c$n"] = ['key' => "c$n", 'primaryKey' => 'id'] + $schema['collections']['comments'];
 }
-$wideDb = new \Zero\Db($db->store(), new \Zero\Schema($wide), $db->media());
+$wideDb = new \First\Db($db->store(), new \First\Schema($wide), $db->media());
 $sent = [];
 $wideDb->transaction(static function () use ($wideDb): void {
     $wideDb->current(static function (): void {
         foreach (range(1, Realtime::MAX_COLLECTIONS + 1) as $n) {
-            \Zero\Realtime\Module::written('create', "c$n", ['id' => $n], null);
+            \First\Realtime\Module::written('create', "c$n", ['id' => $n], null);
         }
     });
 });
@@ -112,9 +112,9 @@ add_action(Realtime::ACTION, static function (array $notice) use (&$actions): vo
 });
 $sent = [];
 $db->insert('comments', ['postId' => $post['id'], 'name' => 'hooked', 'body' => 'y']);
-check('zero_realtime_changes fires with the published notice', count($actions) === 1 && $actions[0] === $sent[0], ['actions' => $actions, 'sent' => $sent]);
+check('first_realtime_changes fires with the published notice', count($actions) === 1 && $actions[0] === $sent[0], ['actions' => $actions, 'sent' => $sent]);
 
-// A throwing zero_realtime_changes listener is logged, never thrown into the committed request.
+// A throwing first_realtime_changes listener is logged, never thrown into the committed request.
 $sent = [];
 $throwing = static function (): void {
     throw new \RuntimeException('listener down');
@@ -129,17 +129,17 @@ eq('publishers still run after a throwing listener', count($sent), 1);
 // WordPress posts (WP cron promotes them, covered in tests/wp/rest.test.ts); a table-backed
 // drafts collection is promoted by Db::promoteDue.
 $status = ['type' => 'select', 'options' => ['draft', 'published', 'scheduled'], 'notNull' => true, 'default' => 'draft', 'system' => true];
-$notes = new \Zero\Schema(['version' => 3, 'runtime' => \Zero\Schema::SERIES, 'collections' => ['notes' => [
-    'key' => 'notes', 'primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'zero_rt_notes',
+$notes = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => ['notes' => [
+    'key' => 'notes', 'primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'first_rt_notes',
     'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]],
 ]]]);
-$wp->exec('CREATE TABLE {prefix}zero_rt_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
-$wp->exec("INSERT INTO {prefix}zero_rt_notes (`status`, `publishedAt`) VALUES ('scheduled', '2026-01-02T00:00:00.000Z')");
-$notesDb = new \Zero\Db(\Zero\Wp\CompositeStore::create($notes, $db->store()->db), $notes, $db->media());
+$wp->exec('CREATE TABLE {prefix}first_rt_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+$wp->exec("INSERT INTO {prefix}first_rt_notes (`status`, `publishedAt`) VALUES ('scheduled', '2026-01-02T00:00:00.000Z')");
+$notesDb = new \First\Db(\First\Wp\CompositeStore::create($notes, $db->store()->db), $notes, $db->media());
 $sent = [];
-putenv('ZERO_NOW=2026-01-03T00:00:00.000Z');
+putenv('FIRST_NOW=2026-01-03T00:00:00.000Z');
 $promotedIds = $notesDb->transaction(static fn () => $notesDb->promoteDue());
-putenv('ZERO_NOW');
+putenv('FIRST_NOW');
 eq('the scheduled note was promoted', array_map(static fn ($ids) => array_map('intval', $ids), $promotedIds), ['notes' => [1]]);
 eq('promotion announces each promoted row as an update', array_map(static fn ($c) => [$c['collection'], $c['ops'], array_map('intval', $c['ids'] ?? [])], $sent[0]['changes'] ?? []), [['notes', ['update'], [1]]]);
 
@@ -168,8 +168,8 @@ eq('later publishers still receive the notice', count($after), 1);
 
 // A write to a collection the schema doesn't name (a system table) is not announced and never fails.
 $after = [];
-\Zero\Realtime\Module::written('create', '__zero_media', ['id' => 1], null);
-\Zero\Realtime\Module::flush();
+\First\Realtime\Module::written('create', '__first_media', ['id' => 1], null);
+\First\Realtime\Module::flush();
 eq('system collections are skipped without an error', $after, []);
 
 // Shared rooms: ids only where any visitor may list the collection.

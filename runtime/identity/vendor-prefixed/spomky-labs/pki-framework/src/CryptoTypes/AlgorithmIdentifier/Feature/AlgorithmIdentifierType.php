@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
 
 /**
  * Base interface for algorithm identifiers.

@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 /**
  * A helper providing autocompletion for available AbstractNormalizer options.
@@ -110,7 +110,7 @@ abstract class AbstractNormalizerContextBuilder implements ContextBuilderInterfa
      */
     public function withDefaultContructorArguments(?array $defaultContructorArguments): static
     {
-        zero_identity_vendor_trigger_deprecation('symfony/serializer', '7.1', 'The "%s()" method is deprecated, use "withDefaultConstructorArguments(?array $defaultConstructorArguments)" instead.', __METHOD__);
+        first_identity_vendor_trigger_deprecation('symfony/serializer', '7.1', 'The "%s()" method is deprecated, use "withDefaultConstructorArguments(?array $defaultConstructorArguments)" instead.', __METHOD__);
 
         return self::withDefaultConstructorArguments($defaultContructorArguments);
     }

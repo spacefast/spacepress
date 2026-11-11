@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag;
+namespace First\Identity\Vendor\CBOR\Tag;
 
-use Zero\Identity\Vendor\CBOR\ByteStringObject;
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use Zero\Identity\Vendor\CBOR\ListObject;
-use Zero\Identity\Vendor\CBOR\MapObject;
-use Zero\Identity\Vendor\CBOR\OtherObject\NullObject;
-use Zero\Identity\Vendor\CBOR\Tag;
+use First\Identity\Vendor\CBOR\ByteStringObject;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use First\Identity\Vendor\CBOR\ListObject;
+use First\Identity\Vendor\CBOR\MapObject;
+use First\Identity\Vendor\CBOR\OtherObject\NullObject;
+use First\Identity\Vendor\CBOR\Tag;
 
 /**
  * Tag 16: COSE_Encrypt0, a single recipient encrypted message -- the recipient is known out of band, so the

@@ -1,7 +1,7 @@
-import { entityEditorPath } from '@zero-admin/schema';
+import { entityEditorPath } from '@first-admin/schema';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, privateApis as routePrivateApis } from '@wordpress/route';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 
 const { useRouter, useCanGoBack } = unlock( routePrivateApis );
 

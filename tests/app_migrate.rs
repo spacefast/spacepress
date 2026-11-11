@@ -9,7 +9,7 @@ fn fixture(name: &str) -> PathBuf {
         .join("tests/fixtures/app-migrate")
         .join(name)
 }
-/// `zero migrate app` with `flags`; without `--space` or `--unset`, the tables are `--fresh`.
+/// `first migrate app` with `flags`; without `--space` or `--unset`, the tables are `--fresh`.
 fn migrate(input: &Path, out: &Path, flags: &[&str]) -> (bool, Value) {
     let mode: &[&str] = if ["--space", "--unset", "--fresh"].iter().any(|f| flags.contains(f)) {
         &[]
@@ -17,7 +17,7 @@ fn migrate(input: &Path, out: &Path, flags: &[&str]) -> (bool, Value) {
         &["--fresh"]
     };
     let flags: Vec<&str> = flags.iter().copied().filter(|f| *f != "--unset").collect();
-    let output = Command::new(env!("CARGO_BIN_EXE_zero"))
+    let output = Command::new(env!("CARGO_BIN_EXE_first"))
         .args(["migrate", "app", "--from", "zero-0.8"])
         .arg(input)
         .arg("--out")
@@ -31,7 +31,7 @@ fn migrate(input: &Path, out: &Path, flags: &[&str]) -> (bool, Value) {
     (output.status.success(), report)
 }
 fn build(project: &Path) {
-    let output = Command::new(env!("CARGO_BIN_EXE_zero"))
+    let output = Command::new(env!("CARGO_BIN_EXE_first"))
         .arg("build")
         .arg(project)
         .arg("--quiet")
@@ -39,13 +39,13 @@ fn build(project: &Path) {
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let types = root.join("types/zero/index.d.ts");
+    let types = root.join("types/first/index.d.ts");
     // fetch, process and node:crypto come from the standard declarations (tests/host-types).
     let node = root.join("tests/host-types/node_modules/@types");
     assert!(node.join("node").is_dir(), "run: npm ci --prefix tests/host-types");
     std::fs::write(project.join("tsconfig.json"), serde_json::json!({
-        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"zero":[types]}},
-        "include":["zero.config.ts","zero/_generated/db.d.ts","zero/server/**/*.ts","zero/shared/**/*.ts"]
+        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"first":[types]}},
+        "include":["first.config.ts","first/_generated/db.d.ts","first/server/**/*.ts","first/shared/**/*.ts"]
     }).to_string()).unwrap();
     let checked = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .arg("-p")
@@ -85,10 +85,10 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
             .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped"),
         "{written:#}"
     );
-    let config = std::fs::read_to_string(out.join("zero/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("first/server/index.ts")).unwrap();
     assert!(!config.contains("invalidate"), "{config}");
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("first/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(snapshot["tables"]["tasks"]["columns"]["id"]["autoIncrement"], true);
     assert_eq!(
         snapshot["tables"]["tasks"]["existingTable"],
@@ -97,7 +97,7 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     build(&out);
     // The committed adoption snapshot is exactly what build accepts, without a second migration.
     assert_eq!(
-        std::fs::read_dir(out.join("zero/_generated/migrations"))
+        std::fs::read_dir(out.join("first/_generated/migrations"))
             .unwrap()
             .count(),
         2
@@ -109,11 +109,11 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     let mut changed = snapshot;
     changed["tables"]["tasks"]["existingTable"] = "some_other_table".into();
     std::fs::write(
-        out.join("zero/_generated/migrations/snapshot.json"),
+        out.join("first/_generated/migrations/snapshot.json"),
         changed.to_string(),
     )
     .unwrap();
-    let check = Command::new(env!("CARGO_BIN_EXE_zero"))
+    let check = Command::new(env!("CARGO_BIN_EXE_first"))
         .arg("check")
         .arg(&out)
         .output()
@@ -151,16 +151,16 @@ fn fresh_tables_for_a_new_space() {
         report["adoption_sql"]
             .as_str()
             .unwrap()
-            .contains("CREATE TABLE `{prefix}zero_tasks`")
+            .contains("CREATE TABLE `{prefix}first_tasks`")
     );
-    let config = std::fs::read_to_string(out.join("zero/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("first/server/index.ts")).unwrap();
     assert!(!config.contains("existingTable"), "{config}");
-    assert!(out.join("zero/_generated/migrations/0001_init.sql").is_file());
-    assert!(!out.join("zero/_generated/migrations/0001_adopt.sql").exists());
+    assert!(out.join("first/_generated/migrations/0001_init.sql").is_file());
+    assert!(!out.join("first/_generated/migrations/0001_adopt.sql").exists());
     build(&out);
     // The committed init migration is what build expects: no second migration.
     assert_eq!(
-        std::fs::read_dir(out.join("zero/_generated/migrations"))
+        std::fs::read_dir(out.join("first/_generated/migrations"))
             .unwrap()
             .count(),
         2
@@ -169,7 +169,7 @@ fn fresh_tables_for_a_new_space() {
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("zero/dist/wp-content"))
+        .arg(out.join("first/dist/wp-content"))
         .arg(
             r#"$r = fn ($n, $in) => $wp->call("POST", "/actions/$n", (object) $in, "admin")[1];
                $added = $r("add", ["input" => ["title" => "  Hello  "]]);
@@ -193,10 +193,10 @@ fn fresh_tables_for_a_new_space() {
     );
     assert!(ok);
     assert_eq!(adopted["tables"], "adopt");
-    let both = Command::new(env!("CARGO_BIN_EXE_zero"))
+    let both = Command::new(env!("CARGO_BIN_EXE_first"))
         .args(["migrate", "app", "--from", "zero-0.8"])
         .arg(fixture("board"))
-        .args(["--out", "/nonexistent-zero-out", "--fresh", "--space", "s"])
+        .args(["--out", "/nonexistent-first-out", "--fresh", "--space", "s"])
         .output()
         .unwrap();
     assert_eq!(both.status.code(), Some(2));
@@ -525,13 +525,13 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // access path patterns, crons (no CRON_SECRET on v2) and sell (its product file and paid
     // assets would be swept into public/) don't apply the same way: refused.
     overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
-    // On v2 the app's data URLs are /wp-json/zero/v1/*, which nothing reserves from redirects: a
+    // On v2 the app's data URLs are /wp-json/first/v1/*, which nothing reserves from redirects: a
     // rule whose source can reach them is refused (here a catch-all host move).
     overlay["redirects"] = serde_json::json!([
         { "source": "/old", "destination": "/new", "status": 301 },
         { "source": "/*", "destination": "https://new.example/:splat", "status": 301 }
     ]);
-    // Path rules don't survive the move: the app's data URLs move to /wp-json/zero/v1/*.
+    // Path rules don't survive the move: the app's data URLs move to /wp-json/first/v1/*.
     overlay["firewall"] =
         serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
     overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
@@ -754,13 +754,13 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
     );
     build(&out);
     // The candidate adopts existing 0.8 tables; run it on a fresh site with its own.
-    let source = std::fs::read_to_string(out.join("zero/server/index.ts")).unwrap();
+    let source = std::fs::read_to_string(out.join("first/server/index.ts")).unwrap();
     let fresh = regex::Regex::new(r#"existingTable: "[^"]*", "#)
         .unwrap()
         .replace_all(&source, "");
-    std::fs::write(out.join("zero/server/index.ts"), fresh.as_ref()).unwrap();
-    std::fs::remove_dir_all(out.join("zero/_generated/migrations")).unwrap();
-    let built = Command::new(env!("CARGO_BIN_EXE_zero"))
+    std::fs::write(out.join("first/server/index.ts"), fresh.as_ref()).unwrap();
+    std::fs::remove_dir_all(out.join("first/_generated/migrations")).unwrap();
+    let built = Command::new(env!("CARGO_BIN_EXE_first"))
         .arg("build")
         .arg(&out)
         .arg("--quiet")
@@ -771,7 +771,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("zero/dist/wp-content"))
+        .arg(out.join("first/dist/wp-content"))
         .arg(
             r#"putenv("NOTE_PREFIX=hi ");
                putenv("NOTE_KEY=k1");
@@ -782,7 +782,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
                $denied = $post("Bearer nope");
                // 0.8's request.url: https, the host as served, share-link secrets redacted.
                $parse = fn ($body) => json_decode($app->serveRoute($app->matchRoute("POST", "/api/parse"), "POST", "/api/parse", "", $body, [], null, "https://notes.example/api/parse")[2], true);
-               $where = json_decode($app->serveRoute($app->matchRoute("GET", "/api/where"), "GET", "/api/where", "t=1", "", [], null, \Zero\Wp\HttpRoutes::url("Notes.Example:8080", "/api/where?__=s&t=1"))[2], true);
+               $where = json_decode($app->serveRoute($app->matchRoute("GET", "/api/where"), "GET", "/api/where", "t=1", "", [], null, \First\Wp\HttpRoutes::url("Notes.Example:8080", "/api/where?__=s&t=1"))[2], true);
                $saved = $post("Bearer k1");
                echo json_encode([
                  "denied" => $denied, "saved" => $saved, "where" => $where, "parsed" => $parse("{\"a\":1}"), "unparsed" => $parse("{"),
@@ -827,29 +827,29 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         &["--space", "spc_migrate_test", "--users"],
     );
     assert!(ok, "{report:#}");
-    let source = std::fs::read_to_string(shared.join("zero/server/index.ts")).unwrap();
+    let source = std::fs::read_to_string(shared.join("first/server/index.ts")).unwrap();
     std::fs::write(
-        shared.join("zero/server/index.ts"),
+        shared.join("first/server/index.ts"),
         regex::Regex::new(r#"existingTable: "[^"]*", "#)
             .unwrap()
             .replace_all(&source, "")
             .as_ref(),
     )
     .unwrap();
-    std::fs::remove_dir_all(shared.join("zero/_generated/migrations")).unwrap();
+    std::fs::remove_dir_all(shared.join("first/_generated/migrations")).unwrap();
     build(&shared);
     let run = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(shared.join("zero/dist/wp-content"))
+        .arg(shared.join("first/dist/wp-content"))
         .arg(
             r#"$r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as);
                echo json_encode([
                  "guestAdd" => $r("add", ["body" => "x"], null)[0],
                  "guestWhoami" => $r("whoami", [], null)[1],
                  "memberAdd" => $r("add", ["body" => "y"], "ada")[1],
-                 "rows" => $wp->scalar("SELECT COUNT(*) FROM {prefix}zero_notes"),
+                 "rows" => $wp->scalar("SELECT COUNT(*) FROM {prefix}first_notes"),
                  "id" => $wp->userId("ada"),
                ]), "\n";"#,
         )
@@ -1056,7 +1056,7 @@ fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("first/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(snapshot["tables"]["posts"]["editor"], true);
     assert!(
         report["entries"]
@@ -1094,7 +1094,7 @@ fn native_post_declarations_and_space_users_compile_together() {
     let (ok, report) = migrate(&root, &out, &["--users"]);
     assert!(ok, "{report:#}");
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("first/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     let keys: Vec<_> = snapshot["tables"].as_object().unwrap().keys().cloned().collect();
     assert!(keys.contains(&"posts".to_string()), "{keys:?}");
     assert!(keys.contains(&"notes".to_string()), "{keys:?}");
@@ -1205,7 +1205,7 @@ fn space_user_subjects_back_owner_scoped_handlers() {
             .any(|e| e["pointer"] == "/auth" && e["outcome"] == "review")
     );
     let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("zero/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(out.join("first/_generated/migrations/snapshot.json")).unwrap()).unwrap();
     assert_eq!(
         snapshot["tables"]["members"]["columns"]["spacefastSubject"]["type"], "text",
         "{:#}",
@@ -1401,7 +1401,7 @@ fn the_unused_favicon_option_is_dropped_with_a_review_entry() {
         .find(|e| e["pointer"] == "/favicon")
         .expect("favicon entry");
     assert_eq!(entry["outcome"], "review");
-    let config = std::fs::read_to_string(out.join("zero/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("first/server/index.ts")).unwrap();
     assert!(!config.contains("icon.png"), "{config}");
     build(&out);
 }
@@ -1426,13 +1426,13 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
         "pages/pricing/page.tsx",
         "pages/docs/page.tsx",
         "pages/layout.tsx",
-        "zero/shared/plans.ts",
+        "first/shared/plans.ts",
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
     let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
     assert!(
-        pricing.contains("import { plans } from '../../zero/shared/plans';"),
+        pricing.contains("import { plans } from '../../first/shared/plans';"),
         "a single-quoted relative import moves with the page and into the Zero root: {pricing}"
     );
     // Only parsed import declarations move, side-effect imports included; a string, a comment or
@@ -1462,13 +1462,13 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let (ok, report) = migrate(&site, &moved, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
     let about = std::fs::read_to_string(moved.join("pages/about/page.tsx")).unwrap();
-    assert!(about.contains("import '../../zero/shared/setup';"), "{about}");
+    assert!(about.contains("import '../../first/shared/setup';"), "{about}");
     // A re-export moves with its module too.
     assert!(
-        about.contains("export { metadata } from '../../zero/shared/meta';"),
+        about.contains("export { metadata } from '../../first/shared/meta';"),
         "{about}"
     );
-    assert!(moved.join("zero/shared/setup.ts").is_file());
+    assert!(moved.join("first/shared/setup.ts").is_file());
     for decoy in decoys {
         assert!(about.contains(decoy), "rewrote non-import text {decoy:?}: {about}");
     }
@@ -1501,7 +1501,7 @@ fn the_configured_server_entry_is_read_from_sf_jsonc() {
     std::fs::create_dir_all(root.join("server")).unwrap();
     std::fs::write(
         root.join("sf.jsonc"),
-        "{\n  // the 0.8 runtime block\n  \"runtime\": { \"kind\": \"zero\", \"server\": \"server/app.ts\", },\n}\n",
+        "{\n  // the 0.8 runtime block\n  \"runtime\": { \"kind\": \"first\", \"server\": \"server/app.ts\", },\n}\n",
     )
     .unwrap();
     std::fs::write(
@@ -1512,8 +1512,8 @@ fn the_configured_server_entry_is_read_from_sf_jsonc() {
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    assert!(out.join("zero/server/index.ts").is_file());
-    assert!(!out.join("zero/server/app.ts").exists());
+    assert!(out.join("first/server/index.ts").is_file());
+    assert!(!out.join("first/server/app.ts").exists());
     build(&out);
     // JSX in a server entry is ImageResponse; v2 server code has no renderer for it.
     let (ok, refused) = migrate(&corpus("compile-notes"), &temp.path().join("notes"), &["--dry-run"]);
@@ -1563,7 +1563,7 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     std::fs::remove_file(root.join("pages/keys.tsx")).unwrap();
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    let config = std::fs::read_to_string(out.join("zero/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("first/server/index.ts")).unwrap();
     // RouteQuery keeps URLSearchParams names byte for byte, so `user.id` passes through unchanged.
     assert!(config.contains("req.query.get(\"user.id\")"), "{config}");
     assert!(
@@ -1581,26 +1581,26 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
 
 /// Runs each named action of a built app in PHP with `inputs`, under `env`, and returns the results.
 fn run_actions(project: &Path, env: &[(&str, &str)], calls: &Value) -> Value {
-    let content = project.join("zero/dist/wp-content/plugins");
+    let content = project.join("first/dist/wp-content/plugins");
     let app = std::fs::read_dir(&content)
         .unwrap()
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("zero-app-"))
+        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("first-app-"))
         .unwrap()
-        .join("zero/app");
+        .join("first/app");
     let script = r#"
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $out = [];
 foreach (json_decode(file_get_contents('php://stdin'), true) as [$name, $input, $env]) {
-  \Zero\Env::isolate($env);
-  $fn = '\\ZeroApp\\' . $schema['actions'][$name]['handler'];
-  try { $out[] = ['data' => $fn(\Zero\Seam::toJs($input, ['type' => 'json']), \Zero\Seam::ctx(['user' => null]))]; }
-  catch (\Zero\HttpError $e) { $out[] = ['error' => $e->errorCode]; }
+  \First\Env::isolate($env);
+  $fn = '\\FirstApp\\' . $schema['actions'][$name]['handler'];
+  try { $out[] = ['data' => $fn(\First\Seam::toJs($input, ['type' => 'json']), \First\Seam::ctx(['user' => null]))]; }
+  catch (\First\HttpError $e) { $out[] = ['error' => $e->errorCode]; }
 }
-echo \Zero\Js::jsonStringify($out);
+echo \First\Js::jsonStringify($out);
 "#;
     let env: serde_json::Map<String, Value> = env.iter().map(|(k, v)| (k.to_string(), Value::from(*v))).collect();
     let calls: Vec<Value> = calls
@@ -1617,7 +1617,7 @@ echo \Zero\Js::jsonStringify($out);
         .collect();
     let mut child = Command::new("php")
         .args(["-r", script])
-        .arg(content.join("zero-runtime/zero/bootstrap.php"))
+        .arg(content.join("first-runtime/first/bootstrap.php"))
         .arg(app)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -1800,7 +1800,7 @@ fn ctx_email_send_maps_to_mail_send_and_queries_still_refuse() {
 
 /// A run from a stored 0.8 finalize payload (`--manifest`), as a production census drives it.
 fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool, Value) {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_zero"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_first"));
     command
         .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
         .arg(manifest);
@@ -1893,7 +1893,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     let server_only_path = temp.path().join("server-only.json");
     std::fs::write(&server_only_path, server_only.to_string()).unwrap();
     let out = temp.path().join("b2");
-    let output = Command::new(env!("CARGO_BIN_EXE_zero"))
+    let output = Command::new(env!("CARGO_BIN_EXE_first"))
         .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
         .arg(&server_only_path)
         .arg(&source)
@@ -1922,7 +1922,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     std::fs::remove_file(source.join("sf.jsonc")).unwrap();
     std::fs::remove_file(source.join("theme.json")).unwrap();
     // Without them the server converts, and the later page still isn't part of it.
-    let output = Command::new(env!("CARGO_BIN_EXE_zero"))
+    let output = Command::new(env!("CARGO_BIN_EXE_first"))
         .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
         .arg(&server_only_path)
         .arg(&source)
@@ -1932,7 +1932,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
-    assert!(out.join("zero/server/index.ts").is_file());
+    assert!(out.join("first/server/index.ts").is_file());
     assert!(!out.join("pages").exists(), "an unrecorded page reached the candidate");
     std::fs::remove_dir_all(source.join("pages")).unwrap();
 
@@ -2042,7 +2042,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     assert_eq!(report["errors"][0]["pointer"], "/artifact/format");
 }
 
-/// Language constructs live 0.8 apps use (zero#138) convert and build. Each construct also has a
+/// Language constructs live 0.8 apps use (first#138) convert and build. Each construct also has a
 /// Node/PHP differential corpus in tests/differential/language.
 #[test]
 fn language_constructs_convert_and_build() {
@@ -2091,7 +2091,7 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("zero/dist/wp-content"))
+        .arg(out.join("first/dist/wp-content"))
         .arg(r#"$r = []; foreach ($arg as [$n, $in]) { $r[] = json_decode($app->cli(['action', $n, json_encode((object) $in)])[1], true); } echo json_encode($r), "\n";"#)
         .arg(calls.to_string())
         .output()
@@ -2178,7 +2178,7 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
     }
 }
 
-/// A 0.8 client app without pages converts: actions and tables into zero.config.ts, the client
+/// A 0.8 client app without pages converts: actions and tables into first.config.ts, the client
 /// into public/, and the candidate checks with no diagnostics.
 #[test]
 fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
@@ -2191,11 +2191,11 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     );
     assert!(ok, "{report:#}");
     for file in [
-        "zero.config.ts",
+        "first.config.ts",
         "public/index.html",
-        "public/zero/main.js",
-        "public/zero/client.js",
-        "public/zero/handlers.js",
+        "public/first/main.js",
+        "public/first/client.js",
+        "public/first/handlers.js",
         "public/app/client/index.js",
         "public/app/client/Shelf.js",
         "public/app/shared/format.js",
@@ -2222,7 +2222,7 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
         };
         assert!(emitted.is_file(), "{} was dropped", relative.display());
     }
-    let checked = Command::new(env!("CARGO_BIN_EXE_zero"))
+    let checked = Command::new(env!("CARGO_BIN_EXE_first"))
         .args(["check", "--json"])
         .arg(&out)
         .output()
@@ -2230,7 +2230,7 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let checked: Value = serde_json::from_slice(&checked.stdout).unwrap();
     assert_eq!(checked["ok"], true, "{checked}");
     assert_eq!(checked["diagnostics"].as_array().unwrap().len(), 0, "{checked}");
-    // The candidate serves the client from public/app/, public/zero/ and its stylesheet folders
+    // The candidate serves the client from public/app/, public/first/ and its stylesheet folders
     // (here public/client/), where 0.8 served nothing of the app, so a 0.8 redirect under them
     // would now break it: refused, not carried.
     let moved = temp.path().join("client-app-redirect");
@@ -2284,12 +2284,12 @@ console.log(JSON.stringify({ sent, result }));
 "#;
     let node = Command::new("node")
         .args(["--input-type=module", "-e", script])
-        .arg(out.join("public/zero/client.js"))
+        .arg(out.join("public/first/client.js"))
         .output()
         .expect("node is required");
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let ran: Value = serde_json::from_slice(&node.stdout).unwrap();
-    assert_eq!(ran["sent"][0]["url"], "/wp-json/zero/v1/actions/banner", "{ran}");
+    assert_eq!(ran["sent"][0]["url"], "/wp-json/first/v1/actions/banner", "{ran}");
     assert_eq!(ran["sent"][0]["method"], "POST");
     assert_eq!(ran["result"], "ABABAB");
     // The body the bridge sent is exactly what the generated action takes.
@@ -2421,7 +2421,7 @@ fn copy_dir(from: &Path, to: &Path) {
 fn bridge(out: &Path, script: &str) -> Value {
     let node = Command::new("node")
         .args(["--input-type=module", "-e", script])
-        .arg(out.join("public/zero/client.js"))
+        .arg(out.join("public/first/client.js"))
         .output()
         .expect("node is required");
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
@@ -2459,7 +2459,7 @@ console.log(JSON.stringify(sent[0]));
     );
     // Those are exactly the inputs the generated action takes.
     build(&out);
-    let plugin = out.join("zero/dist/wp-content/plugins/zero-app-shelf-notes/zero/app/schema.php");
+    let plugin = out.join("first/dist/wp-content/plugins/first-app-shelf-notes/first/app/schema.php");
     let script = "echo json_encode(array_keys((require $argv[1])['actions']['page']['input']));";
     let php = Command::new("php").args(["-r", script]).arg(plugin).output().unwrap();
     assert!(php.status.success(), "{}", String::from_utf8_lossy(&php.stderr));

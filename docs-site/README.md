@@ -17,12 +17,12 @@ pnpm check     # generated pages current, unit tests, links, browser tests
 | --- | --- |
 | `docs/index.mdx`, `docs/getting-started.mdx`, `docs/hosting/` | Written by hand |
 | `docs/examples/` | `examples/*`: each README and config, compiled when the pages are generated |
-| `docs/reference/config.mdx` | `types/zero/index.d.ts` |
+| `docs/reference/config.mdx` | `types/first/index.d.ts` |
 | `docs/reference/client.mdx` | `runtime/client/index.ts` |
-| `docs/reference/cli.mdx` | `runtime/Zero/Cli/commands.json` |
+| `docs/reference/cli.mdx` | `runtime/First/Cli/commands.json` |
 | `docs/reference/diagnostics.mdx` | `src/diag.rs` and `tests/compatibility/registry.json` |
 | `docs/reference/wordpress-plugins.mdx` | `src/wp_plugins/supported.json`, `src/platform.rs` and `tests/fixtures/platform.json` |
-| `openapi/first.json`, rendered at `/rest` | The route dispatchers in `runtime/Zero` |
+| `openapi/first.json`, rendered at `/rest` | The route dispatchers in `runtime/First` |
 | `docs/changelog/` | `packages/*/CHANGELOG.md` |
 | `pages/playground.astro`, `pages/tour/` | The examples, compiled by `public/compiler.wasm` |
 

@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { usePostFields } from '@zero-admin/fields-next';
-import { unlock, viewToQuery } from '@zero-admin/admin-toolkit';
-import { DataViewsPicker } from '@zero-admin/dataviews';
-import type { View } from '@zero-admin/dataviews';
+import { usePostFields } from '@first-admin/fields-next';
+import { unlock, viewToQuery } from '@first-admin/admin-toolkit';
+import { DataViewsPicker } from '@first-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 import {
 	privateApis as coreDataPrivateApis,
 	useEntityRecord,
@@ -125,7 +125,7 @@ export default function PostPicker( {
 	queryParams,
 	onSelect,
 	multiple,
-	itemListLabel = __( 'Posts list', 'zero-admin' ),
+	itemListLabel = __( 'Posts list', 'first-admin' ),
 }: PostPickerProps ) {
 	const [ selection, setSelection ] =
 		useState< string[] >( currentSelection );
@@ -183,7 +183,7 @@ export default function PostPicker( {
 		() => [
 			{
 				id: 'select',
-				label: __( 'Select', 'zero-admin' ),
+				label: __( 'Select', 'first-admin' ),
 				isPrimary: true,
 				async callback() {
 					if ( selection.length === 0 ) {
@@ -287,7 +287,7 @@ export default function PostPicker( {
 									} );
 							}
 						} }
-						label={ __( 'Drop files to upload', 'zero-admin' ) }
+						label={ __( 'Drop files to upload', 'first-admin' ) }
 						className="post-picker__drop-zone"
 					/>
 				) }

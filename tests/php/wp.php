@@ -10,14 +10,14 @@ declare(strict_types=1);
  * the runtime plugin assembled from runtime/, the identity plugin, and an app plugin built from a
  * fixture (schema.php, functions.php, a MySQL migration). A child PHP process installs the site and
  * activates the plugins; this process then loads WordPress with everything active, so `init`,
- * `acf/init` and `rest_api_init` fire as they do on a request. Tests drive Zero through the same
+ * `acf/init` and `rest_api_init` fire as they do on a request. Tests drive First through the same
  * seams the REST route and WP-CLI use: App::handle() as a WordPress user, App::cli(), and the
- * shared `Zero\db()`.
+ * shared `First\db()`.
  *
  *   $wp = wpSite('db', $fixture);        // $fixture: ['schema' => array, 'functions' => php, 'migration' => sql, ...]
  *   [$status, $data] = $wp->request('GET', '/items', as: 'editor');
  *
- * No Docker, no web server, no MySQL: the SQLite plugin is a supported Zero platform (Playground
+ * No Docker, no web server, no MySQL: the SQLite plugin is a supported First platform (Playground
  * runs on it), and the WordPress suites on MariaDB stay the reference for engine behaviour.
  */
 
@@ -49,7 +49,7 @@ final class WpSite
     private array $users = [];
     /** @var array<string, string> user name => `name:application password` */
     private array $passwords = [];
-    private ?\Zero\App $app = null;
+    private ?\First\App $app = null;
     /** Set once WordPress is loaded with the app active: the site is a suite's to keep or drop. */
     private bool $loaded = false;
     /** @var resource|null the php -S child that stands in for the web server (private-file probes) */
@@ -66,20 +66,20 @@ final class WpSite
 
     /**
      * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool, akismet?: bool, muPlugins?: array<string, string>} $fixture
-     *   schema: the app's schema.php array (name, collections, ...); functions: PHP after `namespace ZeroApp;`;
+     *   schema: the app's schema.php array (name, collections, ...); functions: PHP after `namespace FirstApp;`;
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
-     *   identity: install zero-identity too; users: extra WordPress users (name => role);
+     *   identity: install first-identity too; users: extra WordPress users (name => role);
      *   server: start a php -S that answers the private-files probe (needed for file buckets);
      *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one.
      */
     public static function create(string $label, array $fixture): self
     {
         $repo = dirname(__DIR__, 2);
-        $dir = sys_get_temp_dir() . "/zero-wp-$label-" . bin2hex(random_bytes(4));
+        $dir = sys_get_temp_dir() . "/first-wp-$label-" . bin2hex(random_bytes(4));
         $site = new self($dir);
         // Whatever fails below (download, install, activation, boot), the directory and server go.
         register_shutdown_function(static function () use ($site): void {
-            if (!$site->loaded && getenv('ZERO_WP_KEEP') !== '1') {
+            if (!$site->loaded && getenv('FIRST_WP_KEEP') !== '1') {
                 $site->destroy();
             }
         });
@@ -96,16 +96,16 @@ final class WpSite
         ));
         $activate = [];
         if (isset($fixture['wpContent'])) {
-            // A `zero build` artifact: its plugins as built, activated in the manifest's order.
-            $manifest = json_decode((string) file_get_contents($fixture['wpContent'] . '/zero-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+            // A `first build` artifact: its plugins as built, activated in the manifest's order.
+            $manifest = json_decode((string) file_get_contents($fixture['wpContent'] . '/first-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
             foreach (array_keys($manifest['plugins']) as $slug) {
-                if (is_dir($fixture['wpContent'] . "/plugins/$slug") && ($slug !== 'zero-identity' || ($fixture['identity'] ?? false))) {
+                if (is_dir($fixture['wpContent'] . "/plugins/$slug") && ($slug !== 'first-identity' || ($fixture['identity'] ?? false))) {
                     wpCopy($fixture['wpContent'] . "/plugins/$slug", "$dir/content/plugins/$slug");
                     $activate[] = $slug;
                 }
             }
             // Dependencies first, then the runtime, then the app, as an installer would.
-            usort($activate, static fn (string $a, string $b): int => (str_starts_with($a, 'zero-') ? 1 + (int) str_starts_with($a, 'zero-app-') : 0) <=> (str_starts_with($b, 'zero-') ? 1 + (int) str_starts_with($b, 'zero-app-') : 0));
+            usort($activate, static fn (string $a, string $b): int => (str_starts_with($a, 'first-') ? 1 + (int) str_starts_with($a, 'first-app-') : 0) <=> (str_starts_with($b, 'first-') ? 1 + (int) str_starts_with($b, 'first-app-') : 0));
             $fixture['schema'] = ['name' => $manifest['app'], 'locales' => $manifest['locales'] ?? null];
         } else {
             $platform = json_decode((string) file_get_contents("$repo/tests/fixtures/platform.json"), true, 512, JSON_THROW_ON_ERROR);
@@ -124,21 +124,21 @@ final class WpSite
                 $activate[] = 'akismet';
             }
             $site->runtimePlugin($repo, $fixture);
-            $activate[] = 'zero-runtime';
+            $activate[] = 'first-runtime';
             if ($fixture['identity'] ?? false) {
-                wpCopy("$repo/runtime/identity", "$dir/content/plugins/zero-identity", ['apps', 'composer.json', 'composer.lock']);
-                $activate[] = 'zero-identity';
+                wpCopy("$repo/runtime/identity", "$dir/content/plugins/first-identity", ['apps', 'composer.json', 'composer.lock']);
+                $activate[] = 'first-identity';
             }
             $name = (string) ($fixture['schema']['name'] ?? 'app');
             $site->appPlugin($repo, $name, $fixture);
-            $activate[] = "zero-app-$name";
+            $activate[] = "first-app-$name";
         }
         // Test-only must-use plugin: no outgoing mail, and the private-file probe goes to our server.
-        file_put_contents("$dir/content/mu-plugins/zero-tests.php", <<<'PHP'
+        file_put_contents("$dir/content/mu-plugins/first-tests.php", <<<'PHP'
             <?php
             add_filter('pre_wp_mail', static fn () => true);
-            add_filter('zero_private_probe_url', static function (string $url): string {
-                $port = getenv('ZERO_TEST_SERVER_PORT');
+            add_filter('first_private_probe_url', static function (string $url): string {
+                $port = getenv('FIRST_TEST_SERVER_PORT');
                 return $port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:$port", $url) : $url;
             });
             PHP);
@@ -171,31 +171,31 @@ final class WpSite
         return $site;
     }
 
-    /** zero-runtime as `zero build` lays it out: runtime/Zero under zero/, the plugin templates rendered. */
+    /** first-runtime as `first build` lays it out: runtime/First under first/, the plugin templates rendered. */
     private function runtimePlugin(string $repo, array $fixture): void
     {
-        $plugin = "$this->content/plugins/zero-runtime";
-        wpCopy("$repo/runtime/Zero", "$plugin/zero");
-        foreach (['zero-runtime.php' => 'zero-runtime.php', 'zero-runtime-uninstall.php' => 'uninstall.php'] as $template => $file) {
+        $plugin = "$this->content/plugins/first-runtime";
+        wpCopy("$repo/runtime/First", "$plugin/first");
+        foreach (['first-runtime.php' => 'first-runtime.php', 'first-runtime-uninstall.php' => 'uninstall.php'] as $template => $file) {
             file_put_contents("$plugin/$file", wpTemplate("$repo/runtime/wp-plugin/$template", $fixture));
         }
     }
 
     private function appPlugin(string $repo, string $name, array $fixture): void
     {
-        $plugin = "$this->content/plugins/zero-app-$name";
-        mkdir("$plugin/zero/app/migrations", 0777, true);
-        file_put_contents("$plugin/zero-app-$name.php", wpTemplate("$repo/runtime/wp-plugin/zero-app.php", $fixture));
-        file_put_contents("$plugin/uninstall.php", wpTemplate("$repo/runtime/wp-plugin/zero-app-uninstall.php", $fixture));
+        $plugin = "$this->content/plugins/first-app-$name";
+        mkdir("$plugin/first/app/migrations", 0777, true);
+        file_put_contents("$plugin/first-app-$name.php", wpTemplate("$repo/runtime/wp-plugin/first-app.php", $fixture));
+        file_put_contents("$plugin/uninstall.php", wpTemplate("$repo/runtime/wp-plugin/first-app-uninstall.php", $fixture));
         $this->writeSchema($fixture['schema']);
         $functions = $fixture['functions'] ?? '';
         if (!str_starts_with(ltrim($functions), '<?php')) {
-            $functions = "<?php\n\ndeclare(strict_types=1);\n\nnamespace ZeroApp;\n\n" . $functions;
+            $functions = "<?php\n\ndeclare(strict_types=1);\n\nnamespace FirstApp;\n\n" . $functions;
         }
-        file_put_contents("$plugin/zero/app/functions.php", $functions);
+        file_put_contents("$plugin/first/app/functions.php", $functions);
         $migration = $fixture['migration'] ?? wpDdl($fixture['schema']);
         if ($migration !== '') {
-            file_put_contents("$plugin/zero/app/migrations/0001_init.sql", $migration);
+            file_put_contents("$plugin/first/app/migrations/0001_init.sql", $migration);
         }
     }
 
@@ -203,7 +203,7 @@ final class WpSite
     public function writeSchema(array $schema): void
     {
         $name = (string) ($schema['name'] ?? 'app');
-        $schema += ['version' => 3, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/Zero/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
+        $schema += ['version' => 3, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/First/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
             'locales' => null, 'media' => ['sizes' => []], 'files' => [], 'jobs' => [], 'webhooks' => [], 'globals' => [], 'actions' => []];
         $schema['auth'] ??= ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
         foreach ($schema['collections'] as $c => &$spec) {
@@ -211,17 +211,17 @@ final class WpSite
             // Hand-written fixtures are custom tables unless they say they're post-backed.
             $spec['editor'] ??= isset($spec['wp']);
             if ($spec['editor'] && !isset($spec['wp'])) {
-                $spec['wp'] = ['postType' => "zero_$c", 'groupKey' => "group_zero_$c", 'metaPrefix' => 'zero_', 'fieldKeyPrefix' => "field_zero_{$c}_"];
+                $spec['wp'] = ['postType' => "first_$c", 'groupKey' => "group_first_$c", 'metaPrefix' => 'first_', 'fieldKeyPrefix' => "field_first_{$c}_"];
             }
-            $spec['table'] ??= $spec['editor'] ? null : "zero_$c";
+            $spec['table'] ??= $spec['editor'] ? null : "first_$c";
         }
         unset($spec);
         foreach ($schema['globals'] as $g => &$spec) {
-            $spec['wp'] ??= ['postId' => "zero_global_$g", 'menuSlug' => "zero-global-$g", 'groupKey' => "group_zero_global_$g", 'fieldKeyPrefix' => "field_zero_global_{$g}_", 'optionPrefix' => "zero_global_{$g}_"];
+            $spec['wp'] ??= ['postId' => "first_global_$g", 'menuSlug' => "first-global-$g", 'groupKey' => "group_first_global_$g", 'fieldKeyPrefix' => "field_first_global_{$g}_", 'optionPrefix' => "first_global_{$g}_"];
             $spec += ['label' => $g, 'agents' => true, 'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']]];
         }
         unset($spec);
-        file_put_contents("$this->content/plugins/zero-app-$name/zero/app/schema.php", '<?php return ' . var_export($schema, true) . ';');
+        file_put_contents("$this->content/plugins/first-app-$name/first/app/schema.php", '<?php return ' . var_export($schema, true) . ';');
     }
 
     /** The site's URL (WP_HOME); `startServer()` makes it answer. */
@@ -233,7 +233,7 @@ final class WpSite
     /**
      * `php -S` on this site with the WP-CLI style router: the web server for probes and clients. The
      * port was free when chosen; another process may have taken it since, so the server must answer
-     * for this site (the router's `/__zero_site`) before it counts as started, else another port is tried.
+     * for this site (the router's `/__first_site`) before it counts as started, else another port is tried.
      */
     public function startServer(): int
     {
@@ -242,20 +242,20 @@ final class WpSite
         }
         for ($attempt = 0; $attempt < 10; $attempt++) {
             $port = $this->port;
-            putenv("ZERO_TEST_SERVER_PORT=$port");
+            putenv("FIRST_TEST_SERVER_PORT=$port");
             $server = proc_open(
                 [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
                 [1 => ['file', "$this->dir/server.log", 'a'], 2 => ['file', "$this->dir/server.log", 'a']],
                 $pipes,
                 $this->dir,
-                ['ZERO_TEST_SITE' => $this->dir] + array_filter(getenv(), 'is_string'),
+                ['FIRST_TEST_SITE' => $this->dir] + array_filter(getenv(), 'is_string'),
             );
             $deadline = microtime(true) + 10;
             while (microtime(true) < $deadline) {
                 if (!(proc_get_status($server)['running'] ?? false)) {
                     break; // the port was taken: php -S exited
                 }
-                $answer = @file_get_contents("http://127.0.0.1:$port/__zero_site", false, stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]));
+                $answer = @file_get_contents("http://127.0.0.1:$port/__first_site", false, stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]));
                 if ($answer === $this->dir) {
                     $this->server = $server;
 
@@ -292,9 +292,9 @@ final class WpSite
             fwrite(STDERR, 'wp_die: ' . (is_string($message) ? $message : json_encode($message)) . "\n");
             exit(255);
         });
-        $plugin = \Zero\Wp\Runtime::plugin() ?? throw new RuntimeException('the Zero app did not boot: ' . $this->debugLog());
+        $plugin = \First\Wp\Runtime::plugin() ?? throw new RuntimeException('the First app did not boot: ' . $this->debugLog());
         if ($plugin->unavailable() !== null) {
-            throw new RuntimeException('Zero storage is behind: ' . $plugin->unavailable() . "\n" . $this->debugLog());
+            throw new RuntimeException('First storage is behind: ' . $plugin->unavailable() . "\n" . $this->debugLog());
         }
         $this->app = $plugin->app();
     }
@@ -319,17 +319,17 @@ final class WpSite
 
     // ================================================================ driving the app
 
-    public function app(): \Zero\App
+    public function app(): \First\App
     {
         return $this->app ?? throw new LogicException('site not loaded');
     }
 
-    public function plugin(): \Zero\Wp\Plugin
+    public function plugin(): \First\Wp\Plugin
     {
-        return \Zero\Wp\Runtime::plugin() ?? throw new LogicException('no Zero app');
+        return \First\Wp\Runtime::plugin() ?? throw new LogicException('no First app');
     }
 
-    public function connection(): \Zero\Wp\Connection
+    public function connection(): \First\Wp\Connection
     {
         return $this->plugin()->connection();
     }
@@ -363,8 +363,8 @@ final class WpSite
         return $this->server !== null && (proc_get_status($this->server)['running'] ?? false);
     }
 
-    /** A new WordPress user; the role is one of Zero's (admin, editor, author, subscriber). */
-    public function addUser(string $name, string $role, string $password = 'zero-test-pass'): int
+    /** A new WordPress user; the role is one of First's (admin, editor, author, subscriber). */
+    public function addUser(string $name, string $role, string $password = 'first-test-pass'): int
     {
         $id = wp_insert_user(['user_login' => $name, 'user_pass' => $password, 'user_email' => "$name@example.test", 'display_name' => $name,
             'role' => $role === 'admin' ? 'administrator' : $role]);
@@ -375,10 +375,10 @@ final class WpSite
         return $this->users[$name] = (int) $id;
     }
 
-    /** Zero's user array for a test user, as hooks and rules see it. */
+    /** First's user array for a test user, as hooks and rules see it. */
     public function user(string $name): array
     {
-        return \Zero\Wp\WpAuth::map(get_userdata($this->userId($name)));
+        return \First\Wp\WpAuth::map(get_userdata($this->userId($name)));
     }
 
     /** Make $who the current WordPress user (a test user name or a user id; null: anonymous), as the REST authentication would. */
@@ -427,7 +427,7 @@ final class WpSite
         return $this->uploads() . substr((string) parse_url($url, PHP_URL_PATH), strlen('/wp-content/uploads'));
     }
 
-    /** `wp zero <args>` as the trusted CLI runs it: [exit code, decoded JSON]. */
+    /** `wp first <args>` as the trusted CLI runs it: [exit code, decoded JSON]. */
     public function cli(string ...$args): array
     {
         [$code, $out] = $this->app()->cli($args);
@@ -436,7 +436,7 @@ final class WpSite
     }
 
     /**
-     * `wp zero <args>` through the plugin's WP-CLI command (migrate included), with a WP_CLI stand-in
+     * `wp first <args>` through the plugin's WP-CLI command (migrate included), with a WP_CLI stand-in
      * that records the output: [exit code, decoded JSON].
      */
     public function wpCli(array $args, array $assoc = []): array
@@ -486,12 +486,12 @@ function wpSite(string $label, array $fixture): WpSite
 {
     $site = WpSite::create($label, $fixture);
     register_shutdown_function(static function () use ($site): void {
-        // A failing suite shows WordPress's log (minus core's early-theme notices); ZERO_WP_KEEP=1 keeps the site.
-        if (($GLOBALS['failed'] ?? 0) > 0 || getenv('ZERO_WP_KEEP') === '1') {
+        // A failing suite shows WordPress's log (minus core's early-theme notices); FIRST_WP_KEEP=1 keeps the site.
+        if (($GLOBALS['failed'] ?? 0) > 0 || getenv('FIRST_WP_KEEP') === '1') {
             $log = array_filter(explode("\n", $site->debugLog()), static fn (string $l) => $l !== '' && !str_contains($l, 'wp_is_block_theme'));
             fwrite(STDERR, "--- {$site->dir}/content/debug.log\n" . implode("\n", $log) . "\n");
         }
-        if (getenv('ZERO_WP_KEEP') === '1') {
+        if (getenv('FIRST_WP_KEEP') === '1') {
             fwrite(STDERR, "site kept at {$site->dir}\n");
             return;
         }
@@ -502,7 +502,7 @@ function wpSite(string $label, array $fixture): WpSite
 }
 
 /**
- * The MySQL migration `zero build` would emit for a hand-written schema's custom tables (the type map
+ * The MySQL migration `first build` would emit for a hand-written schema's custom tables (the type map
  * of src/migrate.rs): every `editor: false` collection, its unique keys and foreign keys between
  * custom tables, plus the shared revisions table when one of them keeps revisions.
  */
@@ -513,7 +513,7 @@ function wpDdl(array $schema): string
     $tables = [];
     foreach ($collections as $name => $spec) {
         if (!($spec['editor'] ?? isset($spec['wp'])) && !($spec['auth'] ?? false) && ($schema['auth']['collection'] ?? null) !== $name) {
-            $tables[$name] = $spec['table'] ?? "zero_$name";
+            $tables[$name] = $spec['table'] ?? "first_$name";
         }
     }
     $autoPk = static fn (string $c) => (bool) ($collections[$c]['columns'][$collections[$c]['primaryKey'] ?? 'id']['autoIncrement'] ?? false);
@@ -571,7 +571,7 @@ function wpDdl(array $schema): string
                 $keys[] = "UNIQUE KEY `{$col}_unique` (`$col`)";
             }
             if ($ref !== null && isset($tables[$ref['collection']])) {
-                $fk = "CONSTRAINT `zero_{$name}_{$col}_fk` FOREIGN KEY (`$col`) REFERENCES `{prefix}{$tables[$ref['collection']]}` (`{$ref['column']}`)";
+                $fk = "CONSTRAINT `first_{$name}_{$col}_fk` FOREIGN KEY (`$col`) REFERENCES `{prefix}{$tables[$ref['collection']]}` (`{$ref['column']}`)";
                 if (isset($ref['onDelete'])) {
                     $fk .= ' ON DELETE ' . strtoupper($ref['onDelete']);
                 }
@@ -585,7 +585,7 @@ function wpDdl(array $schema): string
         $statements[] = "CREATE TABLE `{prefix}$table` (\n\t" . implode(",\n\t", [...$lines, ...$keys, ...$fks]) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
     if ($revisions) {
-        $statements[] = "CREATE TABLE `{prefix}zero__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(64) NOT NULL,"
+        $statements[] = "CREATE TABLE `{prefix}first__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(64) NOT NULL,"
             . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT,\n\t`row` LONGTEXT NOT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
 
@@ -604,7 +604,7 @@ function wpFreePort(): int
 
 function wpCache(): string
 {
-    $cache = getenv('ZERO_WP_CACHE') ?: dirname(__DIR__) . '/wp/cache';
+    $cache = getenv('FIRST_WP_CACHE') ?: dirname(__DIR__) . '/wp/cache';
     if (!is_dir($cache) && !mkdir($cache, 0777, true) && !is_dir($cache)) {
         throw new RuntimeException("cannot create $cache");
     }
@@ -745,7 +745,7 @@ function wpCopy(string $from, string $to, array $skip = []): void
     }
 }
 
-/** A plugin template rendered as `zero build` renders it (`{{key}}` placeholders). */
+/** A plugin template rendered as `first build` renders it (`{{key}}` placeholders). */
 function wpTemplate(string $file, array $fixture): string
 {
     $repo = dirname(__DIR__, 2);
@@ -753,10 +753,10 @@ function wpTemplate(string $file, array $fixture): string
     $platform = json_decode((string) file_get_contents("$repo/tests/fixtures/platform.json"), true, 512, JSON_THROW_ON_ERROR);
     $localized = ($fixture['schema']['locales'] ?? null) !== null;
     $runtimeRequires = array_keys(array_filter($platform['plugins'], static fn (string $slug): bool => $slug !== 'polylang', ARRAY_FILTER_USE_KEY));
-    $requires = implode(', ', [...$runtimeRequires, ...($localized ? ['polylang'] : []), 'zero-runtime']);
-    $vars = ['name' => $name, 'slug' => "zero-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
-        'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/Zero/Schema.php", 'SERIES'),
-        'zeroVersion' => wpConstant("$repo/runtime/Zero/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/Zero/Wp/Runtime.php", 'VERSION'),
+    $requires = implode(', ', [...$runtimeRequires, ...($localized ? ['polylang'] : []), 'first-runtime']);
+    $vars = ['name' => $name, 'slug' => "first-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
+        'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/First/Schema.php", 'SERIES'),
+        'firstVersion' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'),
         'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16)];
     $out = (string) file_get_contents($file);
     foreach ($vars as $k => $v) {
@@ -798,7 +798,7 @@ function wpDefine(string $dir, string $url): void
         define($k, $v);
     }
     foreach (['AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY', 'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT'] as $k) {
-        define($k, "zero-test-$k");
+        define($k, "first-test-$k");
     }
     $GLOBALS['table_prefix'] = 'wp_';
     define('WP_DEBUG', true);
@@ -823,12 +823,12 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     require_once ABSPATH . 'wp-settings.php';
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     require_once ABSPATH . 'wp-admin/includes/plugin.php';
-    $installed = wp_install('Zero test site', 'admin', 'admin@example.test', true, '', 'zero-test-admin');
+    $installed = wp_install('First test site', 'admin', 'admin@example.test', true, '', 'first-test-admin');
     // Pretty permalinks, so rest_url() is /wp-json/… (what the router serves) rather than ?rest_route=.
     update_option('permalink_structure', '/%postname%/');
     $users = ['admin' => (int) $installed['user_id']];
     foreach ($site['users'] as $name => $role) {
-        $id = wp_insert_user(['user_login' => $name, 'user_pass' => "zero-test-$name", 'user_email' => "$name@example.test", 'display_name' => $name,
+        $id = wp_insert_user(['user_login' => $name, 'user_pass' => "first-test-$name", 'user_email' => "$name@example.test", 'display_name' => $name,
             'role' => $role === 'admin' ? 'administrator' : $role]);
         if ($id instanceof WP_Error) {
             fwrite(STDERR, $id->get_error_message() . "\n");
@@ -839,7 +839,7 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     // One application password per user, for clients over HTTP (WordPress's own Basic auth channel).
     $passwords = [];
     foreach ($users as $name => $id) {
-        [$password] = WP_Application_Passwords::create_new_application_password($id, ['name' => 'zero tests']);
+        [$password] = WP_Application_Passwords::create_new_application_password($id, ['name' => 'first tests']);
         $passwords[$name] = "$name:$password";
     }
     foreach ($site['activate'] as $slug) {
@@ -858,8 +858,8 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
 //
 //   php tests/php/wp.php eval <wp-content dir> <php code> [json argument] [name=role ...]
 //
-// Installs a site from a `zero build` artifact, loads it with the app active, and runs
-// the code with `$app` (the Zero\App), `$wp` (the WpSite), `$arg` (the decoded JSON argument) and
+// Installs a site from a `first build` artifact, loads it with the app active, and runs
+// the code with `$app` (the First\App), `$wp` (the WpSite), `$arg` (the decoded JSON argument) and
 // `$site` bound; the site goes when the process ends. For Rust tests that drive compiled PHP.
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'eval') {
@@ -880,9 +880,9 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
 //
 //   php tests/php/wp.php serve <wp-content dir> [name=role ...]
 //
-// Installs a site from a `zero build` artifact, starts its web server, prints one JSON
+// Installs a site from a `first build` artifact, starts its web server, prints one JSON
 // line ({url, dir, users: {name: {id, appPassword}}}) and serves until killed (tests/sync.rs).
-// ZERO_WP_IDENTITY=1 activates zero-identity too; ZERO_WP_CLI=1 adds {wpCli: {phar, path}} (tests/cli.rs).
+// FIRST_WP_IDENTITY=1 activates first-identity too; FIRST_WP_CLI=1 adds {wpCli: {phar, path}} (tests/cli.rs).
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'serve') {
     $users = [];
@@ -890,10 +890,10 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
         [$name, $role] = explode('=', $pair, 2);
         $users[$name] = $role;
     }
-    $site = WpSite::create('serve', ['wpContent' => $argv[2], 'users' => $users, 'server' => true, 'identity' => getenv('ZERO_WP_IDENTITY') === '1']);
+    $site = WpSite::create('serve', ['wpContent' => $argv[2], 'users' => $users, 'server' => true, 'identity' => getenv('FIRST_WP_IDENTITY') === '1']);
     $out = ['url' => $site->url(), 'dir' => $site->dir, 'users' => $site->credentials()];
-    // ZERO_WP_CLI=1: also the pinned WP-CLI phar and a --path it can boot this site from.
-    if (getenv('ZERO_WP_CLI') === '1') {
+    // FIRST_WP_CLI=1: also the pinned WP-CLI phar and a --path it can boot this site from.
+    if (getenv('FIRST_WP_CLI') === '1') {
         $out['wpCli'] = ['phar' => wpCliPhar(), 'path' => wpCliRoot($site->dir)];
     }
     echo json_encode($out), "\n";

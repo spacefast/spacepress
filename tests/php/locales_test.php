@@ -65,13 +65,13 @@ $functions = <<<'PHP'
             $patch->p['price']++;
         }
         if ($existing->p['title'] === 'Tag DE' && isset($patch->p['price'])) {
-            $patch->p['tags'] = new \Zero\JsArray(['b']); // a different synced column than the one propagated
+            $patch->p['tags'] = new \First\JsArray(['b']); // a different synced column than the one propagated
         }
         if ($existing->p['title'] === 'Adopt DE' && isset($patch->p['price'])) {
             $patch->p['price']++; // rewrites the value it is adopting
         }
         if ($existing->p['title'] === 'Spawn on adopt' && isset($patch->p['price'])) {
-            \Zero\db()->insert('pages', ['title' => 'Spawned FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
+            \First\db()->insert('pages', ['title' => 'Spawned FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
         }
         if ($existing->p['title'] === 'Order EN' && ($patch->p['stampedAt'] ?? null) === '2001-01-01T00:00:00.000Z') {
             $patch->p['price'] = 5; // a hook changes a synced value during a bulk update of another column
@@ -81,53 +81,53 @@ $functions = <<<'PHP'
         }
         if ($existing->p['title'] === 'Spawn DE' && isset($patch->p['price'])) {
             // creates a French translation while the group still holds its old values
-            \Zero\db()->insert('pages', ['title' => 'Spawn FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
+            \First\db()->insert('pages', ['title' => 'Spawn FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
         }
         return $patch;
     }
     function pages__afterUpdate($row, $previous) {
         if ($row->p['price'] === 13 && $row->p['locale'] === 'de') {
-            throw new \Zero\JsError('de refuses 13');
+            throw new \First\JsError('de refuses 13');
         }
         if ($row->p['title'] === 'Between' && $row->p['price'] === 41) {
             // between two rows of one group in a bulk update: touch the first again
-            \Zero\db()->update('pages', ['title' => 'Order EN'], ['title' => 'Order']);
+            \First\db()->update('pages', ['title' => 'Order EN'], ['title' => 'Order']);
         }
         if ($row->p['title'] === 'Between' && $row->p['stampedAt'] === '2001-01-01T00:00:00.000Z') {
             // restore the first row's synced value: what was handed to the second must follow
-            \Zero\db()->update('pages', ['price' => 41], ['title' => 'Order EN']);
+            \First\db()->update('pages', ['price' => 41], ['title' => 'Order EN']);
         }
         if ($row->p['title'] === 'Mid' && $row->p['price'] === 51) {
-            \Zero\db()->update('pages', ['price' => 57], ['title' => 'Late DE']); // a nested write to a row still to come
+            \First\db()->update('pages', ['price' => 57], ['title' => 'Late DE']); // a nested write to a row still to come
         }
         if ($row->p['title'] === 'Mid' && $row->p['price'] === 52) {
-            \Zero\db()->insert('pages', ['title' => 'Late FR', 'locale' => 'fr', 'translationOf' => \Zero\db()->findFirst('pages', ['where' => ['title' => 'Late DE']])['id']]);
+            \First\db()->insert('pages', ['title' => 'Late FR', 'locale' => 'fr', 'translationOf' => \First\db()->findFirst('pages', ['where' => ['title' => 'Late DE']])['id']]);
         }
         if ($row->p['title'] === 'Late DE' && $row->p['price'] === 53 && $previous->p['price'] !== 53) {
             // the sibling written early deletes the row that started the group write, then fails
-            \Zero\db()->delete('pages', ['title' => 'Late']);
-            if (\Zero\db()->findFirst('pages', ['where' => ['title' => 'Late']]) === null) {
-                throw new \Zero\JsError('de refuses 53');
+            \First\db()->delete('pages', ['title' => 'Late']);
+            if (\First\db()->findFirst('pages', ['where' => ['title' => 'Late']]) === null) {
+                throw new \First\JsError('de refuses 53');
             }
         }
         if ($row->p['title'] === 'Kick' && $row->p['price'] === 31) {
             // a nested bulk update over two translations whose group the outer update also covers,
             // changing another synced column than the outer one
-            \Zero\db()->update('pages', ['tags' => ['b']], ['title' => ['in' => ['Nest DE', 'Nest FR']]]);
+            \First\db()->update('pages', ['tags' => ['b']], ['title' => ['in' => ['Nest DE', 'Nest FR']]]);
         }
-        if ($row->p['price'] === 21 && $row->p['locale'] === 'en' && ($other = \Zero\db()->findFirst('pages', ['where' => ['title' => 'Coffee']])) !== null) {
-            \Zero\db()->update('pages', ['price' => 22], ['id' => $other['id']]); // another group, from inside a sync
+        if ($row->p['price'] === 21 && $row->p['locale'] === 'en' && ($other = \First\db()->findFirst('pages', ['where' => ['title' => 'Coffee']])) !== null) {
+            \First\db()->update('pages', ['price' => 22], ['id' => $other['id']]); // another group, from inside a sync
         }
         $group = $row->p['translations']->p;
         ksort($group);
-        \Zero\db()->insert('notes', ['pageId' => $row->p['id'], 'body' => 'afterUpdate ' . $row->p['locale'] . ':' . $row->p['price'] . ' ' . json_encode($group)]);
+        \First\db()->insert('notes', ['pageId' => $row->p['id'], 'body' => 'afterUpdate ' . $row->p['locale'] . ':' . $row->p['price'] . ' ' . json_encode($group)]);
     }
     PHP;
 
 $wp = wpSite('locales', ['schema' => $schema, 'functions' => $functions]);
-$db = \Zero\db();
-$anon = new \Zero\Viewer(null);
-$editor = new \Zero\Viewer($wp->user('editor'));
+$db = \First\db();
+$anon = new \First\Viewer(null);
+$editor = new \First\Viewer($wp->user('editor'));
 // Reads are anonymous; writes are the editor's: a unique slug may only be written by a viewer who can
 // read the whole collection (#72), and the public read rule gives everyone that for pages.
 $rest = static function (string $method, string $path, array $query = [], mixed $body = null, array $headers = []) use ($wp): array {
@@ -146,7 +146,7 @@ eq('translationOf copies synced columns, keeps localized + per-row ones', [$stat
 eq('translations list the whole group on every row (API rows hide translationGroup)', [
     $tee['translations'], $db->findFirst('pages', ['where' => ['id' => $tea['id']]])['translations'], array_key_exists('translationGroup', $tee),
     array_key_exists('translationGroup', $db->findFirst('pages', ['where' => ['id' => $tea['id']]])),
-    array_key_exists('translationGroup', \Zero\Seam::findFirst('pages', ['where' => ['id' => $tea['id']]])->p),
+    array_key_exists('translationGroup', \First\Seam::findFirst('pages', ['where' => ['id' => $tea['id']]])->p),
 ], [['en' => $tea['id'], 'de' => $tee['id']], ['en' => $tea['id'], 'de' => $tee['id']], false, true, false]);
 problem('a synced column that differs from the group → 422', fn () => $db->insert('pages', ['title' => 'Thé', 'locale' => 'fr', 'translationOf' => $tea['id'], 'price' => 9]), 422, 'invalid_input', '/price');
 problem('one row per locale per group → 409', fn () => $db->insert('pages', ['title' => 'Tee 2', 'locale' => 'de', 'translationOf' => $tea['id']]), 409, 'unique_violation', '/locale');
@@ -219,7 +219,7 @@ $db->delete('pages', ['title' => ['in' => ['Late', 'Mid', 'Late DE', 'Late FR']]
 $db->delete('notes', ['id' => ['notIn' => $before]]);
 // A row from before localization (no group yet): its old revisions show the group it has now.
 $legacy = $db->insert('pages', ['title' => 'Legacy'], true)[0];
-$wp->exec('UPDATE {prefix}zero_pages SET `translationGroup` = NULL WHERE `id` = ?', [$legacy['id']]);
+$wp->exec('UPDATE {prefix}first_pages SET `translationGroup` = NULL WHERE `id` = ?', [$legacy['id']]);
 $db->update('pages', ['title' => 'Legacy v2'], ['id' => $legacy['id']]);
 $legacyRevision = array_reverse($db->revisions('pages', $legacy['id']))[0]['id'];
 $legacyDe = $db->insert('pages', ['title' => 'Alt', 'locale' => 'de', 'translationOf' => $legacy['id']], true)[0];
@@ -287,15 +287,15 @@ $db->delete('pages', ['id' => $boxed['id']]);
 $adopt = $db->insert('pages', ['title' => 'Adopt', 'price' => 7], true)[0];
 problem('a hook rewriting an adopted synced value → 409, nothing committed', fn () => $db->transaction(function () use ($db, $adopt, $wp) {
     $de = $db->insert('pages', ['title' => 'Adopt DE', 'locale' => 'de', 'price' => 1], true)[0];
-    $wp->exec('UPDATE {prefix}zero_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]); // linked outside the pipeline
-    \Zero\Locale\GroupSync::adopt('pages', $db->findFirst('pages', ['where' => ['id' => $de['id']]]));
+    $wp->exec('UPDATE {prefix}first_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]); // linked outside the pipeline
+    \First\Locale\GroupSync::adopt('pages', $db->findFirst('pages', ['where' => ['id' => $de['id']]]));
 }), 409, 'conflict', '/price');
 eq('… no Adopt DE row was committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => 'Adopt DE']])), 0);
 problem('… and a hook that adds a translation during a group adoption is checked too', fn () => $db->transaction(function () use ($db, $adopt, $wp) {
     $de = $db->insert('pages', ['title' => 'Spawn on adopt', 'locale' => 'de', 'price' => 1], true)[0];
-    $wp->exec('UPDATE {prefix}zero_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]);
+    $wp->exec('UPDATE {prefix}first_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]);
     $rows = $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$adopt['id'], $de['id']]]], 'orderBy' => ['id' => 'asc']]);
-    \Zero\Locale\GroupSync::adoptAll('pages', $rows);
+    \First\Locale\GroupSync::adoptAll('pages', $rows);
 }), 409, 'conflict', '/price');
 eq('… nothing of it committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['in' => ['Spawn on adopt', 'Spawned FR']]]])), 0);
 $db->delete('pages', ['id' => $adopt['id']]);
@@ -376,7 +376,7 @@ check('trusted rows carry the group id', is_string($stored['translationGroup']) 
 
 // translationOf copies synced values from storage, not from the caller's field-filtered view.
 $hidePrice = true;
-\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $v) use (&$hidePrice): array {
+\First\Extensions::onRead(static function (array $rows, string $c, ?\First\Viewer $v) use (&$hidePrice): array {
     return $c === 'pages' && $v !== null && $hidePrice ? array_map(static fn ($r) => array_diff_key($r, ['price' => 1]), $rows) : $rows;
 }, constraintSafe: true);
 $de = $db->insert('pages', ['title' => 'Tee wieder', 'locale' => 'de', 'translationOf' => $tea['id']], true, $editor)[0];

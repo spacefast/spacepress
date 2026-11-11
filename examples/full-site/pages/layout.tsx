@@ -1,9 +1,9 @@
-import { link, type LayoutProps, type Metadata } from "@spacefast/zero-pages";
+import { link, type LayoutProps, type Metadata } from "@spacefast/first-pages";
 import "../styles/global.css";
 
 export const metadata = {
   title: { default: "Field Notes", template: "%s · Field Notes" },
-  description: "Short notes from the field, written in WordPress and served by Zero pages.",
+  description: "Short notes from the field, written in WordPress and served by First pages.",
 } satisfies Metadata;
 
 export default function RootLayout({ children }: LayoutProps) {

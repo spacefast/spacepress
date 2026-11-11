@@ -2,12 +2,12 @@
 /**
  * Tags field definition for core theme fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'               => 'array',
-	'label'              => __( 'Tags', 'zero-admin' ),
+	'label'              => __( 'Tags', 'first-admin' ),
 	'enableGlobalSearch' => true,
 	'enableSorting'      => false,
 	'filterBy'           => array(

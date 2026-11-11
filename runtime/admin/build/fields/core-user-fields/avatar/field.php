@@ -2,12 +2,12 @@
 /**
  * Avatar field definition for core user fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Avatar', 'zero-admin' ),
+	'label'              => __( 'Avatar', 'first-admin' ),
 	'enableSorting'      => false,
 	'enableHiding'       => false,
 	'enableGlobalSearch' => false,

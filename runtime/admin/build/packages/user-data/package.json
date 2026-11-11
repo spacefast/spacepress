@@ -1,7 +1,7 @@
 {
-	"name": "@zero-admin/user-data",
+	"name": "@first-admin/user-data",
 	"version": "1.0.0",
-	"description": "User invite data store for Zero Admin",
+	"description": "User invite data store for First Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -11,7 +11,7 @@
 		"build"
 	],
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
 		"@wordpress/api-fetch": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

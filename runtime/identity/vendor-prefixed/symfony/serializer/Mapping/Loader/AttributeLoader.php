@@ -9,20 +9,20 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\Context;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Context;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
+use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Loader for PHP attributes.

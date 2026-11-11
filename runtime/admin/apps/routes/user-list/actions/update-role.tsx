@@ -1,5 +1,5 @@
-import { useViewConfig } from '@zero-admin/views';
-import type { Action, RenderModalProps } from '@zero-admin/dataviews';
+import { useViewConfig } from '@first-admin/views';
+import type { Action, RenderModalProps } from '@first-admin/dataviews';
 import type { User } from '@wordpress/core-data';
 import { store as coreStore } from '@wordpress/core-data';
 import { useDispatch, useSelect } from '@wordpress/data';
@@ -15,7 +15,7 @@ import {
 	Button,
 	// Popovers cannot be used in an DataViews actions modal.
 	// https://github.com/WordPress/gutenberg/issues/71463
-	// eslint-disable-next-line @zero-admin/design-system/use-new-components
+	// eslint-disable-next-line @first-admin/design-system/use-new-components
 	SelectControl,
 } from '@wordpress/components';
 import { CurrentUserWarning } from '../current-user-warning';
@@ -52,14 +52,14 @@ const UpdateUserRoleModal = ( {
 			await dispatch.__experimentalBatch( updates );
 			const successMessage =
 				items.length === 1
-					? __( 'User updated.', 'zero-admin' )
+					? __( 'User updated.', 'first-admin' )
 					: sprintf(
 							/* translators: %d: The number of users. */
 							_n(
 								'%d user updated.',
 								'%d users updated.',
 								items.length,
-								'zero-admin'
+								'first-admin'
 							),
 							items.length
 					  );
@@ -82,7 +82,7 @@ const UpdateUserRoleModal = ( {
 							/* translators: %s: an error message */
 							__(
 								'An error occurred while updating user: %s',
-								'zero-admin'
+								'first-admin'
 							),
 							errorMessages
 					  )
@@ -90,7 +90,7 @@ const UpdateUserRoleModal = ( {
 							/* translators: %s: an error message */
 							__(
 								'Some errors occurred while updating the users: %s',
-								'zero-admin'
+								'first-admin'
 							),
 							errorMessages
 					  );
@@ -119,13 +119,13 @@ const UpdateUserRoleModal = ( {
 	return (
 		<VStack>
 			<Text>
-				{ __( 'You have specified these users:', 'zero-admin' ) }
+				{ __( 'You have specified these users:', 'first-admin' ) }
 			</Text>
 			{ items.map( ( user ) => (
 				<Text key={ user.id }>
 					{ sprintf(
 						// Translators: %1$d is the user ID, %2$s is the username.
-						__( 'ID #%1$d: %2$s', 'zero-admin' ),
+						__( 'ID #%1$d: %2$s', 'first-admin' ),
 						user.id,
 						user.username
 					) }
@@ -136,31 +136,31 @@ const UpdateUserRoleModal = ( {
 			<SelectControl
 				__nextHasNoMarginBottom
 				__next40pxDefaultSize
-				label={ __( 'Select a role:', 'zero-admin' ) }
+				label={ __( 'Select a role:', 'first-admin' ) }
 				options={ [
 					{
 						value: '',
-						label: __( '— Select —', 'zero-admin' ),
+						label: __( '— Select —', 'first-admin' ),
 					},
 					{
 						value: 'administrator',
-						label: __( 'Administrator', 'zero-admin' ),
+						label: __( 'Administrator', 'first-admin' ),
 					},
 					{
 						value: 'editor',
-						label: __( 'Editor', 'zero-admin' ),
+						label: __( 'Editor', 'first-admin' ),
 					},
 					{
 						value: 'author',
-						label: __( 'Author', 'zero-admin' ),
+						label: __( 'Author', 'first-admin' ),
 					},
 					{
 						value: 'contributor',
-						label: __( 'Contributor', 'zero-admin' ),
+						label: __( 'Contributor', 'first-admin' ),
 					},
 					{
 						value: 'subscriber',
-						label: __( 'Subscriber', 'zero-admin' ),
+						label: __( 'Subscriber', 'first-admin' ),
 					},
 				] }
 				onChange={ setSelectedRole }
@@ -174,7 +174,7 @@ const UpdateUserRoleModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Cancel', 'zero-admin' ) }
+					{ __( 'Cancel', 'first-admin' ) }
 				</Button>
 				<Button
 					__next40pxDefaultSize
@@ -184,7 +184,7 @@ const UpdateUserRoleModal = ( {
 					disabled={ isBusy || ! selectedRole }
 					accessibleWhenDisabled
 				>
-					{ __( 'Confirm Update', 'zero-admin' ) }
+					{ __( 'Confirm Update', 'first-admin' ) }
 				</Button>
 			</HStack>
 		</VStack>
@@ -215,7 +215,7 @@ export const useUpdateUserRoleAction = (): Action< User > | null => {
 
 		return {
 			id: 'update-user-role',
-			label: __( 'Update Role', 'zero-admin' ),
+			label: __( 'Update Role', 'first-admin' ),
 			icon: people,
 			supportsBulk: true,
 			hideModalHeader: true,

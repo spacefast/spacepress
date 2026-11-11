@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const tool = fileURLToPath(new URL('./local.php', import.meta.url));
-const php = process.env.ZERO_DEPLOY_PHP || 'php';
+const php = process.env.FIRST_DEPLOY_PHP || 'php';
 
 function run(args, env = {}) {
   const [mode, ...rest] = args;
-  const binary = process.env.ZERO_DEPLOY_BIN;
-  // `zero deploy <mode>`: the top-level publish/backup/restore aliases are gone (#149).
+  const binary = process.env.FIRST_DEPLOY_BIN;
+  // `first deploy <mode>`: the top-level publish/backup/restore aliases are gone (#149).
   const entry = ['deploy', mode];
   const command = binary ? [...entry, ...rest] : [tool, ...args];
   const result = spawnSync(binary || php, command, { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 30000 });
@@ -22,17 +22,17 @@ function run(args, env = {}) {
 }
 
 test('artifact preflight binds bytes, redacts env, detects history changes and refuses unqualified publish without executing PHP', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'zero-framework-lifecycle-artifact-'));
+  const root = await mkdtemp(join(tmpdir(), 'first-framework-lifecycle-artifact-'));
   try {
     const artifact = join(root, 'candidate');
-    const app = join(artifact, 'plugins/zero-app-test/zero/app');
+    const app = join(artifact, 'plugins/first-app-test/first/app');
     await mkdir(join(app, 'migrations'), { recursive: true });
-    await mkdir(join(artifact, 'plugins/zero-runtime'), { recursive: true });
-    await writeFile(join(artifact, 'zero-manifest.json'), JSON.stringify({ app: 'test', runtime: '0.3', plugins: { 'zero-runtime': '0.3.0', 'zero-app-test': '0.3.0' } }));
+    await mkdir(join(artifact, 'plugins/first-runtime'), { recursive: true });
+    await writeFile(join(artifact, 'first-manifest.json'), JSON.stringify({ app: 'test', runtime: '0.3', plugins: { 'first-runtime': '0.3.0', 'first-app-test': '0.3.0' } }));
     await writeFile(join(app, 'schema.php'), `<?php file_put_contents(${JSON.stringify(join(root, 'executed'))}, 'unsafe'); return ['uploads' => ['bucket' => ['env' => 'UPLOAD_BUCKET'], 'prefix' => ['env' => 'mixedCase_secret']]];`);
-    await writeFile(join(app, 'functions.php'), `<?php function secret() { return \\Zero\\Env::get('API_SECRET'); }`);
+    await writeFile(join(app, 'functions.php'), `<?php function secret() { return \\First\\Env::get('API_SECRET'); }`);
     await writeFile(join(app, 'migrations/0001_init.sql'), 'CREATE TABLE example (id INT);');
-    await writeFile(join(artifact, 'zero-deployment.json'), JSON.stringify({ version: 1, snapshot: { tables: {} }, destructiveChanges: [] }));
+    await writeFile(join(artifact, 'first-deployment.json'), JSON.stringify({ version: 1, snapshot: { tables: {} }, destructiveChanges: [] }));
     const baseline = join(root, 'baseline');
     await cp(artifact, baseline, { recursive: true });
     const first = run(['inspect', '--artifact', `${root}/./candidate`], { API_SECRET: 'lifecycle-secret-do-not-print', UPLOAD_BUCKET: undefined, mixedCase_secret: undefined });
@@ -64,7 +64,7 @@ test('artifact preflight binds bytes, redacts env, detects history changes and r
 });
 
 test('restore validates the entire archive before reserving a fresh destination', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'zero-framework-lifecycle-archive-'));
+  const root = await mkdtemp(join(tmpdir(), 'first-framework-lifecycle-archive-'));
   try {
     const archive = join(root, 'unsafe.zip');
     const target = join(root, 'restored');
@@ -74,7 +74,7 @@ test('restore validates the entire archive before reserving a fresh destination'
       const fixture = spawnSync(php, ['-r', `
         $z = new ZipArchive(); $z->open($argv[1], ZipArchive::CREATE | ZipArchive::OVERWRITE);
         $kind = $argv[2]; $name = $kind === 'traversal' ? '../escape' : 'site/file';
-        $z->addFromString('backup.json', $kind === 'metadata_limit' ? str_repeat('x',16_777_217) : json_encode(['version'=>1,'adapter'=>'zero-offline-wordpress-v1','files'=>$kind === 'unlisted' ? [] : ['file'=>['size'=>1,'sha256'=>str_repeat('0',64)]]]));
+        $z->addFromString('backup.json', $kind === 'metadata_limit' ? str_repeat('x',16_777_217) : json_encode(['version'=>1,'adapter'=>'first-offline-wordpress-v1','files'=>$kind === 'unlisted' ? [] : ['file'=>['size'=>1,'sha256'=>str_repeat('0',64)]]]));
         $z->addFromString($name, 'x');
         if ($kind === 'symlink') $z->setExternalAttributesName($name, ZipArchive::OPSYS_UNIX, 0120777 << 16);
         if ($kind === 'duplicate') $z->addFromString('site/FILE', 'x');

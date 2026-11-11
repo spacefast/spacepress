@@ -1,7 +1,7 @@
 import { useNavigate, useSearch } from '@wordpress/route';
-import { Page } from '@zero-admin/admin-toolkit';
+import { Page } from '@first-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
-import type { GlobalStylesConfig } from '@zero-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@first-admin/global-styles-engine';
 import { __ } from '@wordpress/i18n';
 import { seen } from '@wordpress/icons';
 import { useCallback } from '@wordpress/element';
@@ -88,13 +88,13 @@ export default function DesignStylesInspector() {
 
 	return (
 		<Page
-			title={ __( 'Styles', 'zero-admin' ) }
+			title={ __( 'Styles', 'first-admin' ) }
 			actions={
 				<IconButton
 					aria-pressed={ isStyleBookOpened }
 					variant="minimal"
 					icon={ seen }
-					label={ __( 'Style Book', 'zero-admin' ) }
+					label={ __( 'Style Book', 'first-admin' ) }
 					onClick={ togglePreview }
 					size="compact"
 				/>

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Protocol;
+namespace First\Identity\Protocol;
 
-use Zero\Identity\DB;
-use Zero\Identity\Failure;
-use Zero\Identity\Security;
+use First\Identity\DB;
+use First\Identity\Failure;
+use First\Identity\Security;
 
 /**
  * Authorization codes (RFC 6749 §4.1 + PKCE S256, RFC 7636): 32 random bytes, stored as their

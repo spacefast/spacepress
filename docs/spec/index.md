@@ -1,4 +1,7 @@
-# Zero framework spec
+# First framework spec
+
+First was formerly Zero v2. Zero 0.8 keeps the name Zero; it is retired, and Zero
+0.9 is its last release apart from security fixes, made to migrate Zero apps to First.
 
 Written 2026-11-08. Design only;
 nothing is implemented. Baseline: spacefast/zero `origin/main` de46201a and
@@ -6,15 +9,15 @@ monorepo main (Cast live updates #5152).
 
 ## The product in one paragraph
 
-You add `zero.config.ts` and a `zero/` folder to any project. Exported kinds
+You add `first.config.ts` and a `first/` folder to any project. Exported kinds
 say what your data is, exported actions and jobs what your app does, and `app/`
 (optional) which pages exist. One file can hold all of it; `schema.ts` and
-`server/` are conventions, not requirements. Zero
+`server/` are conventions, not requirements. First
 compiles it ahead of time into a WordPress plugin plus prebuilt files. At
 request time, only PHP runs, and as little of it as possible. You get WordPress
 admin and login, an editor for every collection, and every operation as an
 agent tool. With no `app/`, WordPress renders the front end as usual. With
-`app/`, Zero renders it. You can also put Astro, Next.js or TanStack Start in
+`app/`, First renders it. You can also put Astro, Next.js or TanStack Start in
 front, with a typed client and cache purges that just work.
 
 ## Files
@@ -35,14 +38,14 @@ front, with a typed client and cache purges that just work.
    This replaces ruling 2 of 2026-11-01 (build-time block markup).
 2. One cutover for all schema changes, from 0.8 and from today's v2 API.
 3. `pages/` → `app/`, with HTTP routes as `route.ts`.
-4. Zero lives in a `zero/` folder next to the user's existing app, with
-   `_generated/` and `dist/` inside. `zero.config.ts` is always at the project
-   root and imports only from `zero/`.
+4. First lives in a `first/` folder next to the user's existing app, with
+   `_generated/` and `dist/` inside. `first.config.ts` is always at the project
+   root and imports only from `first/`.
 5. All in on the Interactivity API: every interactive behavior compiles to it.
 6. Live updates use Cast (existing work). Co-editing is out of scope.
 7. Every collection and taxonomy can define its URL pattern. With no `app/`,
    WordPress renders. Adding a page takes over its URL.
-8. Zero is opinionated about the WordPress it runs on. It can require any
+8. First is opinionated about the WordPress it runs on. It can require any
    plugins it wants and disable any WordPress feature.
 9. Users and comments are WordPress's own, built in and extended, never duplicated.
 10. Caching uses WP Cloud's Batcache and edge cache with URL purges. A frontend
@@ -52,7 +55,7 @@ front, with a typed client and cache purges that just work.
 
 1. One concept, one declaration. A kind, action or job is declared once and
    named by its export. Only `app/`, `components/`, `wp-hooks/`, `content/` and
-   `public/` are folder conventions Zero reads.
+   `public/` are folder conventions First reads.
 2. Infer, with one named override for each inference.
 3. Prebuild everything that doesn't depend on the request. At request time do
    a lookup, the visitor-dependent part, and nothing else.
@@ -75,9 +78,9 @@ front, with a typed client and cache purges that just work.
 | Hooks on the collection | Payload | opt-out MCP exposure |
 | Post types, taxonomies, roles, Abilities, Action Scheduler, Interactivity API, HTML API | WordPress | WP-Cron as scheduler, experimental full-page navigation |
 
-## Zero concept → WordPress primitive
+## First concept → WordPress primitive
 
-| Zero | Compiles to |
+| First | Compiles to |
 |---|---|
 | `collection()` | `register_post_type` + SCF field group + `register_post_meta` |
 | `table()` | SQL table + a `wp/v2/<table>` controller shaped like core's post routes |
@@ -88,10 +91,10 @@ front, with a typed client and cache purges that just work.
 | `url` patterns | rewrite rules + the kind's link filter (`post_link`, `page_link`, `post_type_link`, `term_link`) + automatic 301s |
 | `job()`, `every`, `cron` | Action Scheduler async / recurring / cron actions |
 | `action()` | `wp_register_ability`, served by core's Abilities route, the MCP Adapter and the facade |
-| HTTP API | core `/wp/v2` routes enforce Zero's rules; `/__zero/api/v1` maps them to clean shapes for clients and agents |
+| HTTP API | core `/wp/v2` routes enforce First's rules; `/__first/api/v1` maps them to clean shapes for clients and agents |
 | `app/**/page.tsx` | compiled PHP renderer behind one `template_redirect` gate |
 | `"use client"` | Interactivity API store module + `data-wp-*` directives |
-| live updates | `zero_realtime_changes` → control plane → Cast room |
+| live updates | `first_realtime_changes` → control plane → Cast room |
 | agent tools | Abilities API + MCP Adapter |
 
 ## Open questions

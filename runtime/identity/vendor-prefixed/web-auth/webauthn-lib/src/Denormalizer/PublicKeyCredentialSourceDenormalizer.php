@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
+namespace First\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
 use function assert;
-use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use Zero\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
-use Zero\Identity\Vendor\Webauthn\TrustPath\TrustPath;
-use Zero\Identity\Vendor\Webauthn\Util\Base64;
+use First\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use First\Identity\Vendor\Webauthn\TrustPath\TrustPath;
+use First\Identity\Vendor\Webauthn\Util\Base64;
 
 final class PublicKeyCredentialSourceDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface, NormalizerInterface, NormalizerAwareInterface
 {

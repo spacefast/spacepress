@@ -22,7 +22,7 @@ fn runner() -> Result<PathBuf, String> {
         hash.update(source.as_bytes());
     }
     let digest: String = hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
-    let dir = cache.join("zero/dev").join(&digest[..16]);
+    let dir = cache.join("first/dev").join(&digest[..16]);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     for (name, source) in TOOLS {
         let path = dir.join(name);
@@ -43,7 +43,7 @@ fn command(project: &Path, mode: &str) -> Result<Command, String> {
     Ok(command)
 }
 
-/// WP-CLI on the project's dev site (`zero wp`, and the site commands without `--site`).
+/// WP-CLI on the project's dev site (`first wp`, and the site commands without `--site`).
 pub(super) fn wp_command(project: &Path) -> Result<Command, String> {
     command(project, "wp")
 }
@@ -56,11 +56,11 @@ pub(super) fn url(project: &Path) -> Result<String, String> {
     let out = command(&project, "status")?
         .stderr(std::process::Stdio::inherit())
         .output()
-        .map_err(|e| format!("zero needs Node.js 22+ and npm (npx) for the dev site: {e}"))?;
+        .map_err(|e| format!("first needs Node.js 22+ and npm (npx) for the dev site: {e}"))?;
     let status: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
     match status["siteUrl"].as_str() {
         Some(url) if out.status.success() && status["isOnline"] == true => Ok(url.trim_end_matches('/').to_string()),
-        _ => Err("the dev site is not running; start it with zero dev, or pass --site <url>".into()),
+        _ => Err("the dev site is not running; start it with first dev, or pass --site <url>".into()),
     }
 }
 
@@ -75,7 +75,11 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         if mode == "start" {
             command
                 .arg(std::env::current_exe().map_err(|e| e.to_string())?)
-                .arg(args.out.clone().unwrap_or_else(|| project.join("zero/dist/wp-content")))
+                .arg(
+                    args.out
+                        .clone()
+                        .unwrap_or_else(|| project.join("first/dist/wp-content")),
+                )
                 .arg(args.port.to_string());
             if args.no_watch {
                 command.arg("--no-watch");
@@ -86,7 +90,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         }
         let status = command
             .status()
-            .map_err(|e| format!("zero dev needs Node.js 22+ and npm (npx): {e}"))?;
+            .map_err(|e| format!("first dev needs Node.js 22+ and npm (npx): {e}"))?;
         Ok(ExitCode::from(status.code().unwrap_or(1).clamp(0, 255) as u8))
     })();
     match result {

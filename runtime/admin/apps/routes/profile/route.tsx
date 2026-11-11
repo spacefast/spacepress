@@ -1,6 +1,6 @@
 import { resolveSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
-import { preloadFieldCollections } from '@zero-admin/core-data-next';
+import { preloadFieldCollections } from '@first-admin/core-data-next';
 
 export const route = {
 	loader: async () => {

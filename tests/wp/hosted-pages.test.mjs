@@ -1,5 +1,5 @@
 // Run by tests/wp/hosted-pages-run.sh against a WordPress/MariaDB site that holds only the output of
-// `zero compile-sources` for examples/full-site: pages, the island, the action and the custom routes.
+// `first compile-sources` for examples/full-site: pages, the island, the action and the custom routes.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHmac } from 'node:crypto';
@@ -10,8 +10,8 @@ import { test } from 'node:test';
 import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 
-const app = process.env.ZERO_HOSTED_APP;
-const harness = process.env.ZERO_HOSTED_HARNESS;
+const app = process.env.FIRST_HOSTED_APP;
+const harness = process.env.FIRST_HOSTED_HARNESS;
 const exec = promisify(execFile);
 const site = JSON.parse(readFileSync(join(app, 'harness.json'), 'utf8'));
 const base = site.url.replace(/\/$/, '');
@@ -20,10 +20,10 @@ const editor = `Basic ${Buffer.from(`editor:${site.users.editor.appPassword}`).t
 const { chromium } = createRequire(new URL('../../packages/pages/package.json', import.meta.url))('playwright-core');
 
 function chromiumPath() {
-  if (process.env.ZERO_PAGES_CHROMIUM) return process.env.ZERO_PAGES_CHROMIUM;
+  if (process.env.FIRST_PAGES_CHROMIUM) return process.env.FIRST_PAGES_CHROMIUM;
   const cache = join(homedir(), '.cache/ms-playwright');
   const shell = readdirSync(cache).filter((name) => name.startsWith('chromium_headless_shell-')).sort().reverse()[0];
-  if (shell === undefined) throw new Error('Set ZERO_PAGES_CHROMIUM to a chrome-headless-shell executable.');
+  if (shell === undefined) throw new Error('Set FIRST_PAGES_CHROMIUM to a chrome-headless-shell executable.');
   return join(cache, shell, 'chrome-headless-shell-linux64/chrome-headless-shell');
 }
 
@@ -39,15 +39,15 @@ const wp = async (...args) => (await exec(harness, ['wp', ...args], { maxBuffer:
 
 test('the host-compiled full site serves pages, hydrates its island, runs its action and answers its routes', { timeout: 300000 }, async () => {
   const compiled = JSON.parse(readFileSync(join(app, 'compiled/manifest.json'), 'utf8'));
-  assert.equal(compiled.pages, 'zero-pages-fullsite', 'the hosted compile emitted the pages plugin');
-  assert.match(await wp('plugin', 'list', '--status=active', '--field=name'), /zero-pages-fullsite/);
+  assert.equal(compiled.pages, 'first-pages-fullsite', 'the hosted compile emitted the pages plugin');
+  assert.match(await wp('plugin', 'list', '--status=active', '--field=name'), /first-pages-fullsite/);
 
-  const note = await api('/wp-json/zero/v1/notes', { method: 'POST', body: JSON.stringify({
+  const note = await api('/wp-json/first/v1/notes', { method: 'POST', body: JSON.stringify({
     title: 'Hosted light', slug: 'hosted-light', dek: 'Served from compile-sources', status: 'published',
     body: '<!-- wp:paragraph --><p>Rendered by <em>WordPress</em>.</p><!-- /wp:paragraph -->', deskNotes: 'Staff only',
   }) });
   assert.equal(note.status, 201, JSON.stringify(note.body));
-  const draft = await api('/wp-json/zero/v1/notes', { method: 'POST', body: JSON.stringify({ title: 'Hidden draft', slug: 'hidden-draft', status: 'draft' }) });
+  const draft = await api('/wp-json/first/v1/notes', { method: 'POST', body: JSON.stringify({ title: 'Hidden draft', slug: 'hidden-draft', status: 'draft' }) });
   assert.equal(draft.status, 201, JSON.stringify(draft.body));
 
   // 1. HTML pages: home, a static page with an asset, the listing, an item route and the claimed 404.
@@ -64,7 +64,7 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   assert.ok(svg, 'the imported asset is served from the hosted plugin');
   assert.equal((await fetch(svg)).status, 200);
   const css = /href='([^']+\/assets\/page-[0-9a-f]+\.css)'/.exec(about.text)?.[1];
-  assert.ok(css && (await (await fetch(css)).text()).includes('body.zero-pages'), 'route stylesheet');
+  assert.ok(css && (await (await fetch(css)).text()).includes('body.first-pages'), 'route stylesheet');
   assert.match((await http('/notes/')).text, /Hosted light/);
   const detail = await http('/notes/hosted-light/');
   assert.equal(detail.status, 200);
@@ -83,7 +83,7 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
     const errors = [];
     tab.on('pageerror', (error) => errors.push(error.message));
     const actionCalls = [];
-    tab.on('request', (request) => { if (request.url().includes('/wp-json/zero/v1/actions/cheer')) actionCalls.push(request.method()); });
+    tab.on('request', (request) => { if (request.url().includes('/wp-json/first/v1/actions/cheer')) actionCalls.push(request.method()); });
     await tab.goto(`${base}/notes/hosted-light/`);
     assert.equal(await tab.textContent('[data-wp-text="context.count"]'), '0');
     await tab.click('button:has-text("Cheer")');
@@ -97,11 +97,11 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   } finally {
     await browser.close();
   }
-  const cheers = await api('/wp-json/zero/v1/cheers');
+  const cheers = await api('/wp-json/first/v1/cheers');
   assert.deepEqual(cheers.body.data.map((row) => [row.noteId, row.count]), [[note.body.data.id, 2]]);
 
   // 3. The action over plain HTTP, as any client calls it.
-  const action = await http('/wp-json/zero/v1/actions/cheer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: note.body.data.id }) });
+  const action = await http('/wp-json/first/v1/actions/cheer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: note.body.data.id }) });
   assert.equal(action.status, 200, action.text);
   assert.deepEqual(JSON.parse(action.text), { data: { count: 3 } });
 
@@ -127,11 +127,11 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   assert.equal(hook.status, 202, hook.text);
   assert.equal(hook.text, `accepted ${signature.slice(0, 8)}`);
   assert.equal(hook.headers.get('content-type'), 'text/plain; charset=utf-8');
-  assert.equal((await api('/wp-json/zero/v1/cheers')).body.data[0].count, 4, 'the signed route wrote');
+  assert.equal((await api('/wp-json/first/v1/cheers')).body.data[0].count, 4, 'the signed route wrote');
   const forged = await http('/webhooks/stripe', { method: 'POST', headers: { 'x-fullsite-signature': 'f'.repeat(64) }, body: event });
   assert.equal(forged.status, 401);
   assert.equal(JSON.parse(forged.text).code, 'invalid_signature');
-  assert.equal((await api('/wp-json/zero/v1/cheers')).body.data[0].count, 4, 'a forged delivery wrote nothing');
+  assert.equal((await api('/wp-json/first/v1/cheers')).body.data[0].count, 4, 'a forged delivery wrote nothing');
 
   // Percent-encoded unreserved characters name the same path.
   assert.equal((await http('/%61pi/feed%2Ejson')).status, 200);
@@ -161,7 +161,7 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
     entries: [['a.b', '1'], ['x[]', '1'], ['x[]', '2'], ['k', '1'], ['k', '2']],
   });
   // A server that sends no QUERY_STRING: the query still comes from the request URI.
-  const fallback = await http('/api/probe-query?k=from-uri', { headers: { 'x-zero-no-query-string': '1' } });
+  const fallback = await http('/api/probe-query?k=from-uri', { headers: { 'x-first-no-query-string': '1' } });
   assert.equal(fallback.status, 200, fallback.text);
   assert.equal(JSON.parse(fallback.text).first, 'from-uri');
   const encoded = JSON.parse(await body('/api/probe-query?a%2Eb=%31&k=one+two&k=3'));
@@ -180,7 +180,7 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   // Unclaimed paths still belong to WordPress.
   assert.equal((await http('/unclaimed/other.json')).status, 404);
   assert.equal((await http('/api/a/b/c')).status, 404, 'no route has three segments under /api');
-  assert.equal((await http('/wp-json/zero/v1/notes')).status, 200);
+  assert.equal((await http('/wp-json/first/v1/notes')).status, 200);
 });
 
 test('a route sees the caller WordPress REST would: Bearer always, cookie on GET or with a nonce, never an application password', { timeout: 120000 }, async () => {
@@ -201,9 +201,9 @@ test('a route sees the caller WordPress REST would: Bearer always, cookie on GET
   assert.equal(await who('GET', { cookie }), `user ${id}`);
   assert.equal(await who('POST', { cookie }), 'anonymous', 'no nonce: a cross-site form runs anonymously');
   assert.equal(await who('POST', { cookie, 'x-wp-nonce': nonce }), `user ${id}`);
-  // A zero-identity Bearer token is the caller's chosen credential on every method, with no nonce.
+  // A first-identity Bearer token is the caller's chosen credential on every method, with no nonce.
   if (site.identity !== null) {
-    const token = await wp('eval', `echo (new \\Zero\\Identity\\OAuth(\\Zero\\Identity\\Plugin::$db, \\Zero\\Identity\\Plugin::$accounts))->issueForUser(${id}, ${JSON.stringify(site.identity.clientId)})['access_token'];`);
+    const token = await wp('eval', `echo (new \\First\\Identity\\OAuth(\\First\\Identity\\Plugin::$db, \\First\\Identity\\Plugin::$accounts))->issueForUser(${id}, ${JSON.stringify(site.identity.clientId)})['access_token'];`);
     assert.equal(await who('GET', { authorization: `Bearer ${token}` }), `user ${id}`);
     assert.equal(await who('POST', { authorization: `Bearer ${token}` }), `user ${id}`);
     assert.equal((await http('/api/probe-who', { method: 'POST', headers: { authorization: 'Bearer a.b.c' } })).status, 401, 'a bad token is refused, not anonymous');
@@ -211,7 +211,7 @@ test('a route sees the caller WordPress REST would: Bearer always, cookie on GET
 });
 
 test('while storage is behind, a claimed route path answers 503 instead of falling through to WordPress', { timeout: 120000 }, async () => {
-  const appDir = join(app, 'content/plugins/zero-app-fullsite/zero/app/');
+  const appDir = join(app, 'content/plugins/first-app-fullsite/first/app/');
   const schema = readFileSync(appDir + 'schema.php');
   writeFileSync(appDir + 'migrations/9997_route_probe.sql', 'INSERT INTO `{prefix}missing_route_probe` (`n`) VALUES (1);\n');
   appendFileSync(appDir + 'schema.php', '\n// route upgrade probe\n');

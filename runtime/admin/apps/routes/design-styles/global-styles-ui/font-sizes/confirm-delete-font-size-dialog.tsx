@@ -1,4 +1,4 @@
-import type { FontSize } from '@zero-admin/global-styles-engine';
+import type { FontSize } from '@first-admin/global-styles-engine';
 import { __experimentalConfirmDialog as ConfirmDialog } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 
@@ -27,8 +27,8 @@ function ConfirmDeleteFontSizeDialog( {
 	return (
 		<ConfirmDialog
 			isOpen={ isOpen }
-			cancelButtonText={ __( 'Cancel', 'zero-admin' ) }
-			confirmButtonText={ __( 'Delete', 'zero-admin' ) }
+			cancelButtonText={ __( 'Cancel', 'first-admin' ) }
+			confirmButtonText={ __( 'Delete', 'first-admin' ) }
 			onCancel={ handleCancel }
 			onConfirm={ handleConfirm }
 			size="medium"
@@ -38,7 +38,7 @@ function ConfirmDeleteFontSizeDialog( {
 					/* translators: %s: Name of the font size preset. */
 					__(
 						'Are you sure you want to delete "%s" font size preset?',
-						'zero-admin'
+						'first-admin'
 					),
 					fontSize.name
 				) }

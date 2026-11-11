@@ -19,7 +19,7 @@ if ($path === 'rss.xml') {
     return;
 }
 if ($path === '' && zp_mode() === 'blank') {
-    $title = 'Welcome to Zero';
+    $title = 'Welcome to First';
 } elseif ($path === '' || $path === 'posts') {
     $title = $path === '' ? get_bloginfo('name') : 'All posts';
     $query = zp_query(['paged' => $page, 'posts_per_page' => $path === '' ? (zp_mode() === 'blog' ? 7 : 10) : 20]);
@@ -42,14 +42,14 @@ if ($path === '' && zp_mode() === 'blank') {
     if ($kind !== null) $entry = zp_query(['post_type' => zp_type($kind), 'name' => sanitize_title(rawurldecode($slug)), 'has_password' => null, 'posts_per_page' => 1, 'no_found_rows' => true])->posts[0] ?? null;
     if ($entry) {
         $title = get_the_title($entry);
-        if (!post_password_required($entry)) $description = (string) get_post_meta($entry->ID, 'zero_seoDescription', true) ?: zp_excerpt($entry);
+        if (!post_password_required($entry)) $description = (string) get_post_meta($entry->ID, 'first_seoDescription', true) ?: zp_excerpt($entry);
     } else $notFound = true;
 }
 $GLOBALS['wp_query']->is_404 = $notFound;
 if ($notFound) { status_header(404); $title = 'Page not found'; }
 else status_header(200);
-$seoTitle = $entry && !post_password_required($entry) ? (string) get_post_meta($entry->ID, 'zero_seoTitle', true) : '';
-$accent = sanitize_hex_color(get_theme_mod('zero_accent', '#355e42')) ?: '#355e42';
+$seoTitle = $entry && !post_password_required($entry) ? (string) get_post_meta($entry->ID, 'first_seoTitle', true) : '';
+$accent = sanitize_hex_color(get_theme_mod('first_accent', '#355e42')) ?: '#355e42';
 ?><!doctype html>
 <html <?php language_attributes(); ?>>
 <head>
@@ -75,13 +75,13 @@ else { ?><a href="<?php echo esc_url(home_url('/posts')); ?>">Posts</a> <a href=
 <?php if ($notFound): ?>
 <section class="intro"><p class="eyebrow">404</p><h1>Page not found</h1><p>This address has no published page. <a href="<?php echo esc_url(home_url('/')); ?>">Head home</a>.</p></section>
 <?php elseif ($path === '' && zp_mode() === 'blank'): ?>
-<section class="intro"><p class="eyebrow">Your next idea starts here</p><h1>Welcome to Zero</h1><p>Your site is ready. Open the <a href="<?php echo esc_url(admin_url()); ?>">admin panel</a> to start adding content.</p></section>
+<section class="intro"><p class="eyebrow">Your next idea starts here</p><h1>Welcome to First</h1><p>Your site is ready. Open the <a href="<?php echo esc_url(admin_url()); ?>">admin panel</a> to start adding content.</p></section>
 <?php elseif ($entry):
     $GLOBALS['post'] = $entry; setup_postdata($entry);
 ?>
 <div class="reading-layout"><article class="story">
-<header class="intro"><p class="eyebrow"><?php echo in_array($entry->post_type, ['zero_posts', 'post'], true) ? 'Story' : 'Page'; ?></p><h1><?php echo esc_html($title); ?></h1>
-<?php if (!post_password_required($entry) && in_array($entry->post_type, ['zero_posts', 'post'], true)): ?>
+<header class="intro"><p class="eyebrow"><?php echo in_array($entry->post_type, ['first_posts', 'post'], true) ? 'Story' : 'Page'; ?></p><h1><?php echo esc_html($title); ?></h1>
+<?php if (!post_password_required($entry) && in_array($entry->post_type, ['first_posts', 'post'], true)): ?>
 <p class="byline"><?php echo esc_html(get_the_author_meta('display_name', (int) $entry->post_author)); ?> · <?php echo esc_html(get_the_date('', $entry)); ?> · <?php echo max(1, (int) ceil(str_word_count(wp_strip_all_tags($entry->post_content)) / 200)); ?> min read</p>
 <?php zp_terms($entry, 'category'); zp_terms($entry, 'post_tag'); endif; ?>
 </header>
@@ -112,5 +112,5 @@ else echo '<p>' . ($path === 'search' ? 'No matching published content.' : 'No p
 </nav><?php endif; ?></section><?php if (zp_mode() !== 'blank') zp_sidebar(); ?></div>
 <?php endif; ?>
 </main>
-<footer class="frame"><p><?php echo esc_html(get_theme_mod('zero_footer', 'Made with Zero. Published with care.')); ?></p><fieldset class="theme-controls"><legend>Color theme</legend><button type="button" data-theme="light" aria-pressed="false">Light</button><button type="button" data-theme="dark" aria-pressed="false">Dark</button><button type="button" data-theme="system" aria-pressed="true">System</button></fieldset><a href="<?php echo esc_url(admin_url()); ?>">WordPress admin</a></footer>
+<footer class="frame"><p><?php echo esc_html(get_theme_mod('first_footer', 'Made with First. Published with care.')); ?></p><fieldset class="theme-controls"><legend>Color theme</legend><button type="button" data-theme="light" aria-pressed="false">Light</button><button type="button" data-theme="dark" aria-pressed="false">Dark</button><button type="button" data-theme="system" aria-pressed="true">System</button></fieldset><a href="<?php echo esc_url(admin_url()); ?>">WordPress admin</a></footer>
 <?php wp_footer(); ?></body></html>

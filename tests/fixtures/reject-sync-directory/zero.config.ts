@@ -1,4 +1,0 @@
-import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, jobs, once, env, global, action, defineConfig, db, table } from "zero";
-const a = table({ id: id() }, { sync: "data/./items/*.json" });
-const b = table({ id: id() }, { sync: "data/items/*.json" });
-export default defineConfig({ tables: { a, b } });

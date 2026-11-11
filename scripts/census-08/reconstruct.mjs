@@ -1,4 +1,4 @@
-// Rebuilds a 0.8 capsule directory from a stored finalize payload, so `zero migrate app` can read
+// Rebuilds a 0.8 capsule directory from a stored finalize payload, so `first migrate app` can read
 // what a live 0.8 version kept. Nothing here decides acceptance: the stored server bundle has no
 // TypeScript types, so the census never counts a rebuilt capsule as accepted.
 //

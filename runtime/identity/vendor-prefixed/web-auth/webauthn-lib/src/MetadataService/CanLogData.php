@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\MetadataService;
+namespace First\Identity\Vendor\Webauthn\MetadataService;
 
-use Zero\Identity\Vendor\Psr\Log\LoggerInterface;
+use First\Identity\Vendor\Psr\Log\LoggerInterface;
 
 interface CanLogData
 {

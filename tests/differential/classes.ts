@@ -1,4 +1,4 @@
-import { table, id, defineConfig, action, db } from "zero";
+import { table, id, defineConfig, action, db } from "first";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 

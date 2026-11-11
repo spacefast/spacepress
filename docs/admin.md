@@ -1,13 +1,13 @@
-# Zero Admin
+# First Admin
 
-Set `admin: true` in `defineConfig`, then run `zero build`. The generated
-WordPress artifact includes `plugins/zero-admin` with compiled assets. Activate
-the artifact's declared dependencies, the Zero runtime and app, then Zero Admin.
-Enable pretty permalinks and visit `/zero-admin/`. A subdirectory installation
-uses its own prefix, for example `/blog/zero-admin/`.
+Set `admin: true` in `defineConfig`, then run `first build`. The generated
+WordPress artifact includes `plugins/first-admin` with compiled assets. Activate
+the artifact's declared dependencies, the First runtime and app, then First Admin.
+Enable pretty permalinks and visit `/first-admin/`. A subdirectory installation
+uses its own prefix, for example `/blog/first-admin/`.
 
 ```ts
-import { collection, defineConfig, id, richText, text } from "zero";
+import { collection, defineConfig, id, richText, text } from "first";
 
 const posts = collection({
   id: id(),
@@ -30,7 +30,7 @@ export default defineConfig({
 Editor asset URLs use WordPress's registered installation URL, including the
 subdirectory prefix. Use your normal WordPress account. WordPress owns authentication, capabilities,
 REST nonces, users, settings, plugins, themes, media and the block editor.
-`Classic admin` opens the complete `/wp-admin/`; its `Zero` menu item returns.
+`Classic admin` opens the complete `/wp-admin/`; its `First` menu item returns.
 Existing plugin settings and classic plugin screens remain accessible.
 
 ## Source scope
@@ -39,17 +39,17 @@ The admin includes the complete distributable next-admin / CIAB Admin plugin
 package, route, field, dashboard-widget and PHP library trees. This includes
 Dashboard, native Posts and Pages, Users, Plugins, Themes, Settings, Design,
 Styles, Navigation, taxonomy and comment fields, importers and the AI-agent
-integration package. These surfaces are retained alongside Zero's schema-driven
+integration package. These surfaces are retained alongside First's schema-driven
 collections, tables, relations, media and globals.
 
-The default `/` route is Zero's collection overview. `/dashboard` opens the
+The default `/` route is First's collection overview. `/dashboard` opens the
 upstream dashboard. The sidebar includes native WordPress content types as well
-as Zero collections; mapped types appear through the access-aware Zero adapter.
+as First collections; mapped types appear through the access-aware First adapter.
 Native content uses WordPress's editor routes. The complete upstream attachment
-editor is at `/types/attachment/edit/:id`; `Edit image` opens it from Zero
-media details, with crop/rotate/flip tools and WordPress-native image saving. Zero content uses the same block
-editor with Secure Custom Fields and Zero's existing REST authorization.
-Database tables use Zero's table forms and relation pickers. Hiding navigation
+editor is at `/types/attachment/edit/:id`; `Edit image` opens it from First
+media details, with crop/rotate/flip tools and WordPress-native image saving. First content uses the same block
+editor with Secure Custom Fields and First's existing REST authorization.
+Database tables use First's table forms and relation pickers. Hiding navigation
 never grants or revokes access: the server remains the authority.
 
 ## Provenance and updates
@@ -77,7 +77,7 @@ Dependency packages retain their original notices. The generated
 `build/THIRD-PARTY-LICENSES.txt` includes bundled dependency licenses and every
 workspace notice.
 
-Local changes use `@zero-admin/*` and `zero_admin_*` names, the existing Zero
+Local changes use `@first-admin/*` and `first_admin_*` names, the existing First
 mount/login/iframe adapter, a schema bridge, native menu merging, widget
 registration and compatibility adjustments for the pinned WordPress packages.
 The package tree remains intact. Review `adaptedSha256` and `adaptation` in the
@@ -113,8 +113,8 @@ disposable WordPress artifact created by `tests/wp/harness.sh`, run:
 ```sh
 cd runtime/admin/apps
 pnpm exec playwright install chromium
-ZERO_WP_HARNESS=/path/to/disposable-harness.json \
-ZERO_ADMIN_BROWSER_OUTPUT=/tmp/zero-admin-browser \
+FIRST_WP_HARNESS=/path/to/disposable-harness.json \
+FIRST_ADMIN_BROWSER_OUTPUT=/tmp/first-admin-browser \
 pnpm exec playwright test --config wp-journey/playwright.config.ts
 ```
 
@@ -130,12 +130,12 @@ unchanged; it remains a known verification gap.
 
 The AI-agent package includes its context store, abilities lifecycle, cache
 invalidation and provider slot. It includes no AI service. A WordPress plugin
-may enable `ai_agent_enabled` through `zero_admin_boot_context` and implement
+may enable `ai_agent_enabled` through `first_admin_boot_context` and implement
 `window.wpOrchestratorAgent.ask`. Missing providers reject requests explicitly.
 See the package README for its events and slot contract. Hosted AI execution
 and hosted account invitations are not proven by local WordPress tests.
 
-Telemetry calls use an inert compatibility adapter: Zero sends no upstream
+Telemetry calls use an inert compatibility adapter: First sends no upstream
 usage events. The three upstream dashboard demonstration widgets retain their
 example data and explicitly label it as such. They do not report live traffic,
 weather or recent posts. Native plugin/theme catalog installation, update,

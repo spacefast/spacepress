@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 final class Plugin
 {
-    /** Equal to the zero-runtime version built alongside it (`Runtime::identity()` compares them). */
+    /** Equal to the first-runtime version built alongside it (`Runtime::identity()` compares them). */
     public const VERSION = "0.3.0";
     private static ?\WP_Error $authenticationError = null;
     public static DB $db;
@@ -31,10 +31,10 @@ final class Plugin
         self::$accounts = new Accounts(self::$db, self::$security);
         add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
         add_filter('cron_schedules', static function (array $schedules): array {
-            $schedules['zero_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
+            $schedules['first_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
             return $schedules;
         });
-        add_action('zero_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
+        add_action('first_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
         self::$sessions = new Sessions(self::$db, self::$security);
         self::$api = new Api(
             self::$db,
@@ -43,7 +43,7 @@ final class Plugin
             self::$security,
             new Mfa(self::$db, self::$security),
         );
-        if ((int) get_option("zero_identity_schema_version", 0) < Schema::VERSION) {
+        if ((int) get_option("first_identity_schema_version", 0) < Schema::VERSION) {
             Schema::migrate(self::$db);
         }
         add_action("rest_api_init", [self::$api, "register"]);
@@ -53,7 +53,7 @@ final class Plugin
                 if (
                     str_starts_with(
                         $request->get_route(),
-                        "/zero-identity/v1/",
+                        "/first-identity/v1/",
                     )
                 ) {
                     header_remove("Access-Control-Allow-Origin");
@@ -70,7 +70,7 @@ final class Plugin
         add_filter(
             "admin_body_class",
             static fn($classes) => $classes .
-                (($_GET["page"] ?? "") === "zero-identity"
+                (($_GET["page"] ?? "") === "first-identity"
                     ? " zi-admin-screen"
                     : ""),
         );
@@ -79,7 +79,7 @@ final class Plugin
                 "Identity",
                 "Identity",
                 "manage_options",
-                "zero-identity",
+                "first-identity",
                 fn() => self::adminPage($file),
                 "dashicons-admin-users",
                 3,
@@ -214,7 +214,7 @@ final class Plugin
         }, 10, 2);
         // Guests can't plant WordPress credentials (password, application passwords) a former
         // holder of the guest could keep after an upgrade: those belong to saved accounts.
-        add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("zero_guest", (array) $user->roles, true)), 10, 2);
+        add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("first_guest", (array) $user->roles, true)), 10, 2);
         // Application passwords skip the `authenticate` filter; refuse inactive accounts here too.
         add_action("wp_authenticate_application_password_errors", static function ($error, $user) {
             try {
@@ -264,13 +264,13 @@ final class Plugin
         }, PHP_INT_MAX);
         add_filter("rest_authentication_errors", static fn ($error) => self::authenticationError() ?? $error, 99);
         add_action(
-            "zero_identity_maintenance",
+            "first_identity_maintenance",
             fn() => (new Maintenance(self::$db, self::$security))->run(),
         );
         add_filter("wp_privacy_personal_data_exporters", static function (
             $exporters,
         ) {
-            $exporters["zero-identity"] = [
+            $exporters["first-identity"] = [
                 "exporter_friendly_name" => "Identity",
                 "callback" => static function ($email) {
                     $uid = self::$accounts->owner($email);
@@ -304,7 +304,7 @@ final class Plugin
         add_filter("wp_privacy_personal_data_erasers", static function (
             $erasers,
         ) {
-            $erasers["zero-identity"] = [
+            $erasers["first-identity"] = [
                 "eraser_friendly_name" => "Identity",
                 "callback" => static function ($email) {
                     $uid = self::$accounts->owner($email);
@@ -340,7 +340,7 @@ final class Plugin
         });
         add_action("wp_abilities_api_init", static function () {
             if (function_exists("wp_register_ability")) {
-                wp_register_ability("zero-identity/account", [
+                wp_register_ability("first-identity/account", [
                     "label" => "Get identity account",
                     "description" => "Read a WordPress identity account.",
                     "input_schema" => [
@@ -358,23 +358,23 @@ final class Plugin
             }
         });
         if (defined("WP_CLI") && WP_CLI) {
-            // `wp zero identity …`: one `zero` namespace, owned by the runtime's dispatcher.
-            $register = static fn() => \Zero\Wp\Runtime::command(
+            // `wp first identity …`: one `first` namespace, owned by the runtime's dispatcher.
+            $register = static fn() => \First\Wp\Runtime::command(
                 "identity",
                 Cli::run(...),
             );
-            did_action("zero_runtime_loaded")
+            did_action("first_runtime_loaded")
                 ? $register()
-                : add_action("zero_runtime_loaded", $register);
-            // Without the runtime (identity on its own), `wp zero` serves `identity` only.
+                : add_action("first_runtime_loaded", $register);
+            // Without the runtime (identity on its own), `wp first` serves `identity` only.
             add_action("plugins_loaded", static function () {
-                if (did_action("zero_runtime_loaded")) {
+                if (did_action("first_runtime_loaded")) {
                     return;
                 }
-                \WP_CLI::add_command("zero", static function (array $args, array $flags) {
+                \WP_CLI::add_command("first", static function (array $args, array $flags) {
                     if (($args[0] ?? "") !== "identity") {
                         \WP_CLI::error(
-                            "Only wp zero identity is available without the zero-runtime plugin.",
+                            "Only wp first identity is available without the first-runtime plugin.",
                         );
                     }
                     $code = Cli::run(array_slice($args, 1), $flags);
@@ -439,8 +439,8 @@ final class Plugin
         if (
             !is_ssl() &&
             !(
-                defined("ZERO_IDENTITY_DEV_HTTP") &&
-                ZERO_IDENTITY_DEV_HTTP &&
+                defined("FIRST_IDENTITY_DEV_HTTP") &&
+                FIRST_IDENTITY_DEV_HTTP &&
                 wp_get_environment_type() === "local"
             )
         ) {
@@ -693,7 +693,7 @@ final class Plugin
                 '</title><link rel="stylesheet" href="' .
                 esc_url(plugins_url("build/hosted.css", $file)) .
                 '"></head><body><div id="identity-root" data-api="' .
-                esc_url(rest_url("zero-identity/v1/")) .
+                esc_url(rest_url("first-identity/v1/")) .
                 '" data-issuer="' .
                 esc_url(OAuth::issuer()) .
                 '" data-site="' .
@@ -719,20 +719,20 @@ final class Plugin
     private static function adminPage(string $file): void
     {
         echo '<div id="identity-admin" data-api="' .
-            esc_url(rest_url("zero-identity/v1/admin/")) .
+            esc_url(rest_url("first-identity/v1/admin/")) .
             '" data-nonce="' .
             esc_attr(wp_create_nonce("wp_rest")) .
             '" data-site="' .
             esc_attr(get_bloginfo("name")) .
             '"></div>';
         wp_enqueue_style(
-            "zero-identity-admin",
+            "first-identity-admin",
             plugins_url("build/admin.css", $file),
             [],
             self::VERSION,
         );
         wp_enqueue_script(
-            "zero-identity-admin",
+            "first-identity-admin",
             plugins_url("build/admin.js", $file),
             [],
             self::VERSION,

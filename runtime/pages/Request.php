@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Pages;
+namespace First\Pages;
 
 /**
  * One claimed request: its route, the visitor, and every value read for it.
  *
  * Every query runs once, as the visitor (`new Viewer(user)` or `Viewer(null)`
- * for anonymous visitors), through Zero's own read pipeline, so read rules,
+ * for anonymous visitors), through First's own read pipeline, so read rules,
  * draft visibility and field masks apply exactly as they do on the REST API.
  * Nothing is read with the trusted (null) viewer, and nothing is shared
  * between requests.
@@ -29,7 +29,7 @@ final class Request
      */
     public function __construct(
         public readonly array $route,
-        public readonly \Zero\Viewer $viewer,
+        public readonly \First\Viewer $viewer,
         public readonly ?array $item,
         public readonly array $params,
         private readonly Plugin $plugin,

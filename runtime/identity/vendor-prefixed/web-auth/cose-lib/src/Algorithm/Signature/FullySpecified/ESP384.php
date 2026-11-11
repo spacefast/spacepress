@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified;
 
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECDSA;
-use Zero\Identity\Vendor\Cose\Key\Ec2Key;
+use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECDSA;
+use First\Identity\Vendor\Cose\Key\Ec2Key;
 use const OPENSSL_ALGO_SHA384;
 
 /**

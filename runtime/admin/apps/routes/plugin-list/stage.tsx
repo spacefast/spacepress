@@ -1,14 +1,14 @@
 import { useNavigate, useParams, useSearch } from '@wordpress/route';
-import { Page, RouterLink, unlock } from '@zero-admin/admin-toolkit';
-import { useFieldCollections } from '@zero-admin/core-data-next';
-import { DataViews, useView } from '@zero-admin/views';
+import { Page, RouterLink, unlock } from '@first-admin/admin-toolkit';
+import { useFieldCollections } from '@first-admin/core-data-next';
+import { DataViews, useView } from '@first-admin/views';
 import { privateApis as coreDataPrivateApis } from '@wordpress/core-data';
-import { filterSortAndPaginate } from '@zero-admin/dataviews';
+import { filterSortAndPaginate } from '@first-admin/dataviews';
 import { __ } from '@wordpress/i18n';
 import { useCallback, useMemo } from '@wordpress/element';
-import { serializeFilters, usePageView } from '@zero-admin/telemetry';
+import { serializeFilters, usePageView } from '@first-admin/telemetry';
 import type { Plugin } from '@wordpress/core-data';
-import type { View } from '@zero-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 import { usePluginActions } from './actions';
 import { PluginTabs } from './plugin-tabs';
 import { getDefaultView, viewToQuery } from './view-utils';
@@ -92,8 +92,8 @@ export default function PluginList() {
 
 	return (
 		<Page
-			title={ __( 'Plugins', 'zero-admin' ) }
-			subTitle={ __( 'Manage and install new plugins.', 'zero-admin' ) }
+			title={ __( 'Plugins', 'first-admin' ) }
+			subTitle={ __( 'Manage and install new plugins.', 'first-admin' ) }
 			hasPadding={ false }
 		>
 			<DataViews

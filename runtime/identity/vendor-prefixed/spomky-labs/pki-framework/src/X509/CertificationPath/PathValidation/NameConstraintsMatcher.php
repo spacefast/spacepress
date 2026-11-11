@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
 
 use function count;
 use function in_array;
 use function mb_strlen;
 use function mb_strtolower;
 use function preg_match;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraints\GeneralSubtree;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\IPAddress;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraints\GeneralSubtree;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\IPAddress;
 use function strcspn;
 use function strpos;
 

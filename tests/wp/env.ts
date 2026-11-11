@@ -1,5 +1,5 @@
 // Shared helpers for the WordPress suites: the harness's `up` JSON (written by run.sh to
-// tests/wp/.harness.json), WP-CLI and SQL through harness.sh, and raw HTTP against /zero/v1 and
+// tests/wp/.harness.json), WP-CLI and SQL through harness.sh, and raw HTTP against /first/v1 and
 // core /wp/v2.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -17,8 +17,8 @@ interface Harness {
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const harness: Harness = JSON.parse(readFileSync(process.env.ZERO_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
-export const api = `${harness.url}/wp-json/zero/v1`;
+export const harness: Harness = JSON.parse(readFileSync(process.env.FIRST_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
+export const api = `${harness.url}/wp-json/first/v1`;
 export const core = `${harness.url}/wp-json/wp/v2`;
 
 export function auth(role: Role): Record<string, string> {
@@ -30,7 +30,7 @@ export function wp(...args: string[]): string {
   return execFileSync(join(here, "harness.sh"), ["wp", ...args], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).trim();
 }
 
-/** WP-CLI that may exit non-zero; returns stdout either way (`wp zero` prints {error} and exits 1). */
+/** WP-CLI that may exit non-zero; returns stdout either way (`wp first` prints {error} and exits 1). */
 export function wpTry(...args: string[]): string {
   try {
     return wp(...args);
@@ -39,9 +39,9 @@ export function wpTry(...args: string[]): string {
   }
 }
 
-/** `wp zero <cmd> ...`: Zero's trusted CLI on WordPress; returns `data`. */
-export function zero(...args: string[]): any {
-  const out = JSON.parse(wp("zero", ...args));
+/** `wp first <cmd> ...`: First's trusted CLI on WordPress; returns `data`. */
+export function first(...args: string[]): any {
+  const out = JSON.parse(wp("first", ...args));
   assert.ok("data" in out, JSON.stringify(out));
   return out.data;
 }
@@ -83,14 +83,14 @@ export async function http(method: string, url: string, opts: { as?: Role; body?
   return { status: res.status, type: res.headers.get("content-type") ?? "", json };
 }
 
-/** A 2xx Zero call; returns `data`. */
+/** A 2xx First call; returns `data`. */
 export async function ok(method: string, path: string, opts: Parameters<typeof http>[2] = {}): Promise<any> {
   const r = await http(method, api + path, opts);
   assert.ok(r.status < 300, `${method} ${path} → ${r.status} ${JSON.stringify(r.json)}`);
   return r.json.data;
 }
 
-/** A Zero problem document with the expected status/code/pointer; returns it. */
+/** A First problem document with the expected status/code/pointer; returns it. */
 export async function problem(method: string, path: string, opts: Parameters<typeof http>[2], expect: { status: number; code: string; pointer: string | undefined }) {
   const r = await http(method, api + path, opts);
   assert.match(r.type, /^application\/problem\+json/);

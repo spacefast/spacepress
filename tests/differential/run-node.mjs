@@ -4,8 +4,8 @@
 // `.validate` closure (called with each fake ctx in ACCESS_CTXS / FIELD_CTXS / each value in VALUES).
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
-register(new URL("./resolve-zero.mjs", import.meta.url));
-const { transaction } = await import("./zero-shim.mjs");
+register(new URL("./resolve-first.mjs", import.meta.url));
+const { transaction } = await import("./first-shim.mjs");
 const mod = await import(pathToFileURL(process.argv[2]).href);
 const config = mod.default;
 const out = {};
@@ -57,4 +57,4 @@ for (const [name, c] of Object.entries({ ...config.collections, ...config.tables
   }
 }
 if (Object.keys(out).length === 0) throw new Error("differential oracle executed no cases");
-process.stdout.write(JSON.stringify({ schema: "zero-differential", version: 1, complete: true, cases: out }));
+process.stdout.write(JSON.stringify({ schema: "first-differential", version: 1, complete: true, cases: out }));

@@ -4,7 +4,7 @@ let compiler;
 self.addEventListener('message', async ({data}) => {
   try {
     if (!compiler) {
-      const response = await fetch(new URL('./zero.wasm', import.meta.url), {
+      const response = await fetch(new URL('./first.wasm', import.meta.url), {
         signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) throw new Error(`Compiler download failed (${response.status}).`);

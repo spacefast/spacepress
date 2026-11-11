@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link https://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Boolean;
+use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use First\Identity\Vendor\phpDocumentor\Reflection\Types\Boolean;
 
 /**
  * Value Object representing the PseudoType 'False', which is a Boolean type.

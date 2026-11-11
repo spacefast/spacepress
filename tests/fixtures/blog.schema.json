@@ -123,10 +123,10 @@
                 "delete": true
             },
             "wp": {
-                "postType": "zero_authors",
-                "groupKey": "group_zero_authors",
-                "metaPrefix": "zero_",
-                "fieldKeyPrefix": "field_zero_authors_"
+                "postType": "first_authors",
+                "groupKey": "group_first_authors",
+                "metaPrefix": "first_",
+                "fieldKeyPrefix": "field_first_authors_"
             },
             "table": null
         },
@@ -353,10 +353,10 @@
                 "delete": true
             },
             "wp": {
-                "postType": "zero_posts",
-                "groupKey": "group_zero_posts",
-                "metaPrefix": "zero_",
-                "fieldKeyPrefix": "field_zero_posts_"
+                "postType": "first_posts",
+                "groupKey": "group_first_posts",
+                "metaPrefix": "first_",
+                "fieldKeyPrefix": "field_first_posts_"
             },
             "table": null
         },
@@ -459,7 +459,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "zero_comments"
+            "table": "first_comments"
         }
     },
     "globals": {
@@ -520,11 +520,11 @@
                 }
             },
             "wp": {
-                "postId": "zero_global_settings",
-                "menuSlug": "zero-global-settings",
-                "groupKey": "group_zero_global_settings",
-                "fieldKeyPrefix": "field_zero_global_settings_",
-                "optionPrefix": "zero_global_settings_"
+                "postId": "first_global_settings",
+                "menuSlug": "first-global-settings",
+                "groupKey": "group_first_global_settings",
+                "fieldKeyPrefix": "field_first_global_settings_",
+                "optionPrefix": "first_global_settings_"
             }
         }
     },

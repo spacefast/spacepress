@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Implements *NoticeReference* ASN.1 type used by 'Certificate Policies' certificate extension.

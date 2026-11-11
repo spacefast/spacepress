@@ -1,5 +1,5 @@
 /**
- * Which history the router runs on. Under the mount path (`/blog/zero-admin/media`)
+ * Which history the router runs on. Under the mount path (`/blog/first-admin/media`)
  * the browser's own history carries the route; anywhere else (the wp-admin
  * redirect page) the route travels in a `p` query parameter.
  */

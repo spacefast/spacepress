@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 75: an array of signed 64 bit integers, big endian.

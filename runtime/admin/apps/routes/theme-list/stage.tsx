@@ -1,8 +1,8 @@
-import { Page, RouterLink, unlock } from '@zero-admin/admin-toolkit';
-import { useThemeFields } from '@zero-admin/fields-next';
-import { DataViews, useView } from '@zero-admin/views';
-import type { View } from '@zero-admin/dataviews';
-import { filterSortAndPaginate } from '@zero-admin/dataviews';
+import { Page, RouterLink, unlock } from '@first-admin/admin-toolkit';
+import { useThemeFields } from '@first-admin/fields-next';
+import { DataViews, useView } from '@first-admin/views';
+import type { View } from '@first-admin/dataviews';
+import { filterSortAndPaginate } from '@first-admin/dataviews';
 import { useNavigate, useSearch, useInvalidate } from '@wordpress/route';
 import { __ } from '@wordpress/i18n';
 import type { Theme } from '@wordpress/core-data';
@@ -12,7 +12,7 @@ import {
 	useMemo,
 	createInterpolateElement,
 } from '@wordpress/element';
-import { serializeFilters, usePageView } from '@zero-admin/telemetry';
+import { serializeFilters, usePageView } from '@first-admin/telemetry';
 import { Modal } from '@wordpress/components';
 import { escapeHTML } from '@wordpress/escape-html';
 import activateTheme from './actions/activate-theme';
@@ -128,7 +128,7 @@ export default function ThemesContent() {
 		deleteTheme,
 		{
 			id: 'view-details',
-			label: __( 'Details', 'zero-admin' ),
+			label: __( 'Details', 'first-admin' ),
 			isPrimary: false,
 			callback: ( items: Theme[] ) => {
 				if ( items.length > 0 ) {
@@ -163,7 +163,7 @@ export default function ThemesContent() {
 
 	return (
 		<Page
-			title={ __( 'Themes', 'zero-admin' ) }
+			title={ __( 'Themes', 'first-admin' ) }
 			className="themes-page"
 			hasPadding={ false }
 		>
@@ -229,7 +229,7 @@ export default function ThemesContent() {
 				! selectedThemeObject &&
 				searchParams.details && (
 					<Modal
-						title={ __( 'Theme not found', 'zero-admin' ) }
+						title={ __( 'Theme not found', 'first-admin' ) }
 						onRequestClose={ handleCloseModal }
 						className="theme-detail-modal"
 						size="small"
@@ -239,7 +239,7 @@ export default function ThemesContent() {
 								/* translators: <themeSlug /> will be replaced with the theme slug */
 								__(
 									'There is no theme <themeSlug /> installed.',
-									'zero-admin'
+									'first-admin'
 								),
 								{
 									themeSlug: (

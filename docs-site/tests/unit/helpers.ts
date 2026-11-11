@@ -15,10 +15,10 @@ export function wasmPath(): string {
 }
 
 /** The native compiler, for parity: a release build if there is one, else debug. */
-export function zeroBinary(): string {
+export function firstBinary(): string {
   for (const profile of ["release", "debug"]) {
-    const candidate = path.join(target, profile, "zero");
+    const candidate = path.join(target, profile, "first");
     if (existsSync(candidate)) return candidate;
   }
-  throw new Error(`no zero binary under ${target}; run cargo build`);
+  throw new Error(`no first binary under ${target}; run cargo build`);
 }

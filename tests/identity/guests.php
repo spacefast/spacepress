@@ -3,11 +3,11 @@
 // the runtime enforces, and verifying an email upgrades a guest in place or leaves it alone.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use Zero\Identity\{Plugin, OAuth, Security};
+use First\Identity\{Plugin, OAuth, Security};
 
 $tag = bin2hex(random_bytes(4));
-add_role('zero_guest', 'Guest', ['read' => true]);
-$guest = wp_insert_user(['user_login' => 'zg_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+add_role('first_guest', 'Guest', ['read' => true]);
+$guest = wp_insert_user(['user_login' => 'zg_' . $tag, 'user_pass' => Security::token(), 'role' => 'first_guest']);
 Plugin::$db->insert('applications', ['id' => 'app_guests_' . $tag, 'name' => 'Guests', 'redirects' => '[]', 'origins' => '[]']);
 $oauth = new OAuth(Plugin::$db, Plugin::$accounts);
 function session_for(int $uid): array
@@ -19,9 +19,9 @@ try {
     Plugin::$accounts->issueForUser($guest, 'app_guests_' . $tag);
     throw new RuntimeException('FAIL issueForUser ran without the runtime');
 } catch (LogicException) {
-    echo "PASS issueForUser refuses callers before zero_runtime_loaded\n";
+    echo "PASS issueForUser refuses callers before first_runtime_loaded\n";
 }
-do_action('zero_runtime_loaded');
+do_action('first_runtime_loaded');
 $tokens = Plugin::$accounts->issueForUser($guest, 'app_guests_' . $tag);
 check($oauth->userinfo($tokens['access_token'])['sub'] === (string) $guest, 'issueForUser mints a working access token for the user');
 check($oauth->token(['grant_type' => 'refresh_token', 'client_id' => 'app_guests_' . $tag, 'refresh_token' => $tokens['refresh_token']])['token_type'] === 'Bearer', 'and a refresh token that rotates');
@@ -31,22 +31,22 @@ check(Plugin::$accounts->status($guest) === 'suspended', 'status() reports suspe
 Plugin::$accounts->suspend($guest, false);
 
 $upgraded = [];
-add_action('zero_identity_guest_upgraded', static function (int $id) use (&$upgraded): void { $upgraded[] = $id; });
+add_action('first_identity_guest_upgraded', static function (int $id) use (&$upgraded): void { $upgraded[] = $id; });
 $email = 'guest-' . $tag . '@example.test';
 check(Plugin::$accounts->verifiedSignIn($email, session_for($guest)['session']) === $guest, 'a verified email signs the guest into its own account');
 clean_user_cache($guest);
 check(get_userdata($guest)->roles === ['subscriber'] && Plugin::$accounts->owner($email) === $guest && get_userdata($guest)->user_email === $email, 'the guest is now a subscriber owning that email, same user id');
-check($upgraded === [$guest], 'zero_identity_guest_upgraded fired once with the id');
+check($upgraded === [$guest], 'first_identity_guest_upgraded fired once with the id');
 
-$second = wp_insert_user(['user_login' => 'zg2_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+$second = wp_insert_user(['user_login' => 'zg2_' . $tag, 'user_pass' => Security::token(), 'role' => 'first_guest']);
 $owner = Plugin::$accounts->verifiedSignIn($email, session_for($second)['session']);
 clean_user_cache($second);
-check($owner === $guest && get_userdata($second)->roles === ['zero_guest'], 'an email that belongs to someone signs into that account and leaves the guest as is');
+check($owner === $guest && get_userdata($second)->roles === ['first_guest'], 'an email that belongs to someone signs into that account and leaves the guest as is');
 $member = Plugin::$accounts->emailLogin('member-' . $tag . '@example.test');
 $other = 'other-' . $tag . '@example.test';
 check(Plugin::$accounts->verifiedSignIn($other, session_for($member)['session']) !== $member, 'a non-guest session never absorbs a newly verified email');
 
-$handoffGuest = wp_insert_user(['user_login' => 'zg3_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+$handoffGuest = wp_insert_user(['user_login' => 'zg3_' . $tag, 'user_pass' => Security::token(), 'role' => 'first_guest']);
 $guestTokens = Plugin::$accounts->issueForUser($handoffGuest, 'app_guests_' . $tag);
 $handoff = $oauth->handoff($guestTokens['access_token']);
 check((int) $oauth->redeemHandoff($handoff)['session']['wp_user_id'] === $handoffGuest, 'a guest access token hands its browser an identity session');
@@ -60,7 +60,7 @@ Plugin::$sessions->revoke($handoffGuest);
 rejects(fn () => $oauth->redeemHandoff($pending), 'invalid_challenge', 'revoking the guest sessions first voids an outstanding handoff');
 
 // Fixation: an attacker keeps a guest's tokens and lures another browser into upgrading it.
-$fixed = wp_insert_user(['user_login' => 'zg4_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+$fixed = wp_insert_user(['user_login' => 'zg4_' . $tag, 'user_pass' => Security::token(), 'role' => 'first_guest']);
 $attacker = Plugin::$accounts->issueForUser($fixed, 'app_guests_' . $tag);
 check(Plugin::$accounts->verifiedSignIn('victim-' . $tag . '@example.test', session_for($fixed)['session']) === $fixed, 'the victim browser upgrades the guest it was handed');
 rejects(fn () => $oauth->userinfo($attacker['access_token']), 'invalid_token', 'the upgrade ends every earlier guest access token');
@@ -69,7 +69,7 @@ rejects(fn () => $oauth->handoff(Plugin::$accounts->issueForUser($guest, 'app_gu
 
 // Durable credentials: whatever a former holder planted on the guest dies with the upgrade, and a
 // guest can't enroll such credentials in the first place.
-$planted = wp_insert_user(['user_login' => 'zg5_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+$planted = wp_insert_user(['user_login' => 'zg5_' . $tag, 'user_pass' => Security::token(), 'role' => 'first_guest']);
 Plugin::$accounts->ensure($planted);
 $plantedSession = session_for($planted);
 $_COOKIE['zi_session'] = $plantedSession['secret'];
@@ -84,7 +84,7 @@ Plugin::$accounts->verifiedSignIn('planted-' . $tag . '@example.test', session_f
 check(!Plugin::$db->row('SELECT id FROM ' . Plugin::$db->prefix . 'passkeys WHERE wp_user_id=%d', $planted), 'an upgrade removes every credential planted before it');
 
 // A disabled application voids its outstanding handoffs.
-$appGuest = wp_insert_user(['user_login' => 'zg6_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+$appGuest = wp_insert_user(['user_login' => 'zg6_' . $tag, 'user_pass' => Security::token(), 'role' => 'first_guest']);
 $appTokens = Plugin::$accounts->issueForUser($appGuest, 'app_guests_' . $tag);
 $pending = $oauth->handoff($appTokens['access_token']);
 Plugin::$db->run('UPDATE ' . Plugin::$db->prefix . 'applications SET enabled=0 WHERE id=%s', 'app_guests_' . $tag);
@@ -99,21 +99,21 @@ rejects(fn () => $oauth->userinfo($memberTokens['access_token']), 'invalid_token
 rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => 'app_guests_' . $tag, 'refresh_token' => $memberTokens['refresh_token']]), 'invalid_grant', 'and identity refresh tokens');
 
 // A rolled-back upgrade leaves no cached trace in WordPress.
-$rolled = wp_insert_user(['user_login' => 'zg7_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+$rolled = wp_insert_user(['user_login' => 'zg7_' . $tag, 'user_pass' => Security::token(), 'role' => 'first_guest']);
 $session = session_for($rolled)['session'];
 get_userdata($rolled); // warm the cache
 $boom = static function (): never { throw new RuntimeException('hook failed'); };
-add_action('zero_identity_guest_upgraded', $boom);
+add_action('first_identity_guest_upgraded', $boom);
 try {
     Plugin::$accounts->verifiedSignIn('rolled-' . $tag . '@example.test', $session);
 } catch (RuntimeException) {
 }
-remove_action('zero_identity_guest_upgraded', $boom);
+remove_action('first_identity_guest_upgraded', $boom);
 $after = get_userdata($rolled);
-check($after->roles === ['zero_guest'] && $after->user_email === '', 'a failed upgrade rolls back, cached user included');
+check($after->roles === ['first_guest'] && $after->user_email === '', 'a failed upgrade rolls back, cached user included');
 
 // The upgrade also resets core WordPress credentials a former holder could have created.
-$core = wp_insert_user(['user_login' => 'zg8_' . $tag, 'user_pass' => 'planted-password-123', 'role' => 'zero_guest']);
+$core = wp_insert_user(['user_login' => 'zg8_' . $tag, 'user_pass' => 'planted-password-123', 'role' => 'first_guest']);
 WP_Application_Passwords::create_new_application_password($core, ['name' => 'planted']);
 Plugin::$accounts->verifiedSignIn('core-' . $tag . '@example.test', session_for($core)['session']);
 clean_user_cache($core);

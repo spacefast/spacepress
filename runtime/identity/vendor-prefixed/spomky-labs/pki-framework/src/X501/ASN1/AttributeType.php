@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
 
 use function array_key_exists;
 use OutOfBoundsException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
 
 /**
  * Implements *AttributeType* ASN.1 type.

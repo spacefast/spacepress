@@ -1,5 +1,5 @@
-import { InputControl } from '@zero-admin/design-system';
-import type { FontSize } from '@zero-admin/global-styles-engine';
+import { InputControl } from '@first-admin/design-system';
+import type { FontSize } from '@first-admin/global-styles-engine';
 import {
 	__experimentalVStack as VStack,
 	__experimentalHStack as HStack,
@@ -36,7 +36,7 @@ function RenameFontSizeDialog( {
 		<Modal
 			onRequestClose={ toggleOpen }
 			focusOnMount="firstContentElement"
-			title={ __( 'Rename', 'zero-admin' ) }
+			title={ __( 'Rename', 'first-admin' ) }
 			size="small"
 		>
 			<form
@@ -51,10 +51,10 @@ function RenameFontSizeDialog( {
 						autoComplete="off"
 						value={ newName }
 						onValueChange={ setNewName }
-						label={ __( 'Name', 'zero-admin' ) }
+						label={ __( 'Name', 'first-admin' ) }
 						placeholder={ __(
 							'Font size preset name',
-							'zero-admin'
+							'first-admin'
 						) }
 					/>
 					<HStack justify="right">
@@ -63,14 +63,14 @@ function RenameFontSizeDialog( {
 							variant="tertiary"
 							onClick={ toggleOpen }
 						>
-							{ __( 'Cancel', 'zero-admin' ) }
+							{ __( 'Cancel', 'first-admin' ) }
 						</Button>
 						<Button
 							__next40pxDefaultSize
 							variant="primary"
 							type="submit"
 						>
-							{ __( 'Save', 'zero-admin' ) }
+							{ __( 'Save', 'first-admin' ) }
 						</Button>
 					</HStack>
 				</VStack>

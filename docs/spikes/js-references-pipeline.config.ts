@@ -1,4 +1,4 @@
-import { action, db, defineConfig, defineRelations, id, integer, json, text, table } from "zero";
+import { action, db, defineConfig, defineRelations, id, integer, json, text, table } from "first";
 const owners = table({ id: id(), name: text().notNull() });
 const records = table({
   id: id(), name: text().notNull(), ownerId: integer().notNull().references(() => owners.id),

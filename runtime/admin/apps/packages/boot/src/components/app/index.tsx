@@ -2,12 +2,12 @@
 import { createRoot } from 'react-dom/client';
 import { privateApis as routePrivateApis } from '@wordpress/route';
 import { useMemo, useEffect, StrictMode } from 'react';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import { useSelect, dispatch } from '@wordpress/data';
 import '@wordpress/theme';
 import { getRouter, loadAdminModule } from './router';
 import { configureSite } from '../../site';
-import { store as zeroAdminStore } from '../../store';
+import { store as firstAdminStore } from '../../store';
 import { updateMenuIcons } from '../../icons';
 import { ModalRenderer } from '../modal-renderer';
 import type { Route, FlatMenuItem, DashboardContext } from '../../store/types';
@@ -20,7 +20,7 @@ const { RouterProvider } = unlock( routePrivateApis );
 
 function App() {
 	const routes = useSelect(
-		( select ) => select( zeroAdminStore ).getRoutes(),
+		( select ) => select( firstAdminStore ).getRoutes(),
 		[]
 	);
 
@@ -53,9 +53,9 @@ async function init(
 	dashboardContext?: DashboardContext,
 	element?: HTMLElement
 ) {
-	const rootElement = element ?? document.getElementById( 'zero-admin-app' );
+	const rootElement = element ?? document.getElementById( 'first-admin-app' );
 	if ( ! rootElement ) {
-		throw new Error( "Root element with id 'zero-admin-app' not found." );
+		throw new Error( "Root element with id 'first-admin-app' not found." );
 	}
 	// Where the site mounts the admin and its wp-admin live, from `site_url()` and `admin_url()`.
 	configureSite( ( dashboardContext ?? {} ) as Record< string, unknown > );
@@ -72,23 +72,23 @@ async function init(
 		} )
 	);
 
-	routes.forEach( dispatch( zeroAdminStore ).registerRoute );
+	routes.forEach( dispatch( firstAdminStore ).registerRoute );
 
 	menuItems.forEach( ( menuItem ) => {
-		void dispatch( zeroAdminStore ).registerMenuItem(
+		void dispatch( firstAdminStore ).registerMenuItem(
 			menuItem.id,
 			menuItem
 		);
 	} );
 
 	metaMenuItems.forEach( ( menuItem ) => {
-		void dispatch( zeroAdminStore ).registerSiteHubHelpMenuItem(
+		void dispatch( firstAdminStore ).registerSiteHubHelpMenuItem(
 			menuItem.id,
 			menuItem
 		);
 	} );
 
-	updateMenuIcons( dispatch( zeroAdminStore ).updateMenuItem );
+	updateMenuIcons( dispatch( firstAdminStore ).updateMenuItem );
 
 	if ( initModules?.length ) {
 		await Promise.all(
@@ -110,13 +110,13 @@ async function init(
 	}
 
 	if ( dashboardContext?.dashboard_widget_types ) {
-		void dispatch(zeroAdminStore).setDashboardWidgetTypes(dashboardContext.dashboard_widget_types);
+		void dispatch(firstAdminStore).setDashboardWidgetTypes(dashboardContext.dashboard_widget_types);
 	}
 	if ( dashboardContext?.dashboard_default_layout ) {
-		void dispatch(zeroAdminStore).setDashboardDefaultLayout(dashboardContext.dashboard_default_layout);
+		void dispatch(firstAdminStore).setDashboardDefaultLayout(dashboardContext.dashboard_default_layout);
 	}
 	if ( dashboardContext ) {
-		void dispatch( zeroAdminStore ).setDashboardContext( dashboardContext );
+		void dispatch( firstAdminStore ).setDashboardContext( dashboardContext );
 	}
 
 	// We need to apply different view transitions for Safari, because it
@@ -135,9 +135,9 @@ async function init(
 	);
 	return () => {
 		root.unmount();
-		for (const route of routes) void dispatch(zeroAdminStore).unregisterRoute(route.path);
-		for (const item of menuItems) void dispatch(zeroAdminStore).unregisterMenuItem(item.id);
-		for (const item of metaMenuItems) void dispatch(zeroAdminStore).unregisterSiteHubHelpMenuItem(item.id);
+		for (const route of routes) void dispatch(firstAdminStore).unregisterRoute(route.path);
+		for (const item of menuItems) void dispatch(firstAdminStore).unregisterMenuItem(item.id);
+		for (const item of metaMenuItems) void dispatch(firstAdminStore).unregisterSiteHubHelpMenuItem(item.id);
 	};
 }
 

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitTagging;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitTagging;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitTagging;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitTagging;
 use UnexpectedValueException;
 
 /**

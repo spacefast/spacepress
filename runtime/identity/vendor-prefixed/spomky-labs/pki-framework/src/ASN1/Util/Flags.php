@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util;
 
 use function assert;
-use Zero\Identity\Vendor\Brick\Math\BigInteger;
+use First\Identity\Vendor\Brick\Math\BigInteger;
 use function count;
 use function is_array;
 use function ord;
 use OutOfBoundsException;
 use RuntimeException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
 
 /**
  * Class to handle a bit string as a field of flags.

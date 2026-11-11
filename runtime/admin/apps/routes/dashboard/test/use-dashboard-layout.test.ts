@@ -1,11 +1,11 @@
 import { renderHook } from '@testing-library/react';
 import { useSelect, useDispatch } from '@wordpress/data';
-import type { DashboardWidget } from '@zero-admin/dashboard';
+import type { DashboardWidget } from '@first-admin/dashboard';
 import { useDashboardLayout } from '../hooks';
 
 jest.mock( '@wordpress/data' );
-jest.mock( '@zero-admin/boot', () => ( {
-	store: 'core/zero-admin',
+jest.mock( '@first-admin/boot', () => ( {
+	store: 'core/first-admin',
 } ) );
 
 jest.mock( '@wordpress/preferences', () => ( {

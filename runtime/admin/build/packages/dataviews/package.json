@@ -1,7 +1,7 @@
 {
-	"name": "@zero-admin/dataviews",
+	"name": "@first-admin/dataviews",
 	"version": "1.0.0",
-	"description": "Private wrapper around @wordpress/dataviews for Zero Admin",
+	"description": "Private wrapper around @wordpress/dataviews for First Admin",
 	"type": "module",
 	"private": true,
 	"wpModule": true,

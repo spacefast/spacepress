@@ -2,7 +2,7 @@
 /**
  * WordPress REST API extensions.
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 add_filter(
@@ -43,7 +43,7 @@ add_filter(
 /**
  * Allow auto-draft status in WordPress REST API for all post types
  */
-function zero_admin_allow_auto_draft_in_rest_api() {
+function first_admin_allow_auto_draft_in_rest_api() {
 	$auto_draft_filter = function ( $schema ) {
 		if ( isset( $schema['properties']['status']['enum'] ) ) {
 			$schema['properties']['status']['enum'][] = 'auto-draft';
@@ -80,12 +80,12 @@ function zero_admin_allow_auto_draft_in_rest_api() {
 	}
 }
 
-add_action( 'rest_api_init', 'zero_admin_allow_auto_draft_in_rest_api' );
+add_action( 'rest_api_init', 'first_admin_allow_auto_draft_in_rest_api' );
 
 /**
  * Add comment_status filtering support to REST API for all post types that support comments
  */
-function zero_admin_add_comment_status_filter_to_rest_api() {
+function first_admin_add_comment_status_filter_to_rest_api() {
 	$post_types = get_post_types( array( 'show_in_rest' => true ), 'objects' );
 
 	foreach ( $post_types as $post_type ) {
@@ -111,12 +111,12 @@ function zero_admin_add_comment_status_filter_to_rest_api() {
 	}
 }
 
-add_action( 'rest_api_init', 'zero_admin_add_comment_status_filter_to_rest_api' );
+add_action( 'rest_api_init', 'first_admin_add_comment_status_filter_to_rest_api' );
 
 /**
  * Add comment_status parameters to REST API collection params for all post types that support comments
  */
-function zero_admin_add_comment_status_collection_params() {
+function first_admin_add_comment_status_collection_params() {
 	$post_types = get_post_types( array( 'show_in_rest' => true ), 'objects' );
 
 	foreach ( $post_types as $post_type ) {
@@ -143,12 +143,12 @@ function zero_admin_add_comment_status_collection_params() {
 	}
 }
 
-add_action( 'rest_api_init', 'zero_admin_add_comment_status_collection_params' );
+add_action( 'rest_api_init', 'first_admin_add_comment_status_collection_params' );
 
 /**
  * Add post_count field to user REST API
  */
-function zero_admin_register_user_post_count_field() {
+function first_admin_register_user_post_count_field() {
 	register_rest_field(
 		'user',
 		'post_count',
@@ -164,19 +164,19 @@ function zero_admin_register_user_post_count_field() {
 		)
 	);
 }
-add_action( 'rest_api_init', 'zero_admin_register_user_post_count_field' );
+add_action( 'rest_api_init', 'first_admin_register_user_post_count_field' );
 
 /**
  * Add comment count field to REST API response for posts. Don't compute it, as
- * it will be exposed by `zero_admin_prepare_comment_count_rest_field`.
+ * it will be exposed by `first_admin_prepare_comment_count_rest_field`.
  */
-function zero_admin_register_comment_count_rest_field() {
+function first_admin_register_comment_count_rest_field() {
 	register_rest_field(
 		'post',
 		'comment_count',
 		array(
 			'schema' => array(
-				'description' => __( 'Number of approved comments for this post.', 'zero-admin' ),
+				'description' => __( 'Number of approved comments for this post.', 'first-admin' ),
 				'type'        => 'integer',
 			),
 		)
@@ -189,13 +189,13 @@ function zero_admin_register_comment_count_rest_field() {
  * @param WP_REST_Response $response The response object.
  * @param WP_Post          $post     Post object.
  */
-function zero_admin_prepare_comment_count_rest_field( $response, $post ) {
+function first_admin_prepare_comment_count_rest_field( $response, $post ) {
 	$response->data['comment_count'] = (int) $post->comment_count;
 	return $response;
 }
 
-add_action( 'rest_api_init', 'zero_admin_register_comment_count_rest_field' );
-add_filter( 'rest_prepare_post', 'zero_admin_prepare_comment_count_rest_field', 10, 2 );
+add_action( 'rest_api_init', 'first_admin_register_comment_count_rest_field' );
+add_filter( 'rest_prepare_post', 'first_admin_prepare_comment_count_rest_field', 10, 2 );
 
 /**
  * Overrides the REST controller for the `attachments` post type.
@@ -205,13 +205,13 @@ add_filter( 'rest_prepare_post', 'zero_admin_prepare_comment_count_rest_field', 
  *
  * @return array Array of arguments for registering a post type.
  */
-function zero_admin_override_attachments_endpoint( array $args ): array {
-	$args['rest_controller_class']   = 'Zero_Admin_REST_Attachments_Controller';
+function first_admin_override_attachments_endpoint( array $args ): array {
+	$args['rest_controller_class']   = 'First_Admin_REST_Attachments_Controller';
 	$args['late_route_registration'] = true;
 
 	return $args;
 }
-add_filter( 'register_attachment_post_type_args', 'zero_admin_override_attachments_endpoint' );
+add_filter( 'register_attachment_post_type_args', 'first_admin_override_attachments_endpoint' );
 
 /**
  * Get update information for a specific theme.
@@ -219,7 +219,7 @@ add_filter( 'register_attachment_post_type_args', 'zero_admin_override_attachmen
  * @param array $theme The theme data from the REST API response.
  * @return array|null Theme update information.
  */
-function zero_admin_get_theme_update_info( $theme ) {
+function first_admin_get_theme_update_info( $theme ) {
 	if ( is_multisite() || ! current_user_can( 'update_themes' ) ) {
 		return null;
 	}
@@ -264,12 +264,12 @@ function zero_admin_get_theme_update_info( $theme ) {
  *
  * This field provides information about available updates for themes.
  */
-function zero_admin_register_theme_update_info_field() {
+function first_admin_register_theme_update_info_field() {
 	register_rest_field(
 		'theme',
 		'update_info',
 		array(
-			'get_callback' => 'zero_admin_get_theme_update_info',
+			'get_callback' => 'first_admin_get_theme_update_info',
 			'schema'       => array(
 				'description' => 'Theme update information',
 				'type'        => 'object',
@@ -302,7 +302,7 @@ function zero_admin_register_theme_update_info_field() {
 	);
 }
 
-add_action( 'rest_api_init', 'zero_admin_register_theme_update_info_field' );
+add_action( 'rest_api_init', 'first_admin_register_theme_update_info_field' );
 
 /**
  * Get theme auto-updates data.
@@ -310,7 +310,7 @@ add_action( 'rest_api_init', 'zero_admin_register_theme_update_info_field' );
  * @param array $theme The theme data from the REST API response.
  * @return array Theme auto-updates data.
  */
-function zero_admin_get_theme_auto_updates_data( $theme ) {
+function first_admin_get_theme_auto_updates_data( $theme ) {
 	require_once ABSPATH . 'wp-admin/includes/theme.php';
 	require_once ABSPATH . 'wp-admin/includes/update.php';
 
@@ -339,12 +339,12 @@ function zero_admin_get_theme_auto_updates_data( $theme ) {
  *
  * This field provides information about whether theme auto-updates are or can be enabled.
  */
-function zero_admin_register_theme_auto_updates_field() {
+function first_admin_register_theme_auto_updates_field() {
 	register_rest_field(
 		'theme',
 		'auto_updates',
 		array(
-			'get_callback' => 'zero_admin_get_theme_auto_updates_data',
+			'get_callback' => 'first_admin_get_theme_auto_updates_data',
 			'schema'       => array(
 				'description' => 'Theme auto-updates information',
 				'type'        => 'object',
@@ -369,7 +369,7 @@ function zero_admin_register_theme_auto_updates_field() {
 	);
 }
 
-add_action( 'rest_api_init', 'zero_admin_register_theme_auto_updates_field' );
+add_action( 'rest_api_init', 'first_admin_register_theme_auto_updates_field' );
 
 /**
  * Register custom collection params for user REST API to support field-specific search.
@@ -379,27 +379,27 @@ add_action( 'rest_api_init', 'zero_admin_register_theme_auto_updates_field' );
  * @param array $params Collection parameters.
  * @return array Modified collection parameters.
  */
-function zero_admin_register_user_search_collection_params( $params ) {
+function first_admin_register_user_search_collection_params( $params ) {
 	$params['email_search'] = array(
-		'description'       => __( 'Search users by email address (partial match).', 'zero-admin' ),
+		'description'       => __( 'Search users by email address (partial match).', 'first-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
 
 	$params['email_search_not'] = array(
-		'description'       => __( 'Exclude users whose email matches (partial match).', 'zero-admin' ),
+		'description'       => __( 'Exclude users whose email matches (partial match).', 'first-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
 
 	$params['name_search'] = array(
-		'description'       => __( 'Search users by display name (partial match).', 'zero-admin' ),
+		'description'       => __( 'Search users by display name (partial match).', 'first-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
 
 	$params['name_search_not'] = array(
-		'description'       => __( 'Exclude users whose display name matches (partial match).', 'zero-admin' ),
+		'description'       => __( 'Exclude users whose display name matches (partial match).', 'first-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
@@ -408,21 +408,21 @@ function zero_admin_register_user_search_collection_params( $params ) {
 		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value ) ) {
 			return new \WP_Error(
 				'rest_invalid_param',
-				__( 'Date must be in YYYY-MM-DD format.', 'zero-admin' )
+				__( 'Date must be in YYYY-MM-DD format.', 'first-admin' )
 			);
 		}
 		return true;
 	};
 
 	$params['registered_after'] = array(
-		'description'       => __( 'Limit result set to users registered on or after a given date (YYYY-MM-DD).', 'zero-admin' ),
+		'description'       => __( 'Limit result set to users registered on or after a given date (YYYY-MM-DD).', 'first-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 		'validate_callback' => $validate_date,
 	);
 
 	$params['registered_before'] = array(
-		'description'       => __( 'Limit result set to users registered on or before a given date (YYYY-MM-DD).', 'zero-admin' ),
+		'description'       => __( 'Limit result set to users registered on or before a given date (YYYY-MM-DD).', 'first-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 		'validate_callback' => $validate_date,
@@ -430,7 +430,7 @@ function zero_admin_register_user_search_collection_params( $params ) {
 
 	return $params;
 }
-add_filter( 'rest_user_collection_params', 'zero_admin_register_user_search_collection_params' );
+add_filter( 'rest_user_collection_params', 'first_admin_register_user_search_collection_params' );
 
 /**
  * Apply field-specific search params to the user query.
@@ -444,7 +444,7 @@ add_filter( 'rest_user_collection_params', 'zero_admin_register_user_search_coll
  * @param WP_REST_Request $request       The REST request.
  * @return array Modified arguments.
  */
-function zero_admin_apply_user_search_params( $prepared_args, $request ) {
+function first_admin_apply_user_search_params( $prepared_args, $request ) {
 	if ( ! current_user_can( 'list_users' ) ) {
 		return $prepared_args;
 	}
@@ -484,7 +484,7 @@ function zero_admin_apply_user_search_params( $prepared_args, $request ) {
 
 			// Name search uses first_name and last_name usermeta to match the UI,
 			// which renders names from these meta fields (with display_name as fallback).
-			// See also: zero_admin_ciab_extend_user_search() in settings-users.php.
+			// See also: first_admin_ciab_extend_user_search() in settings-users.php.
 			if ( ! empty( $search['name'] ) ) {
 				$term               = '%' . $wpdb->esc_like( $search['name'] ) . '%';
 				$query->query_from .= " LEFT JOIN {$wpdb->usermeta} AS na_fn ON ({$wpdb->users}.ID = na_fn.user_id AND na_fn.meta_key = 'first_name')";
@@ -540,4 +540,4 @@ function zero_admin_apply_user_search_params( $prepared_args, $request ) {
 
 	return $prepared_args;
 }
-add_filter( 'rest_user_query', 'zero_admin_apply_user_search_params', 10, 2 );
+add_filter( 'rest_user_query', 'first_admin_apply_user_search_params', 10, 2 );

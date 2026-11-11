@@ -8,7 +8,7 @@ one of them at a time, never both in the same version.
 - **Live 0.8 versions** keep running unchanged. Nothing touches a version that's
   already published.
 - **Each new publish of a 0.8 app** from the Spacefast CLI, local MCP or a source
-  build runs the converter (`zero migrate app --from zero-0.8`) and the publish
+  build runs the converter (`first migrate app --from zero-0.8`) and the publish
   checks. When neither refuses anything and the Space's runtime runs v2, the
   publish ships as v2: on an existing 0.8 Space it adopts that Space's tables, and
   on a new Space it starts with fresh ones.
@@ -23,8 +23,8 @@ one of them at a time, never both in the same version.
 - **There is no flag** to opt in or out. Hosted MCP doesn't build Zero apps, and
   older CLIs and direct API publishes never run the converter: the API doesn't
   convert.
-- **A new Space can still start on 0.8** until CLI 0.9.0 and Zero v2 ship. New
-  apps made with `sf zero init` start on v2.
+- **A new Space can still start on 0.8** until CLI 0.9.0 and First ship. New
+  apps made with `sf first init` start on v2.
 - **The same command** runs on its own to preview the v2 candidate.
 
 So the converter always targets `main`. A PR that changes an authoring API, a
@@ -49,24 +49,24 @@ The platform enforces these, and the spec work keeps them true:
    negotiation live in the v2 app plugin's request path, or behind the engine's
    `zero_generation === 'v2'` check. Static, Functions, content-model and 0.8
    Spaces see no difference, with two accepted exceptions:
-   - The platform plugins Zero v2 needs (Action Scheduler, the MCP Adapter) are
+   - The platform plugins First needs (Action Scheduler, the MCP Adapter) are
      installed on every box, so Action Scheduler's two post statuses
      (`in-progress`, `failed`) show up in every Space's REST index. They are
      labels only, with no routes or permissions.
-   - `GET /__zero/realtime.js` is a reserved engine path on every Space. On a
+   - `GET /__first/realtime.js` is a reserved engine path on every Space. On a
      Space without live updates, which includes every non-v2 Space, it returns a
      one-line script comment and pages poll instead. No 0.8, Static, Functions
      or content-model page ever loads that path, so their visible behavior
      doesn't change.
 4. **0.8's paths stay 0.8's.** `/__zero/config`, `/__zero/run`, `/__zero/auth/*`
    and `/__zero/realtime/events` keep their 0.8 meaning on 0.8 versions. v2 adds
-   `/__zero/api/v1/*`, `/__zero/client.js`, `/__zero/client.d.ts` and
-   `/__zero/realtime.js`, and never reuses a 0.8 path with a different meaning.
-   0.8 never used `/__zero/realtime.js`; rule 3 covers why it answers on
+   `/__first/api/v1/*`, `/__first/client.js`, `/__first/client.d.ts` and
+   `/__first/realtime.js`, and never reuses a 0.8 path with a different meaning.
+   0.8 never used `/__first/realtime.js`; rule 3 covers why it answers on
    every version.
 5. **Adopted 0.8 tables are data, not schema to tidy.** The deploy-time schema
    check never alters or drops them without an explicit `--drop`.
-6. **A root `zero.config.ts` means v2.** The spec's `zero/` and `app/` folders
+6. **A root `first.config.ts` means v2.** The spec's `first/` and `app/` folders
    never make a project look like 0.8, or like another framework, to the CLI or
    the build pipeline.
 
@@ -75,12 +75,12 @@ The platform enforces these, and the spec work keeps them true:
 | Rule | Suite |
 |---|---|
 | 1 | monorepo `apps/control-plane/src/versions/zero-generation.test.ts`, `runtime/tests/zero-v2-cordon.test.ts` |
-| 2 | monorepo `runtime/tests/zero-v2-hosted.test.ts`, `zero-v2-source.test.ts` |
+| 2 | monorepo `runtime/tests/zero-v2-hosted.test.ts`, `first-source.test.ts` |
 | 3 | monorepo `runtime/tests/zero-runtime.test.ts` (0.8), the e2e wp.cloud runtime contract |
 | 4 | monorepo `runtime/tests/zero-runtime.test.ts`, `legacy-zero-users.ts` |
 | 5 | zero CI lane "Spacefast cross-prefix migration and session continuity" |
-| 6 | monorepo `packages/cli/src/zero-v2.test.ts`, `zero-v2-source-publish.test.ts` |
-| migration | zero `tests/app_migrate.rs`, `tests/config_migrate.rs`, CI lanes "Zero 0.8 census tool" and "Zero 0.8 site, app-user and application migrations"; monorepo `zero-generation.test.ts`, `packages/common/src/utils/zero-migration.test.ts` |
+| 6 | monorepo `packages/cli/src/first-.test.ts`, `first-source-publish.test.ts` |
+| migration | zero `tests/app_migrate.rs`, `tests/config_migrate.rs`, CI lanes "Zero 0.8 census tool" and "Zero 0.8 site, app-user and application migrations"; monorepo `first-generation.test.ts`, `packages/common/src/utils/zero-migration.test.ts` |
 
 Where a rule has no behavior test yet, the
 coexistence test lane adds one.

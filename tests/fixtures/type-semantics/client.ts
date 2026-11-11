@@ -1,4 +1,4 @@
-import type { Actions } from "./zero/_generated/client/types";
+import type { Actions } from "./first/_generated/client/types";
 
 declare const report: Actions["typeReport"]["output"];
 const scalarTypes: string[] = report.scalarTypes;

@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Key;
+namespace First\Identity\Vendor\Cose\Key;
 
 use function array_key_exists;
 use function in_array;
 use InvalidArgumentException;
 use function is_int;
 use function is_string;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
 use function sprintf;
 use function strlen;
 

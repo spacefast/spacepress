@@ -2,11 +2,11 @@
 /**
  * Count field definition for core taxonomy term fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'     => 'integer',
-	'label'    => __( 'Count', 'zero-admin' ),
+	'label'    => __( 'Count', 'first-admin' ),
 	'filterBy' => false,
 );

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Interface for classes providing explicit tagging.

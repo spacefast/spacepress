@@ -1,4 +1,4 @@
-import { useImageCropper } from '@zero-admin/image-cropper';
+import { useImageCropper } from '@first-admin/image-cropper';
 import { useEffect, useState } from '@wordpress/element';
 
 export default function ImagePreview( {
@@ -36,7 +36,7 @@ export default function ImagePreview( {
 
 	return (
 		<img
-			className="zero-admin-media-editor-content__image"
+			className="first-admin-media-editor-content__image"
 			src={ displayUrl || sourceUrl }
 			alt={ altText }
 		/>

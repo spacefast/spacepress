@@ -23,7 +23,7 @@ async function getFirstFile(
 	return [];
 }
 
-describe( '@zero-admin/design-system', () => {
+describe( '@first-admin/design-system', () => {
 	it( 'consistently forwards refs in each component', async () => {
 		const files = glob( '../../src/**/*.tsx', { cwd: __dirname } );
 

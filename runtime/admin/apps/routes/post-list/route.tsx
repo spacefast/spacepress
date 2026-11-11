@@ -1,6 +1,6 @@
 import { notFound } from '@wordpress/route';
-import { viewToQuery } from '@zero-admin/admin-toolkit';
-import { preloadFieldCollections } from '@zero-admin/core-data-next';
+import { viewToQuery } from '@first-admin/admin-toolkit';
+import { preloadFieldCollections } from '@first-admin/core-data-next';
 import { resolveSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 import { MediaEditor } from '../attachment/media-editor';

@@ -5,11 +5,11 @@ declare(strict_types=1);
 /*
  * Markdown twins, /llms.txt and Content-Signal (docs/spec/rendering.md §5) on a real WordPress
  * (tests/php/wp.php): over HTTP through php -S for what a client sees, in-process for the reading
- * renderer and the `<link>` tag. A second site without a Zero app shows WordPress unchanged.
+ * renderer and the `<link>` tag. A second site without a First app shows WordPress unchanged.
  */
 
-use Zero\Sync\Markdown;
-use Zero\Wp\MarkdownTwins;
+use First\Sync\Markdown;
+use First\Wp\MarkdownTwins;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -75,8 +75,8 @@ eq('a block Markdown has syntax for renders even when sync would refuse it', [md
 eq('classic content renders by paragraph', md("First line.\n\nSecond <em>line</em>."), "First line.\n\nSecond *line*.\n");
 eq('an empty body renders as nothing', md(''), '');
 // What the review found: no layer of the renderer may reveal more than WordPress renders.
-register_block_type('zero-test/members', ['render_callback' => static fn (): string => '']);
-$hidden = "<!-- wp:zero-test/members --><div><!-- wp:paragraph --><p>Members only.</p><!-- /wp:paragraph --></div><!-- /wp:zero-test/members -->";
+register_block_type('first-test/members', ['render_callback' => static fn (): string => '']);
+$hidden = "<!-- wp:first-test/members --><div><!-- wp:paragraph --><p>Members only.</p><!-- /wp:paragraph --></div><!-- /wp:first-test/members -->";
 eq('a dynamic block that renders nothing hides its inner blocks too', [do_blocks($hidden), md($hidden)], ['', '']);
 eq('text that spells a tag stays text, never markup', md('<!-- wp:html --><p>&lt;script&gt;alert(1)&lt;/script&gt; and <b>&lt;b&gt;</b></p><!-- /wp:html -->'),
     "\\<script>alert(1)\\</script> and **\\<b>**\n");
@@ -89,15 +89,15 @@ eq('text that starts like Markdown syntax stays text (as WordPress texturizes it
     . '<!-- wp:paragraph --><p>Title<br>===</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>Title<br>---</p><!-- /wp:paragraph -->'
     . '<!-- wp:paragraph --><p>---</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>***</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>___</p><!-- /wp:paragraph -->'),
     "\\# not a heading\n\n\\> not a quote\n\n– not an item\n\n\\+ plus\n\n2026\\. A year\n\n1\\) first\n\nLine  \n– after a break\n\n## #hashtag heading\n\n\\~~~ tilde fence\n\n“\\`js not code\n\nTitle  \n\\===\n\nTitle  \n—\n\n—\n\n\\*\\*\\*\n\n\\_\\_\\_\n");
-eq('the converter escapes each marker itself, with no texturize in front', \Zero\Sync\HtmlMarkdown::convert('<p>- item</p><p>---</p><p>Title<br>---</p><p>~~~</p><p>1. one</p>'),
+eq('the converter escapes each marker itself, with no texturize in front', \First\Sync\HtmlMarkdown::convert('<p>- item</p><p>---</p><p>Title<br>---</p><p>~~~</p><p>1. one</p>'),
     "\\- item\n\n\\---\n\nTitle  \n\\---\n\n\\~~~\n\n1\\. one");
 // Strikethrough markup that lines up into a fence is escaped on the assembled line, not per text.
-eq('strikethrough tildes never open a fence', \Zero\Sync\HtmlMarkdown::convert('<p><del></del> x</p><p><del>~</del> y</p><p>~~<span>~</span> z</p><p>a<br><del></del>b</p>'),
+eq('strikethrough tildes never open a fence', \First\Sync\HtmlMarkdown::convert('<p><del></del> x</p><p><del>~</del> y</p><p>~~<span>~</span> z</p><p>a<br><del></del>b</p>'),
     "\\~~~~ x\n\n\\~~~~~ y\n\n\\~~~ z\n\na  \n\\~~~~b");
 eq('code keeps its angle brackets', md(Markdown::toBlocks("Use `<div>` here.\n\n```html\n<p>x</p>\n```\n")), "Use `<div>` here.\n\n```html\n<p>x</p>\n```\n");
 eq('a comparison is not a tag', md('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
-register_block_type('zero-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
-eq('a post whose rendering throws shows nothing, never a partial or unfiltered body', md('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:zero-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'), '');
+register_block_type('first-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
+eq('a post whose rendering throws shows nothing, never a partial or unfiltered body', md('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:first-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'), '');
 
 // ================================================================ content
 
@@ -119,7 +119,7 @@ $draft = $insert(['post_title' => 'Secret draft', 'post_name' => 'secret-draft',
 $private = $insert(['post_title' => 'Private one', 'post_name' => 'private-one', 'post_status' => 'private', 'post_content' => 'Private body.']);
 $locked = $insert(['post_title' => 'Locked post', 'post_name' => 'locked-post', 'post_password' => 'pw', 'post_content' => 'Locked body.', 'post_date' => '2026-10-01 10:00:00']);
 $about = $insert(['post_type' => 'page', 'post_title' => 'About', 'post_name' => 'about', 'post_content' => '<!-- wp:paragraph --><p>About this site.</p><!-- /wp:paragraph -->']);
-$note = $insert(['post_type' => 'zero_notes', 'post_title' => 'A note', 'post_name' => 'a-note', 'post_content' => 'Note body.']);
+$note = $insert(['post_type' => 'first_notes', 'post_title' => 'A note', 'post_name' => 'a-note', 'post_content' => 'Note body.']);
 check('the fixture content is in place', min($hello, $secondPost, $third, $draft, $private, $locked, $about, $note) > 0);
 flush_rewrite_rules(false);
 $site->actAs(null);
@@ -174,7 +174,7 @@ foreach (['secret-draft' => 'a draft', 'private-one' => 'a private post', 'no-su
 eq('a draft stays hidden even with its preview query', fetch("$url/?p=$draft&preview=true")['headers']['link'] ?? [], []);
 $protected = fetch("$url/locked-post.md");
 eq('a password-protected post\'s twin shows its title, never its body', [$protected['status'], $protected['body']], [200, "# Locked post\n\nThis content is password protected.\n"]);
-eq('a Zero collection post is not public: no twin', [fetch("$url/?p=$note")['headers']['link'] ?? [], fetch("$url/?p=$note&post_type=zero_notes")['headers']['link'] ?? []], [[], []]);
+eq('a First collection post is not public: no twin', [fetch("$url/?p=$note")['headers']['link'] ?? [], fetch("$url/?p=$note&post_type=first_notes")['headers']['link'] ?? []], [[], []]);
 
 $home = fetch("$url/index.md");
 eq('the blog index twin lists the newest posts with summaries and links', [$home['status'], $home['body']], [200, implode("\n", [
@@ -215,7 +215,7 @@ eq('llms.txt lists public kinds and terms with twin links', $llms['body'], implo
     "- [Uncategorized]($url/category/uncategorized.md)",
     "- [Field notes]($url/category/field-notes.md): Notes from outside.", '',
 ]));
-check('llms.txt names no draft, private post or Zero collection row', !preg_match('/Secret draft|Private one|A note/', $llms['body']), $llms['body']);
+check('llms.txt names no draft, private post or First collection row', !preg_match('/Secret draft|Private one|A note/', $llms['body']), $llms['body']);
 $robots = fetch("$url/robots.txt");
 check('robots.txt carries the content signal', str_contains($robots['body'], "User-agent: *\nContent-Signal: $signal"), $robots['body']);
 eq('a .md path under the REST prefix stays REST\'s', fetch("$url/wp-json/wp/v2/posts/$hello.md")['headers']['content-type'][0] ?? null, 'application/json; charset=UTF-8');
@@ -233,8 +233,8 @@ ob_start();
 do_action('wp_head');
 $head = (string) ob_get_clean();
 check('wp_head prints the matching <link rel="alternate">', str_contains($head, "<link rel=\"alternate\" type=\"text/markdown\" href=\"$url/hello-world.md\" />"), $head);
-add_filter('zero_content_signal', static fn (): string => '');
-eq('zero_content_signal set to "" sends no signal', MarkdownTwins::robots("User-agent: *\n"), "User-agent: *\n");
+add_filter('first_content_signal', static fn (): string => '');
+eq('first_content_signal set to "" sends no signal', MarkdownTwins::robots("User-agent: *\n"), "User-agent: *\n");
 
 // The engine's Accept lane: a must-use plugin stands in for the engine. Right after wp-load.php
 // (wp_loaded), before the main query, it calls negotiate() for requests that ask for Markdown and
@@ -243,7 +243,7 @@ file_put_contents("$site->content/mu-plugins/engine-accept-lane.php", <<<'PHP'
     <?php
     add_action('wp_loaded', static function (): void {
         if (str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'text/markdown') && isset($_SERVER['HTTP_X_TEST_ENGINE'])) {
-            $answer = \Zero\Wp\MarkdownTwins::negotiate((string) $_SERVER['REQUEST_URI']);
+            $answer = \First\Wp\MarkdownTwins::negotiate((string) $_SERVER['REQUEST_URI']);
             if ($answer !== null) {
                 status_header($answer['status']);
                 foreach ($answer['headers'] as $name => $value) {
@@ -259,7 +259,7 @@ file_put_contents("$site->content/mu-plugins/engine-accept-lane.php", <<<'PHP'
 // the twin, listings, search, /llms.txt and REST ?format=md render first and convert what rendered.
 file_put_contents("$site->content/mu-plugins/members-block.php", <<<'PHP'
     <?php
-    add_action('init', static fn () => register_block_type('zero-test/members-site', [
+    add_action('init', static fn () => register_block_type('first-test/members-site', [
         'render_callback' => static fn (array $a, string $content): string => is_user_logged_in() ? $content : '',
     ]));
     // A plugin hiding blocks by class through render_block, and a members shortcode.
@@ -273,7 +273,7 @@ file_put_contents("$site->content/mu-plugins/members-block.php", <<<'PHP'
         && get_post_meta((int) get_the_ID(), 'members_paragraphs', true) === '1' && !str_contains($html, 'Public intro.') ? '' : $html, 10, 2);
     PHP);
 $hiders = [
-    'a members-only dynamic block' => '<!-- wp:zero-test/members-site --><div><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:zero-test/members-site -->',
+    'a members-only dynamic block' => '<!-- wp:first-test/members-site --><div><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:first-test/members-site -->',
     'core\'s Hide block on a paragraph' => '<!-- wp:paragraph {"metadata":{"blockVisibility":false}} --><p>SECRET-%s</p><!-- /wp:paragraph -->',
     'core\'s Hide block on a group' => '<!-- wp:group {"metadata":{"blockVisibility":false}} --><div class="wp-block-group"><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:group -->',
     'a render_block filter on a group' => '<!-- wp:group {"className":"members-only"} --><div class="wp-block-group members-only"><!-- wp:paragraph --><p>SECRET-%s</p><!-- /wp:paragraph --></div><!-- /wp:group -->',
@@ -323,13 +323,13 @@ check('a hand-written excerpt is plain text, a spelled tag kept inert', str_cont
 $rest = fetch("$url/wp-json/wp/v2/posts/$hello?format=md");
 eq('?format=md on a core item route answers the twin body as Markdown', [$rest['status'], $rest['headers']['content-type'] ?? null, $rest['body']],
     [200, ['text/markdown; charset=UTF-8'], MarkdownTwins::post(get_post($hello))]);
-file_put_contents("$site->content/mu-plugins/count-content.php", '<?php add_filter("the_content", static function (string $html): string { $GLOBALS["zero_test_content_runs"] = ($GLOBALS["zero_test_content_runs"] ?? 0) + 1; header("X-Content-Runs: " . $GLOBALS["zero_test_content_runs"]); return $html; }, PHP_INT_MAX);');
+file_put_contents("$site->content/mu-plugins/count-content.php", '<?php add_filter("the_content", static function (string $html): string { $GLOBALS["first_test_content_runs"] = ($GLOBALS["first_test_content_runs"] ?? 0) + 1; header("X-Content-Runs: " . $GLOBALS["first_test_content_runs"]); return $html; }, PHP_INT_MAX);');
 eq('?format=md runs the_content once', fetch("$url/wp-json/wp/v2/posts/$hello?format=md")['headers']['x-content-runs'] ?? null, ['1']);
 unlink("$site->content/mu-plugins/count-content.php");
 eq('the same route without format is still JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts/$hello")['headers']['content-type'][0] ?? '', 'application/json'), true);
 eq('core\'s permission check decides: a draft is still 401 JSON', [fetch("$url/wp-json/wp/v2/posts/$draft?format=md")['status'], str_starts_with(fetch("$url/wp-json/wp/v2/posts/$draft?format=md")['headers']['content-type'][0] ?? '', 'application/json')], [401, true]);
-$noteRest = fetch("$url/wp-json/wp/v2/zero_notes/$note?format=md");
-eq('a Zero collection row answers as core and its access rules decide (readable by anyone here)', [$noteRest['status'], $noteRest['body']], [200, MarkdownTwins::post(get_post($note))]);
+$noteRest = fetch("$url/wp-json/wp/v2/first_notes/$note?format=md");
+eq('a First collection row answers as core and its access rules decide (readable by anyone here)', [$noteRest['status'], $noteRest['body']], [200, MarkdownTwins::post(get_post($note))]);
 eq('a list route is not an item route: JSON', str_starts_with(fetch("$url/wp-json/wp/v2/posts?format=md")['headers']['content-type'][0] ?? '', 'application/json'), true);
 // ?format=md trims the response only where it then answers Markdown: other routes keep their JSON.
 $pagesList = json_decode(fetch("$url/wp-json/wp/v2/pages?format=md")['body'], true);
@@ -358,8 +358,8 @@ eq('with a wrong password core refuses as before', fetch("$url/wp-json/wp/v2/pos
 eq('a page item route works the same', fetch("$url/wp-json/wp/v2/pages/$about?format=md")['body'], fetch("$url/about.md")['body']);
 
 // A plugin that renders a URL itself (the pages add-on's code Pages) takes the twin away.
-file_put_contents("$site->content/mu-plugins/own-about.php", '<?php add_filter("zero_markdown_twin", static fn (bool $twin, WP_Post $post): bool => $twin && $post->post_name !== "about", 10, 2);');
-eq('zero_markdown_twin false: no twin and no link', [fetch("$url/about.md")['status'], fetch("$url/about/")['headers']['link'] ?? []], [404, []]);
+file_put_contents("$site->content/mu-plugins/own-about.php", '<?php add_filter("first_markdown_twin", static fn (bool $twin, WP_Post $post): bool => $twin && $post->post_name !== "about", 10, 2);');
+eq('first_markdown_twin false: no twin and no link', [fetch("$url/about.md")['status'], fetch("$url/about/")['headers']['link'] ?? []], [404, []]);
 check('…and llms.txt links no twin for it', !str_contains(fetch("$url/llms.txt")['body'], '/about.md'), fetch("$url/llms.txt")['body']);
 unlink("$site->content/mu-plugins/own-about.php");
 // A dynamic block renders as an anonymous visitor, even for a signed-in request.
@@ -414,7 +414,7 @@ eq('PATH_INFO follows REQUEST_URI, /index.md included', [$rootInfo, $_SERVER['PA
 unset($_SERVER['PATH_INFO']);
 eq('the next browser request still gets HTML', str_starts_with(fetch("$url/hello-world/")['headers']['content-type'][0] ?? '', 'text/html'), true);
 
-// ================================================================ purges: zero_purge_urls after a committed write
+// ================================================================ purges: first_purge_urls after a committed write
 
 $announced = [];
 $listen = static function (array $paths) use (&$announced): void {
@@ -423,13 +423,13 @@ $listen = static function (array $paths) use (&$announced): void {
 $writes = static function (callable $write) use (&$announced): array {
     $announced = [];
     $write();
-    \Zero\Wp\Purges::flush();
+    \First\Wp\Purges::flush();
 
     return $announced;
 };
 wp_set_current_user(1);
 eq('no listener (off Spacefast): a write announces nothing', $writes(static fn () => wp_update_post(['ID' => $hello, 'post_excerpt' => 'Still short.'])), []);
-add_action('zero_purge_urls', $listen);
+add_action('first_purge_urls', $listen);
 $edit = $writes(static fn () => wp_update_post(['ID' => $hello, 'post_name' => 'hello-again']));
 eq('one write, one announcement', count($edit), 1);
 $paths = $edit[0] ?? [];
@@ -453,7 +453,7 @@ foreach (['/tag/loose/', '/tag/loose.md', '/tag/loose/page/2/', '/tag/loose/page
 $trashed = $writes(static fn () => wp_trash_post($secondPost))[0] ?? [];
 check('trashing a published post purges where it was', in_array('/second-post/', $trashed, true) && in_array('/index.md', $trashed, true), $trashed);
 eq('a draft that stays a draft purges nothing', $writes(static fn () => wp_update_post(['ID' => $draft, 'post_content' => 'Still a draft.'])), []);
-eq('a Zero collection row (not public) purges nothing', $writes(static fn () => wp_update_post(['ID' => $note, 'post_content' => 'New note.'])), []);
+eq('a First collection row (not public) purges nothing', $writes(static fn () => wp_update_post(['ID' => $note, 'post_content' => 'New note.'])), []);
 $termEdit = $writes(static fn () => wp_update_term($category['term_id'], 'category', ['description' => 'New description.']))[0] ?? [];
 foreach (['/category/field-notes/', '/category/field-notes.md', '/category/field-notes/page/2/', '/category/field-notes/page/2.md'] as $path) {
     check("editing a term purges $path", in_array($path, $termEdit, true), $termEdit);
@@ -484,12 +484,12 @@ $rolled = $writes(static function () use ($connection, $about): void {
     }
 });
 eq('a rolled-back write announces nothing', $rolled, []);
-remove_action('zero_purge_urls', $listen);
+remove_action('first_purge_urls', $listen);
 wp_set_current_user(0);
 
-// ================================================================ WordPress without a Zero app is unchanged
+// ================================================================ WordPress without a First app is unchanged
 
-deactivate_plugins('zero-app-notes/zero-app-notes.php', true);
+deactivate_plugins('first-app-notes/first-app-notes.php', true);
 $plain = fetch("$url/hello-world/");
 eq('without the app: no twin link, no content signal', [$plain['headers']['link'] ?? [], $plain['headers']['content-signal'] ?? []], [[], []]);
 eq('without the app: /llms.txt and twins are WordPress 404s', [fetch("$url/llms.txt")['status'], fetch("$url/hello-world.md")['status']], [404, 404]);

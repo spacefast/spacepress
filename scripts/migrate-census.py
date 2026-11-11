@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Count `zero migrate app --from zero-0.8` outcomes over a corpus of 0.8 projects.
+"""Count `first migrate app --from zero-0.8` outcomes over a corpus of 0.8 projects.
 
-Usage: scripts/migrate-census.py [--zero target/debug/zero] [--json] [--flag <converter flag>]... [corpus-dir ...]
+Usage: scripts/migrate-census.py [--zero target/debug/first] [--json] [--flag <converter flag>]... [corpus-dir ...]
 
 An app is a 0.8 project directory, or a stored finalize payload: a directory with
 `finalize.json` (the `{ artifact, endpointSources }` a 0.8 publish kept) and, when the
 published source was recovered, a `source/` directory beside it. Such an app runs as
-`zero migrate app --from zero-0.8 --manifest finalize.json [source]`; without `source/`
+`first migrate app --from zero-0.8 --manifest finalize.json [source]`; without `source/`
 it is refused at `/source` ("source not recoverable"), never accepted.
 
 The default corpus is tests/fixtures/app-migrate/corpus: 0.8 projects copied from
@@ -93,7 +93,7 @@ def flags(project):
         return list(json.load(f).get("flags", []))
 
 
-def run(zero, project, scratch, extra):
+def run(first, project, scratch, extra):
     out = os.path.join(scratch, os.path.basename(project))
     manifest = os.path.join(project, "finalize.json")
     if os.path.exists(manifest):
@@ -102,7 +102,7 @@ def run(zero, project, scratch, extra):
     else:
         inputs = [project]
     proc = subprocess.run(
-        [zero, "migrate", "app", "--from", "zero-0.8", *inputs, "--out", out,
+        [first, "migrate", "app", "--from", "zero-0.8", *inputs, "--out", out,
          "--space", "spc_census", "--dry-run", "--json", *sorted(set(flags(project) + extra))],
         capture_output=True, text=True,
     )
@@ -114,14 +114,14 @@ def run(zero, project, scratch, extra):
 
 
 def main(argv):
-    zero = os.path.join(ROOT, "target/debug/zero")
+    first = os.path.join(ROOT, "target/debug/first")
     as_json = False
     extra = []
     paths = []
     it = iter(argv)
     for arg in it:
         if arg == "--zero":
-            zero = next(it)
+            first = next(it)
         elif arg == "--json":
             as_json = True
         elif arg == "--flag":
@@ -131,7 +131,7 @@ def main(argv):
     apps = []
     with tempfile.TemporaryDirectory() as scratch:
         for project in projects(paths or DEFAULT):
-            report = run(zero, project, scratch, extra)
+            report = run(first, project, scratch, extra)
             errors = report.get("errors", [])
             cats = sorted({category(e) for e in errors})
             apps.append({

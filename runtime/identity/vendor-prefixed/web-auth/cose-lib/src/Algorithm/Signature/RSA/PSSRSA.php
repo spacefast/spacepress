@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use Zero\Identity\Vendor\Brick\Math\Exception\MathException;
+use First\Identity\Vendor\Brick\Math\Exception\MathException;
 use function chr;
-use Zero\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use Zero\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use Zero\Identity\Vendor\Cose\BigInteger;
-use Zero\Identity\Vendor\Cose\Hash;
-use Zero\Identity\Vendor\Cose\Key\Key;
-use Zero\Identity\Vendor\Cose\Key\RsaKey;
-use Zero\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use First\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use First\Identity\Vendor\Cose\BigInteger;
+use First\Identity\Vendor\Cose\Hash;
+use First\Identity\Vendor\Cose\Key\Key;
+use First\Identity\Vendor\Cose\Key\RsaKey;
+use First\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use function hash_equals;
 use function intdiv;
 use InvalidArgumentException;

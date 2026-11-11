@@ -30,7 +30,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await expect(generated).toHaveValue(/'admin' => true/);
 
   await page.getByRole("button", { name: "Post writes", exact: true }).click();
-  await expect(generatedFile).toHaveValue("runtime/Zero/Wp/WpPostStore.php");
+  await expect(generatedFile).toHaveValue("runtime/First/Wp/WpPostStore.php");
   await expect(generated).toHaveValue(/wp_insert_post\(wp_slash\(\$post\), true\)/);
   await expect(page.locator("#file-description")).toContainText("Shared WordPress runtime");
   await page.getByRole("button", { name: "Users", exact: true }).click();

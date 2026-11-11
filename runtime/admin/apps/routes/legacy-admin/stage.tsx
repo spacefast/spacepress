@@ -4,9 +4,9 @@ import {
 	privateApis as routePrivateApis,
 } from '@wordpress/route';
 import { useEffect, useRef, useState } from 'react';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import { useRefEffect, useMergeRefs } from '@wordpress/compose';
-import { siteConfig } from '@zero-admin/boot';
+import { siteConfig } from '@first-admin/boot';
 import { isUnderAdmin, resolveAdminUrl, slugOf } from './admin-url';
 
 const { useRouter } = unlock( routePrivateApis );
@@ -105,7 +105,7 @@ function LegacyAdmin() {
 
 	const iframeRefEffect = useRefEffect( ( iframe: HTMLIFrameElement ) => {
 		// @ts-expect-error - Custom property added to iframe element
-		iframe._zeroAdminLoad = () => {
+		iframe._firstAdminLoad = () => {
 			const iframeDoc = iframe.contentDocument;
 			if ( iframeDoc ) {
 				const style = iframeDoc.createElement( 'style' );

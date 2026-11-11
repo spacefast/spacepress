@@ -1,4 +1,4 @@
-# @zero-admin/dashboard
+# @first-admin/dashboard
 
 Dashboard system for CiabAdmin. Provides types and utilities for resolving
 widget type registrations from PHP into hydrated definitions, and a React
@@ -13,7 +13,7 @@ component for rendering the dashboard UI with drag-and-drop layout management.
 ```json
 {
 	"dependencies": {
-		"@zero-admin/dashboard": "workspace:*"
+		"@first-admin/dashboard": "workspace:*"
 	}
 }
 ```
@@ -25,7 +25,7 @@ import {
 	Dashboard,
 	useWidgetTypes,
 	type DashboardWidget,
-} from '@zero-admin/dashboard';
+} from '@first-admin/dashboard';
 
 function MyDashboard( { registered } ) {
 	const [ layout, setLayout ] = useState< DashboardWidget< unknown >[] >(
@@ -50,7 +50,7 @@ function MyDashboard( { registered } ) {
 ### `RegisteredDashboardWidgetType`
 
 Shape of a widget type as registered by the PHP backend. Other packages
-(like `@zero-admin/boot`) re-export it from here.
+(like `@first-admin/boot`) re-export it from here.
 
 ```ts
 interface RegisteredDashboardWidgetType {
@@ -222,7 +222,7 @@ setError?.( null );
 
 ### Widget Attributes
 
-Attributes use the `Field` type from `@zero-admin/dataviews`. Supported types:
+Attributes use the `Field` type from `@first-admin/dataviews`. Supported types:
 `'text'`, `'integer'`, `'boolean'`, `'select'`, `'datetime'`.
 
 ---
@@ -246,7 +246,7 @@ your-project/
 ### Widget Definition (`widget.ts`)
 
 ```tsx
-import type { DashboardWidgetType } from '@zero-admin/dashboard';
+import type { DashboardWidgetType } from '@first-admin/dashboard';
 import { __ } from '@wordpress/i18n';
 
 const widget: Omit<
@@ -265,7 +265,7 @@ export default widget;
 ### Widget Render Component (`render.tsx`)
 
 ```tsx
-import type { WidgetRenderProps } from '@zero-admin/dashboard';
+import type { WidgetRenderProps } from '@first-admin/dashboard';
 
 export default function MyWidgetRender( {
 	attributes,
@@ -278,11 +278,11 @@ export default function MyWidgetRender( {
 
 ## Registering Widgets (PHP)
 
-Widgets can be added via the `zero_admin_dashboard_widgets` filter:
+Widgets can be added via the `first_admin_dashboard_widgets` filter:
 
 ```php
 add_filter(
-	'zero_admin_dashboard_widgets',
+	'first_admin_dashboard_widgets',
 	function ( $layout ) {
 		$uids = array_column( $layout, 'uid' );
 
@@ -307,7 +307,7 @@ Parameters: `uid` (required), `type` (required), `attributes`, `width`,
 
 ## Build System
 
-Widgets are automatically discovered and built by `@zero-admin/wp-build`.
+Widgets are automatically discovered and built by `@first-admin/wp-build`.
 Output lands in `build/dashboard-widgets/`.
 
 ---
@@ -319,7 +319,7 @@ identity: `uid`, `name`, and `position` in the dashboard grid. Returns `null`
 outside a widget context.
 
 ```tsx
-import { useDashboardWidgetContext } from '@zero-admin/dashboard';
+import { useDashboardWidgetContext } from '@first-admin/dashboard';
 
 export default function MyWidget() {
 	const ctx = useDashboardWidgetContext();

@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace First\Identity\Vendor\Webauthn\MetadataService\Service;
 
-use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64;
-use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use First\Identity\Vendor\ParagonIE\ConstantTime\Base64;
+use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
 use function sprintf;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
-use Zero\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory;
-use Zero\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use Zero\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
-use Zero\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use Zero\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
-use Zero\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
-use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use First\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory;
+use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use First\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
+use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use First\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
+use First\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
+use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 final class DistantResourceMetadataService implements MetadataService, CanDispatchEvents
 {

@@ -1,8 +1,8 @@
 # Bundled PHP dependencies
 
 End-user builds need neither Composer nor Strauss. The binary embeds the committed
-`runtime/Zero/vendor-prefixed` tree and copies it into the `zero-runtime` plugin, and
-`runtime/identity/vendor-prefixed` into the `zero-identity` plugin.
+`runtime/First/vendor-prefixed` tree and copies it into the `first-runtime` plugin, and
+`runtime/identity/vendor-prefixed` into the `first-identity` plugin.
 
 | Root | Package | Locked version | Purpose | Why not WordPress core | Transitive packages |
 |---|---|---|---|---|---|
@@ -24,7 +24,7 @@ aggregated license file and original license files ship with the runtime.
 
 ### What WordPress core provides instead
 
-Zero runs only inside WordPress 7.1 or later, so the runtime uses core's own
+First runs only inside WordPress 7.1 or later, so the runtime uses core's own
 copies wherever core ships the code
 ([decision](decisions/2026-11-07-wp-core-apis.md)):
 
@@ -32,8 +32,8 @@ copies wherever core ships the code
 |---|---|---|
 | `wp-php-toolkit/html` | `WP_HTML_Tag_Processor`, `WP_HTML_Processor` | `replace`d in `composer.json`; the toolkit's references stay unprefixed and resolve to core |
 | `wp-php-toolkit/blockparser` | `parse_blocks()`, `serialize_blocks()` | `replace`d; `Sync\Blocks` calls core |
-| `wp-php-toolkit/encoding` | nothing; Zero never reaches it (core 7.1 has its own UTF-8 helpers) | `replace`d; only data-liberation's CSS processor used it |
-| `wp-php-toolkit/bytestream`, `filesystem`, `http-client`, `xml` | nothing; Zero never reaches them | `replace`d; only data-liberation's importers, entity readers/writers and URL rewriting used them |
+| `wp-php-toolkit/encoding` | nothing; First never reaches it (core 7.1 has its own UTF-8 helpers) | `replace`d; only data-liberation's CSS processor used it |
+| `wp-php-toolkit/bytestream`, `filesystem`, `http-client`, `xml` | nothing; First never reaches them | `replace`d; only data-liberation's importers, entity readers/writers and URL rewriting used them |
 
 Those data-liberation directories (`CSS`, `EntityReader`, `EntityWriter`,
 `URL`, `vendor-patched`, the importers other than `ImportUtils`) and the
@@ -42,10 +42,10 @@ toolkit code outside the shipped set needs that list revisited, and the
 `vendor` suite fails if the bundle starts defining the WordPress HTML API or
 block parser again.
 
-All bundled runtime classes, functions and constants use `Zero\\Vendor`, `Zero_Vendor_`
-and `ZERO_VENDOR_` prefixes; identity's use `Zero\\Identity\\Vendor`, `Zero_Identity_Vendor_`
-and `ZERO_IDENTITY_VENDOR_`. Each bundle has its own Composer loader class and files registry. Composer's autoload-files registry has a separate
-Zero key so another plugin's unprefixed library cannot suppress its loading.
+All bundled runtime classes, functions and constants use `First\\Vendor`, `First_Vendor_`
+and `FIRST_VENDOR_` prefixes; identity's use `First\\Identity\\Vendor`, `First_Identity_Vendor_`
+and `FIRST_IDENTITY_VENDOR_`. Each bundle has its own Composer loader class and files registry. Composer's autoload-files registry has a separate
+First key so another plugin's unprefixed library cannot suppress its loading.
 The `override_autoload` entries normalize the toolkit's `./` classmaps to `.`
 for Strauss while retaining the upstream file/exclusion metadata.
 
@@ -93,12 +93,12 @@ cd runtime/identity/apps && pnpm install --frozen-lockfile && node build.mjs
 ```
 
 The bundled Markdown code runs on WordPress's HTML API and calls core
-functions (`parse_blocks`, `serialize_block`, `esc_*`, `__`); Zero has no
+functions (`parse_blocks`, `serialize_block`, `esc_*`, `__`); First has no
 target without WordPress loaded.
 
 ## URI helper provenance
 
-`Zero\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table
+`First\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table
 at revision `104b497d558d112c5b80cd370b7bcc0f43a29d51`. The component helper
 corrects JavaScript punctuation escaping and both require valid UTF-8. The
 runtime carries `URI-ENCODING-NOTICE.txt`; four copied test inputs carry their

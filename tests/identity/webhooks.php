@@ -1,14 +1,14 @@
 <?php
-// Real HTTP webhook delivery: Zero-Signature/Zero-Event-Id, failure persisted with backoff, retry delivered.
+// Real HTTP webhook delivery: First-Signature/First-Event-Id, failure persisted with backoff, retry delivered.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use Zero\Identity\{Plugin, Security, Maintenance};
+use First\Identity\{Plugin, Security, Maintenance};
 
 $db = Plugin::$db;
-$saved = get_option('zero_identity_webhooks', []);
+$saved = get_option('first_identity_webhooks', []);
 $id = 'test-' . bin2hex(random_bytes(6));
 try {
-    update_option('zero_identity_webhooks', [['id' => $id, 'url' => 'http://webhook:8080/receive', 'secret' => Security::seal('disposable-webhook-contract-secret')]], false);
+    update_option('first_identity_webhooks', [['id' => $id, 'url' => 'http://webhook:8080/receive', 'secret' => Security::seal('disposable-webhook-contract-secret')]], false);
     Plugin::$security->event(0, 'test.delivery');
     $worker = new Maintenance($db, Plugin::$security);
     $worker->run();
@@ -21,5 +21,5 @@ try {
     $row = $db->row("SELECT * FROM {$db->prefix}deliveries WHERE id=%d", $row['id']);
     check((int) $row['attempts'] === 2 && (int) $row['last_status'] === 204 && $row['delivered_at'], 'the due retry is delivered and marked');
 } finally {
-    update_option('zero_identity_webhooks', $saved, false);
+    update_option('first_identity_webhooks', $saved, false);
 }

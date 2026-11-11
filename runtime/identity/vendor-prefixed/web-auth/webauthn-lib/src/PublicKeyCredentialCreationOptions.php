@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
 use function in_array;
 use InvalidArgumentException;
-use Zero\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 final class PublicKeyCredentialCreationOptions extends PublicKeyCredentialOptions
 {

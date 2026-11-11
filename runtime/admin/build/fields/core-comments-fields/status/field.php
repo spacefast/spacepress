@@ -2,32 +2,32 @@
 /**
  * Status field definition for core comments fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
-$zero_admin_comment_statuses = array(
+$first_admin_comment_statuses = array(
 	array(
 		'value' => 'approved',
-		'label' => __( 'Approved', 'zero-admin' ),
+		'label' => __( 'Approved', 'first-admin' ),
 	),
 	array(
 		'value' => 'hold',
-		'label' => __( 'Unapproved', 'zero-admin' ),
+		'label' => __( 'Unapproved', 'first-admin' ),
 	),
 	array(
 		'value' => 'spam',
-		'label' => __( 'Spam', 'zero-admin' ),
+		'label' => __( 'Spam', 'first-admin' ),
 	),
 	array(
 		'value' => 'trash',
-		'label' => __( 'Trash', 'zero-admin' ),
+		'label' => __( 'Trash', 'first-admin' ),
 	),
 );
 
 return array(
 	'type'          => 'select',
-	'label'         => __( 'Status', 'zero-admin' ),
+	'label'         => __( 'Status', 'first-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
-	'elements'      => $zero_admin_comment_statuses,
+	'elements'      => $first_admin_comment_statuses,
 );

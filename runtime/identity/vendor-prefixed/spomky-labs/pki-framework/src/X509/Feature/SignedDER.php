@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Feature;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Feature;
 
 use function count;
 use function mb_strlen;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
 use function sprintf;
 
 /**

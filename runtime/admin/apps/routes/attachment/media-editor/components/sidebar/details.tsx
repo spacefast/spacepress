@@ -1,8 +1,8 @@
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
-import { usePostFields } from '@zero-admin/fields-next';
-import { unlock } from '@zero-admin/admin-toolkit';
-import { DataForm } from '@zero-admin/dataviews';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
+import { usePostFields } from '@first-admin/fields-next';
+import { unlock } from '@first-admin/admin-toolkit';
+import { DataForm } from '@first-admin/dataviews';
 import { useDispatch, useSelect } from '@wordpress/data';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import { __ } from '@wordpress/i18n';
@@ -55,7 +55,7 @@ export default function MediaEditorSidebar() {
 	}
 
 	return (
-		<div className="zero-admin-media-editor-sidebar__details">
+		<div className="first-admin-media-editor-sidebar__details">
 			<Stack direction="column" gap={ 4 }>
 				{ editedPost && (
 					<>

@@ -1,6 +1,6 @@
 //! Plugin packages: who a plugin is, what its compiled code uses, and the committed lock that grants
 //! it. The compiler is the boundary: every capability-bearing call in a plugin's compiled code is
-//! recorded here as a [`Use`], and `zero/_generated/plugins.lock.json` decides which of them are granted.
+//! recorded here as a [`Use`], and `first/_generated/plugins.lock.json` decides which of them are granted.
 //! See docs/decisions/2026-11-07-plugin-capabilities.md.
 
 use crate::diag::{Code, Diag, Result, Span};
@@ -23,7 +23,7 @@ pub const KINDS: &[(&str, &str)] = &[
     ("env", "reads the environment variable"),
     ("mail", "sends mail with"),
     ("jobs", "enqueues the job"),
-    // `setTimeout` and `AbortSignal.timeout`: request-scoped `Zero\Timers` entries that wait.
+    // `setTimeout` and `AbortSignal.timeout`: request-scoped `First\Timers` entries that wait.
     ("timers", "sets timers with"),
     // WordPress from TypeScript (`Compiler::use_wordpress`): `abilities.call` from "php/wordpress",
     // and handlers registered on WordPress actions and filters.
@@ -34,7 +34,7 @@ pub const KINDS: &[(&str, &str)] = &[
     ("php", "calls the PHP function"),
 ];
 
-pub const LOCK_PATH: &str = "zero/_generated/plugins.lock.json";
+pub const LOCK_PATH: &str = "first/_generated/plugins.lock.json";
 
 /// One registered plugin package.
 #[derive(Debug, Clone)]
@@ -211,7 +211,7 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                     return Err(Diag::new(
                         span,
                         format!(
-                            "plugin \"{}\" can't import \"zero:db\": the app's kinds belong to the app",
+                            "plugin \"{}\" can't import \"first:db\": the app's kinds belong to the app",
                             plugins[i].name
                         ),
                     )
@@ -239,7 +239,7 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                         format!("plugin \"{}\" can't import \"{spec}\": {reason}", plugins[i].name),
                     )
                     .code(Code::PluginIsolation)
-                    .help("a plugin imports its own modules, \"zero\" and ordinary npm packages; take app values as plugin options"));
+                    .help("a plugin imports its own modules, \"first\" and ordinary npm packages; take app values as plugin options"));
                 }
                 if seen.insert(target) {
                     queue.push(target);
@@ -281,7 +281,7 @@ pub struct Settled {
     pub lock: Option<Json>,
     /// Human-readable lock changes, one line each.
     pub changes: Vec<String>,
-    /// The `plugins` section of `zero check --json`.
+    /// The `plugins` section of `first check --json`.
     pub report: Json,
     /// Plugin name → hosts its fetches may reach; `None` for any public host.
     pub hosts: Vec<(String, Option<Vec<String>>)>,
@@ -377,7 +377,7 @@ pub fn settle(
                     ),
                 )
                 .code(Code::PluginCapability)
-                .help("run `zero build` without --frozen, review the plugin's grant, and commit the lock"));
+                .help("run `first build` without --frozen, review the plugin's grant, and commit the lock"));
             }
             None => {
                 changes.push(format!(
@@ -411,7 +411,7 @@ pub fn settle(
                         )
                         .code(Code::PluginCapability)
                         .help(if frozen {
-                            "run `zero build` without --frozen to update the lock, review the diff, and commit it"
+                            "run `first build` without --frozen to update the lock, review the diff, and commit it"
                         } else {
                             "the owner narrowed this plugin: remove the call, or add the value to its lock entry"
                         }));

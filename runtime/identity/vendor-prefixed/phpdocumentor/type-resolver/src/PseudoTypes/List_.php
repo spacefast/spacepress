@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
+use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use First\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
+use First\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
 
 /**
  * Value Object representing the type 'list'.

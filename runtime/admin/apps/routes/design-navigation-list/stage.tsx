@@ -1,7 +1,7 @@
-import type { View, Action } from '@zero-admin/dataviews';
-import { Page, unlock } from '@zero-admin/admin-toolkit';
-import { usePostFields } from '@zero-admin/fields-next';
-import { useView, DataViews } from '@zero-admin/views';
+import type { View, Action } from '@first-admin/dataviews';
+import { Page, unlock } from '@first-admin/admin-toolkit';
+import { usePostFields } from '@first-admin/fields-next';
+import { useView, DataViews } from '@first-admin/views';
 import { Button } from '@wordpress/ui';
 import {
 	useNavigate,
@@ -10,7 +10,7 @@ import {
 } from '@wordpress/route';
 import { privateApis as coreDataPrivateApis } from '@wordpress/core-data';
 import { useCallback, useMemo, useState } from '@wordpress/element';
-import { serializeFilters, usePageView } from '@zero-admin/telemetry';
+import { serializeFilters, usePageView } from '@first-admin/telemetry';
 import type { Post } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
@@ -130,7 +130,7 @@ function NavigationList() {
 	return (
 		<>
 			<Page
-				title={ __( 'Navigation', 'zero-admin' ) }
+				title={ __( 'Navigation', 'first-admin' ) }
 				className="navigation-page"
 				hasPadding={ false }
 				actions={
@@ -139,7 +139,7 @@ function NavigationList() {
 						size="compact"
 						onClick={ () => setShowAddModal( true ) }
 					>
-						{ __( 'Add New', 'zero-admin' ) }
+						{ __( 'Add New', 'first-admin' ) }
 					</Button>
 				}
 			>

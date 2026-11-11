@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
 
 use function bin2hex;
 use function hex2bin;

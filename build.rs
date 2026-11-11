@@ -1,6 +1,6 @@
 //! Embeds the runtime into the binary: every file under `runtime/` (PHP runtime,
 //! WordPress stores, plugin template, client runtime). New files are picked up
-//! without code changes; `zero build` decides which go where.
+//! without code changes; `first build` decides which go where.
 
 use std::fmt::Write as _;
 use std::path::Path;

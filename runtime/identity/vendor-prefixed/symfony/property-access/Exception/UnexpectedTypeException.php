@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
+namespace First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
 
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPathInterface;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPathInterface;
 
 /**
  * Thrown when a value does not match an expected type.

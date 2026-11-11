@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Implements *otherName* CHOICE type of *GeneralName*.

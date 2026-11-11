@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>

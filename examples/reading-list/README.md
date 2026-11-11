@@ -9,26 +9,26 @@ From the repository root:
 ```sh
 cargo build --locked --release
 npm ci --prefix examples/reading-list --ignore-scripts --no-audit --no-fund
-./target/release/zero build examples/reading-list
-./target/release/zero dev examples/reading-list --no-watch --port 8911
+./target/release/first build examples/reading-list
+./target/release/first dev examples/reading-list --no-watch --port 8911
 ```
 
-Sign in at `http://localhost:8911/wp-admin/` with `admin` / `zero-test-admin` (local development only).
+Sign in at `http://localhost:8911/wp-admin/` with `admin` / `first-test-admin` (local development only).
 
 ## Try each part
 
 Create an application password for `admin`, then call the API with it:
 
 ```sh
-PW=$(./target/release/zero wp --site examples/reading-list user application-password create admin docs --porcelain)
-API=http://localhost:8911/wp-json/zero/v1
+PW=$(./target/release/first wp --site examples/reading-list user application-password create admin docs --porcelain)
+API=http://localhost:8911/wp-json/first/v1
 curl -u "admin:$PW" -H 'content-type: application/json' -X POST $API/books -d '{"title":"The Left Hand of Darkness"}'
 curl -u "admin:$PW" -H 'content-type: application/json' -X POST $API/actions/logRead -d '{"bookId":5,"minutes":25}'
-./target/release/zero wp --site examples/reading-list action-scheduler run
+./target/release/first wp --site examples/reading-list action-scheduler run
 curl http://localhost:8911/shelf.html
 ```
 
-Use the `id` the first call returns as `bookId`. What each call shows, as run against `zero dev` on 2026-11-09:
+Use the `id` the first call returns as `bookId`. What each call shows, as run against `first dev` on 2026-11-09:
 
 | Call | Result |
 | --- | --- |

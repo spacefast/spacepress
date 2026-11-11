@@ -1,4 +1,4 @@
-import { boolean, defineConfig, id, integer, table, text } from "zero";
+import { boolean, defineConfig, id, integer, table, text } from "first";
 
 const contacts = table({
   id: id(),

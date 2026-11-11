@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/theme-list",
+	"name": "@first-admin/theme-list",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -12,13 +12,13 @@
 		}
 	},
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/core-data-next": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/fields-next": "workspace:*",
-		"@zero-admin/views": "workspace:*",
-		"@zero-admin/telemetry": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/core-data-next": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/fields-next": "workspace:*",
+		"@first-admin/views": "workspace:*",
+		"@first-admin/telemetry": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",

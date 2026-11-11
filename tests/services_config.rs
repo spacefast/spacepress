@@ -21,7 +21,7 @@ fn success(output: Output) -> Output {
 #[test]
 fn invalid_service_definitions_report_the_authored_property() {
     let project = tempfile::Builder::new()
-        .prefix("zero-services-errors-")
+        .prefix("first-services-errors-")
         .tempdir()
         .unwrap();
     let cases = [
@@ -109,15 +109,15 @@ fn invalid_service_definitions_report_the_authored_property() {
     ];
     for (services, message, property) in cases {
         let source = format!(
-            "import {{ collection, defineConfig, env, table, text, ServicesConfig }} from 'zero';\nconst articles = collection({{ title: text().notNull() }}, {{ title: 'title', drafts: true }});\nconst unpublished = table({{ title: text().notNull() }});\nexport default defineConfig({{ collections: {{ articles }}, tables: {{ unpublished }}, services: {{ {services} }} satisfies ServicesConfig }});\n"
+            "import {{ collection, defineConfig, env, table, text, ServicesConfig }} from 'first';\nconst articles = collection({{ title: text().notNull() }}, {{ title: 'title', drafts: true }});\nconst unpublished = table({{ title: text().notNull() }});\nexport default defineConfig({{ collections: {{ articles }}, tables: {{ unpublished }}, services: {{ {services} }} satisfies ServicesConfig }});\n"
         );
-        let entry = project.path().join("zero.config.ts");
+        let entry = project.path().join("first.config.ts");
         std::fs::write(&entry, &source).unwrap();
-        let program = zero::loader::load(&entry).unwrap();
-        let error = match zero::pipeline::build(
+        let program = first::loader::load(&entry).unwrap();
+        let error = match first::pipeline::build(
             project.path(),
             &program,
-            || Ok(zero::pipeline::Previous::none()),
+            || Ok(first::pipeline::Previous::none()),
             |_| None,
         ) {
             Err(error) => error,
@@ -139,15 +139,15 @@ fn write_types_project(project: &Path) {
         serde_json::json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
-                "paths": { "zero": [root().join("types/zero/index.d.ts")] }
+                "paths": { "first": [root().join("types/first/index.d.ts")] }
             },
-            "files": ["zero.config.ts", "types-test.ts"]
+            "files": ["first.config.ts", "types-test.ts"]
         })
         .to_string(),
     )
     .unwrap();
     std::fs::write(project.join("types-test.ts"), r#"
-import { env, type ServicesConfig, type ServiceFormField } from "zero";
+import { env, type ServicesConfig, type ServiceFormField } from "first";
 const field: ServiceFormField = { type: "integer", rules: { min: -10, max: 10 } };
 const config: ServicesConfig = { forms: { contact: { fields: { age: field }, recipient: env("TO"), sender: env("FROM") } } };
 // @ts-expect-error addresses must be runtime env references
@@ -163,12 +163,12 @@ void config; void literal; void boolean; void checkout;
 #[test]
 fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
     let project = tempfile::Builder::new()
-        .prefix("zero-ts-services-app-")
+        .prefix("first-ts-services-app-")
         .tempdir()
         .unwrap();
     std::fs::write(
-        project.path().join("zero.config.ts"),
-        include_str!("../examples/app-services-ts/zero.config.ts"),
+        project.path().join("first.config.ts"),
+        include_str!("../examples/app-services-ts/first.config.ts"),
     )
     .unwrap();
     write_types_project(project.path());
@@ -180,7 +180,7 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
             .unwrap(),
     );
     success(
-        Command::new(env!("CARGO_BIN_EXE_zero"))
+        Command::new(env!("CARGO_BIN_EXE_first"))
             .arg("build")
             .arg(project.path())
             .env("APP_SERVICES_RECIPIENT", "build-only-value@example.test")
@@ -194,7 +194,7 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
                 "--experimental-strip-types",
                 "--input-type=module",
                 "--eval",
-                "import { SCHEMA } from './zero/_generated/client/schema.ts'; console.log(JSON.stringify(SCHEMA));",
+                "import { SCHEMA } from './first/_generated/client/schema.ts'; console.log(JSON.stringify(SCHEMA));",
             ])
             .current_dir(project.path())
             .output()
@@ -206,19 +206,19 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
         None,
         "private services must not become client descriptors"
     );
-    let evidence = std::env::var_os("ZERO_SERVICES_TS_EVIDENCE")
+    let evidence = std::env::var_os("FIRST_SERVICES_TS_EVIDENCE")
         .map(PathBuf::from)
         .unwrap_or_else(|| project.path().join("evidence"));
     let output = success(
         Command::new("php")
             .arg(root().join("examples/app-services-ts/journey.php"))
-            .arg(project.path().join("zero/dist/wp-content"))
+            .arg(project.path().join("first/dist/wp-content"))
             .arg(&evidence)
             .env(
-                "ZERO_WP_CACHE",
-                std::env::var_os("ZERO_WP_CACHE").unwrap_or_else(|| project.path().join("wp-cache").into_os_string()),
+                "FIRST_WP_CACHE",
+                std::env::var_os("FIRST_WP_CACHE").unwrap_or_else(|| project.path().join("wp-cache").into_os_string()),
             )
-            .env_remove("ZERO_WP_KEEP")
+            .env_remove("FIRST_WP_KEEP")
             .output()
             .unwrap(),
     );

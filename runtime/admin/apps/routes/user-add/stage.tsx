@@ -1,6 +1,6 @@
-import { Page } from '@zero-admin/admin-toolkit';
-import { useViewConfig } from '@zero-admin/views';
-import { useFieldCollections } from '@zero-admin/core-data-next';
+import { Page } from '@first-admin/admin-toolkit';
+import { useViewConfig } from '@first-admin/views';
+import { useFieldCollections } from '@first-admin/core-data-next';
 import { Button } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
@@ -12,10 +12,10 @@ import {
 } from '@wordpress/components';
 import { useNavigate } from '@wordpress/route';
 import { useEffect, useMemo } from '@wordpress/element';
-import { DataForm, useFormValidity } from '@zero-admin/dataviews';
-import type { Field, Form } from '@zero-admin/dataviews';
+import { DataForm, useFormValidity } from '@first-admin/dataviews';
+import type { Field, Form } from '@first-admin/dataviews';
 import type { User } from '@wordpress/core-data';
-import { useTrack } from '@zero-admin/telemetry';
+import { useTrack } from '@first-admin/telemetry';
 import { useAddUserForm } from '../user/hooks';
 import { isInInviteMode } from '../user/utils';
 import type { UserViewConfigData } from '../user/types';
@@ -110,13 +110,13 @@ function Content() {
 				<Page.Breadcrumbs
 					items={ [
 						{
-							label: __( 'Users', 'zero-admin' ),
+							label: __( 'Users', 'first-admin' ),
 							to: '/users/list/all',
 						},
 						{
 							label: isInviteModeEnabled
-								? __( 'Invite user', 'zero-admin' )
-								: __( 'Add user', 'zero-admin' ),
+								? __( 'Invite user', 'first-admin' )
+								: __( 'Add user', 'first-admin' ),
 						},
 					] }
 				/>
@@ -166,7 +166,7 @@ function Content() {
 				<div>
 					{ __(
 						'Sorry, you are not allowed to create users.',
-						'zero-admin'
+						'first-admin'
 					) }
 				</div>
 			) }

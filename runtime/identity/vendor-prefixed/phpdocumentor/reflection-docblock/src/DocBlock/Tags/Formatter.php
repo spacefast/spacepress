@@ -11,9 +11,9 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
 
 interface Formatter
 {

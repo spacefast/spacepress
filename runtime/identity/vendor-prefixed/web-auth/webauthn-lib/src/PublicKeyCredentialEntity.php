@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
 abstract class PublicKeyCredentialEntity
 {
@@ -21,7 +21,7 @@ abstract class PublicKeyCredentialEntity
     public function __construct(string $name, ?string $icon = null)
     {
         if ($name !== '') {
-            zero_identity_vendor_trigger_deprecation(
+            first_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3.0',
                 'Setting the "name" field on "PublicKeyCredentialRpEntity" is deprecated since 5.3.0 and will be removed in 6.0.0. The serialized options default rp.name to the Relying Party ID. Please set "" instead.'
@@ -30,7 +30,7 @@ abstract class PublicKeyCredentialEntity
         $this->name = $name;
 
         if ($icon !== null) {
-            zero_identity_vendor_trigger_deprecation(
+            first_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.1.0',
                 'The parameter "$icon" is deprecated since 5.1.0 and will be removed in 6.0.0. This value has no effect. Please set "null" instead.'

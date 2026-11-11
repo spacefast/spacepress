@@ -2,12 +2,12 @@
 /**
  * Media dimensions field definition for core media fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Dimensions', 'zero-admin' ),
+	'label'         => __( 'Dimensions', 'first-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 	'readOnly'      => true,

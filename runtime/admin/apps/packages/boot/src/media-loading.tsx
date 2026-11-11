@@ -13,7 +13,7 @@ export function MediaLoading({ resource }: { resource: ReturnType<typeof useMedi
 			</Notice>
 		);
 	return (
-		<div className="zero-admin-media-loading">
+		<div className="first-admin-media-loading">
 			<Spinner />
 		</div>
 	);

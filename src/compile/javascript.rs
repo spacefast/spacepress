@@ -124,10 +124,16 @@ impl Compiler<'_, '_> {
                     let v = self.finish_value(v, x.span)?;
                     parts.push(format!("['s', {}]", v.php));
                 }
+                Prop::NullPrototype => {}
             }
         }
+        let object = format!("\\First\\Js::dynamicObject({})", parts.join(", "));
         Ok(Out::atom(
-            format!("\\First\\Js::dynamicObject({})", parts.join(", ")),
+            if props.iter().any(|p| matches!(p, Prop::NullPrototype)) {
+                format!("\\First\\Js::nullPrototype({object})")
+            } else {
+                object
+            },
             Ty::Dynamic,
         ))
     }

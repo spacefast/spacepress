@@ -4,7 +4,7 @@ import {
   type InferSelectModel,
   table,
 } from "first";
-import { UNITS, LOW_STOCK, timestamps, slugify } from "./lib/fields";
+import { UNITS, LOW_STOCK, timestamps, slugify } from "./first/lib/fields";
 
 // Composition is plain TypeScript: shared field sets, factories, spreads.
 const named = <T extends object>(extra: T) => ({ name: text().notNull(), ...extra });

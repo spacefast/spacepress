@@ -206,6 +206,18 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
         let mut queue: Vec<usize> = seen.iter().copied().collect();
         while let Some(m) = queue.pop() {
             for (spec, span) in import_spans(program, m) {
+                // The app's kinds are app values: a plugin gets them only through its options.
+                if spec == crate::loader::DB_MODULE {
+                    return Err(Diag::new(
+                        span,
+                        format!(
+                            "plugin \"{}\" can't import \"first:db\": the app's kinds belong to the app",
+                            plugins[i].name
+                        ),
+                    )
+                    .code(Code::PluginIsolation)
+                    .help("take the kinds the plugin works on as plugin options, e.g. seo({ posts })"));
+                }
                 let Some(&target) = program.resolved.get(&(m, spec.clone())) else {
                     continue;
                 };

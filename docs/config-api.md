@@ -6,6 +6,59 @@ Everything below is exported from the `"first"` module. Shapes follow Drizzle
 ORM 1.0 (beta.22): column builders, `defineRelations`, relational-query
 `findMany`/`findFirst` with object filters.
 
+## Project layout
+
+`first.config.ts` sits at the project root. Your own modules live under `first/`
+([spec §1](spec/spec.md#1-layout)):
+
+```text
+my-project/
+├── first.config.ts     # imports only from ./first/** and npm packages
+├── first/
+│   ├── lib/fields.ts  # your modules, any names
+│   ├── wp-hooks/      # WordPress actions and filters (see below)
+│   ├── _generated/    # written by first build, committed
+│   └── dist/          # written by first build, gitignored
+```
+
+A relative import from `first.config.ts` or from a module under `first/` must
+resolve inside `first/`. Anything else, such as `import { x } from "./lib/x"`
+at the root or `"../src/x"` from `first/`, fails with `F1210` and names the
+file to move. Packages (`"first"`, `"php/wordpress"`, npm packages) are always
+allowed, and an installed package's own relative imports are its business.
+
+### Exports register by name
+
+First loads every `.ts` file under `first/`, except `app/`, `components/`,
+`wp-hooks/`, `content/`, `public/`, `_generated/` and `dist/`. Each exported
+`collection()`, `table()`, `userProjection()`, `global()`, `action()` and
+`job()` registers under its export name, so no file name is required and
+`defineConfig` needs no registry for them:
+
+```ts
+// first/schema.ts
+export const notes = table({ id: id(), title: text().notNull() });
+
+// first/server/likes.ts (any file name)
+import { notes } from "zero:db";
+export const like = action({ input: { id: integer().notNull() }, async handler({ id }) { /* … */ } });
+```
+
+- Other exports are ignored, so helper modules need no special place.
+- Export names are unique across the app. Two exports named `like`, an
+  action named like an exported kind, or an export and a `defineConfig`
+  registry entry under one name fail with `F1221`, naming both places.
+- A kind, action or job must be a named export; `export default table(...)`
+  is refused. Files named `*.test.ts` or `*.spec.ts` are left to your test
+  runner.
+- A value both exported and listed in a `defineConfig` registry is one
+  registration.
+- `import { notes } from "zero:db"` gives a registered kind by name, from any
+  module (including `first/wp-hooks/` files) and in any load order. It can't
+  be re-exported, and plugin packages can't import it: a plugin takes the
+  app's kinds as options. An unknown name is refused at the import with
+  the closest one. Types come from `first/_generated/db.d.ts`.
+
 ## WordPress plugins
 
 Use a top-level package map in `defineConfig`:
@@ -17,6 +70,34 @@ plugins: { "classic-editor": "1.6.7" }
 Values are exact WordPress.org versions or resource objects with `version`,
 `pluginData`, optional `requires`, and a checksum (required for direct URLs).
 See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
+
+## Opinionated WordPress
+
+While a First app is the active app, it runs WordPress the way spec.md §6
+describes. The app plugin applies every switch below at runtime
+(`runtime/First/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
+mu-plugins or the site's stored settings. Deactivate the app and WordPress
+behaves as it ships again. A site with the runtime plugin but no active app
+isn't changed either. None of these switches can be turned off in
+`first.config.ts`.
+
+| switch | effect |
+|---|---|
+| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
+| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
+| `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
+| `fileEditors` | the plugin and theme file editors are refused to everyone |
+| `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
+| `autoUpdates` | no automatic core, plugin or theme updates |
+| `customizer` | `customize` is refused, so `customize.php` and its links are gone |
+| `comments` | comments closed on every post type except collections with `comments: true` |
+| `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
+| `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
+| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
+
+`GET /_schema` lists the switches in `runtime.wp.hardening`. The object cache
+is whatever the host's `object-cache.php` drop-in provides. A plugin can't
+install a drop-in, so the host supplies it (on Spacefast, the box image does).
 
 ## Mixed content and app data
 
@@ -106,7 +187,7 @@ Phase-2 modifiers:
   label, plain-text help, width and placeholders on supported input controls;
   schema description preserves metadata for other consumers. It never changes
   stored field names, JSON pointers, validation or access. Nested fields support
-  the same metadata. See the [SEO recipe](../examples/recipes/seo.ts).
+  the same metadata. See the [SEO recipe](../examples/recipes/first/seo.ts).
 - `.showIf({ sibling: value | { eq, ne, in, isNull, isNotNull } })`: editor
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.
@@ -157,6 +238,7 @@ registered once.
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
+| `comments` | `false` | collections only; WordPress comments on the post type. Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
 | `title` | a `title: text()` column | WordPress post title; must be `text().notNull()` for collections |
 | `content` | a `content: richText()` column | WordPress post content |
 | `access` | read `"anyone"`, writes `"editor"` | see below |
@@ -165,7 +247,7 @@ registered once.
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
 
-Collections need a title and physical names of at most 14 characters (WordPress
+Collections need a title and physical names of at most 15 characters (WordPress
 prefixes `first_`). Built-in route names are reserved. User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
 
@@ -319,6 +401,52 @@ changes nothing. Core reads apply the read rule and field access; core writes
 and editor saves apply the create, update and field rules, and are authorized
 on the saved data before they commit.
 
+Core `/wp/v2/<post type>` speaks First's fields and queries too:
+
+- Every field is registered post meta (`register_post_meta`, `show_in_rest`,
+  with its JSON Schema) under its own name. `meta.seats` reads and writes the
+  value as First does: a group or repeater is one value, a date is
+  `YYYY-MM-DD`. Writes go through First's codec and rules, and a field hidden
+  from the viewer is dropped from `meta` like everywhere else.
+- List routes take First's query arguments next to core's own:
+  `where` (JSON), `orderBy` (`-seats,title`), `with` (`author,comments` or
+  JSON; each item gets the relations under `with`) and `search` (every text
+  and richText field the viewer may read). They run as the viewer, so a filter
+  or sort on a hidden field is the same 403 as on First's API. Core keeps
+  pagination (`page`, `per_page`, `X-WP-Total`) and `_fields`.
+- The users kind does the same on core `/wp/v2/users`: member fields are
+  registered user meta under `meta`, shown only to a viewer whose read rule
+  covers the member. A `meta` write runs First's update as the viewer (rules,
+  validation, hooks) in one transaction with core's own user save, so a
+  refusal keeps nothing. The list takes `where` and `orderBy`.
+- A `table()` kind gets core-shaped `/wp/v2/<storage name>` (for example
+  `/wp/v2/first_signups`): list, get, create, update (`POST`/`PUT`/`PATCH`) and
+  delete, with `per_page`/`page`, `X-WP-Total`, `_fields`, a JSON Schema on
+  `OPTIONS`, and `where`/`orderBy`/`with`. Every call is First's pipeline as
+  the viewer, so it answers what First's API answers.
+
+## The `/__first/api/v1` API
+
+One clean HTTP shape for clients and agents, over the core routes above. Each
+request is dispatched to the core route as the caller and only mapped, so it
+answers exactly what core answers under First's rules.
+
+| Request | Core route | Answer |
+|---|---|---|
+| `GET /__first/api/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
+| `GET /__first/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
+| `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
+| `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
+| `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+
+Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
+`published` or `private`. Errors are RFC 9457 problem documents (`code`,
+`detail`, `pointer`). Callers authenticate the way core accepts: the cookie
+with `X-WP-Nonce`, an application password, or a First Identity bearer token.
+The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
+`/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
+
 ## Globals
 
 `global(name, fields, { label?, access?: { read?, update? } })`, registered in
@@ -390,7 +518,7 @@ grant and writes `first/_generated/plugins.lock.json`:
 | `mail` | `send` |
 | `jobs` | the plugin's own jobs it enqueues |
 | `abilities` | `vendor/name` of each `abilities.call` from `"php/wordpress"` |
-| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `wp-hooks/` directory |
+| `wpHooks` | WordPress actions and filters the plugin's code registers; empty today, since hooks come only from the app's `first/wp-hooks/` directory |
 | `php` | reserved for PHP functions imported from `"php/wordpress"`, `"php/<slug>"` or `"php"` (`wordpress:get_option`); always empty today |
 
 Commit the lock: it is the grant.
@@ -477,6 +605,18 @@ Throwing anything aborts the request and rolls back every write in it.
   `first` also checks a timestamp so old deliveries are refused.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
+- `readonly: true` marks an action that only reads; `destructive: true` one
+  that deletes or overwrites data, so agents confirm before running it.
+
+Each action is also the Ability `<app>/<kebab-name>`. Its annotations come from
+these options, its input schema from `input`, and its output schema from the
+handler's TypeScript return type (left out when the type has no single JSON
+shape). Core's run route, `/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`,
+serves it with the action's own access rule, so an `access: "anyone"` action
+runs anonymously. Core picks the method from the annotations: `GET` for
+`readonly`, `DELETE` for `destructive` with `idempotent`, `POST` otherwise.
+Errors are core's `WP_Error` JSON, with First's code (`first_<code>`), status
+and `data.pointer`.
 
 ## HTTP routes
 
@@ -851,12 +991,12 @@ return post === null ? "" : esc_html(post.post_title);
 
 ## WordPress hooks
 
-`wp-hooks/` beside `first.config.ts` adds WordPress actions and filters. Name a
+`first/wp-hooks/` adds WordPress actions and filters. Name a
 file after the hook, or make a directory of that name for several handlers.
 Each file default-exports its handler:
 
 ```text
-wp-hooks/
+first/wp-hooks/
 ├── save_post.ts
 └── the_content/
     ├── 10-reading-time.ts
@@ -864,7 +1004,7 @@ wp-hooks/
 ```
 
 ```ts
-// wp-hooks/the_content/20-frame.ts
+// first/wp-hooks/the_content/20-frame.ts
 import type { Handler } from "php/wordpress";
 
 const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
@@ -872,7 +1012,7 @@ export default frame;
 ```
 
 ```ts
-// wp-hooks/save_post.ts
+// first/wp-hooks/save_post.ts
 import type { WP_Post } from "php/wordpress";
 
 export const priority = 20;
@@ -903,7 +1043,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   run in that order after core's own callbacks at 10. `export const priority =
   <integer>` moves a file; lower runs first. A file exports only `default` and
   `priority`; share code through an ordinary imported module.
-- `wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
+- `first/wp-hooks/` accepts only `.ts` files, directly or one directory deep. A
   file without a default export, another file type, or the same hook as both a
   file and a directory is a build error at that path.
 - Handlers run in WordPress's own request, whichever it is: a page view, an
@@ -911,7 +1051,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   works and each write commits on its own; `ctx` and `HttpError` responses
   don't apply, since there is no First request.
 - A handler that throws is logged to the PHP error log as
-  `[first] wp-hooks/<hook>: ...`. A filter then returns the value it was given,
+  `[first] first/wp-hooks/<hook>: ...`. A filter then returns the value it was given,
   so one broken handler leaves the page as WordPress rendered it. An action's
   throw stops only that handler.
 
@@ -1282,7 +1422,7 @@ body. A class `toJSON()` method is called by `JSON.stringify` with the property
 key; actions that return such an instance directly are refused, because the
 generated client describes own fields.
 
-Classes can extend `Error`, `TypeError` and `RangeError`. `super(message,
+Classes can extend `Error`, `TypeError`, `RangeError` and `SyntaxError`. `super(message,
 options)` sets non-enumerable `message`, `cause` (from `options.cause`) and
 `stack`, so `Object.keys` and JSON show only fields and an assigned `name`.
 `name` and `message` otherwise come from the prototype, and `String(error)`

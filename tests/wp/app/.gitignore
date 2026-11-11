@@ -1,5 +1,5 @@
-first/
-first/_generated/db.d.ts
+first/_generated/
+first/dist/
+first/blog/
 .first/*
 !.first/sync-base.json
-first/dist/

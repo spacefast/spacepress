@@ -33,14 +33,14 @@ export declare const abilities: {
 };
 
 // ---------------------------------------------------------------------------
-// WordPress hooks: `wp-hooks/<hook>.ts` or `wp-hooks/<hook>/<file>.ts`, each default-exporting a
+// WordPress hooks: `first/wp-hooks/<hook>.ts` or `first/wp-hooks/<hook>/<file>.ts`, each default-exporting a
 // handler. Files of one hook run in file-name order; `export const priority = 20` moves one.
 // ---------------------------------------------------------------------------
 
 export type HookName = keyof Hooks;
 
 /**
- * The handler a `wp-hooks/` file default-exports for hook `H`: an action's returns nothing, a
+ * The handler a `first/wp-hooks/` file default-exports for hook `H`: an action's returns nothing, a
  * filter's returns the filtered value (its first argument's type).
  *
  * ```ts
@@ -130,7 +130,7 @@ export declare function esc_attr(text: string): string;
 export declare function esc_url(url: string): string;
 /** WordPress `wp_strip_all_tags()`. */
 export declare function wp_strip_all_tags(text: string): string;
-/** The WordPress hooks `wp-hooks/` accepts: kind and arguments, from core's docblocks. */
+/** The WordPress hooks `first/wp-hooks/` accepts: kind and arguments, from core's docblocks. */
 export interface Hooks {
   /** Fires after WordPress has finished loading but before any headers are sent. (wp-settings.php) */
   init: { kind: "action"; args: [] };

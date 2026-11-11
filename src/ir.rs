@@ -379,6 +379,10 @@ pub enum PropKey {
 pub enum Prop {
     KV(PropKey, Expr),
     Spread(Expr),
+    /// `__proto__: null` in an object literal: the object has no prototype. It defines no key
+    /// and evaluates nothing; reads of `Object.prototype` names the object doesn't own are
+    /// `undefined`, and `in` sees own keys only.
+    NullPrototype,
 }
 
 #[derive(Debug, Clone)]

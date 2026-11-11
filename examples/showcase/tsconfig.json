@@ -8,5 +8,5 @@
     "types": [],
     "paths": { "first": ["../../types/first/index.d.ts"] }
   },
-  "include": ["first.config.ts", "pantry.ts", "first/_generated/db.d.ts"]
+  "include": ["first.config.ts", "first/pantry.ts", "first/stories.ts", "first/_generated/db.d.ts"]
 }

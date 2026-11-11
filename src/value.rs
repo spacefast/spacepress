@@ -10,9 +10,32 @@ use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-pub type Obj = Rc<RefCell<IndexMap<String, Value>>>;
+pub type Obj = Rc<ObjCell>;
 pub type Arr = Rc<RefCell<Vec<Value>>>;
 
+/// A plain object's own properties, and whether it was created with `__proto__: null`.
+/// A null-prototype object inherits nothing: reads of `Object.prototype` names it doesn't own
+/// are `undefined`, `in` sees own keys only, and it has no default string conversion.
+/// This mirrors `JsObject::$nullPrototype` in the PHP runtime.
+#[derive(Debug, Default)]
+pub struct ObjCell {
+    map: RefCell<IndexMap<String, Value>>,
+    null_prototype: bool,
+}
+
+impl ObjCell {
+    pub fn borrow(&self) -> std::cell::Ref<'_, IndexMap<String, Value>> {
+        self.map.borrow()
+    }
+
+    pub fn borrow_mut(&self) -> std::cell::RefMut<'_, IndexMap<String, Value>> {
+        self.map.borrow_mut()
+    }
+
+    pub fn null_prototype(&self) -> bool {
+        self.null_prototype
+    }
+}
 #[derive(Clone, Debug)]
 pub enum Value {
     Class(Rc<ClassValue>),
@@ -91,7 +114,7 @@ pub struct WeakVal {
 pub struct ClassValue {
     pub class: Rc<crate::ir::Class>,
     pub base: Option<Rc<ClassValue>>,
-    /// `extends Error` (or TypeError/RangeError): the built-in root when there is no class base.
+    /// `extends Error` (or another `ERROR_CONSTRUCTORS` entry): the built-in root when there is no class base.
     pub builtin_base: Option<&'static str>,
     pub env: Rc<Scope>,
     pub statics: IndexMap<String, Value>,
@@ -367,7 +390,18 @@ impl Value {
     }
 
     pub fn object(map: IndexMap<String, Value>) -> Value {
-        Value::Object(Rc::new(RefCell::new(map)))
+        Value::Object(Rc::new(ObjCell {
+            map: RefCell::new(map),
+            null_prototype: false,
+        }))
+    }
+
+    /// An object created by a literal with `__proto__: null`.
+    pub fn null_prototype_object(map: IndexMap<String, Value>) -> Value {
+        Value::Object(Rc::new(ObjCell {
+            map: RefCell::new(map),
+            null_prototype: true,
+        }))
     }
 
     pub fn array(items: Vec<Value>) -> Value {
@@ -445,6 +479,8 @@ impl Value {
             Value::Num(n) => js_number_to_string(*n),
             Value::Str(s) => s.to_string(),
             Value::Array(a) => Self::join_array(a, ",", active)?,
+            // No inherited toString: JavaScript throws converting it.
+            Value::Object(o) if o.null_prototype() => return None,
             Value::Object(_) => "[object Object]".into(),
             Value::Arguments(_) => "[object Arguments]".into(),
             Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),

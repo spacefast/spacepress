@@ -15,10 +15,10 @@ import {
   locations,
   restock,
   shoppingList,
-} from "./pantry";
-import { stories } from "./stories";
+} from "./first/pantry";
+import { stories } from "./first/stories";
 
-export { stories } from "./stories";
+export { stories } from "./first/stories";
 
 export const tasks = table(
   {

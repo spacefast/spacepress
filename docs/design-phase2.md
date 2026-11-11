@@ -1654,7 +1654,7 @@ one `// ---- lane X` block per lane at the end. `examples/blog/first.config.ts`
 is edited only in the **integration PR** (§9.3 step 3); lanes never touch the
 examples. Each lane tests against `tests/php/blog_app.php` (hand-written
 schema.php fixture; lanes append their own section) and against the WP test
-app **through a per-lane config fragment** `tests/wp/app/lanes/<lane>.ts`
+app **through a per-lane config fragment** `tests/wp/app/first/lanes/<lane>.ts`
 imported by `tests/wp/app/first.config.ts` (A3 adds the import list with every
 lane's fragment present and empty, so a lane only fills its own file).
 

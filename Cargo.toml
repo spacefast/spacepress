@@ -46,7 +46,7 @@ cli = ["host", "dep:tempfile", "dep:ureq", "dep:zip"]
 name = "first"
 required-features = ["cli"]
 
-# The browser build of the compiler core (src/wasm.rs; site/scripts/build-wasm.mjs runs this):
+# The browser build of the compiler core (src/wasm.rs; docs-site/scripts/build-wasm.mjs runs this):
 # `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown`
 [profile.wasm]
 inherits = "release"

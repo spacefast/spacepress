@@ -56,6 +56,8 @@ format.
 - `F3001`: schema extraction failure.
 - `F4001`: handler type checking or PHP compilation failure.
 - `F1201`: a plugin package imports the app's modules or another plugin's package.
+- `F1210`: app source imports a file outside `first/` (`first.config.ts` and modules under `first/` load app code only from `first/`).
+- `F1221`: an export name is taken twice (two exports, or an export and a `defineConfig` entry), one definition is exported under two names, or a kind, action or job is a default export.
 - `F4201`: a plugin's compiled code needs a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
 
 Specific, fixture-backed codes take precedence over phase codes. The growing

@@ -28,7 +28,7 @@ Both use the same `app/` and the same locked dependencies (`picomatch`,
 | File | Purpose |
 | --- | --- |
 | `app/first.config.ts` | `probe` (the baseline action from the brief) plus one action per scenario |
-| `app/scenarios.mjs` | upload/download/exists/head/list/delete/copy, `file()` handles, `FilesError` codes. Node imports it directly; First compiles it |
+| `app/first/scenarios.mjs` | upload/download/exists/head/list/delete/copy, `file()` handles, `FilesError` codes. Node imports it directly; First compiles it |
 | `table.mjs` | `first check --json` on both variants, counted by code and message, as a Markdown table (`--json` for raw data) |
 | `verify.mjs` | checks installed hashes, prints the table, then runs each action under Node and through `run-php.php` and compares the JSON strings byte for byte |
 | `run-php.php` | loads the generated runtime and calls one action handler; no WordPress, database or network |

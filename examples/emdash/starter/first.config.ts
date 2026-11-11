@@ -9,7 +9,7 @@ const posts = collection({
   seoTitle: text(),
   seoDescription: text({ multiline: true }),
 }, {
-  label: "Publication posts", title: "title", content: "body", revisions: true,
+  label: "Publication posts", title: "title", content: "body", revisions: true, comments: true,
   access: {
     read: (ctx) => ["admin", "editor", "author"].includes(ctx.user?.role ?? "") ? true : { status: "published" },
     create: "editor", update: "editor", delete: "editor",

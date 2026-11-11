@@ -22,7 +22,7 @@ test("activation registers the post types, field groups and options page, and cr
 
   const types = JSON.parse(wp("post-type", "list", "--format=json", "--fields=name,public,show_in_rest,rest_base"));
   assert.deepEqual(
-    // Lane fragments (tests/wp/app/lanes) add their own collections; this test owns the shared app's.
+    // Lane fragments (tests/wp/app/first/lanes) add their own collections; this test owns the shared app's.
     types.filter((t: any) => ["first_authors", "first_posts", "first_events"].includes(t.name)).map((t: any) => [t.name, t.public, t.show_in_rest, t.rest_base]),
     [["first_authors", false, true, "first_authors"], ["first_posts", false, true, "first_posts"], ["first_events", false, true, "first_events"]],
   );

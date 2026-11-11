@@ -23,13 +23,14 @@ pub const DIST: &str = "first/dist";
 /// `first build`'s default output: a `wp-content` directory.
 pub const WP_CONTENT: &str = "first/dist/wp-content";
 
-/// Committed inputs that moved into `first/_generated/`: (old project path, new). A source bundle
+/// Committed inputs that moved (into `first/_generated/`, or app code into `first/`): (old, new). A source bundle
 /// captured before the move names the old paths, and a host recompiles stored bundles, so the
 /// hosted compile reads them through [`current`]. (The hosted compile reads the ledger's old path
 /// itself; see `bundle::compile_tree`.)
 const MOVED: &[(&str, &str)] = &[
     ("first/abilities.json", "first/_generated/abilities.json"),
     ("first/plugins.lock.json", "first/_generated/plugins.lock.json"),
+    ("wp-hooks/", "first/wp-hooks/"),
 ];
 
 /// Committed files a live checkout may still have at their place before `first/_generated/`: (old,
@@ -63,25 +64,54 @@ const OLD_IN_CHECKOUT: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// The first committed file a checkout still keeps at its place from before `first/_generated/`, as
-/// (message, help). Callers refuse to build: see [`OLD_IN_CHECKOUT`] for why each one matters.
+/// Every committed file a checkout still keeps at its place from before `first/_generated/`, in one
+/// (message, help): the message names each file and what goes wrong if it stays, and the help is
+/// one command that moves them all. Callers refuse to build: see [`OLD_IN_CHECKOUT`].
 pub fn old_in_checkout(
     exists: impl Fn(&std::path::Path) -> bool,
     project: &std::path::Path,
 ) -> Option<(String, String)> {
-    OLD_IN_CHECKOUT
+    let found: Vec<_> = OLD_IN_CHECKOUT
         .iter()
-        .find(|(old, ..)| exists(&project.join(old)))
-        .map(|(old, new, why)| {
-            let parent = std::path::Path::new(new)
+        .filter(|(old, ..)| exists(&project.join(old)))
+        .collect();
+    if found.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = found
+        .iter()
+        .map(|(old, new, why)| format!("{old} moved to {new}; left where it is, {why}"))
+        .collect();
+    let message = match lines.as_slice() {
+        [one] => one.clone(),
+        many => format!(
+            "{} files are from before first/_generated/:\n  - {}",
+            many.len(),
+            many.join("\n  - ")
+        ),
+    };
+    let mut parents: Vec<String> = found
+        .iter()
+        .map(|(_, new, _)| {
+            std::path::Path::new(new)
                 .parent()
                 .expect("under first/_generated")
-                .display();
-            (
-                format!("{old} moved to {new}; left where it is, {why}"),
-                format!("move it with `mkdir -p {parent} && git mv {old} {new}`, then build again"),
-            )
+                .display()
+                .to_string()
         })
+        .collect();
+    parents.dedup();
+    let moves: Vec<String> = found
+        .iter()
+        .map(|(old, new, _)| format!("git mv {old} {new}"))
+        .collect();
+    let help = format!(
+        "move {} with `mkdir -p {} && {}`, then build again",
+        if found.len() == 1 { "it" } else { "them" },
+        parents.join(" "),
+        moves.join(" && ")
+    );
+    Some((message, help))
 }
 
 /// A captured project path on this layout: an input that moved into `first/_generated/` is renamed,
@@ -102,6 +132,8 @@ mod tests {
         for (old, new) in [
             ("first/abilities.json", "first/_generated/abilities.json"),
             ("first/plugins.lock.json", "first/_generated/plugins.lock.json"),
+            ("wp-hooks/save_post.ts", "first/wp-hooks/save_post.ts"),
+            ("wp-hooks/the_content/a.ts", "first/wp-hooks/the_content/a.ts"),
             // Already current, and unrelated paths, are unchanged.
             ("first/_generated/abilities.json", "first/_generated/abilities.json"),
             ("first/lib/fields.ts", "first/lib/fields.ts"),

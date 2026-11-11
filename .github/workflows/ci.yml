@@ -373,6 +373,39 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-migrate FIRST_WP_PORT=8794 tests/wp/migrate-run.sh
       - name: Spacefast cross-prefix migration and session continuity
         run: FIRST_WP_PROJECT=first-wp-spacefast FIRST_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+
+  # Schema checks, seeding, outbound fetch and WordPress abilities: split from wp-migrate, which
+  # ran past its timeout once both halves shared one runner.
+  wp-schema:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .first/cache/plugins
+            tests/wp/cache
+          key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: cargo build --locked --bin first
       - name: Deploy-time schema check against live rows
         run: FIRST_WP_PROJECT=first-wp-schema-check FIRST_WP_PORT=8902 tests/wp/schema-check/run.sh
       - name: First-publish seed and sync adoption
@@ -381,6 +414,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-fetch FIRST_WP_PORT=8899 tests/wp/fetch/run.sh
       - name: WordPress abilities and wp-hooks from TypeScript
         run: FIRST_WP_PROJECT=first-wp-wordpress FIRST_WP_PORT=8898 tests/wp/wordpress/run.sh
+      - name: Opinionated WordPress hardening, and stock WordPress without an app
+        run: FIRST_WP_PROJECT=first-wp-hardening FIRST_WP_PORT=8896 tests/wp/hardening/run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

@@ -7,6 +7,9 @@ namespace First;
 // Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests
 final class Builtins
 {
+    /** The built-in Error constructors (src/builtins.rs ERROR_CONSTRUCTORS). */
+    public const ERROR_CONSTRUCTORS = ['Error', 'TypeError', 'RangeError', 'SyntaxError'];
+
     private const ARITIES = [
         'first.collection' => null,
         'first.table' => null,
@@ -84,6 +87,7 @@ final class Builtins
         'global.Error' => [0, 2],
         'global.TypeError' => [0, 2],
         'global.RangeError' => [0, 2],
+        'global.SyntaxError' => [0, 2],
         'Math.min' => [0, PHP_INT_MAX],
         'Math.max' => [0, PHP_INT_MAX],
         'Math.floor' => [0, 1],
@@ -154,6 +158,7 @@ final class Builtins
         'constructor.Error' => [0, 2],
         'constructor.TypeError' => [0, 2],
         'constructor.RangeError' => [0, 2],
+        'constructor.SyntaxError' => [0, 2],
         'constructor.Map' => [0, 1],
         'constructor.Set' => [0, 1],
         'constructor.WeakMap' => [0, 1],

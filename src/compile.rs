@@ -12,8 +12,9 @@ mod effects;
 mod host;
 mod javascript;
 
+use crate::builtins::ERROR_CONSTRUCTORS;
 use crate::diag::{Diag, Result, Span, suggest};
-use crate::eval::{Evaluator, GLOBALS};
+use crate::eval::Evaluator;
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
@@ -287,6 +288,11 @@ struct Local {
     /// A PHP JsObject parameter whose binding is never replaced, including by captures.
     native_object: bool,
     initialized: bool,
+    /// Set on an uninitialized `const`/`let` whose whole initializer is a function expression:
+    /// closures inside that initializer may capture the binding, since none of them can run
+    /// before the declaration assigns it. The type their reads see; `Unknown` when TypeScript
+    /// gives none, which refuses the reference (docs/decisions/2026-11-09-self-referencing-bindings.md).
+    self_closure: Option<Ty>,
 }
 
 /// Binding reads may be widened by runtime effects independently of what the
@@ -1384,6 +1390,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 view: Vec::new(),
                 native_object: false,
                 initialized: true,
+                self_closure: None,
             },
         );
         php
@@ -1435,10 +1442,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut functions = vec![fx.function];
         let mut outer = fx.outer.as_deref();
         let mut found = None;
+        let mut by_reference = false;
         while let Some(o) = outer {
             if let Some(l) = o.scopes.iter().rev().find_map(|s| s.get(name)) {
-                require_initialized_local(name, l, span)?;
-                found = Some(l.clone());
+                let mut l = l.clone();
+                // A closure in its own binding's initializer: read through a PHP reference, since
+                // the closure is created before the binding is assigned.
+                if let (false, Some(ty)) = (l.initialized, l.self_closure.take()) {
+                    if ty == Ty::Unknown {
+                        return err_help(
+                            span,
+                            format!("`{name}` refers to itself before its type is known"),
+                            format!(
+                                "annotate every parameter and the return type, e.g. `const {name} = (n: number): number => ...`"
+                            ),
+                        );
+                    }
+                    l.ty = ty.clone();
+                    l.constraint = ty;
+                    l.initialized = true;
+                    by_reference = true;
+                }
+                require_initialized_local(name, &l, span)?;
+                found = Some(l);
                 break;
             }
             functions.push(o.function);
@@ -1462,7 +1488,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(caps) = &mut c.captures
                     && !caps.iter().any(|(n, _)| *n == var)
                 {
-                    caps.push((var.clone(), l.mutable));
+                    caps.push((var.clone(), l.mutable || by_reference));
                 }
                 cur = c.outer.as_deref_mut();
             }
@@ -1478,7 +1504,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             return Ok(Resolved::Value(b.value.clone(), b));
         }
-        if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
+        if let Some(g) = crate::eval::provided_global(name) {
             return Ok(Resolved::Global(g));
         }
         let mut d = Diag::new(span, format!("`{name}` isn't defined"));
@@ -1643,6 +1669,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     None => None,
                 };
+                if let (Pat::Id(name, binding), Some(f)) = (pat, init.as_ref().and_then(function_initializer)) {
+                    // A self-reference reads the binding as it is when the closure runs. A `const`, or a
+                    // typed `let` whose later assignments are held to the function's own type, still
+                    // holds this function then. Any other `let` may hold something else: it reads as
+                    // its declared type, or as a dynamic value in imported JavaScript.
+                    let reassignable = *kind == DeclKind::Let;
+                    let ty = match &declared {
+                        Some(d @ Ty::Fn(..)) => d.clone(),
+                        Some(d) if reassignable => d.clone(),
+                        None if reassignable && javascript => Ty::Dynamic,
+                        _ => self.declared_signature(f)?.unwrap_or(Ty::Unknown),
+                    };
+                    if let Some(local) = self.fx().scopes.last_mut().expect("scope").get_mut(name)
+                        && local.binding == *binding
+                    {
+                        local.self_closure = Some(ty);
+                    }
+                }
                 let value = match init {
                     Some(e) => {
                         let v = self.expr(e)?;
@@ -2338,7 +2382,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(callee.span, "throw `new Error(...)` or `new HttpError(...)`"),
             };
             match callee_v {
-                Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) => {
+                Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => {
                     return self.error_constructor(g, args).map(|value| value.php);
                 }
                 Resolved::Value(Value::Builtin(Builtin::HttpError), _) => {
@@ -2961,6 +3005,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         view,
                         native_object: false,
                         initialized: true,
+                        self_closure: None,
                     },
                 );
                 continue;
@@ -3070,8 +3115,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ));
                 }
                 if let ExprKind::Ident(name) = &right.kind
-                    && let Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) =
-                        self.resolve(name, right.span)?
+                    && let Resolved::Global(g) = self.resolve(name, right.span)?
+                    && ERROR_CONSTRUCTORS.contains(&g)
                 {
                     let left = self.expr(left)?;
                     return Ok(Out::atom(
@@ -3233,7 +3278,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Object(props)
                 if self.javascript_module(self.fx.as_ref().expect("fn").module)
-                    && props.iter().any(|p| !matches!(p, Prop::KV(PropKey::Static(_), _))) =>
+                    && props
+                        .iter()
+                        .any(|p| matches!(p, Prop::KV(PropKey::Computed(_), _) | Prop::Spread(_))) =>
             {
                 self.javascript_object(props)?
             }
@@ -3313,6 +3360,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             }
                             parts.push(format!("({})->p ?? []", v.wrapped()));
                         }
+                        // The type stays the own fields: TypeScript's `__proto__: null` field
+                        // isn't an own property, so it isn't added.
+                        Prop::NullPrototype => {}
                     }
                 }
                 if !deferred.is_empty() {
@@ -3402,9 +3452,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Obj(fields)
                 };
-                let php = if props.iter().all(|p| matches!(p, Prop::KV(PropKey::Static(_), _))) {
+                let null_prototype = props.iter().any(|p| matches!(p, Prop::NullPrototype));
+                let php = if props
+                    .iter()
+                    .all(|p| matches!(p, Prop::KV(PropKey::Static(_), _) | Prop::NullPrototype))
+                {
                     let fields = parts.iter().map(|p| &p[1..p.len() - 1]).collect::<Vec<_>>().join(", ");
-                    format!("(new \\First\\JsObject([{fields}]))")
+                    if null_prototype {
+                        format!("(new \\First\\JsObject([{fields}], nullPrototype: true))")
+                    } else {
+                        format!("(new \\First\\JsObject([{fields}]))")
+                    }
+                } else if null_prototype {
+                    format!("\\First\\Js::nullPrototype(\\First\\Js::obj({}))", parts.join(", "))
                 } else {
                     format!("\\First\\Js::obj({})", parts.join(", "))
                 };
@@ -4293,6 +4353,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
             None if !function && crate::builtins::contract("object", prop).is_some() => {
+                if matches!(&receiver, Value::Object(o) if o.null_prototype()) {
+                    // A `__proto__: null` object inherits nothing.
+                    return Ok(Some((path, Value::Undef, Binding { ann: None, ..binding })));
+                }
                 return err_help(
                     prop_span,
                     format!("`{path}` reads an inherited property, which isn't supported"),
@@ -4349,8 +4413,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let class = if array { "JsArray" } else { "JsObject" };
         let storage = if array { "a" } else { "p" };
+        let arguments = match value {
+            Value::Object(o) if o.null_prototype() => "nullPrototype: true",
+            _ => "",
+        };
         let mut body = format!(
-            "function {name}(): \\First\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\First\\{class}();\n"
+            "function {name}(): \\First\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\First\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;
@@ -4431,10 +4499,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let name = self.unique_name("receiver");
         let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let arguments = if o.null_prototype() { "nullPrototype: true" } else { "" };
         let body = self.attempt(|this| {
             this.data_helpers.insert(key, name.clone());
             let mut body = format!(
-                "function {name}(): \\First\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\First\\JsObject();\n"
+                "function {name}(): \\First\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\First\\JsObject({arguments});\n"
             );
             for (key, member) in fields {
                 let member_path = format!("{path}.{key}");
@@ -6841,7 +6910,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 })
             }
-            Resolved::Global(g @ ("Error" | "TypeError" | "RangeError")) => self.error_constructor(g, args),
+            Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => self.error_constructor(g, args),
             Resolved::Value(Value::Builtin(Builtin::HttpError), _) => err(
                 span,
                 "create HttpError directly in a `throw`: `throw new HttpError(404, \"not_found\", \"...\")`",
@@ -7992,7 +8061,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if g == "parseInt" {
             crate::builtins::check_parse_int_literals(args, span)?;
         }
-        if matches!(g, "Error" | "TypeError" | "RangeError") {
+        if ERROR_CONSTRUCTORS.contains(&g) {
             return self.error_constructor(g, args);
         }
         if matches!(g, "parseInt" | "parseFloat") && self.javascript_module(self.fx.as_ref().expect("fn").module) {
@@ -10039,12 +10108,41 @@ fn pad(n: usize) -> String {
     "    ".repeat(n)
 }
 
+/// The function expression a declaration's whole initializer evaluates to, through type-only
+/// wrappers. Evaluating it runs none of its body, so nothing inside can run before the binding
+/// holds it. A named function expression is lowered to `(() => { function name() {} return
+/// name; })()`, which only declares and returns the function, so it counts too.
+fn function_initializer(init: &Expr) -> Option<&Rc<Func>> {
+    match &init.kind {
+        ExprKind::Func(f) => Some(f),
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => function_initializer(inner),
+        ExprKind::Call { callee, args, .. } if args.is_empty() => {
+            let ExprKind::Func(wrapper) = &callee.kind else {
+                return None;
+            };
+            let FnBody::Block(body) = &wrapper.body else {
+                return None;
+            };
+            match (
+                wrapper.params.is_empty() && !wrapper.is_async && !wrapper.is_generator,
+                body.as_slice(),
+            ) {
+                (true, [Stmt::Func(f), Stmt::Return(Some(returned), _)]) if matches!((&f.name, &returned.kind), (Some(name), ExprKind::Ident(r)) if name == r) => {
+                    Some(f)
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 fn require_initialized_local(name: &str, local: &Local, span: Span) -> Result<()> {
     if !local.initialized {
         return err_help(
             span,
             format!("`{name}` is referenced before its lexical declaration"),
-            "initialize the lexical binding before reading it or creating a closure that captures it",
+            "initialize the lexical binding before reading it or creating a closure that captures it; a closure may capture its own binding only when it is the whole initializer, as in `const f = (n) => f(n - 1)`",
         );
     }
     Ok(())

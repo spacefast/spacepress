@@ -1,5 +1,5 @@
 import { collection, defineConfig, text } from "first";
-import { seoFields } from "./seo";
+import { seoFields } from "./first/seo";
 
 const articles = collection({
   title: text().notNull(),

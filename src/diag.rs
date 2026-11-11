@@ -58,6 +58,12 @@ pub enum Code {
     /// A plugin package imports the app's modules or another plugin's package.
     #[serde(rename = "F1201")]
     PluginIsolation,
+    /// App source imports a file outside `first/` (docs/spec/spec.md §1).
+    #[serde(rename = "F1210")]
+    ImportFence,
+    /// Two exports register the same name, or one kind, action or job under two (§1.1).
+    #[serde(rename = "F1221")]
+    DuplicateExport,
     /// A plugin's compiled code uses a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
     #[serde(rename = "F4201")]
     PluginCapability,

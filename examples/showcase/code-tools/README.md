@@ -9,7 +9,7 @@ node examples/showcase/code-tools/build.mjs /absolute/path/to/public
 
 The output directory receives `source-lab.js`, `source-lab.css`,
 `source-compiler-worker.js`, `compiler.js`, and `code-notices.txt`. The compiler
-wrapper is bundled from the canonical `site/src/lib/compiler.ts`; no second
+wrapper is bundled from the canonical `docs-site/lib/compiler.ts`; no second
 implementation is maintained here. Runtime code and highlighting grammars are
 bundled locally. Exact dependency versions are in `package-lock.json`.
 

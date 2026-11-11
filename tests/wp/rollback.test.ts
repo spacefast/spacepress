@@ -47,7 +47,7 @@ test("extension effects share WordPress transactions and commit callbacks", () =
 });
 
 // Editor saves (§1.7: throwing rolls back every write): the same holds when the save comes from
-// core /wp/v2 or wp-admin. Fixture: tests/wp/app/lanes/rest.ts `fuses`, whose hooks log, then throw.
+// core /wp/v2 or wp-admin. Fixture: tests/wp/app/first/lanes/rest.ts `fuses`, whose hooks log, then throw.
 const logged = (msg: string) => sql(`SELECT COUNT(*) AS n FROM wp_first_fuse_log WHERE msg = '${msg}'`)[0].n;
 const titled = (title: string) => wp("post", "list", "--post_type=first_fuses", "--post_status=any", `--title=${title}`, "--format=count");
 

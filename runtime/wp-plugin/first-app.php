@@ -16,6 +16,9 @@ register_activation_hook(__FILE__, static function (): void {
     }
     $plugin->activate();
 });
+register_deactivation_hook(__FILE__, static function (): void {
+    class_exists(\First\Wp\Hardening::class) && \First\Wp\Hardening::deactivate();
+});
 add_action('plugins_loaded', static function (): void {
     if (!class_exists(\First\Wp\Runtime::class)) {
         add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('First: the first-runtime plugin is not active; {{name}} is not running.')));

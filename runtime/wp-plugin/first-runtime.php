@@ -4,7 +4,7 @@
  * Version: {{firstVersion}}
  * Requires at least: {{wpVersion}}
  * Requires PHP: {{phpVersion}}
- * Requires Plugins: secure-custom-fields, action-scheduler, mcp-adapter
+ * Requires Plugins: {{runtimeRequires}}
  * License: GPL-2.0-or-later
  */
 declare(strict_types=1);

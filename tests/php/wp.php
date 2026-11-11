@@ -65,11 +65,12 @@ final class WpSite
     // ================================================================ building the site
 
     /**
-     * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool} $fixture
+     * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool, akismet?: bool, muPlugins?: array<string, string>} $fixture
      *   schema: the app's schema.php array (name, collections, ...); functions: PHP after `namespace FirstApp;`;
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
      *   identity: install first-identity too; users: extra WordPress users (name => role);
-     *   server: start a php -S that answers the private-files probe (needed for file buckets).
+     *   server: start a php -S that answers the private-files probe (needed for file buckets);
+     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one.
      */
     public static function create(string $label, array $fixture): self
     {
@@ -115,6 +116,12 @@ final class WpSite
                 }
                 wpCopy(wpPlugin($slug, $pin['version'], $pin['sha256']), "$dir/content/plugins/$slug");
                 $activate[] = $slug;
+            }
+            // Not a platform plugin: a site gets Akismet through Jetpack. `akismet: true` activates the copy
+            // WordPress core ships, the one a Jetpack setup turns on.
+            if ($fixture['akismet'] ?? false) {
+                wpCopy("$core/wp-content/plugins/akismet", "$dir/content/plugins/akismet");
+                $activate[] = 'akismet';
             }
             $site->runtimePlugin($repo, $fixture);
             $activate[] = 'first-runtime';
@@ -744,8 +751,10 @@ function wpTemplate(string $file, array $fixture): string
     $repo = dirname(__DIR__, 2);
     $name = (string) ($fixture['schema']['name'] ?? 'app');
     $platform = json_decode((string) file_get_contents("$repo/tests/fixtures/platform.json"), true, 512, JSON_THROW_ON_ERROR);
-    $requires = 'secure-custom-fields, action-scheduler, mcp-adapter, first-runtime' . (($fixture['schema']['locales'] ?? null) !== null ? ', polylang' : '');
-    $vars = ['name' => $name, 'slug' => "first-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires,
+    $localized = ($fixture['schema']['locales'] ?? null) !== null;
+    $runtimeRequires = array_keys(array_filter($platform['plugins'], static fn (string $slug): bool => $slug !== 'polylang', ARRAY_FILTER_USE_KEY));
+    $requires = implode(', ', [...$runtimeRequires, ...($localized ? ['polylang'] : []), 'first-runtime']);
+    $vars = ['name' => $name, 'slug' => "first-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
         'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/First/Schema.php", 'SERIES'),
         'firstVersion' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'),
         'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16)];

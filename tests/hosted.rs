@@ -15,9 +15,9 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(
         &project,
         "first.config.ts",
-        "import { defineConfig, action, global, text } from 'first'; import { message } from './src/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
+        "import { defineConfig, action, global, text } from 'first'; import { message } from './first/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
     );
-    write(&project, "src/message.ts", "export const message = 'v1';");
+    write(&project, "first/message.ts", "export const message = 'v1';");
     write(
         &project,
         "node_modules/shared/package.json",
@@ -48,7 +48,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let app: first::bundle::SourceBundle =
         serde_json::from_slice(&fs::read(first.join("app.first.json")).unwrap()).unwrap();
     assert!(!app.files.contains_key("unrelated.ts"));
-    write(&project, "src/message.ts", "export const message = 'v2';");
+    write(&project, "first/message.ts", "export const message = 'v2';");
     let second = work.path().join("second");
     let later = first::bundle::sources(&project, &second).unwrap();
     assert_eq!(sources.vendor_sha256, later.vendor_sha256);
@@ -202,6 +202,55 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
             "import { defineConfig } from 'first'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
         );
         assert!(first::bundle::sources(&project, &work.path().join("escape")).is_err());
+    }
+}
+
+/// A bundle captured before the `first/` import fence keeps its helpers beside `first.config.ts`
+/// (`./lib/message`). A stored bundle is frozen data, so the host recompiles it as captured; only a
+/// live project is held to the fence.
+#[test]
+fn a_bundle_captured_before_the_import_fence_still_compiles() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("app");
+    write(
+        &project,
+        "first.config.ts",
+        "import { defineConfig, action } from 'first'; import { message } from './first/message'; export default defineConfig({ actions: { hello: action({ access: 'anyone', handler() { return message; } }) } });",
+    );
+    write(&project, "first/message.ts", "export const message = 'kept';");
+    let bundle = work.path().join("bundle");
+    first::bundle::sources(&project, &bundle).unwrap();
+    // Rewrite the capture to the layout an older compiler took: the helper at the project root.
+    let app = bundle.join(first::bundle::APP_FILE);
+    let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
+    let old = |s: &str| {
+        s.replace("first/message.ts", "lib/message.ts")
+            .replace("./first/message", "./lib/message")
+    };
+    for map in ["files", "canonical"] {
+        let entries = captured[map].as_object_mut().unwrap();
+        let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
+            .into_iter()
+            .map(|(k, v)| (old(&k), v.as_str().map_or(v.clone(), |s| old(s).into())))
+            .collect();
+        entries.extend(moved);
+    }
+    assert!(captured["files"].get("lib/message.ts").is_some(), "{captured}");
+    let bytes = serde_json::to_vec(&captured).unwrap();
+    fs::write(&app, &bytes).unwrap();
+    let manifest_path = bundle.join(first::bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    use sha2::Digest as _;
+    manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        .into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    fs::remove_dir_all(&project).unwrap();
+    let compiled = work.path().join("compiled");
+    if let Err(e) = first::bundle::compile(&bundle, &compiled, &bundle, None) {
+        panic!("a stored pre-fence bundle must recompile: {}", e.message);
     }
 }
 

@@ -115,7 +115,7 @@ The native compiler was built from `b66e98b3866037061198c51ebef9534609a5e301`. N
 
 ### Exported callback context types do not compile
 
-`lib/ownership.ts:5:34` uses the exported `AccessCtx` annotation:
+`first/lib/ownership.ts:5:34` uses the exported `AccessCtx` annotation:
 
 ```ts
 export function ownerFilter(ctx: AccessCtx) {
@@ -127,7 +127,7 @@ export function ownerFilter(ctx: AccessCtx) {
 
 ```text
 error: unknown type `AccessCtx`
-  --> lib/ownership.ts:5:34
+  --> first/lib/ownership.ts:5:34
   |
 5 | export function ownerFilter(ctx: AccessCtx) {
   |                                  ^^^^^^^^^
@@ -137,7 +137,7 @@ error: unknown type `AccessCtx`
 
 ```text
 error: unknown type `AccessCtx`
-  --> lib/ownership.ts:5:34
+  --> first/lib/ownership.ts:5:34
   |
 5 | export function ownerFilter(ctx: AccessCtx) {
   |                                  ^^^^^^^^^

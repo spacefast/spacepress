@@ -12,9 +12,17 @@ String semantics here describe the current implementation; changes require updat
 
 Status: **supported**.
 
-Named module-level classes compile inside callbacks: constructors, public fields and typed parameter properties, methods, lexical this in arrows, static members, named inheritance, super and instanceof. Private names (#field, #method, static #x, #x in value) are per declaring class: subclasses get separate slots, private state is invisible to enumeration/JSON/clone, and foreign receivers throw TypeError. Classes extending Error/TypeError/RangeError get non-enumerable message/cause/stack, prototype name/message/toString, instanceof along the chain, and keep their identity through throw/catch; stack is the header line without frames and Error.captureStackTrace sets it. Class and static get/set accessors dispatch after own data and before methods; getter-only writes are refused or throw TypeError; super reads parent getters; class toJSON methods run in JSON.stringify. Classes in imported JavaScript need no annotations and use checked values; class method values keep one identity per class. Instances share object identity; JSON and clone boundaries expose only own fields and drop class identity. See config-api.md for initialization, inference and refusal limits.
+Named module-level classes compile inside callbacks: constructors, public fields and typed parameter properties, methods, lexical this in arrows, static members, named inheritance, super and instanceof. Private names (#field, #method, static #x, #x in value) are per declaring class: subclasses get separate slots, private state is invisible to enumeration/JSON/clone, and foreign receivers throw TypeError. Classes extending Error/TypeError/RangeError/SyntaxError get non-enumerable message/cause/stack, prototype name/message/toString, instanceof along the chain, and keep their identity through throw/catch; stack is the header line without frames and Error.captureStackTrace sets it. Class and static get/set accessors dispatch after own data and before methods; getter-only writes are refused or throw TypeError; super reads parent getters; class toJSON methods run in JSON.stringify. Classes in imported JavaScript need no annotations and use checked values; class method values keep one identity per class. Instances share object identity; JSON and clone boundaries expose only own fields and drop class identity. See config-api.md for initialization, inference and refusal limits.
 
 [Evidence](../tests/compiler_contracts.rs) (`classes_match_node_through_generated_php_and_wire_client_types`)
+
+## error-constructors
+
+Status: **supported**.
+
+Error, TypeError, RangeError and SyntaxError are globals in typed code, imported JavaScript and configuration evaluation, from one list (ERROR_CONSTRUCTORS in src/builtins.rs, generated into First\Builtins for the runtime). Calling or constructing one gives name, message, String() and a frameless stack as in JavaScript. instanceof matches the constructor and Error, also for errors the runtime throws, such as the SyntaxError from JSON.parse. Classes can extend any of them. Configuration evaluation can reference them and read typeof but refuses construction, because errors are runtime values. ReferenceError, EvalError, URIError and AggregateError are not globals.
+
+[Evidence](../tests/compiler_contracts.rs) (`private_names_accessors_and_imported_javascript_classes_match_node`)
 
 ## javascript-promises
 
@@ -127,6 +135,30 @@ Status: **supported**.
 `key in object` compiles in typed code, imported JavaScript and configuration evaluation. The key goes through ToPropertyKey after the key expression runs; own properties are checked first, then the value's fixed prototype chain: class methods and statics, the built-in prototype of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then Object.prototype. Arrays are dense, so an index is present exactly when it is below the length. A primitive right side throws JavaScript's TypeError. `"key" in x` narrows object unions like TypeScript; members with an optional key stay on both branches, and `unknown` narrows to an object whose key reads stay checked. Configuration evaluation inspects plain objects, arrays and arguments, and refuses a primitive right side at build time.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## null-prototype-literals
+
+Status: **supported**.
+
+`{ __proto__: null, ... }` (a non-computed, non-shorthand `__proto__` key with the literal `null`) creates a null-prototype object in typed code, imported JavaScript and configuration evaluation, including tables built at module scope and captured by handlers. Reads of keys the object doesn't own are undefined, also for Object.prototype names such as constructor, toString and hasOwnProperty; `in` sees own keys only; calling an inherited method throws TypeError; string and number conversion throw TypeError (refused during configuration evaluation); `__proto__` and other Object.prototype names are ordinary own keys when written. Object.keys, for…in, spread and JSON.stringify behave as on an ordinary object with the same own keys, and a spread copy has the ordinary prototype. TypeScript's `__proto__: null` field is not part of the literal's type. Object.getPrototypeOf, Object.create and Object.setPrototypeOf are not supported.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## prototype-literal-object
+
+Status: **refused**. Diagnostic: `F1002`.
+
+Only `__proto__: null` is supported. A `__proto__:` key with any other value would install a custom prototype, which First doesn't model; copy the shared properties with a spread instead, or use a computed ['__proto__'] key for an own data property.
+
+[Evidence](../tests/fixtures/reject-proto-object)
+
+## prototype-literal-variable
+
+Status: **refused**. Diagnostic: `F1002`.
+
+`__proto__: someVar` is refused even when the variable holds null; write the literal `__proto__: null` for a null-prototype object, or spread the variable's properties for an ordinary one.
+
+[Evidence](../tests/fixtures/reject-proto-variable)
 
 ## delete-operator
 
@@ -420,7 +452,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-src/builtins.rs owns JavaScript built-in overloads, arity and phase support. Unsupported arguments are refused at the call site; runtime-only dynamic receivers throw a TypeError. Captured and runtime vectors compare UTF-16 ordering, replacement substitution, ECMAScript whitespace, modulo radix conversion and signed-zero rounding to Node. Positioned includes/startsWith/endsWith are refused in typed code and configuration evaluation; checked imported JavaScript implements those positions. Callback thisArg and nondecimal numeric toString are refused. Object.freeze is refused because freezing is not modeled. JSON parsing/serialization and Error construction are runtime-only; configuration evaluation refuses them. Custom object and function coercion are refused during configuration evaluation; handlers use the checked runtime conversion path. parseInt supports correctly rounded large values in base 10 and power-of-two bases; other radices require safe integer results. Database builders, configuration/schema factories and column modifiers share the source arity contract. Build-time function-coercion refusals include extracted methods; typed replacement callbacks preserve undefined captures and receive named groups. Captured explicit undefined remains distinct from null in both language modes. Dynamic method values use the shared built-in contract. Unknown built-in properties are refused during configuration evaluation. Powers accept safe integer results, integral binary scaling, squares, square roots and IEEE special values; other powers are refused at source or explicitly at runtime. Prototype setter literals are refused; computed __proto__ data properties remain supported. Extracted method calls are refused during configuration evaluation. Database writes require static collection references. Configuration for-of and destructuring use live iterators. Addition uses default primitive conversion. Sorting keeps undefined last and excludes it from comparators. JSON schemas must accept serialized values, and custom toJSON callbacks are refused. Typed Dates require explicit toISOString/toJSON before JSON.stringify or action returns. Imported JavaScript for-of uses live iterators. Ignore-case regexes require literal ASCII source and ASCII input in both modes; non-ASCII folding and encoded character escapes are refused. RegExp source and string conversion escape delimiters and line terminators. Regex split on astral text requires the u flag. Astral pattern literals and surrogate escapes also require u, even for ASCII/BMP subjects. Lone surrogate escapes in classes are refused; valid surrogate pairs and braced scalar escapes remain supported in Unicode mode. Typed invalid-Date toJSON returns null. Generated undefined defaults become null at the storage boundary. Object overwrites preserve key order. Stored JSON defaults omit undefined object properties and normalize undefined array slots to null. Numeric string conversion uses ECMAScript shortest ties-to-even formatting. Nullish narrowing retains undefined. Cyclic array string conversion omits recursive visits. Dynamic array/arguments prototype writes are refused. Typed Date string coercion requires explicit formatting. Function call/apply property values use the function contract; unmodeled function metadata/bind reads and function string conversion are refused. Optional Error/RegExp reads preserve undefined. Date construction runs default-hint object coercion. Typed Date addition/concat requires explicit formatting. Typed and imported Dates share JsDate identity and numeric primitive conversion; timestamp/date storage and filters convert explicitly. Date JSON schemas must describe their serialized text/null form. Non-ISO Date syntax receives a source diagnostic for literals and an explicit runtime refusal for computed values. Default sorting of multiple object values requires an explicit comparator; singleton sorting does not coerce. Negative-zero expanded Date years are refused. Custom sorting accepts only a numeric difference between the two parameters or matching property paths, with finite primitive keys. Other comparator shapes and cross-family borrowed methods are refused. Unary minus performs ToNumber, and parsed JSON retains negative zero. Missing indexed and optional-property logical assignment operands retain undefined in runtime narrowing and serialized client types. Regex source escaping uses explicit UTF-8 regardless of ambient PHP multibyte settings. Configuration refuses extracted built-in method values, including identity comparisons; direct and computed receiver calls remain supported. JSON negative-zero preservation leaves exponent signs intact. Non-Unicode regex classes support digit/underscore control escapes. Runtime hasIndices and unicodeSets are false because d/v flags are refused. Runtime Error messages are own nonenumerable properties only when a defined message is supplied; name is inherited. Configuration refuses restricted arguments access instead of fabricating native Error descriptors. Error stack is the Name: message header without frames. Captured arrays and objects retain one identity across typed and imported JavaScript. Capturing lookbehind is refused because JavaScript matches captures backward. Quantified noncapturing groups require a provably nonempty body; nullable groups are refused because regex engines choose different empty iterations. JavaScript-invalid regex literals receive syntax diagnostics before lowering. Runtime constructors refuse unsupported quantifier chains. Legacy class identity escapes preserve subsequent members. Undefined becomes null at schema-shaped storage boundaries, while required fields still reject null. Unicode regex property escapes are refused because PCRE and JavaScript use different Unicode databases; use explicit character classes. Character-class escapes next to unescaped hyphens are refused; escape literal hyphens. Date strings accept ISO syntax without space/compact-offset extensions, and time requires a complete date. Typed flat accepts depths 0 and 1 (null selects 0; undefined defaults to 1), with depth-specific element inference; checked imported JavaScript supports computed depths. Configuration typeof classifies Math, JSON, console and globalThis as objects; host-dependent process/require/crypto detection is refused. Lexical for headers retain per-iteration bindings during configuration evaluation. Runtime closures must be created after the lexical bindings they capture are initialized; forward captures are refused instead of resolving an outer binding. Named callbacks may omit only parameters that accept undefined; null does not allow omission. Lexical reads and assignments before initialization refuse at source in configuration and handlers, including for/of/in source expressions; parameter defaults cannot consume a later uninitialized parameter. Error cause options are refused whether cause is own data or an inherited class method. Captured closures use closure-object identity rather than function syntax for helper/type/wrapper caches, preserving distinct factory environments. Reassigning a named exported binding is refused at the write, preventing stale import snapshots while retaining stable let/var export aliases. This includes export aliases and named default exports. Const object identity and default-export expression snapshots retain JavaScript behavior. Lexical declarations directly under switch cases require explicit braces; shared switch lexical environments are refused. Checked JavaScript class-method reads return one function per class and member; call/apply supply the receiver. Typed array calls require native methods: own overrides installed by JavaScript receive an explicit runtime refusal before arguments run; checked JavaScript retains override dispatch. Runtime for-in snapshots keys and skips deleted properties. For-of lexical destructuring bindings are predeclared in each iteration before defaults run; earlier initialized bindings remain available. Configuration evaluation shares the handler refusal of destructured var loops. Computed data-method calls retain their receiver and resolve the callee before arguments. Named function expressions are refused at source because their private self-binding is not modeled; use anonymous expressions or function declarations.
+src/builtins.rs owns JavaScript built-in overloads, arity and phase support. Unsupported arguments are refused at the call site; runtime-only dynamic receivers throw a TypeError. Captured and runtime vectors compare UTF-16 ordering, replacement substitution, ECMAScript whitespace, modulo radix conversion and signed-zero rounding to Node. Positioned includes/startsWith/endsWith are refused in typed code and configuration evaluation; checked imported JavaScript implements those positions. Callback thisArg and nondecimal numeric toString are refused. Object.freeze is refused because freezing is not modeled. JSON parsing/serialization and Error construction are runtime-only; configuration evaluation refuses them. Custom object and function coercion are refused during configuration evaluation; handlers use the checked runtime conversion path. parseInt supports correctly rounded large values in base 10 and power-of-two bases; other radices require safe integer results. Database builders, configuration/schema factories and column modifiers share the source arity contract. Build-time function-coercion refusals include extracted methods; typed replacement callbacks preserve undefined captures and receive named groups. Captured explicit undefined remains distinct from null in both language modes. Dynamic method values use the shared built-in contract. Unknown built-in properties are refused during configuration evaluation. Powers accept safe integer results, integral binary scaling, squares, square roots and IEEE special values; other powers are refused at source or explicitly at runtime. Prototype setter literals other than `__proto__: null` are refused; computed __proto__ data properties remain supported. Extracted method calls are refused during configuration evaluation. Database writes require static collection references. Configuration for-of and destructuring use live iterators. Addition uses default primitive conversion. Sorting keeps undefined last and excludes it from comparators. JSON schemas must accept serialized values, and custom toJSON callbacks are refused. Typed Dates require explicit toISOString/toJSON before JSON.stringify or action returns. Imported JavaScript for-of uses live iterators. Ignore-case regexes require literal ASCII source and ASCII input in both modes; non-ASCII folding and encoded character escapes are refused. RegExp source and string conversion escape delimiters and line terminators. Regex split on astral text requires the u flag. Astral pattern literals and surrogate escapes also require u, even for ASCII/BMP subjects. Lone surrogate escapes in classes are refused; valid surrogate pairs and braced scalar escapes remain supported in Unicode mode. Typed invalid-Date toJSON returns null. Generated undefined defaults become null at the storage boundary. Object overwrites preserve key order. Stored JSON defaults omit undefined object properties and normalize undefined array slots to null. Numeric string conversion uses ECMAScript shortest ties-to-even formatting. Nullish narrowing retains undefined. Cyclic array string conversion omits recursive visits. Dynamic array/arguments prototype writes are refused. Typed Date string coercion requires explicit formatting. Function call/apply property values use the function contract; unmodeled function metadata/bind reads and function string conversion are refused. Optional Error/RegExp reads preserve undefined. Date construction runs default-hint object coercion. Typed Date addition/concat requires explicit formatting. Typed and imported Dates share JsDate identity and numeric primitive conversion; timestamp/date storage and filters convert explicitly. Date JSON schemas must describe their serialized text/null form. Non-ISO Date syntax receives a source diagnostic for literals and an explicit runtime refusal for computed values. Default sorting of multiple object values requires an explicit comparator; singleton sorting does not coerce. Negative-zero expanded Date years are refused. Custom sorting accepts only a numeric difference between the two parameters or matching property paths, with finite primitive keys. Other comparator shapes and cross-family borrowed methods are refused. Unary minus performs ToNumber, and parsed JSON retains negative zero. Missing indexed and optional-property logical assignment operands retain undefined in runtime narrowing and serialized client types. Regex source escaping uses explicit UTF-8 regardless of ambient PHP multibyte settings. Configuration refuses extracted built-in method values, including identity comparisons; direct and computed receiver calls remain supported. JSON negative-zero preservation leaves exponent signs intact. Non-Unicode regex classes support digit/underscore control escapes. Runtime hasIndices and unicodeSets are false because d/v flags are refused. Runtime Error messages are own nonenumerable properties only when a defined message is supplied; name is inherited. Configuration refuses restricted arguments access instead of fabricating native Error descriptors. Error stack is the Name: message header without frames. Captured arrays and objects retain one identity across typed and imported JavaScript. Capturing lookbehind is refused because JavaScript matches captures backward. Quantified noncapturing groups require a provably nonempty body; nullable groups are refused because regex engines choose different empty iterations. JavaScript-invalid regex literals receive syntax diagnostics before lowering. Runtime constructors refuse unsupported quantifier chains. Legacy class identity escapes preserve subsequent members. Undefined becomes null at schema-shaped storage boundaries, while required fields still reject null. Unicode regex property escapes are refused because PCRE and JavaScript use different Unicode databases; use explicit character classes. Character-class escapes next to unescaped hyphens are refused; escape literal hyphens. Date strings accept ISO syntax without space/compact-offset extensions, and time requires a complete date. Typed flat accepts depths 0 and 1 (null selects 0; undefined defaults to 1), with depth-specific element inference; checked imported JavaScript supports computed depths. Configuration typeof classifies Math, JSON, console and globalThis as objects; host-dependent process/require/crypto detection is refused. Lexical for headers retain per-iteration bindings during configuration evaluation. Runtime closures must be created after the lexical bindings they capture are initialized; forward captures are refused instead of resolving an outer binding. The exception is a closure that is its own binding's whole initializer (self-referencing-bindings). Named callbacks may omit only parameters that accept undefined; null does not allow omission. Lexical reads and assignments before initialization refuse at source in configuration and handlers, including for/of/in source expressions; parameter defaults cannot consume a later uninitialized parameter. Error cause options are refused whether cause is own data or an inherited class method. Captured closures use closure-object identity rather than function syntax for helper/type/wrapper caches, preserving distinct factory environments. Reassigning a named exported binding is refused at the write, preventing stale import snapshots while retaining stable let/var export aliases. This includes export aliases and named default exports. Const object identity and default-export expression snapshots retain JavaScript behavior. Lexical declarations directly under switch cases require explicit braces; shared switch lexical environments are refused. Checked JavaScript class-method reads return one function per class and member; call/apply supply the receiver. Typed array calls require native methods: own overrides installed by JavaScript receive an explicit runtime refusal before arguments run; checked JavaScript retains override dispatch. Runtime for-in snapshots keys and skips deleted properties. For-of lexical destructuring bindings are predeclared in each iteration before defaults run; earlier initialized bindings remain available. Configuration evaluation shares the handler refusal of destructured var loops. Computed data-method calls retain their receiver and resolve the callee before arguments.
 
 [Evidence](../tests/compiler_contracts.rs) (`builtin_vectors_agree_in_evaluation_generated_php_and_node`)
 
@@ -492,7 +524,7 @@ abilities.call("vendor/name", input) compiles to First\Wp\Abilities\Call::run, w
 
 Status: **refused**. Diagnostic: `F3001`.
 
-A wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check.
+A first/wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check.
 
 [Evidence](../tests/fixtures/reject-wp-hook-unknown)
 
@@ -508,7 +540,7 @@ A filter handler returns the filtered value: its first argument's type, from the
 
 Status: **refused**. Diagnostic: `F3001`.
 
-Each wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module.
+Each first/wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module.
 
 [Evidence](../tests/fixtures/reject-wp-hook-no-default)
 
@@ -516,7 +548,7 @@ Each wp-hooks/ file default-exports one handler and may export an integer `prior
 
 Status: **refused**. Diagnostic: `F1003`.
 
-wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register.
+first/wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register.
 
 [Evidence](../tests/fixtures/reject-wp-hook-file)
 
@@ -524,7 +556,7 @@ wp-hooks/ holds only .ts handler files (directly, or one directory deep named af
 
 Status: **supported**.
 
-wp-hooks/<hook>.ts and wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
+first/wp-hooks/<hook>.ts and first/wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
 
 [Evidence](../tests/compiler_contracts.rs) (`wp_hooks_register_in_file_order_with_their_priorities`)
 
@@ -575,6 +607,14 @@ Status: **refused**. Diagnostic: `F1201`.
 A plugin package imports its own modules, "first" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
 
 [Evidence](../tests/fixtures/reject-plugin-isolation)
+
+## plugin-app-kinds
+
+Status: **refused**. Diagnostic: `F1201`.
+
+A plugin can't import "zero:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
+
+[Evidence](../tests/fixtures/reject-plugin-db)
 
 ## host-globals
 
@@ -724,9 +764,49 @@ A PHP closure can't carry properties. Call the function or read its properties d
 
 Status: **supported**.
 
-`function name() {}` as an expression binds `name` only inside itself, to itself, as in JavaScript: recursion works, parameters and `var`s of the same name shadow it, and the name is not visible outside. Assigning to the name inside the function throws in strict JavaScript, so it is refused with a pointer; assign to a local variable instead. Local function declarations with a declared signature, and every function in imported JavaScript, may also call themselves.
+`function name() {}` as an expression binds `name` only inside itself, to itself, as in JavaScript: recursion works, parameters and `var`s of the same name shadow it, and the name is not visible outside. Assigning to the name inside the function throws in strict JavaScript, so it is refused with a pointer; assign to a local variable instead. Local function declarations with a declared signature, and every function in imported JavaScript, may also call themselves; so may a `const`/`let` arrow or function expression (self-referencing-bindings).
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## self-referencing-bindings
+
+Status: **supported**.
+
+A `const` or `let` whose whole initializer is an arrow or function expression (optionally under `as`, `satisfies` or `!`) can be named inside that function, so `const fact = (n) => (n <= 1 ? 1 : n * fact(n - 1))` recurses as in JavaScript. Nothing inside the function can run before the binding holds it, so no runtime check is needed. A parameter or inner binding of the same name shadows it. In typed TypeScript the self-reference is typed by the function's own parameter and return annotations, or by a function-type annotation on the declaration; without them it is refused. A `let` can be reassigned before its closure runs, so its self-reference reads as the declared type (dynamic in imported JavaScript): calling it after it was set to a non-function throws a TypeError, as in JavaScript. Direct reads during initialization and closures created any other way in the initializer stay refused. Mutual recursion between `const` bindings is a forward reference and is refused; use function declarations. See docs/decisions/2026-11-09-self-referencing-bindings.md.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## self-reference-read-during-initialization
+
+Status: **refused**. Diagnostic: `F4001`.
+
+Reading a `const`/`let` in its own initializer throws a ReferenceError in JavaScript. Compute the value without the binding, or make the initializer a function that refers to itself.
+
+[Evidence](../tests/fixtures/reject-self-reference-read)
+
+## self-reference-called-during-initialization
+
+Status: **refused**. Diagnostic: `F4001`.
+
+A closure that captures its own binding but is created inside a larger initializer, such as an immediately called function, could run before the binding is assigned, where JavaScript throws a ReferenceError. Only a closure that is the whole initializer may capture its binding; restructure so the function is assigned directly.
+
+[Evidence](../tests/fixtures/reject-self-reference-called-in-initializer)
+
+## self-reference-nullable-let
+
+Status: **refused**. Diagnostic: `F4001`.
+
+A `let` can be reassigned before its closure calls it, so the self-call is checked against the declared type, as TypeScript does. Check the binding first (`if (f) f(n - 1)`), declare it as a function type, or use `const`.
+
+[Evidence](../tests/fixtures/reject-self-reference-nullable-let)
+
+## self-reference-untyped
+
+Status: **refused**. Diagnostic: `F4001`.
+
+In typed TypeScript a recursive `const` arrow needs its type before its body compiles. Annotate every parameter and the return type, e.g. `const fact = (n: number): number => ...`, or annotate the declaration with a function type.
+
+[Evidence](../tests/fixtures/reject-self-reference-untyped)
 
 ## this-outside-classes
 

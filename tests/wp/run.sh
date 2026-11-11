@@ -16,17 +16,20 @@ first="${CARGO_TARGET_DIR:-target}/debug/first"
 # Retain downloads across the disposable source builds unless the caller chose a shared cache.
 export FIRST_WP_PLUGIN_CACHE="${FIRST_WP_PLUGIN_CACHE:-$here/app/.first/cache/plugins}"
 # A fresh database expects one initial migration. Build fresh source each time so ignored
-# migrations from an earlier fixture schema cannot change the ledger under test. Keep the
-# same directory depth as app/ for its relative imports into tests/fixtures/.
+# migrations from an earlier fixture schema cannot change the ledger under test.
 build_app="$(mktemp -d "$here/.app-build.XXXXXX")"
 cleanup() {
   rm -rf -- "$build_app"
   [[ ${FIRST_WP_KEEP:-0} == 1 ]] || "$here/harness.sh" down
 }
 trap cleanup EXIT
-rsync -a --exclude '/first/' --exclude '/.first/' --exclude '/first/_generated/db.d.ts' "$here/app/" "$build_app/"
+rsync -a --exclude '/first/_generated/' --exclude '/first/dist/' --exclude '/first/blog/' --exclude '/.first/' "$here/app/" "$build_app/"
+# The frozen blog the app extends lives in tests/fixtures/blog (the PHP suites' golden); the app
+# imports it from first/blog/, inside the First root.
+mkdir -p "$build_app/first/blog"
+cp tests/fixtures/blog/first.config.ts "$build_app/first/blog/first.config.ts"
 if [[ ${FIRST_WP_S3:-0} == 1 ]]; then
-  cp "$here/uploads.s3.ts" "$build_app/uploads.ts"
+  cp "$here/uploads.s3.ts" "$build_app/first/uploads.ts"
 fi
 "$first" build "$build_app" --quiet >/dev/null
 # The client integration tests import this stable path; leave existing fixture migrations alone.

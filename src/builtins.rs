@@ -77,6 +77,11 @@ const fn overload(
     }
 }
 
+/// The built-in Error constructors First models: callable, constructible, extendable, and
+/// `instanceof` targets. The one list for the evaluator, the compiler and (through the generated
+/// `Builtins::ERROR_CONSTRUCTORS`) the PHP runtime.
+pub const ERROR_CONSTRUCTORS: &[&str] = &["Error", "TypeError", "RangeError", "SyntaxError"];
+
 // Columns: surface, names, overload, evaluator arity, emitter arity, runtime arity.
 #[rustfmt::skip]
 pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
@@ -108,7 +113,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("global", &["isFinite", "isNaN"], overload("value?: unknown", arity(0, 1), arity(0, 1), arity(0, 1))),
     ("global", &["encodeURI", "encodeURIComponent"], overload("text: string", arity(1, 1), arity(1, 1), arity(1, 1))),
     ("global", &["structuredClone"], overload("value: data", None, arity(1, 1), arity(1, 1))),
-    ("global", &["Error", "TypeError", "RangeError"], overload("runtime-only message?: string; JavaScript: options without cause", None, arity(0, 1), arity(0, 2))),
+    ("global", ERROR_CONSTRUCTORS, overload("runtime-only message?: string; JavaScript: options without cause", None, arity(0, 1), arity(0, 2))),
     ("Math", &["min", "max"], overload("...values: number[]", arity(0, VARIADIC), arity(0, VARIADIC), arity(0, VARIADIC))),
     ("Math", &["floor", "ceil", "abs", "sqrt", "trunc", "round"], overload("value: number", arity(0, 1), arity(1, 1), arity(0, 1))),
     ("Math", &["sign"], overload("value: number", None, arity(1, 1), arity(0, 1))),
@@ -152,7 +157,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("global", &["RegExp"], overload("pattern?: string|RegExp, flags?: string", None, arity(0, 2), arity(0, 2))),
     ("constructor", &["RegExp"], overload("pattern?: string|RegExp, flags?: string", None, arity(0, 2), arity(0, 2))),
     ("constructor", &["Date"], overload("value?: unknown; primitive conversion, ISO date strings only", None, arity(0, 1), arity(0, 1))),
-    ("constructor", &["Error", "TypeError", "RangeError"], overload("runtime-only message?: string; options without cause", None, arity(0, 2), arity(0, 2))),
+    ("constructor", ERROR_CONSTRUCTORS, overload("runtime-only message?: string; options without cause", None, arity(0, 2), arity(0, 2))),
     ("constructor", &["Map", "Set"], overload("entries?: iterable (evaluator: array of static data; read-only)", arity(0, 1), arity(0, 1), arity(0, 1))),
     ("constructor", &["WeakMap", "WeakSet"], overload("entries?: iterable of object keys (evaluator: none)", arity(0, 0), None, arity(0, 1))),
     ("constructor", &["Symbol"], overload("refused: Symbol is not a constructor; call Symbol(description)", None, None, None)),
@@ -778,8 +783,16 @@ mod tests {
     #[test]
     fn runtime_contract_is_current() {
         let mut php = String::from(
-            "<?php\n\ndeclare(strict_types=1);\n\nnamespace First;\n\n// Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests\nfinal class Builtins\n{\n    private const ARITIES = [\n",
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace First;\n\n// Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests\nfinal class Builtins\n{\n",
         );
+        let quoted: Vec<String> = ERROR_CONSTRUCTORS.iter().map(|name| format!("'{name}'")).collect();
+        writeln!(
+            php,
+            "    /** The built-in Error constructors (src/builtins.rs ERROR_CONSTRUCTORS). */\n    public const ERROR_CONSTRUCTORS = [{}];\n",
+            quoted.join(", ")
+        )
+        .unwrap();
+        php.push_str("    private const ARITIES = [\n");
         let mut keys = std::collections::HashSet::new();
         for (surface, names, c) in CONTRACTS {
             assert!(!c.overload.is_empty());

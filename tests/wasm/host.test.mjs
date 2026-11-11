@@ -40,7 +40,7 @@ test('wasm migrates real source and returns a compilable file map without writes
     assert.deepEqual(fresh.report.errors, [], JSON.stringify(request));
     assert.equal(fresh.report.tables, 'fresh');
     assert.ok(fresh.files['first/_generated/migrations/0001_init.sql'].includes('CREATE TABLE'));
-    assert.ok(!fresh.files['server/index.ts'].includes('existingTable'));
+    assert.ok(!fresh.files['first/server/index.ts'].includes('existingTable'));
     assert.equal(JSON.parse(fresh.files['first/_generated/migrations/snapshot.json']).tables.tasks.existingTable, undefined);
     assert.deepEqual(call(exports, 'first_check', { project: '/candidate', files: fresh.files }).check.diagnostics, []);
   }
@@ -123,7 +123,7 @@ test('wasm captures the full-site pages bundle byte for byte like native sources
 
 test('wasm and native resolve build-time namespace members and refuse the same whole values', () => {
   const source = (handler) => `import { action, defineConfig } from 'first';
-import * as ns from './ns.mjs';
+import * as ns from './first/ns.mjs';
 function tagged(s: string) { return s; }
 Object.assign(tagged, { prefix: 'p' });
 export default defineConfig({ name: 'ns', actions: { probe: action({ input: {}, handler: () => ${handler} }) } });
@@ -133,7 +133,8 @@ export default defineConfig({ name: 'ns', actions: { probe: action({ input: {}, 
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'first-wasm-namespace-'));
     try {
       fs.writeFileSync(path.join(temp, 'first.config.ts'), source(handler));
-      fs.writeFileSync(path.join(temp, 'ns.mjs'), helper);
+      fs.mkdirSync(path.join(temp, 'first'));
+      fs.writeFileSync(path.join(temp, 'first/ns.mjs'), helper);
       let native;
       try { native = JSON.parse(execFileSync(first, ['check', temp, '--json'], { encoding: 'utf8' })); }
       catch (error) { native = JSON.parse(error.stdout); }

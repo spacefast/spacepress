@@ -1,7 +1,7 @@
 import { action, defineConfig, text } from "first";
 import { Files } from "files-sdk";
 import { memory } from "files-sdk/memory";
-import { errors, handles, listing, mutate, roundtrip } from "./scenarios.mjs";
+import { errors, handles, listing, mutate, roundtrip } from "./first/scenarios.mjs";
 
 // `probe` is the baseline from the files-sdk effort brief, kept verbatim so
 // counts stay comparable. The other actions are the differential scenarios

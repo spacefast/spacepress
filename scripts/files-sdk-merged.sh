@@ -13,7 +13,7 @@
 set -euo pipefail
 repo=$(git rev-parse --show-toplevel)
 scratch=${1:-${TMPDIR:-/tmp}/first-files-sdk-merged}
-pattern=${FILES_SDK_BRANCHES:-'^feat/(files-sdk-|commonjs-|ts-language-gaps|lang-|binary-data|async-streams|library-types|stdlib-|class-|host-globals|plugin-capabilities|static-namespace-members|ts-this-type|php-8\.3)'}
+pattern=${FILES_SDK_BRANCHES:-'^(feat/(files-sdk-|commonjs-|ts-language-gaps|lang-|syntax-|binary-data|async-streams|library-types|stdlib-|class-|host-globals|plugin-capabilities|static-namespace-members|ts-this-type|php-8\.3)|fix/(effects-|fence-))'}
 
 git -C "$repo" fetch origin --quiet --prune
 branches=$(git -C "$repo" for-each-ref --sort=committerdate --format='%(refname:lstrip=3)' refs/remotes/origin/ \

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.blume/
+# Built by scripts/build-wasm.mjs from ../src.
+public/compiler.wasm
+test-results/
+playwright-report/
+# The Space this directory publishes to (sf publish)
+.spacefast/
+.spacefast/state.json
+/.spacefast-*
+.spacefast/.spacefast-*
+.spacefast/.space-link-*.tmp
+# Built by scripts/build-showcase.ts: the examples the site shows, built with the native compiler.
+.showcase/
+# Built by scripts/build-showcase.ts: every file of the examples the site shows.
+public/files/

@@ -3,7 +3,7 @@ import {
   HttpError, integer, job, jobs, media, richText, text, timestamp,
   type InferSelectModel,
 } from "first";
-import { addDays, overdueDelay, today } from "./lib/dates";
+import { addDays, overdueDelay, today } from "./first/lib/dates";
 
 const owner = integer().notNull().access({ create: false, update: false })
   .ui({ label: "Owner", help: "Set automatically from your WordPress account." });

@@ -1,0 +1,1704 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "First REST API",
+		"version": "0.3.0",
+		"description": "Every First app serves these routes under `/wp-json/first/v1` on its WordPress site. The paths with `{collection}`, `{name}` and `{bucket}` exist once for each collection, table, action, global and file bucket your config defines.\n\nA successful response is JSON with the result under `data`. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.\n\nRequests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/_generated/client/` calls every route on this page for you."
+	},
+	"servers": [
+		{
+			"url": "https://example.space.fast/wp-json/first/v1",
+			"description": "Your app's WordPress site"
+		}
+	],
+	"tags": [
+		{
+			"name": "Collections",
+			"description": "One set of routes for each collection and table in your config."
+		},
+		{
+			"name": "Revisions",
+			"description": "Saved versions of a row, for collections with revisions."
+		},
+		{
+			"name": "Actions",
+			"description": "Named server functions from `actions` in your config."
+		},
+		{
+			"name": "Globals",
+			"description": "Single records, such as site settings, from `globals` in your config."
+		},
+		{
+			"name": "Media",
+			"description": "WordPress media library uploads."
+		},
+		{
+			"name": "Files",
+			"description": "Private files in the buckets from `files` in your config."
+		},
+		{
+			"name": "Auth",
+			"description": "The signed-in user and First Identity sessions."
+		},
+		{
+			"name": "Sync",
+			"description": "Content files that sync with rows, for collections with `sync`."
+		},
+		{
+			"name": "Services",
+			"description": "Forms, search and checkout from `services` in your config."
+		},
+		{
+			"name": "Schema",
+			"description": "A description of the app."
+		}
+	],
+	"paths": {
+		"/{collection}": {
+			"get": {
+				"tags": [
+					"Collections"
+				],
+				"operationId": "listRows",
+				"summary": "List rows",
+				"description": "Rows the user may read. `limit` defaults to 50 and is at most 200.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "where",
+						"in": "query",
+						"required": false,
+						"description": "A JSON filter, for example `{\"status\":\"published\"}`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"required": false,
+						"description": "Shorthand for a filter on `status`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "orderBy",
+						"in": "query",
+						"required": false,
+						"description": "Comma-separated columns. Put `-` before a column to sort it in descending order, for example `-publishedAt,title`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"description": "How many rows to return.",
+						"schema": {
+							"type": "integer"
+						}
+					},
+					{
+						"name": "offset",
+						"in": "query",
+						"required": false,
+						"description": "How many rows to skip.",
+						"schema": {
+							"type": "integer"
+						}
+					},
+					{
+						"name": "with",
+						"in": "query",
+						"required": false,
+						"description": "Relations to load: `author,comments`, or a JSON object such as `{\"author\":true}`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"post": {
+				"tags": [
+					"Collections"
+				],
+				"operationId": "createRow",
+				"summary": "Create a row",
+				"description": "Creates a row and returns it with status 201.",
+				"responses": {
+					"201": {
+						"description": "The new row.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The new row's fields.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/{collection}/{id}": {
+			"get": {
+				"tags": [
+					"Collections"
+				],
+				"operationId": "getRow",
+				"summary": "Get a row",
+				"description": "One row by its primary key.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "with",
+						"in": "query",
+						"required": false,
+						"description": "Relations to load, as on the list route.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"patch": {
+				"tags": [
+					"Collections"
+				],
+				"operationId": "updateRow",
+				"summary": "Update a row",
+				"description": "Changes the fields you send and returns the row.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The fields to change.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Collections"
+				],
+				"operationId": "deleteRow",
+				"summary": "Delete a row",
+				"description": "Deletes the row and returns it.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/{collection}/{id}/revisions": {
+			"get": {
+				"tags": [
+					"Revisions"
+				],
+				"operationId": "listRevisions",
+				"summary": "List revisions",
+				"description": "Each saved version of the row, with its time and author. Needs update access.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/{collection}/{id}/revisions/{revision}": {
+			"get": {
+				"tags": [
+					"Revisions"
+				],
+				"operationId": "getRevision",
+				"summary": "Get a revision",
+				"description": "The row as it was saved in this revision.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "revision",
+						"in": "path",
+						"required": true,
+						"description": "The revision ID.",
+						"schema": {
+							"type": "integer"
+						}
+					}
+				]
+			}
+		},
+		"/{collection}/{id}/revisions/{revision}/restore": {
+			"post": {
+				"tags": [
+					"Revisions"
+				],
+				"operationId": "restoreRevision",
+				"summary": "Restore a revision",
+				"description": "Makes the revision the current row.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "revision",
+						"in": "path",
+						"required": true,
+						"description": "The revision ID.",
+						"schema": {
+							"type": "integer"
+						}
+					}
+				]
+			}
+		},
+		"/actions/{name}": {
+			"post": {
+				"tags": [
+					"Actions"
+				],
+				"operationId": "callAction",
+				"summary": "Call an action",
+				"description": "Runs the action with the input you send and returns its result. The action's `access` rule decides who may call it.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "name",
+						"in": "path",
+						"required": true,
+						"description": "The action key from your config.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The action's input.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/globals/{name}": {
+			"get": {
+				"tags": [
+					"Globals"
+				],
+				"operationId": "getGlobal",
+				"summary": "Read a global",
+				"description": "The global's fields. Fields you never set read as their defaults.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "name",
+						"in": "path",
+						"required": true,
+						"description": "The global key from your config.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"patch": {
+				"tags": [
+					"Globals"
+				],
+				"operationId": "updateGlobal",
+				"summary": "Update a global",
+				"description": "Changes the fields you send.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "name",
+						"in": "path",
+						"required": true,
+						"description": "The global key from your config.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The fields to change.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/media": {
+			"get": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "listMedia",
+				"summary": "List media",
+				"description": "Media library items the user may read.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "uploadMedia",
+				"summary": "Upload media",
+				"description": "Uploads one file to the WordPress media library.",
+				"responses": {
+					"201": {
+						"description": "The new media item.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"description": "The file, as the multipart field `file`.",
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"file": {
+										"type": "string",
+										"format": "binary"
+									}
+								},
+								"required": [
+									"file"
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		"/media/{id}": {
+			"get": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "getMedia",
+				"summary": "Get a media item",
+				"description": "One media item.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"patch": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "updateMedia",
+				"summary": "Update a media item",
+				"description": "Changes `alt`, the alt text, or `focal`, the focal point. Any other field is refused.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "`alt`, `focal`, or both.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "deleteMedia",
+				"summary": "Delete a media item",
+				"description": "Deletes the item. Fields that pointed at it become null.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/files/{bucket}": {
+			"post": {
+				"tags": [
+					"Files"
+				],
+				"operationId": "uploadFile",
+				"summary": "Upload a private file",
+				"description": "Stores one file in the bucket.",
+				"responses": {
+					"201": {
+						"description": "The stored file.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "bucket",
+						"in": "path",
+						"required": true,
+						"description": "The bucket key from your config.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The file, as the multipart field `file`.",
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"file": {
+										"type": "string",
+										"format": "binary"
+									}
+								},
+								"required": [
+									"file"
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		"/files/{bucket}/{id}": {
+			"get": {
+				"tags": [
+					"Files"
+				],
+				"operationId": "getFile",
+				"summary": "Get a private file",
+				"description": "The file's details.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "bucket",
+						"in": "path",
+						"required": true,
+						"description": "The bucket key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"delete": {
+				"tags": [
+					"Files"
+				],
+				"operationId": "deleteFile",
+				"summary": "Delete a private file",
+				"description": "Deletes the file.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "bucket",
+						"in": "path",
+						"required": true,
+						"description": "The bucket key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/files/{bucket}/{id}/download": {
+			"get": {
+				"tags": [
+					"Files"
+				],
+				"operationId": "downloadFile",
+				"summary": "Download a private file",
+				"description": "The file's bytes. The link is the permission: get the file to receive a `url` with `exp` and `sig`, and request that URL before it expires. Signing in does not replace the signature.",
+				"responses": {
+					"200": {
+						"description": "The file."
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "bucket",
+						"in": "path",
+						"required": true,
+						"description": "The bucket key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "exp",
+						"in": "query",
+						"required": true,
+						"description": "When the link expires, in Unix seconds.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "sig",
+						"in": "query",
+						"required": true,
+						"description": "The link's signature.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/me": {
+			"get": {
+				"tags": [
+					"Auth"
+				],
+				"operationId": "me",
+				"summary": "The signed-in user",
+				"description": "The user, with their member row when the config has a `users` projection. `data` is null when nobody is signed in.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			}
+		},
+		"/auth/config": {
+			"get": {
+				"tags": [
+					"Auth"
+				],
+				"operationId": "authConfig",
+				"summary": "Sign-in settings",
+				"description": "The First Identity issuer, and whether guests are allowed.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			}
+		},
+		"/auth/guest": {
+			"post": {
+				"tags": [
+					"Auth"
+				],
+				"operationId": "guest",
+				"summary": "Start a guest session",
+				"description": "Creates a guest user, when the app allows guests. Returns status 201.",
+				"responses": {
+					"201": {
+						"description": "The guest user.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			}
+		},
+		"/auth/session": {
+			"delete": {
+				"tags": [
+					"Auth"
+				],
+				"operationId": "signOut",
+				"summary": "Sign out",
+				"description": "Ends the current First Identity session.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			}
+		},
+		"/media/{id}/file/{hash}/{path}": {
+			"get": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "mediaFile",
+				"summary": "Read an uploaded file",
+				"description": "The bytes of one file of a media item, such as an image size. Media URLs point here when uploads are stored outside WordPress.",
+				"responses": {
+					"200": {
+						"description": "The file."
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "hash",
+						"in": "path",
+						"required": true,
+						"description": "The SHA-256 of the file's path, from the media item's URL.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "path",
+						"in": "path",
+						"required": true,
+						"description": "The file's path within the item.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/sync/{collection}/trash": {
+			"post": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncTrash",
+				"summary": "Trash synced rows",
+				"description": "Moves the rows of deleted content files to the trash.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The rows to trash.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/sync/{collection}/convert": {
+			"post": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncConvert",
+				"summary": "Convert synced rows",
+				"description": "Converts rows between content file formats.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The rows to convert.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/sync/{collection}/merge": {
+			"post": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncMerge",
+				"summary": "Merge synced rows",
+				"description": "Applies a three-way merge of a content file and its row.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The rows to merge.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/sync/{collection}": {
+			"get": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncRead",
+				"summary": "Read sync state",
+				"description": "The rows and file hashes `first sync` compares.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"post": {
+				"tags": [
+					"Sync"
+				],
+				"operationId": "syncWrite",
+				"summary": "Write synced rows",
+				"description": "Applies changes from content files.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The changes to apply.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/services/forms/{form}": {
+			"post": {
+				"tags": [
+					"Services"
+				],
+				"operationId": "submitForm",
+				"summary": "Submit a form",
+				"description": "Stores a form submission and queues its mail. Returns status 201.",
+				"responses": {
+					"201": {
+						"description": "The submission.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "form",
+						"in": "path",
+						"required": true,
+						"description": "The form key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The form fields.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/services/search": {
+			"get": {
+				"tags": [
+					"Services"
+				],
+				"operationId": "search",
+				"summary": "Search",
+				"description": "Searches published content.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "q",
+						"in": "query",
+						"required": false,
+						"description": "The search text.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/services/checkout": {
+			"post": {
+				"tags": [
+					"Services"
+				],
+				"operationId": "checkout",
+				"summary": "Start a checkout",
+				"description": "Prices the order on the server and starts a hosted checkout. Returns status 202.",
+				"responses": {
+					"202": {
+						"description": "The checkout, with the URL to send the buyer to.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"description": "The items to buy.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/services/checkout/{id}": {
+			"get": {
+				"tags": [
+					"Services"
+				],
+				"operationId": "checkoutStatus",
+				"summary": "Checkout status",
+				"description": "The status of a checkout.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The checkout ID.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/services/stripe/webhook": {
+			"post": {
+				"tags": [
+					"Services"
+				],
+				"operationId": "stripeWebhook",
+				"summary": "Stripe webhook",
+				"description": "Receives signed events from Stripe.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"description": "The Stripe event.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/services/submissions/{id}": {
+			"get": {
+				"tags": [
+					"Services"
+				],
+				"operationId": "getSubmission",
+				"summary": "Get a submission",
+				"description": "One form submission.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The submission ID.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/_schema": {
+			"get": {
+				"tags": [
+					"Schema"
+				],
+				"operationId": "schema",
+				"summary": "Describe the app",
+				"description": "The app's collections, globals and actions, with their columns and access rules.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"schemas": {
+			"Data": {
+				"type": "object",
+				"properties": {
+					"data": {
+						"description": "The result."
+					}
+				},
+				"required": [
+					"data"
+				]
+			},
+			"Problem": {
+				"type": "object",
+				"properties": {
+					"type": {
+						"type": "string",
+						"example": "about:blank"
+					},
+					"title": {
+						"type": "string",
+						"example": "Unauthenticated"
+					},
+					"status": {
+						"type": "integer",
+						"example": 401
+					},
+					"code": {
+						"type": "string",
+						"example": "unauthenticated"
+					},
+					"detail": {
+						"type": "string",
+						"example": "Sign in to do create notes rows"
+					},
+					"pointer": {
+						"type": "string",
+						"description": "A JSON pointer to the field at fault, when there is one."
+					}
+				},
+				"required": [
+					"type",
+					"title",
+					"status",
+					"code",
+					"detail"
+				]
+			}
+		},
+		"responses": {
+			"Problem": {
+				"description": "An error.",
+				"content": {
+					"application/problem+json": {
+						"schema": {
+							"$ref": "#/components/schemas/Problem"
+						}
+					}
+				}
+			}
+		}
+	}
+}

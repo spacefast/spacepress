@@ -192,6 +192,13 @@ fn require_static_coercion(value: &Value, span: Span) -> R<()> {
                     visit(value, span, seen)?;
                 }
             }
+            Value::Object(o) if o.null_prototype() => {
+                return err_help(
+                    span,
+                    "an object created with `__proto__: null` has no `toString` or `valueOf`; JavaScript throws a TypeError converting it to a primitive",
+                    "convert one of its properties instead of the object",
+                );
+            }
             Value::Object(o) | Value::Arguments(o)
                 if o.borrow().contains_key("valueOf") || o.borrow().contains_key("toString") =>
             {
@@ -303,7 +310,7 @@ const FIRST_TYPES: &[&str] = &[
     "Plugin",
 ];
 
-pub const GLOBALS: &[&str] = &[
+const GLOBALS: &[&str] = &[
     "Math",
     "Object",
     "Array",
@@ -324,9 +331,6 @@ pub const GLOBALS: &[&str] = &[
     "isFinite",
     "Date",
     "console",
-    "Error",
-    "TypeError",
-    "RangeError",
     "Infinity",
     "NaN",
     "fetch",
@@ -408,11 +412,20 @@ pub enum GlobalMember {
     Refused,
 }
 
+/// The provided global named `name`: `GLOBALS` plus the built-in Error constructors.
+pub fn provided_global(name: &str) -> Option<&'static str> {
+    GLOBALS
+        .iter()
+        .chain(crate::builtins::ERROR_CONSTRUCTORS)
+        .find(|g| **g == name)
+        .copied()
+}
+
 pub fn global_member(name: &str) -> GlobalMember {
     if HOST_GLOBALS.contains(&name) {
         return GlobalMember::Refused;
     }
-    if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
+    if let Some(g) = provided_global(name) {
         return GlobalMember::Provided(g);
     }
     if ABSENT_GLOBALS.contains(&name) {
@@ -458,6 +471,12 @@ pub struct Evaluator<'p> {
     /// Allocations of `import * as ns` namespace objects. Node binds such a namespace as `this`
     /// for `ns.f()`, and it's frozen and holds live bindings, which a copy can't reproduce.
     pub namespace_imports: HashSet<usize>,
+    /// `import { x } from "first:db"` bindings, filled once every app module has registered
+    /// (see [`Evaluator::bind_db`]): (scope, local name, kind name, span).
+    db_imports: Vec<(Rc<Scope>, String, String, Span)>,
+    /// The registered kinds, once [`Evaluator::bind_db`] has run: later `"first:db"` imports (the
+    /// `first/wp-hooks/` modules) bind on the spot.
+    db_kinds: Option<IndexMap<String, Value>>,
     /// The object literal that defines each method reading `this`, keyed by the closure's
     /// allocation. The compiler types that method's `this` as its object and compiles it only as
     /// a method of it. Both are kept here so their allocations are never reused.
@@ -489,6 +508,8 @@ impl<'p> Evaluator<'p> {
             duplicate_keys: HashMap::new(),
             pending_labels: Vec::new(),
             namespace_imports: HashSet::new(),
+            db_imports: Vec::new(),
+            db_kinds: None,
             method_homes: HashMap::new(),
             method_home_fields: HashMap::new(),
         }
@@ -514,6 +535,30 @@ impl<'p> Evaluator<'p> {
 
     pub fn program(&self) -> &'p Program {
         self.program
+    }
+
+    /// Fills every `"first:db"` binding from `kinds` (registered name → kind), once registration has
+    /// run. An unknown name is refused at its import, with the closest registered name.
+    pub fn bind_db(&mut self, kinds: &IndexMap<String, Value>) -> Result<(), Diag> {
+        self.db_kinds = Some(kinds.clone());
+        for (scope, local, name, span) in std::mem::take(&mut self.db_imports) {
+            let Some(value) = kinds.get(&name) else {
+                let mut d = Diag::new(span, format!("\"first:db\" has no kind named `{name}`"));
+                if let Some(s) = suggest(&name, kinds.keys().map(String::as_str)) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                } else {
+                    d = d.help(
+                        "export the kind from a module under first/, e.g. `export const posts = collection({ ... })`",
+                    );
+                }
+                return Err(d);
+            };
+            if let Some(binding) = scope.vars.borrow_mut().get_mut(&local) {
+                binding.value = value.clone();
+                binding.initialized = true;
+            }
+        }
+        Ok(())
     }
 
     /// Evaluates another entry module (a `wp-hooks/` file) and returns its exports.
@@ -562,7 +607,7 @@ impl<'p> Evaluator<'p> {
                 "access arguments.callee inside a runtime handler; native Error descriptors aren't modeled while building",
             ),
             Value::Object(map) | Value::Arguments(map) => {
-                if key == "__proto__" && !map.borrow().contains_key(key) {
+                if key == "__proto__" && !map.null_prototype() && !map.borrow().contains_key(key) {
                     return err_help(
                         span,
                         "prototype mutation isn't supported",
@@ -821,6 +866,34 @@ impl<'p> Evaluator<'p> {
     fn bind_imports(&mut self, id: usize, source: &str, specs: &[ImportSpec], span: Span, scope: &Rc<Scope>) -> R<()> {
         for spec in specs {
             if spec.type_only {
+                continue;
+            }
+            // A kind may be declared in a module that runs later, so the binding starts
+            // uninitialized: reading it while modules load is a TDZ error, and handlers, which run
+            // after every module, see the registered kind.
+            if source == crate::loader::DB_MODULE {
+                let ImportName::Named(name) = &spec.imported else {
+                    return err_help(
+                        spec.span,
+                        "\"first:db\" exports one name per kind",
+                        "import the kinds you use: `import { posts } from \"first:db\"`",
+                    );
+                };
+                scope.vars.borrow_mut().insert(
+                    spec.local.clone(),
+                    Binding {
+                        initialized: false,
+                        value: Value::Undef,
+                        mutable: false,
+                        module_level: true,
+                        ann: None,
+                    },
+                );
+                self.db_imports
+                    .push((scope.clone(), spec.local.clone(), name.clone(), spec.span));
+                if let Some(kinds) = self.db_kinds.clone() {
+                    self.bind_db(&kinds).map_err(Ctl::Err)?;
+                }
                 continue;
             }
             // TypeScript elides imports that only name types.
@@ -1348,8 +1421,8 @@ impl<'p> Evaluator<'p> {
             }
             return Ok(b.value);
         }
-        if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
-            return Ok(match *g {
+        if let Some(g) = provided_global(name) {
+            return Ok(match g {
                 "Infinity" => Value::Num(f64::INFINITY),
                 "NaN" => Value::Num(f64::NAN),
                 g => Value::Builtin(Builtin::Global(g)),
@@ -1410,7 +1483,7 @@ impl<'p> Evaluator<'p> {
                 let base = match &class.base {
                     Some(name) => match self.lookup(name, scope, e.span)? {
                         Value::Class(c) => Some(c),
-                        Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
+                        Value::Builtin(Builtin::Global(g)) if crate::builtins::ERROR_CONSTRUCTORS.contains(&g) => {
                             builtin_base = Some(g);
                             None
                         }
@@ -1418,7 +1491,7 @@ impl<'p> Evaluator<'p> {
                             return err_help(
                                 e.span,
                                 "extend a named First class or Error; other built-in and dynamic inheritance are unsupported",
-                                "extend Error, TypeError, RangeError or a class declared in this program",
+                                "extend Error, TypeError, RangeError, SyntaxError or a class declared in this program",
                             );
                         }
                     },
@@ -1572,6 +1645,7 @@ impl<'p> Evaluator<'p> {
             }
             ExprKind::Object(props) => {
                 let mut map = IndexMap::new();
+                let mut null_prototype = false;
                 let mut spans = Vec::new();
                 let mut duplicates = Vec::new();
                 for p in props {
@@ -1627,9 +1701,14 @@ impl<'p> Evaluator<'p> {
                             Value::Undef | Value::Null => {}
                             other => return err(x.span, format!("can't spread {} into an object", other.describe())),
                         },
+                        Prop::NullPrototype => null_prototype = true,
                     }
                 }
-                let v = Value::object(map);
+                let v = if null_prototype {
+                    Value::null_prototype_object(map)
+                } else {
+                    Value::object(map)
+                };
                 self.record_duplicates(&v, duplicates);
                 if let Value::Object(o) = &v {
                     // A method written in this literal that reads `this` and still holds its key.
@@ -2097,6 +2176,7 @@ impl<'p> Evaluator<'p> {
             ),
             Value::Object(o) | Value::Arguments(o) => match o.borrow().get(prop) {
                 Some(value) => self.stored_property(value.clone(), span),
+                None if o.null_prototype() => Ok(Value::Undef),
                 None if crate::builtins::contract("object", prop).is_some() => err_help(
                     span,
                     "reading inherited configuration properties isn't supported",
@@ -3938,7 +4018,7 @@ const ARRAY_PROTOTYPE: &[&str] = &[
 fn build_time_in(key: &str, object: &Value, span: Span) -> R<bool> {
     let index_below = |length: usize| key.parse::<usize>().is_ok_and(|i| i.to_string() == key && i < length);
     Ok(match object {
-        Value::Object(o) => o.borrow().contains_key(key) || OBJECT_PROTOTYPE.contains(&key),
+        Value::Object(o) => o.borrow().contains_key(key) || !o.null_prototype() && OBJECT_PROTOTYPE.contains(&key),
         Value::Arguments(o) => {
             o.borrow().contains_key(key) || matches!(key, "length" | "callee") || OBJECT_PROTOTYPE.contains(&key)
         }
@@ -4386,6 +4466,34 @@ mod tests {
             super::to_json(&result).unwrap(),
             serde_json::json!([[1, 2], [1, 2.5], [10, null, 2], ["a", ""], false, [1, null]])
         );
+    }
+
+    #[test]
+    fn error_constructors_are_globals_at_build_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("first.config.ts");
+        std::fs::write(
+            &entry,
+            "class ParseFailure extends SyntaxError {}\nexport default [[Error, TypeError, RangeError, SyntaxError].map((c) => typeof c), typeof globalThis.SyntaxError, globalThis.SyntaxError === SyntaxError, typeof ParseFailure];",
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let result = super::Evaluator::new(&program).run().unwrap();
+        // Node prints the same for these expressions.
+        assert_eq!(
+            super::to_json(&result).unwrap(),
+            serde_json::json!([
+                ["function", "function", "function", "function"],
+                "function",
+                true,
+                "function"
+            ])
+        );
+        // The constructors themselves stay runtime-only, like Error.
+        std::fs::write(&entry, "export default new SyntaxError('x');").unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let error = super::Evaluator::new(&program).run().unwrap_err();
+        assert!(error.message.contains("constructor.SyntaxError"), "{error:?}");
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! Request:
 //! ```json
 //! { "name": "pantry",
-//!   "files": { "first.config.ts": "…", "lib/fields.ts": "…", "first/_generated/abilities.json": "…",
+//!   "files": { "first.config.ts": "…", "first/lib/fields.ts": "…", "first/_generated/abilities.json": "…",
 //!              "first/_generated/plugins.lock.json": "…" },,
 //!   "previous": null, "migrationFiles": [], "frozen": false }
 //! ```

@@ -3,7 +3,7 @@ import {
   integer, job, jobs, json, media, table, text, timestamp,
   type InferSelectModel,
 } from "first";
-import { actorId, ownerId, personalAccess } from "./lib/ownership";
+import { actorId, ownerId, personalAccess } from "./first/lib/ownership";
 
 const bins = collection({
   name: text().notNull().min(1),

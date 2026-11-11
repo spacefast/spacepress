@@ -191,6 +191,7 @@ final class Runtime
             self::$appFile = $mainFile;
             \First\Extensions::schemaDescribe(static function (array $description): array {
                 $description['runtime']['wp'] = Platform::versions();
+                $description['runtime']['wp']['hardening'] = Hardening::SWITCHES;
                 $description['runtime']['wp']['incompatibleTables'] = self::$plugin->storageProblems();
                 $description['runtime']['identity'] = self::identity();
                 $description['runtime']['version'] = self::VERSION;

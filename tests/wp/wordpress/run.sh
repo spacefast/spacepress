@@ -35,7 +35,7 @@ assert lock["abilities"][0]["input_schema"]["required"] == ["text"], lock
 PY
 # Build the calling app against the lock alone, and replace the running app plugin with it.
 cp "$here/first.config.ts" "$work/app/first.config.ts"
-cp -r "$here/wp-hooks" "$work/app/wp-hooks"
+mkdir -p "$work/app/first" && cp -r "$here/first/wp-hooks" "$work/app/first/wp-hooks"
 "$first" build "$work/app" --out "$work/next" --quiet >/dev/null
 rsync -a --delete "$work/next/plugins/first-app-abilities-lane/" "$work/app/first/dist/wp-content/plugins/first-app-abilities-lane/"
 grep -q '"acme/word-count": { input: { text: string; unit?: "words" | "letters" }; output: { count: number; by: string } }' "$work/app/first/_generated/db.d.ts"

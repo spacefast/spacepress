@@ -1,5 +1,5 @@
 // Core /wp/v2/first_* under First's access rules (lane R): the block editor keeps its REST routes, but
-// they answer exactly what /first/v1 would. Fixtures: tests/wp/app/lanes/rest.ts (vault: admin-only;
+// they answer exactly what /first/v1 would. Fixtures: tests/wp/app/first/lanes/rest.ts (vault: admin-only;
 // ledger: owners read and edit their own rows; payroll: anyone reads, salary admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -617,4 +617,51 @@ test("protected visibility is batched and cached before core pagination", () => 
   `));
   assert.deepEqual(result, [true, true, 200, true, 1, 404, 200, true, true, null, true,
     ['hidden', [503, 'storage_unavailable']], [null, true], [true, true, true]]);
+});
+
+test("core meta and First's query args keep every denial: masks, hidden filters, drafts, read rules", async () => {
+  const id = first("insert", "payroll", JSON.stringify({ title: `Masked ${run}`, salary: "70k", notes: { open: "o", sealed: "s" } }))[0].id;
+  // Field masks: `meta` drops what `acf` drops.
+  const anon = (await http("GET", `${core}/first_payroll/${id}`)).json;
+  assert.deepEqual(["salary" in anon.meta, "notes" in anon.meta, "title" in anon.meta], [false, false, false]);
+  assert.equal((await http("GET", `${core}/first_payroll/${id}`, { as: "admin" })).json.meta.salary, "70k");
+  // A filter, sort or relation through a hidden field is the facade's 403, never a probe.
+  for (const params of [{ where: JSON.stringify({ salary: "70k" }) }, { orderBy: "salary" }, { where: JSON.stringify({ notes: { isNull: false } }) }]) {
+    const r = await http("GET", `${core}/first_payroll?` + new URLSearchParams(params), { as: "editor" });
+    assert.deepEqual([r.status, r.json.code], [403, "forbidden"], JSON.stringify(params));
+  }
+  assert.deepEqual(ids(await http("GET", `${core}/first_payroll?` + new URLSearchParams({ where: JSON.stringify({ salary: "70k", title: `Masked ${run}` }) }), { as: "admin" })), [id]);
+  // A search leaves out fields hidden from the viewer: the salary can't be found by its value.
+  assert.deepEqual((await http("GET", `${core}/first_payroll?search=70k`, { as: "editor" })).json, []);
+  // The read rule still filters: `where` can't widen what the author may read.
+  const listed = await http("GET", `${core}/first_ledger?` + new URLSearchParams({ where: JSON.stringify({ id: { in: [mine, theirs] } }) }), { as: "author" });
+  assert.deepEqual(ids(listed), [mine]);
+  assert.equal((await http("GET", `${core}/first_vault?` + new URLSearchParams({ where: "{}" }))).status, 401);
+  // Draft visibility: an anonymous `where` on status can't reveal a draft.
+  const draft = first("insert", "posts", JSON.stringify({ title: `Draft ${run}`, status: "draft" }))[0].id;
+  const anonDraft = await http("GET", `${core}/first_posts?` + new URLSearchParams({ where: JSON.stringify({ id: draft, status: "draft" }), status: "draft" }));
+  assert.ok(anonDraft.status >= 400 || anonDraft.json.length === 0, JSON.stringify(anonDraft.json));
+  assert.deepEqual((await http("GET", `${core}/first_posts?` + new URLSearchParams({ where: JSON.stringify({ id: draft }) }))).json, []);
+  // Meta writes are authorized like `acf` ones: a hidden field can't be written, even unchanged.
+  const write = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { meta: { salary: "70k" } } });
+  assert.deepEqual([write.status, write.json.data?.pointer], [403, "/salary"]);
+  // A data-dependent update rule sees each meta value as it will be saved, so the check before
+  // the save and the one after agree (events: a non-editor may only reset `extra` to {}).
+  const event = first("insert", "events", JSON.stringify({ title: `Rule ${run}`, extra: { k: 1 } }))[0].id;
+  const reset = await http("POST", `${core}/first_events/${event}`, { as: "author", body: { meta: { extra: {}, startsAt: "2026-01-01T10:00:00+02:00" } } });
+  assert.deepEqual([reset.status, reset.json.meta?.extra, reset.json.meta?.startsAt], [200, {}, "2026-01-01T08:00:00.000Z"], JSON.stringify(reset.json));
+  const refused = await http("POST", `${core}/first_events/${event}`, { as: "author", body: { meta: { extra: { k: 2 } } } });
+  assert.equal(refused.status, 403);
+  // A partial group through `meta` keeps the sub-field the editor can't read, as /first/v1 and acf do.
+  const partial = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { meta: { notes: { open: "edited" } } } });
+  assert.deepEqual([partial.status, "notes" in partial.json.meta], [200, false], "the group stays masked in the editor's answer");
+  assert.deepEqual(first("find", "payroll", JSON.stringify({ where: { id } }))[0].notes, { open: "edited", sealed: "s" });
+  const sealed = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { meta: { notes: { open: "x", sealed: "forged" } } } });
+  assert.deepEqual([sealed.status, sealed.json.data?.pointer], [403, "/notes/sealed"]);
+  // For an admin nothing in the group is hidden: `meta` replaces it whole, as /first/v1 does.
+  const viaZero = await http("PATCH", `${api}/payroll/${id}`, { as: "admin", body: { notes: { open: "by admin" } } });
+  const admin = await http("POST", `${core}/first_payroll/${id}`, { as: "admin", body: { meta: { notes: { open: "by admin" } } } });
+  assert.deepEqual([admin.status, admin.json.meta?.notes], [200, viaZero.json.data.notes], JSON.stringify(viaZero.json));
+  const twice = await http("POST", `${core}/first_payroll/${id}`, { as: "admin", body: { meta: { salary: "1" }, acf: { first_salary: "2" } } });
+  assert.deepEqual([twice.status, twice.json.data?.pointer], [403, "/salary"], "one field, one selector");
 });

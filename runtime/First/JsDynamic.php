@@ -500,12 +500,12 @@ trait JsDynamic
     public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
     {
         if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
-        if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) { return self::isError($value, $constructor); }
+        if (in_array($constructor, Builtins::ERROR_CONSTRUCTORS, true)) { return self::isError($value, $constructor); }
         if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
         throw new JsError("Right-hand side of 'instanceof' is not callable", 'TypeError');
     }
 
-    /** `value instanceof Error` (or TypeError/RangeError) for built-in errors and Error subclasses. */
+    /** `value instanceof Error` (or another Builtins::ERROR_CONSTRUCTORS name) for built-in errors and Error subclasses. */
     public static function isError(mixed $value, string $name = 'Error'): bool
     {
         if ($value instanceof JsError) {
@@ -993,7 +993,7 @@ trait JsDynamic
         if ($constructor === 'ReadableStream') { return new JsReadableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
         if ($constructor === 'WritableStream') { return new JsWritableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
         if ($constructor === 'TransformStream') { return new JsTransformStream($a[0] ?? JsUndefined::Value); }
-        if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
+        if (in_array($constructor, Builtins::ERROR_CONSTRUCTORS, true)) {
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             $text = $message === JsUndefined::Value ? '' : self::str($message);
             $options = $a[1] ?? JsUndefined::Value;

@@ -1,6 +1,6 @@
 import { action, collection, defineConfig, media, richText, text } from "first";
 
-import { getReadingTime } from "./backend/reading-time";
+import { getReadingTime } from "./first/backend/reading-time";
 
 // Native WordPress titles and blocks; the remaining fields are editable in SCF.
 const posts = collection({
@@ -11,7 +11,7 @@ const posts = collection({
   seoTitle: text(),
   seoDescription: text({ multiline: true }),
 }, {
-  label: "Publication posts", title: "title", content: "body", revisions: true,
+  label: "Publication posts", title: "title", content: "body", revisions: true, comments: true,
   access: {
     read: (ctx) => ["admin", "editor", "author"].includes(ctx.user?.role ?? "") ? true : { status: "published" },
     create: "editor", update: "editor", delete: "editor",

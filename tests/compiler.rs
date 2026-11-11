@@ -55,6 +55,61 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "first.config.ts:2:11",
     );
     rejects("reject-infinite-loop", "step budget exceeded", "first.config.ts:2:");
+    // App code loads only from first/ (F1210): here a module inside first/ reaches back out.
+    rejects(
+        "reject-import-fence",
+        "first/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside first/",
+        "first/tags.ts:2:1",
+    );
+    // Export names are unique across the app (F1221): an action named like a kind.
+    rejects(
+        "reject-duplicate-export",
+        "`notes` names two things: at first/a.ts:2 and here",
+        "first/b.ts:3:22",
+    );
+    // "first:db" names only registered kinds, and suggests the closest one.
+    rejects(
+        "reject-db-unknown",
+        "\"first:db\" has no kind named `note`",
+        "first/app.ts:2:10",
+    );
+    // ... in first/wp-hooks/ modules too, which load after every kind has registered.
+    rejects(
+        "reject-wp-hook-db-unknown",
+        "\"first:db\" has no kind named `note`",
+        "first/wp-hooks/the_title.ts:2:10",
+    );
+    // An exported name is unique across the app: an action listed under it is refused too.
+    rejects(
+        "reject-action-named-like-table",
+        "`notes` names two things: at first.config.ts:3 and here",
+        "first/schema.ts:2:22",
+    );
+    // "first:db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
+    // the app's kinds): refused at the statement, not a crash.
+    rejects(
+        "reject-db-reexport",
+        "\"first:db\" can't be re-exported",
+        "first/kinds.ts:4:1",
+    );
+    // ... and from a plugin, whose fix is to take the kinds as options.
+    rejects(
+        "reject-plugin-db-reexport",
+        "a plugin takes the app's kinds as options",
+        "node_modules/first-plugin-reach/src/index.ts:3:1",
+    );
+    // A default export has no name to register under.
+    rejects(
+        "reject-default-export-kind",
+        "a kind, action or job can't be a default export",
+        "first/notes.ts:3:16",
+    );
+    // wp-hooks/ beside first.config.ts is from before first/wp-hooks/: refused, never dropped.
+    rejects(
+        "reject-wp-hooks-root",
+        "wp-hooks/ beside first.config.ts is from an earlier layout; its handlers would not register",
+        "wp-hooks:1:1",
+    );
 }
 
 /// JSX outside the subset fails the build at its source, saying what to write instead
@@ -94,7 +149,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config",
         "JSX files can't be part of a First config",
-        "view.tsx:1:1",
+        "first/lib/view.tsx:1:1",
     );
     // An action can't return rendered JSX: the config never reaches a component module.
     rejects(
@@ -167,7 +222,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-config-unused",
         "JSX files can't be part of a First config",
-        "label.tsx:1:1",
+        "first/lib/label.tsx:1:1",
     );
     rejects(
         "reject-jsx-use-client-prologue",
@@ -400,6 +455,14 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         (
             "collections: { notes: collection({ title: text().notNull() }, { revisions: false }) }",
             "collections always have native revisions",
+        ),
+        (
+            "tables: { notes: table({ title: text() }, { comments: true }) }",
+            "only collection() kinds take comments",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }, { comments: 'yes' }) }",
+            "`comments` must be true or false",
         ),
     ] {
         std::fs::write(tmp.path().join("first.config.ts"), format!(
@@ -735,7 +798,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let project = tmp.join("pantry");
     copy(&root().join("examples/pantry"), &project);
     let _ = std::fs::remove_dir_all(project.join(".first"));
-    let _ = std::fs::remove_dir_all(project.join("first"));
+    let _ = std::fs::remove_dir_all(project.join("first/_generated"));
 
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(
@@ -1038,10 +1101,17 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let tmp = std::env::temp_dir().join(format!("first-diff-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
-    std::fs::copy(dir.join("cases.ts"), tmp.join("first.config.ts")).unwrap();
-    std::fs::copy(dir.join("namespace.mjs"), tmp.join("namespace.mjs")).unwrap();
+    // App code loads from first/; the root config re-exports the cases' config.
+    std::fs::create_dir_all(tmp.join("first")).unwrap();
+    std::fs::copy(dir.join("cases.ts"), tmp.join("first/cases.ts")).unwrap();
+    std::fs::copy(dir.join("namespace.mjs"), tmp.join("first/namespace.mjs")).unwrap();
     // Plain JavaScript modules the cases import run through checked dynamic dispatch.
-    std::fs::copy(dir.join("stdlib.js"), tmp.join("stdlib.js")).unwrap();
+    std::fs::copy(dir.join("stdlib.js"), tmp.join("first/stdlib.js")).unwrap();
+    std::fs::write(
+        tmp.join("first.config.ts"),
+        "export { default } from \"./first/cases.ts\";\n",
+    )
+    .unwrap();
     let built = first().arg("build").arg(&tmp).output().unwrap();
     assert!(
         built.status.success(),
@@ -1521,15 +1591,15 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
             .unwrap()
     };
     assert_eq!(sync(&["--check"]).status.code(), Some(2));
-    let initial = sync(&[]);
+    let first = sync(&[]);
     assert_eq!(
-        initial.status.code(),
+        first.status.code(),
         Some(0),
         "{}",
-        String::from_utf8_lossy(&initial.stdout)
+        String::from_utf8_lossy(&first.stdout)
     );
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&initial.stdout).unwrap()["data"]["applied"],
+        serde_json::from_slice::<serde_json::Value>(&first.stdout).unwrap()["data"]["applied"],
         2
     );
     let again = sync(&[]);
@@ -2215,7 +2285,7 @@ fn builds_wordpress_and_knows_no_target_option() {
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("defineConfig() has no option `target`"), "{stderr}");
     assert!(
-        !tmp.join(".first").exists() && !tmp.join("first").exists(),
+        !tmp.join(".first").exists() && !tmp.join("first/_generated").exists() && !tmp.join("first/dist").exists(),
         "a refusal wrote files"
     );
     std::fs::write(tmp.join("first.config.ts"), config).unwrap();
@@ -2334,7 +2404,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         (
             "first/client/index.ts",
             "first/_generated/client/index.ts",
-            "export const stale = 1;\n",
+            "import { SCHEMA } from \"./schema.ts\";\nexport const stale = SCHEMA;\n",
         ),
     ] {
         let (old_dir, new_dir) = if old.starts_with("first/client/") {
@@ -2379,6 +2449,27 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
             String::from_utf8_lossy(&again.stderr)
         );
     }
+    // Several left at once: one refusal names every one, and its one command moves them all.
+    std::fs::rename(
+        tmp.join("first/_generated/abilities.json"),
+        tmp.join("first/abilities.json"),
+    )
+    .unwrap();
+    std::fs::rename(
+        tmp.join("first/_generated/wp-plugins.lock.json"),
+        tmp.join("first/wp-plugins.lock.json"),
+    )
+    .unwrap();
+    refused("2 files are from before first/_generated/:");
+    refused("first/abilities.json moved to first/_generated/abilities.json");
+    refused("first/wp-plugins.lock.json moved to first/_generated/wp-plugins.lock.json");
+    let fix = "mkdir -p first/_generated && git mv first/wp-plugins.lock.json first/_generated/wp-plugins.lock.json && git mv first/abilities.json first/_generated/abilities.json";
+    refused(fix);
+    git(&["add", "-A"]);
+    let moved = Command::new("sh").args(["-c", fix]).current_dir(&tmp).output().unwrap();
+    assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
+    let again = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -2542,11 +2633,13 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
 ",
     );
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("run.mjs"), body).unwrap();
+    // App modules live under first/ (the import fence).
+    std::fs::create_dir_all(tmp.path().join("first")).unwrap();
+    std::fs::write(tmp.path().join("first/run.mjs"), body).unwrap();
     std::fs::write(
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
-import { run } from "./run.mjs";
+import { run } from "./first/run.mjs";
 export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )

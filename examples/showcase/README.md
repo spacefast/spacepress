@@ -206,5 +206,5 @@ The additive Apply policy and interrupted-job recovery have fast checks:
 node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
 ```
 
-For compiler examples and formatted TypeScript/PHP comparisons, the existing
-website tour and browser compiler are in [`site/`](../../site/README.md).
+For compiler examples and formatted TypeScript/PHP comparisons, the docs site's
+tour and browser compiler are in [`docs-site/`](../../docs-site/README.md).

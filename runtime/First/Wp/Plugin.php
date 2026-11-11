@@ -43,6 +43,7 @@ final class Plugin
     {
         self::$instance = $this;
         $this->mainFile = $mainFile;
+        Hardening::apply($schema);
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
@@ -58,10 +59,14 @@ final class Plugin
         CoreAccess::register();
         EditorSave::register();
         ProfileForm::register();
+        if (($this->schema->auth()['collection'] ?? null) !== null) {
+            UserMeta::register();
+        }
         IdentityBridge::hook($this->connection());
         add_action('rest_api_init', fn () => $this->unavailable() === null
             ? Rest::register(fn () => $this->app())
             : Rest::unavailable(self::UNAVAILABLE));
+        add_action('rest_api_init', fn () => TableController::registerAll($this));
         // While storage is behind, First collections' posts can't be written by any path (core REST,
         // wp-admin, other plugins): their hooks would run against tables the build doesn't match.
         // Last, so no later callback (SCF's `_acf_changed` one returns false) can undo the refusal.
@@ -98,6 +103,7 @@ final class Plugin
             }
         });
         Rest::boot();
+        Facade::register($this);
         HttpRoutes::register($this);
         MarkdownTwins::register();
         Purges::register($this);
@@ -441,7 +447,7 @@ final class Plugin
                 'show_in_rest' => true,
                 'rest_base' => $type,
                 'menu_icon' => 'dashicons-database',
-                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, 'author', 'custom-fields'])),
+                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields'])),
                 // Singular differs from plural so `edit_<type>` stays a primitive cap. Every cap of the type
                 // is answered from the collection's access rules (CoreAccess::mapMetaCap), not from roles.
                 'capability_type' => [$type . '_item', $type],
@@ -453,6 +459,7 @@ final class Plugin
                 'rewrite' => false,
                 'query_var' => false,
             ]);
+            PostMeta::register($spec);
         }
     }
 

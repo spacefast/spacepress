@@ -105,6 +105,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "label",
     "drafts",
     "revisions",
+    "comments",
     "title",
     "content",
     "access",
@@ -316,6 +317,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     editor: true,
                     drafts: true,
                     revisions: true,
+                    comments: false,
                     title: None,
                     content: None,
                     slug: None,
@@ -375,6 +377,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
+        coll.comments = opts.comments;
         coll.title = opts.title;
         coll.content = opts.content;
         coll.slug = opts.slug;
@@ -550,13 +553,13 @@ fn actions(
         for k in cfg.keys() {
             if !matches!(
                 k.as_str(),
-                "input" | "handler" | "access" | "agents" | "idempotent" | "signature"
+                "input" | "handler" | "access" | "agents" | "idempotent" | "readonly" | "destructive" | "signature"
             ) {
                 return Err(Diag::new(
                     ev.key_span(&a.config, k).unwrap_or(a.span),
                     format!("action() has no option `{k}`"),
                 )
-                .help("use input, handler, access"));
+                .help("use input, handler, access, agents, idempotent, readonly, destructive, signature"));
             }
         }
         let owner = Owner::Action(name.clone());
@@ -582,6 +585,15 @@ fn actions(
         };
         let agents = bool_option(&cfg, "agents", true, a.span)?;
         let idempotent = bool_option(&cfg, "idempotent", false, a.span)?;
+        let readonly = bool_option(&cfg, "readonly", false, a.span)?;
+        let destructive = bool_option(&cfg, "destructive", false, a.span)?;
+        if readonly && destructive {
+            return Err(Diag::new(
+                a.span,
+                format!("action `{name}` can't be both readonly and destructive"),
+            )
+            .help("a readonly action only reads; drop one of the two"));
+        }
         let signature = match cfg.get("signature") {
             None | Some(Value::Undef) => None,
             Some(v) => {
@@ -614,7 +626,10 @@ fn actions(
                 access,
                 agents,
                 idempotent,
+                readonly,
+                destructive,
                 signature,
+                output: None,
             },
         );
     }
@@ -751,6 +766,7 @@ struct CollOpts {
     editor: bool,
     drafts: bool,
     revisions: bool,
+    comments: bool,
     title: Option<String>,
     content: Option<String>,
     slug: Option<String>,
@@ -878,6 +894,15 @@ fn collection_options(
         }
         Some(r) => r,
         None => editor,
+    };
+    // spec.md §6: comments are off on every kind that doesn't turn them on.
+    let comments = match flag("comments")? {
+        Some(true) if !editor => {
+            return Err(Diag::new(span("comments"), "only collection() kinds take comments")
+                .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
+        }
+        Some(on) => on,
+        None => false,
     };
 
     if editor && c.table().len() > MAX_POST_TYPE_TABLE {
@@ -1096,6 +1121,7 @@ fn collection_options(
         editor,
         drafts,
         revisions,
+        comments,
         title,
         content,
         slug,
@@ -2188,6 +2214,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
             .any(|a| matches!(a, ArrEl::Item(x) | ArrEl::Spread(x) if r(x))),
         ExprKind::Object(props) => props.iter().any(|p| match p {
             Prop::KV(_, x) | Prop::Spread(x) => r(x),
+            Prop::NullPrototype => false,
         }),
         _ => false,
     }

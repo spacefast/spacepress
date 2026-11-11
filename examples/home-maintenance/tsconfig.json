@@ -9,5 +9,5 @@
     "types": [],
     "paths": { "first": ["../../types/first/index.d.ts"] }
   },
-  "include": ["first.config.ts", "first/_generated/db.d.ts", "lib/**/*.ts"]
+  "include": ["first.config.ts", "first/_generated/db.d.ts", "first/lib/**/*.ts"]
 }

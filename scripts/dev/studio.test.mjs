@@ -74,10 +74,10 @@ test('watch inputs include imported TypeScript and public files without reacting
     await rm(root, { recursive: true, force: true });
   });
   await mkdir(project);
-  await mkdir(join(project, 'lib'));
+  await mkdir(join(project, 'first/lib'), { recursive: true });
   await mkdir(join(project, 'public'));
   await writeFile(join(project, 'first.config.ts'), 'config');
-  await writeFile(join(project, 'lib/fields.ts'), 'first');
+  await writeFile(join(project, 'first/lib/fields.ts'), 'first');
   const plugins = join(project, '.first/dev/wordpress/wp-content/plugins');
   const generated = join(plugins, 'first-app-watch');
   await mkdir(join(generated, 'blocks/deep/assets'), { recursive: true });
@@ -104,7 +104,7 @@ test('watch inputs include imported TypeScript and public files without reacting
       assert.equal(watchError, undefined);
     } finally { clearTimeout(timeout); }
   }
-  await writeFile(join(project, 'lib/fields.ts'), 'second');
+  await writeFile(join(project, 'first/lib/fields.ts'), 'second');
   const second = await sourceDigest(project);
   assert.notEqual(second, first);
   await waitForDigest(second);
@@ -119,14 +119,14 @@ test('watch inputs include imported TypeScript and public files without reacting
     await rename(staged, generated);
     await rm(previous, { recursive: true });
   }
-  for (const ignored of ['.git', 'node_modules', 'first']) {
+  for (const ignored of ['.git', 'node_modules', 'first/node_modules', 'first/dist', 'first/_generated/client']) {
     const directory = join(project, ignored, 'nested/generated');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'output.ts'), 'generated');
     await rm(join(project, ignored), { recursive: true });
   }
   assert.equal(await sourceDigest(project), second);
-  await writeFile(join(project, 'lib/fields.ts'), 'after generated plugin replacement');
+  await writeFile(join(project, 'first/lib/fields.ts'), 'after generated plugin replacement');
   const afterBuild = await sourceDigest(project);
   assert.notEqual(afterBuild, second);
   await waitForDigest(afterBuild);

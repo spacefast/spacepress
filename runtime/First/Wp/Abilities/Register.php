@@ -143,6 +143,26 @@ final class Register
         return $body instanceof \First\JsObject && array_key_exists('input', $body->p) ? [urldecode($m[1]), $body->p['input']] : null;
     }
 
+    /**
+     * Run $fn with $json (a raw JSON object) as ability $name's input as sent, so `{}` inside a json()
+     * value survives the array core hands to the ability (the facade's actions).
+     */
+    public static function withSentInput(string $name, string $json, callable $fn): mixed
+    {
+        $previous = self::$raw;
+        try {
+            $decoded = trim($json) === '' ? new \First\JsObject() : \First\Js::decodeJson($json);
+        } catch (\JsonException) {
+            $decoded = null;
+        }
+        self::$raw = $decoded === null ? null : [$name, $decoded];
+        try {
+            return $fn();
+        } finally {
+            self::$raw = $previous;
+        }
+    }
+
     /** The executing ability's input as sent, when the REST run endpoint carried it. */
     public static function sentInput(string $name, mixed $input): mixed
     {
@@ -362,9 +382,15 @@ final class Register
         return [
             'name' => "$app/" . self::kebab($name), 'op' => 'run', 'agents' => (bool) ($action['agents'] ?? true),
             'label' => "Run $name", 'description' => "Run the $name action of the $appLabel app.",
-            'input' => JsonSchema::input($props, $required), 'output' => [],
-            // §7.1's destructive flag needs the compiler's `writes` (handler calls db.delete); schema.php v3 has none yet.
-            'annotations' => ($action['idempotent'] ?? false) ? ['idempotent' => true] : [],
+            // The result type, as the compiler inferred it from the handler (none when it has no JSON shape).
+            'input' => JsonSchema::input($props, $required), 'output' => is_array($action['output'] ?? null) ? $action['output'] : [],
+            // The action's own options (spec §3a). Core's run route picks the method from them: GET for
+            // readonly, DELETE for destructive + idempotent, POST otherwise.
+            'annotations' => array_filter([
+                'readonly' => (bool) ($action['readonly'] ?? false),
+                'destructive' => (bool) ($action['destructive'] ?? false),
+                'idempotent' => (bool) ($action['idempotent'] ?? false) || (bool) ($action['readonly'] ?? false),
+            ]),
             'rule' => [$action['access'] ?? Access::DEFAULT_WRITE, 'create', "run $name"],
             // A signature replaces the access check (§6.1); the action path verifies it, so nothing is judged early.
             'defer' => ($action['signature'] ?? null) !== null,

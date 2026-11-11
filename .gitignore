@@ -23,13 +23,6 @@ runtime/identity/apps/node_modules/
 # The optional packages/pages package (its own pnpm project)
 /packages/pages/node_modules/
 
-# The website (its own pnpm project; first.wasm is built from src/ by site/scripts/build-wasm.mjs)
-/site/node_modules/
-/site/dist/
-/site/.astro/
-/site/public/first.wasm
-/site/test-results/
-/site/playwright-report/
 
 # Disposable SQL adoption proof artifacts.
 /tests/wp/app-migrate/.run.*/

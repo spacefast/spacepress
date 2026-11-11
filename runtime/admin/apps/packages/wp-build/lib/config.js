@@ -167,7 +167,7 @@ const wordpressExternalsAndAssetPlugin = ( options = {} ) => ( {
 
 		// Handle all @wordpress/* packages automatically
 		build.onResolve( { filter: /^@wordpress\// }, async ( args ) => {
-			// Bundled from npm: the hosting WordPress is not required to carry
+			// Bundled from npm: the target WordPress is not required to carry
 			// the Abilities API plugin, so there is no `wp-abilities` classic
 			// handle to lean on. Each consumer bundles its own registry.
 			if ( args.path === '@wordpress/abilities' ) {

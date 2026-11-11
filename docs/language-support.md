@@ -144,6 +144,22 @@ Status: **supported**.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## boolean-function-value
+
+Status: **supported**.
+
+The global `Boolean` compiles as a call and as a function value in typed code, imported JavaScript and configuration evaluation: `.filter(Boolean)`, `.map(Boolean)`, `.some`/`.every`/`.find(Boolean)`, local and captured aliases, `globalThis.Boolean`, and arguments to user functions. Calls and the value both apply ToBoolean to the first argument and ignore the rest: 0, -0, NaN, "", null, undefined, false and 0n are false; every other value, including "0", "false", arrays, objects and functions, is true. The value is one shared function, so aliases compare equal to `Boolean`. `Boolean.name`, `Boolean.length` and `Boolean.prototype` are not supported.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## primitive-wrapper-objects
+
+Status: **refused**. Diagnostic: `F4001`.
+
+`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001).
+
+[Evidence](../tests/fixtures/reject-new-boolean)
+
 ## prototype-literal-object
 
 Status: **refused**. Diagnostic: `F1002`.

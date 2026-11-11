@@ -2065,11 +2065,11 @@ fn rejects_phase2_static_contracts() {
         ),
         (
             "[2, 1].sort((a, b) => { value += 2; return a - b; })",
-            "sorting requires a numeric key-difference comparator",
+            "field rules must return a boolean on every path",
         ),
         (
             "[2, 1].toSorted((a, b) => { value += 2; return a - b; })",
-            "sorting requires a numeric key-difference comparator",
+            "field rules must return a boolean on every path",
         ),
         (
             "Array.from({ length: 2 }, () => { value++; return 1; })",

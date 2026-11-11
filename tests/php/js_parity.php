@@ -272,7 +272,6 @@ $deviations = [
     ['negative zero Date year is refused', fn () => Js::date('-000000-01-01'), ['$err' => 'RangeError']],
     ['inherited Error cause is refused', function () { $base = new \First\JsClass(null, null, static fn ($i) => null, ['cause' => static fn ($i) => null], [], new JsObject()); $class = new \First\JsClass($base, null, static fn ($i) => null, [], [], new JsObject()); return Js::dynamicConstruct('Error', new JsArray(['x', $class->construct()])); }, ['$err' => 'TypeError']],
     ['array Error cause is refused', function () { $a = new JsArray(); $a->p['cause'] = 42; return Js::dynamicConstruct('Error', new JsArray(['x', $a])); }, ['$err' => 'TypeError']],
-    ['default object sort requires a comparator', fn () => Js::sort(new JsArray([new JsObject(), new JsObject()])), ['$err' => 'TypeError']],
     ['unsupported legacy control escapes are refused', fn () => Js::re('\\c0', ''), ['$err' => 'SyntaxError']],
     ['error stack is its header line', fn () => Js::dynamicGet(new JsError('x', 'TypeError'), 'stack'), 'TypeError: x'],
     ['non-ISO Date strings are refused', fn () => Js::date('2020-1-1'), ['$err' => 'RangeError']],
@@ -321,13 +320,16 @@ $cases[] = ['(() => { const a = [1,2,3]; return a.some(v => { a.pop(); a.pop(); 
 $cases[] = ['(() => { const a = [1,2,3]; return a.findLast(v => { a.pop(); return false; }) ?? null; })()', static function () {
     $a = new JsArray([1, 2, 3]); return Js::findLast($a, static function () use ($a) { Js::pop($a); return false; });
 }];
-$deviations[] = ['effectful comparators are refused', static function () {
-    $calls = 0;
-    try { Js::sort(new JsArray([3, 2, 1]), static function ($x, $y) use (&$calls) { $calls++; return $x - $y; }); }
-    catch (JsError $e) { return [$e->jsName, $calls]; }
-    return ['accepted', $calls];
-}, ['TypeError', 0]];
-$deviations[] = ['nonfinite comparator keys are refused', fn () => Js::sort(new JsArray([1, NAN, 0]), Js::sortComparator(static fn ($x, $y) => $x - $y, [], false)), ['$err' => 'RangeError']];
+$cases[] = ['(() => { const calls = []; const a = [3, 2, 1, 5, 4].sort((x, y) => { calls.push(x + ":" + y); return x - y; }); return [a, calls]; })()', static function () {
+    $calls = new JsArray();
+    $a = Js::sort(new JsArray([3, 2, 1, 5, 4]), static function ($x, $y) use ($calls) { Js::push($calls, $x . ':' . $y); return $x - $y; });
+    return [$a, $calls];
+}];
+$cases[] = ['[{b: 1}, [2], {a: 0}, [10]].sort()', fn () => Js::sort(jsValue([['b' => 1], [2], ['a' => 0], [10]]))];
+$cases[] = ['[[1, NaN, 0, -Infinity].sort((x, y) => x - y), [{k: "b"}, {k: 2}, {k: "a"}].sort((x, y) => x.k - y.k).map(o => o.k)]', fn () => [
+    Js::sort(new JsArray([1, NAN, 0, -INF]), Js::sortComparator(static fn ($x, $y) => $x - $y, [], false)),
+    Js::map(Js::sort(jsValue([['k' => 'b'], ['k' => 2], ['k' => 'a']]), Js::sortComparator(static fn ($x, $y) => Js::toNumber($x->p['k']) - Js::toNumber($y->p['k']), ['k'], false)), fn ($row) => $row->p['k']),
+]];
 $deviations[] = ['borrowed methods cannot change families', fn () => Js::dynamicCallMethod(Js::dynamicGet(new JsArray(), 'includes'), 'call', new JsArray(['abc', 'ab'])), ['$err' => 'TypeError']];
 $cases[] = ['[Array.from("a🙂b"), [1,2].with(-1, 9), [1,2].toReversed()]', fn () => [Js::from('a🙂b'), Js::with(new JsArray([1, 2]), -1, 9), Js::toReversed(new JsArray([1, 2]))]];
 $cases[] = ['(() => { const a = [1]; const n = a.push(2); const x = a.pop(); const m = a.unshift(0); const y = a.shift(); return [n,x,m,y,a]; })()', static function () {

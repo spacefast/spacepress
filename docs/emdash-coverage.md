@@ -1,4 +1,4 @@
-# EmDash coverage on native Zero
+# EmDash coverage on native First
 
 This guide describes the qualification target, recorded native results and known
 differences. **Runtime qualification is partial:** the publication, marketing,
@@ -21,7 +21,7 @@ All sources in this table use
 [EmDash `1824902c0c383c052b623528799427b8a5ff75d0`](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0).
 The manifest's `source` and `sources` give each exact pinned directory/file.
 
-| Official source | Concrete application behavior | Zero owner |
+| Official source | Concrete application behavior | First owner |
 | --- | --- | --- |
 | `templates/blank` | Welcome page, empty CMS and admin entry | `blank` |
 | `templates/starter` | Recent posts, posts/pages, rich text/media, category/tag archives, menus and settings | `starter` |
@@ -55,7 +55,7 @@ belong to the forms plugin; a decorative contact form cannot qualify that plugin
 [The original-source applications](../examples/emdash/official-sites/README.md)
 retain pinned blank, starter and blog Astro routes, components, styles and
 utilities with a source-hash drift guard. Astro compiles to a Node frontend;
-Zero compiles its backend and the original reading-time algorithm to PHP.
+First compiles its backend and the original reading-time algorithm to PHP.
 The native adapter supplies WordPress/SCF content, menus, media, comments,
 Appearance widgets, saved-draft previews and privacy rules to those original
 routes. The deeper marketing and portfolio examples above remain behavioral
@@ -93,16 +93,16 @@ The remaining 22 workspace packages are separately classified in the manifest:
 framework/admin/auth, converters, scaffolding/upgrades, registry services/types,
 workerd test/runtime support, external auth and x402. They are not thirteen
 additional plugin examples. Provider/converter behavior remains an explicit gap
-where Zero's different implementation does not hold the same contract.
+where First's different implementation does not hold the same contract.
 
 ## Agent and tutorial workflows
 
 The [official AI tools guide](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/docs/src/content/docs/guides/ai-tools.mdx)
 and [MCP reference](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/docs/src/content/docs/reference/mcp-server.mdx)
 cover content, bylines, media, search, taxonomies, menus, settings, schema,
-revisions and whole-site transfer. Generated Zero operations expose the compiled
+revisions and whole-site transfer. Generated First operations expose the compiled
 model through core WordPress Abilities and MCP Adapter. For the agent example,
-the endpoint is `/wp-json/mcp/zero-agents`; use its actual `tools/list` schemas
+the endpoint is `/wp-json/mcp/first-agents`; use its actual `tools/list` schemas
 and application-password authentication. EmDash's endpoint, tool names and
 OAuth scopes are different.
 
@@ -119,7 +119,7 @@ Three official contracts require separate attention:
   live version. Compare/discard/promote uses `_rev`; held edit locks reject
   writes. Native status/revision support alone does not prove this contract.
 - **Schema changes:** EmDash tools create collections/fields/block versions at
-  runtime. Zero declares them in `zero.config.ts` and compiles them. A source
+  runtime. First declares them in `first.config.ts` and compiles them. A source
   edit plus rebuild is a different agent workflow, not the same runtime tool.
 - **Whole-site transfer:** portable export/analyze/import/resume/receipt includes
   media, principals, comments and approvals. Config migration and Markdown sync
@@ -163,7 +163,7 @@ and application work instead of adding an echo/mock under its name.
 
 Use the [root example commands](../examples/emdash/README.md) from the repository
 root: `node examples/emdash/test.mjs`. The runner builds with
-`cargo build --locked` unless `ZERO_BIN` selects a matching existing binary,
+`cargo build --locked` unless `FIRST_BIN` selects a matching existing binary,
 and installs the shared browser dependencies and Chromium.
 Its default suites run sequentially; `publishing` owns blank/starter/blog,
 and `publishing-browser` holds their browser seam. Select owners with arguments
@@ -197,14 +197,14 @@ edits. Whole upstream source entries remain pending or gaps rather than
 inheriting a suite's pass. Source-object and snippet audits remain unchanged.
 
 Each suite must create a unique disposable Studio project,
-allocate a free port, verify `.zero/dev/owner.json`, use real native saves,
+allocate a free port, verify `.first/dev/owner.json`, use real native saves,
 and stop/unregister only its exact site. Keep full native admin/plugins/settings
 available. Preserve unrelated plugins, credentials, content and uploads across
 restarts. Keep failed-run receipts for precise cleanup; never stop/delete globally.
 
 Use an existing matching binary only while its compiler/runtime inputs match.
 Concurrent workers must isolate build outputs and pass their matching binary as
-`ZERO_BIN`. Record which binary/revision produced the evidence. Disposable local
+`FIRST_BIN`. Record which binary/revision produced the evidence. Disposable local
 credentials are documented deliberately in the examples; they must never be
 reused for deployed sites or personal accounts.
 
@@ -214,18 +214,18 @@ Promote only the checks that ran. Browser assertions inspect the live product;
 source/snippet inventory checks establish provenance only. Keep comprehensive
 run artifacts outside tracked documentation and record failures plainly.
 
-Zero alternatives currently include native Gutenberg/SCF instead of Portable
+First alternatives currently include native Gutenberg/SCF instead of Portable
 Text/Astro, native WordPress search instead of EmDash FTS, numbered pages
 instead of opaque cursors, and native authors instead of multiple/guest bylines.
 CSS theme switching alone does not prove saved dark-image variants. PHP plugins
 have process authority and do not establish Worker-isolate/host-allowlist security.
 
 Cloudflare, PostgreSQL, AT Protocol, AI, mail, payment and ad-delivery claims need
-actual provider evidence. The upstream notifier uses optional Bearer-token authorization; Zero built-in
+actual provider evidence. The upstream notifier uses optional Bearer-token authorization; First built-in
 webhooks use HMAC. Record the declared wire contract rather than treating them
 as identical. The plugin workshop's notifier sends both Bearer authorization
-and an `x-zero-signature` HMAC, verified by its owned HTTP receiver; the platform
-journey exercises Zero's separate built-in signature formats.
+and an `x-first-signature` HMAC, verified by its owned HTTP receiver; the platform
+journey exercises First's separate built-in signature formats.
 A local receiver can prove received webhook bytes;
 mail capture can prove dispatch; neither demonstrates external delivery or
 provider parity. Existing Docker suites remain useful lower-level regression

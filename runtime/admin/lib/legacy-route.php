@@ -1,19 +1,19 @@
 <?php
 /**
- * Override Legacy WP-Admin pages to support Zero Admin legacy routes.
+ * Override Legacy WP-Admin pages to support First Admin legacy routes.
  *
- * @package ZeroAdmin
+ * @package FirstAdmin
  */
 
 /**
- * Handle iframe mode - call the parent window's _zeroAdminLoad function if
+ * Handle iframe mode - call the parent window's _firstAdminLoad function if
  * present.
  */
-function zero_admin_handle_iframe_mode() {
+function first_admin_handle_iframe_mode() {
 	add_action(
 		'admin_head',
 		function () {
-			echo '<script>window.frameElement?._zeroAdminLoad?.();</script>';
+			echo '<script>window.frameElement?._firstAdminLoad?.();</script>';
 		}
 	);
 }

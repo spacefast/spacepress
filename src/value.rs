@@ -1,4 +1,4 @@
-//! Build-time values. `zero.config.ts` evaluates to these; the compiler then
+//! Build-time values. `first.config.ts` evaluates to these; the compiler then
 //! reads the schema out of them and compiles the functions they hold.
 
 use crate::diag::Span;
@@ -143,7 +143,7 @@ impl Closure {
     }
 }
 
-/// Function properties Zero doesn't model: built-in own properties and `Function.prototype`.
+/// Function properties First doesn't model: built-in own properties and `Function.prototype`.
 pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
     "name",
     "length",
@@ -160,13 +160,13 @@ pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {
-    // "zero" exports
+    // "first" exports
     Collection(StorageKind),
     Column(ColType),
     Id,
     /// email, url, slug, richText, media, select, group, repeater, blocks
     Field(&'static str),
-    /// `global(name, fields, options)` from "zero".
+    /// `global(name, fields, options)` from "first".
     DefineGlobal,
     DefineRelations,
     DefineConfig,
@@ -180,11 +180,11 @@ pub enum Builtin {
     Jobs,
     /// `"node:crypto"`: the module namespace (`None`) or one of its supported functions.
     NodeCrypto(Option<&'static str>),
-    /// `mail.send(message)` from "zero", compiled to `Zero\Mail::send`.
+    /// `mail.send(message)` from "first", compiled to `First\Mail::send`.
     Mail,
-    /// `abilities.call(name, input)` from "php/wordpress", compiled to `Zero\Wp\Abilities\Call::run`.
+    /// `abilities.call(name, input)` from "php/wordpress", compiled to `First\Wp\Abilities\Call::run`.
     Abilities,
-    /// A catalog WordPress function from "php/wordpress", compiled to `Zero\Wp\Functions::call`.
+    /// A catalog WordPress function from "php/wordpress", compiled to `First\Wp\Functions::call`.
     WpFunction(Rc<str>),
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,

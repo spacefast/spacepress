@@ -1,7 +1,7 @@
 {
-  "name": "@spacefast/zero-pages",
+  "name": "@spacefast/first-pages",
   "version": "0.1.0",
-  "description": "Optional TSX pages, layouts and routes for Zero apps, rendered by WordPress as Gutenberg blocks and PHP.",
+  "description": "Optional TSX pages, layouts and routes for First apps, rendered by WordPress as Gutenberg blocks and PHP.",
   "license": "MIT AND GPL-2.0-or-later",
   "type": "module",
   "packageManager": "pnpm@12.9.1",
@@ -9,7 +9,7 @@
     "node": ">=22.18"
   },
   "bin": {
-    "zero-pages": "./bin/zero-pages.mjs"
+    "first-pages": "./bin/first-pages.mjs"
   },
   "files": [
     "bin",
@@ -55,9 +55,9 @@
   "devDependencies": {
     "@types/node": "22.19.3",
     "playwright-core": "1.62.1",
-    "@spacefast/zero-blocks": "link:../blocks"
+    "@spacefast/first-blocks": "link:../blocks"
   },
   "peerDependencies": {
-    "@spacefast/zero-blocks": "0.1.0"
+    "@spacefast/first-blocks": "0.1.0"
   }
 }

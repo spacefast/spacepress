@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Fqsen as RealFqsen;
+use First\Identity\Vendor\phpDocumentor\Reflection\Fqsen as RealFqsen;
 
 /**
- * Fqsen reference used by {@see \Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
+ * Fqsen reference used by {@see \First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
  */
 final class Fqsen implements Reference
 {

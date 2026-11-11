@@ -1,7 +1,7 @@
 import { Button } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Dialog } from '@zero-admin/design-system';
-import type { ActionModal } from '@zero-admin/dataviews';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Dialog } from '@first-admin/design-system';
+import type { ActionModal } from '@first-admin/dataviews';
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import styles from './style.module.css';
@@ -50,15 +50,15 @@ type ConfirmRenderModalProps< Item > = ConfirmRenderModalConfigProps< Item > &
 const getDefaultConfirmLabel = ( intent?: ConfirmModalIntent ) => {
 	switch ( intent ) {
 		case 'move-to-trash':
-			return __( 'Move to Trash', 'zero-admin' );
+			return __( 'Move to Trash', 'first-admin' );
 		case 'delete-permanently':
-			return __( 'Delete permanently', 'zero-admin' );
+			return __( 'Delete permanently', 'first-admin' );
 		case 'duplicate':
-			return __( 'Duplicate', 'zero-admin' );
+			return __( 'Duplicate', 'first-admin' );
 		case 'restore':
-			return __( 'Restore', 'zero-admin' );
+			return __( 'Restore', 'first-admin' );
 		default:
-			return __( 'Confirm', 'zero-admin' );
+			return __( 'Confirm', 'first-admin' );
 	}
 };
 
@@ -78,7 +78,7 @@ export function ConfirmRenderModal< Item >( {
 		getDefaultConfirmLabel( intent );
 	const cancelLabel =
 		( 'cancelLabel' in props && props.cancelLabel ) ||
-		__( 'Cancel', 'zero-admin' );
+		__( 'Cancel', 'first-admin' );
 	const isDestructive =
 		( 'isSubmitDestructive' in props && props.isSubmitDestructive ) ||
 		intent === 'delete-permanently';
@@ -107,7 +107,7 @@ export function ConfirmRenderModal< Item >( {
 					}
 					variant="solid"
 					loading={ isLoading }
-					loadingAnnouncement={ __( 'Processing', 'zero-admin' ) }
+					loadingAnnouncement={ __( 'Processing', 'first-admin' ) }
 					onClick={ async () => {
 						await onSubmit( items, setIsLoading );
 						if ( onActionPerformed ) {

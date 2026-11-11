@@ -1,7 +1,7 @@
 // Named function expressions and recursive local functions, which esbuild bundles of live 0.8 apps
 // contain. Every action runs under Node and as compiled PHP; the JSON results must be
 // byte-identical.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import { fastpath, hoistedVar, named, recursiveLocal, selfBound, selfBoundReassigned, selfBoundSuspending } from "./function-expressions-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

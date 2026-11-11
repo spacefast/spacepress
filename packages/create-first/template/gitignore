@@ -1,0 +1,10 @@
+node_modules/
+.first/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# first/_generated/ is committed; first/dist/ is build output.
+first/dist/

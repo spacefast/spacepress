@@ -2,7 +2,7 @@
 /**
  * Core post fields collection - applies to several post types
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(

@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine;
 
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagValueNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagValueNode;
 use function trim;
 
 class DoctrineTagValueNode implements PhpDocTagValueNode

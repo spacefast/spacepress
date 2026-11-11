@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace First\Identity\Vendor\Webauthn\MetadataService\Service;
 
-use Zero\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
-use Zero\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use First\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
+use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 final class ChainedMetadataServices implements MetadataService
 {

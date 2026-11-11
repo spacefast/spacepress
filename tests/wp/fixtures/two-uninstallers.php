@@ -9,12 +9,12 @@ declare(strict_types=1);
 
 global $wpdb;
 
-$fx_built = WP_PLUGIN_DIR . '/zero-app-blog/uninstall.php';
-$fx_root = sys_get_temp_dir() . '/zero-two-uninstall-' . bin2hex(random_bytes(4));
-$fx_granted = ['edit_others_zero_alpha', 'edit_others_zero_beta', 'create_zero_alpha'];
+$fx_built = WP_PLUGIN_DIR . '/first-app-blog/uninstall.php';
+$fx_root = sys_get_temp_dir() . '/first-two-uninstall-' . bin2hex(random_bytes(4));
+$fx_granted = ['edit_others_first_alpha', 'edit_others_first_beta', 'create_first_alpha'];
 $fx_actions = [
-    'alpha' => as_schedule_single_action(time() + 3600, 'zero_job', ['id' => 'alpha-left'], 'zero-alpha'),
-    'beta' => as_schedule_single_action(time() + 3600, 'zero_job', ['id' => 'beta-left'], 'zero-beta'),
+    'alpha' => as_schedule_single_action(time() + 3600, 'first_job', ['id' => 'alpha-left'], 'first-alpha'),
+    'beta' => as_schedule_single_action(time() + 3600, 'first_job', ['id' => 'beta-left'], 'first-beta'),
     'other' => as_schedule_single_action(time() + 3600, 'not_zero', [], 'someone-else'),
 ];
 foreach ($fx_granted as $fx_cap) {
@@ -23,16 +23,16 @@ foreach ($fx_granted as $fx_cap) {
 $fx_ran = [];
 try {
     foreach (['alpha', 'beta'] as $fx_app) {
-        mkdir("$fx_root/$fx_app/zero/app", 0777, true);
+        mkdir("$fx_root/$fx_app/first/app", 0777, true);
         copy($fx_built, "$fx_root/$fx_app/uninstall.php");
-        file_put_contents("$fx_root/$fx_app/zero/app/schema.php", '<?php return ' . var_export([
+        file_put_contents("$fx_root/$fx_app/first/app/schema.php", '<?php return ' . var_export([
             'name' => $fx_app,
             'jobs' => [],
-            'collections' => [$fx_app => ['editor' => true, 'wp' => ['postType' => "zero_$fx_app"]]],
+            'collections' => [$fx_app => ['editor' => true, 'wp' => ['postType' => "first_$fx_app"]]],
         ], true) . ';');
     }
     if (!defined('WP_UNINSTALL_PLUGIN')) {
-        define('WP_UNINSTALL_PLUGIN', 'zero-app-alpha/zero-app-alpha.php');
+        define('WP_UNINSTALL_PLUGIN', 'first-app-alpha/first-app-alpha.php');
     }
     foreach (['alpha', 'beta'] as $fx_app) {
         include "$fx_root/$fx_app/uninstall.php";
@@ -46,15 +46,15 @@ try {
         get_role('editor')->remove_cap($fx_cap);
     }
     foreach (['alpha', 'beta'] as $fx_app) {
-        @unlink("$fx_root/$fx_app/zero/app/schema.php");
+        @unlink("$fx_root/$fx_app/first/app/schema.php");
         @unlink("$fx_root/$fx_app/uninstall.php");
-        @rmdir("$fx_root/$fx_app/zero/app");
-        @rmdir("$fx_root/$fx_app/zero");
+        @rmdir("$fx_root/$fx_app/first/app");
+        @rmdir("$fx_root/$fx_app/first");
         @rmdir("$fx_root/$fx_app");
     }
     @rmdir($fx_root);
 }
 as_unschedule_all_actions('not_zero');
-as_unschedule_all_actions('zero_job', ['id' => 'alpha-left'], 'zero-alpha');
-as_unschedule_all_actions('zero_job', ['id' => 'beta-left'], 'zero-beta');
+as_unschedule_all_actions('first_job', ['id' => 'alpha-left'], 'first-alpha');
+as_unschedule_all_actions('first_job', ['id' => 'beta-left'], 'first-beta');
 echo wp_json_encode(['ran' => $fx_ran, 'left' => $fx_left, 'actions' => $fx_statuses]);

@@ -1,12 +1,12 @@
 // Real HTTP proof. Use only a disposable account/site: this script creates and deletes fixtures.
 import assert from "node:assert/strict";
-const site = (process.env.ZERO_SITE ?? "http://localhost:8794").replace(/\/$/, "");
-assert.ok(process.env.ZERO_APP_PASSWORD, "Set ZERO_APP_PASSWORD to username:application-password");
-const authorization = `Basic ${Buffer.from(process.env.ZERO_APP_PASSWORD).toString("base64")}`;
+const site = (process.env.FIRST_SITE ?? "http://localhost:8794").replace(/\/$/, "");
+assert.ok(process.env.FIRST_APP_PASSWORD, "Set FIRST_APP_PASSWORD to username:application-password");
+const authorization = `Basic ${Buffer.from(process.env.FIRST_APP_PASSWORD).toString("base64")}`;
 const run = `subscription-proof-${Date.now()}`;
 const owned = [];
 async function api(method, path, data, extra = {}, expected) {
-  const response = await fetch(`${site}/wp-json/zero/v1${path}`, {
+  const response = await fetch(`${site}/wp-json/first/v1${path}`, {
     method, headers: { "Content-Type": "application/json", Authorization: authorization, ...extra },
     ...(data === undefined ? {} : { body: JSON.stringify(data) }),
   });

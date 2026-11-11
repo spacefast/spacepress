@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const backend = env.ZERO_DEV_URL || "http://localhost:8796";
+  const backend = env.FIRST_DEV_URL || "http://localhost:8796";
   return {
     base: "./",
     build: { outDir: "../public", emptyOutDir: true },

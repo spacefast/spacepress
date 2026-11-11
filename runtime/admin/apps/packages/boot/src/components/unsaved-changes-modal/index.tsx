@@ -7,9 +7,9 @@ import {
 	saveDirtyEntitiesSettled,
 	unlock,
 	useEntityValidity,
-} from '@zero-admin/admin-toolkit';
+} from '@first-admin/admin-toolkit';
 import { Button, Icon } from '@wordpress/ui';
-import { Dialog } from '@zero-admin/design-system';
+import { Dialog } from '@first-admin/design-system';
 import { store as coreStore } from '@wordpress/core-data';
 import { useDispatch, useRegistry, useSelect } from '@wordpress/data';
 import { doAction } from '@wordpress/hooks';
@@ -70,7 +70,7 @@ function getErrorMessage( error: unknown ): string {
 		return error.message;
 	}
 
-	return __( 'Unable to save changes.', 'zero-admin' );
+	return __( 'Unable to save changes.', 'first-admin' );
 }
 
 export default function UnsavedChangesModal() {
@@ -148,24 +148,24 @@ export default function UnsavedChangesModal() {
 	}, [ clearEntityRecordEdits, router ] );
 
 	const modalTitle = isEntityValid
-		? __( 'Save changes before leaving?', 'zero-admin' )
-		: __( 'Fix errors before leaving?', 'zero-admin' );
+		? __( 'Save changes before leaving?', 'first-admin' )
+		: __( 'Fix errors before leaving?', 'first-admin' );
 
 	const modalDescription = isEntityValid
 		? __(
 				'You have unsaved changes. Choose whether to save or discard them before continuing.',
-				'zero-admin'
+				'first-admin'
 		  )
 		: __(
 				'Some fields need attention before you can save your changes. Continue editing or discard changes.',
-				'zero-admin'
+				'first-admin'
 		  );
 
-	const discardLabel = __( 'Discard changes', 'zero-admin' );
+	const discardLabel = __( 'Discard changes', 'first-admin' );
 
 	const primaryActionLabel = isEntityValid
-		? __( 'Save changes', 'zero-admin' )
-		: __( 'Continue editing', 'zero-admin' );
+		? __( 'Save changes', 'first-admin' )
+		: __( 'Continue editing', 'first-admin' );
 
 	const closeDialog = () => {
 		shouldClearOnNavigationRef.current = false;
@@ -199,8 +199,8 @@ export default function UnsavedChangesModal() {
 						onClick={ () => {
 							shouldClearOnNavigationRef.current = true;
 							recordsToClearRef.current = [ ...entityRecords ];
-							// @fires zeroAdmin.unsavedChangesDiscarded
-							doAction( 'zeroAdmin.unsavedChangesDiscarded' );
+							// @fires firstAdmin.unsavedChangesDiscarded
+							doAction( 'firstAdmin.unsavedChangesDiscarded' );
 							void blocker.proceed();
 						} }
 					>
@@ -211,7 +211,7 @@ export default function UnsavedChangesModal() {
 						disabled={ isSaveInFlight }
 						loadingAnnouncement={ __(
 							'Saving changes',
-							'zero-admin'
+							'first-admin'
 						) }
 						onClick={ async () => {
 							if ( ! isEntityValid ) {
@@ -254,7 +254,7 @@ export default function UnsavedChangesModal() {
 									messages: {
 										error: __(
 											'Failed to save changes. Please try again.',
-											'zero-admin'
+											'first-admin'
 										),
 										success: () => '',
 									},
@@ -264,7 +264,7 @@ export default function UnsavedChangesModal() {
 									void createErrorNotice( notice.message, {
 										icon: <Icon icon={ errorIcon } />,
 										type: 'snackbar',
-										id: 'zero-admin-unsaved-changes-save-error',
+										id: 'first-admin-unsaved-changes-save-error',
 									} );
 								}
 							} catch ( error: unknown ) {
@@ -273,7 +273,7 @@ export default function UnsavedChangesModal() {
 									{
 										icon: <Icon icon={ errorIcon } />,
 										type: 'snackbar',
-										id: 'zero-admin-unsaved-changes-save-error',
+										id: 'first-admin-unsaved-changes-save-error',
 									}
 								);
 							} finally {

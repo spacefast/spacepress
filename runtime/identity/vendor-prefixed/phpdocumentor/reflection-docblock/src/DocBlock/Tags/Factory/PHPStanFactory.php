@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
 
 interface PHPStanFactory
 {

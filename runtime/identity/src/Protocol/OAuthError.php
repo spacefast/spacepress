@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Protocol;
+namespace First\Identity\Protocol;
 
 /** An RFC 6749 §5.2 token endpoint error: `{ error, error_description }` with its HTTP status. */
 final class OAuthError extends \RuntimeException

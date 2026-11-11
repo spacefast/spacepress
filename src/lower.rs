@@ -1,4 +1,4 @@
-//! Lowers oxc's TypeScript AST into Zero's IR, enforcing the supported subset.
+//! Lowers oxc's TypeScript AST into First's IR, enforcing the supported subset.
 //! Every construct outside the subset is a build error that names the construct
 //! and says what to write instead.
 
@@ -46,7 +46,7 @@ impl Lowerer {
     }
 
     fn unsupported<T>(&self, s: oxc_span::Span, what: &str, help: &str) -> Result<T> {
-        let mut d = Diag::new(self.sp(s), format!("Zero code doesn't support {what}")).code(
+        let mut d = Diag::new(self.sp(s), format!("First code doesn't support {what}")).code(
             if what.contains("class") || self.class_context.get() {
                 crate::diag::Code::Classes
             } else {
@@ -1217,7 +1217,7 @@ impl Lowerer {
                     };
                     // `key` identifies list items for React's reconciler. It stays in the IR so its
                     // expression evaluates in source order, as in React; it never reaches the HTML
-                    // (`\Zero\Html` skips it) or a component's props (below).
+                    // (`\First\Html` skips it) or a component's props (below).
                     if name == "ref" {
                         return self.unsupported(
                             attr.span,
@@ -1453,7 +1453,7 @@ impl Lowerer {
                             }
                             if !p.computed && p.key.static_name().as_deref() == Some("__proto__") {
                                 // `__proto__: null` makes a null-prototype object. Any other
-                                // value would install a prototype, which Zero doesn't model;
+                                // value would install a prototype, which First doesn't model;
                                 // shorthand and methods define an own property only in name.
                                 if !p.shorthand && !p.method && matches!(p.value, a::Expression::NullLiteral(_)) {
                                     props.push(Prop::NullPrototype);

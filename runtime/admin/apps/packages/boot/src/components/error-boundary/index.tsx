@@ -1,7 +1,7 @@
 import { Component, type ReactNode } from 'react';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
-import { Page } from '@zero-admin/admin-toolkit';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
+import { Page } from '@first-admin/admin-toolkit';
 import { __ } from '@wordpress/i18n';
 import { Button, Notice } from '@wordpress/components';
 
@@ -33,13 +33,13 @@ export class ErrorBoundary extends Component< Props, State > {
 	render() {
 		if ( this.state.hasError ) {
 			return (
-				<Page title={ __( 'Something went wrong', 'zero-admin' ) }>
+				<Page title={ __( 'Something went wrong', 'first-admin' ) }>
 					<Stack direction="column" gap={ 4 } align="flex-start">
 						<div style={ { width: '100%' } }>
 							<Notice status="error" isDismissible={ false }>
 								{ __(
 									`An error occurred while loading the content.`,
-									'zero-admin'
+									'first-admin'
 								) }
 							</Notice>
 						</div>
@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component< Props, State > {
 									} }
 								>
 									<summary>
-										{ __( 'Error Details', 'zero-admin' ) }
+										{ __( 'Error Details', 'first-admin' ) }
 									</summary>
 									<pre
 										style={ {
@@ -78,7 +78,7 @@ export class ErrorBoundary extends Component< Props, State > {
 								} );
 							} }
 						>
-							{ __( 'Try Again', 'zero-admin' ) }
+							{ __( 'Try Again', 'first-admin' ) }
 						</Button>
 					</Stack>
 				</Page>

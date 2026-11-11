@@ -6,11 +6,11 @@ declare(strict_types=1);
  * `auth: true` collections on WordPress (§6.2), in-process (tests/php/wp.php): members are WordPress
  * users, the row is the user plus usermeta, hidden columns (passwordHash, suspendedAt, guest) never
  * leave the runtime, "self" rules, role is admin-only, passwords are WordPress's. Sign-in, tokens,
- * guests and suspension belong to zero-identity and are proven in tests/wp/auth.test.ts and
+ * guests and suspension belong to first-identity and are proven in tests/wp/auth.test.ts and
  * tests/identity; here the viewer is the WordPress user, as a cookie or application password gives it.
  */
 
-use Zero\Viewer;
+use First\Viewer;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -41,7 +41,7 @@ $leaks = static function (mixed $data) use ($hidden): bool {
 // ================================================================ members are WordPress users
 
 // Members read "self", so a public create would answer whether an email is taken (#72): sign-up is
-// zero-identity's; here the trusted pipeline creates members.
+// first-identity's; here the trusted pipeline creates members.
 $ana = ['data' => $db->insert('members', ['email' => 'ana@example.test', 'name' => 'Ana', 'password' => 'correct horse battery'], true)[0]];
 check('trusted creation hashes a write-only password and strips hidden columns', $ana['data']['role'] === 'subscriber' && !$leaks($ana) && !array_key_exists('password', $ana['data']), $ana);
 $anaId = (int) $ana['data']['id'];
@@ -49,7 +49,7 @@ $user = get_userdata($anaId);
 check('the row is a WordPress user: id, email, display name, role', $user instanceof WP_User && $user->user_email === 'ana@example.test' && $user->display_name === 'Ana' && in_array('subscriber', $user->roles, true), $user?->to_array());
 check('the password is stored as a WordPress hash that checks out', str_starts_with($user->user_pass, '$') && wp_check_password('correct horse battery', $user->user_pass, $anaId) && !wp_check_password('wrong', $user->user_pass, $anaId));
 eq('WordPress authenticates the member with it', wp_authenticate('ana@example.test', 'correct horse battery')->ID ?? null, $anaId);
-eq('member columns live in usermeta with the collection\'s defaults', get_user_meta($anaId, 'zero_plan', true), 'free');
+eq('member columns live in usermeta with the collection\'s defaults', get_user_meta($anaId, 'first_plan', true), 'free');
 problem('a short password is refused', fn () => $db->insert('members', ['email' => 'x@example.test', 'name' => 'X', 'password' => 'short'], true, new Viewer(null)), 422, 'invalid_input', '/password');
 problem('a password with NUL is refused before hashing', fn () => $db->insert('members', ['email' => 'nul@example.test', 'name' => 'N', 'password' => "long password\0with nul"], true, new Viewer(null)), 422, 'invalid_input', '/password');
 problem('a taken email is a unique violation', fn () => $db->insert('members', ['email' => 'ana@example.test', 'name' => 'Ana 2', 'password' => 'another long one']), 409, 'unique_violation', '/email');
@@ -103,7 +103,7 @@ check('/_schema never names hidden columns', !str_contains($describe, 'passwordH
 eq('role is admin-only: a member can\'t promote themself', $call('PATCH', "/members/$anaId", ['role' => 'admin'], $anaId)[0], 403);
 problem('… and even an admin can\'t clear it: role is never null', fn () => $db->update('members', ['role' => null], ['id' => $wp->userId('admin')], false, new Viewer($wp->user('admin'))), 422, 'invalid_input', '/role');
 $promoted = $db->update('members', ['role' => 'editor'], ['id' => $boId], true)[0];
-eq('a role change is the WordPress role, and the one Zero authenticates with', [$promoted['role'], (new WP_User($boId))->roles, \Zero\Wp\WpAuth::map(new WP_User($boId))['role']], ['editor', ['editor'], 'editor']);
+eq('a role change is the WordPress role, and the one First authenticates with', [$promoted['role'], (new WP_User($boId))->roles, \First\Wp\WpAuth::map(new WP_User($boId))['role']], ['editor', ['editor'], 'editor']);
 (new WP_User($boId))->set_role('administrator');
 eq('a role given by WordPress is the member\'s role', [$db->findFirst('members', ['where' => ['id' => $boId]])['role'], $call('GET', '/me', null, $boId)[1]['data']['member']['role'] ?? null], ['admin', 'admin']);
 [$s, $renamed] = $call('PATCH', "/members/$anaId", ['name' => 'Ana B', 'password' => 'a brand new password'], $anaId);
@@ -116,12 +116,12 @@ eq('the display name followed', get_userdata($anaId)->display_name, 'Ana B');
 try {
     $db->transaction(static function () use ($db, $anaId): void {
         $db->update('members', ['plan' => 'pro'], ['id' => $anaId]);
-        get_user_meta($anaId, 'zero_plan', true); // a hook reads the new value
+        get_user_meta($anaId, 'first_plan', true); // a hook reads the new value
         throw new RuntimeException('rollback');
     });
 } catch (RuntimeException) {
 }
-eq('a rolled-back member update leaves no usermeta in WordPress\'s cache', [get_user_meta($anaId, 'zero_plan', true), $db->findFirst('members', ['where' => ['id' => $anaId]])['plan']], ['free', 'free']);
+eq('a rolled-back member update leaves no usermeta in WordPress\'s cache', [get_user_meta($anaId, 'first_plan', true), $db->findFirst('members', ['where' => ['id' => $anaId]])['plan']], ['free', 'free']);
 $gone = $db->insert('members', ['email' => 'gone@example.test', 'name' => 'Gone', 'password' => 'gone password 1'], true)[0];
 $db->delete('members', ['id' => $gone['id']]);
 eq('deleting a member deletes the WordPress user', [get_userdata((int) $gone['id']), $db->findFirst('members', ['where' => ['id' => $gone['id']]])], [false, null]);

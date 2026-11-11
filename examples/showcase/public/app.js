@@ -1,6 +1,6 @@
 import { createClient } from "./client/index.js";
 
-const zero = createClient({ url: "/wp-json/zero/v1" });
+const first = createClient({ url: "/wp-json/first/v1" });
 const element = (id) => document.getElementById(id);
 const node = (tag, className = "", text) => {
   const result = document.createElement(tag);
@@ -21,7 +21,7 @@ function safeUrl(value) {
 
 function editorLink(collection, id, label) {
   const link = node("a", "", label);
-  link.href = `/zero-admin/collections/${collection}/${encodeURIComponent(id)}`;
+  link.href = `/first-admin/collections/${collection}/${encodeURIComponent(id)}`;
   link.target = "_blank";
   link.setAttribute("aria-label", `${label} (opens in a new tab)`);
   link.rel = "noopener noreferrer";
@@ -161,7 +161,7 @@ function storyCard(story, openStories) {
   details.append(node("summary", "", "Read story & fields"));
 
   const actions = node("div", "story-edit");
-  const refreshButton = node("button", "", "Refresh from Zero ↻");
+  const refreshButton = node("button", "", "Refresh from First ↻");
   refreshButton.type = "button";
   refreshButton.id = `story-refresh-${story.id}`;
   refreshButton.dataset.refresh = "";
@@ -283,11 +283,11 @@ async function refresh() {
   element("load-status").textContent = "Reading from the API…";
   try {
     const [settings, stories, tasks] = await Promise.all([
-      zero.globals.settings.get(),
-      listAll(zero.stories, {
+      first.globals.settings.get(),
+      listAll(first.stories, {
         with: { tasks: true, cover: true },
       }),
-      listAll(zero.tasks, { with: { story: true } }),
+      listAll(first.tasks, { with: { story: true } }),
     ]);
     element("site-title").textContent = settings.title;
     element("description").textContent = settings.description;
@@ -314,7 +314,7 @@ async function refresh() {
       ? " Previously loaded content is still shown."
       : "";
     element("load-status").textContent =
-      `Could not refresh.${previous} ${error.message} Try Refresh from Zero again.`;
+      `Could not refresh.${previous} ${error.message} Try Refresh from First again.`;
     element("load-status").className = "error";
   } finally {
     element("stories").setAttribute("aria-busy", "false");
@@ -336,7 +336,7 @@ element("headline-form").addEventListener("submit", async (event) => {
   const button = event.currentTarget.querySelector("button");
   button.disabled = true;
   try {
-    const result = await zero.actions.previewHeadline({
+    const result = await first.actions.previewHeadline({
       title: element("headline").value,
     });
     element("result").textContent = JSON.stringify(result, null, 2);

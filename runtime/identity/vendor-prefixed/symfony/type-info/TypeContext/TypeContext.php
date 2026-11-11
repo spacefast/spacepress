@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext;
+namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext;
 
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Type resolving context.

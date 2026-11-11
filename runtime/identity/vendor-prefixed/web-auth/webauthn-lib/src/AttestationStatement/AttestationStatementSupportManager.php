@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\AttestationStatement;
+namespace First\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
 use function sprintf;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 class AttestationStatementSupportManager
 {

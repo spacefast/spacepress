@@ -1,6 +1,6 @@
-//! Standard host globals, lowered onto the PHP runtime: the global `fetch` (`Zero\Fetch`),
-//! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`Zero\Env`), the global `crypto`'s
-//! `randomUUID` and the `node:crypto` subset (`Zero\Crypto`).
+//! Standard host globals, lowered onto the PHP runtime: the global `fetch` (`First\Fetch`),
+//! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`First\Env`), the global `crypto`'s
+//! `randomUUID` and the `node:crypto` subset (`First\Crypto`).
 //!
 //! Every outbound call, crypto call and environment read is reported to [`Compiler::host_use`]
 //! before its PHP is emitted, so one function sees all of them. Forms that cannot be lowered
@@ -52,7 +52,7 @@ impl Compiler<'_, '_> {
     /// URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
     fn fetch_hosts(&self) -> String {
         match &self.plugin {
-            Some((i, _)) => format!(", \\ZeroApp\\{}()", self.host_functions[*i]),
+            Some((i, _)) => format!(", \\FirstApp\\{}()", self.host_functions[*i]),
             None => String::new(),
         }
     }
@@ -85,7 +85,7 @@ impl Compiler<'_, '_> {
     fn env_read(&mut self, name: &str, span: Span) -> Result<Out> {
         self.host_use(HostUse::EnvRead(name), span)?;
         Ok(Out::atom(
-            format!("(\\Zero\\Env::get({}) ?? \\Zero\\Js::undefined())", php_str(name)),
+            format!("(\\First\\Env::get({}) ?? \\First\\Js::undefined())", php_str(name)),
             Ty::union([Ty::Str, Ty::Undefined]),
         ))
     }
@@ -130,7 +130,7 @@ impl Compiler<'_, '_> {
             } else {
                 err_help(
                     prop_span,
-                    format!("`process.{prop}` isn't available in Zero code"),
+                    format!("`process.{prop}` isn't available in First code"),
                     "handlers run in PHP; only `process.env.NAME` is supported",
                 )
             };
@@ -139,7 +139,7 @@ impl Compiler<'_, '_> {
             return match prop {
                 "subtle" => err_help(
                     prop_span,
-                    "`crypto.subtle` isn't available in Zero code",
+                    "`crypto.subtle` isn't available in First code",
                     "hash with `createHash(\"sha256\").update(text).digest(\"hex\")` from \"node:crypto\"",
                 ),
                 "randomUUID" => err_help(
@@ -153,7 +153,7 @@ impl Compiler<'_, '_> {
         if self.is_global(obj, "Buffer") {
             return err_help(
                 prop_span,
-                "Buffer values aren't available in Zero code",
+                "Buffer values aren't available in First code",
                 "compare with `timingSafeEqual(Buffer.from(a), Buffer.from(b))` or measure with `Buffer.byteLength(text)`",
             );
         }
@@ -195,7 +195,7 @@ impl Compiler<'_, '_> {
         {
             return err_help(
                 target.span,
-                "`process.env` and host objects are read-only in Zero code",
+                "`process.env` and host objects are read-only in First code",
                 "keep the value in a local variable or the database",
             );
         }
@@ -256,7 +256,7 @@ impl Compiler<'_, '_> {
                 if self.is_global(obj, "process") || self.is_process_env(obj) {
                     return err_help(
                         *prop_span,
-                        format!("`{prop}` isn't available on `process` in Zero code"),
+                        format!("`{prop}` isn't available on `process` in First code"),
                         "handlers run in PHP; only `process.env.NAME` is supported",
                     );
                 }
@@ -285,21 +285,21 @@ impl Compiler<'_, '_> {
             "Request" => {
                 return err_help(
                     span,
-                    "`new Request` isn't available in Zero code",
+                    "`new Request` isn't available in First code",
                     "pass the URL and init to `fetch(url, init)`",
                 );
             }
             "Response" => {
                 return err_help(
                     span,
-                    "`new Response` isn't available in Zero code",
+                    "`new Response` isn't available in First code",
                     "return a value, or `{ status, headers, body }` from a route",
                 );
             }
             "FormData" | "Blob" => {
                 return err_help(
                     span,
-                    format!("`{g}` isn't available in Zero code"),
+                    format!("`{g}` isn't available in First code"),
                     "send a string or URLSearchParams body",
                 );
             }
@@ -324,7 +324,7 @@ impl Compiler<'_, '_> {
                 v.php
             }
         };
-        Ok(Some(Out::atom(format!("(new \\Zero\\{class}({init}))"), Ty::Host(ty))))
+        Ok(Some(Out::atom(format!("(new \\First\\{class}({init}))"), Ty::Host(ty))))
     }
 
     /// `fetch(url, init?)`, the standard signature, → `Promise<Response>`.
@@ -345,7 +345,7 @@ impl Compiler<'_, '_> {
             return err_help(
                 url_expr.span,
                 format!("fetch() needs a URL string or URL, not {}", url.ty.describe()),
-                "pass the URL as a string or a URL; Request objects aren't available in Zero code",
+                "pass the URL as a string or a URL; Request objects aren't available in First code",
             );
         }
         // A WHATWG URL is fetch input as its href.
@@ -377,9 +377,9 @@ impl Compiler<'_, '_> {
                 let init = self.expr(init_expr)?;
                 let init = self.finish_value(init, init_expr.span)?;
                 if init.ty == Ty::Dynamic {
-                    // Checked JavaScript: Zero\Fetch::call refuses other keys and values at runtime.
+                    // Checked JavaScript: First\Fetch::call refuses other keys and values at runtime.
                     return Ok(Out::atom(
-                        format!("\\Zero\\Fetch::call({url_php}, {}{})", init.php, self.fetch_hosts()),
+                        format!("\\First\\Fetch::call({url_php}, {}{})", init.php, self.fetch_hosts()),
                         Ty::Promise(Box::new(Ty::Host(HostTy::Response))),
                     ));
                 }
@@ -399,7 +399,7 @@ impl Compiler<'_, '_> {
             }
         };
         Ok(Out::atom(
-            format!("\\Zero\\Fetch::call({url_php}, {init}{})", self.fetch_hosts()),
+            format!("\\First\\Fetch::call({url_php}, {init}{})", self.fetch_hosts()),
             Ty::Promise(Box::new(Ty::Host(HostTy::Response))),
         ))
     }
@@ -454,7 +454,7 @@ impl Compiler<'_, '_> {
             if u.len() != 1 {
                 return err_help(
                     span,
-                    "update() takes one string in Zero code",
+                    "update() takes one string in First code",
                     "input encodings aren't supported; pass text",
                 );
             }
@@ -468,7 +468,7 @@ impl Compiler<'_, '_> {
         let parts = format!("[{}]", parts.join(", "));
         let php = match (f, base.len()) {
             ("createHash", 1) => format!(
-                "\\Zero\\Crypto::hash({}, {parts}, {})",
+                "\\First\\Crypto::hash({}, {parts}, {})",
                 php_str(&algorithm),
                 php_str(encoding)
             ),
@@ -477,7 +477,7 @@ impl Compiler<'_, '_> {
                 if let Some(name) = self.env_name(key) {
                     self.host_use(HostUse::EnvRead(&name), key.span)?;
                     format!(
-                        "\\Zero\\Crypto::hmacEnv({}, {}, {parts}, {})",
+                        "\\First\\Crypto::hmacEnv({}, {}, {parts}, {})",
                         php_str(&algorithm),
                         php_str(&name),
                         php_str(encoding)
@@ -489,7 +489,7 @@ impl Compiler<'_, '_> {
                         "pass the key as a string, e.g. `process.env.SECRET!`",
                     )?;
                     format!(
-                        "\\Zero\\Crypto::hmac({}, {key}, {parts}, {})",
+                        "\\First\\Crypto::hmac({}, {key}, {parts}, {})",
                         php_str(&algorithm),
                         php_str(encoding)
                     )
@@ -534,7 +534,7 @@ impl Compiler<'_, '_> {
             );
         }
         Ok(Out::atom(
-            format!("\\Zero\\Crypto::randomBytes({}, {})", n.php, php_str(encoding)),
+            format!("\\First\\Crypto::randomBytes({}, {})", n.php, php_str(encoding)),
             Ty::Str,
         ))
     }
@@ -544,10 +544,10 @@ impl Compiler<'_, '_> {
         match f {
             "randomUUID" => {
                 if !args.is_empty() {
-                    return err(span, "randomUUID() takes no options in Zero code");
+                    return err(span, "randomUUID() takes no options in First code");
                 }
                 self.host_use(HostUse::Crypto(f), span)?;
-                Ok(Out::atom("\\Zero\\Crypto::randomUUID()", Ty::Str))
+                Ok(Out::atom("\\First\\Crypto::randomUUID()", Ty::Str))
             }
             "timingSafeEqual" => {
                 let mut argv = Vec::new();
@@ -567,18 +567,18 @@ impl Compiler<'_, '_> {
                 }
                 self.host_use(HostUse::Crypto(f), span)?;
                 Ok(Out::atom(
-                    format!("\\Zero\\Crypto::timingSafeEqual({})", argv.join(", ")),
+                    format!("\\First\\Crypto::timingSafeEqual({})", argv.join(", ")),
                     Ty::Bool,
                 ))
             }
             "randomBytes" => err_help(
                 span,
-                "randomBytes() returns a Buffer, which Zero doesn't compile",
+                "randomBytes() returns a Buffer, which First doesn't compile",
                 "write `randomBytes(n).toString(\"hex\")`",
             ),
             _ => err_help(
                 span,
-                format!("{f}() returns a stateful object, which Zero compiles only as one expression"),
+                format!("{f}() returns a stateful object, which First compiles only as one expression"),
                 if f == "createHash" {
                     "write `createHash(\"sha256\").update(text).digest(\"hex\")`"
                 } else {
@@ -607,7 +607,7 @@ impl Compiler<'_, '_> {
         if prop != "byteLength" {
             return err_help(
                 prop_span,
-                "Buffer values aren't available in Zero code",
+                "Buffer values aren't available in First code",
                 "compare with `timingSafeEqual(Buffer.from(a), Buffer.from(b))` or measure with `Buffer.byteLength(text)`",
             );
         }
@@ -625,19 +625,19 @@ impl Compiler<'_, '_> {
             return err(span, "crypto.randomUUID() takes no arguments");
         }
         self.host_use(HostUse::Crypto("randomUUID"), span)?;
-        Ok(Out::atom("\\Zero\\Crypto::randomUUID()", Ty::Str))
+        Ok(Out::atom("\\First\\Crypto::randomUUID()", Ty::Str))
     }
 
     fn web_crypto_refusal<T>(&self, prop: &str, span: Span) -> Result<T> {
         match prop {
             "getRandomValues" => err_help(
                 span,
-                "`crypto.getRandomValues` needs typed arrays, which Zero doesn't compile",
+                "`crypto.getRandomValues` needs typed arrays, which First doesn't compile",
                 "use `randomBytes(n).toString(\"hex\")` from \"node:crypto\"",
             ),
             _ => err_help(
                 span,
-                format!("`crypto.{prop}` isn't available in Zero code"),
+                format!("`crypto.{prop}` isn't available in First code"),
                 "the global crypto has `randomUUID()`; import hashes and MACs from \"node:crypto\"",
             ),
         }
@@ -652,7 +652,7 @@ impl Compiler<'_, '_> {
             ] if ENCODINGS.contains(&e.as_str()) => Ok(ENCODINGS.iter().find(|x| **x == e).expect("listed")),
             [] => err_help(
                 span,
-                format!("{call}() without an encoding returns a Buffer, which Zero doesn't compile"),
+                format!("{call}() without an encoding returns a Buffer, which First doesn't compile"),
                 format!("write {call}(\"hex\")"),
             ),
             _ => err_help(
@@ -698,7 +698,7 @@ impl Compiler<'_, '_> {
             (HostTy::Response, "headers") => field("headers", Ty::Host(HostTy::Headers)),
             (HostTy::Response, "body") => err_help(
                 span,
-                "response streams aren't available in Zero code",
+                "response streams aren't available in First code",
                 "read the body with `await response.text()` or `await response.json()`",
             ),
             (_, m) if host_methods(h).contains(&m) => err_help(
@@ -707,7 +707,7 @@ impl Compiler<'_, '_> {
                 format!("call it: `.{m}(...)`"),
             ),
             _ => {
-                let mut d = Diag::new(span, format!("{} has no property `{prop}` in Zero code", h.name()));
+                let mut d = Diag::new(span, format!("{} has no property `{prop}` in First code", h.name()));
                 let known: &[&str] = match h {
                     HostTy::Response => &["status", "statusText", "ok", "url", "redirected", "bodyUsed", "headers"],
                     _ => host_methods(h),
@@ -744,12 +744,12 @@ impl Compiler<'_, '_> {
             }
             (HostTy::Response, "arrayBuffer" | "blob" | "bytes" | "formData") => err_help(
                 m_span,
-                "binary and form bodies aren't available in Zero code",
+                "binary and form bodies aren't available in First code",
                 "read the body with `await response.text()` or `await response.json()`",
             ),
             (HostTy::Response, "clone") => err_help(
                 m_span,
-                "responses can't be cloned in Zero code",
+                "responses can't be cloned in First code",
                 "read the body once into a variable and use that",
             ),
             (HostTy::Headers, "get") => {
@@ -778,11 +778,11 @@ impl Compiler<'_, '_> {
             }
             (HostTy::Headers, "entries" | "keys" | "values" | "getSetCookie") => err_help(
                 m_span,
-                format!("`Headers.{m}` isn't available in Zero code"),
+                format!("`Headers.{m}` isn't available in First code"),
                 "walk them with `headers.forEach((value, name) => ...)`; set-cookie is never returned",
             ),
             _ => {
-                let mut d = Diag::new(m_span, format!("{} has no method `{m}` in Zero code", h.name()));
+                let mut d = Diag::new(m_span, format!("{} has no method `{m}` in First code", h.name()));
                 if let Some(s) = suggest(m, host_methods(h).iter().copied()) {
                     d = d.help(format!("did you mean `{s}`?"));
                 }
@@ -818,33 +818,33 @@ fn host_methods(h: &HostTy) -> &'static [&'static str] {
 }
 
 fn unknown_node_crypto(name: &str, span: Span) -> Diag {
-    let d = Diag::new(span, format!("\"node:crypto\" has no `{name}` in Zero code"));
+    let d = Diag::new(span, format!("\"node:crypto\" has no `{name}` in First code"));
     match suggest(name, NODE_CRYPTO.iter().copied()) {
         Some(s) => d.help(format!("did you mean `{s}`?")),
         None => d.help(format!(
-            "Zero compiles {} from \"node:crypto\" to PHP",
+            "First compiles {} from \"node:crypto\" to PHP",
             NODE_CRYPTO.join(", ")
         )),
     }
 }
 
-/// A `RequestInit` key Zero lowers, or a located refusal with a fix.
+/// A `RequestInit` key First lowers, or a located refusal with a fix.
 fn init_key(key: &str, span: Span) -> Result<()> {
     match key {
         "method" | "headers" | "body" | "redirect" => Ok(()),
         "signal" => err_help(
             span,
-            "fetch() `signal` isn't available in Zero code",
+            "fetch() `signal` isn't available in First code",
             "remove it; every call ends after 10 s",
         ),
         "credentials" | "mode" | "cache" | "referrer" | "referrerPolicy" | "integrity" | "keepalive" | "priority"
         | "window" | "duplex" | "dispatcher" => err_help(
             span,
             format!("fetch() `{key}` has no effect in a server-side request"),
-            "remove it; Zero sends no cookies and keeps no HTTP cache",
+            "remove it; First sends no cookies and keeps no HTTP cache",
         ),
         _ => {
-            let mut d = Diag::new(span, format!("fetch() init has no option `{key}` in Zero code"));
+            let mut d = Diag::new(span, format!("fetch() init has no option `{key}` in First code"));
             if let Some(s) = suggest(key, ["method", "headers", "body", "redirect"]) {
                 d = d.help(format!("did you mean `{s}`?"));
             } else {

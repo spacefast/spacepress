@@ -2,12 +2,12 @@
 /**
  * Status field definition for core plugins fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'         => 'text',
-	'label'        => __( 'Status', 'zero-admin' ),
+	'label'        => __( 'Status', 'first-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => array(
 		'operators' => array( 'isAny', 'isNone' ),
@@ -15,11 +15,11 @@ return array(
 	'elements'     => array(
 		array(
 			'value' => 'active',
-			'label' => __( 'Active', 'zero-admin' ),
+			'label' => __( 'Active', 'first-admin' ),
 		),
 		array(
 			'value' => 'inactive',
-			'label' => __( 'Inactive', 'zero-admin' ),
+			'label' => __( 'Inactive', 'first-admin' ),
 		),
 	),
 );

@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Structure;
+namespace First\Identity\Vendor\Cose\Structure;
 
-use Zero\Identity\Vendor\CBOR\ByteStringObject;
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\Decoder;
-use Zero\Identity\Vendor\CBOR\DecoderInterface;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
-use Zero\Identity\Vendor\CBOR\ListObject;
-use Zero\Identity\Vendor\CBOR\MapObject;
-use Zero\Identity\Vendor\CBOR\NegativeIntegerObject;
-use Zero\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
-use Zero\Identity\Vendor\CBOR\StringStream;
-use Zero\Identity\Vendor\CBOR\TextStringObject;
-use Zero\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use First\Identity\Vendor\CBOR\ByteStringObject;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\Decoder;
+use First\Identity\Vendor\CBOR\DecoderInterface;
+use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
+use First\Identity\Vendor\CBOR\ListObject;
+use First\Identity\Vendor\CBOR\MapObject;
+use First\Identity\Vendor\CBOR\NegativeIntegerObject;
+use First\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
+use First\Identity\Vendor\CBOR\StringStream;
+use First\Identity\Vendor\CBOR\TextStringObject;
+use First\Identity\Vendor\CBOR\UnsignedIntegerObject;
 use function in_array;
 use InvalidArgumentException;
 use function is_int;
@@ -32,7 +32,7 @@ use function strlen;
  * recipient lists.
  *
  * These are deliberately static functions over plain CBOR objects rather than methods on a message class. Since
- * spomky-labs/cbor-php 3.4.0 the six COSE structures live upstream, as Zero\Identity\Vendor\CBOR\Tag\CoseSign1Tag and its siblings: that
+ * spomky-labs/cbor-php 3.4.0 the six COSE structures live upstream, as First\Identity\Vendor\CBOR\Tag\CoseSign1Tag and its siblings: that
  * library owns the shape of a message, this one owns what RFC 9052 says the shape means. Everything here therefore
  * applies to an upstream message, to the deprecated Cose\...Tag classes, and to a header map a caller assembled
  * itself.

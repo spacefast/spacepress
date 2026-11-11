@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Uid;
+namespace First\Identity\Vendor\Symfony\Component\Uid;
 
-use Zero\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
 
 /**
  * @internal

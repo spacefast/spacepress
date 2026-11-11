@@ -1,5 +1,5 @@
 /target
-.zero/
+.first/
 
 **/vendor/
 /scripts/.tools/
@@ -29,4 +29,4 @@ runtime/identity/apps/node_modules/
 
 /tests/wp/.wp-content-spacefast/
 /tests/host-types/node_modules/
-**/zero/dist/
+**/first/dist/

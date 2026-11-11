@@ -1,7 +1,7 @@
 # Use the notebook with an agent
 
-Connect to `/wp-json/mcp/zero-agents` using the agent user's WordPress application
-password. This is Zero's MCP Adapter server, not EmDash's OAuth endpoint. Complete
+Connect to `/wp-json/mcp/first-agents` using the agent user's WordPress application
+password. This is First's MCP Adapter server, not EmDash's OAuth endpoint. Complete
 `initialize`, retain `Mcp-Session-Id` and the negotiated protocol version, then
 send `notifications/initialized`. Always call `tools/list` before constructing a
 tool call: the installed config owns names, schemas and permissions.
@@ -27,7 +27,7 @@ reviewed; it does not generate prose, invoke AI, or certify editorial quality.
 For deterministic local execution, run the real queue after enqueueing:
 
 ```sh
-target/debug/zero wp --site /absolute/path/to/notebook action-scheduler run --hooks=zero_job
+target/debug/first wp --site /absolute/path/to/notebook action-scheduler run --hooks=first_job
 ```
 
 Editors and administrators can edit all articles. Subscribers can echo and read
@@ -38,15 +38,15 @@ settings and operator action opt out of agent discovery; they keep their own
 admin-only canonical REST access. Jobs default to hidden; only `review` opts in.
 
 Use this copyable command to complete an authenticated handshake and call echo.
-`ZERO_AGENT_CREDENTIAL` is `username:application-password`, supplied from your
+`FIRST_AGENT_CREDENTIAL` is `username:application-password`, supplied from your
 secret store. Do not paste it into tracked files or terminal history.
 
 ```sh
-ZERO_AGENT_URL=http://localhost:8789 node --input-type=module <<'JS'
-const url = process.env.ZERO_AGENT_URL + '/wp-json/mcp/zero-agents';
-if (!process.env.ZERO_AGENT_CREDENTIAL) throw new Error('Set ZERO_AGENT_CREDENTIAL from your secret store');
+FIRST_AGENT_URL=http://localhost:8789 node --input-type=module <<'JS'
+const url = process.env.FIRST_AGENT_URL + '/wp-json/mcp/first-agents';
+if (!process.env.FIRST_AGENT_CREDENTIAL) throw new Error('Set FIRST_AGENT_CREDENTIAL from your secret store');
 const headers = {
-  authorization: 'Basic ' + Buffer.from(process.env.ZERO_AGENT_CREDENTIAL).toString('base64'),
+  authorization: 'Basic ' + Buffer.from(process.env.FIRST_AGENT_CREDENTIAL).toString('base64'),
   'content-type': 'application/json', accept: 'application/json, text/event-stream',
 };
 let id = 0;
@@ -73,7 +73,7 @@ JS
 
 Canonical API successes use `{ data }`; failures are RFC 9457 problems. Core
 Abilities use `/wp-json/wp-abilities/v1/abilities/agents/<ability>/run`, with
-`{ "input": { ... } }` for writes, and WordPress error envelopes with `zero_`
+`{ "input": { ... } }` for writes, and WordPress error envelopes with `first_`
 codes. MCP tool execution failures return `isError: true` and text content; do
 not interpret HTTP 200 alone as success. Successful results use
 `structuredContent`. A job enqueue result is a queue ID, not proof it ran.

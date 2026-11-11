@@ -39,9 +39,9 @@ export default function WidgetModalInserter( {
 	return (
 		<Modal
 			size="large"
-			title={ __( 'Add widget', 'zero-admin' ) }
+			title={ __( 'Add widget', 'first-admin' ) }
 			onRequestClose={ onClose }
-			className="zero-admin-dashboard-widget-modal-inserter"
+			className="first-admin-dashboard-widget-modal-inserter"
 			focusOnMount="firstContentElement"
 		>
 			<WidgetPicker onSelect={ selectWidgets } />

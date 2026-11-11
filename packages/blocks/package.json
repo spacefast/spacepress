@@ -1,5 +1,5 @@
 {
-  "name": "@spacefast/zero-blocks",
+  "name": "@spacefast/first-blocks",
   "version": "0.1.0",
   "description": "Write Gutenberg content and whole WordPress block themes in TSX.",
   "license": "MIT",
@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "bin": {
-    "zero-blocks": "./bin/zero-blocks.mjs"
+    "first-blocks": "./bin/first-blocks.mjs"
   },
   "files": [
     "bin",

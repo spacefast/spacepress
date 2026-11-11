@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest;
 
 use LogicException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute\ExtensionRequestValue;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute\ExtensionRequestValue;
 use UnexpectedValueException;
 
 /**

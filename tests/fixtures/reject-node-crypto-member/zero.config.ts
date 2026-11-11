@@ -1,4 +1,0 @@
-import { action, defineConfig, text } from "zero";
-import { createCipheriv } from "node:crypto";
-export default defineConfig({ actions: { a: action({ input: { d: text().notNull() }, access: "anyone",
-  handler(i) { return String(createCipheriv); } }) } });

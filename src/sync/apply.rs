@@ -1,4 +1,4 @@
-//! One `zero sync` run (design §5.4): for every synced collection, references first, read the files,
+//! One `first sync` run (design §5.4): for every synced collection, references first, read the files,
 //! the site and the bases, plan each uid, apply, and record the new bases.
 
 use crate::sync::base::Bases;
@@ -193,7 +193,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
                 // Never write over an edit (or recreate a deletion) made since the file was read.
                 if !unchanged(&path, Some(&bytes)) {
                     report.fail(format!(
-                        "{rel}: changed while zero sync ran; left as it is, run zero sync again"
+                        "{rel}: changed while first sync ran; left as it is, run first sync again"
                     ));
                     clean = false;
                     continue;
@@ -208,7 +208,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
                 uid
             }
             None => {
-                report.pending(format!("{rel}: new file; zero sync will give it a uid and push it"));
+                report.pending(format!("{rel}: new file; first sync will give it a uid and push it"));
                 continue;
             }
             Some(_) => {
@@ -370,7 +370,7 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
         .map_err(|p| report.problem("could not read the site's schema", &p))?;
     let site = schema["site"]["id"]
         .as_str()
-        .ok_or("the site's /_schema has no site id; rebuild and deploy with this Zero version")?
+        .ok_or("the site's /_schema has no site id; rebuild and deploy with this First version")?
         .to_string();
     let mut bases = Bases::load(project)?;
     let known = bases.knows_site(&site);
@@ -587,7 +587,10 @@ fn collection(
                     }
                 }
                 Err(Stale) => {
-                    report.fail(format!("{}/{uid}: the site kept changing; run zero sync again", c.name));
+                    report.fail(format!(
+                        "{}/{uid}: the site kept changing; run first sync again",
+                        c.name
+                    ));
                     break;
                 }
             }
@@ -727,7 +730,7 @@ fn perform(
                 Ok(None) => {}
                 Ok(Some(back)) => {
                     report.fail(format!(
-                        "{}: reappeared while zero sync ran; nothing was trashed, run zero sync again",
+                        "{}: reappeared while first sync ran; nothing was trashed, run first sync again",
                         report.rel(&back)
                     ));
                     return Ok(());
@@ -746,11 +749,11 @@ fn perform(
                     match reappeared(c, uid) {
                         Ok(None) => report.applied(),
                         Ok(Some(back)) => report.fail(format!(
-                            "{}: came back while its record was being trashed; the next zero sync pushes it again",
+                            "{}: came back while its record was being trashed; the next first sync pushes it again",
                             report.rel(&back)
                         )),
                         Err(e) => report.fail(format!(
-                            "{e}; the record was trashed, check the file and run zero sync again"
+                            "{e}; the record was trashed, check the file and run first sync again"
                         )),
                     }
                 }
@@ -770,7 +773,7 @@ fn perform(
             let path = &f.path;
             if !unchanged(path, Some(&f.bytes)) {
                 report.fail(format!(
-                    "{}: changed while zero sync ran; left as it is, run zero sync again",
+                    "{}: changed while first sync ran; left as it is, run first sync again",
                     report.rel(path)
                 ));
                 return Ok(());
@@ -789,7 +792,7 @@ fn perform(
                 Remote::Live(item) => Some(item),
                 _ => None,
             };
-            let path = report.project().join(".zero/conflicts").join(format!("{uid}.md"));
+            let path = report.project().join(".first/conflicts").join(format!("{uid}.md"));
             if !options.check {
                 let text = conflict::render(conflict::Conflict {
                     uid,
@@ -904,7 +907,7 @@ fn write_record(c: &Collection, current: Option<&File>, record: &Value, report: 
     if changed {
         let shown = current.map_or(target.clone(), |f| f.path.clone());
         report.fail(format!(
-            "{}: changed while zero sync ran; left as it is, run zero sync again",
+            "{}: changed while first sync ran; left as it is, run first sync again",
             report.rel(&shown)
         ));
         return false;
@@ -944,14 +947,14 @@ fn write_record(c: &Collection, current: Option<&File>, record: &Value, report: 
     true
 }
 
-/// `zero sync resolve <uid>`: the edited conflict file becomes the record on both sides.
+/// `first sync resolve <uid>`: the edited conflict file becomes the record on both sides.
 pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) -> Result<(), String> {
-    let path = project.join(".zero/conflicts").join(format!("{uid}.md"));
+    let path = project.join(".first/conflicts").join(format!("{uid}.md"));
     let raw = std::fs::read(&path).map_err(|e| format!("{}: {e}", report.rel(&path)))?;
     let draft = bytes_digest(&raw);
     let text = String::from_utf8(raw).map_err(|_| format!("{}: not UTF-8 text", report.rel(&path)))?;
     let (files_digest, site_digest) =
-        conflict::digests(&text).ok_or("the conflict file's header is missing; rerun zero sync")?;
+        conflict::digests(&text).ok_or("the conflict file's header is missing; rerun first sync")?;
     let resolved = conflict::resolved(&text)?;
     let schema = client.get("/_schema").map_err(|p| report.problem("site", &p))?;
     let site = schema["site"]["id"]
@@ -986,7 +989,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         };
         if local_now != files_digest || remote_now != site_digest {
             return Err(format!(
-                "{uid} changed since the conflict was written; delete .zero/conflicts/{uid}.md and run zero sync to write a fresh one"
+                "{uid} changed since the conflict was written; delete .first/conflicts/{uid}.md and run first sync to write a fresh one"
             ));
         }
         // Keeping the deleted side: the draft below its header is exactly `(deleted)`. Both sides go.
@@ -1017,7 +1020,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
                 // Edited while the trash request ran: keep that edit, and the draft with it.
                 if !unchanged(&f.path, Some(&f.bytes)) {
                     return Err(format!(
-                        "{} changed while resolve ran; the record was trashed but your newer file is kept (the next zero sync pushes it back)",
+                        "{} changed while resolve ran; the record was trashed but your newer file is kept (the next first sync pushes it back)",
                         report.rel(&f.path)
                     ));
                 }
@@ -1084,7 +1087,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
             let site_digest = answer["digest"].as_str().unwrap_or_default();
             write_atomic(&path, conflict::with_digests(&now, &local, site_digest).as_bytes())?;
             return Err(format!(
-                "{} changed while resolve ran; the version read before was applied, and your newer edit is kept there (run zero sync resolve again to apply it)",
+                "{} changed while resolve ran; the version read before was applied, and your newer edit is kept there (run first sync resolve again to apply it)",
                 report.rel(&path)
             ));
         }

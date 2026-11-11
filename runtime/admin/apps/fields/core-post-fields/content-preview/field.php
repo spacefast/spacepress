@@ -2,12 +2,12 @@
 /**
  * Content Preview field definition for core post fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Content preview', 'zero-admin' ),
+	'label'         => __( 'Content preview', 'first-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

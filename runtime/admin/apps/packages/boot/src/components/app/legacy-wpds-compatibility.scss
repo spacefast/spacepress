@@ -6,7 +6,7 @@
 
 /* stylelint-disable plugin-wpds/no-setting-wpds-custom-properties */
 
-.zero-admin-page[class*="woocommerceAnalyticsDashboard"] {
+.first-admin-page[class*="woocommerceAnalyticsDashboard"] {
 	--wpds-border-radius-large: var( --wpds-border-radius-lg );
 	--wpds-border-radius-small: var( --wpds-border-radius-sm );
 	--wpds-border-radius-medium: var( --wpds-border-radius-md );

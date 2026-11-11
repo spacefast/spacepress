@@ -1,4 +1,4 @@
-import type { View } from '@zero-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 
 type ValidViewType = { [ K in View[ 'type' ] ]: true };
 

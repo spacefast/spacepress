@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/plugin",
+	"name": "@first-admin/plugin",
 	"version": "1.0.0",
 	"private": true,
 	"route": {

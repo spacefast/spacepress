@@ -60,7 +60,7 @@ export default function Variation( {
 	if ( variation?.description ) {
 		label = sprintf(
 			/* translators: 1: variation title. 2: variation description. */
-			_x( '%1$s (%2$s)', 'variation label', 'zero-admin' ),
+			_x( '%1$s (%2$s)', 'variation label', 'first-admin' ),
 			variation?.title,
 			variation?.description
 		);
@@ -68,7 +68,7 @@ export default function Variation( {
 
 	const content = (
 		<div
-			className={ clsx( 'zero-admin-global-styles-variations_item', {
+			className={ clsx( 'first-admin-global-styles-variations_item', {
 				'is-active': isActive,
 			} ) }
 			role="button"
@@ -82,7 +82,7 @@ export default function Variation( {
 		>
 			<div
 				className={ clsx(
-					'zero-admin-global-styles-variations_item-preview',
+					'first-admin-global-styles-variations_item-preview',
 					{ 'is-pill': isPill }
 				) }
 			>

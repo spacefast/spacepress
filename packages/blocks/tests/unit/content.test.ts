@@ -41,7 +41,7 @@ test("an error from a classic-fallback element inside a component names the comp
 });
 
 test("a thrown error is located in the author's file when the author's and the scratch paths contain spaces, parentheses and a colon", async () => {
-  const base = mkdtempSync(path.join(tmpdir(), "zero blocks (1) "));
+  const base = mkdtempSync(path.join(tmpdir(), "first blocks (1) "));
   const authored = path.join(base, "my site (2)");
   const scratch = path.join(base, "tmp: dir");
   cpSync(fixture("throws.tsx"), path.join(authored, "throws.tsx"), { recursive: true });
@@ -66,7 +66,7 @@ test("a stack frame naming a longer path that ends with the bundle's path is not
 });
 
 test("compiling from inside withBlockApi is refused, since the module would see the DOM, and the globals are still restored", async () => {
-  const scratchRoot = mkdtempSync(path.join(tmpdir(), "zero-blocks-scratch-"));
+  const scratchRoot = mkdtempSync(path.join(tmpdir(), "first-blocks-scratch-"));
   const before = process.env.TMPDIR;
   process.env.TMPDIR = scratchRoot;
   try {

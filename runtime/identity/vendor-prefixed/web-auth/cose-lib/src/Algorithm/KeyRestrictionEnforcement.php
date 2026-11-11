@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm;
+namespace First\Identity\Vendor\Cose\Algorithm;
 
-use Zero\Identity\Vendor\Cose\Key\Key;
+use First\Identity\Vendor\Cose\Key\Key;
 use InvalidArgumentException;
 
 /**

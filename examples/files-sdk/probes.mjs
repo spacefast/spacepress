@@ -1,8 +1,8 @@
 // Host-API probes. The syntax pass stops the files-sdk build at its first
 // layer, so these show what's next: one tiny app per API, each compiled twice,
-// as authored TypeScript in zero.config.ts and as an imported JavaScript package
+// as authored TypeScript in first.config.ts and as an imported JavaScript package
 // (the way files-sdk's own code reaches the compiler). A probe passes when
-// `zero check` reports no diagnostics.
+// `first check` reports no diagnostics.
 import { spawnSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -34,15 +34,15 @@ export const PROBES = [
   ["class inside a function", "function make() { class A { v() { return 1; } } return new A(); } return make().v();", "function make() { class A { v() { return 1; } } return new A(); } return make().v();"],
 ];
 
-const config = (body) => `import { action, defineConfig, text } from "zero";
+const config = (body) => `import { action, defineConfig, text } from "first";
 ${body.imports ?? ""}
 export default defineConfig({ name: "probe", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) {
 ${body.handler}
 } }) } });
 `;
 
-function verdict(zero, dir) {
-  const out = spawnSync(zero, ["check", dir, "--json"], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+function verdict(first, dir) {
+  const out = spawnSync(first, ["check", dir, "--json"], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   let report;
   try {
     report = JSON.parse(out.stdout);
@@ -54,7 +54,7 @@ function verdict(zero, dir) {
   return { ok: false, first: d ? `${d.code} ${d.message}` : "failed without diagnostics" };
 }
 
-export async function runProbes(zero, work) {
+export async function runProbes(first, work) {
   await rm(work, { recursive: true, force: true });
   const rows = [];
   for (const [index, [name, ts, js, declarations = ""]] of PROBES.entries()) {
@@ -62,7 +62,7 @@ export async function runProbes(zero, work) {
     await mkdir(tsDir, { recursive: true });
     // The body runs directly in the handler, so only the API itself is measured.
     await writeFile(
-      path.join(tsDir, "zero.config.ts"),
+      path.join(tsDir, "first.config.ts"),
       config({ imports: declarations, handler: ts.replace(/return ([^;]+);(?![\s\S]*return )/, "return { v: String($1) };") }),
     );
     const jsDir = path.join(work, `${index}-js`);
@@ -70,7 +70,7 @@ export async function runProbes(zero, work) {
     await writeFile(path.join(jsDir, "node_modules/probe-lib/package.json"), '{"name":"probe-lib","type":"module","exports":"./index.js"}');
     await writeFile(path.join(jsDir, "node_modules/probe-lib/index.js"), `${declarations}\nexport function run(s) { ${js} }\n`);
     await writeFile(
-      path.join(jsDir, "zero.config.ts"),
+      path.join(jsDir, "first.config.ts"),
       config({
         imports: 'import { run } from "probe-lib";',
         handler: /Promise|async|setTimeout/.test(js)
@@ -78,7 +78,7 @@ export async function runProbes(zero, work) {
           : "return { v: String(run(input.s)) };",
       }),
     );
-    rows.push({ name, ts: verdict(zero, tsDir), js: verdict(zero, jsDir) });
+    rows.push({ name, ts: verdict(first, tsDir), js: verdict(first, jsDir) });
   }
   return rows;
 }

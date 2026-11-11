@@ -1,7 +1,7 @@
 {
-	"name": "@zero-admin/private-apis",
+	"name": "@first-admin/private-apis",
 	"version": "1.0.0",
-	"description": "Private APIs for Zero Admin",
+	"description": "Private APIs for First Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {

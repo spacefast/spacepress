@@ -1,6 +1,6 @@
 @use "@wordpress/base-styles/variables";
 
-.zero-admin-sidebar__scrollable {
+.first-admin-sidebar__scrollable {
 	overflow: auto;
 	height: 100%;
 	position: relative;
@@ -8,7 +8,7 @@
 	flex-direction: column;
 }
 
-.zero-admin-sidebar__content {
+.first-admin-sidebar__content {
 	flex-grow: 1;
 	// Mark this section of the DOM as isolated, providing performance benefits
 	// by limiting calculations of layout, style and paint to a DOM subtree rather
@@ -17,7 +17,7 @@
 	position: relative;
 }
 
-.zero-admin-sidebar__footer {
+.first-admin-sidebar__footer {
 	position: sticky;
 	bottom: 0;
 	background-color: var( --wpds-color-bg-surface-neutral-weak );

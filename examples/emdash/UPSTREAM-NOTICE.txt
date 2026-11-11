@@ -1,4 +1,4 @@
-Upstream provenance for the Zero EmDash adaptations
+Upstream provenance for the First EmDash adaptations
 
 Canonical source: https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0
 Inventory: manifest.json (schemaVersion 1; inventoryVersion 2026-11-03.1)

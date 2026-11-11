@@ -30,13 +30,13 @@ const bundledPackages = [
 	'@wordpress/fields',
 	'@wordpress/interface',
 	'@wordpress/global-styles-engine',
-	'@zero-admin/design-system',
+	'@first-admin/design-system',
 	'@wordpress/ui',
 ];
 
 const packageSpecificBundles = new Map(
 	Object.entries( {
-		'@zero-admin/dataviews': new Set( [
+		'@first-admin/dataviews': new Set( [
 			'@wordpress/dataviews',
 			'@wordpress/dataviews/wp',
 		] ),
@@ -80,7 +80,7 @@ async function isWpModule( importPath, resolvePath ) {
 			const packageJson = JSON.parse(
 				await readFile( packageJsonPath, 'utf8' )
 			);
-			// Check for wpModule flag (used by local packages like @zero-admin/boot)
+			// Check for wpModule flag (used by local packages like @first-admin/boot)
 			// or wpScriptModuleExports (used by @wordpress/* packages that are script modules)
 			resolve(
 				packageJson?.wpModule ?? hasWpScriptModuleExports( packageJson )

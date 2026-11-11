@@ -16,7 +16,7 @@ export function IconWithCurrentColor( {
 		<Icon
 			className={ clsx(
 				className,
-				'zero-admin-global-styles-icon-with-current-color'
+				'first-admin-global-styles-icon-with-current-color'
 			) }
 			{ ...props }
 		/>

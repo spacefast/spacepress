@@ -3,7 +3,7 @@
 // dependency) uses both forms. ToBoolean is false for 0, -0, NaN, "", null, undefined, false and
 // 0n, and true for everything else, including "0", "false", [], {} and functions. Every action
 // runs under Node and as compiled PHP; the JSON results must be byte-identical.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import { falsyAndTruthy, untypedBoolean } from "./boolean-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

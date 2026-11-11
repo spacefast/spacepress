@@ -1,6 +1,6 @@
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { Stack } from '@zero-admin/design-system';
-import { useImageCropper } from '@zero-admin/image-cropper';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { Stack } from '@first-admin/design-system';
+import { useImageCropper } from '@first-admin/image-cropper';
 import { __ } from '@wordpress/i18n';
 import {
 	__experimentalHeading as Heading,
@@ -55,9 +55,9 @@ export default function EditingToolsPanel() {
 	}
 
 	return (
-		<div className="zero-admin-media-editor__tools-panel">
+		<div className="first-admin-media-editor__tools-panel">
 			<ToolsPanel
-				label={ __( 'Crop area', 'zero-admin' ) }
+				label={ __( 'Crop area', 'first-admin' ) }
 				resetAll={ () => {
 					setCropperState( {
 						zoom: resetState?.zoom ?? 1,
@@ -69,7 +69,7 @@ export default function EditingToolsPanel() {
 			>
 				<ToolsPanelItem
 					hasValue={ () => zoom !== ( resetState?.zoom ?? 1 ) }
-					label={ __( 'Zoom', 'zero-admin' ) }
+					label={ __( 'Zoom', 'first-admin' ) }
 					onDeselect={ () =>
 						setCropperState( { zoom: resetState?.zoom ?? 1 } )
 					}
@@ -77,7 +77,7 @@ export default function EditingToolsPanel() {
 					panelId={ 'crop-area' }
 				>
 					<ZoomRange
-						label={ __( 'Zoom', 'zero-admin' ) }
+						label={ __( 'Zoom', 'first-admin' ) }
 						zoom={ zoom }
 						onChange={ ( newZoom ) =>
 							setCropperState( { zoom: newZoom } )
@@ -88,7 +88,7 @@ export default function EditingToolsPanel() {
 					hasValue={ () =>
 						aspectRatio !== ( resetState?.aspectRatio ?? 1 )
 					}
-					label={ __( 'Aspect ratio', 'zero-admin' ) }
+					label={ __( 'Aspect ratio', 'first-admin' ) }
 					onDeselect={ () => {
 						setCropperState( {
 							aspectRatio: resetState?.aspectRatio ?? 1,
@@ -101,7 +101,7 @@ export default function EditingToolsPanel() {
 					panelId={ 'crop-area' }
 				>
 					<AspectRatioSelect
-						className="zero-admin-media-editor__tools-panel-dropdown"
+						className="first-admin-media-editor__tools-panel-dropdown"
 						aspectRatio={ selectedAspectRatio }
 						onChange={ handleSetAspectRatio }
 						imageAspectRatios={ imageAspectRatios }
@@ -112,7 +112,7 @@ export default function EditingToolsPanel() {
 				</ToolsPanelItem>
 			</ToolsPanel>
 			<ToolsPanel
-				label={ __( 'Position', 'zero-admin' ) }
+				label={ __( 'Position', 'first-admin' ) }
 				resetAll={ resetPositionTools }
 				panelId={ 'position' }
 			>
@@ -120,7 +120,7 @@ export default function EditingToolsPanel() {
 					hasValue={ () =>
 						rotation !== ( resetState?.rotation ?? 0 )
 					}
-					label={ __( 'Rotate', 'zero-admin' ) }
+					label={ __( 'Rotate', 'first-admin' ) }
 					onDeselect={ () => {
 						const updates: any = {
 							rotation: resetState?.rotation ?? 0,
@@ -137,28 +137,28 @@ export default function EditingToolsPanel() {
 						upperCase
 						level={ 3 }
 						size={ 11 }
-						className="zero-admin-media-editor__tools-panel-heading"
+						className="first-admin-media-editor__tools-panel-heading"
 					>
-						{ __( 'Rotate', 'zero-admin' ) }
+						{ __( 'Rotate', 'first-admin' ) }
 					</Heading>
 					<Stack direction="row" justify="space-between" gap={ 2 }>
 						<Button
-							className="zero-admin-media-editor__tools-panel-button"
+							className="first-admin-media-editor__tools-panel-button"
 							variant="secondary"
 							icon={ rotateLeftIcon }
-							label={ __( 'Rotate 90° left', 'zero-admin' ) }
+							label={ __( 'Rotate 90° left', 'first-admin' ) }
 							onClick={ () => handleSetRotation( rotation - 90 ) }
 						>
-							{ __( '90° left', 'zero-admin' ) }
+							{ __( '90° left', 'first-admin' ) }
 						</Button>
 						<Button
-							className="zero-admin-media-editor__tools-panel-button"
+							className="first-admin-media-editor__tools-panel-button"
 							variant="secondary"
 							icon={ rotateRightIcon }
-							label={ __( 'Rotate 90° right', 'zero-admin' ) }
+							label={ __( 'Rotate 90° right', 'first-admin' ) }
 							onClick={ () => handleSetRotation( rotation + 90 ) }
 						>
-							{ __( '90° right', 'zero-admin' ) }
+							{ __( '90° right', 'first-admin' ) }
 						</Button>
 					</Stack>
 				</ToolsPanelItem>
@@ -174,7 +174,7 @@ export default function EditingToolsPanel() {
 							flip.vertical !== resetFlip.vertical
 						);
 					} }
-					label={ __( 'Flip', 'zero-admin' ) }
+					label={ __( 'Flip', 'first-admin' ) }
 					onDeselect={ () =>
 						setCropperState( {
 							flip: resetState?.flip ?? {
@@ -190,16 +190,16 @@ export default function EditingToolsPanel() {
 						upperCase
 						level={ 3 }
 						size={ 11 }
-						className="zero-admin-media-editor__tools-panel-heading"
+						className="first-admin-media-editor__tools-panel-heading"
 					>
-						{ __( 'Flip', 'zero-admin' ) }
+						{ __( 'Flip', 'first-admin' ) }
 					</Heading>
 					<Stack direction="row" justify="space-between" gap={ 2 }>
 						<Button
-							className="zero-admin-media-editor__tools-panel-button"
+							className="first-admin-media-editor__tools-panel-button"
 							variant="secondary"
 							icon={ flipHorizontalIcon }
-							label={ __( 'Flip horizontal', 'zero-admin' ) }
+							label={ __( 'Flip horizontal', 'first-admin' ) }
 							onClick={ () =>
 								handleSetFlip( {
 									vertical: flip.vertical,
@@ -207,13 +207,13 @@ export default function EditingToolsPanel() {
 								} )
 							}
 						>
-							{ __( 'Horizontal', 'zero-admin' ) }
+							{ __( 'Horizontal', 'first-admin' ) }
 						</Button>
 						<Button
 							variant="secondary"
-							className="zero-admin-media-editor__tools-panel-button"
+							className="first-admin-media-editor__tools-panel-button"
 							icon={ flipVerticalIcon }
-							label={ __( 'Flip vertical', 'zero-admin' ) }
+							label={ __( 'Flip vertical', 'first-admin' ) }
 							onClick={ () =>
 								handleSetFlip( {
 									vertical: ! flip.vertical,
@@ -221,7 +221,7 @@ export default function EditingToolsPanel() {
 								} )
 							}
 						>
-							{ __( 'Vertical', 'zero-admin' ) }
+							{ __( 'Vertical', 'first-admin' ) }
 						</Button>
 					</Stack>
 				</ToolsPanelItem>
@@ -230,15 +230,15 @@ export default function EditingToolsPanel() {
 				direction="row"
 				justify="end"
 				gap={ 4 }
-				className="zero-admin-media-editor__tools-panel-row"
+				className="first-admin-media-editor__tools-panel-row"
 			>
 				<Button
-					className="zero-admin-media-editor__tools-panel-button"
+					className="first-admin-media-editor__tools-panel-button"
 					variant="secondary"
 					isDestructive
 					onClick={ handleReset }
 				>
-					{ __( 'Reset all', 'zero-admin' ) }
+					{ __( 'Reset all', 'first-admin' ) }
 				</Button>
 			</Stack>
 		</div>

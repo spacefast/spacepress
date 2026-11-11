@@ -1,5 +1,5 @@
-import { withEditor, withStylesId } from '@zero-admin/lazy-editor';
-import type { Field, DataViewRenderFieldProps } from '@zero-admin/dataviews';
+import { withEditor, withStylesId } from '@first-admin/lazy-editor';
+import type { Field, DataViewRenderFieldProps } from '@first-admin/dataviews';
 import { __ } from '@wordpress/i18n';
 import { useMemo } from '@wordpress/element';
 import { parse } from '@wordpress/blocks';
@@ -37,7 +37,7 @@ function ContentPreviewField( {
 	return (
 		<EditorProvider post={ item } settings={ settings }>
 			<div className="fields-content-preview">
-				{ isEmpty && __( 'Empty content', 'zero-admin' ) }
+				{ isEmpty && __( 'Empty content', 'first-admin' ) }
 				{ ! isEmpty && (
 					<BlockPreview.Async>
 						<BlockPreview blocks={ blocks } />

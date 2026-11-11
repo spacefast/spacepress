@@ -1,8 +1,8 @@
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { Tabs } from '@zero-admin/design-system';
-import { store as coreDataNextStore } from '@zero-admin/core-data-next';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { Tabs } from '@first-admin/design-system';
+import { store as coreDataNextStore } from '@first-admin/core-data-next';
 
 export const RoleTabs = ( {
 	onChange,

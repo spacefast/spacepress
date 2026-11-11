@@ -1,8 +1,8 @@
-// `do…while` and labeled statements, which live Zero 0.8 apps use (zero#138 census): retry
+// `do…while` and labeled statements, which live Zero 0.8 apps use (first#138 census): retry
 // loops that run at least once, and `break outer` / `continue outer` across nested loops.
 // Every action runs under Node and as compiled PHP; the JSON results must be byte-identical.
 // `control-flow-helpers.mjs` runs the same shapes untyped.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import { controlFlowUntyped } from "./control-flow-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

@@ -33,11 +33,11 @@ The browser build of the same compiler runs in the [playground](/playground). It
 
 This is `first/lib/owner.ts` and the `reads` hooks from [`examples/reading-list`](/examples/reading-list):
 
-<RepoFile path="examples/reading-list/zero/lib/owner.ts" />
+<RepoFile path="examples/reading-list/first/lib/owner.ts" />
 
 The compiler writes this for the `beforeCreate` hook. `signedIn` from `first/lib/owner.ts` is its own PHP function, called directly:
 
-<CompiledExcerpt example="reading-list" from="function signedIn(\Zero\JsObject $ctx)" toLine="}" />
+<CompiledExcerpt example="reading-list" from="function signedIn(\First\JsObject $ctx)" toLine="}" />
 
 <CompiledExcerpt example="reading-list" from="function reads__beforeCreate(" toLine="}" />
 
@@ -88,7 +88,7 @@ Two differences are known and tested. Everything else that compiles is meant to 
 
 Code outside the subset fails the build. It never compiles into something that behaves differently. This config adds a number to a JSON field of unknown type:
 
-<RepoFile path="tests/fixtures/reject-ambiguous-plus/zero.config.ts" name="first.config.ts" />
+<RepoFile path="tests/fixtures/reject-ambiguous-plus/first.config.ts" name="first.config.ts" />
 
 The diagnostic is printed under the line, with a fix. The same message comes from `first check`, `first build` and the playground. Other refusals include:
 

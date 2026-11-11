@@ -1,12 +1,12 @@
-// Run against any built Zero app: ZERO_SITE, ZERO_APP, ZERO_APP_PASSWORD=user:password.
+// Run against any built First app: FIRST_SITE, FIRST_APP, FIRST_APP_PASSWORD=user:password.
 // It prints only public protocol responses, never request headers or credentials.
 import assert from "node:assert/strict";
 
-const site = process.env.ZERO_SITE ?? "http://localhost:8794";
-const app = process.env.ZERO_APP ?? "subscriptions";
-const credentials = process.env.ZERO_APP_PASSWORD;
-assert.ok(credentials, "Set ZERO_APP_PASSWORD to username:application-password");
-const url = `${site.replace(/\/$/, "")}/wp-json/mcp/zero-${app}`;
+const site = process.env.FIRST_SITE ?? "http://localhost:8794";
+const app = process.env.FIRST_APP ?? "subscriptions";
+const credentials = process.env.FIRST_APP_PASSWORD;
+assert.ok(credentials, "Set FIRST_APP_PASSWORD to username:application-password");
+const url = `${site.replace(/\/$/, "")}/wp-json/mcp/first-${app}`;
 const headers = {
   "Content-Type": "application/json",
   Accept: "application/json, text/event-stream",
@@ -30,13 +30,13 @@ async function rpc(method, params, notification = false) {
 }
 console.log(JSON.stringify({ endpoint: url }));
 console.log(JSON.stringify(await rpc("initialize", {
-  protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "zero-agent-guide", version: "1.0" },
+  protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "first-agent-guide", version: "1.0" },
 })));
 await rpc("notifications/initialized", undefined, true);
 const tools = await rpc("tools/list", {});
 console.log(JSON.stringify({ jsonrpc: tools.jsonrpc, id: tools.id, result: { tools: tools.result.tools.map(({ name }) => ({ name })) } }));
-const name = process.env.ZERO_TOOL ?? `${app}-${app === "pantry" ? "locations" : "subscriptions"}-list`;
+const name = process.env.FIRST_TOOL ?? `${app}-${app === "pantry" ? "locations" : "subscriptions"}-list`;
 assert.ok(tools.result.tools.some((tool) => tool.name === name), `Tool ${name} was not listed`);
-const result = await rpc("tools/call", { name, arguments: JSON.parse(process.env.ZERO_TOOL_INPUT ?? '{"limit":1}') });
+const result = await rpc("tools/call", { name, arguments: JSON.parse(process.env.FIRST_TOOL_INPUT ?? '{"limit":1}') });
 assert.equal(result.result.isError, false, JSON.stringify(result));
 console.log(JSON.stringify(result));

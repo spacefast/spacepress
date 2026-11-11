@@ -9,12 +9,12 @@ import {
 	RouterLink,
 	unlock,
 	viewToQuery,
-} from '@zero-admin/admin-toolkit';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { Tabs } from '@zero-admin/design-system';
-import { useView, DataViews } from '@zero-admin/views';
-import { filterSortAndPaginate } from '@zero-admin/dataviews';
-import type { View, Action } from '@zero-admin/dataviews';
+} from '@first-admin/admin-toolkit';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { Tabs } from '@first-admin/design-system';
+import { useView, DataViews } from '@first-admin/views';
+import { filterSortAndPaginate } from '@first-admin/dataviews';
+import type { View, Action } from '@first-admin/dataviews';
 import {
 	store as coreStore,
 	privateApis as coreDataPrivateApis,
@@ -22,10 +22,10 @@ import {
 import { Button, DropZone } from '@wordpress/components';
 import { useSelect, useRegistry } from '@wordpress/data';
 import { useCallback, useMemo } from '@wordpress/element';
-import { serializeFilters, usePageView } from '@zero-admin/telemetry';
+import { serializeFilters, usePageView } from '@first-admin/telemetry';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import type { Post } from '@wordpress/core-data';
-import { usePostFields } from '@zero-admin/fields-next';
+import { usePostFields } from '@first-admin/fields-next';
 import { __ } from '@wordpress/i18n';
 import { useQuickEditAction } from './actions/quick-edit';
 import { useFullEditAction } from './actions/full-edit';
@@ -367,7 +367,7 @@ function PostList() {
 							}
 						);
 					} }
-					label={ __( 'Drop files to upload', 'zero-admin' ) }
+					label={ __( 'Drop files to upload', 'first-admin' ) }
 					className="post-list__drop-zone"
 				/>
 			) }

@@ -1,7 +1,7 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
-import { job, jobs, once } from "zero"; // lane D
+import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "first";
+import { job, jobs, once } from "first"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
 import { jsAbort, jsCollections, jsTimers } from "./stdlib.js";
@@ -853,7 +853,7 @@ export default defineConfig({
 });
 
 // ---- lane D: jobs, once(), process.env (phase 2 §6.1). The Node shim keeps once() receipts and pending
-// enqueue keys in memory; PHP keeps them in __zero_receipts and the outbox. Keys are unique per case.
+// enqueue keys in memory; PHP keeps them in __first_receipts and the outbox. Keys are unique per case.
 function laneDJobs() {
   return { ping: job({ input: { note: text() }, handler: async () => {} }) };
 }
@@ -879,7 +879,7 @@ function laneDActions() {
       const same = await jobs.ping.enqueue({ note: "y" }, { key: "lane-d" });
       return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
     } }),
-    envRead: action({ input: {}, handler: () => [process.env.ZERO_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.ZERO_LANE_D_UNSET === undefined] }),
+    envRead: action({ input: {}, handler: () => [process.env.FIRST_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.FIRST_LANE_D_UNSET === undefined] }),
   };
 }
 
@@ -945,7 +945,7 @@ function stdlibActions() {
     mapKeys: run(() => {
       const k = { n: 9 };
       const byObj = new Map<Entry, string>([[k, "obj"]]);
-      const nums = new Map<number, string>([[NaN, "nan"], [0, "zero"], [-0, "negzero"]]);
+      const nums = new Map<number, string>([[NaN, "nan"], [0, "first"], [-0, "negzero"]]);
       const mixed = new Map<string | number | null, number>([["1", 1], [1, 2], [null, 3]]);
       return [byObj.get(k) ?? "none", byObj.has({ n: 9 }), nums.get(NaN) ?? "", nums.get(-0) ?? "", nums.size, 1 / ([...nums.keys()][1] ?? 1), mixed.get("1"), mixed.get(1), mixed.get(null), mixed.size];
     }),

@@ -195,7 +195,7 @@ ${Object.entries(platform.plugins).map(([slug, p]) => `| \`${slug}\` | \`${p.ver
 );
 
 // ---------------------------------------------------------------------------------------------
-// CLI: runtime/Zero/Cli/commands.json, the table the binary prints for `--help` and the one WP-CLI
+// CLI: runtime/First/Cli/commands.json, the table the binary prints for `--help` and the one WP-CLI
 // registers. One row per command.
 // ---------------------------------------------------------------------------------------------
 
@@ -205,7 +205,7 @@ interface Command {
 	summary: string;
 	via?: string;
 }
-const commands = json<{ build: Command[]; site: Command[] }>("runtime/Zero/Cli/commands.json");
+const commands = json<{ build: Command[]; site: Command[] }>("runtime/First/Cli/commands.json");
 const sentence = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.)]$/.test(s) ? "" : "."}`;
 const usage = (prefix: string, c: Command) => `${prefix} ${c.name}${c.args ? ` ${c.args}` : ""}`;
 const commandRows = (prefix: string, rows: Command[]) =>
@@ -218,13 +218,13 @@ for (const name of experimental) {
 }
 const buildRows = commands.build.filter((c) => !experimental.has(c.name));
 const siteRows = commands.site.filter((c) => c.via !== "wp" && !experimental.has(c.name));
-const createHelp = read("packages/create-zero/bin/create-zero.mjs");
+const createHelp = read("packages/create-first/bin/create-first.mjs");
 const noInstall = createHelp.includes("--no-install");
 
 page(
 	"docs/reference/cli.mdx",
 	{ title: "CLI", description: "Every first command and every wp first command, with its arguments." },
-	"runtime/Zero/Cli/commands.json",
+	"runtime/First/Cli/commands.json",
 	`
 The \`first\` command comes from the \`@spacefast/first-cli\` npm package. Run \`first help <command>\` to print one command's arguments.
 
@@ -254,7 +254,7 @@ The commands that move an app or its content from another system are experimenta
 
 \`npm create @spacefast/first <directory>\` copies a starter app into a new directory and installs its dependencies.${noInstall ? " Add `-- --no-install` to skip the install." : ""} The directory must not exist yet.
 
-The table on this page is read from [\`runtime/Zero/Cli/commands.json\`](${github}/runtime/Zero/Cli/commands.json). The binary prints the same table for \`first --help\`, and WordPress registers the same site commands.
+The table on this page is read from [\`runtime/First/Cli/commands.json\`](${github}/runtime/First/Cli/commands.json). The binary prints the same table for \`first --help\`, and WordPress registers the same site commands.
 `,
 );
 
@@ -381,11 +381,11 @@ page(
 );
 
 // ---------------------------------------------------------------------------------------------
-// Config API: the declarations every config imports, types/zero/index.d.ts. Each exported function
+// Config API: the declarations every config imports, types/first/index.d.ts. Each exported function
 // with its doc comment and signature, by the sections the file is divided into.
 // ---------------------------------------------------------------------------------------------
 
-const dts = read("types/zero/index.d.ts");
+const dts = read("types/first/index.d.ts");
 const sections: { title: string; items: { name: string; doc: string; signature: string }[] }[] = [];
 {
 	const lines = dts.split("\n");
@@ -477,7 +477,7 @@ for (const k of configKeys) if (!k.doc && !defaultDocs[k.key]) throw new Error(`
 page(
 	"docs/reference/config.mdx",
 	{ title: "Config API", description: "Every option of defineConfig and every function first.config.ts can import from \"first\"." },
-	"types/zero/index.d.ts",
+	"types/first/index.d.ts",
 	`
 A First app is one \`first.config.ts\`. It imports its building blocks from \`"first"\` and exports \`defineConfig({ ... })\` as the default export.
 
@@ -495,24 +495,24 @@ ${sections
 		.join("\n\n")}`)
 	.join("\n\n")}
 
-This page is read from [\`types/zero/index.d.ts\`](${github}/types/zero/index.d.ts), the declarations your editor uses for \`first.config.ts\`.
+This page is read from [\`types/first/index.d.ts\`](${github}/types/first/index.d.ts), the declarations your editor uses for \`first.config.ts\`.
 `,
 );
 
 // ---------------------------------------------------------------------------------------------
 // REST API: one OpenAPI document for the routes every First app serves, read from the dispatchers
-// in runtime/Zero (App::route and the modules registered with Extensions::route). Blume renders it.
+// in runtime/First (App::route and the modules registered with Extensions::route). Blume renders it.
 // ---------------------------------------------------------------------------------------------
 
-const appPhp = read("runtime/Zero/App.php");
-const authPhp = read("runtime/Zero/Auth/Module.php");
-const filesPhp = read("runtime/Zero/Media/FileRoutes.php");
-const mediaPhp = read("runtime/Zero/Media/Module.php");
-const syncPhp = read("runtime/Zero/Sync/Routes.php");
-const servicesPhp = read("runtime/Zero/Services/Module.php");
-const restPhp = read("runtime/Zero/Wp/Rest.php");
+const appPhp = read("runtime/First/App.php");
+const authPhp = read("runtime/First/Auth/Module.php");
+const filesPhp = read("runtime/First/Media/FileRoutes.php");
+const mediaPhp = read("runtime/First/Media/Module.php");
+const syncPhp = read("runtime/First/Sync/Routes.php");
+const servicesPhp = read("runtime/First/Services/Module.php");
+const restPhp = read("runtime/First/Wp/Rest.php");
 const namespace = toFirst(/NAMESPACE = '([^']+)'/.exec(restPhp)?.[1] ?? "");
-if (!namespace) throw new Error("runtime/Zero/Wp/Rest.php: no NAMESPACE");
+if (!namespace) throw new Error("runtime/First/Wp/Rest.php: no NAMESPACE");
 const listLimit = /LIST_LIMIT = (\d+)/.exec(appPhp)?.[1];
 const maxListLimit = /MAX_LIST_LIMIT = (\d+)/.exec(appPhp)?.[1];
 
@@ -549,7 +549,7 @@ expectText(mediaPhp, "Media\\Module::dispatch", "$segments[2] === 'file'");
 // PATCH /media/{id} accepts these fields and refuses any other.
 expectText(mediaPhp, "Media\\Module", "'alt' =>");
 expectText(mediaPhp, "Media\\Module", "'focal' =>");
-expectText(read("runtime/Zero/Media/Files.php"), "Media\\Files::download", "$query['sig']");
+expectText(read("runtime/First/Media/Files.php"), "Media\\Files::download", "$query['sig']");
 
 const problem = { $ref: "#/components/responses/Problem" };
 const ok = (description: string, schema: object = { $ref: "#/components/schemas/Data" }) => ({ description, content: { "application/json": { schema } } });
@@ -729,7 +729,7 @@ const memberBlock = (name: string) => {
 	const declared = body.replace(/^[ \t]*\/\*\*[\s\S]*?\*\/\n/gm, "").replace(/^[ \t]*\/\/.*\n/gm, "");
 	return fence("ts", toFirst(`interface ${head} {${declared}\n}`));
 };
-const pantryClient = read("examples/pantry/zero/_generated/client/README.md");
+const pantryClient = read("examples/pantry/first/_generated/client/README.md");
 
 page(
 	"docs/reference/client.mdx",

@@ -1,5 +1,5 @@
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { Tabs } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { Tabs } from '@first-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import { pluginTabs } from './view-utils';
 import type { PluginTab } from './view-utils';

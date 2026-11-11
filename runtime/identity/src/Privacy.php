@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 final class Privacy
 {

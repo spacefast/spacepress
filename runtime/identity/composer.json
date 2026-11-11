@@ -1,6 +1,6 @@
 {
-  "name": "spacefast/zero-identity",
-  "description": "Bundled passkey, JWT and TOTP libraries for the Zero Identity plugin",
+  "name": "spacefast/first-identity",
+  "description": "Bundled passkey, JWT and TOTP libraries for the First Identity plugin",
   "type": "library",
   "license": "GPL-2.0-or-later",
   "require": {
@@ -19,14 +19,14 @@
   },
   "extra": {
     "strauss": {
-      "namespace_prefix": "Zero\\Identity\\Vendor\\",
-      "classmap_prefix": "Zero_Identity_Vendor_",
-      "constant_prefix": "ZERO_IDENTITY_VENDOR_",
+      "namespace_prefix": "First\\Identity\\Vendor\\",
+      "classmap_prefix": "First_Identity_Vendor_",
+      "constant_prefix": "FIRST_IDENTITY_VENDOR_",
       "target_directory": "vendor-prefixed",
       "delete_vendor_packages": true,
       "exclude_from_prefix": {
         "namespaces": [
-          "Zero\\"
+          "First\\"
         ]
       },
       "exclude_constants": {

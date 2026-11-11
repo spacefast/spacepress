@@ -1,11 +1,11 @@
-// The schema-check lane's app at each deploy, one zero.config.ts per step. `run.sh` builds them
+// The schema-check lane's app at each deploy, one first.config.ts per step. `run.sh` builds them
 // in order into one project, so every step's migration is planned against the previous step's
 // ledger, exactly as successive deploys of one app would be.
 //
-//   node steps.mjs <step>   prints that step's zero.config.ts
+//   node steps.mjs <step>   prints that step's first.config.ts
 //
-// `tasks` is bound to a table the app did not create (`existingTable`), as `zero migrate app
-// --from zero-0.8 --space <id>` binds a migrated Space's tables. `likes` and `notes` are Zero's.
+// `tasks` is bound to a table the app did not create (`existingTable`), as `first migrate app
+// --from zero-0.8 --space <id>` binds a migrated Space's tables. `likes` and `notes` are First's.
 const tasks = (fields = "") => `const tasks = table({
   id: id(),
   title: text().notNull(),
@@ -20,7 +20,7 @@ const notes = (fields = "", options = "") => `const notes = table({
   body: text(),${fields}
 }${options});`;
 
-const app = (parts, tables) => `import { boolean, defineConfig, id, integer, real, table, text } from "zero";
+const app = (parts, tables) => `import { boolean, defineConfig, id, integer, real, table, text } from "first";
 ${parts.join("\n")}
 export default defineConfig({ name: "schema-check", tables: { ${tables} } });
 `;

@@ -1,10 +1,10 @@
 <?php
 /**
- * Zero Admin SPA
+ * First Admin SPA
  *
- * This file serves as the entry point for the Zero Admin SPA.
+ * This file serves as the entry point for the First Admin SPA.
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 set_current_screen();
 
-// Do this action to populate the admin bar menu items. This is needed because the admin bar is not shown in ZeroAdmin, so its items won't be populated by default.
+// Do this action to populate the admin bar menu items. This is needed because the admin bar is not shown in FirstAdmin, so its items won't be populated by default.
 // Core only builds `$wp_admin_bar` when the bar is shown; a host that hides it
 // still needs the object to collect the menu items this page reads.
 global $wp_admin_bar;
@@ -36,38 +36,38 @@ foreach ( wp_styles()->queue as $style ) {
 	wp_dequeue_style( $style );
 }
 
-// Run `zero_admin_init`.
-do_action( 'zero_admin_init' );
+// Run `first_admin_init`.
+do_action( 'first_admin_init' );
 
 // Always enable the experimental DataViews media modal. The Gutenberg plugin
 // is optional here: fall back to the core WordPress version for cache busting.
-wp_register_script( 'zero-admin-gutenberg-experiments', '', array(), defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : get_bloginfo( 'version' ), false );
-wp_add_inline_script( 'zero-admin-gutenberg-experiments', 'window.__experimentalDataViewsMediaModal = true' );
-wp_enqueue_script( 'zero-admin-gutenberg-experiments' );
+wp_register_script( 'first-admin-gutenberg-experiments', '', array(), defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : get_bloginfo( 'version' ), false );
+wp_add_inline_script( 'first-admin-gutenberg-experiments', 'window.__experimentalDataViewsMediaModal = true' );
+wp_enqueue_script( 'first-admin-gutenberg-experiments' );
 
 // The boot module dependencies come from the committed module build.
-$asset_file = is_file( ZERO_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php' )
-	? include ZERO_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php'
+$asset_file = is_file( FIRST_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php' )
+	? include FIRST_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php'
 	: array(
 		'dependencies' => array(),
-		'version'      => ZERO_ADMIN_VERSION,
+		'version'      => FIRST_ADMIN_VERSION,
 	);
 
 // This script serves two purposes:
 // 1. It ensures all the globals that are made available to the modules are loaded.
 // 2. It initializes the boot module as an inline script.
-wp_register_script( 'zero-admin-prerequisites', '', $asset_file['dependencies'], $asset_file['version'], true );
+wp_register_script( 'first-admin-prerequisites', '', $asset_file['dependencies'], $asset_file['version'], true );
 
 // Pass data to script module via global variables.
 wp_add_inline_script(
-	'zero-admin-prerequisites',
+	'first-admin-prerequisites',
 	sprintf(
-		'import( "@zero-admin/boot" ).then( mod => mod.init( %s, %s, %s, %s, %s ) );',
-		wp_json_encode( zero_admin_get_admin_routes(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( zero_admin_get_admin_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( zero_admin_get_admin_meta_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( zero_admin_get_init_modules(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( zero_admin_get_boot_context(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+		'import( "@first-admin/boot" ).then( mod => mod.init( %s, %s, %s, %s, %s ) );',
+		wp_json_encode( first_admin_get_admin_routes(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( first_admin_get_admin_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( first_admin_get_admin_meta_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( first_admin_get_init_modules(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( first_admin_get_boot_context(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
 	)
 );
 
@@ -76,38 +76,38 @@ wp_add_inline_script(
  *
  * @return array
  */
-function zero_admin_get_boot_context() {
+function first_admin_get_boot_context() {
 	return apply_filters(
-		'zero_admin_boot_context',
-		array_merge( zero_admin_get_dashboard_context(), array(
+		'first_admin_boot_context',
+		array_merge( first_admin_get_dashboard_context(), array(
 			'logout_url' => html_entity_decode( wp_logout_url() ),
-			'dashboard_widget_types' => zero_admin_get_dashboard_widgets(),
-			'dashboard_default_layout' => apply_filters( 'zero_admin_dashboard_widgets', array() ),
+			'dashboard_widget_types' => first_admin_get_dashboard_widgets(),
+			'dashboard_default_layout' => apply_filters( 'first_admin_dashboard_widgets', array() ),
 			// Where this admin is mounted and where wp-admin is: a WordPress installed below the
 			// origin root (`/blog/`) routes and frames correctly only if the app learns both here.
-			'mount_url'  => zero_admin_url( '/' ),
+			'mount_url'  => first_admin_url( '/' ),
 			'admin_url'  => admin_url(),
 		) )
 	);
 }
 
 // Transport comes from registered native types, independently of editor preferences.
-$zero_admin_native = array();
-foreach ( \Zero\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
+$first_admin_native = array();
+foreach ( \First\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
     $type = isset( $collection['wp']['postType'] ) ? get_post_type_object( $collection['wp']['postType'] ) : null;
     if ( $type && $type->show_in_rest ) {
-        $zero_admin_native[ $name ] = array( 'postType' => $type->name, 'metaPrefix' => $collection['wp']['metaPrefix'] ?? 'zero_', 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
+        $first_admin_native[ $name ] = array( 'postType' => $type->name, 'metaPrefix' => $collection['wp']['metaPrefix'] ?? 'first_', 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
     }
 }
-wp_add_inline_script( 'wp-api-fetch', 'window.zeroAdmin = ' . wp_json_encode( array(
-    'native' => $zero_admin_native,
-    'readable' => zero_admin_navigation(),
-    'role' => \Zero\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
-    'mount' => zero_admin_url(),
+wp_add_inline_script( 'wp-api-fetch', 'window.firstAdmin = ' . wp_json_encode( array(
+    'native' => $first_admin_native,
+    'readable' => first_admin_navigation(),
+    'role' => \First\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
+    'mount' => first_admin_url(),
 ), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';', 'after' );
 
 // Preload endpoints used by `getEntityRecord` (entity configs) and by the root route loader.
-$zero_admin_preload_paths = array(
+$first_admin_preload_paths = array(
 	// Config for the `postType` entity kind (fetched by Gutenberg `loadPostTypeEntities`).
 	'/wp/v2/types?context=view',
 	// Config for the `taxonomy` entity kind (fetched by Gutenberg `loadTaxonomyEntities`).
@@ -136,8 +136,8 @@ $zero_admin_preload_paths = array(
 	),
 );
 
-$zero_admin_preload_data = array_reduce(
-	$zero_admin_preload_paths,
+$first_admin_preload_data = array_reduce(
+	$first_admin_preload_paths,
 	'rest_preload_api_request',
 	array()
 );
@@ -146,7 +146,7 @@ wp_add_inline_script(
 	'wp-api-fetch',
 	sprintf(
 		'wp.apiFetch.use( wp.apiFetch.createPreloadingMiddleware( %s ) );',
-		wp_json_encode( $zero_admin_preload_data, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+		wp_json_encode( $first_admin_preload_data, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
 	),
 	'after'
 );
@@ -155,13 +155,13 @@ wp_add_inline_script(
 $boot_dependencies = array(
 	array(
 		'import' => 'static',
-		'id'     => '@zero-admin/boot',
+		'id'     => '@first-admin/boot',
 	),
 );
 
 
 // Add all registered routes as dependencies.
-foreach ( zero_admin_get_admin_routes() as $route ) {
+foreach ( first_admin_get_admin_routes() as $route ) {
 	if ( isset( $route['route_module'] ) ) {
 		$boot_dependencies[] = array(
 			'import' => ! empty( $route['before_load'] ) ? 'static' : 'dynamic',
@@ -177,7 +177,7 @@ foreach ( zero_admin_get_admin_routes() as $route ) {
 }
 
 // Native widgets are lazy script modules and need entries in the import map.
-foreach ( zero_admin_get_dashboard_widgets() as $widget ) {
+foreach ( first_admin_get_dashboard_widgets() as $widget ) {
     foreach ( array( 'render_module', 'widget_module' ) as $key ) {
         if ( ! empty( $widget[$key] ) ) {
             $boot_dependencies[] = array( 'import' => 'dynamic', 'id' => $widget[$key] );
@@ -186,7 +186,7 @@ foreach ( zero_admin_get_dashboard_widgets() as $widget ) {
 }
 
 // Add all registered init modules as dependencies.
-foreach ( zero_admin_get_init_modules() as $init_module ) {
+foreach ( first_admin_get_init_modules() as $init_module ) {
 	$boot_dependencies[] = array(
 		'import' => 'static',
 		'id'     => $init_module,
@@ -194,7 +194,7 @@ foreach ( zero_admin_get_init_modules() as $init_module ) {
 }
 
 // Add all field collection modules as dependencies.
-foreach ( zero_admin_get_all_field_collections() as $collection ) {
+foreach ( first_admin_get_all_field_collections() as $collection ) {
 	if ( isset( $collection['fields_module'] ) ) {
 		$boot_dependencies[] = array(
 			'import' => 'dynamic',
@@ -203,10 +203,10 @@ foreach ( zero_admin_get_all_field_collections() as $collection ) {
 	}
 }
 
-// This just an empty script to ensure @zero-admin/boot is added to the import map.
+// This just an empty script to ensure @first-admin/boot is added to the import map.
 wp_register_script_module(
-	'zero-admin-boot',
-	ZERO_ADMIN_PLUGIN_URL . 'routes.js',
+	'first-admin-boot',
+	FIRST_ADMIN_PLUGIN_URL . 'routes.js',
 	$boot_dependencies
 );
 
@@ -214,9 +214,9 @@ wp_register_script_module(
 wp_enqueue_style( 'wp-components' );
 wp_enqueue_style( 'wp-commands' );
 
-// Enqueue the Zero Admin SPA itself.
-wp_enqueue_script( 'zero-admin-prerequisites' );
-wp_enqueue_script_module( 'zero-admin-boot' );
+// Enqueue the First Admin SPA itself.
+wp_enqueue_script( 'first-admin-prerequisites' );
+wp_enqueue_script_module( 'first-admin-boot' );
 
 // Output the admin page.
 ?><!DOCTYPE html>
@@ -224,7 +224,7 @@ wp_enqueue_script_module( 'zero-admin-boot' );
 <head>
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Zero</title>
+	<title>First</title>
 	<style>
 		@media (prefers-reduced-motion: no-preference) {
 			@view-transition {
@@ -249,7 +249,7 @@ wp_enqueue_script_module( 'zero-admin-boot' );
 global $hook_suffix;
 
 // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
-$hook_suffix = 'zero-admin';
+$hook_suffix = 'first-admin';
 
 // BEGIN see wp-admin/admin-header.php.
 
@@ -277,8 +277,8 @@ do_action( 'admin_head' );
 
 ?>
 </head>
-<body class="<?php echo esc_attr( apply_filters( 'zero_admin_body_class', 'zero-admin' ) ); ?>">
-	<div id="zero-admin-app" style="height: 100vh;box-sizing: border-box;"></div>
+<body class="<?php echo esc_attr( apply_filters( 'first_admin_body_class', 'first-admin' ) ); ?>">
+	<div id="first-admin-app" style="height: 100vh;box-sizing: border-box;"></div>
 <?php
 
 // BEGIN see wp-admin/admin-footer.php.
@@ -292,7 +292,7 @@ do_action( 'admin_head' );
  */
 do_action( 'admin_footer', '' );
 
-zero_admin_print_import_map();
+first_admin_print_import_map();
 print_footer_scripts();
 wp_script_modules()->print_enqueued_script_modules();
 wp_script_modules()->print_script_module_preloads();

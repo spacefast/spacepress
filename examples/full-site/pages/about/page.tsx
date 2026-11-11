@@ -1,4 +1,4 @@
-import type { Metadata } from "@spacefast/zero-pages";
+import type { Metadata } from "@spacefast/first-pages";
 import logo from "./compass.svg";
 
 export const metadata = {
@@ -13,7 +13,7 @@ export default function About() {
       <h1>About</h1>
       <p>
         These pages are written as <code>page.tsx</code> files, compiled once to Gutenberg block markup, and rendered by
-        WordPress on every request. Notes are ordinary WordPress content with Zero's access rules.
+        WordPress on every request. Notes are ordinary WordPress content with First's access rules.
       </p>
       <ul>
         <li>Static pages are hidden, code-owned WordPress Pages.</li>

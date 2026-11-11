@@ -129,7 +129,7 @@ function safeCalls(source: ts.SourceFile): (node: ts.CallExpression) => boolean 
   const names = new Set(["orElse", "link", "collectionPage", "content", "count"]);
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
-      || statement.moduleSpecifier.text !== "@spacefast/zero-pages") continue;
+      || statement.moduleSpecifier.text !== "@spacefast/first-pages") continue;
     const clause = statement.importClause;
     if (clause === undefined || clause.isTypeOnly || clause.namedBindings === undefined) continue;
     if (ts.isNamespaceImport(clause.namedBindings)) namespaces.add(clause.namedBindings.name.text);
@@ -211,7 +211,7 @@ export async function checkSource(file: string): Promise<PagesDiagnostic[]> {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       const from = node.moduleSpecifier.text;
       const clause = node.importClause;
-      if (from === "zero" && clause !== undefined && !clause.isTypeOnly && clause.namedBindings !== undefined && ts.isNamedImports(clause.namedBindings)) {
+      if (from === "first" && clause !== undefined && !clause.isTypeOnly && clause.namedBindings !== undefined && ts.isNamedImports(clause.namedBindings)) {
         for (const element of clause.namedBindings.elements) {
           const imported = (element.propertyName ?? element.name).text;
           if (imported === "db" && !element.isTypeOnly) {

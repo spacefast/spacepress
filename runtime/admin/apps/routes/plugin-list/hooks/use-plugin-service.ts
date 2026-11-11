@@ -24,7 +24,7 @@ const getErrorText = ( error: unknown ) =>
 	'message' in error &&
 	typeof error.message === 'string'
 		? error.message
-		: __( 'Unknown error occurred', 'zero-admin' );
+		: __( 'Unknown error occurred', 'first-admin' );
 
 export default function usePluginService() {
 	const { saveEntityRecord, deleteEntityRecord } =
@@ -60,7 +60,7 @@ export default function usePluginService() {
 				if ( ! opts?.suppressNotice ) {
 					const successMessage = sprintf(
 						// translators: %(name)s is the plugin name.
-						__( '%(name)s deleted.', 'zero-admin' ),
+						__( '%(name)s deleted.', 'first-admin' ),
 						{ name: plugin.name }
 					);
 					createSuccessNotice( successMessage, noticeConfig );
@@ -71,7 +71,7 @@ export default function usePluginService() {
 				}
 				const errorMessage = sprintf(
 					// translators: %(p)s is the plugin name, %(m)s is the error message from the API.
-					__( 'Failed to delete %(p)s: %(m)s', 'zero-admin' ),
+					__( 'Failed to delete %(p)s: %(m)s', 'first-admin' ),
 					{
 						p: plugin.name,
 						m: getErrorText( error ),
@@ -107,14 +107,14 @@ export default function usePluginService() {
 					case PluginAction.Activate:
 						successMessage = sprintf(
 							// translators: %(p)s is the plugin name.
-							__( '%(p)s activated.', 'zero-admin' ),
+							__( '%(p)s activated.', 'first-admin' ),
 							{ p: plugin.name }
 						);
 						break;
 					case PluginAction.Deactivate:
 						successMessage = sprintf(
 							// translators: %(p)s is the plugin name.
-							__( '%(p)s deactivated.', 'zero-admin' ),
+							__( '%(p)s deactivated.', 'first-admin' ),
 							{ p: plugin.name }
 						);
 						break;
@@ -123,7 +123,7 @@ export default function usePluginService() {
 							// translators: %(p)s is the plugin name.
 							__(
 								'Auto-updates enabled on %(p)s.',
-								'zero-admin'
+								'first-admin'
 							),
 							{ p: plugin.name }
 						);
@@ -133,7 +133,7 @@ export default function usePluginService() {
 							// translators: %(p)s is the plugin name.
 							__(
 								'Auto-updates disabled on %(p)s.',
-								'zero-admin'
+								'first-admin'
 							),
 							{ p: plugin.name }
 						);
@@ -142,7 +142,7 @@ export default function usePluginService() {
 					default:
 						successMessage = sprintf(
 							// translators: %(p)s is the plugin name.
-							__( '%(p)s updated.', 'zero-admin' ),
+							__( '%(p)s updated.', 'first-admin' ),
 							{ p: plugin.name }
 						);
 				}
@@ -159,7 +159,7 @@ export default function usePluginService() {
 							// translators: %(p)s is the plugin name, %(m)s is the error message from the API.
 							__(
 								'Failed to activate %(p)s: %(m)s',
-								'zero-admin'
+								'first-admin'
 							),
 							{ p: plugin.name, m: errorText }
 						);
@@ -169,7 +169,7 @@ export default function usePluginService() {
 							// translators: %(p)s is the plugin name, %(m)s is the error message from the API.
 							__(
 								'Failed to deactivate %(p)s: %(m)s',
-								'zero-admin'
+								'first-admin'
 							),
 							{ p: plugin.name, m: errorText }
 						);
@@ -179,7 +179,7 @@ export default function usePluginService() {
 							// translators: %(p)s is the plugin name, %(m)s is the error message from the API.
 							__(
 								'Failed to enable auto-updates on %(p)s: %(m)s',
-								'zero-admin'
+								'first-admin'
 							),
 							{ p: plugin.name, m: errorText }
 						);
@@ -189,7 +189,7 @@ export default function usePluginService() {
 							// translators: %(p)s is the plugin name, %(m)s is the error message from the API.
 							__(
 								'Failed to disable auto-updates on %(p)s: %(m)s',
-								'zero-admin'
+								'first-admin'
 							),
 							{ p: plugin.name, m: errorText }
 						);
@@ -198,7 +198,7 @@ export default function usePluginService() {
 					default:
 						errorMessage = sprintf(
 							// translators: %(p)s is the plugin name, %(m)s is the error message from the API.
-							__( 'Failed to update %(p)s: %(m)s', 'zero-admin' ),
+							__( 'Failed to update %(p)s: %(m)s', 'first-admin' ),
 							{ p: plugin.name, m: errorText }
 						);
 				}
@@ -223,7 +223,7 @@ export default function usePluginService() {
 						// translators: %(name)s is the plugin name.
 						__(
 							'%(name)s updated to the latest version.',
-							'zero-admin'
+							'first-admin'
 						),
 						{ name: plugin.name }
 					);
@@ -237,7 +237,7 @@ export default function usePluginService() {
 				createErrorNotice(
 					sprintf(
 						// translators: %(p)s is the plugin name, %(m)s is the error message from the API.
-						__( 'Failed to update %(p)s: %(m)s', 'zero-admin' ),
+						__( 'Failed to update %(p)s: %(m)s', 'first-admin' ),
 						{
 							p: plugin.name,
 							m: getErrorText( error ),

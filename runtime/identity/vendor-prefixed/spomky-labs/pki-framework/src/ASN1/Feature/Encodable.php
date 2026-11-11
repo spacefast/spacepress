@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature;
 
 /**
  * Interface for classes that may be encoded to DER.

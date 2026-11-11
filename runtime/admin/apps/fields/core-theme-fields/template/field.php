@@ -2,12 +2,12 @@
 /**
  * Template field definition for core theme fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Template', 'zero-admin' ),
+	'label'              => __( 'Template', 'first-admin' ),
 	'enableGlobalSearch' => true,
 	'enableSorting'      => false,
 	'filterBy'           => false,

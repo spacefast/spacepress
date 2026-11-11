@@ -7,14 +7,14 @@ picomatch 4.0.7 (a files-sdk dependency) uses the global `Boolean` twice:
 - `lib/parse.js:143`: `branches.map(normalizeSimpleBranch).filter(Boolean)` passes it as a value;
 - `lib/picomatch.js:155`: `isMatch: Boolean(match)` calls it.
 
-On main `6c55f778`, `zero check` of picomatch's `makeRe` path stops at
+On main `6c55f778`, `first check` of picomatch's `makeRe` path stops at
 `parse.js:143:61` with Z4001 "`Boolean` can't be used as a value; call one of
 its functions".
 
 What already works on main:
 
 - `Boolean(x)` as a call, in typed TS and imported JS, compiles to
-  `Zero\Js::truthy` (or a native truthiness test when the type allows it), and
+  `First\Js::truthy` (or a native truthiness test when the type allows it), and
   the evaluator computes `Value::truthy`.
 - `.filter(Boolean)` written as a *direct callback argument* in typed TS has a
   special case in `Compiler::callback`.
@@ -45,7 +45,7 @@ Reuse the `Number.isFinite` mechanism (`number_is_finite_function` in
    `undefined`, `false` and `0n` are false; every other value, including `"0"`,
    `"false"`, arrays, objects and functions, is true. Extra arguments are
    ignored, as in JavaScript (`.filter` passes index and array).
-2. The compiler emits `\Zero\Js::booleanFunction()` with type
+2. The compiler emits `\First\Js::booleanFunction()` with type
    `(value: unknown) => boolean` for:
    - the identifier `Boolean` read as a value (`ident`), in typed TS and in
      imported JavaScript;

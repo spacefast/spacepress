@@ -1,9 +1,9 @@
-# Zero Identity API
+# First Identity API
 
-The REST base is `https://site.example/wp-json/zero-identity/v1/`. Success responses are `{ "data": ... }`; failures are `{ "error": { "code": "...", "message": "..." } }` with an appropriate HTTP status. Responses are not cacheable. Codes, IDs and passwords are strings in JSON; timestamps are Unix seconds.
+The REST base is `https://site.example/wp-json/first-identity/v1/`. Success responses are `{ "data": ... }`; failures are `{ "error": { "code": "...", "message": "..." } }` with an appropriate HTTP status. Responses are not cacheable. Codes, IDs and passwords are strings in JSON; timestamps are Unix seconds.
 
 The hosted screens at `/identity` are this API's own client. A frontend app doesn't call it
-directly: it signs users in through the OpenID Connect issuer below (Zero's typed client does
+directly: it signs users in through the OpenID Connect issuer below (First's typed client does
 that for you). Registered application origins (`applications.origins`) may call this API and
 the token endpoints cross-origin; every other origin is refused.
 
@@ -19,9 +19,9 @@ the token endpoints cross-origin; every other origin is refused.
 | POST `sign-in/passkey/options` | `{}`                         | Challenge and WebAuthn options |
 | POST `sign-in/passkey/verify`  | `challenge_id`, `credential` | Login result                   |
 
-A login result is `{kind:"signed_in"}` or `{kind:"mfa_required",challenge_id}`. A primary factor never creates a session when MFA is required. The MFA challenge also requires the browser binding cookie. External providers start through `/identity/provider/start?provider=google` and return through their registered callbacks. Google is built in (`ZERO_IDENTITY_GOOGLE_CLIENT_ID`/`_SECRET`); add others with the `zero_identity_providers` filter (`issuer`, `client_id`, `secret`, optional `discovery`).
+A login result is `{kind:"signed_in"}` or `{kind:"mfa_required",challenge_id}`. A primary factor never creates a session when MFA is required. The MFA challenge also requires the browser binding cookie. External providers start through `/identity/provider/start?provider=google` and return through their registered callbacks. Google is built in (`FIRST_IDENTITY_GOOGLE_CLIENT_ID`/`_SECRET`); add others with the `first_identity_providers` filter (`issuer`, `client_id`, `secret`, optional `discovery`).
 
-**Guests.** When the browser holds a session for a `zero_guest` user, `sign-in/verify` attaches the verified address to *that* user and makes it a `subscriber`: same user id, `zero_identity_guest_upgraded` fires. If the address already belongs to someone, the browser signs into that account and the guest stays as is (no merge). `GET account` reports `account.guest`.
+**Guests.** When the browser holds a session for a `first_guest` user, `sign-in/verify` attaches the verified address to *that* user and makes it a `subscriber`: same user id, `first_identity_guest_upgraded` fires. If the address already belongs to someone, the browser signs into that account and the guest stays as is (no merge). `GET account` reports `account.guest`.
 
 ## Account
 
@@ -68,9 +68,9 @@ Read routes: `people`, `organizations`, `applications`, `sessions`, `authenticat
 
 Mutation routes: `people/suspend`, `people/erase`, `sessions/revoke`, `keys/rotate`, `webhooks`, `webhooks/remove`, and `applications`. Application registration takes `name`, `redirect_uri`, `origin` and `idempotency_key`. It permits no wildcards, fragments or callback-origin mismatches. Webhook registration returns its signing secret once.
 
-CLI: `wp zero identity account <id>`, `suspend`, `restore`, `revoke`, `erase`, `rotate-keys`, `webhook-add`, `webhook-remove`, `webhooks`, `maintenance`, and `wp zero identity app add --name=<n> --redirect=<uri> --origin=<origin> [--id=<app_id>]` (an `--id` rerun with the same values returns the same app). Each prints `{"data": …}` or `{"error": {"code", "detail"}}`; from a project, `zero identity …` runs the same command. The Abilities API gets `zero-identity/account`, a capability-checked account read.
+CLI: `wp first identity account <id>`, `suspend`, `restore`, `revoke`, `erase`, `rotate-keys`, `webhook-add`, `webhook-remove`, `webhooks`, `maintenance`, and `wp first identity app add --name=<n> --redirect=<uri> --origin=<origin> [--id=<app_id>]` (an `--id` rerun with the same values returns the same app). Each prints `{"data": …}` or `{"error": {"code", "detail"}}`; from a project, `first identity …` runs the same command. The Abilities API gets `first-identity/account`, a capability-checked account read.
 
-Webhook deliveries carry `Zero-Event-Id` and `Zero-Signature: t=<unix>,v1=<hex hmac_sha256(secret, t + "." + body)>`.
+Webhook deliveries carry `First-Event-Id` and `First-Signature: t=<unix>,v1=<hex hmac_sha256(secret, t + "." + body)>`.
 
 ## OpenID Connect issuer
 
@@ -91,13 +91,13 @@ A token response is `{ access_token, token_type: "Bearer", expires_in: 300, refr
 
 **Guest handoff.** A guest's app holds Bearer tokens but no identity cookie. `POST /identity/handoff` with the guest's Bearer token returns `{ handoff }` (single use, 60 s). Sending the browser to `/identity/authorize?…&handoff=<handoff>` signs it in as that guest and opens the hosted screen to add an email; consent then returns to the app as usual. A handoff is bound to the guest's session and token family: revoking either first voids it. Upgrading a guest revokes all of its earlier sessions and token families, so nobody who held the guest's credentials keeps the verified account; the browser that verified gets fresh ones through consent.
 
-**Shared connection.** Identity runs on WordPress's `$wpdb` connection. When a transaction is already open on it (the Zero runtime's, another plugin's), identity detects it and joins with savepoints instead of committing the host's work. Users whose WordPress rows identity changes are announced through `zero_identity_touched_user` so the host's rollback can clear their caches; identity clears them itself when its own savepoint or transaction rolls back.
+**Shared connection.** Identity runs on WordPress's `$wpdb` connection. When a transaction is already open on it (the First runtime's, another plugin's), identity detects it and joins with savepoints instead of committing the host's work. Users whose WordPress rows identity changes are announced through `first_identity_touched_user` so the host's rollback can clear their caches; identity clears them itself when its own savepoint or transaction rolls back.
 
 **Guests and WordPress credentials.** A guest can't set a WordPress password or create application passwords (core REST and profile screens refuse). The upgrade resets the WordPress password and deletes application passwords too.
 
 **Bearer and cookies.** An explicit `Authorization: Bearer` names the user even when the browser also sends a WordPress login cookie without a REST nonce. Application passwords still take precedence.
 
-PHP API for the Zero runtime: `Accounts::issueForUser(int $wpUserId, string $clientId)` mints a session and token pair without a browser (only after `zero_runtime_loaded`), and `Accounts::status(int $wpUserId)` returns `active`, `suspended`, `deletion_requested`, `deleted` or `none`.
+PHP API for the First runtime: `Accounts::issueForUser(int $wpUserId, string $clientId)` mints a session and token pair without a browser (only after `first_runtime_loaded`), and `Accounts::status(int $wpUserId)` returns `active`, `suspended`, `deletion_requested`, `deleted` or `none`.
 
 ## Errors and retries
 

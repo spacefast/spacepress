@@ -2,11 +2,11 @@
 /**
  * Layout View Config Filter System
  *
- * This file provides the filter-based API for layout view configs in Zero Admin.
+ * This file provides the filter-based API for layout view configs in First Admin.
  * Layout view configs contain entity configurations like default_view, default_layouts,
  * quick_edit_form, views, etc.
  *
- * @package ZeroAdmin
+ * @package FirstAdmin
  */
 
 /**
@@ -22,7 +22,7 @@
  * @param string|null $variant Optional. View config identifier for variant-specific configurations. Default null.
  * @return array Configuration array.
  */
-function zero_admin_get_entity_view_config( $kind, $name, $variant = null ) {
+function first_admin_get_entity_view_config( $kind, $name, $variant = null ) {
 	// Start with default configuration structure.
 	$config = array(
 		'default_view'    => null,
@@ -58,7 +58,7 @@ function zero_admin_get_entity_view_config( $kind, $name, $variant = null ) {
 	 * @param string      $kind    Entity kind.
 	 * @param string      $name    Entity name.
 	 */
-	$config = apply_filters( "zero_admin_entity_view_config_{$kind}_{$name}", $config, $kind, $name );
+	$config = apply_filters( "first_admin_entity_view_config_{$kind}_{$name}", $config, $kind, $name );
 
 	// If variant is provided, also apply variant-specific filter for more granular control.
 	if ( $variant ) {
@@ -75,7 +75,7 @@ function zero_admin_get_entity_view_config( $kind, $name, $variant = null ) {
 		 * @param string $name    Entity name.
 		 * @param string $variant View config identifier.
 		 */
-		$config = apply_filters( "zero_admin_entity_view_config_{$kind}_{$name}_{$variant}", $config, $kind, $name, $variant );
+		$config = apply_filters( "first_admin_entity_view_config_{$kind}_{$name}_{$variant}", $config, $kind, $name, $variant );
 	}
 
 	return $config;

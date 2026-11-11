@@ -173,7 +173,7 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
     devDependencies:
-      '@spacefast/zero-blocks':
+      '@spacefast/first-blocks':
         specifier: link:../blocks
         version: link:../blocks
       '@types/node':

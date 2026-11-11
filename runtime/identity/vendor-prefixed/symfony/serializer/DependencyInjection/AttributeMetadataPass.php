@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\DependencyInjection;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\DependencyInjection;
 
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>

@@ -581,14 +581,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// then the app's. A before-hook's returned replacement becomes the next hook's `data`.
     pub fn chain(&mut self, table: &str, kind: HookKind, functions: &[String]) -> String {
         let name = self.unique_name(&format!("{table}__{}__chain", kind.name()));
-        let calls: Vec<String> = functions.iter().map(|f| format!("'\\\\ZeroApp\\\\{f}'")).collect();
+        let calls: Vec<String> = functions.iter().map(|f| format!("'\\\\FirstApp\\\\{f}'")).collect();
         let list = calls.join(", ");
         let body = match kind {
             HookKind::BeforeCreate => format!(
-                "function {name}(\\Zero\\JsObject $data, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+                "function {name}(\\First\\JsObject $data, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $ctx);\n        if ($result instanceof \\First\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
             ),
             HookKind::BeforeUpdate => format!(
-                "function {name}(\\Zero\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\Zero\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+                "function {name}(\\First\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\First\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
             ),
             _ => format!(
                 "function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"
@@ -716,7 +716,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     | "yield"
             )
         {
-            name = format!("zero_{name}");
+            name = format!("first_{name}");
         }
         if self.used_names.contains(&name.to_ascii_lowercase()) {
             let mut i = 2;
@@ -771,7 +771,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(());
         }
         if self.resolving_json_types.len() >= 96 {
-            return err(*span, "JSON model expansion exceeds Zero's 96-level limit");
+            return err(*span, "JSON model expansion exceeds First's 96-level limit");
         }
         if !self.resolving_json_types.insert(key) {
             return err(*span, "recursive JSON model annotations aren't supported");
@@ -1025,7 +1025,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if params.is_some() && receives_this(&f) {
             return err_help(
                 f.span,
-                "Zero calls this function without a receiver, so `this` is undefined in it",
+                "First calls this function without a receiver, so `this` is undefined in it",
                 "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
             );
         }
@@ -1082,7 +1082,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if i == 0 && receives_this(&f) && p.ann.is_none() && !self.javascript_module(f.module) {
                 return Err(Diag::new(
                     p.span,
-                    "Zero code doesn't support `this` without a type in a function that isn't a method of an object literal",
+                    "First code doesn't support `this` without a type in a function that isn't a method of an object literal",
                 )
                 .code(crate::diag::Code::Unsupported)
                 .help(
@@ -1115,7 +1115,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err_help(
                         p.span,
                         "this parameter needs a type",
-                        "annotate it, e.g. `(item: Item)`; Zero compiles by type",
+                        "annotate it, e.g. `(item: Item)`; First compiles by type",
                     );
                 }
             };
@@ -1142,7 +1142,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err(
                 f.span,
                 format!(
-                    "this function takes {} parameters, but Zero calls it with {}",
+                    "this function takes {} parameters, but First calls it with {}",
                     f.params.len(),
                     ps.len()
                 ),
@@ -1183,7 +1183,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
         );
         if self.suspends(&f) {
-            let wrapper = self.suspending_wrapper(&f, &format!("\\ZeroApp\\{name}__body"));
+            let wrapper = self.suspending_wrapper(&f, &format!("\\FirstApp\\{name}__body"));
             let _ = writeln!(
                 self.output,
                 "function {name}__body({params_php})\n{{\n{body}}}\n\nfunction {name}(mixed ...$args)\n{{\n    return {wrapper};\n}}\n"
@@ -1255,21 +1255,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, t, true, p.pat.span());
                 let rest = self.tmp_var();
                 params_php.push(format!("...{rest}"));
-                let _ = writeln!(prologue, "    {php} = new \\Zero\\JsArray({rest});");
+                let _ = writeln!(prologue, "    {php} = new \\First\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
                 Pat::Id(_, _) => {
                     let php = self.declare_parameter(p, &t, &mut prologue, 1)?;
                     let default = if self.javascript_module(f.module) {
-                        " = \\Zero\\JsUndefined::Value"
+                        " = \\First\\JsUndefined::Value"
                     } else {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
                     // A hidden receiver is whatever the call supplies, undefined for a detached
                     // call, so it takes no PHP type: reading through it throws as in JavaScript.
                     let hint = if i == 0 && receives_this(f) { "" } else { php_hint(&t) };
-                    if hint == "\\Zero\\JsObject "
+                    if hint == "\\First\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
                         && !self.effects.binding_reassigned(p.pat.span())
@@ -1320,7 +1320,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
                 self.note_fallthrough(stmts, f.span)?;
-                body.push_str("    return \\Zero\\Js::undefined();\n");
+                body.push_str("    return \\First\\Js::undefined();\n");
             }
         }
         Ok((params_php.join(", "), body))
@@ -1725,7 +1725,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match pat {
                     Pat::Id(n, _) => {
                         let php = self.declare_local(n, ty, mutable, pat.span());
-                        let v = value.map(|v| v.php).unwrap_or_else(|| "\\Zero\\Js::undefined()".into());
+                        let v = value
+                            .map(|v| v.php)
+                            .unwrap_or_else(|| "\\First\\Js::undefined()".into());
                         self.fresh_binding(&php, pat.span(), &mut out, indent);
                         let _ = writeln!(out, "{p}{php} = {v};");
                     }
@@ -1753,7 +1755,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err_help(
                         e.span,
                         "this async call isn't awaited",
-                        "add `await`; Zero runs async calls in order",
+                        "add `await`; First runs async calls in order",
                     );
                 }
                 if matches!(v.ty, Ty::Builder(_)) {
@@ -1770,7 +1772,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 None => {
                     self.note_return(&Ty::Undefined, *span)?;
-                    let _ = writeln!(out, "{p}return \\Zero\\Js::undefined();");
+                    let _ = writeln!(out, "{p}return \\First\\Js::undefined();");
                 }
             },
             Stmt::If(test, then, otherwise) => {
@@ -1847,7 +1849,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         locals.sort_by(|a, b| a.php.cmp(&b.php));
                         locals
                             .into_iter()
-                            .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
+                            .map(|l| format!("{php} = &\\First\\Js::cell({php})", php = l.php))
                             .collect()
                     }
                     _ => Vec::new(),
@@ -1878,7 +1880,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let module = self.fx().module;
                 // Authored TypeScript has no job queue, so `for await` is accepted only where the
                 // blocking model is exact: a sync iterable (array, tuple, string) whose elements are
-                // Zero's own promises or plain values. Each element is then already settled, and
+                // First's own promises or plain values. Each element is then already settled, and
                 // awaiting it yields its value. Async iterables, generators and values from imported
                 // JavaScript go through the job queue, which only imported JavaScript has.
                 let typed_await = *is_await && !self.javascript_module(module);
@@ -1914,13 +1916,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let it = self.expr(iter)?;
                 let it = self.finish_value(it, iter.span)?;
                 let (el, src) = match &it.ty.non_null() {
-                    Ty::Dynamic => (Ty::Dynamic, format!("\\Zero\\Js::dynamicIterator({})", it.php)),
+                    Ty::Dynamic => (Ty::Dynamic, format!("\\First\\Js::dynamicIterator({})", it.php)),
                     Ty::Array(t) | Ty::NonEmptyArray(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
-                    t if t.is_str() => (Ty::Str, format!("\\Zero\\Js::from({})", it.php)),
+                    t if t.is_str() => (Ty::Str, format!("\\First\\Js::from({})", it.php)),
                     t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams) => (
                         self.iterable_element(t).expect("collection element"),
-                        format!("\\Zero\\Js::iter({})", it.php),
+                        format!("\\First\\Js::iter({})", it.php),
                     ),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
@@ -1971,7 +1973,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     let _ = writeln!(
                         out,
-                        "{p}{source} = \\Zero\\JsIter::{open}({});\n{p}try {{\n{p}while ({source}->step()) {{",
+                        "{p}{source} = \\First\\JsIter::{open}({});\n{p}try {{\n{p}while ({source}->step()) {{",
                         it.php
                     );
                     let _ = writeln!(out, "{}{value} = {source}->value;", pad(indent + 1));
@@ -2067,7 +2069,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let _ = writeln!(
                     out,
-                    "{p}{source} = \\Zero\\Js::dynamicForIn({});\n{p}foreach ({source} as {index}) {{",
+                    "{p}{source} = \\First\\Js::dynamicForIn({});\n{p}foreach ({source} as {index}) {{",
                     value.php
                 );
                 if matches!(kind, Some(DeclKind::Let | DeclKind::Const)) {
@@ -2182,13 +2184,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let javascript = self.javascript_module(module);
                     let caught = self.tmp_var();
                     // Database and validation errors propagate: they must roll back the request.
-                    let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {caught}) {{");
+                    let _ = writeln!(out, "{p}}} catch (\\First\\JsError {caught}) {{");
                     if let Some((n, span)) = param {
                         let var =
                             self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
                         // Typed catch bindings are Errors: Error subclass instances pass, other values are refused.
                         let unwrap = if javascript { "thrownValue" } else { "caughtError" };
-                        let _ = writeln!(out, "{p}    {var} = \\Zero\\Js::{unwrap}({caught});");
+                        let _ = writeln!(out, "{p}    {var} = \\First\\Js::{unwrap}({caught});");
                     }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
@@ -2411,7 +2413,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if !(3..=4).contains(&parts.len()) {
                         return err(e.span, "HttpError takes (status, code, message)");
                     }
-                    return Ok(format!("new \\Zero\\HttpError({})", parts.join(", ")));
+                    return Ok(format!("new \\First\\HttpError({})", parts.join(", ")));
                 }
                 _ => {}
             }
@@ -2423,7 +2425,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let module = self.fx().module;
         if self.javascript_module(module) || self.error_instance(&v.ty) {
             let v = self.finish_value(v, e.span)?;
-            return Ok(format!("\\Zero\\Js::throwable({})", v.php));
+            return Ok(format!("\\First\\Js::throwable({})", v.php));
         }
         err_help(
             e.span,
@@ -2498,13 +2500,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let tmp = self.tmp_var();
                 let assigned = format!("{tmp} = {src}");
-                let missing = format!("({assigned}) === \\Zero\\Js::undefined()");
+                let missing = format!("({assigned}) === \\First\\Js::undefined()");
                 let _ = writeln!(out, "{p}{tmp} = ({missing} ? {} : {tmp});", d.php);
                 self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;
             }
             Pat::Obj { props, rest, span } => {
                 let source = self.tmp_var();
-                let _ = writeln!(out, "{p}{source} = \\Zero\\Js::requirePresent({src});");
+                let _ = writeln!(out, "{p}{source} = \\First\\Js::requirePresent({src});");
                 let src = &source;
                 let t = ty.non_null();
                 if ty.is_nullable() && ty != Ty::Dynamic {
@@ -2513,7 +2515,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // Imported JavaScript: any field may be read, and an absent one is undefined.
                 if ty == Ty::Dynamic {
                     for (key, p2) in props {
-                        let access = format!("\\Zero\\Js::dynamicGet({src}, {})", php_str(key));
+                        let access = format!("\\First\\Js::dynamicGet({src}, {})", php_str(key));
                         let types = BindingTypes {
                             read: Ty::Dynamic,
                             constraint: Ty::Dynamic,
@@ -2528,7 +2530,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         let php = self.declare_binding(name, types, mutable, *span);
                         self.fresh_binding(&php, *span, out, indent);
-                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::dynamicRest({src}, [{}]);", keys.join(", "));
+                        let _ = writeln!(
+                            out,
+                            "{p}{php} = \\First\\Js::dynamicRest({src}, [{}]);",
+                            keys.join(", ")
+                        );
                     }
                     return Ok(());
                 }
@@ -2542,7 +2548,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         return Err(d);
                     };
-                    let access = format!("\\Zero\\Js::dataGet({src}, {})", php_str(key));
+                    let access = format!("\\First\\Js::dataGet({src}, {})", php_str(key));
                     let read = if optional || matches!(t, Ty::Map(_)) {
                         Ty::union([ft, Ty::Undefined])
                     } else {
@@ -2573,7 +2579,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     let php = self.declare_binding(name, types, mutable, *span);
                     self.fresh_binding(&php, *span, out, indent);
-                    let _ = writeln!(out, "{p}{php} = \\Zero\\Js::omit({src}, [{}]);", keys.join(", "));
+                    let _ = writeln!(out, "{p}{php} = \\First\\Js::omit({src}, [{}]);", keys.join(", "));
                 }
             }
             Pat::Arr { elems, rest, span } => {
@@ -2586,10 +2592,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         elems.len().to_string()
                     };
-                    let _ = writeln!(out, "{p}{source} = \\Zero\\Js::destructure({src}, {take});");
+                    let _ = writeln!(out, "{p}{source} = \\First\\Js::destructure({src}, {take});");
                     for (i, e) in elems.iter().enumerate() {
                         if let Some(e) = e {
-                            let access = format!("\\Zero\\Js::dynamicGet({source}, {i})");
+                            let access = format!("\\First\\Js::dynamicGet({source}, {i})");
                             let types = BindingTypes {
                                 read: Ty::Dynamic,
                                 constraint: Ty::Dynamic,
@@ -2604,7 +2610,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         let php = self.declare_binding(name, types, mutable, *span);
                         self.fresh_binding(&php, *span, out, indent);
-                        let _ = writeln!(out, "{p}{php} = \\Zero\\Js::arrSlice({source}, {});", elems.len());
+                        let _ = writeln!(out, "{p}{php} = \\First\\Js::arrSlice({source}, {});", elems.len());
                     }
                     return Ok(());
                 }
@@ -2634,7 +2640,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 for (i, e) in elems.iter().enumerate() {
                     let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
                     if let Some(e) = e {
-                        let access = format!("({done} ? \\Zero\\Js::undefined() : \\Zero\\Js::dynamicGet({src}, {i}))");
+                        let access =
+                            format!("({done} ? \\First\\Js::undefined() : \\First\\Js::dynamicGet({src}, {i}))");
                         let types = BindingTypes {
                             read: live_element(&ty, i, changed).expect("array read"),
                             constraint: live_element(&constraint, i, changed).expect("authored array"),
@@ -2663,7 +2670,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.fresh_binding(&php, *span, out, indent);
                     let _ = writeln!(
                         out,
-                        "{p}{php} = {done} ? new \\Zero\\JsArray() : \\Zero\\Js::arrSlice({src}, {});",
+                        "{p}{php} = {done} ? new \\First\\JsArray() : \\First\\Js::arrSlice({src}, {});",
                         elems.len()
                     );
                 }
@@ -3042,10 +3049,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }) =>
             {
-                format!("!\\Zero\\Js::isNullish({})", v.php)
+                format!("!\\First\\Js::isNullish({})", v.php)
             }
             t if t.is_str() => format!("{} !== ''", v.wrapped()),
-            _ => format!("\\Zero\\Js::truthy({})", v.php),
+            _ => format!("\\First\\Js::truthy({})", v.php),
         }
     }
 
@@ -3067,7 +3074,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::Promise(_) => err_help(
                 span,
                 "this async call isn't awaited",
-                "add `await`; Zero runs async calls in order",
+                "add `await`; First runs async calls in order",
             ),
             Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => {
                 err(span, "`db` can't be stored in a variable; call it directly")
@@ -3086,7 +3093,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
-                // Host classes Zero implements answer `instanceof` from imported JavaScript.
+                // Host classes First implements answer `instanceof` from imported JavaScript.
                 if let ExprKind::Ident(name) = &right.kind
                     && matches!(
                         name.as_str(),
@@ -3103,7 +3110,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         _ => "JsTransformStream",
                     };
                     return Ok(Out::atom(
-                        format!("({} instanceof \\Zero\\{class})", left.php),
+                        format!("({} instanceof \\First\\{class})", left.php),
                         Ty::Bool,
                     ));
                 }
@@ -3113,7 +3120,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let left = self.expr(left)?;
                     return Ok(Out::atom(
-                        format!("\\Zero\\Js::isError({}, {})", left.php, php_str(g)),
+                        format!("\\First\\Js::isError({}, {})", left.php, php_str(g)),
                         Ty::Bool,
                     ));
                 }
@@ -3121,15 +3128,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let right = self.expr(right)?;
                 if right.ty == Ty::Dynamic {
                     return Ok(Out::atom(
-                        format!("\\Zero\\Js::dynamicInstanceof({}, {})", left.php, right.php),
+                        format!("\\First\\Js::dynamicInstanceof({}, {})", left.php, right.php),
                         Ty::Bool,
                     ));
                 }
                 if !matches!(right.ty, Ty::Class(_)) {
-                    return err(span, "instanceof requires a named Zero class");
+                    return err(span, "instanceof requires a named First class");
                 }
                 Out::atom(
-                    format!("\\Zero\\JsClass::isInstance({}, {})", left.php, right.php),
+                    format!("\\First\\JsClass::isInstance({}, {})", left.php, right.php),
                     Ty::Bool,
                 )
             }
@@ -3139,14 +3146,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::TemplateStrings { cooked, raw } => {
                 let items = cooked
                     .iter()
-                    .map(|c| c.as_deref().map_or("\\Zero\\Js::undefined()".to_string(), php_str))
+                    .map(|c| c.as_deref().map_or("\\First\\Js::undefined()".to_string(), php_str))
                     .collect::<Vec<_>>()
                     .join(", ");
                 let raw = raw.iter().map(|r| php_str(r)).collect::<Vec<_>>().join(", ");
                 // The site key keeps one array per call site across calls, as in JavaScript.
                 let site = format!("{}:{}:{}", span.file, span.start, span.end);
                 Out::atom(
-                    format!("\\Zero\\Js::templateStrings({}, [{items}], [{raw}])", php_str(&site)),
+                    format!("\\First\\Js::templateStrings({}, [{items}], [{raw}])", php_str(&site)),
                     // TypeScript types every cooked string as `string`, so a TemplateStringsArray
                     // tag still accepts an invalid escape; its element is undefined at runtime.
                     Ty::NonEmptyArray(Box::new(Ty::Str)),
@@ -3164,26 +3171,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 // Js::hasProperty: own properties, then the value's fixed prototype chain.
                 Out::atom(
-                    format!("\\Zero\\Js::hasProperty({}, {})", key.php, object.php),
+                    format!("\\First\\Js::hasProperty({}, {})", key.php, object.php),
                     Ty::Bool,
                 )
             }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
             ExprKind::BigInt(digits) => {
-                Out::atom(format!("\\Zero\\JsBigInt::literal({})", php_str(digits)), Ty::BigInt)
+                Out::atom(format!("\\First\\JsBigInt::literal({})", php_str(digits)), Ty::BigInt)
             }
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
-            ExprKind::Undefined => Out::atom("\\Zero\\Js::undefined()", Ty::Undefined),
+            ExprKind::Undefined => Out::atom("\\First\\Js::undefined()", Ty::Undefined),
             ExprKind::Null => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => {
                 crate::builtins::check_regex(pattern, flags, span)?;
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
                 Out::atom(
                     if javascript {
-                        format!("new \\Zero\\RegExp({}, {})", php_str(pattern), php_str(flags))
+                        format!("new \\First\\RegExp({}, {})", php_str(pattern), php_str(flags))
                     } else {
-                        format!("\\Zero\\Js::re({}, {})", php_str(pattern), php_str(flags))
+                        format!("\\First\\Js::re({}, {})", php_str(pattern), php_str(flags))
                     },
                     if javascript { Ty::Dynamic } else { Ty::Regex },
                 )
@@ -3238,7 +3245,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             match v.ty.non_null() {
                                 Ty::Dynamic => {
                                     tys.push(Ty::Dynamic);
-                                    parts.push(format!("...(\\Zero\\Js::dynamicIterable({}))->a", v.php));
+                                    parts.push(format!("...(\\First\\Js::dynamicIterable({}))->a", v.php));
                                     continue;
                                 }
                                 Ty::Array(t) | Ty::NonEmptyArray(t) => tys.push(*t),
@@ -3251,7 +3258,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                         );
                                     }
                                     tys.push(self.iterable_element(&t).expect("collection element"));
-                                    parts.push(format!("...(\\Zero\\Js::iterArray({}))->a", v.php));
+                                    parts.push(format!("...(\\First\\Js::iterArray({}))->a", v.php));
                                     continue;
                                 }
                                 other => {
@@ -3267,7 +3274,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Array(Box::new(Ty::union(tys)))
                 };
-                Out::atom(format!("(new \\Zero\\JsArray([{}]))", parts.join(", ")), ty)
+                Out::atom(format!("(new \\First\\JsArray([{}]))", parts.join(", ")), ty)
             }
             ExprKind::Object(props)
                 if self.javascript_module(self.fx.as_ref().expect("fn").module)
@@ -3304,7 +3311,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                         );
                                     }
                                     is_map = true;
-                                    (format!("\\Zero\\Js::key({})", k.php), None)
+                                    (format!("\\First\\Js::key({})", k.php), None)
                                 }
                             };
                             if let (ExprKind::Func(f), Some(k)) = (&value.kind, name)
@@ -3452,14 +3459,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let fields = parts.iter().map(|p| &p[1..p.len() - 1]).collect::<Vec<_>>().join(", ");
                     if null_prototype {
-                        format!("(new \\Zero\\JsObject([{fields}], nullPrototype: true))")
+                        format!("(new \\First\\JsObject([{fields}], nullPrototype: true))")
                     } else {
-                        format!("(new \\Zero\\JsObject([{fields}]))")
+                        format!("(new \\First\\JsObject([{fields}]))")
                     }
                 } else if null_prototype {
-                    format!("\\Zero\\Js::nullPrototype(\\Zero\\Js::obj({}))", parts.join(", "))
+                    format!("\\First\\Js::nullPrototype(\\First\\Js::obj({}))", parts.join(", "))
                 } else {
-                    format!("\\Zero\\Js::obj({})", parts.join(", "))
+                    format!("\\First\\Js::obj({})", parts.join(", "))
                 };
                 Out::atom(php, ty)
             }
@@ -3486,9 +3493,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         Out::new(format!("!{}", paren(&self.truthy(&v))), ty)
                     }
-                    UnOp::Neg if v.ty == Ty::BigInt => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::BigInt),
+                    UnOp::Neg if v.ty == Ty::BigInt => Out::atom(format!("\\First\\Js::neg({})", v.php), Ty::BigInt),
                     UnOp::BitNot if v.ty == Ty::BigInt => {
-                        Out::atom(format!("\\Zero\\Js::bitNot({})", v.php), Ty::BigInt)
+                        Out::atom(format!("\\First\\Js::bitNot({})", v.php), Ty::BigInt)
                     }
                     UnOp::Plus if v.ty == Ty::BigInt => {
                         return err_help(
@@ -3508,7 +3515,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             // Js::neg: the operand as a JS number, like the binary operators (or a
                             // BigInt, which checked JavaScript can't rule out).
                             _ => Out::atom(
-                                format!("\\Zero\\Js::neg({})", v.php),
+                                format!("\\First\\Js::neg({})", v.php),
                                 if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
                             ),
                         }
@@ -3518,7 +3525,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             self.need_num(&v, x.span, "`~`")?;
                         }
                         Out::atom(
-                            format!("\\Zero\\Js::bitNot({})", v.php),
+                            format!("\\First\\Js::bitNot({})", v.php),
                             if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
                         )
                     }
@@ -3526,13 +3533,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         if v.ty.is_num() {
                             v
                         } else {
-                            Out::atom(format!("\\Zero\\Js::toNumber({})", v.php), Ty::Num)
+                            Out::atom(format!("\\First\\Js::toNumber({})", v.php), Ty::Num)
                         }
                     }
                     UnOp::TypeOf if v.ty == Ty::Undefined => {
                         Out::atom(Self::sequence(vec![v.php], php_str("undefined")), Ty::Str)
                     }
-                    UnOp::TypeOf => Out::atom(format!("\\Zero\\Js::typeOf({})", v.php), Ty::Str),
+                    UnOp::TypeOf => Out::atom(format!("\\First\\Js::typeOf({})", v.php), Ty::Str),
                 }
             }
             ExprKind::Binary(op, l, r) => {
@@ -3575,7 +3582,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::IsNullish(x, negated) => {
                 let v = self.expr(x)?;
                 Out::atom(
-                    format!("{}\\Zero\\Js::isNullish({})", if *negated { "!" } else { "" }, v.php),
+                    format!("{}\\First\\Js::isNullish({})", if *negated { "!" } else { "" }, v.php),
                     Ty::Bool,
                 )
             }
@@ -3595,7 +3602,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     LogOp::Nullish => {
                         let tmp = self.tmp_var();
                         Out::new(
-                            format!("(\\Zero\\Js::isNullish({tmp} = {}) ? {} : {tmp})", a.php, b.php),
+                            format!("(\\First\\Js::isNullish({tmp} = {}) ? {} : {tmp})", a.php, b.php),
                             ty,
                         )
                     }
@@ -3695,7 +3702,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         let database_receiver = match &out.ty {
-            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => Some("\\Zero\\db()"),
+            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => Some("\\First\\db()"),
             Ty::Builder(_) => Some(""),
             _ => None,
         };
@@ -3752,10 +3759,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         crate::builtins::check_string_coercion_type(&v.ty, span)?;
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
-            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\Zero\\Js::numStr({})", v.php),
+            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\First\\Js::numStr({})", v.php),
             Ty::BigInt => format!("(string) ({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
-            _ => format!("\\Zero\\Js::str({})", v.php),
+            _ => format!("\\First\\Js::str({})", v.php),
         })
     }
 
@@ -3773,7 +3780,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return None;
             };
             (element.is_str() && out.ty.is_nullable() && out.ty.non_null().is_str())
-                .then(|| format!("({} ?? \\Zero\\Js::undefined())", out.php))
+                .then(|| format!("({} ?? \\First\\Js::undefined())", out.php))
         };
         let (left, right) = match (&a.ty, &b.ty) {
             (Ty::Unknown, _) => (a.php.clone(), read(b, r, self)?),
@@ -3781,7 +3788,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => return None,
         };
         Some(Out::atom(
-            format!("\\Zero\\Js::dynamicBinary('+', {left}, {right})"),
+            format!("\\First\\Js::dynamicBinary('+', {left}, {right})"),
             Ty::union([Ty::Str, Ty::Num]),
         ))
     }
@@ -3802,9 +3809,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             BinOp::Add => {
                 if a.ty.is_num() && b.ty.is_num() {
                     // Js::add: operands and result as JS numbers (exact ints past ±2^53 round, as in JS).
-                    Out::atom(format!("\\Zero\\Js::add({}, {})", a.php, b.php), Ty::Num)
+                    Out::atom(format!("\\First\\Js::add({}, {})", a.php, b.php), Ty::Num)
                 } else if a.ty.is_str() || b.ty.is_str() {
-                    Out::atom(format!("\\Zero\\Js::dynamicBinary('+', {}, {})", a.php, b.php), Ty::Str)
+                    Out::atom(
+                        format!("\\First\\Js::dynamicBinary('+', {}, {})", a.php, b.php),
+                        Ty::Str,
+                    )
                 } else {
                     return err_help(
                         span,
@@ -3835,9 +3845,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match op {
                     BinOp::Div => Out::atom(format!("fdiv({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Rem => Out::atom(format!("fmod({}, {})", a.php, b.php), Ty::Num),
-                    BinOp::Exp => Out::atom(format!("\\Zero\\Js::pow({}, {})", a.php, b.php), Ty::Num),
-                    BinOp::Sub => Out::atom(format!("\\Zero\\Js::sub({}, {})", a.php, b.php), Ty::Num),
-                    _ => Out::atom(format!("\\Zero\\Js::mul({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Exp => Out::atom(format!("\\First\\Js::pow({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Sub => Out::atom(format!("\\First\\Js::sub({}, {})", a.php, b.php), Ty::Num),
+                    _ => Out::atom(format!("\\First\\Js::mul({}, {})", a.php, b.php), Ty::Num),
                 }
             }
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
@@ -3851,7 +3861,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.javascript_binary(op, a, b, span)?
                 } else if a.ty.is_str() && b.ty.is_str() {
                     Out::new(
-                        format!("\\Zero\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
+                        format!("\\First\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
                         Ty::Bool,
                     )
                 } else {
@@ -3880,7 +3890,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.need_num(&b, span, &format!("`{sym}`"))?;
                 // Js::bitwise: ToInt32/ToUint32 on JS numbers, a signed or (`>>>`) unsigned 32-bit result.
                 Out::atom(
-                    format!("\\Zero\\Js::bitwise({}, {}, {})", php_str(sym), a.php, b.php),
+                    format!("\\First\\Js::bitwise({}, {}, {})", php_str(sym), a.php, b.php),
                     Ty::Num,
                 )
             }
@@ -3940,13 +3950,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => Ty::BigInt,
         };
         Ok(Out::atom(
-            format!("\\Zero\\Js::dynamicBinary({}, {}, {})", php_str(symbol), a.php, b.php),
+            format!("\\First\\Js::dynamicBinary({}, {}, {})", php_str(symbol), a.php, b.php),
             result,
         ))
     }
 
     fn strict_eq(&self, a: &Out, b: &Out) -> String {
-        format!("\\Zero\\Js::strictEq({}, {})", a.php, b.php)
+        format!("\\First\\Js::strictEq({}, {})", a.php, b.php)
     }
 
     fn ident(&mut self, n: &str, span: Span) -> Result<Out> {
@@ -3965,10 +3975,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Value(v, b) => self.captured(n, v, &b, span),
             Resolved::Global("NaN") => Ok(Out::atom("NAN", Ty::Num)),
             Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
-            Resolved::Global("Math") => Ok(Out::atom("\\Zero\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
+            Resolved::Global("Math") => Ok(Out::atom("\\First\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
             Resolved::Global("Boolean") => Ok(boolean_function()),
             Resolved::Global("AbortSignal") if self.javascript_module(self.fx.as_ref().expect("fn").module) => {
-                Ok(Out::atom("\\Zero\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic))
+                Ok(Out::atom("\\First\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic))
             }
             Resolved::Global(g) => err_help(
                 span,
@@ -4014,7 +4024,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let method = n.rsplit('.').next().unwrap_or(n);
                     return Err(Diag::new(
                         span,
-                        format!("Zero code doesn't support using `{n}` apart from the object literal that defines it"),
+                        format!("First code doesn't support using `{n}` apart from the object literal that defines it"),
                     )
                     .code(crate::diag::Code::Unsupported)
                     .help(format!(
@@ -4052,9 +4062,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.helper_values.insert((self.owner(), key), wrapper.clone());
                         // A helper that reads `this` takes its receiver first: its value binds it.
                         let receives_this = receives_this(&c.func);
-                        let callable = format!("\\Closure::fromCallable('\\\\ZeroApp\\\\{name}')");
+                        let callable = format!("\\Closure::fromCallable('\\\\FirstApp\\\\{name}')");
                         let callable = if receives_this {
-                            format!("\\Zero\\Js::receiverFunction({callable})")
+                            format!("\\First\\Js::receiverFunction({callable})")
                         } else {
                             callable
                         };
@@ -4066,7 +4076,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 };
                 let mut out = Out::atom(
-                    format!("\\ZeroApp\\{wrapper}()"),
+                    format!("\\FirstApp\\{wrapper}()"),
                     if self.javascript_module(c.func.module) {
                         Ty::Dynamic
                     } else {
@@ -4076,9 +4086,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // A direct call skips the wrapper, so a helper that reads `this` receives undefined
                 // explicitly, as a plain call does in strict mode.
                 out.helper = Some(if receives_this(&c.func) {
-                    format!("\\ZeroApp\\{name}(\\Zero\\JsUndefined::Value, ")
+                    format!("\\FirstApp\\{name}(\\First\\JsUndefined::Value, ")
                 } else {
-                    format!("\\ZeroApp\\{name}(")
+                    format!("\\FirstApp\\{name}(")
                 });
                 Ok(out)
             }
@@ -4092,12 +4102,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         .code(crate::diag::Code::AccessQuery)
                         .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
                 }
-                Ok(Out::atom("\\Zero\\db()", Ty::Db))
+                Ok(Out::atom("\\First\\db()", Ty::Db))
             }
             Value::Env(name) => {
                 self.uses("env", name.to_string(), span);
                 Ok(Out::atom(
-                    format!("\\Zero\\Env::get({})", php_str(name)),
+                    format!("\\First\\Env::get({})", php_str(name)),
                     Ty::Str.nullable(),
                 ))
             }
@@ -4163,7 +4173,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let body = self.attempt(|this| {
                         this.data_helpers.insert(key, name.clone());
                         let mut body = format!(
-                            "function {name}(): \\Zero\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{0}();\n",
+                            "function {name}(): \\First\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\First\\{0}();\n",
                             if c.set { "JsSet" } else { "JsMap" }
                         );
                         for (k, v) in &c.entries {
@@ -4204,13 +4214,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     }
                 };
-                Ok(Out::atom(format!("\\ZeroApp\\{name}()"), ty))
+                Ok(Out::atom(format!("\\FirstApp\\{name}()"), ty))
             }
             Value::Symbol(symbol) => {
                 self.require_javascript_symbols(span)?;
                 let php = match &**symbol {
-                    SymbolVal::Registered(key) => format!("\\Zero\\JsSymbol::for({})", php_str(key)),
-                    SymbolVal::WellKnown(name) => format!("\\Zero\\JsSymbol::wellKnown({})", php_str(name)),
+                    SymbolVal::Registered(key) => format!("\\First\\JsSymbol::for({})", php_str(key)),
+                    SymbolVal::WellKnown(name) => format!("\\First\\JsSymbol::wellKnown({})", php_str(name)),
                     SymbolVal::Unique(description) => {
                         let key = (self.owner(), 5, Rc::as_ptr(symbol) as usize);
                         let name = match self.data_helpers.get(&key) {
@@ -4221,12 +4231,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 let description = description.as_deref().map(php_str).unwrap_or_default();
                                 let _ = writeln!(
                                     self.output,
-                                    "function {name}(): \\Zero\\JsSymbol {{ static $value; return $value ??= \\Zero\\JsSymbol::create(new \\Zero\\JsArray([{description}])); }}\n"
+                                    "function {name}(): \\First\\JsSymbol {{ static $value; return $value ??= \\First\\JsSymbol::create(new \\First\\JsArray([{description}])); }}\n"
                                 );
                                 name
                             }
                         };
-                        format!("\\ZeroApp\\{name}()")
+                        format!("\\FirstApp\\{name}()")
                     }
                 };
                 Ok(Out::atom(php, Ty::Dynamic))
@@ -4248,12 +4258,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.data_helpers.insert(key, name.clone());
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): \\Zero\\Js{kind} {{ static $value; return $value ??= new \\Zero\\Js{kind}(); }}\n"
+                            "function {name}(): \\First\\Js{kind} {{ static $value; return $value ??= new \\First\\Js{kind}(); }}\n"
                         );
                         name
                     }
                 };
-                Ok(Out::atom(format!("\\ZeroApp\\{name}()"), Ty::Dynamic))
+                Ok(Out::atom(format!("\\FirstApp\\{name}()"), Ty::Dynamic))
             }
             Value::Regex(p, f) => {
                 let key = (self.owner(), 2, Rc::as_ptr(p) as *const () as usize);
@@ -4264,14 +4274,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.data_helpers.insert(key, name.clone());
                     let _ = writeln!(
                         self.output,
-                        "function {name}(): \\Zero\\RegExp {{ static $value; return $value ??= new \\Zero\\RegExp({}, {}); }}\n",
+                        "function {name}(): \\First\\RegExp {{ static $value; return $value ??= new \\First\\RegExp({}, {}); }}\n",
                         php_str(p),
                         php_str(f)
                     );
                     name
                 };
                 Ok(Out::atom(
-                    format!("\\ZeroApp\\{name}()"),
+                    format!("\\FirstApp\\{name}()"),
                     if self.javascript_module(self.fx.as_ref().expect("fn").module) {
                         Ty::Dynamic
                     } else {
@@ -4379,7 +4389,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Object(o) => ((owner, 1, Rc::as_ptr(o) as usize), false),
             _ => {
                 return Ok(match value {
-                    Value::Undef => "\\Zero\\Js::undefined()".into(),
+                    Value::Undef => "\\First\\Js::undefined()".into(),
                     Value::Null => "null".into(),
                     Value::Bool(b) => b.to_string(),
                     Value::Num(n) => php_number(*n),
@@ -4389,7 +4399,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         if let Some(name) = self.data_helpers.get(&key) {
-            return Ok(format!("\\ZeroApp\\{name}()"));
+            return Ok(format!("\\FirstApp\\{name}()"));
         }
         let name = self.unique_name("captured");
         self.data_helpers.insert(key, name.clone());
@@ -4410,7 +4420,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => "",
         };
         let mut body = format!(
-            "function {name}(): \\Zero\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{class}({arguments});\n"
+            "function {name}(): \\First\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\First\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;
@@ -4418,7 +4428,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         body.push_str("    }\n    return $value;\n}\n\n");
         self.output.push_str(&body);
-        Ok(format!("\\ZeroApp\\{name}()"))
+        Ok(format!("\\FirstApp\\{name}()"))
     }
 
     /// The per-request object behind a read of `obj` when `obj` is, or sits inside, a static
@@ -4448,7 +4458,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(self
             .stateful_namespace(inner)?
-            .map(|outer| format!("\\Zero\\Js::dynamicGet({outer}, {})", php_str(prop))))
+            .map(|outer| format!("\\First\\Js::dynamicGet({outer}, {})", php_str(prop))))
     }
 
     /// A static namespace materialized as the receiver of a method that reads `this`.
@@ -4478,7 +4488,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         {
             return Err(Diag::new(
                 span,
-                format!("Zero code doesn't support calling a function that reads `this` through the module namespace `{path}`"),
+                format!("First code doesn't support calling a function that reads `this` through the module namespace `{path}`"),
             )
             .code(crate::diag::Code::Unsupported)
             .help(
@@ -4487,7 +4497,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let key = (self.owner(), 7, Rc::as_ptr(o) as usize);
         if let Some(name) = self.data_helpers.get(&key) {
-            return Ok(format!("\\ZeroApp\\{name}()"));
+            return Ok(format!("\\FirstApp\\{name}()"));
         }
         let name = self.unique_name("receiver");
         let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -4495,7 +4505,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let body = self.attempt(|this| {
             this.data_helpers.insert(key, name.clone());
             let mut body = format!(
-                "function {name}(): \\Zero\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\JsObject({arguments});\n"
+                "function {name}(): \\First\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\First\\JsObject({arguments});\n"
             );
             for (key, member) in fields {
                 let member_path = format!("{path}.{key}");
@@ -4507,7 +4517,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
                     return Err(Diag::new(
                         span,
-                        format!("Zero code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
+                        format!("First code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
                     )
                     .code(crate::diag::Code::Unsupported)
                     .help(format!(
@@ -4533,7 +4543,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ok(body)
         })?;
         self.output.push_str(&body);
-        Ok(format!("\\ZeroApp\\{name}()"))
+        Ok(format!("\\FirstApp\\{name}()"))
     }
 
     /// The object literal a TypeScript method that reads an untyped `this` was written in, when
@@ -4763,7 +4773,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::union([present, value.ty])
         };
         let initialization = format!(
-            "{}if ({php} === \\Zero\\JsUndefined::Value) {{ {php} = {}; }}\n",
+            "{}if ({php} === \\First\\JsUndefined::Value) {{ {php} = {}; }}\n",
             pad(indent),
             value.php
         );
@@ -4805,14 +4815,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, param_tys[i].clone(), true, p.pat.span());
                 let rest = self.tmp_var();
                 params.push(format!("...{rest}"));
-                let _ = writeln!(body, "        {php} = new \\Zero\\JsArray({rest});");
+                let _ = writeln!(body, "        {php} = new \\First\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
                 Pat::Id(_, _) => {
                     let php = self.declare_parameter(p, &param_tys[i], &mut body, 2)?;
                     let default = if self.javascript_module(f.module) {
-                        " = \\Zero\\JsUndefined::Value"
+                        " = \\First\\JsUndefined::Value"
                     } else {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
@@ -4851,7 +4861,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 2)?);
                 self.note_fallthrough(stmts, f.span)?;
-                body.push_str("        return \\Zero\\Js::undefined();\n");
+                body.push_str("        return \\First\\Js::undefined();\n");
             }
         }
         Ok((params.join(", "), body))
@@ -5074,14 +5084,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // a receiver function, a plain call passes undefined and a method call, `call` or `apply`
         // passes the receiver (Js::receiverFunction).
         let php = if receives_this(f) {
-            format!("\\Zero\\Js::receiverFunction({php})")
+            format!("\\First\\Js::receiverFunction({php})")
         } else {
             php
         };
         let php = if let Some((keys, descending)) = crate::builtins::sort_key(f) {
             let keys = keys.iter().map(|key| php_str(key)).collect::<Vec<_>>().join(", ");
             format!(
-                "\\Zero\\Js::sortComparator({php}, [{keys}], {})",
+                "\\First\\Js::sortComparator({php}, [{keys}], {})",
                 if descending { "true" } else { "false" }
             )
         } else {
@@ -5140,7 +5150,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             return Ok(Out::atom(
                 format!(
-                    "\\Zero\\Js::{}({}, {}, {})",
+                    "\\First\\Js::{}({}, {}, {})",
                     match target.kind {
                         WriteKind::Dynamic => "dynamicSet",
                         WriteKind::Array => "setAt",
@@ -5165,7 +5175,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     | CapturedPlace::Object { receiver, key }
                     | CapturedPlace::NativeObject { receiver, key } => {
                         let present = self.tmp_var();
-                        steps.push(format!("{present} = \\Zero\\Js::has({receiver}, {key})"));
+                        steps.push(format!("{present} = \\First\\Js::has({receiver}, {key})"));
                         Some(present)
                     }
                 }
@@ -5180,14 +5190,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if let Some(present) = &present
                         && place.constraint.non_null().is_num()
                     {
-                        left = Out::atom(format!("({present} ? \\Zero\\Js::toNumber({old}) : NAN)"), Ty::Num);
+                        left = Out::atom(format!("({present} ? \\First\\Js::toNumber({old}) : NAN)"), Ty::Num);
                     }
                     let right = v.php.clone();
                     let mut result = self.binary(b, left, v, span)?;
                     if b == BinOp::Add
                         && let Some(present) = present
                     {
-                        result.php = format!("\\Zero\\Js::plus({old}, {right}, !{present})");
+                        result.php = format!("\\First\\Js::plus({old}, {right}, !{present})");
                         result.atomic = true;
                     }
                     if !(assignable(&result.ty, &place.constraint) || result.ty.is_num() && place.constraint.is_num()) {
@@ -5215,7 +5225,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     let ty = logical_result_type(l, &place.read.ty, &v.ty);
                     let keep = match l {
-                        LogOp::Nullish => format!("!\\Zero\\Js::isNullish({old})"),
+                        LogOp::Nullish => format!("!\\First\\Js::isNullish({old})"),
                         LogOp::Or => self.truthy(&Out::atom(old.clone(), place.read.ty)),
                         LogOp::And => format!("!({})", self.truthy(&Out::atom(old.clone(), place.read.ty))),
                     };
@@ -5286,7 +5296,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
                 let object = self.tmp_var();
-                steps.push(format!("{object} = \\Zero\\Js::requirePresent({src})"));
+                steps.push(format!("{object} = \\First\\Js::requirePresent({src})"));
                 let mut keys = Vec::new();
                 let mut literal_keys: Vec<Option<String>> = Vec::new();
                 for (key, p) in props {
@@ -5313,7 +5323,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let key = self.expr(k)?;
                             let key = self.finish_value(key, k.span)?;
                             let tmp = self.tmp_var();
-                            steps.push(format!("{tmp} = \\Zero\\Js::key({})", key.php));
+                            steps.push(format!("{tmp} = \\First\\Js::key({})", key.php));
                             let literal = match &key.ty {
                                 Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
                                 _ => None,
@@ -5349,12 +5359,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     });
                     let read = self.tmp_var();
                     let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };
-                    let pending = format!("{read} = \\Zero\\Js::{getter}({object}, {key_php})");
+                    let pending = format!("{read} = \\First\\Js::{getter}({object}, {key_php})");
                     self.assign_pattern_steps(p, &read, Some(pending), &field_ty, steps)?;
                 }
                 if let Some(r) = rest {
                     let value = self.tmp_var();
-                    let pending = format!("{value} = \\Zero\\Js::omit({object}, [{}])", keys.join(", "));
+                    let pending = format!("{value} = \\First\\Js::omit({object}, [{}])", keys.join(", "));
                     let rest_ty = match ty.non_null() {
                         Ty::Obj(f) => Ty::Obj(
                             f.into_iter()
@@ -5383,7 +5393,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // other iterable, which is read once up front.
                 let list = self.tmp_var();
                 steps.push(match element {
-                    None => format!("{list} = \\Zero\\Js::dynamicIterableLive({src})"),
+                    None => format!("{list} = \\First\\Js::dynamicIterableLive({src})"),
                     Some(_) => format!("{list} = {src}"),
                 });
                 for (i, p) in elems.iter().enumerate() {
@@ -5394,12 +5404,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => ts.get(i).cloned().unwrap_or(Ty::Undefined),
                         (Some(t), _) => t.clone(),
                     };
-                    let pending = format!("{read} = \\Zero\\Js::dynamicGet({list}, {i})");
+                    let pending = format!("{read} = \\First\\Js::dynamicGet({list}, {i})");
                     self.assign_pattern_steps(p, &read, Some(pending), &el_ty, steps)?;
                 }
                 if let Some(r) = rest {
                     let value = self.tmp_var();
-                    let pending = format!("{value} = \\Zero\\Js::restFrom({list}, {})", elems.len());
+                    let pending = format!("{value} = \\First\\Js::restFrom({list}, {})", elems.len());
                     let rest_ty = match (&element, ty.non_null()) {
                         (None, _) => Ty::Dynamic,
                         (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => {
@@ -5426,7 +5436,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let d = self.expr(default)?;
         let d = self.finish_value(d, default.span)?;
         steps.push(format!(
-            "{value} = ({src} === \\Zero\\Js::undefined() ? {} : {src})",
+            "{value} = ({src} === \\First\\Js::undefined() ? {} : {src})",
             d.php
         ));
         Ok((value, Ty::union([defined_type(ty), d.ty])))
@@ -5494,12 +5504,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("{key} = {}", target.key),
                 ];
                 let read = match target.kind {
-                    WriteKind::Dynamic | WriteKind::Array => format!("\\Zero\\Js::dynamicGet({receiver}, {key})"),
+                    WriteKind::Dynamic | WriteKind::Array => format!("\\First\\Js::dynamicGet({receiver}, {key})"),
                     // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
                     WriteKind::NativeObject => {
-                        format!("({receiver}->p[{key}] ?? \\Zero\\Js::dataGet({receiver}, {key}))")
+                        format!("({receiver}->p[{key}] ?? \\First\\Js::dataGet({receiver}, {key}))")
                     }
-                    WriteKind::Object => format!("\\Zero\\Js::dataGet({receiver}, {key})"),
+                    WriteKind::Object => format!("\\First\\Js::dataGet({receiver}, {key})"),
                     WriteKind::Private(ref class) => format!("{class}->privateGet({receiver}, {key})"),
                 };
                 let write = match target.kind {
@@ -5517,10 +5527,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn write_place(write: &CapturedPlace, value: &str) -> String {
         match write {
             CapturedPlace::Binding(binding) => format!("({binding} = {value})"),
-            CapturedPlace::Object { receiver, key } => format!("\\Zero\\Js::set({receiver}, {key}, {value})"),
+            CapturedPlace::Object { receiver, key } => format!("\\First\\Js::set({receiver}, {key}, {value})"),
             CapturedPlace::NativeObject { receiver, key } => format!("({receiver}->p[{key}] = {value})"),
-            CapturedPlace::Array { receiver, key } => format!("\\Zero\\Js::setAt({receiver}, {key}, {value})"),
-            CapturedPlace::Dynamic { receiver, key } => format!("\\Zero\\Js::dynamicSet({receiver}, {key}, {value})"),
+            CapturedPlace::Array { receiver, key } => format!("\\First\\Js::setAt({receiver}, {key}, {value})"),
+            CapturedPlace::Dynamic { receiver, key } => format!("\\First\\Js::dynamicSet({receiver}, {key}, {value})"),
             CapturedPlace::Private { class, receiver, key } => {
                 format!("{class}->privateSet({receiver}, {key}, {value})")
             }
@@ -5542,7 +5552,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let old = self.tmp_var();
         steps.push(format!("{old} = {read}"));
         if place.read.ty == Ty::Dynamic {
-            steps.push(format!("{old} = \\Zero\\Js::toNumber({old})"));
+            steps.push(format!("{old} = \\First\\Js::toNumber({old})"));
         }
         if property_number {
             let (CapturedPlace::Array { receiver, key }
@@ -5552,10 +5562,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 unreachable!()
             };
             steps.push(format!(
-                "{old} = (\\Zero\\Js::has({receiver}, {key}) ? \\Zero\\Js::toNumber({old}) : NAN)"
+                "{old} = (\\First\\Js::has({receiver}, {key}) ? \\First\\Js::toNumber({old}) : NAN)"
             ));
         }
-        let value = format!("\\Zero\\Js::add({old}, {})", if inc { "1" } else { "-1" });
+        let value = format!("\\First\\Js::add({old}, {})", if inc { "1" } else { "-1" });
         let written = Self::write_place(&write, &value);
         let result = if prefix {
             written
@@ -5624,7 +5634,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(ty) = self.class_accessor_write(&o.ty, prop, *prop_span)? {
                     return Ok(AssignmentPlace {
                         read: Out::atom(
-                            format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
+                            format!("\\First\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
                             ty.clone(),
                         ),
                         constraint: ty,
@@ -5684,7 +5694,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             ft
                         }
                     });
-                let read = Out::atom(format!("\\Zero\\Js::dataGet({}, {})", o.php, php_str(prop)), read_ty);
+                let read = Out::atom(format!("\\First\\Js::dataGet({}, {})", o.php, php_str(prop)), read_ty);
                 Ok(AssignmentPlace {
                     constraint,
                     read,
@@ -5732,13 +5742,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let getter = if array { "dynamicGet" } else { "dataGet" };
                 let read = Out::atom(
-                    format!("\\Zero\\Js::{getter}({}, {})", o.php, i.php),
+                    format!("\\First\\Js::{getter}({}, {})", o.php, i.php),
                     Ty::union([ty, Ty::Undefined]),
                 );
                 let key = if array {
                     i.php
                 } else {
-                    format!("\\Zero\\Js::key({})", i.php)
+                    format!("\\First\\Js::key({})", i.php)
                 };
                 Ok(AssignmentPlace {
                     read,
@@ -5814,7 +5824,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         {
             return err_help(
                 span,
-                "`delete` on an array element would leave a hole; Zero arrays are dense",
+                "`delete` on an array element would leave a hole; First arrays are dense",
                 "remove it with `splice(index, 1)`, or assign `undefined` to keep the length",
             );
         }
@@ -5865,18 +5875,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "check it first, or use `delete obj?.key`",
             );
         }
-        // Js::delete: strict-mode [[Delete]] on Zero's value model.
+        // Js::delete: strict-mode [[Delete]] on First's value model.
         Ok(if optional {
             let tmp = self.tmp_var();
             Out::atom(
                 format!(
-                    "(\\Zero\\Js::isNullish({tmp} = {}) ? true : \\Zero\\Js::delete({tmp}, {key_php}))",
+                    "(\\First\\Js::isNullish({tmp} = {}) ? true : \\First\\Js::delete({tmp}, {key_php}))",
                     o.php
                 ),
                 Ty::Bool,
             )
         } else {
-            Out::atom(format!("\\Zero\\Js::delete({}, {key_php})", o.php), Ty::Bool)
+            Out::atom(format!("\\First\\Js::delete({}, {key_php})", o.php), Ty::Bool)
         })
     }
 
@@ -5912,7 +5922,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ("Number", "MIN_SAFE_INTEGER") => Ok(Out::atom("-9007199254740991", Ty::Num)),
                 ("Number", "isFinite") => Ok(number_is_finite_function()),
                 ("globalThis", _) => match crate::eval::global_member(prop) {
-                    crate::eval::GlobalMember::Absent => Ok(Out::atom("\\Zero\\Js::undefined()", Ty::Undefined)),
+                    crate::eval::GlobalMember::Absent => Ok(Out::atom("\\First\\Js::undefined()", Ty::Undefined)),
                     crate::eval::GlobalMember::Provided("NaN") => Ok(Out::atom("NAN", Ty::Num)),
                     crate::eval::GlobalMember::Provided("Infinity") => Ok(Out::atom("INF", Ty::Num)),
                     crate::eval::GlobalMember::Provided("Boolean") => Ok(boolean_function()),
@@ -5926,7 +5936,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ("Symbol", name) if WELL_KNOWN_SYMBOLS.contains(&name) => {
                     self.require_javascript_symbols(span)?;
                     Ok(Out::atom(
-                        format!("\\Zero\\JsSymbol::wellKnown({})", php_str(name)),
+                        format!("\\First\\JsSymbol::wellKnown({})", php_str(name)),
                         Ty::Dynamic,
                     ))
                 }
@@ -5935,7 +5945,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     method @ ("abs" | "floor" | "ceil" | "trunc" | "round" | "min" | "max" | "pow" | "sqrt" | "sign"),
                 ) if self.javascript_module(self.fx.as_ref().expect("fn").module) => Ok(Out::atom(
                     format!(
-                        "\\Zero\\Js::dynamicGet(\\Zero\\Js::dynamicNamespace('Math'), {})",
+                        "\\First\\Js::dynamicGet(\\First\\Js::dynamicNamespace('Math'), {})",
                         php_str(method)
                     ),
                     Ty::Dynamic,
@@ -5948,7 +5958,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     Ok(Out::atom(
                         format!(
-                            "\\Zero\\Js::dynamicGet(\\Zero\\Js::dynamicNamespace('AbortSignal'), {})",
+                            "\\First\\Js::dynamicGet(\\First\\Js::dynamicNamespace('AbortSignal'), {})",
                             php_str(method)
                         ),
                         Ty::Dynamic,
@@ -5969,7 +5979,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(receiver) = self.stateful_namespace(obj)? {
             let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicGet({receiver}, {})", php_str(prop)),
+                format!("\\First\\Js::dynamicGet({receiver}, {})", php_str(prop)),
                 if javascript { Ty::Dynamic } else { Ty::Unknown },
             ));
         }
@@ -5987,11 +5997,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return self.class_member(o, prop, prop_span);
         }
         match &o.ty {
-            Ty::Db if prop == "query" => return Ok(Out::atom("\\Zero\\db()", Ty::DbQuery)),
-            Ty::Db if prop == "globals" => return Ok(Out::atom("\\Zero\\db()", Ty::DbGlobals)),
+            Ty::Db if prop == "query" => return Ok(Out::atom("\\First\\db()", Ty::DbQuery)),
+            Ty::Db if prop == "globals" => return Ok(Out::atom("\\First\\db()", Ty::DbGlobals)),
             Ty::DbGlobals => {
                 return if self.schema.globals.contains_key(prop) {
-                    Ok(Out::atom("\\Zero\\db()", Ty::DbGlobal(prop.to_string())))
+                    Ok(Out::atom("\\First\\db()", Ty::DbGlobal(prop.to_string())))
                 } else {
                     let mut d = Diag::new(
                         prop_span,
@@ -6005,7 +6015,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Ty::DbQuery => {
                 return match self.schema.by_key(prop) {
-                    Some(c) => Ok(Out::atom("\\Zero\\db()", Ty::QueryColl(c.table.clone()))),
+                    Some(c) => Ok(Out::atom("\\First\\db()", Ty::QueryColl(c.table.clone()))),
                     None => {
                         let mut d = Diag::new(
                             prop_span,
@@ -6026,7 +6036,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut o = self.finish_value(o, obj.span)?;
         if o.ty == Ty::Arguments && prop == "length" {
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicGet({}, 'length')", o.php),
+                format!("\\First\\Js::dynamicGet({}, 'length')", o.php),
                 Ty::Num,
             ));
         }
@@ -6065,7 +6075,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if optional && o.ty.is_nullable() {
                 let tmp = c.tmp_var();
                 format!(
-                    "(\\Zero\\Js::isNullish({tmp} = {}) ? \\Zero\\Js::undefined() : {})",
+                    "(\\First\\Js::isNullish({tmp} = {}) ? \\First\\Js::undefined() : {})",
                     o.php,
                     f(&tmp)
                 )
@@ -6075,7 +6085,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(match (&base, prop) {
             (t, "length") if t.is_str() => {
-                let php = guarded(self, &|x| format!("\\Zero\\Js::length({x})"));
+                let php = guarded(self, &|x| format!("\\First\\Js::length({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
             (Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
@@ -6086,17 +6096,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // The annotation resolves to a non-empty string array; a plain array has no `raw`,
             // so the checked read throws instead of returning a wrong value.
             (Ty::NonEmptyArray(element) | Ty::Array(element), "raw") if **element == Ty::Str => {
-                let php = guarded(self, &|x| format!("\\Zero\\Js::templateRaw({x})"));
+                let php = guarded(self, &|x| format!("\\First\\Js::templateRaw({x})"));
                 Out::atom(php, suffix_null(Ty::Array(Box::new(Ty::Str))))
             }
             (Ty::Error, "cause") => {
-                let php = guarded(self, &|x| format!("\\Zero\\Js::dynamicGet({x}, 'cause')"));
+                let php = guarded(self, &|x| format!("\\First\\Js::dynamicGet({x}, 'cause')"));
                 Out::atom(php, Ty::Unknown)
             }
             (Ty::Error, "message" | "name" | "stack") => {
                 // A caught value may be an Error subclass instance, so read through JavaScript lookup.
                 let php = guarded(self, &|x| {
-                    format!("\\Zero\\Js::str(\\Zero\\Js::dynamicGet({x}, {}))", php_str(prop))
+                    format!("\\First\\Js::str(\\First\\Js::dynamicGet({x}, {}))", php_str(prop))
                 });
                 Out::atom(php, suffix_null(Ty::Str))
             }
@@ -6150,9 +6160,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| {
                     if native_object && !map && !opt_field {
                         // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
-                        format!("({x}->p[{0}] ?? \\Zero\\Js::dataGet({x}, {0}))", php_str(prop))
+                        format!("({x}->p[{0}] ?? \\First\\Js::dataGet({x}, {0}))", php_str(prop))
                     } else {
-                        format!("\\Zero\\Js::dataGet({x}, {})", php_str(prop))
+                        format!("\\First\\Js::dataGet({x}, {})", php_str(prop))
                     }
                 });
                 let ft = if map || opt_field {
@@ -6193,7 +6203,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let i = self.expr(index)?;
         if o.ty == Ty::Arguments {
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                format!("\\First\\Js::dynamicGet({}, {})", o.php, i.php),
                 Ty::Unknown,
             ));
         }
@@ -6201,7 +6211,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             && matches!(index.kind, ExprKind::Num(n) if n == 0.0)
         {
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                format!("\\First\\Js::dynamicGet({}, {})", o.php, i.php),
                 (**element).clone(),
             ));
         }
@@ -6231,7 +6241,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let mut out = match (&base, &i.ty) {
             (Ty::Array(t) | Ty::NonEmptyArray(t), it) if it.is_num() => Out::atom(
-                format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                format!("\\First\\Js::dynamicGet({}, {})", o.php, i.php),
                 wrap(Ty::union([(**t).clone(), Ty::Undefined])),
             ),
             (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), _) => match &index.kind {
@@ -6239,7 +6249,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Undefined);
                     let place = o.place.as_ref().map(|p| format!("{p}->a[{}]", *n as usize));
                     Out {
-                        php: format!("\\Zero\\Js::dynamicGet({}, {})", o.php, *n as usize),
+                        php: format!("\\First\\Js::dynamicGet({}, {})", o.php, *n as usize),
                         ty: wrap(Ty::union([t, Ty::Undefined])),
                         place,
                         atomic: true,
@@ -6247,13 +6257,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 _ if i.ty.is_num() => Out::atom(
-                    format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                    format!("\\First\\Js::dynamicGet({}, {})", o.php, i.php),
                     wrap(Ty::union(ts.iter().cloned().chain([Ty::Undefined]))),
                 ),
                 _ => return err(index.span, "tuples are indexed by number"),
             },
             (Ty::Map(t), key_ty) if key_ty.is_str() => Out::atom(
-                format!("\\Zero\\Js::dataGet({}, {})", o.php, i.php),
+                format!("\\First\\Js::dataGet({}, {})", o.php, i.php),
                 wrap(Ty::union([(**t).clone(), Ty::Undefined])),
             ),
             (Ty::Obj(fields), key_ty) if key_ty.is_str() => {
@@ -6286,12 +6296,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     });
                 }
                 Out::atom(
-                    format!("\\Zero\\Js::dataGet({}, {})", o.php, i.php),
+                    format!("\\First\\Js::dataGet({}, {})", o.php, i.php),
                     wrap(Ty::union(values)),
                 )
             }
             (s, it) if s.is_str() && it.is_num() => Out::atom(
-                format!("\\Zero\\Js::strIndex({}, {})", o.php, i.php),
+                format!("\\First\\Js::strIndex({}, {})", o.php, i.php),
                 wrap(Ty::union([Ty::Str, Ty::Undefined])),
             ),
             _ => {
@@ -6303,7 +6313,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         if guard {
             out.php = format!(
-                "(\\Zero\\Js::isNullish({} = {receiver}) ? \\Zero\\Js::undefined() : {})",
+                "(\\First\\Js::isNullish({} = {receiver}) ? \\First\\Js::undefined() : {})",
                 o.php, out.php
             );
             out.place = None;
@@ -6314,7 +6324,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- JSX (docs/decisions/2026-11-08-tsx-to-php.md) -----------------------------------------
 
     /// A JSX node as rendered HTML. Literal parts fold to escaped strings at build time; every
-    /// value goes through `\Zero\Html`, which follows react-dom/server's child and attribute rules.
+    /// value goes through `\First\Html`, which follows react-dom/server's child and attribute rules.
     fn jsx(&mut self, jsx: &Jsx, span: Span) -> Result<Out> {
         match &jsx.kind {
             JsxKind::Component(call) => {
@@ -6396,14 +6406,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => props.php,
                 };
                 Ok(Out::atom(
-                    format!("\\Zero\\Html::component({}, {props})", f.php),
+                    format!("\\First\\Html::component({}, {props})", f.php),
                     Ty::Html,
                 ))
             }
             JsxKind::Fragment => {
                 let children = self.jsx_children(&jsx.children)?;
                 Ok(Out::atom(
-                    format!("\\Zero\\Html::children({})", children.join(", ")),
+                    format!("\\First\\Html::children({})", children.join(", ")),
                     Ty::Html,
                 ))
             }
@@ -6415,7 +6425,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut out = Vec::new();
         for child in children {
             if let ExprKind::Str(text) = &child.kind {
-                out.push(format!("\\Zero\\Html::raw({})", php_str(&jsx_escape(text))));
+                out.push(format!("\\First\\Html::raw({})", php_str(&jsx_escape(text))));
                 continue;
             }
             let v = self.expr(child)?;
@@ -6446,7 +6456,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Ty::Void
             | Ty::Never
             | Ty::Dynamic => true,
-            // `ReactNode`'s nested arrays: `\Zero\Html::child` checks each element when it renders.
+            // `ReactNode`'s nested arrays: `\First\Html::child` checks each element when it renders.
             Ty::Array(inner) | Ty::NonEmptyArray(inner) if **inner == Ty::Unknown => true,
             Ty::Array(inner) | Ty::NonEmptyArray(inner) => self.jsx_child_type(inner, span).is_ok(),
             Ty::Tuple(items) | Ty::ArrayLiteral(items) => items.iter().all(|t| self.jsx_child_type(t, span).is_ok()),
@@ -6617,7 +6627,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             children => args.extend(self.jsx_children(children)?),
         }
         Ok(Out::atom(
-            format!("\\Zero\\Html::element({})", args.join(", ")),
+            format!("\\First\\Html::element({})", args.join(", ")),
             Ty::Html,
         ))
     }
@@ -6705,7 +6715,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     /// `style` takes an object whose keys are known at build time, so request data can only fill
-    /// values (which `\Zero\Html` escapes), never choose properties.
+    /// values (which `\First\Html` escapes), never choose properties.
     fn jsx_style_type(&self, ty: &Ty, span: Span) -> Result<()> {
         match ty.non_null() {
             Ty::Obj(fields)
@@ -6736,14 +6746,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(x)?;
         let module = self.fx().module;
-        // Zero's own typed async calls (fetch, database builders, typed helpers) block, as in
+        // First's own typed async calls (fetch, database builders, typed helpers) block, as in
         // TypeScript; any other awaited value from checked JavaScript goes through the job queue.
         if self.javascript_module(module) && !matches!(v.ty, Ty::Promise(_) | Ty::Builder(_)) {
             let v = self.finish_value(v, x.span)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
                 format!(
-                    "\\Zero\\JsJobs::await({}, {})",
+                    "\\First\\JsJobs::await({}, {})",
                     v.php,
                     php_str(&crate::diag::site(span))
                 ),
@@ -6758,7 +6768,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.uses_jobs = true;
                 Out::atom(
                     format!(
-                        "\\Zero\\JsJobs::await({}, {})",
+                        "\\First\\JsJobs::await({}, {})",
                         v.php,
                         php_str(&crate::diag::site(span))
                     ),
@@ -6769,7 +6779,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(
                     span,
                     format!("awaiting {} does nothing", other.describe()),
-                    "only await Zero database calls and your own async functions",
+                    "only await First database calls and your own async functions",
                 );
             }
         })
@@ -6808,7 +6818,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if !args.is_empty() {
                 return err(span, "`new AbortController()` takes no arguments");
             }
-            return Ok(Out::atom("(new \\Zero\\JsAbortController())", Ty::AbortController));
+            return Ok(Out::atom("(new \\First\\JsAbortController())", Ty::AbortController));
         }
         if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"
@@ -6817,7 +6827,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicConstruct('RegExp', {argv})"),
+                format!("\\First\\Js::dynamicConstruct('RegExp', {argv})"),
                 Ty::Regex,
             ));
         }
@@ -6832,7 +6842,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicConstruct({}, {argv})", php_str(name)),
+                format!("\\First\\Js::dynamicConstruct({}, {argv})", php_str(name)),
                 Ty::Dynamic,
             ));
         }
@@ -6857,7 +6867,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 let argv = self.javascript_args(args)?;
                 return Ok(Out::atom(
-                    format!("\\Zero\\Js::dynamicConstruct({}, {argv})", php_str(name)),
+                    format!("\\First\\Js::dynamicConstruct({}, {argv})", php_str(name)),
                     Ty::Dynamic,
                 ));
             }
@@ -6866,7 +6876,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if ctor.ty == Ty::Dynamic {
                     let argv = self.javascript_args(args)?;
                     return Ok(Out::atom(
-                        format!("\\Zero\\Js::dynamicConstruct({}, {argv})", ctor.php),
+                        format!("\\First\\Js::dynamicConstruct({}, {argv})", ctor.php),
                         Ty::Dynamic,
                     ));
                 }
@@ -6885,8 +6895,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::builtins::check_date_literal(args, span)?;
                 let argv = self.plain_args(args)?;
                 Ok(match argv.as_slice() {
-                    [] => Out::atom("new \\Zero\\JsDate(\\Zero\\Js::now())", Ty::Date),
-                    [a] => Out::atom(format!("new \\Zero\\JsDate(\\Zero\\Js::date({}))", a.php), Ty::Date),
+                    [] => Out::atom("new \\First\\JsDate(\\First\\Js::now())", Ty::Date),
+                    [a] => Out::atom(format!("new \\First\\JsDate(\\First\\Js::date({}))", a.php), Ty::Date),
                     _ => {
                         return err(
                             span,
@@ -6947,7 +6957,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let iter = |kind: &str, el: Ty| {
             Out::atom(
                 format!(
-                    "(new \\Zero\\JsIterator({r}->{kind}Iterator(), {}))",
+                    "(new \\First\\JsIterator({r}->{kind}Iterator(), {}))",
                     php_str(if set { "Set Iterator" } else { "Map Iterator" })
                 ),
                 Ty::Iter(Box::new(el)),
@@ -6972,11 +6982,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let k = arg(self, 0, &key, "a key")?;
                 Out::atom(format!("{r}->{m}({})", k.php), Ty::Bool)
             }
-            (_, "clear") => Out::atom(format!("\\Zero\\Js::clearCollection({r})"), Ty::Undefined),
+            (_, "clear") => Out::atom(format!("\\First\\Js::clearCollection({r})"), Ty::Undefined),
             (_, "forEach") => {
                 let f = self.arg(args, 0, span, "a function")?;
                 let cb = self.callback(f, &[value, key, recv.ty.non_null()])?;
-                Out::atom(format!("\\Zero\\Js::collectionForEach({r}, {})", cb.php), Ty::Undefined)
+                Out::atom(
+                    format!("\\First\\Js::collectionForEach({r}, {})", cb.php),
+                    Ty::Undefined,
+                )
             }
             (false, "keys") => iter("keys", key),
             (_, "values") => iter("values", value),
@@ -6991,7 +7004,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match (&recv.ty.non_null(), m) {
             (Ty::AbortController, "abort") => {
                 let reason = match args.first() {
-                    None => "\\Zero\\Js::undefined()".to_string(),
+                    None => "\\First\\Js::undefined()".to_string(),
                     Some(ArrEl::Item(x)) => {
                         let v = self.expr(x)?;
                         self.finish_value(v, x.span)?.php
@@ -7009,7 +7022,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let f = self.arg(args, 1, span, "a listener")?;
                 let cb = self.callback(f, &[Ty::Unknown])?;
                 let options = match args.get(2) {
-                    None => "\\Zero\\Js::undefined()".to_string(),
+                    None => "\\First\\Js::undefined()".to_string(),
                     Some(ArrEl::Item(x)) => {
                         let v = self.expr(x)?;
                         self.finish_value(v, x.span)?.php
@@ -7073,7 +7086,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let class = if url { "JsUrl" } else { "JsUrlSearchParams" };
         Ok(Out::atom(
-            format!("\\Zero\\{class}::construct({})", argv.join(", ")),
+            format!("\\First\\{class}::construct({})", argv.join(", ")),
             if url { Ty::Url } else { Ty::UrlParams },
         ))
     }
@@ -7102,7 +7115,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let call = |ty: Ty| Out::atom(format!("{r}->{m}({})", strs.join(", ")), ty);
         let iter = |kind: &str, el: Ty| {
             Out::atom(
-                format!("(new \\Zero\\JsIterator({r}->{kind}Iterator(), 'URLSearchParams Iterator'))"),
+                format!("(new \\First\\JsIterator({r}->{kind}Iterator(), 'URLSearchParams Iterator'))"),
                 Ty::Iter(Box::new(el)),
             )
         };
@@ -7224,8 +7237,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         let php = match source {
-            Some((v, _, _)) => format!("\\Zero\\Js::new{what}({})", v.php),
-            None => format!("\\Zero\\Js::new{what}()"),
+            Some((v, _, _)) => format!("\\First\\Js::new{what}({})", v.php),
+            None => format!("\\First\\Js::new{what}()"),
         };
         Ok(Out::atom(php, ty))
     }
@@ -7360,7 +7373,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .collect::<Vec<_>>()
                 .join(", ");
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicObjectTag([{values}][0])"),
+                format!("\\First\\Js::dynamicObjectTag([{values}][0])"),
                 Ty::Str,
             ));
         }
@@ -7417,7 +7430,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             _ => Ty::Dynamic,
                         };
                         return Ok(Out::atom(
-                            format!("\\Zero\\Js::callWithReceiver({}, {}, {argv})", f.php, recv),
+                            format!("\\First\\Js::callWithReceiver({}, {}, {argv})", f.php, recv),
                             ret,
                         ));
                     }
@@ -7438,11 +7451,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let key = self.expr(index)?;
                     let argv = self.javascript_args(args)?;
                     let receiver = if *opt { self.tmp_var() } else { recv.php.clone() };
-                    let call = format!("(\\Zero\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)", key.php);
+                    let call = format!("(\\First\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)", key.php);
                     return Ok(Out::atom(
                         if *opt {
                             format!(
-                                "(\\Zero\\Js::isNullish({receiver} = {}) ? \\Zero\\Js::undefined() : {call})",
+                                "(\\First\\Js::isNullish({receiver} = {}) ? \\First\\Js::undefined() : {call})",
                                 recv.php
                             )
                         } else {
@@ -7460,12 +7473,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 // Retain the indexed callee's type checks, but bind its receiver before
                 // evaluating arguments, just as for a direct data-property call.
-                f.php = format!("\\Zero\\Js::dataMethod({receiver}, {})", key.php);
+                f.php = format!("\\First\\Js::dataMethod({receiver}, {})", key.php);
                 f.helper = None;
                 let mut out = self.call_value(f, args, span, callee.span)?;
                 if *opt && recv.ty.is_nullable() {
                     out.php = format!(
-                        "(\\Zero\\Js::isNullish({receiver} = {}) ? \\Zero\\Js::undefined() : {})",
+                        "(\\First\\Js::isNullish({receiver} = {}) ? \\First\\Js::undefined() : {})",
                         recv.php, out.php
                     );
                 }
@@ -7614,7 +7627,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         self.uses("mail", "send", span);
         Ok(Out::atom(
-            format!("\\Zero\\Mail::send({})", v.php),
+            format!("\\First\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
         ))
     }
@@ -7678,7 +7691,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             d = match suggest(ability, self.abilities.abilities.keys().map(String::as_str)) {
                 Some(s) => d.help(format!("did you mean `{s}`?")),
                 None => d.help(format!(
-                    "abilities outside this app come from {}; run `zero abilities pull --site <url>` and commit it",
+                    "abilities outside this app come from {}; run `first abilities pull --site <url>` and commit it",
                     crate::wordpress::abilities::LOCK
                 )),
             };
@@ -7691,7 +7704,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             None if matches!(&input_ty, Ty::Map(_))
                 || matches!(&input_ty, Ty::Obj(f) if f.values().all(|(_, o)| *o)) =>
             {
-                "new \\Zero\\JsObject()".to_string()
+                "new \\First\\JsObject()".to_string()
             }
             None => {
                 return err_help(
@@ -7717,13 +7730,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         self.use_wordpress(WordPressKind::Ability, ability, name_expr.span);
         Ok(Out::atom(
-            format!("\\Zero\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
+            format!("\\First\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
             Ty::Promise(Box::new(output_ty)),
         ))
     }
 
     /// A catalog WordPress function: arguments checked against the catalog's types, called through
-    /// `Zero\Wp\Functions::call` with the catalog's fixed arguments appended.
+    /// `First\Wp\Functions::call` with the catalog's fixed arguments appended.
     fn wp_function_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         let f = crate::wordpress::function(name).expect("only catalog functions are imported");
         if self.fx().no_db {
@@ -7737,7 +7750,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err_help(
                 span,
                 format!("`{name}` takes {} argument(s) from TypeScript", f.params.len()),
-                "Zero admits the arguments that map soundly; later PHP parameters keep their defaults",
+                "First admits the arguments that map soundly; later PHP parameters keep their defaults",
             );
         }
         let mut php = Vec::new();
@@ -7768,7 +7781,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         php.extend(f.fixed.iter().map(php_json));
         self.use_wordpress(WordPressKind::Function, name, span);
         Ok(Out::atom(
-            format!("\\Zero\\Wp\\Functions::call({}, [{}])", php_str(name), php.join(", ")),
+            format!("\\First\\Wp\\Functions::call({}, [{}])", php_str(name), php.join(", ")),
             f.returns,
         ))
     }
@@ -7806,7 +7819,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             // Receipts are shared storage: each plugin keeps its own `once` keys.
             format!(
-                "\\Zero\\Jobs\\Receipts::once({}, {}, {})",
+                "\\First\\Jobs\\Receipts::once({}, {}, {})",
                 php_str(
                     &self
                         .plugin
@@ -7891,7 +7904,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut result = IndexMap::new();
         result.insert("id".to_string(), (Ty::Str, false));
         Ok(Out::atom(
-            format!("\\Zero\\Seam::enqueue({}, {}, {opts})", php_str(job), input.php),
+            format!("\\First\\Seam::enqueue({}, {}, {opts})", php_str(job), input.php),
             Ty::Promise(Box::new(Ty::Obj(result))),
         ))
     }
@@ -7900,7 +7913,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if f.ty == Ty::Dynamic {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicCall({}, {argv})", f.php),
+                format!("\\First\\Js::dynamicCall({}, {argv})", f.php),
                 Ty::Dynamic,
             ));
         }
@@ -8052,20 +8065,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if matches!(g, "parseInt" | "parseFloat") && self.javascript_module(self.fx.as_ref().expect("fn").module) {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicStaticCall('Number', {}, {argv})", php_str(g)),
+                format!("\\First\\Js::dynamicStaticCall('Number', {}, {argv})", php_str(g)),
                 Ty::Num,
             ));
         }
         if g == "RegExp" {
             let argv = self.javascript_args(args)?;
-            return Ok(Out::atom(format!("\\Zero\\Js::dynamicRegExpCall({argv})"), Ty::Dynamic));
+            return Ok(Out::atom(
+                format!("\\First\\Js::dynamicRegExpCall({argv})"),
+                Ty::Dynamic,
+            ));
         }
         if matches!(g, "setTimeout" | "clearTimeout") {
             return self.timer_call(g, args, span);
         }
         if g == "Symbol" {
             let argv = self.javascript_args(args)?;
-            return Ok(Out::atom(format!("\\Zero\\JsSymbol::create({argv})"), Ty::Dynamic));
+            return Ok(Out::atom(format!("\\First\\JsSymbol::create({argv})"), Ty::Dynamic));
         }
         if g == "globalThis" {
             return err_help(span, "`globalThis` isn't a function", "remove the call");
@@ -8078,39 +8094,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Boolean", None) | ("isFinite", None) => Out::atom("false", Ty::Bool),
             ("isNaN", None) => Out::atom("true", Ty::Bool),
             ("String", Some(v)) if v.ty == Ty::Dynamic => {
-                Out::atom(format!("\\Zero\\Js::stringOf({})", v.php), Ty::Str)
+                Out::atom(format!("\\First\\Js::stringOf({})", v.php), Ty::Str)
             }
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
             ("structuredClone", Some(v)) => {
-                Out::atom(format!("\\Zero\\Js::clone({})", v.php), classes::wire_type(&v.ty))
+                Out::atom(format!("\\First\\Js::clone({})", v.php), classes::wire_type(&v.ty))
             }
-            ("BigInt", Some(v)) => Out::atom(format!("\\Zero\\JsBigInt::of({})", v.php), Ty::BigInt),
+            ("BigInt", Some(v)) => Out::atom(format!("\\First\\JsBigInt::of({})", v.php), Ty::BigInt),
             ("Number", Some(v)) if v.ty == Ty::BigInt => Out::atom(format!("({})->toNumber()", v.php), Ty::Num),
             ("Number", Some(v)) => {
                 if v.ty.is_num() {
                     v.clone()
                 } else {
                     // Number(value): ToNumeric, then a BigInt becomes its nearest double.
-                    Out::atom(format!("\\Zero\\Js::number({})", v.php), Ty::Num)
+                    Out::atom(format!("\\First\\Js::number({})", v.php), Ty::Num)
                 }
             }
             ("Boolean", Some(v)) => Out::new(self.truthy(v), Ty::Bool),
             ("encodeURI" | "encodeURIComponent", Some(v)) => {
-                Out::atom(format!("\\Zero\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?
+                Out::atom(format!("\\First\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?
             }
             ("parseInt", Some(v)) => {
                 let radix = argv
                     .get(1)
-                    .map(|a| format!(", \\Zero\\Js::toNumber({})", a.php))
+                    .map(|a| format!(", \\First\\Js::toNumber({})", a.php))
                     .unwrap_or_default();
-                Out::atom(format!("\\Zero\\Js::parseInt({}{radix})", v.php), Ty::Num).checked_str(v, span)?
+                Out::atom(format!("\\First\\Js::parseInt({}{radix})", v.php), Ty::Num).checked_str(v, span)?
             }
             ("parseFloat", Some(v)) => {
-                Out::atom(format!("\\Zero\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
+                Out::atom(format!("\\First\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
             }
-            ("isNaN", Some(v)) => Out::atom(format!("is_nan((float) \\Zero\\Js::toNumber({}))", v.php), Ty::Bool),
+            ("isNaN", Some(v)) => Out::atom(format!("is_nan((float) \\First\\Js::toNumber({}))", v.php), Ty::Bool),
             ("isFinite", Some(v)) => Out::atom(
-                format!("\\Zero\\Js::isFinite(\\Zero\\Js::toNumber({}))", v.php),
+                format!("\\First\\Js::isFinite(\\First\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
             ("process" | "crypto" | "Buffer", _) => {
@@ -8129,7 +8145,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ) => {
                 return err_help(
                     span,
-                    format!("`{g}` isn't available in Zero code"),
+                    format!("`{g}` isn't available in First code"),
                     "use supported server capabilities in a hook or action",
                 );
             }
@@ -8137,13 +8153,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
-    /// `setTimeout(callback, delay?, ...args)` / `clearTimeout(id)`: a `Zero\\Timers` entry that runs
+    /// `setTimeout(callback, delay?, ...args)` / `clearTimeout(id)`: a `First\\Timers` entry that runs
     /// only while the request waits. The site names the call in the handler-end refusal.
     fn timer_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if g == "clearTimeout" {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\Zero\\Timers::clear(({argv})->a[0] ?? \\Zero\\Js::undefined())"),
+                format!("\\First\\Timers::clear(({argv})->a[0] ?? \\First\\Js::undefined())"),
                 Ty::Undefined,
             ));
         }
@@ -8152,7 +8168,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let callback = self.arg(args, 0, span, "a callback")?;
         let cb = if javascript {
             let v = self.expr(callback)?;
-            format!("\\Zero\\Js::timerCallback({})", v.php)
+            format!("\\First\\Js::timerCallback({})", v.php)
         } else {
             self.callback(callback, &[])?.php
         };
@@ -8186,13 +8202,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let extra: Vec<String> = rest.iter().skip(1).map(|v| v.php.clone()).collect();
         let site = self.site(span);
         let set = format!(
-            "\\Zero\\Timers::set({cb}, {delay}, [{}], {})",
+            "\\First\\Timers::set({cb}, {delay}, [{}], {})",
             extra.join(", "),
             php_str(&site)
         );
         // Node returns a Timeout object, so typed code gets the same opaque handle: only clearTimeout uses it.
         Ok(Out::atom(
-            format!("\\Zero\\Timers::handle({set})"),
+            format!("\\First\\Timers::handle({set})"),
             if javascript { Ty::Dynamic } else { Ty::Unknown },
         ))
     }
@@ -8228,7 +8244,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     )?;
                 }
                 let list: Vec<&str> = argv.iter().map(|(v, _)| v.php.as_str()).collect();
-                let call = format!("\\Zero\\JsUrl::{}({})", m, list.join(", "));
+                let call = format!("\\First\\JsUrl::{}({})", m, list.join(", "));
                 if m == "parse" {
                     Out::atom(call, Ty::Url.nullable())
                 } else {
@@ -8238,14 +8254,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("AbortSignal", "abort") => {
                 let reason = argv
                     .first()
-                    .map_or_else(|| "\\Zero\\Js::undefined()".into(), |(v, _)| v.php.clone());
-                Out::atom(format!("\\Zero\\JsAbortSignal::aborted({reason})"), Ty::AbortSignal)
+                    .map_or_else(|| "\\First\\Js::undefined()".into(), |(v, _)| v.php.clone());
+                Out::atom(format!("\\First\\JsAbortSignal::aborted({reason})"), Ty::AbortSignal)
             }
             ("AbortSignal", "timeout") => {
                 let (ms, at) = &argv[0];
                 need(ms.ty.is_num(), *at, "a number of milliseconds")?;
                 self.uses("timers", "AbortSignal.timeout", span);
-                Out::atom(format!("\\Zero\\JsAbortSignal::timeout({})", ms.php), Ty::AbortSignal)
+                Out::atom(format!("\\First\\JsAbortSignal::timeout({})", ms.php), Ty::AbortSignal)
             }
             ("AbortSignal", "any") => {
                 let (signals, at) = &argv[0];
@@ -8254,7 +8270,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .is_some_and(|el| el.all(|t| *t == Ty::AbortSignal));
                 need(ok, *at, "an array of AbortSignals")?;
                 Out::atom(
-                    format!("\\Zero\\JsAbortSignal::any(\\Zero\\Js::iter({}))", signals.php),
+                    format!("\\First\\JsAbortSignal::any(\\First\\Js::iter({}))", signals.php),
                     Ty::AbortSignal,
                 )
             }
@@ -8264,10 +8280,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if (g, m) == ("Error", "captureStackTrace") {
-            // Zero records no frames; the target gets Error's header-only stack.
+            // First records no frames; the target gets Error's header-only stack.
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\Zero\\JsClass::captureStackTrace((({argv})->a)[0] ?? \\Zero\\Js::undefined())"),
+                format!("\\First\\JsClass::captureStackTrace((({argv})->a)[0] ?? \\First\\Js::undefined())"),
                 Ty::Undefined,
             ));
         }
@@ -8276,7 +8292,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::eval::GlobalMember::Provided(g) => self.global_call(g, args, span),
                 crate::eval::GlobalMember::Absent => err_help(
                     span,
-                    format!("`globalThis.{m}` is undefined in Zero, so this call always throws"),
+                    format!("`globalThis.{m}` is undefined in First, so this call always throws"),
                     format!("check `typeof globalThis.{m}` first, or remove the call"),
                 ),
                 crate::eval::GlobalMember::Refused => Err(crate::eval::refused_global_member(m, span)),
@@ -8293,7 +8309,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             let method = if m == "for" { "for" } else { "keyFor" };
             return Ok(Out::atom(
-                format!("\\Zero\\JsSymbol::{method}(...({argv})->a)"),
+                format!("\\First\\JsSymbol::{method}(...({argv})->a)"),
                 Ty::Dynamic,
             ));
         }
@@ -8301,7 +8317,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
-                format!("\\Zero\\JsPromise::staticCall({}, ({argv})->a)", php_str(m)),
+                format!("\\First\\JsPromise::staticCall({}, ({argv})->a)", php_str(m)),
                 Ty::Dynamic,
             ));
         }
@@ -8312,7 +8328,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.plain_args(args)?;
             return Ok(Out::atom(
                 format!(
-                    "\\Zero\\JsBigInt::asIntN({}, {}, {})",
+                    "\\First\\JsBigInt::asIntN({}, {}, {})",
                     argv[0].php,
                     argv[1].php,
                     if m == "asIntN" { "true" } else { "false" }
@@ -8328,7 +8344,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if (g, m) == ("String", "raw") {
             let argv = self.javascript_args(args)?;
-            return Ok(Out::atom(format!("\\Zero\\Js::stringRaw(...({argv})->a)"), Ty::Str));
+            return Ok(Out::atom(format!("\\First\\Js::stringRaw(...({argv})->a)"), Ty::Str));
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
@@ -8342,7 +8358,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicStaticCall({}, {}, {argv})", php_str(g), php_str(m)),
+                format!("\\First\\Js::dynamicStaticCall({}, {}, {argv})", php_str(g), php_str(m)),
                 Ty::Dynamic,
             ));
         }
@@ -8362,7 +8378,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                 let ret = (**ret).clone();
                 return Ok(Out::atom(
-                    format!("\\Zero\\Js::range({}, {})", n.php, cb.php),
+                    format!("\\First\\Js::range({}, {})", n.php, cb.php),
                     Ty::Array(Box::new(ret)),
                 ));
             }
@@ -8374,12 +8390,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let cb = self.callback(f, &[el, Ty::Num])?;
                     let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                     return Ok(Out::atom(
-                        format!("\\Zero\\Js::iterArray({}, {})", v.php, cb.php),
+                        format!("\\First\\Js::iterArray({}, {})", v.php, cb.php),
                         Ty::Array(ret.clone()),
                     ));
                 }
                 return Ok(Out::atom(
-                    format!("\\Zero\\Js::iterArray({})", v.php),
+                    format!("\\First\\Js::iterArray({})", v.php),
                     Ty::Array(Box::new(el)),
                 ));
             }
@@ -8399,7 +8415,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 return Ok(Out::atom(
                     format!(
-                        "\\Zero\\Js::dynamicStaticCall('Array', 'from', new \\Zero\\JsArray([{}]))",
+                        "\\First\\Js::dynamicStaticCall('Array', 'from', new \\First\\JsArray([{}]))",
                         argv.join(", ")
                     ),
                     Ty::Array(Box::new(element)),
@@ -8430,12 +8446,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let cb = self.callback(f, &[el.clone(), Ty::Num])?;
                 let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                 return Ok(Out::atom(
-                    format!("\\Zero\\Js::from({}, {})", v.php, cb.php),
+                    format!("\\First\\Js::from({}, {})", v.php, cb.php),
                     Ty::Array(ret.clone()),
                 ));
             }
             return Ok(Out::atom(
-                format!("\\Zero\\Js::from({})", v.php),
+                format!("\\First\\Js::from({})", v.php),
                 if nonempty {
                     Ty::NonEmptyArray(Box::new(el))
                 } else {
@@ -8455,7 +8471,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             return Ok(Out::atom(
                 format!(
-                    "\\Zero\\Js::dynamicStaticCall({}, {}, new \\Zero\\JsArray([{}]))",
+                    "\\First\\Js::dynamicStaticCall({}, {}, new \\First\\JsArray([{}]))",
                     php_str(g),
                     php_str(m),
                     argv.iter().map(|v| v.php.clone()).collect::<Vec<_>>().join(", ")
@@ -8479,7 +8495,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match (g, m) {
             ("Math", "max" | "min") => {
                 all_num(&format!("Math.{m}"))?;
-                Out::atom(format!("\\Zero\\Js::{m}({})", php_args()), Ty::Num)
+                Out::atom(format!("\\First\\Js::{m}({})", php_args()), Ty::Num)
             }
             ("Math", "floor" | "ceil" | "abs" | "sqrt" | "trunc" | "round" | "sign" | "pow" | "log" | "exp") => {
                 all_num(&format!("Math.{m}"))?;
@@ -8489,36 +8505,36 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "ceil" => format!("ceil({x})"),
                     "abs" => format!("abs({x})"),
                     "sqrt" => format!("sqrt({x})"),
-                    "trunc" => format!("\\Zero\\Js::trunc({x})"),
-                    "round" => format!("\\Zero\\Js::round({x})"),
-                    "sign" => format!("\\Zero\\Js::sign({x})"),
+                    "trunc" => format!("\\First\\Js::trunc({x})"),
+                    "round" => format!("\\First\\Js::round({x})"),
+                    "sign" => format!("\\First\\Js::sign({x})"),
                     "pow" => format!(
-                        "\\Zero\\Js::pow({}, {})",
+                        "\\First\\Js::pow({}, {})",
                         argv[0].php,
                         argv.get(1).map(|a| a.php.as_str()).unwrap_or("NAN")
                     ),
-                    "log" | "exp" => format!("\\Zero\\Js::mathTranscendental('{}', {x})", m),
+                    "log" | "exp" => format!("\\First\\Js::mathTranscendental('{}', {x})", m),
                     _ => unreachable!(),
                 };
                 Out::atom(php, Ty::Num)
             }
-            ("Math", "random") => Out::atom("\\Zero\\Js::random()", Ty::Num),
-            ("Date", "now") => Out::atom("\\Zero\\Js::now()", Ty::Num),
+            ("Math", "random") => Out::atom("\\First\\Js::random()", Ty::Num),
+            ("Date", "now") => Out::atom("\\First\\Js::now()", Ty::Num),
             ("Object", "keys") => Out::atom(
-                format!("\\Zero\\Js::keys({})", self.obj_arg(a0, span)?),
+                format!("\\First\\Js::keys({})", self.obj_arg(a0, span)?),
                 Ty::Array(Box::new(Ty::Str)),
             ),
             ("Object", "values") => {
                 let t = obj_values_ty(a0.map(|a| &a.ty));
                 Out::atom(
-                    format!("\\Zero\\Js::values({})", self.obj_arg(a0, span)?),
+                    format!("\\First\\Js::values({})", self.obj_arg(a0, span)?),
                     Ty::Array(Box::new(t)),
                 )
             }
             ("Object", "entries") => {
                 let t = obj_values_ty(a0.map(|a| &a.ty));
                 Out::atom(
-                    format!("\\Zero\\Js::entries({})", self.obj_arg(a0, span)?),
+                    format!("\\First\\Js::entries({})", self.obj_arg(a0, span)?),
                     Ty::Array(Box::new(Ty::Tuple(vec![Ty::Str, t]))),
                 )
             }
@@ -8530,7 +8546,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     },
                     _ => return err(span, "Object.fromEntries needs an array of [key, value] pairs"),
                 };
-                Out::atom(format!("\\Zero\\Js::fromEntries({})", php_args()), Ty::Map(Box::new(t)))
+                Out::atom(
+                    format!("\\First\\Js::fromEntries({})", php_args()),
+                    Ty::Map(Box::new(t)),
+                )
             }
             ("Object", "hasOwn") => {
                 if a0.is_some_and(|value| value.ty.all(|ty| matches!(ty, Ty::Fn(..) | Ty::Class(_)))) {
@@ -8542,7 +8561,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\Zero\\Js::dynamicStaticCall('Object', 'hasOwn', new \\Zero\\JsArray([{}]))",
+                        "\\First\\Js::dynamicStaticCall('Object', 'hasOwn', new \\First\\JsArray([{}]))",
                         php_args()
                     ),
                     Ty::Bool,
@@ -8550,15 +8569,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ("Array", "isArray") => Out::atom(
                 format!(
-                    "({0} instanceof \\Zero\\JsArray)",
+                    "({0} instanceof \\First\\JsArray)",
                     a0.map(|a| a.php.clone()).unwrap_or_default()
                 ),
                 Ty::Bool,
             ),
-            ("Number", "isInteger") => Out::atom(format!("\\Zero\\Js::isInteger({})", php_args()), Ty::Bool),
-            ("Number", "isFinite") => Out::atom(format!("\\Zero\\Js::isFinite({})", php_args()), Ty::Bool),
-            ("Number", "parseInt") => Out::atom(format!("\\Zero\\Js::parseInt({})", php_args()), Ty::Num),
-            ("Number", "parseFloat") => Out::atom(format!("\\Zero\\Js::parseFloat({})", php_args()), Ty::Num),
+            ("Number", "isInteger") => Out::atom(format!("\\First\\Js::isInteger({})", php_args()), Ty::Bool),
+            ("Number", "isFinite") => Out::atom(format!("\\First\\Js::isFinite({})", php_args()), Ty::Bool),
+            ("Number", "parseInt") => Out::atom(format!("\\First\\Js::parseInt({})", php_args()), Ty::Num),
+            ("Number", "parseFloat") => Out::atom(format!("\\First\\Js::parseFloat({})", php_args()), Ty::Num),
             ("JSON", "stringify") => {
                 if let Some(value) = a0 {
                     crate::builtins::check_json_serialization_type(&value.ty, span)?;
@@ -8580,7 +8599,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\Zero\\Js::dynamicStaticCall('JSON', 'stringify', new \\Zero\\JsArray([{}]))",
+                        "\\First\\Js::dynamicStaticCall('JSON', 'stringify', new \\First\\JsArray([{}]))",
                         php_args()
                     ),
                     t,
@@ -8595,17 +8614,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\Zero\\Js::dynamicStaticCall('JSON', 'parse', new \\Zero\\JsArray([{}]))",
+                        "\\First\\Js::dynamicStaticCall('JSON', 'parse', new \\First\\JsArray([{}]))",
                         php_args()
                     ),
                     Ty::Unknown,
                 )
             }
             ("console", "log" | "info" | "warn" | "error" | "debug") => Out::atom(
-                format!("\\Zero\\Js::log({}, {})", php_str(m), php_args()),
+                format!("\\First\\Js::log({}, {})", php_str(m), php_args()),
                 Ty::Undefined,
             ),
-            _ => return err(span, format!("`{g}.{m}` isn't supported in Zero code")),
+            _ => return err(span, format!("`{g}.{m}` isn't supported in First code")),
         })
     }
 
@@ -8657,7 +8676,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     },
                     Ty::Str,
                 )),
-                _ => err(m_span, format!("bigint has no method `{m}` in Zero code")),
+                _ => err(m_span, format!("bigint has no method `{m}` in First code")),
             };
         }
         let family = match recv.ty.non_null() {
@@ -8690,13 +8709,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             let receiver = if optional { self.tmp_var() } else { recv.php.clone() };
             let call = format!(
-                "(\\Zero\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)",
+                "(\\First\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)",
                 php_str(m)
             );
             return Ok(Out::atom(
                 if optional {
                     format!(
-                        "(\\Zero\\Js::isNullish({receiver} = {}) ? \\Zero\\Js::undefined() : {call})",
+                        "(\\First\\Js::isNullish({receiver} = {}) ? \\First\\Js::undefined() : {call})",
                         recv.php
                     )
                 } else {
@@ -8713,7 +8732,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
                 )
             {
-                recv.php = format!("\\Zero\\Js::requirePresent({})", recv.php);
+                recv.php = format!("\\First\\Js::requirePresent({})", recv.php);
             } else {
                 return err_help(
                     recv_span,
@@ -8741,15 +8760,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
                     let d = argv.first().map(|a| a.php.clone()).unwrap_or_else(|| "0".into());
-                    Out::atom(format!("\\Zero\\Js::toFixed({}, {d})", recv.php), Ty::Str)
+                    Out::atom(format!("\\First\\Js::toFixed({}, {d})", recv.php), Ty::Str)
                 }
-                "toString" => Out::atom(format!("\\Zero\\Js::numStr({})", recv.php), Ty::Str),
+                "toString" => Out::atom(format!("\\First\\Js::numStr({})", recv.php), Ty::Str),
                 _ => return err(m_span, format!("numbers have no method `{m}`")),
             },
             Ty::Date => match m {
-                "toISOString" => Out::atom(format!("\\Zero\\Js::iso(({})->milliseconds)", recv.php), Ty::Str),
+                "toISOString" => Out::atom(format!("\\First\\Js::iso(({})->milliseconds)", recv.php), Ty::Str),
                 "toJSON" => Out::atom(
-                    format!("\\Zero\\Js::dateJSON(({})->milliseconds)", recv.php),
+                    format!("\\First\\Js::dateJSON(({})->milliseconds)", recv.php),
                     Ty::Str.nullable(),
                 ),
                 "getTime" | "valueOf" => Out::atom(format!("({})->milliseconds", recv.php), Ty::Num),
@@ -8779,7 +8798,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::Map(_) | Ty::Obj(_) => {
                 // Calling a function stored in an object field.
                 let mut f = self.member_of_out(&recv, m, m_span)?;
-                f.php = format!("\\Zero\\Js::dataMethod({}, {})", recv.php, php_str(m));
+                f.php = format!("\\First\\Js::dataMethod({}, {})", recv.php, php_str(m));
                 self.call_value(f, args, span, m_span)?
             }
             other => return err(m_span, format!("{} has no method `{m}`", other.describe())),
@@ -8787,7 +8806,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some((receiver, source)) = nullish_guard {
             return Ok(Out::new(
                 format!(
-                    "(\\Zero\\Js::isNullish({receiver} = {source}) ? \\Zero\\Js::undefined() : {})",
+                    "(\\First\\Js::isNullish({receiver} = {source}) ? \\First\\Js::undefined() : {})",
                     r.php
                 ),
                 Ty::union([r.ty, Ty::Undefined]),
@@ -8806,7 +8825,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t
         };
         Ok(Out::atom(
-            format!("\\Zero\\Js::dataGet({}, {})", o.php, php_str(prop)),
+            format!("\\First\\Js::dataGet({}, {})", o.php, php_str(prop)),
             t,
         ))
     }
@@ -8846,7 +8865,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             };
             return Ok(Out::atom(
-                format!("\\Zero\\Js::{m}({}, {}, {})", s.php, pat.php, rep.php),
+                format!("\\First\\Js::{m}({}, {}, {})", s.php, pat.php, rep.php),
                 Ty::Str,
             ));
         }
@@ -8870,11 +8889,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let js = |f: &str, extra: &[Option<String>]| {
             let mut parts = vec![s.php.clone()];
             parts.extend(extra.iter().flatten().cloned());
-            Out::atom(format!("\\Zero\\Js::{f}({})", parts.join(", ")), Ty::Str)
+            Out::atom(format!("\\First\\Js::{f}({})", parts.join(", ")), Ty::Str)
         };
         let dispatch = || {
             format!(
-                "\\Zero\\Js::dynamicCallMethod({}, {}, new \\Zero\\JsArray([{}]))",
+                "\\First\\Js::dynamicCallMethod({}, {}, new \\First\\JsArray([{}]))",
                 s.php,
                 php_str(m),
                 argv.iter()
@@ -8890,7 +8909,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\Zero\\Js::dynamicCallMethod({}, 'concat', new \\Zero\\JsArray([{}]))",
+                        "\\First\\Js::dynamicCallMethod({}, 'concat', new \\First\\JsArray([{}]))",
                         s.php,
                         argv.iter().map(|v| v.php.clone()).collect::<Vec<_>>().join(", ")
                     ),
@@ -8921,7 +8940,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "slice" | "substring" | "padStart" | "padEnd" | "repeat" | "charAt" => Out::atom(dispatch(), Ty::Str),
             "at" => Out::atom(
                 format!(
-                    "\\Zero\\Js::strAt({}, \\Zero\\Js::toNumber({}))",
+                    "\\First\\Js::strAt({}, \\First\\Js::toNumber({}))",
                     s.php,
                     a(0).unwrap_or("0".into())
                 ),
@@ -8939,7 +8958,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if argv.is_empty() {
                     Out::atom(
-                        format!("new \\Zero\\JsArray([{}])", s.php),
+                        format!("new \\First\\JsArray([{}])", s.php),
                         Ty::Array(Box::new(Ty::Str)),
                     )
                 } else {
@@ -8971,7 +8990,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "toString" => s.clone(),
             "length" => return err(m_span, "`length` is a property: write `s.length`"),
-            _ => return err(m_span, format!("strings have no method `{m}` in Zero code")),
+            _ => return err(m_span, format!("strings have no method `{m}` in First code")),
         })
     }
 
@@ -8986,7 +9005,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     ) -> Result<Out> {
         self.builtin_args("array", m, args, span)?;
         let a = Out {
-            php: format!("\\Zero\\Js::nativeArrayReceiver({}, {})", a.php, php_str(m)),
+            php: format!("\\First\\Js::nativeArrayReceiver({}, {})", a.php, php_str(m)),
             ..a.clone()
         };
         let el = match a.ty.non_null() {
@@ -9030,7 +9049,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let f = cb(self, &[])?;
                 let r = ret_of(&f);
                 Out::atom(
-                    format!("\\Zero\\Js::map({}, {})", a.php, f.php),
+                    format!("\\First\\Js::map({}, {})", a.php, f.php),
                     if array_proven_nonempty(&a.ty) {
                         Ty::NonEmptyArray(Box::new(r))
                     } else {
@@ -9050,7 +9069,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => el,
                 };
                 Out::atom(
-                    format!("\\Zero\\Js::filter({}, {})", a.php, f.php),
+                    format!("\\First\\Js::filter({}, {})", a.php, f.php),
                     Ty::Array(Box::new(narrowed)),
                 )
             }
@@ -9066,17 +9085,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => el,
                 };
                 Out::atom(
-                    format!("\\Zero\\Js::{m}({}, {})", a.php, f.php),
+                    format!("\\First\\Js::{m}({}, {})", a.php, f.php),
                     Ty::union([narrowed, Ty::Undefined]),
                 )
             }
             "findIndex" | "findLastIndex" => {
                 let f = cb(self, &[])?;
-                Out::atom(format!("\\Zero\\Js::{m}({}, {})", a.php, f.php), Ty::Num)
+                Out::atom(format!("\\First\\Js::{m}({}, {})", a.php, f.php), Ty::Num)
             }
             "some" | "every" => {
                 let f = cb(self, &[])?;
-                Out::atom(format!("\\Zero\\Js::{m}({}, {})", a.php, f.php), Ty::Bool)
+                Out::atom(format!("\\First\\Js::{m}({}, {})", a.php, f.php), Ty::Bool)
             }
             "flatMap" => {
                 let f = cb(self, &[])?;
@@ -9090,13 +9109,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     t => flatten(t),
                 };
                 Out::atom(
-                    format!("\\Zero\\Js::flatMap({}, {})", a.php, f.php),
+                    format!("\\First\\Js::flatMap({}, {})", a.php, f.php),
                     Ty::Array(Box::new(r)),
                 )
             }
             "forEach" => {
                 let f = cb(self, &[])?;
-                Out::atom(format!("\\Zero\\Js::forEach({}, {})", a.php, f.php), Ty::Undefined)
+                Out::atom(format!("\\First\\Js::forEach({}, {})", a.php, f.php), Ty::Undefined)
             }
             "reduce" => {
                 let init = match args.get(1) {
@@ -9122,7 +9141,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 let init_php = init.map(|i| format!(", {}", i.php)).unwrap_or_default();
-                Out::atom(format!("\\Zero\\Js::reduce({}, {}{init_php})", a.php, f.php), acc_ty)
+                Out::atom(format!("\\First\\Js::reduce({}, {}{init_php})", a.php, f.php), acc_ty)
             }
             "sort" | "toSorted" => {
                 let f = match args.first() {
@@ -9135,7 +9154,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(span, "the comparator must return a number");
                 }
                 let fp = f.map(|f| format!(", {}", f.php)).unwrap_or_default();
-                Out::atom(format!("\\Zero\\Js::{m}({}{fp})", a.php), Ty::Array(Box::new(el)))
+                Out::atom(format!("\\First\\Js::{m}({}{fp})", a.php), Ty::Array(Box::new(el)))
             }
             "push" | "unshift" => {
                 let p = &a.php;
@@ -9144,7 +9163,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let items: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
                     format!(
-                        "\\Zero\\Js::{m}({p}{})",
+                        "\\First\\Js::{m}({p}{})",
                         if items.is_empty() {
                             String::new()
                         } else {
@@ -9154,15 +9173,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Num,
                 )
             }
-            "pop" => Out::atom(format!("\\Zero\\Js::pop({})", a.php), Ty::union([el, Ty::Undefined])),
-            "shift" => Out::atom(format!("\\Zero\\Js::shift({})", a.php), Ty::union([el, Ty::Undefined])),
-            "reverse" | "toReversed" => Out::atom(format!("\\Zero\\Js::{m}({})", a.php), Ty::Array(Box::new(el))),
+            "pop" => Out::atom(format!("\\First\\Js::pop({})", a.php), Ty::union([el, Ty::Undefined])),
+            "shift" => Out::atom(format!("\\First\\Js::shift({})", a.php), Ty::union([el, Ty::Undefined])),
+            "reverse" | "toReversed" => Out::atom(format!("\\First\\Js::{m}({})", a.php), Ty::Array(Box::new(el))),
             "splice" => {
                 let argv = self.plain_args(args)?;
                 check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
-                    format!("(\\Zero\\Js::dynamicMethod({}, 'splice'))({})", a.php, extra.join(", ")),
+                    format!(
+                        "(\\First\\Js::dynamicMethod({}, 'splice'))({})",
+                        a.php,
+                        extra.join(", ")
+                    ),
                     Ty::Array(Box::new(el)),
                 )
             }
@@ -9175,15 +9198,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .join(", ");
                 let dispatch = || {
                     format!(
-                        "(\\Zero\\Js::dynamicMethod({}, {}))({})",
+                        "(\\First\\Js::dynamicMethod({}, {}))({})",
                         a.php,
                         php_str(m),
                         extra.join(", ")
                     )
                 };
                 match m {
-                    "includes" => Out::atom(format!("\\Zero\\Js::includes({all})"), Ty::Bool),
-                    "indexOf" | "lastIndexOf" => Out::atom(format!("\\Zero\\Js::{m}({all})"), Ty::Num),
+                    "includes" => Out::atom(format!("\\First\\Js::includes({all})"), Ty::Bool),
+                    "indexOf" | "lastIndexOf" => Out::atom(format!("\\First\\Js::{m}({all})"), Ty::Num),
                     "join" => {
                         crate::builtins::check_string_coercion_type(&a.ty, span)?;
                         if let Some(sep) = argv.first()
@@ -9191,10 +9214,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         {
                             return err(span, "join() needs a string separator");
                         }
-                        Out::atom(format!("\\Zero\\Js::join({all})"), Ty::Str)
+                        Out::atom(format!("\\First\\Js::join({all})"), Ty::Str)
                     }
                     "slice" => Out::atom(dispatch(), Ty::Array(Box::new(el))),
-                    "at" => Out::atom(format!("\\Zero\\Js::arrAt({all})"), Ty::union([el, Ty::Undefined])),
+                    "at" => Out::atom(format!("\\First\\Js::arrAt({all})"), Ty::union([el, Ty::Undefined])),
                     "concat" => {
                         let mut t = vec![el];
                         let mut parts = vec![a.php.clone()];
@@ -9211,7 +9234,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             parts.push(x.php.clone());
                         }
                         Out::atom(
-                            format!("\\Zero\\Js::concat({})", parts.join(", ")),
+                            format!("\\First\\Js::concat({})", parts.join(", ")),
                             Ty::Array(Box::new(Ty::union(t))),
                         )
                     }
@@ -9250,7 +9273,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
             }
-            _ => return err(m_span, format!("arrays have no method `{m}` in Zero code")),
+            _ => return err(m_span, format!("arrays have no method `{m}` in First code")),
         })
     }
 
@@ -9281,12 +9304,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let _ = span;
         let (php, ty) = if m == "findMany" {
             (
-                format!("\\Zero\\Seam::findMany({}, {opts})", php_str(table)),
+                format!("\\First\\Seam::findMany({}, {opts})", php_str(table)),
                 Ty::Array(Box::new(row_ty)),
             )
         } else {
             (
-                format!("\\Zero\\Seam::findFirst({}, {opts})", php_str(table)),
+                format!("\\First\\Seam::findFirst({}, {opts})", php_str(table)),
                 row_ty.nullable(),
             )
         };
@@ -9738,13 +9761,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Filter values for timestamp/date columns accept Dates (epoch ms): convert to the stored form.
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
-            (ColType::Timestamp, Ty::Date) => format!("\\Zero\\Js::iso(({})->milliseconds)", v.php),
-            (ColType::Date, Ty::Date) => format!("substr(\\Zero\\Js::iso(({})->milliseconds), 0, 10)", v.php),
+            (ColType::Timestamp, Ty::Date) => format!("\\First\\Js::iso(({})->milliseconds)", v.php),
+            (ColType::Date, Ty::Date) => format!("substr(\\First\\Js::iso(({})->milliseconds), 0, 10)", v.php),
             (ColType::Timestamp, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
-                format!("\\Zero\\Js::iso({})", v.php)
+                format!("\\First\\Js::iso({})", v.php)
             }
             (ColType::Date, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
-                format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php)
+                format!("substr(\\First\\Js::iso({}), 0, 10)", v.php)
             }
             _ => v.php.clone(),
         }
@@ -9760,7 +9783,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // Typed like collection rows: `json().$type<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
-            ("get", []) => format!("\\Zero\\Seam::globalGet({})", php_str(name)),
+            ("get", []) => format!("\\First\\Seam::globalGet({})", php_str(name)),
             ("update", [ArrEl::Item(patch)]) => {
                 let v = self.expr(patch)?;
                 let v = self.finish_value(v, patch.span)?;
@@ -9789,7 +9812,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ),
                     );
                 }
-                format!("\\Zero\\Seam::globalUpdate({}, {})", php_str(name), v.php)
+                format!("\\First\\Seam::globalUpdate({}, {})", php_str(name), v.php)
             }
             ("get", _) => return err(m_span, "`get()` takes no arguments"),
             ("update", _) => return err(m_span, "`update()` takes one patch object"),
@@ -10007,7 +10030,7 @@ pub(super) fn static_host(e: &Expr) -> Option<String> {
             .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
             .map_or(authority, |(h, _)| h),
     };
-    // The same normalization `Zero\Fetch::target` applies before comparing hosts.
+    // The same normalization `First\Fetch::target` applies before comparing hosts.
     Some(host.trim_end_matches('.').to_ascii_lowercase())
 }
 
@@ -10125,7 +10148,7 @@ fn require_initialized_local(name: &str, local: &Local, span: Span) -> Result<()
 
 fn php_local_base(name: &str) -> String {
     if name == "this" {
-        return "__zero_this".into();
+        return "__first_this".into();
     }
     let reserved = matches!(
         name,
@@ -10139,17 +10162,17 @@ fn php_local_base(name: &str) -> String {
         return name.to_string();
     }
     let encoded: String = name.bytes().map(|b| format!("{b:02x}")).collect();
-    format!("__zero_local_{encoded}")
+    format!("__first_local_{encoded}")
 }
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
-        Ty::Instance(..) => "\\Zero\\JsObject ",
-        Ty::Class(_) => "\\Zero\\JsClass ",
-        Ty::Obj(_) | Ty::Map(_) => "\\Zero\\JsObject ",
-        Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "\\Zero\\JsArray ",
+        Ty::Instance(..) => "\\First\\JsObject ",
+        Ty::Class(_) => "\\First\\JsClass ",
+        Ty::Obj(_) | Ty::Map(_) => "\\First\\JsObject ",
+        Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "\\First\\JsArray ",
         t if t.is_nullable() && matches!(t.non_null(), Ty::Obj(_) | Ty::Map(_)) => {
-            "\\Zero\\JsObject|\\Zero\\JsUndefined|null "
+            "\\First\\JsObject|\\First\\JsUndefined|null "
         }
         t if t.is_nullable()
             && matches!(
@@ -10157,7 +10180,7 @@ fn php_hint(t: &Ty) -> &'static str {
                 Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
             ) =>
         {
-            "\\Zero\\JsArray|\\Zero\\JsUndefined|null "
+            "\\First\\JsArray|\\First\\JsUndefined|null "
         }
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
@@ -10218,14 +10241,14 @@ fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
 /// first argument (docs/decisions/2026-11-10-boolean-global.md).
 fn boolean_function() -> Out {
     Out::atom(
-        "\\Zero\\Js::booleanFunction()",
+        "\\First\\Js::booleanFunction()",
         Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
     )
 }
 
 fn number_is_finite_function() -> Out {
     Out::atom(
-        "\\Zero\\Js::numberIsFiniteFunction()",
+        "\\First\\Js::numberIsFiniteFunction()",
         Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
     )
 }
@@ -10443,7 +10466,7 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
         .zip(types)
         .all(|(parameter, ty)| parameter.rest || accepts_omission(ty))
     {
-        " = \\Zero\\JsUndefined::Value"
+        " = \\First\\JsUndefined::Value"
     } else {
         ""
     }
@@ -10503,7 +10526,7 @@ fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
     }
 }
 
-/// The type a typed `for await` element settles to under the blocking model: a Zero promise is
+/// The type a typed `for await` element settles to under the blocking model: a First promise is
 /// its value, a plain value is itself. `None` for values only the job queue can settle (anything
 /// from imported JavaScript, unknown values, builders that were never awaited).
 fn awaited_element(t: &Ty) -> Option<Ty> {
@@ -10648,7 +10671,7 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (Ty::Rest(x), Ty::Rest(y)) => assignable(x, y),
         (Ty::Promise(x), Ty::Promise(y)) => assignable(x, y),
         // Mutable handles: TypeScript checks these covariantly, which is unsound for writes.
-        // Zero requires the same element types (ReadonlyMap/ReadonlySet are the same handle).
+        // First requires the same element types (ReadonlyMap/ReadonlySet are the same handle).
         (Ty::MapOf(ka, va), Ty::MapOf(kb, vb)) => same_type(ka, kb) && same_type(va, vb),
         (Ty::SetOf(a), Ty::SetOf(b)) => same_type(a, b),
         (Ty::Iter(a), Ty::Iter(b)) => assignable(a, b),
@@ -10970,7 +10993,7 @@ fn jsx_escape(text: &str) -> String {
     out
 }
 
-/// `\Zero\Html::URL`, for a lowercased attribute name.
+/// `\First\Html::URL`, for a lowercased attribute name.
 fn is_url_attribute(folded: &str) -> bool {
     let name = folded
         .strip_prefix("xlink:")
@@ -11002,7 +11025,7 @@ fn is_url_attribute(folded: &str) -> bool {
     )
 }
 
-/// `\Zero\Html::safeUrl` at build time, for literal URLs.
+/// `\First\Html::safeUrl` at build time, for literal URLs.
 fn safe_url(url: &str) -> bool {
     let url: String = url
         .trim_matches(|c: char| c <= ' ')
@@ -11046,13 +11069,13 @@ fn valid_attribute_name(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
 }
 
-/// `\Zero\Html::styleOf`: a `style` value narrowed to the property names its type declares.
+/// `\First\Html::styleOf`: a `style` value narrowed to the property names its type declares.
 fn style_of(php: &str, ty: &Ty) -> String {
     let names = match ty.non_null() {
         Ty::Obj(fields) => fields.keys().map(|k| php_str(k)).collect::<Vec<_>>(),
         _ => Vec::new(),
     };
-    format!("\\Zero\\Html::styleOf({php}, [{}])", names.join(", "))
+    format!("\\First\\Html::styleOf({php}, [{}])", names.join(", "))
 }
 
 /// SVG elements whose names are camelCase in the specification; they keep their case.

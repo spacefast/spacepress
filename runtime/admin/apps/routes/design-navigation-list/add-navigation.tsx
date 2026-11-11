@@ -5,8 +5,8 @@ import { store as coreStore } from '@wordpress/core-data';
 import { store as noticesStore } from '@wordpress/notices';
 import { useDispatch } from '@wordpress/data';
 import { Button } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { Stack, InputControl } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { Stack, InputControl } from '@first-admin/design-system';
 import { Modal } from '@wordpress/components';
 
 const NAVIGATION_POST_TYPE = 'wp_navigation';
@@ -47,7 +47,7 @@ export const AddNavigationModal = ( {
 
 			if ( savedRecord ) {
 				createSuccessNotice(
-					__( 'Navigation menu created successfully.', 'zero-admin' ),
+					__( 'Navigation menu created successfully.', 'first-admin' ),
 					{
 						type: 'snackbar',
 					}
@@ -66,7 +66,7 @@ export const AddNavigationModal = ( {
 			createErrorNotice(
 				sprintf(
 					/* translators: %s: error message describing why the navigation menu could not be created. */
-					__( 'Unable to create navigation menu: %s', 'zero-admin' ),
+					__( 'Unable to create navigation menu: %s', 'first-admin' ),
 					errorMessage
 				),
 				{
@@ -81,7 +81,7 @@ export const AddNavigationModal = ( {
 
 	return (
 		<Modal
-			title={ __( 'Add New Navigation Menu', 'zero-admin' ) }
+			title={ __( 'Add New Navigation Menu', 'first-admin' ) }
 			onRequestClose={ () => closeModal?.() }
 			focusOnMount="firstContentElement"
 			size="small"
@@ -98,10 +98,10 @@ export const AddNavigationModal = ( {
 							autoComplete="off"
 							value={ menuTitle }
 							onValueChange={ setMenuTitle }
-							label={ __( 'Name', 'zero-admin' ) }
+							label={ __( 'Name', 'first-admin' ) }
 							placeholder={ __(
 								'Enter menu name',
-								'zero-admin'
+								'first-admin'
 							) }
 							disabled={ isBusy }
 						/>
@@ -112,7 +112,7 @@ export const AddNavigationModal = ( {
 								disabled={ isBusy }
 								focusableWhenDisabled
 							>
-								{ __( 'Cancel', 'zero-admin' ) }
+								{ __( 'Cancel', 'first-admin' ) }
 							</Button>
 							<Button
 								variant="solid"
@@ -121,7 +121,7 @@ export const AddNavigationModal = ( {
 								disabled={ isBusy || ! menuTitle?.trim() }
 								focusableWhenDisabled
 							>
-								{ __( 'Create Menu', 'zero-admin' ) }
+								{ __( 'Create Menu', 'first-admin' ) }
 							</Button>
 						</Stack>
 					</Stack>

@@ -16,16 +16,16 @@ export default function ZoomDropdown( {
 } ) {
 	return (
 		<Component
-			className="zero-admin-media-editor__zoom-dropdown"
+			className="first-admin-media-editor__zoom-dropdown"
 			icon={ search }
-			label={ __( 'Zoom', 'zero-admin' ) }
+			label={ __( 'Zoom', 'first-admin' ) }
 			popoverProps={ {
 				placement: 'bottom-start',
-				className: 'zero-admin-media-editor__zoom-dropdown-popover',
+				className: 'first-admin-media-editor__zoom-dropdown-popover',
 			} }
 			toggleProps={ {
 				variant: 'tertiary',
-				className: 'zero-admin-media-editor__zoom-dropdown-button',
+				className: 'first-admin-media-editor__zoom-dropdown-button',
 			} }
 		>
 			{ () => (

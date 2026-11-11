@@ -1,6 +1,6 @@
 // Client runtime request building, against an in-process node:http server with canned responses.
-// The runtime is copied next to a fixture schema.ts/types.ts in the exact layout `zero build` emits
-// (zero/_generated/client/{index,schema,types}.ts), then imported for real.
+// The runtime is copied next to a fixture schema.ts/types.ts in the exact layout `first build` emits
+// (first/_generated/client/{index,schema,types}.ts), then imported for real.
 //
 // Run: node --test runtime/client/index.test.ts   (Node 22 strips types)
 
@@ -42,7 +42,7 @@ const dirs: string[] = [];
 let mod: any;
 
 async function load(schemaTs: string): Promise<unknown> {
-  const dir = mkdtempSync(join(tmpdir(), "zero-client-"));
+  const dir = mkdtempSync(join(tmpdir(), "first-client-"));
   dirs.push(dir);
   copyFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), join(dir, "index.ts"));
   writeFileSync(join(dir, "schema.ts"), schemaTs);
@@ -64,7 +64,7 @@ before(async () => {
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  url = `${origin}/wp-json/zero/v1`;
+  url = `${origin}/wp-json/first/v1`;
 });
 
 after(() => {
@@ -120,8 +120,8 @@ const sha256url = (v: string) => createHash("sha256").update(v).digest("base64ur
 test("list encodes where/orderBy/limit/offset/status/locale; with is a comma list or JSON", async () => {
   seen = [];
   reply = ok([{ id: 1 }]);
-  const zero = mod.createClient({ url: url + "/" });
-  const rows = await zero.posts.list({
+  const first = mod.createClient({ url: url + "/" });
+  const rows = await first.posts.list({
     where: { tags: { has: "news" }, OR: [{ title: { like: "%a&b%" } }] },
     orderBy: { createdAt: "desc", title: "asc" },
     limit: 10,
@@ -134,53 +134,53 @@ test("list encodes where/orderBy/limit/offset/status/locale; with is a comma lis
   assert.equal(last().query.get("locale"), "de");
   const q = last().query;
   assert.equal(last().method, "GET");
-  assert.equal(last().path, "/wp-json/zero/v1/posts");
+  assert.equal(last().path, "/wp-json/first/v1/posts");
   assert.deepEqual(JSON.parse(q.get("where") ?? ""), { tags: { has: "news" }, OR: [{ title: { like: "%a&b%" } }] });
   assert.deepEqual([q.get("orderBy"), q.get("limit"), q.get("offset"), q.get("status"), q.get("with")], ["-createdAt,title", "10", "20", "draft", "author,cover"]);
 
   // Any entry with options switches `with` to JSON; nested orderBy strings travel as objects.
-  await zero.posts.get(7, { with: { author: { with: { posts: true }, orderBy: "-id", limit: 2 } }, locale: "*" });
-  assert.equal(last().path, "/wp-json/zero/v1/posts/7");
+  await first.posts.get(7, { with: { author: { with: { posts: true }, orderBy: "-id", limit: 2 } }, locale: "*" });
+  assert.equal(last().path, "/wp-json/first/v1/posts/7");
   assert.equal(last().query.get("locale"), "*");
   assert.deepEqual(JSON.parse(last().query.get("with") ?? ""), { author: { with: { posts: true }, orderBy: { id: "desc" }, limit: 2 } });
 
   // The collection key is not the path: shoppingList lives at /shopping_list.
-  await zero.shoppingList.list();
-  assert.equal(last().path, "/wp-json/zero/v1/shopping_list");
+  await first.shoppingList.list();
+  assert.equal(last().path, "/wp-json/first/v1/shopping_list");
   assert.equal(last().query.toString(), "");
 });
 
 test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSON bodies", async () => {
   seen = [];
   reply = ok({ id: 1 });
-  const zero = mod.createClient({ url });
-  await zero.posts.create({ title: "Hi" });
-  await zero.posts.update(1, { title: "Yo" });
-  await zero.posts.delete(1);
-  await zero.posts.revisions.list(1);
-  await zero.posts.revisions.get(1, 4);
-  await zero.posts.revisions.restore(1, 4);
-  await zero.globals.settings.get();
-  await zero.globals.settings.update({ tagline: "x" });
-  await zero.actions.approveComment({ id: 3 });
-  await zero.actions.publishedCount();
-  await zero.auth.me();
-  await zero.schema();
+  const first = mod.createClient({ url });
+  await first.posts.create({ title: "Hi" });
+  await first.posts.update(1, { title: "Yo" });
+  await first.posts.delete(1);
+  await first.posts.revisions.list(1);
+  await first.posts.revisions.get(1, 4);
+  await first.posts.revisions.restore(1, 4);
+  await first.globals.settings.get();
+  await first.globals.settings.update({ tagline: "x" });
+  await first.actions.approveComment({ id: 3 });
+  await first.actions.publishedCount();
+  await first.auth.me();
+  await first.schema();
   assert.deepEqual(
     seen.map((s) => `${s.method} ${s.path} ${s.body.toString()}`),
     [
-      'POST /wp-json/zero/v1/posts {"title":"Hi"}',
-      'PATCH /wp-json/zero/v1/posts/1 {"title":"Yo"}',
-      "DELETE /wp-json/zero/v1/posts/1 ",
-      "GET /wp-json/zero/v1/posts/1/revisions ",
-      "GET /wp-json/zero/v1/posts/1/revisions/4 ",
-      "POST /wp-json/zero/v1/posts/1/revisions/4/restore ",
-      "GET /wp-json/zero/v1/globals/settings ",
-      'PATCH /wp-json/zero/v1/globals/settings {"tagline":"x"}',
-      'POST /wp-json/zero/v1/actions/approveComment {"id":3}',
-      "POST /wp-json/zero/v1/actions/publishedCount {}",
-      "GET /wp-json/zero/v1/me ",
-      "GET /wp-json/zero/v1/_schema ",
+      'POST /wp-json/first/v1/posts {"title":"Hi"}',
+      'PATCH /wp-json/first/v1/posts/1 {"title":"Yo"}',
+      "DELETE /wp-json/first/v1/posts/1 ",
+      "GET /wp-json/first/v1/posts/1/revisions ",
+      "GET /wp-json/first/v1/posts/1/revisions/4 ",
+      "POST /wp-json/first/v1/posts/1/revisions/4/restore ",
+      "GET /wp-json/first/v1/globals/settings ",
+      'PATCH /wp-json/first/v1/globals/settings {"tagline":"x"}',
+      'POST /wp-json/first/v1/actions/approveComment {"id":3}',
+      "POST /wp-json/first/v1/actions/publishedCount {}",
+      "GET /wp-json/first/v1/me ",
+      "GET /wp-json/first/v1/_schema ",
     ],
   );
   assert.equal(seen[0].headers["content-type"], "application/json");
@@ -188,7 +188,7 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
 
 test("auth headers: anonymous sends none, a guest's bearer is held, WP nonce, custom headers win", async () => {
   seen = [];
-  reply = (s) => (s.path === "/wp-json/zero/v1/auth/guest" ? tokens(1, guest) : ok(null)());
+  reply = (s) => (s.path === "/wp-json/first/v1/auth/guest" ? tokens(1, guest) : ok(null)());
 
   const anon = mod.createClient({ url });
   await anon.auth.me();
@@ -214,18 +214,18 @@ test("auth headers: anonymous sends none, a guest's bearer is held, WP nonce, cu
   assert.equal(last().headers.authorization, basic);
   await anon.auth.guest().catch(() => undefined);
   const held = mod.createClient({ url, headers: { Authorization: basic } });
-  reply = (s) => (s.path === "/wp-json/zero/v1/auth/guest" ? tokens(2, guest) : ok(null)());
+  reply = (s) => (s.path === "/wp-json/first/v1/auth/guest" ? tokens(2, guest) : ok(null)());
   await held.auth.guest();
   await held.auth.me();
   assert.equal(last().headers.authorization, basic);
 });
 
-test("problem documents become ZeroError with every field; non-problem failures still map", async () => {
-  const zero = mod.createClient({ url });
+test("problem documents become FirstError with every field; non-problem failures still map", async () => {
+  const first = mod.createClient({ url });
   const problem = { type: "about:blank", title: "Invalid input", status: 422, code: "invalid_input", detail: "Too long", pointer: "/sections/1/heading" };
   reply = () => ({ status: 422, type: "application/problem+json", body: JSON.stringify(problem) });
-  const err = await zero.posts.create({ title: "x" }).catch((e: unknown) => e);
-  assert.ok(err instanceof mod.ZeroError);
+  const err = await first.posts.create({ title: "x" }).catch((e: unknown) => e);
+  assert.ok(err instanceof mod.FirstError);
   assert.ok(err instanceof Error);
   assert.deepEqual(
     { type: err.type, title: err.title, status: err.status, code: err.code, detail: err.detail, pointer: err.pointer, message: err.message },
@@ -234,32 +234,32 @@ test("problem documents become ZeroError with every field; non-problem failures 
 
   // No pointer in the document → no pointer on the error.
   reply = () => ({ status: 403, type: "application/problem+json", body: JSON.stringify({ type: "about:blank", title: "Forbidden", status: 403, code: "forbidden", detail: "no" }) });
-  const forbidden = await zero.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
+  const forbidden = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
   assert.deepEqual([forbidden.status, forbidden.code, forbidden.pointer], [403, "forbidden", undefined]);
 
-  // A WordPress core error body (before Zero's route runs) maps onto the same shape.
+  // A WordPress core error body (before First's route runs) maps onto the same shape.
   reply = () => ({ status: 401, body: JSON.stringify({ code: "rest_cookie_invalid_nonce", message: "Cookie check failed", data: { status: 403 } }) });
-  const wpErr = await zero.auth.me().catch((e: unknown) => e);
+  const wpErr = await first.auth.me().catch((e: unknown) => e);
   assert.deepEqual([wpErr.status, wpErr.code, wpErr.detail], [401, "rest_cookie_invalid_nonce", "Cookie check failed"]);
 
   // HTML from a proxy, and an unreachable server: status 0, code "network".
   reply = () => ({ status: 502, type: "text/html", body: "<h1>Bad gateway</h1>" });
-  const html = await zero.posts.list().catch((e: unknown) => e);
+  const html = await first.posts.list().catch((e: unknown) => e);
   assert.deepEqual([html.status, html.code], [0, "network"]);
-  const down = await mod.createClient({ url: "http://127.0.0.1:1/wp-json/zero/v1" }).posts.list().catch((e: unknown) => e);
-  assert.deepEqual([down instanceof mod.ZeroError, down.status, down.code], [true, 0, "network"]);
+  const down = await mod.createClient({ url: "http://127.0.0.1:1/wp-json/first/v1" }).posts.list().catch((e: unknown) => e);
+  assert.deepEqual([down instanceof mod.FirstError, down.status, down.code], [true, 0, "network"]);
 });
 
 test("media upload is multipart with `file` (+ filename, type) and `alt`", async () => {
   seen = [];
   const media = { id: 9, url: "/uploads/2026/10/a.png", mime: "image/png", size: 3, width: 1, height: 1, alt: "A pixel", filename: "pixel.png", createdAt: "2026-10-28T00:00:00.000Z" };
   reply = () => ({ status: 201, body: JSON.stringify({ data: media }) });
-  const zero = mod.createClient({ url, headers: { Authorization: "Bearer zt_abc" } });
+  const first = mod.createClient({ url, headers: { Authorization: "Bearer zt_abc" } });
   const bytes = new Uint8Array([137, 80, 78]);
-  assert.deepEqual(await zero.media.upload(new Blob([bytes], { type: "image/png" }), { alt: "A pixel", filename: "pixel.png" }), media);
+  assert.deepEqual(await first.media.upload(new Blob([bytes], { type: "image/png" }), { alt: "A pixel", filename: "pixel.png" }), media);
 
   const s = last();
-  assert.deepEqual([s.method, s.path, s.headers.authorization], ["POST", "/wp-json/zero/v1/media", "Bearer zt_abc"]);
+  assert.deepEqual([s.method, s.path, s.headers.authorization], ["POST", "/wp-json/first/v1/media", "Bearer zt_abc"]);
   assert.match(s.headers["content-type"] ?? "", /^multipart\/form-data; boundary=/);
   const form = await new Response(s.body, { headers: { "content-type": s.headers["content-type"] ?? "" } }).formData();
   const file = form.get("file") as File;
@@ -267,61 +267,61 @@ test("media upload is multipart with `file` (+ filename, type) and `alt`", async
   assert.equal(form.get("alt"), "A pixel");
 
   // A File keeps its own name; no alt → no alt part.
-  await zero.media.upload(new File([bytes], "own.png", { type: "image/png" }));
+  await first.media.upload(new File([bytes], "own.png", { type: "image/png" }));
   const again = await new Response(last().body, { headers: { "content-type": last().headers["content-type"] ?? "" } }).formData();
   assert.deepEqual([(again.get("file") as File).name, again.has("alt")], ["own.png", false]);
 
-  await zero.media.list({ where: { mime: { like: "image/%" } }, limit: 5 });
-  assert.deepEqual([last().path, last().query.get("limit"), JSON.parse(last().query.get("where") ?? "")], ["/wp-json/zero/v1/media", "5", { mime: { like: "image/%" } }]);
-  await zero.media.delete(9);
-  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/zero/v1/media/9"]);
+  await first.media.list({ where: { mime: { like: "image/%" } }, limit: 5 });
+  assert.deepEqual([last().path, last().query.get("limit"), JSON.parse(last().query.get("where") ?? "")], ["/wp-json/first/v1/media", "5", { mime: { like: "image/%" } }]);
+  await first.media.delete(9);
+  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/first/v1/media/9"]);
 });
 
 test("media.update is a JSON PATCH of alt/focal", async () => {
   reply = ok({ id: 9 });
-  const zero = mod.createClient({ url });
-  await zero.media.update(9, { focal: { x: 0.25, y: 1 }, alt: null });
+  const first = mod.createClient({ url });
+  await first.media.update(9, { focal: { x: 0.25, y: 1 }, alt: null });
   assert.deepEqual([last().method, last().path, last().headers["content-type"], JSON.parse(last().body.toString())],
-    ["PATCH", "/wp-json/zero/v1/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);
+    ["PATCH", "/wp-json/first/v1/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);
 });
 
 test("files.<bucket> upload/get/delete hit /files/<bucket>", async () => {
-  const row = { id: 4, bucket: "decks", url: "/wp-json/zero/v1/files/decks/4/download?exp=1&sig=ab" };
+  const row = { id: 4, bucket: "decks", url: "/wp-json/first/v1/files/decks/4/download?exp=1&sig=ab" };
   reply = ok(row);
-  const zero = mod.createClient({ url });
-  assert.deepEqual(await zero.files.decks.upload(new Blob([new Uint8Array([37, 80])], { type: "application/pdf" }), { filename: "q3.pdf" }), row);
+  const first = mod.createClient({ url });
+  assert.deepEqual(await first.files.decks.upload(new Blob([new Uint8Array([37, 80])], { type: "application/pdf" }), { filename: "q3.pdf" }), row);
   const form = await new Response(last().body, { headers: { "content-type": last().headers["content-type"] ?? "" } }).formData();
-  assert.deepEqual([last().method, last().path, (form.get("file") as File).name], ["POST", "/wp-json/zero/v1/files/decks", "q3.pdf"]);
-  await zero.files.decks.get(4);
-  assert.deepEqual([last().method, last().path], ["GET", "/wp-json/zero/v1/files/decks/4"]);
-  await zero.files.decks.delete(4);
-  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/zero/v1/files/decks/4"]);
+  assert.deepEqual([last().method, last().path, (form.get("file") as File).name], ["POST", "/wp-json/first/v1/files/decks", "q3.pdf"]);
+  await first.files.decks.get(4);
+  assert.deepEqual([last().method, last().path], ["GET", "/wp-json/first/v1/files/decks/4"]);
+  await first.files.decks.delete(4);
+  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/first/v1/files/decks/4"]);
 });
 
 test("default base URL is the REST prefix on the page's origin", async () => {
   let requested = "";
-  const zero = mod.createClient({ fetch: async (input: RequestInfo | URL) => ((requested = String(input)), new Response('{"data":null}')) });
-  await zero.auth.me();
-  assert.equal(requested, "/wp-json/zero/v1/me");
+  const first = mod.createClient({ fetch: async (input: RequestInfo | URL) => ((requested = String(input)), new Response('{"data":null}')) });
+  await first.auth.me();
+  assert.equal(requested, "/wp-json/first/v1/me");
 });
 
 test("a 401 unauthenticated refreshes once at the issuer and retries once; a refused refresh forgets the session and surfaces the 401", async () => {
-  const zero = mod.createClient({ url, auth: { issuer: `${origin}/identity` } });
+  const first = mod.createClient({ url, auth: { issuer: `${origin}/identity` } });
   reply = () => tokens(1, guest);
-  await zero.auth.guest();
+  await first.auth.guest();
 
   // za_1 has expired: the server takes only za_2, which the rotated refresh hands out.
   seen = [];
   reply = (s) => (s.path === "/identity/token" ? rotated(2) : s.headers.authorization === "Bearer za_2" ? ok([{ id: 1 }])() : problem(401, "unauthenticated"));
-  assert.deepEqual(await zero.posts.list(), [{ id: 1 }]);
-  await zero.posts.list();
+  assert.deepEqual(await first.posts.list(), [{ id: 1 }]);
+  await first.posts.list();
   assert.deepEqual(lines(), [
-    "GET /wp-json/zero/v1/posts Bearer za_1",
+    "GET /wp-json/first/v1/posts Bearer za_1",
     "POST /identity/token - grant_type=refresh_token&refresh_token=zr_1&client_id=",
-    "GET /wp-json/zero/v1/posts Bearer za_2",
-    "GET /wp-json/zero/v1/posts Bearer za_2",
+    "GET /wp-json/first/v1/posts Bearer za_2",
+    "GET /wp-json/first/v1/posts Bearer za_2",
   ]);
-  assert.equal(zero.auth.session()?.refreshToken, "zr_2");
+  assert.equal(first.auth.session()?.refreshToken, "zr_2");
 
   // The server now refuses every access token and rotates the refresh token only once. The first write
   // refreshes and retries once, then surfaces the 401; the next one finds the refresh token dead, gets the
@@ -330,36 +330,36 @@ test("a 401 unauthenticated refreshes once at the issuer and retries once; a ref
   let rotations = 0;
   reply = (s) => (s.path === "/identity/token" ? (rotations++ === 0 ? rotated(3) : refused("invalid_grant")) : problem(401, "unauthenticated"));
   for (const title of ["x", "y"]) {
-    const err = await zero.posts.create({ title }).catch((e: unknown) => e);
-    assert.deepEqual([err instanceof mod.ZeroError, err.status, err.code], [true, 401, "unauthenticated"]);
+    const err = await first.posts.create({ title }).catch((e: unknown) => e);
+    assert.deepEqual([err instanceof mod.FirstError, err.status, err.code], [true, 401, "unauthenticated"]);
   }
   assert.deepEqual(lines(), [
-    'POST /wp-json/zero/v1/posts Bearer za_2 {"title":"x"}',
+    'POST /wp-json/first/v1/posts Bearer za_2 {"title":"x"}',
     "POST /identity/token - grant_type=refresh_token&refresh_token=zr_2&client_id=",
-    'POST /wp-json/zero/v1/posts Bearer za_3 {"title":"x"}',
-    'POST /wp-json/zero/v1/posts Bearer za_3 {"title":"y"}',
+    'POST /wp-json/first/v1/posts Bearer za_3 {"title":"x"}',
+    'POST /wp-json/first/v1/posts Bearer za_3 {"title":"y"}',
     "POST /identity/token - grant_type=refresh_token&refresh_token=zr_3&client_id=",
   ]);
-  assert.equal(zero.auth.session(), null);
+  assert.equal(first.auth.session(), null);
 });
 
 test("guests: the first unauthenticated write starts a guest session and retries; reads don't", async () => {
   reply = (s) => {
-    if (s.path === "/wp-json/zero/v1/auth/guest") return tokens(1, guest);
+    if (s.path === "/wp-json/first/v1/auth/guest") return tokens(1, guest);
     return s.headers.authorization ? ok({ id: 1 })() : problem(401, "unauthenticated");
   };
-  const zero = mod.createClient({ url, auth: { guests: true } });
+  const first = mod.createClient({ url, auth: { guests: true } });
 
   seen = [];
-  assert.equal((await zero.posts.list().catch((e: unknown) => e)).code, "unauthenticated");
-  assert.deepEqual(await zero.posts.create({ title: "Hi" }), { id: 1 });
-  await zero.posts.create({ title: "Again" });
+  assert.equal((await first.posts.list().catch((e: unknown) => e)).code, "unauthenticated");
+  assert.deepEqual(await first.posts.create({ title: "Hi" }), { id: 1 });
+  await first.posts.create({ title: "Again" });
   assert.deepEqual(lines(), [
-    "GET /wp-json/zero/v1/posts -",
-    'POST /wp-json/zero/v1/posts - {"title":"Hi"}',
-    "POST /wp-json/zero/v1/auth/guest - {}",
-    'POST /wp-json/zero/v1/posts Bearer za_1 {"title":"Hi"}',
-    'POST /wp-json/zero/v1/posts Bearer za_1 {"title":"Again"}',
+    "GET /wp-json/first/v1/posts -",
+    'POST /wp-json/first/v1/posts - {"title":"Hi"}',
+    "POST /wp-json/first/v1/auth/guest - {}",
+    'POST /wp-json/first/v1/posts Bearer za_1 {"title":"Hi"}',
+    'POST /wp-json/first/v1/posts Bearer za_1 {"title":"Again"}',
   ]);
 
   // Without `guests`, the same write just fails.
@@ -372,7 +372,7 @@ test("guests: two first writes in flight share one guest, even when one 401 land
   // A fetch stub with manual control: each request waits until the test releases it.
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const zero = mod.createClient({ url: "http://x/wp-json/zero/v1", fetch, auth: { guests: true } });
+  const first = mod.createClient({ url: "http://x/wp-json/first/v1", fetch, auth: { guests: true } });
   // Microtask turns only (no timers); a bounded count so a regression fails instead of hanging.
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
@@ -383,17 +383,17 @@ test("guests: two first writes in flight share one guest, even when one 401 land
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
 
-  const a = zero.posts.create({ title: "a" });
-  const b = zero.posts.create({ title: "b" });
+  const a = first.posts.create({ title: "a" });
+  const b = first.posts.create({ title: "b" });
   await until(2);
   pending[0].release(denied());                       // a's 401 starts the guest
   await until(3);
-  assert.equal(pending[2].url, "http://x/wp-json/zero/v1/auth/guest");
+  assert.equal(pending[2].url, "http://x/wp-json/first/v1/auth/guest");
   pending[2].release(json(201, { data: { accessToken: "za_g", refreshToken: "zr_g", expiresIn: 300, user: { id: 9, name: "Guest", role: "guest" } } }));
   await until(4);                                      // a retries with the guest
   pending[1].release(denied());                        // b's 401 arrives after the guest exists
   await until(5);
-  assert.equal(pending[4].url, "http://x/wp-json/zero/v1/posts", "b retries with the existing guest instead of starting another");
+  assert.equal(pending[4].url, "http://x/wp-json/first/v1/posts", "b retries with the existing guest instead of starting another");
   pending[3].release(json(201, { data: { id: 1 } }));
   pending[4].release(json(201, { data: { id: 2 } }));
   assert.deepEqual([await a, await b], [{ id: 1 }, { id: 2 }]);
@@ -404,7 +404,7 @@ test("guests: two first writes in flight share one guest, even when one 401 land
 test("a 401 or refresh that outlives a sign-in never acts as the new user", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const zero = mod.createClient({ url: "http://x/wp-json/zero/v1", fetch, auth: { issuer: "http://x/identity" } });
+  const first = mod.createClient({ url: "http://x/wp-json/first/v1", fetch, auth: { issuer: "http://x/identity" } });
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
       if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
@@ -417,14 +417,14 @@ test("a 401 or refresh that outlives a sign-in never acts as the new user", asyn
   const auth = (i: number) => (pending[i].init.headers as Record<string, string>).authorization;
 
   // Guest sessions stand in for sign-ins: the same token shape, the same generation rules.
-  const loginA = zero.auth.guest();
+  const loginA = first.auth.guest();
   await until(1);
   pending[0].release(issued("a"));
   await loginA;
-  const draft = zero.posts.create({ title: "A's private draft" }); // sent as A
+  const draft = first.posts.create({ title: "A's private draft" }); // sent as A
   await until(2);
   assert.equal(auth(1), "Bearer za_a");
-  const loginB = zero.auth.guest();                               // B signs in on the same client
+  const loginB = first.auth.guest();                               // B signs in on the same client
   await until(3);
   pending[2].release(issued("b"));
   await loginB;
@@ -437,19 +437,19 @@ test("a 401 or refresh that outlives a sign-in never acts as the new user", asyn
   assert.equal(failed?.code, "unauthenticated", "A's request fails as it was sent");
 
   // A refresh started as B, finishing after a sign-out, doesn't bring B back.
-  const other = zero.posts.create({ title: "x" });
+  const other = first.posts.create({ title: "x" });
   await until(4);
   pending[3].release(denied());
   await until(5);
   assert.equal(pending[4].url, "http://x/identity/token");
-  const out = zero.auth.signOut();
+  const out = first.auth.signOut();
   await until(6);
   assert.equal(pending[5].url, "http://x/identity/revoke");
   pending[5].release(json(200, {}));
   await out;
   pending[4].release(new Response(rotated("b2").body, { status: 200, headers: { "content-type": "application/json" } }));
   await other.catch(() => undefined);
-  assert.equal(zero.auth.session(), null, "the late refresh was dropped");
+  assert.equal(first.auth.session(), null, "the late refresh was dropped");
 });
 
 test("two clients sharing sessionStorage: one's late 401, guest or sign-out never acts across the other's sign-in", async () => {
@@ -457,7 +457,7 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
   try {
     const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
     const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-    const opts = { url: "http://x/wp-json/zero/v1", fetch, auth: { storage: "session" as const, guests: true, issuer: "http://x/identity" } };
+    const opts = { url: "http://x/wp-json/first/v1", fetch, auth: { storage: "session" as const, guests: true, issuer: "http://x/identity" } };
     const a = mod.createClient(opts);
     const b = mod.createClient(opts);
     const until = async (n: number) => {
@@ -567,7 +567,7 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
 test("a refresh still in flight for an earlier sign-in never stands in for the current session's", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const zero = mod.createClient({ url: "http://x/wp-json/zero/v1", fetch, auth: { issuer: "http://x/identity" } });
+  const first = mod.createClient({ url: "http://x/wp-json/first/v1", fetch, auth: { issuer: "http://x/identity" } });
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
       if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
@@ -579,19 +579,19 @@ test("a refresh still in flight for an earlier sign-in never stands in for the c
   const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "guest" } } });
   const oidc = (n: string) => new Response(rotated(n as unknown as number).body, { status: 200, headers: { "content-type": "application/json" } });
 
-  const a = zero.auth.guest();
+  const a = first.auth.guest();
   await until(1);
   pending[0].release(issued("a"));
   await a;
-  const wa = zero.posts.create({ title: "a" });             // 1
+  const wa = first.posts.create({ title: "a" });             // 1
   await until(2);
   pending[1].release(denied());
   await until(3);                                           // 2: A's refresh, left pending
-  const b = zero.auth.guest();                              // 3
+  const b = first.auth.guest();                              // 3
   await until(4);
   pending[3].release(issued("b"));
   await b;
-  const wb = zero.posts.create({ title: "b" });             // 4
+  const wb = first.posts.create({ title: "b" });             // 4
   await until(5);
   pending[4].release(denied());
   await until(6);
@@ -604,31 +604,31 @@ test("a refresh still in flight for an earlier sign-in never stands in for the c
   assert.deepEqual(await wb, { id: 2 });
   pending[2].release(oidc("a2"));                           // A's late refresh: dropped
   await wa.catch(() => undefined);
-  assert.equal(zero.auth.session()?.accessToken, "za_b2");
+  assert.equal(first.auth.session()?.accessToken, "za_b2");
 });
 
 test("guest(), signOut(), guest(): the second call starts its own guest", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const zero = mod.createClient({ url: "http://x/wp-json/zero/v1", fetch });
+  const first = mod.createClient({ url: "http://x/wp-json/first/v1", fetch });
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "guest" } } });
-  const g1 = zero.auth.guest();
-  await zero.auth.signOut();
-  const g2 = zero.auth.guest();
+  const g1 = first.auth.guest();
+  await first.auth.signOut();
+  const g2 = first.auth.guest();
   for (let turn = 0; pending.length < 2 && turn < 10_000; turn++) await Promise.resolve();
   assert.equal(pending.length, 2, "two guest requests");
   pending[0].release(issued("g1"));
   pending[1].release(issued("g2"));
   await g1.catch(() => undefined);
   assert.equal((await g2).name, "g2");
-  assert.equal(zero.auth.session()?.accessToken, "za_g2");
+  assert.equal(first.auth.session()?.accessToken, "za_g2");
 });
 
 test("signing out while anonymous still ends pending sign-ins; an old anonymous write never borrows a newer guest", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const zero = mod.createClient({ url: "http://x/wp-json/zero/v1", fetch, auth: { guests: true, issuer: "http://x/identity" } });
+  const first = mod.createClient({ url: "http://x/wp-json/first/v1", fetch, auth: { guests: true, issuer: "http://x/identity" } });
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
       if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
@@ -646,26 +646,26 @@ test("signing out while anonymous still ends pending sign-ins; an old anonymous 
   };
 
   // guest() in flight, then signOut() while still anonymous: it may not sign in later.
-  const started = zero.auth.guest();
+  const started = first.auth.guest();
   await until(1);
-  await zero.auth.signOut();
+  await first.auth.signOut();
   pending[0].release(issued("late-guest"));
   await settle(started);
-  assert.equal(zero.auth.session(), null, "still signed out");
+  assert.equal(first.auth.session(), null, "still signed out");
 
   // An anonymous write from before a sign-in/sign-out doesn't retry as the guest that came after.
-  const old = zero.posts.create({ title: "old" });          // request 1, anonymous
+  const old = first.posts.create({ title: "old" });          // request 1, anonymous
   await until(2);
-  const fresh = zero.auth.guest();                          // request 2: a guest from a later generation
+  const fresh = first.auth.guest();                          // request 2: a guest from a later generation
   await until(3);
   pending[2].release(issued("guest-a"));
   await fresh;
-  const out = zero.auth.signOut();                          // request 3: revoke guest-a at the issuer
+  const out = first.auth.signOut();                          // request 3: revoke guest-a at the issuer
   await until(4);
   assert.equal(pending[3].url, "http://x/identity/revoke");
   pending[3].release(json(200, {}));
   await out;
-  const newer = zero.auth.guest();                          // request 4: yet another guest
+  const newer = first.auth.guest();                          // request 4: yet another guest
   await until(5);
   pending[4].release(issued("guest-b"));
   await newer;
@@ -679,15 +679,15 @@ test("signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kep
   const browser = stubBrowser();
   try {
     seen = [];
-    reply = (s) => (s.path === "/wp-json/zero/v1/auth/config" ? ok({ issuer: `${origin}/identity`, guests: true })() : problem(404, "not_found"));
-    const zero = mod.createClient({ url: `${origin}/wp-json/zero/v1`, auth: { clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
-    void zero.auth.signIn({ returnTo: "/drafts" });
+    reply = (s) => (s.path === "/wp-json/first/v1/auth/config" ? ok({ issuer: `${origin}/identity`, guests: true })() : problem(404, "not_found"));
+    const first = mod.createClient({ url: `${origin}/wp-json/first/v1`, auth: { clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
+    void first.auth.signIn({ returnTo: "/drafts" });
     const to = new URL(await browser.navigated);
 
     // No issuer option: it comes from /auth/config.
-    assert.deepEqual(lines(), ["GET /wp-json/zero/v1/auth/config -"]);
+    assert.deepEqual(lines(), ["GET /wp-json/first/v1/auth/config -"]);
     assert.equal(`${to.origin}${to.pathname}`, `${origin}/identity/authorize`);
-    const pkce = JSON.parse(browser.store.get("zero.auth.pkce") ?? "{}");
+    const pkce = JSON.parse(browser.store.get("first.auth.pkce") ?? "{}");
     assert.deepEqual(Object.fromEntries(to.searchParams), {
       response_type: "code",
       client_id: "app_blog",
@@ -715,7 +715,7 @@ test("signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kep
 test("handleCallback refuses a foreign state, exchanges the code with the verifier, and signOut revokes then logs out", async () => {
   const issuer = `${origin}/identity`;
   const auth = { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage: "session" };
-  const base = `${origin}/wp-json/zero/v1`;
+  const base = `${origin}/wp-json/first/v1`;
   const pkce = JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo: "/drafts" });
   const member = { id: 3, name: "ann", role: "subscriber", member: { id: 3, email: "ann@x.test" } };
   reply = (s) => {
@@ -726,10 +726,10 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
 
   const forged = stubBrowser("?code=c0de&state=other");
   try {
-    forged.store.set("zero.auth.pkce", pkce);
+    forged.store.set("first.auth.pkce", pkce);
     seen = [];
     const err = await mod.createClient({ url: base, auth }).auth.handleCallback().catch((e: unknown) => e);
-    assert.deepEqual([err instanceof mod.ZeroError, err.code], [true, "invalid_state"]);
+    assert.deepEqual([err instanceof mod.FirstError, err.code], [true, "invalid_state"]);
     assert.deepEqual(seen, []);
   } finally {
     forged.restore();
@@ -737,10 +737,10 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
 
   const browser = stubBrowser(`?code=c0de&state=${"s".repeat(43)}`);
   try {
-    browser.store.set("zero.auth.pkce", pkce);
-    const zero = mod.createClient({ url: base, auth });
+    browser.store.set("first.auth.pkce", pkce);
+    const first = mod.createClient({ url: base, auth });
     seen = [];
-    assert.deepEqual(await zero.auth.handleCallback(), member);
+    assert.deepEqual(await first.auth.handleCallback(), member);
     assert.equal(await browser.navigated, "https://blog.test/drafts", "back to signIn's returnTo");
     assert.deepEqual([seen[0].path, seen[0].headers["content-type"], seen[0].headers.authorization], ["/identity/token", "application/x-www-form-urlencoded", undefined]);
     assert.deepEqual(form(seen[0]), {
@@ -750,16 +750,16 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
       client_id: "app_blog",
       code_verifier: "v".repeat(86),
     });
-    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/zero/v1/me", "Bearer at_1"]);
-    assert.equal(browser.store.has("zero.auth.pkce"), false);
-    const kept = JSON.parse(browser.store.get(`zero.auth:${base}`) ?? "{}");
+    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/first/v1/me", "Bearer at_1"]);
+    assert.equal(browser.store.has("first.auth.pkce"), false);
+    const kept = JSON.parse(browser.store.get(`first.auth:${base}`) ?? "{}");
     assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt, sid: typeof kept.sid }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s", sid: "string" });
 
     seen = [];
-    await zero.auth.signOut({ returnTo: "https://blog.test/" });
+    await first.auth.signOut({ returnTo: "https://blog.test/" });
     assert.deepEqual([seen.length, seen[0].path, form(seen[0])], [1, "/identity/revoke", { token: "rt_1", client_id: "app_blog" }]);
     // Signed out, the record keeps only the session generation (no tokens).
-    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`zero.auth:${base}`) ?? "{}")), ["sid"]);
+    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`first.auth:${base}`) ?? "{}")), ["sid"]);
     const logout = new URL(browser.visits.at(-1) ?? "");
     assert.deepEqual(
       [`${logout.origin}${logout.pathname}`, Object.fromEntries(logout.searchParams)],
@@ -772,7 +772,7 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
 
 test("handleCallback returns only to its own origin, and only when tokens survive the page load", async () => {
   const issuer = `${origin}/identity`;
-  const base = `${origin}/wp-json/zero/v1`;
+  const base = `${origin}/wp-json/first/v1`;
   const member = { id: 3, name: "ann", role: "subscriber" };
   reply = (s) => (s.path === "/identity/token"
     ? { status: 200, body: JSON.stringify({ access_token: "at_1", refresh_token: "rt_1", expires_in: 3600, token_type: "Bearer" }) }
@@ -785,7 +785,7 @@ test("handleCallback returns only to its own origin, and only when tokens surviv
   ] as const) {
     const browser = stubBrowser(`?code=c&state=${"s".repeat(43)}`);
     try {
-      browser.store.set("zero.auth.pkce", JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo }));
+      browser.store.set("first.auth.pkce", JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo }));
       await mod.createClient({ url: base, auth: { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage } }).auth.handleCallback();
       assert.deepEqual(browser.visits, expected, `returnTo ${JSON.stringify(returnTo)} with ${storage} storage`);
     } finally {
@@ -797,26 +797,26 @@ test("handleCallback returns only to its own origin, and only when tokens surviv
 test("guests refresh at <issuer>/token with the clientId they were issued, and upgrade hands off to the issuer", async () => {
   const browser = stubBrowser();
   try {
-    const base = `${origin}/wp-json/zero/v1`;
-    const zero = mod.createClient({ url: base, auth: { issuer: `${origin}/identity`, clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
+    const base = `${origin}/wp-json/first/v1`;
+    const first = mod.createClient({ url: base, auth: { issuer: `${origin}/identity`, clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
     reply = (s) => {
-      if (s.path === "/wp-json/zero/v1/auth/guest") return tokens(1, { id: 9, name: "Guest", role: "guest" }, { clientId: "app_zero_guest" });
+      if (s.path === "/wp-json/first/v1/auth/guest") return tokens(1, { id: 9, name: "Guest", role: "guest" }, { clientId: "app_zero_guest" });
       if (s.path === "/identity/token") return { status: 200, body: JSON.stringify({ access_token: "at_2", refresh_token: "rt_2", expires_in: 3600 }) };
       if (s.path === "/identity/handoff") return { status: 200, body: JSON.stringify({ handoff: "h1.secret" }) };
       return s.headers.authorization === "Bearer at_2" ? ok({ id: 1 })() : problem(401, "unauthenticated");
     };
-    assert.equal((await zero.auth.guest()).role, "guest");
+    assert.equal((await first.auth.guest()).role, "guest");
 
     seen = [];
-    await zero.posts.create({ title: "Hi" });
+    await first.posts.create({ title: "Hi" });
     assert.deepEqual(
       seen.map((s) => [s.path, s.headers.authorization ?? "-"]),
-      [["/wp-json/zero/v1/posts", "Bearer za_1"], ["/identity/token", "-"], ["/wp-json/zero/v1/posts", "Bearer at_2"]],
+      [["/wp-json/first/v1/posts", "Bearer za_1"], ["/identity/token", "-"], ["/wp-json/first/v1/posts", "Bearer at_2"]],
     );
     assert.deepEqual(form(seen[1]), { grant_type: "refresh_token", refresh_token: "zr_1", client_id: "app_zero_guest" });
 
     seen = [];
-    void zero.auth.upgrade();
+    void first.auth.upgrade();
     const to = new URL(await browser.navigated);
     assert.deepEqual([seen[0].path, seen[0].headers.authorization], ["/identity/handoff", "Bearer at_2"]);
     assert.deepEqual([to.pathname, to.searchParams.get("handoff"), to.searchParams.get("code_challenge_method")], ["/identity/authorize", "h1.secret", "S256"]);
@@ -849,9 +849,9 @@ test("watch re-runs the access-checked list on a matching notice, never trusting
   let n = 0;
   reply = (s) => ok([{ id: 1, title: `v${++n}` }])();
   const transport = fakeTransport();
-  const zero = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
+  const first = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
   const got: unknown[] = [];
-  const stop = zero.posts.watch({ where: { title: { like: "%v%" } }, with: { author: true } }, (rows: unknown) => got.push(rows));
+  const stop = first.posts.watch({ where: { title: { like: "%v%" } }, with: { author: true } }, (rows: unknown) => got.push(rows));
   await tick();
   assert.equal(transport.connects, 1, "the first watcher connects the transport");
   assert.deepEqual(got, [[{ id: 1, title: "v1" }]], "an initial read");
@@ -862,7 +862,7 @@ test("watch re-runs the access-checked list on a matching notice, never trusting
   transport.push({ ...notice("posts"), changes: [{ collection: "posts", ops: ["update"], ids: [1], row: { title: "pushed" } }] });
   await tick();
   assert.deepEqual(got.at(-1), [{ id: 1, title: "v3" }], "the refresh is the server's answer, not the pushed payload");
-  assert.equal(last().path, "/wp-json/zero/v1/posts");
+  assert.equal(last().path, "/wp-json/first/v1/posts");
   assert.deepEqual(JSON.parse(last().query.get("where") ?? ""), { title: { like: "%v%" } }, "the same query re-runs");
 
   transport.push(notice("authors"));
@@ -890,8 +890,8 @@ test("watch coalesces a burst into one extra read and reports read errors", asyn
     return fetch(input, init);
   };
   const transport = fakeTransport();
-  const zero = mod.createClient({ url, fetch: slowFetch, realtime: { transport, pollMs: false, livePollMs: false } });
-  const stop = zero.posts.watch(undefined, () => {});
+  const first = mod.createClient({ url, fetch: slowFetch, realtime: { transport, pollMs: false, livePollMs: false } });
+  const stop = first.posts.watch(undefined, () => {});
   await tick();
   transport.push(notice("posts"));
   transport.push(notice("posts"));
@@ -913,8 +913,8 @@ test("watch coalesces a burst into one extra read and reports read errors", asyn
 test("without a live transport, watch polls; a transport registered later is picked up", async () => {
   reply = () => ok([])();
   seen = [];
-  const zero = mod.createClient({ url, realtime: { pollMs: 30, livePollMs: false } });
-  const stop = zero.posts.watch(undefined, () => {});
+  const first = mod.createClient({ url, realtime: { pollMs: 30, livePollMs: false } });
+  const stop = first.posts.watch(undefined, () => {});
   await new Promise((r) => setTimeout(r, 100));
   const polled = seen.length;
   assert.ok(polled >= 3, `polled ${polled} times`);
@@ -932,18 +932,18 @@ test("without a live transport, watch polls; a transport registered later is pic
   assert.ok(seen.length > atLive, "and resumes when the transport goes down");
   stop();
 
-  delete (globalThis as Record<string, unknown>).__zeroRealtime;
+  delete (globalThis as Record<string, unknown>).__firstRealtime;
 
   // A second copy of the client (a host script's) registers; this copy's watchers connect to it.
   const other: any = await load(SCHEMA_TS);
   const second = fakeTransport();
-  const stop2 = zero.posts.watch(undefined, () => {});
+  const stop2 = first.posts.watch(undefined, () => {});
   try {
     other.registerRealtimeTransport(second);
     assert.equal(second.connects, 1, "the registry is page-wide, not per module copy");
   } finally {
     stop2();
-    delete (globalThis as Record<string, unknown>).__zeroRealtime;
+    delete (globalThis as Record<string, unknown>).__firstRealtime;
   }
 });
 
@@ -952,13 +952,13 @@ test("while live, a slow jittered safety poll still recovers a notice the transp
   t.mock.method(Math, "random", () => 1); // the latest the jitter allows: 60 s × 1.2
   const transport = fakeTransport();
   const refreshes: number[] = [];
-  const zero = mod.createClient({
+  const first = mod.createClient({
     url,
     // Count reads without the network: only the timers decide when a refresh happens.
     fetch: async () => (refreshes.push(refreshes.length), new Response('{"data":[]}', { status: 200 })),
     realtime: { transport, pollMs: false },
   });
-  const stop = zero.posts.watch(undefined, () => {});
+  const stop = first.posts.watch(undefined, () => {});
   transport.set("live"); // initial read + one catch-up read on going live
   // setImmediate is not mocked: one turn of it drains every promise a refresh queued.
   const settle = () => new Promise((resolve) => setImmediate(resolve));

@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+namespace First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 /**
  * Represents a key/value collection type.
@@ -40,7 +40,7 @@ class CollectionType extends Type implements WrappingTypeInterface
 
         if ($this->isList()) {
             if (!$type->isIdentifiedBy(TypeIdentifier::ARRAY)) {
-                zero_identity_vendor_trigger_deprecation('symfony/type-info', '7.3', 'Creating a "%s" that is a list and not an array is deprecated and will throw a "%s" in 8.0.', self::class, InvalidArgumentException::class);
+                first_identity_vendor_trigger_deprecation('symfony/type-info', '7.3', 'Creating a "%s" that is a list and not an array is deprecated and will throw a "%s" in 8.0.', self::class, InvalidArgumentException::class);
                 // throw new InvalidArgumentException(\sprintf('Cannot create a "%s" as list when type is not "array".', self::class));
             }
 

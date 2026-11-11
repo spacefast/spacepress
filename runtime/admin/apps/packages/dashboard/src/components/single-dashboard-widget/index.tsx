@@ -32,7 +32,7 @@ function SingleDashboardWidgetAdminActions( {
 			direction="row"
 			gap="sm"
 			justify="flex-end"
-			className="zero-admin-dashboard-widget-actions"
+			className="first-admin-dashboard-widget-actions"
 		>
 			<IconButton
 				icon={ trash }
@@ -40,7 +40,7 @@ function SingleDashboardWidgetAdminActions( {
 				variant="minimal"
 				tone="neutral"
 				onClick={ removeHandler }
-				label={ __( 'Remove', 'zero-admin' ) }
+				label={ __( 'Remove', 'first-admin' ) }
 			/>
 		</Stack>
 	);
@@ -131,15 +131,15 @@ export default function SingleDashboardWidget( {
 	const hasSettings = ! isDisabled && !! widgetType.attributes?.length;
 
 	const widgetClasses = clsx(
-		'zero-admin-dashboard-widget',
-		hasScrollableContent && 'zero-admin-dashboard-widget--fade-overlay',
-		rowHeight !== 'auto' && 'zero-admin-dashboard-widget--fixed-height'
+		'first-admin-dashboard-widget',
+		hasScrollableContent && 'first-admin-dashboard-widget--fade-overlay',
+		rowHeight !== 'auto' && 'first-admin-dashboard-widget--fixed-height'
 	);
 
 	const contentClasses = clsx(
-		'zero-admin-dashboard-widget__content',
+		'first-admin-dashboard-widget__content',
 		! shouldApplyPadding &&
-			'zero-admin-dashboard-widget__content--no-padding'
+			'first-admin-dashboard-widget__content--no-padding'
 	);
 
 	return (

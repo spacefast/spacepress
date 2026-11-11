@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
 
 final class Ed25519 extends EdDSA
 {

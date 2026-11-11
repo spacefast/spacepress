@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /* Tiny assertion harness shared by the PHP suites. */
 
-use Zero\App;
+use First\App;
 
 $passed = 0;
 $failed = 0;

@@ -4,43 +4,43 @@ import type { Category, ColorGroup } from './types';
 export const STYLE_BOOK_COLOR_GROUPS: ColorGroup[] = [
 	{
 		slug: 'theme-colors',
-		title: __( 'Theme Colors', 'zero-admin' ),
+		title: __( 'Theme Colors', 'first-admin' ),
 		origin: 'theme',
 		type: 'colors',
 	},
 	{
 		slug: 'theme-gradients',
-		title: __( 'Theme Gradients', 'zero-admin' ),
+		title: __( 'Theme Gradients', 'first-admin' ),
 		origin: 'theme',
 		type: 'gradients',
 	},
 	{
 		slug: 'custom-colors',
-		title: __( 'Custom Colors', 'zero-admin' ),
+		title: __( 'Custom Colors', 'first-admin' ),
 		origin: 'custom',
 		type: 'colors',
 	},
 	{
 		slug: 'custom-gradients',
-		title: __( 'Custom Gradients', 'zero-admin' ),
+		title: __( 'Custom Gradients', 'first-admin' ),
 		origin: 'custom', // User.
 		type: 'gradients',
 	},
 	{
 		slug: 'duotones',
-		title: __( 'Duotones', 'zero-admin' ),
+		title: __( 'Duotones', 'first-admin' ),
 		origin: 'theme',
 		type: 'duotones',
 	},
 	{
 		slug: 'default-colors',
-		title: __( 'Default Colors', 'zero-admin' ),
+		title: __( 'Default Colors', 'first-admin' ),
 		origin: 'default',
 		type: 'colors',
 	},
 	{
 		slug: 'default-gradients',
-		title: __( 'Default Gradients', 'zero-admin' ),
+		title: __( 'Default Gradients', 'first-admin' ),
 		origin: 'default',
 		type: 'gradients',
 	},
@@ -52,18 +52,18 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 >[] = [
 	{
 		slug: 'site-identity',
-		title: __( 'Site Identity', 'zero-admin' ),
+		title: __( 'Site Identity', 'first-admin' ),
 		blocks: [ 'core/site-logo', 'core/site-title', 'core/site-tagline' ],
 	},
 	{
 		slug: 'design',
-		title: __( 'Design', 'zero-admin' ),
+		title: __( 'Design', 'first-admin' ),
 		blocks: [ 'core/navigation', 'core/avatar', 'core/post-time-to-read' ],
 		exclude: [ 'core/home-link', 'core/navigation-link' ],
 	},
 	{
 		slug: 'posts',
-		title: __( 'Posts', 'zero-admin' ),
+		title: __( 'Posts', 'first-admin' ),
 		blocks: [
 			'core/post-title',
 			'core/post-excerpt',
@@ -81,7 +81,7 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 	},
 	{
 		slug: 'comments',
-		title: __( 'Comments', 'zero-admin' ),
+		title: __( 'Comments', 'first-admin' ),
 		blocks: [
 			'core/comments-title',
 			'core/comments-pagination',
@@ -102,12 +102,12 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 export const STYLE_BOOK_CATEGORIES: Category[] = [
 	{
 		slug: 'overview',
-		title: __( 'Overview', 'zero-admin' ),
+		title: __( 'Overview', 'first-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'text',
-		title: __( 'Text', 'zero-admin' ),
+		title: __( 'Text', 'first-admin' ),
 		blocks: [
 			'core/post-content',
 			'core/home-link',
@@ -116,27 +116,27 @@ export const STYLE_BOOK_CATEGORIES: Category[] = [
 	},
 	{
 		slug: 'colors',
-		title: __( 'Colors', 'zero-admin' ),
+		title: __( 'Colors', 'first-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'theme',
-		title: __( 'Theme', 'zero-admin' ),
+		title: __( 'Theme', 'first-admin' ),
 		subcategories: STYLE_BOOK_THEME_SUBCATEGORIES,
 	},
 	{
 		slug: 'media',
-		title: __( 'Media', 'zero-admin' ),
+		title: __( 'Media', 'first-admin' ),
 		blocks: [ 'core/post-featured-image' ],
 	},
 	{
 		slug: 'widgets',
-		title: __( 'Widgets', 'zero-admin' ),
+		title: __( 'Widgets', 'first-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'embed',
-		title: __( 'Embeds', 'zero-admin' ),
+		title: __( 'Embeds', 'first-admin' ),
 		include: [],
 	},
 ];
@@ -146,17 +146,17 @@ export const STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES: Category[] = [
 	...STYLE_BOOK_THEME_SUBCATEGORIES,
 	{
 		slug: 'media',
-		title: __( 'Media', 'zero-admin' ),
+		title: __( 'Media', 'first-admin' ),
 		blocks: [ 'core/post-featured-image' ],
 	},
 	{
 		slug: 'widgets',
-		title: __( 'Widgets', 'zero-admin' ),
+		title: __( 'Widgets', 'first-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'embed',
-		title: __( 'Embeds', 'zero-admin' ),
+		title: __( 'Embeds', 'first-admin' ),
 		include: [],
 	},
 ];
@@ -165,12 +165,12 @@ export const STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES: Category[] = [
 export const STYLE_BOOK_PREVIEW_CATEGORIES: Category[] = [
 	{
 		slug: 'overview',
-		title: __( 'Overview', 'zero-admin' ),
+		title: __( 'Overview', 'first-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'text',
-		title: __( 'Text', 'zero-admin' ),
+		title: __( 'Text', 'first-admin' ),
 		blocks: [
 			'core/post-content',
 			'core/home-link',
@@ -179,12 +179,12 @@ export const STYLE_BOOK_PREVIEW_CATEGORIES: Category[] = [
 	},
 	{
 		slug: 'colors',
-		title: __( 'Colors', 'zero-admin' ),
+		title: __( 'Colors', 'first-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'blocks',
-		title: __( 'All Blocks', 'zero-admin' ),
+		title: __( 'All Blocks', 'first-admin' ),
 		blocks: [],
 		subcategories: STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES,
 	},
@@ -212,12 +212,12 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 
 	${ ROOT_CONTAINER }
 
-	.zero-admin-style-book__examples {
+	.first-admin-style-book__examples {
 		max-width: 1200px;
 		margin: 0 auto;
 	}
 
-	.zero-admin-style-book__example {
+	.first-admin-style-book__example {
 	    max-width: 900px;
 		border-radius: 2px;
 		cursor: pointer;
@@ -232,41 +232,41 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 		margin: 0 auto 40px auto;
 	}
 
-	.zero-admin-style-book__example.is-selected {
+	.first-admin-style-book__example.is-selected {
 		box-shadow: 0 0 0 1px var(--wpds-color-stroke-focus-brand);
 	}
 
-	.zero-admin-style-book__example.is-disabled-example {
+	.first-admin-style-book__example.is-disabled-example {
 		pointer-events: none;
 	}
 
-	.zero-admin-style-book__example:focus:not(:disabled) {
+	.first-admin-style-book__example:focus:not(:disabled) {
 		box-shadow: 0 0 0 var(--wpds-border-width-focus) var(--wpds-color-stroke-focus-brand);
 		outline: 3px solid transparent;
 	}
 
-	.zero-admin-style-book__duotone-example > div:first-child {
+	.first-admin-style-book__duotone-example > div:first-child {
 		display: flex;
 		aspect-ratio: 16 / 9;
 		grid-row: span 1;
 		grid-column: span 2;
 	}
-	.zero-admin-style-book__duotone-example img {
+	.first-admin-style-book__duotone-example img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 	}
-	.zero-admin-style-book__duotone-example > div:not(:first-child) {
+	.first-admin-style-book__duotone-example > div:not(:first-child) {
 		height: 20px;
 		border: 1px solid color-mix( in srgb, currentColor 10%, transparent );
 	}
 
-	.zero-admin-style-book__color-example {
+	.first-admin-style-book__color-example {
 		border: 1px solid color-mix( in srgb, currentColor 10%, transparent );
 	}
 
-	.zero-admin-style-book__subcategory-title,
-	.zero-admin-style-book__example-title {
+	.first-admin-style-book__subcategory-title,
+	.first-admin-style-book__example-title {
 		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
 		font-size: 13px;
 		font-weight: normal;
@@ -278,18 +278,18 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 		color: color-mix( in srgb, currentColor 60%, transparent );
 	}
 
-	.zero-admin-style-book__subcategory-title {
+	.first-admin-style-book__subcategory-title {
 		font-size: 16px;
 		margin-bottom: 40px;
     	padding-bottom: 8px;
 	}
 
-	.zero-admin-style-book__example-preview {
+	.first-admin-style-book__example-preview {
 		width: 100%;
 	}
 
-	.zero-admin-style-book__example-preview .block-editor-block-list__insertion-point,
-	.zero-admin-style-book__example-preview .block-list-appender {
+	.first-admin-style-book__example-preview .block-editor-block-list__insertion-point,
+	.first-admin-style-book__example-preview .block-list-appender {
 		display: none;
 	}
 	:where(.is-root-container > .wp-block:first-child) {

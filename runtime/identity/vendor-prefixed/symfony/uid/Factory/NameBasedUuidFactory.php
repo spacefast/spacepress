@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace First\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use Zero\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use Zero\Identity\Vendor\Symfony\Component\Uid\UuidV3;
-use Zero\Identity\Vendor\Symfony\Component\Uid\UuidV5;
+use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use First\Identity\Vendor\Symfony\Component\Uid\UuidV3;
+use First\Identity\Vendor\Symfony\Component\Uid\UuidV5;
 
 class NameBasedUuidFactory
 {

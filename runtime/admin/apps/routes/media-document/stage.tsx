@@ -1,1 +1,1 @@
-export { MediaDocument as default } from '@zero-admin/schema';
+export { MediaDocument as default } from '@first-admin/schema';

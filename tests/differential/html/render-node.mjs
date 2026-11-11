@@ -14,9 +14,9 @@ const cases = JSON.parse(readFileSync(casesFile, "utf8"));
 const here = path.dirname(new URL(import.meta.url).pathname);
 const files = [...new Set(cases.map((c) => c.component.split("#")[0]))];
 const result = await build({
-  entryPoints: files.map((f) => path.join(project, "zero", f)),
+  entryPoints: files.map((f) => path.join(project, "first", f)),
   outdir: path.join(here, ".out"),
-  outbase: path.join(project, "zero"),
+  outbase: path.join(project, "first"),
   bundle: true,
   format: "esm",
   platform: "node",

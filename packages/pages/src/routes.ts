@@ -34,11 +34,11 @@ export interface Discovery {
   diagnostics: PagesDiagnostic[];
 }
 
-/** First segments WordPress or Zero already own. A page there would shadow core behavior. */
+/** First segments WordPress or First already own. A page there would shadow core behavior. */
 const RESERVED_FIRST = new Set([
   "wp-admin", "wp-content", "wp-includes", "wp-json", "wp-login.php", "wp-signup.php", "wp-cron.php", "xmlrpc.php",
   "wp-sitemap.xml", "feed", "comments", "search", "author", "category", "tag", "page", "embed", "trackback",
-  "robots.txt", "favicon.ico", "zero-admin", "auth",
+  "robots.txt", "favicon.ico", "first-admin", "auth",
 ]);
 
 const LITERAL = /^[a-z0-9](?:[a-z0-9._~-]*[a-z0-9_~-])?$/;
@@ -123,7 +123,7 @@ export async function discover(pagesDir: string): Promise<Discovery> {
       if (params.length > 1 || (dynamicIndex !== -1 && dynamicIndex !== visible.length - 1)) {
         diagnostics.push(at(file, "An item route has one [param] segment, and it is the last one.", "route_shape", "Move the page so the [param] directory is the deepest segment."));
       } else if (visible[0]?.kind === "literal" && RESERVED_FIRST.has(visible[0].value)) {
-        diagnostics.push(at(file, `/${visible[0].value} belongs to WordPress or Zero; a page cannot claim it.`, "reserved_path"));
+        diagnostics.push(at(file, `/${visible[0].value} belongs to WordPress or First; a page cannot claim it.`, "reserved_path"));
       } else {
         const pattern = `/${visible.map((s) => (s.kind === "param" ? "[]" : s.value)).join("/")}`;
         routes.push({

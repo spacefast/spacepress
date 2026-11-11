@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
 
 use DateTimeImmutable;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\GeneralizedTime;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\DateTimeHelper;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\GeneralizedTime;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\DateTimeHelper;
 
 /**
  * Implements *AttCertValidityPeriod* ASN.1 type.

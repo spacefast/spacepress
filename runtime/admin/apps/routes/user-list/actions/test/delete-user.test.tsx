@@ -2,16 +2,16 @@ import type { User } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useViewConfig } from '@zero-admin/views';
-import { useTrackedModal } from '@zero-admin/telemetry';
+import { useViewConfig } from '@first-admin/views';
+import { useTrackedModal } from '@first-admin/telemetry';
 import { useDeleteUser } from '../../../user/hooks';
 import { useDeleteUserAction } from '../delete-user';
 
-jest.mock( '@zero-admin/views', () => ( {
+jest.mock( '@first-admin/views', () => ( {
 	useViewConfig: jest.fn(),
 } ) );
 
-jest.mock( '@zero-admin/telemetry', () => ( {
+jest.mock( '@first-admin/telemetry', () => ( {
 	useTrackedModal: jest.fn(),
 } ) );
 

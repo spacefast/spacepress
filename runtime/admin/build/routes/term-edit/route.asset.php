@@ -1,1 +1,1 @@
-<?php return array('name' => 'term-edit', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@wordpress/route', '@zero-admin/core-data-next'), 'version' => 'cd422d23f58a9534118c');
+<?php return array('name' => 'term-edit', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@first-admin/core-data-next', '@wordpress/route'), 'version' => '9b3ca5e4c5ca7889432e');

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 /* Image sizes (phase 2 §7.2): core-compatible resize rectangles and focal-aware crops; which files resize. */
 
-use Zero\Media\Images;
+use First\Media\Images;
 
-require dirname(__DIR__, 2) . '/runtime/Zero/bootstrap.php';
+require dirname(__DIR__, 2) . '/runtime/First/bootstrap.php';
 require __DIR__ . '/harness.php';
 
 // [dst_x, dst_y, src_x, src_y, dst_w, dst_h, src_w, src_h], as core's image_resize_dimensions().
@@ -32,7 +32,7 @@ $problem('focal missing axis', ['x' => 0.5], '/focal/y');
 $problem('focal unknown key', ['x' => 0.5, 'y' => 0.5, 'z' => 1], '/focal/z');
 $problem('focal not an object', [0.5, 0.5], '/focal');
 
-$dir = sys_get_temp_dir() . '/zero-images-' . bin2hex(random_bytes(4));
+$dir = sys_get_temp_dir() . '/first-images-' . bin2hex(random_bytes(4));
 mkdir($dir);
 register_shutdown_function(static fn () => exec('rm -rf ' . escapeshellarg($dir)));
 // Left half red, right half blue: a crop's colour shows where its origin landed.
@@ -67,11 +67,11 @@ eq('still GIF resizes; animated GIFs (with or without control blocks) and SVG do
 ], [true, false, false, false]);
 
 // The optional Jetpack Image CDN adapter (WP only) builds Photon arguments from the same rectangles.
-require dirname(__DIR__, 2) . '/runtime/Zero/Wp/Media/ImageCdn.php';
+require dirname(__DIR__, 2) . '/runtime/First/Wp/Media/ImageCdn.php';
 eq('CDN cover args carry the focal crop rectangle; inside args fit', [
-    \Zero\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => 100, 'fit' => 'cover'], ['x' => 1, 'y' => 0]),
-    \Zero\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
-    \Zero\Wp\Media\ImageCdn::args(40, 20, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
+    \First\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => 100, 'fit' => 'cover'], ['x' => 1, 'y' => 0]),
+    \First\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
+    \First\Wp\Media\ImageCdn::args(40, 20, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
 ], [
     [['crop' => '200px,0px,200px,200px', 'resize' => '100,100'], 100, 100],
     [['fit' => '100,50'], 100, 50],

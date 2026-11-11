@@ -1,5 +1,5 @@
 // spec.md §6, "the opinionated WordPress": every hardening switch against real WordPress/MariaDB while the
-// Zero app is active, then the same checks with the app deactivated, where WordPress behaves as shipped.
+// First app is active, then the same checks with the app deactivated, where WordPress behaves as shipped.
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
@@ -30,7 +30,7 @@ const FILE_CAPS = ["edit_files", "edit_plugins", "edit_themes"];
 const INSTALL_CAPS = ["install_plugins", "upload_plugins", "update_plugins", "delete_plugins", "install_themes", "upload_themes", "update_themes", "delete_themes", "update_core"];
 
 test("the active app lists every switch it applies", async () => {
-  const schema = (await (await fetch(`${harness.url}/wp-json/zero/v1/_schema`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
+  const schema = (await (await fetch(`${harness.url}/wp-json/first/v1/_schema`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
   assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "permalinks", "timezone", "blockTheme"]);
 });
 
@@ -81,7 +81,7 @@ test("xmlrpc: Jetpack's connection still answers WordPress.com, on both of its e
 });
 
 // A connected site, without WordPress.com: a throwaway blog token in Jetpack's options, and requests signed
-// by Jetpack's own Jetpack_Signature, the code that verifies them. Jetpack checks the signature; Zero only
+// by Jetpack's own Jetpack_Signature, the code that verifies them. Jetpack checks the signature; First only
 // keeps core's methods out.
 test("xmlrpc: a Jetpack request signed with the blog token reaches Jetpack's signed methods; a forged one gets only setup", async () => {
   const blogToken = `zerotest.${randomBytes(16).toString("hex")}`;
@@ -162,10 +162,10 @@ test("customizer: customize.php and its links are gone for the administrator", a
 });
 
 test("comments: closed on core posts, pages and kinds without `comments`; open where the kind turns them on", async () => {
-  const ids = { post: post("post", "Core post"), page: post("page", "Core page"), memo: post("zero_memos", "Memo"), note: post("zero_notes", "Note") };
+  const ids = { post: post("post", "Core post"), page: post("page", "Core page"), memo: post("first_memos", "Memo"), note: post("first_notes", "Note") };
   assert.deepEqual([await comment(ids.post), await comment(ids.page), await comment(ids.memo)].map((r) => r.status), [403, 403, 403]);
   assert.equal((await comment(ids.note)).status, 201);
-  assert.deepEqual(evalJson("echo wp_json_encode([get_default_comment_status('post'), get_default_comment_status('zero_memos'), get_default_comment_status('zero_notes')]);"), ["closed", "closed", "open"]);
+  assert.deepEqual(evalJson("echo wp_json_encode([get_default_comment_status('post'), get_default_comment_status('first_memos'), get_default_comment_status('first_notes')]);"), ["closed", "closed", "open"]);
 });
 
 test("permalinks: pretty URLs route even when the stored structure is plain", async () => {
@@ -181,24 +181,24 @@ test("permalinks: pretty URLs route even when the stored structure is plain", as
   assert.equal(wp("db", "query", "SELECT option_value FROM wp_options WHERE option_name = 'permalink_structure'", "--skip-column-names"), "", "the stored structure stays the owner's");
 });
 
-test("timezone: the Space's timezone from ZERO_SITE_TIMEZONE; the owner's setting without it", () => {
+test("timezone: the Space's timezone from FIRST_SITE_TIMEZONE; the owner's setting without it", () => {
   wp("option", "update", "timezone_string", "America/New_York");
   assert.equal(wp("eval", "echo wp_timezone_string();"), "America/New_York");
-  wp("config", "set", "ZERO_SITE_TIMEZONE", "Europe/Berlin", "--type=constant");
+  wp("config", "set", "FIRST_SITE_TIMEZONE", "Europe/Berlin", "--type=constant");
   try {
     assert.equal(wp("eval", "echo wp_timezone_string();"), "Europe/Berlin");
     assert.equal(wp("option", "get", "timezone_string", "--skip-plugins"), "America/New_York", "the stored option stays the owner's");
   } finally {
-    wp("config", "delete", "ZERO_SITE_TIMEZONE");
+    wp("config", "delete", "FIRST_SITE_TIMEZONE");
   }
 });
 
-test("blockTheme: Zero's minimal block theme renders when no installed theme is active", async () => {
+test("blockTheme: First's minimal block theme renders when no installed theme is active", async () => {
   const stored = wp("option", "get", "stylesheet", "--skip-plugins");
   wp("option", "update", "template", "gone-theme", "--skip-plugins");
   wp("option", "update", "stylesheet", "gone-theme", "--skip-plugins");
   try {
-    assert.deepEqual(evalJson("echo wp_json_encode([get_stylesheet(), wp_is_block_theme()]);"), ["zero-default", true]);
+    assert.deepEqual(evalJson("echo wp_json_encode([get_stylesheet(), wp_is_block_theme()]);"), ["first-default", true]);
     const response = await page("/");
     assert.equal(response.status, 200);
     assert.match(await response.text(), /wp-block-site-title/);
@@ -211,13 +211,13 @@ test("blockTheme: Zero's minimal block theme renders when no installed theme is 
 
 // Last: everything above must be the active app's doing. With the runtime still active but no app,
 // WordPress behaves as it ships.
-test("without an active Zero app, WordPress keeps XML-RPC, comments, the Customizer and the rest as shipped", async () => {
+test("without an active First app, WordPress keeps XML-RPC, comments, the Customizer and the rest as shipped", async () => {
   const id = post("post", "Stock post");
   // The stored structure is still the plain one the permalinks test left.
   wp("plugin", "deactivate", app);
   wp("rewrite", "flush");
   const active = JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json")) as string[];
-  assert.deepEqual([active.includes("zero-runtime"), active.some((n) => n.startsWith("zero-app-"))], [true, false], "the runtime alone, no app");
+  assert.deepEqual([active.includes("first-runtime"), active.some((n) => n.startsWith("first-app-"))], [true, false], "the runtime alone, no app");
   const listed = await xmlrpc("system.listMethods");
   assert.equal(listed.status, 200);
   assert.match(await listed.text(), /system\.listMethods/);
@@ -228,6 +228,6 @@ test("without an active Zero app, WordPress keeps XML-RPC, comments, the Customi
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
   assert.equal((await page("/wp-admin/customize.php", cookie)).status, 200);
   assert.match(await (await page("/", cookie)).text(), /wp-emoji|_wpemojiSettings/);
-  assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('permalink_structure'), get_option('zero_rewrite_rules', null)]);`), [true, "", null]);
+  assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('permalink_structure'), get_option('first_rewrite_rules', null)]);`), [true, "", null]);
   assert.equal((await page(`/?p=${id}`)).status, 200, "plain permalinks route again");
 });

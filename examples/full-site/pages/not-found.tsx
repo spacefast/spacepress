@@ -1,4 +1,4 @@
-import { link, type Metadata } from "@spacefast/zero-pages";
+import { link, type Metadata } from "@spacefast/first-pages";
 
 export const metadata = { title: "Not found", robots: { index: false } } satisfies Metadata;
 

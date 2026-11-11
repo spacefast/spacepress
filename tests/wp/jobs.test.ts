@@ -10,18 +10,18 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { api, auth, harness, http, ok, problem, run, sql, wp, zero } from "./env.ts";
+import { api, auth, harness, http, ok, problem, run, sql, wp, first } from "./env.ts";
 
-const jobRow = (id: string) => sql(`SELECT state, attempts, runAt, lastError FROM wp_zero__jobs WHERE id = '${id}'`)[0];
+const jobRow = (id: string) => sql(`SELECT state, attempts, runAt, lastError FROM wp_first__jobs WHERE id = '${id}'`)[0];
 const actions = (id: string) =>
-  sql(`SELECT a.status FROM wp_actionscheduler_actions a WHERE a.hook = 'zero_job' AND a.args = '{"id":"${id}"}' ORDER BY a.action_id`).map((r) => r.status);
+  sql(`SELECT a.status FROM wp_actionscheduler_actions a WHERE a.hook = 'first_job' AND a.args = '{"id":"${id}"}' ORDER BY a.action_id`).map((r) => r.status);
 const jobFor = (noteId: number) =>
-  sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${noteId}`).map((r) => r.id);
-/** Run every due zero_job action through Action Scheduler's WP-CLI queue runner, as cron would. */
-const runQueue = () => wp("action-scheduler", "run", "--hooks=zero_job");
+  sql(`SELECT id FROM wp_first__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${noteId}`).map((r) => r.id);
+/** Run every due first_job action through Action Scheduler's WP-CLI queue runner, as cron would. */
+const runQueue = () => wp("action-scheduler", "run", "--hooks=first_job");
 /** Run one pending action now, through Action Scheduler's own runner, without waiting for its date. */
 const runPending = (id: string) => {
-  const [action] = sql(`SELECT action_id FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND status = 'pending' AND args = '{"id":"${id}"}'`);
+  const [action] = sql(`SELECT action_id FROM wp_actionscheduler_actions WHERE hook = 'first_job' AND status = 'pending' AND args = '{"id":"${id}"}'`);
   wp("action-scheduler", "action", "run", action.action_id);
 };
 
@@ -31,7 +31,7 @@ test("a hook's enqueue becomes an Action Scheduler action, and AS runs the handl
   assert.ok(id, "the hook enqueued a job");
   assert.equal(jobRow(id).state, "pending");
   assert.deepEqual(actions(id), ["pending"], "one pending AS action carries the job id");
-  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_zero__outbox")[0].n, "0", "the outbox drained after commit");
+  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_first__outbox")[0].n, "0", "the outbox drained after commit");
 
   runQueue();
   assert.deepEqual({ state: jobRow(id).state, attempts: jobRow(id).attempts }, { state: "done", attempts: "1" });
@@ -50,12 +50,12 @@ test("an action's nested JSON reaches the queued handler byte for byte", async (
 });
 
 test("a rolled-back request leaves no job, outbox row or AS action", async () => {
-  const before = sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'zero_job'")[0].n;
+  const before = sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'first_job'")[0].n;
   await problem("POST", "/job_notes", { as: "editor", body: { title: "Explode" } }, { status: 500, code: "boom", pointer: undefined });
-  assert.deepEqual(sql("SELECT id FROM wp_zero_job_notes WHERE title = 'Explode'"), []);
-  assert.deepEqual(sql("SELECT id FROM wp_zero__outbox"), []);
-  assert.deepEqual(sql("SELECT id FROM wp_zero__jobs WHERE JSON_VALUE(input, '$.noteId') NOT IN (SELECT id FROM wp_zero_job_notes)"), []);
-  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'zero_job'")[0].n, before);
+  assert.deepEqual(sql("SELECT id FROM wp_first_job_notes WHERE title = 'Explode'"), []);
+  assert.deepEqual(sql("SELECT id FROM wp_first__outbox"), []);
+  assert.deepEqual(sql("SELECT id FROM wp_first__jobs WHERE JSON_VALUE(input, '$.noteId') NOT IN (SELECT id FROM wp_first_job_notes)"), []);
+  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'first_job'")[0].n, before);
 });
 
 test("a failing job is retried through Action Scheduler with backoff, then dead after `retries`", async () => {
@@ -65,9 +65,9 @@ test("a failing job is retried through Action Scheduler with backoff, then dead 
   const first = jobRow(id);
   assert.deepEqual({ state: first.state, attempts: first.attempts }, { state: "failed", attempts: "1" });
   assert.match(first.lastError, /stamp failed on attempt 1/);
-  // AS saw a completed action; Zero re-scheduled the retry one minute out.
+  // AS saw a completed action; First re-scheduled the retry one minute out.
   assert.deepEqual(actions(id), ["complete", "pending"]);
-  const due = sql(`SELECT scheduled_date_gmt AS at FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND status = 'pending' AND args = '{"id":"${id}"}'`)[0].at;
+  const due = sql(`SELECT scheduled_date_gmt AS at FROM wp_actionscheduler_actions WHERE hook = 'first_job' AND status = 'pending' AND args = '{"id":"${id}"}'`)[0].at;
   assert.equal(Date.parse(due + "Z"), Date.parse(first.runAt.replace(/\.\d+Z$/, "Z")), "AS fires at the job's backoff runAt");
   assert.ok(Date.parse(first.runAt) - Date.now() > 50_000, "first backoff is about a minute");
 
@@ -78,17 +78,17 @@ test("a failing job is retried through Action Scheduler with backoff, then dead 
   assert.deepEqual({ state: dead.state, attempts: dead.attempts }, { state: "dead", attempts: "2" });
   assert.match(dead.lastError, /stamp failed on attempt 2/);
   assert.deepEqual(actions(id), ["complete", "complete"], "a dead job schedules nothing more");
-  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_job_notes WHERE id = ${note.id}`), [{ stamped: "NULL" }], "each failed attempt's write rolled back");
-  assert.deepEqual(zero("jobs", "list", "--state=dead").map((j: { id: string }) => j.id).filter((j: string) => j === id), [id]);
+  assert.deepEqual(sql(`SELECT stamped FROM wp_first_job_notes WHERE id = ${note.id}`), [{ stamped: "NULL" }], "each failed attempt's write rolled back");
+  assert.deepEqual(first("jobs", "list", "--state=dead").map((j: { id: string }) => j.id).filter((j: string) => j === id), [id]);
 });
 
 /**
- * `wp eval` in its own process, inside one Zero transaction. With `hold`, it prints "ready" after
+ * `wp eval` in its own process, inside one First transaction. With `hold`, it prints "ready" after
  * `body` and keeps the transaction open until the test writes to its stdin. Every wait has a deadline.
  */
 function evalProcess(body: string, hold: boolean) {
   const child = spawn(join(dirname(fileURLToPath(import.meta.url)), "harness.sh"), ["wp", "eval", `
-    $db = \\Zero\\Wp\\Runtime::plugin()->app()->db;
+    $db = \\First\\Wp\\Runtime::plugin()->app()->db;
     echo json_encode($db->transaction(static function () {
       $out = (static function () { ${body} })();
       if (${hold}) { fwrite(STDOUT, "ready\\n"); fflush(STDOUT); fgets(STDIN); }
@@ -158,35 +158,35 @@ test("an agents: true job is the blog/job-stamp ability: editors enqueue it, AS 
   assert.deepEqual(actions(r.json.id), ["pending"], "the ability's enqueue reached Action Scheduler after commit");
   runQueue();
   assert.equal(jobRow(r.json.id).state, "done");
-  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_job_notes WHERE id = ${note.id}`), [{ stamped: `${r.json.id}:1` }]);
+  assert.deepEqual(sql(`SELECT stamped FROM wp_first_job_notes WHERE id = ${note.id}`), [{ stamped: `${r.json.id}:1` }]);
 });
 
 test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
   const key = `race-${run}`;
-  const ids = await contend(`return \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}'])['id'];`, "INSERT IGNORE INTO `wp_zero__jobs`");
+  const ids = await contend(`return \\First\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}'])['id'];`, "INSERT IGNORE INTO `wp_first__jobs`");
   assert.equal(ids[0], ids[1], "the waiting caller got the winner's job id");
-  assert.deepEqual(sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND \`key\` = '${key}'`).map((r) => r.id), [ids[0]], "and that job exists, alone");
-  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\Zero\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" = ?', ['${key}']));`);
+  assert.deepEqual(sql(`SELECT id FROM wp_first__jobs WHERE job = 'stamp' AND \`key\` = '${key}'`).map((r) => r.id), [ids[0]], "and that job exists, alone");
+  wp("eval", `\\First\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\First\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" = ?', ['${key}']));`);
 });
 
 test("job keys compare byte for byte on MariaDB", () => {
-  const ids = JSON.parse(wp("eval", `echo json_encode(\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => [
-    \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => 'pad-${run}'])['id'],
-    \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => 'pad-${run} '])['id'],
-    \\Zero\\Jobs\\Receipts::once('fn', 'pad-${run}', fn () => 'plain'),
-    \\Zero\\Jobs\\Receipts::once('fn', 'pad-${run} ', fn () => 'padded'),
+  const ids = JSON.parse(wp("eval", `echo json_encode(\\First\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => [
+    \\First\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => 'pad-${run}'])['id'],
+    \\First\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => 'pad-${run} '])['id'],
+    \\First\\Jobs\\Receipts::once('fn', 'pad-${run}', fn () => 'plain'),
+    \\First\\Jobs\\Receipts::once('fn', 'pad-${run} ', fn () => 'padded'),
   ]));`));
   assert.notEqual(ids[0], ids[1], "a trailing space is a different job key");
   assert.deepEqual(ids.slice(2), ["plain", "padded"], "and a different once() key");
-  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\Zero\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" LIKE ?', ['pad-${run}%']));`);
+  wp("eval", `\\First\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\First\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" LIKE ?', ['pad-${run}%']));`);
 });
 
 test("concurrent first uses of one once() key on MariaDB: one runs, the other gets a definite answer", async () => {
   const key = `once-race-${run}`;
-  const [a, b] = await contend(`try { return \\Zero\\Jobs\\Receipts::once('fn', '${key}', fn () => 'ran'); } catch (\\Zero\\HttpError $e) { return $e->errorCode; }`, "INSERT IGNORE INTO `wp_zero__receipts`");
+  const [a, b] = await contend(`try { return \\First\\Jobs\\Receipts::once('fn', '${key}', fn () => 'ran'); } catch (\\First\\HttpError $e) { return $e->errorCode; }`, "INSERT IGNORE INTO `wp_first__receipts`");
   // A ran and committed while B waited; B then sees A's finished receipt and replays it.
   assert.deepEqual([a, b], ["ran", "ran"]);
-  assert.deepEqual(sql(`SELECT state FROM wp_zero__receipts WHERE \`key\` = '${key}'`), [{ state: "done" }]);
+  assert.deepEqual(sql(`SELECT state FROM wp_first__receipts WHERE \`key\` = '${key}'`), [{ state: "done" }]);
 });
 
 test("once() and Idempotency-Key replay instead of running again", async () => {
@@ -200,7 +200,7 @@ test("once() and Idempotency-Key replay instead of running again", async () => {
   const second = await call();
   assert.equal(first.status, 200, JSON.stringify(first.json));
   assert.deepEqual(second.json, first.json, "once() returned the stored result");
-  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_zero_job_notes WHERE title = 'once ${run}'`)[0].n, "1");
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_first_job_notes WHERE title = 'once ${run}'`)[0].n, "1");
 
   const keyed = await call(`k-${run}`);
   const replay = await call(`k-${run}`);
@@ -218,7 +218,7 @@ test("once() and Idempotency-Key replay instead of running again", async () => {
 
 test("a committed write reaches a local receiver through Action Scheduler, signed, retried after a 500", async (t) => {
   // The receiver is its own process: WP-CLI calls below block this one's event loop.
-  const dir = mkdtempSync(join(tmpdir(), "zero-hook-"));
+  const dir = mkdtempSync(join(tmpdir(), "first-hook-"));
   const statusFile = join(dir, "status");
   const log = join(dir, "log");
   writeFileSync(statusFile, "500"); // the first delivery fails, so the retry path runs through Action Scheduler too
@@ -245,17 +245,17 @@ test("a committed write reaches a local receiver through Action Scheduler, signe
   const deliveries = (): { headers: Record<string, string>; body: string }[] =>
     existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : [];
   const secret = `whsec_${run}`;
-  const constants: [string, string][] = [["ZERO_WP_HOOK_URL", `http://host.docker.internal:${port}/hook`], ["ZERO_WP_HOOK_SECRET", secret]];
+  const constants: [string, string][] = [["FIRST_WP_HOOK_URL", `http://host.docker.internal:${port}/hook`], ["FIRST_WP_HOOK_SECRET", secret]];
   for (const [name, value] of constants) wp("config", "set", name, value, "--type=constant");
   t.after(() => { for (const [name] of constants) wp("config", "delete", name, "--type=constant"); });
 
   const note = await ok("POST", "/hook_notes", { as: "editor", body: { title: `hook ${run}` } });
-  const [job] = sql(`SELECT id, state FROM wp_zero__jobs WHERE job = 'zero.webhook' AND JSON_VALUE(input, '$.id') = ${note.id}`);
+  const [job] = sql(`SELECT id, state FROM wp_first__jobs WHERE job = 'first.webhook' AND JSON_VALUE(input, '$.id') = ${note.id}`);
   assert.equal(job.state, "pending");
   assert.deepEqual(actions(job.id), ["pending"]);
 
   runQueue();
-  const mine = () => deliveries().filter((d) => d.headers["zero-event-id"] === job.id);
+  const mine = () => deliveries().filter((d) => d.headers["first-event-id"] === job.id);
   assert.equal(mine().length, 1, "the first attempt reached the receiver");
   assert.deepEqual([jobRow(job.id).state, jobRow(job.id).attempts], ["failed", "1"]);
   assert.match(jobRow(job.id).lastError, /answered 500/);
@@ -267,24 +267,24 @@ test("a committed write reaches a local receiver through Action Scheduler, signe
   const last = mine()[1];
   const event = JSON.parse(last.body);
   assert.deepEqual({ ...event, at: undefined }, { id: job.id, event: "hook_notes.created", collection: "hook_notes", at: undefined, data: { row: note } });
-  assert.equal(last.headers["zero-event-id"], job.id);
-  assert.equal(last.headers["zero-event"], "hook_notes.created");
-  const [, ts, v1] = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(String(last.headers["zero-signature"]))!;
+  assert.equal(last.headers["first-event-id"], job.id);
+  assert.equal(last.headers["first-event"], "hook_notes.created");
+  const [, ts, v1] = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(String(last.headers["first-signature"]))!;
   assert.equal(v1, createHmac("sha256", secret).update(`${ts}.${last.body}`).digest("hex"), "the receiver can verify the signature");
   assert.ok(Math.abs(Date.now() / 1000 - Number(ts)) < 120);
 });
 
-test("an inbound action with signature runs for a valid zero signature and rejects a forged one, with no credentials", async (t) => {
+test("an inbound action with signature runs for a valid first signature and rejects a forged one, with no credentials", async (t) => {
   const inbound = `in_${run}`;
-  wp("config", "set", "ZERO_WP_INBOUND_SECRET", inbound, "--type=constant");
-  t.after(() => wp("config", "delete", "ZERO_WP_INBOUND_SECRET", "--type=constant"));
+  wp("config", "set", "FIRST_WP_INBOUND_SECRET", inbound, "--type=constant");
+  t.after(() => wp("config", "delete", "FIRST_WP_INBOUND_SECRET", "--type=constant"));
   const body = JSON.stringify({ title: run });
-  const send = (sig: string) => fetch(`${api}/actions/jobsInbound`, { method: "POST", headers: { "content-type": "application/json", "zero-signature": sig }, body });
+  const send = (sig: string) => fetch(`${api}/actions/jobsInbound`, { method: "POST", headers: { "content-type": "application/json", "first-signature": sig }, body });
   const sign = (at: number, key = inbound) => `t=${at},v1=${createHmac("sha256", key).update(`${at}.${body}`).digest("hex")}`;
   const now = Math.floor(Date.now() / 1000);
   const accepted = await send(sign(now));
   assert.deepEqual([accepted.status, await accepted.json()], [200, { data: { user: null } }]);
-  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_zero_job_notes WHERE title = 'inbound ${run}'`)[0].n, "1");
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_first_job_notes WHERE title = 'inbound ${run}'`)[0].n, "1");
   // The stale/missing/rotated matrix lives in tests/php/webhooks_test.php; WordPress proves the transport.
   const forged = await send(sign(now, "forged"));
   assert.deepEqual([forged.status, (await forged.json()).code], [401, "invalid_signature"]);

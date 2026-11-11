@@ -1,19 +1,19 @@
 <?php
 /**
- * Zero Admin SPA
+ * First Admin SPA
  *
- * This file provides the API for registering admin menu items in the Zero Admin SPA.
+ * This file provides the API for registering admin menu items in the First Admin SPA.
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 // Global storage for menu items.
-global $zero_admin_menu_items, $zero_admin_meta_menu_items;
-$zero_admin_menu_items      = array();
-$zero_admin_meta_menu_items = array();
+global $first_admin_menu_items, $first_admin_meta_menu_items;
+$first_admin_menu_items      = array();
+$first_admin_meta_menu_items = array();
 
 /**
- * Register a menu item for the Zero Admin SPA.
+ * Register a menu item for the First Admin SPA.
  *
  * @since 1.0.0
  *
@@ -31,8 +31,8 @@ $zero_admin_meta_menu_items = array();
  * }
  * @param bool   $is_meta Optional. Whether this is a meta menu item (default: false). Meta items are displayed in the footer or header of the sidebar.
  */
-function zero_admin_register_menu_item( $id, $args, $is_meta = false ) {
-	global $zero_admin_menu_items, $zero_admin_meta_menu_items;
+function first_admin_register_menu_item( $id, $args, $is_meta = false ) {
+	global $first_admin_menu_items, $first_admin_meta_menu_items;
 
 	$defaults = array(
 		'to'          => '',
@@ -72,14 +72,14 @@ function zero_admin_register_menu_item( $id, $args, $is_meta = false ) {
 	}
 
 	if ( $is_meta ) {
-		$zero_admin_meta_menu_items[] = $menu_item;
+		$first_admin_meta_menu_items[] = $menu_item;
 	} else {
-		$zero_admin_menu_items[] = $menu_item;
+		$first_admin_menu_items[] = $menu_item;
 	}
 }
 
 /**
- * Deregister a menu item from the Zero Admin SPA.
+ * Deregister a menu item from the First Admin SPA.
  *
  * @since 1.0.0
  *
@@ -87,13 +87,13 @@ function zero_admin_register_menu_item( $id, $args, $is_meta = false ) {
  * @param bool   $is_meta Optional. Whether this is a meta menu item (default: false).
  * @return bool True if the menu item was found and removed, false otherwise.
  */
-function zero_admin_deregister_menu_item( $id, $is_meta = false ) {
-	global $zero_admin_menu_items, $zero_admin_meta_menu_items;
+function first_admin_deregister_menu_item( $id, $is_meta = false ) {
+	global $first_admin_menu_items, $first_admin_meta_menu_items;
 
 	if ( $is_meta ) {
-		$menu_items = &$zero_admin_meta_menu_items;
+		$menu_items = &$first_admin_meta_menu_items;
 	} else {
-		$menu_items = &$zero_admin_menu_items;
+		$menu_items = &$first_admin_menu_items;
 	}
 
 	foreach ( $menu_items as $index => $menu_item ) {
@@ -109,7 +109,7 @@ function zero_admin_deregister_menu_item( $id, $is_meta = false ) {
 }
 
 /**
- * Switch/replace a menu item with another one in the Zero Admin SPA.
+ * Switch/replace a menu item with another one in the First Admin SPA.
  *
  * This function removes an existing menu item and replaces it with a new one.
  * Useful for customizing existing menu items while maintaining their position.
@@ -132,13 +132,13 @@ function zero_admin_deregister_menu_item( $id, $is_meta = false ) {
  * @param bool   $is_meta Optional. Whether this is a meta menu item (default: false).
  * @return bool True if the menu item was found and replaced, false otherwise.
  */
-function zero_admin_switch_menu_item( $old_id, $new_id, $new_args, $is_meta = false ) {
-	global $zero_admin_menu_items, $zero_admin_meta_menu_items;
+function first_admin_switch_menu_item( $old_id, $new_id, $new_args, $is_meta = false ) {
+	global $first_admin_menu_items, $first_admin_meta_menu_items;
 
 	if ( $is_meta ) {
-		$menu_items = &$zero_admin_meta_menu_items;
+		$menu_items = &$first_admin_meta_menu_items;
 	} else {
-		$menu_items = &$zero_admin_menu_items;
+		$menu_items = &$first_admin_menu_items;
 	}
 
 	// Find the position of the old menu item.
@@ -199,11 +199,11 @@ function zero_admin_switch_menu_item( $old_id, $new_id, $new_args, $is_meta = fa
  *
  * @return array Array of registered admin menu items, sorted by position.
  */
-function zero_admin_get_admin_menu_items() {
-	global $zero_admin_menu_items;
+function first_admin_get_admin_menu_items() {
+	global $first_admin_menu_items;
 
 	// Sort menu items by position (null positions go to the end).
-	$sorted_items = $zero_admin_menu_items;
+	$sorted_items = $first_admin_menu_items;
 	usort(
 		$sorted_items,
 		function ( $a, $b ) {
@@ -227,7 +227,7 @@ function zero_admin_get_admin_menu_items() {
 	 *
 	 * @param array $sorted_items The sorted menu items array.
 	 */
-	return apply_filters( 'zero_admin_get_admin_menu_items', $sorted_items );
+	return apply_filters( 'first_admin_get_admin_menu_items', $sorted_items );
 }
 
 /**
@@ -235,11 +235,11 @@ function zero_admin_get_admin_menu_items() {
  *
  * @return array Array of registered admin meta menu items, sorted by position.
  */
-function zero_admin_get_admin_meta_menu_items() {
-	global $zero_admin_meta_menu_items;
+function first_admin_get_admin_meta_menu_items() {
+	global $first_admin_meta_menu_items;
 
 	// Sort meta menu items by position (null positions go to the end).
-	$sorted_items = $zero_admin_meta_menu_items;
+	$sorted_items = $first_admin_meta_menu_items;
 	usort(
 		$sorted_items,
 		function ( $a, $b ) {

@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { startControl, stopControl, requestControl } from "./rebuild-service.mjs";
 
 test("interrupted publication remains inspectable and cannot be replayed or overwritten", async () => {
-  const state = await mkdtemp(join(tmpdir(), "zero-rebuild-recovery-"));
+  const state = await mkdtemp(join(tmpdir(), "first-rebuild-recovery-"));
   const id = "01234567-89ab-cdef-0123-456789abcdef";
   const jobFile = join(state, "builds", id, "job.json");
   await mkdir(join(state, "app/public"), { recursive: true });
   await mkdir(join(state, "builds", id), { recursive: true });
   await writeFile(
     join(state, "app/public/sources.json"),
-    JSON.stringify({ revision: "baseline", files: { "zero.config.ts": "source" } }),
+    JSON.stringify({ revision: "baseline", files: { "first.config.ts": "source" } }),
   );
   await writeFile(jobFile, JSON.stringify({ id, status: "applying", message: "Publishing" }));
   try {
@@ -31,7 +31,7 @@ test("interrupted publication remains inspectable and cannot be replayed or over
     const retry = await requestControl(state, "POST", "/builds", {
       id: "11111111-1111-1111-1111-111111111111",
       baseRevision: "baseline",
-      files: { "zero.config.ts": "source" },
+      files: { "first.config.ts": "source" },
     });
     assert.equal(retry.status, 409);
     assert.match(retry.body.message, /inspection/);

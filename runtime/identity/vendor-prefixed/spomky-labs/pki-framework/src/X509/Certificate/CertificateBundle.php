@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEMBundle;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEMBundle;
 
 /**
  * Implements a list of certificates.

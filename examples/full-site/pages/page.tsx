@@ -1,4 +1,4 @@
-import { link, type Metadata, type PageContext, type PageProps } from "@spacefast/zero-pages";
+import { link, type Metadata, type PageContext, type PageProps } from "@spacefast/first-pages";
 import { NoteCard } from "../components/NoteCard";
 
 export const route = { id: "home" };

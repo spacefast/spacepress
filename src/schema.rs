@@ -1,4 +1,4 @@
-//! The evaluated schema: plain data produced by running `zero.config.ts` at
+//! The evaluated schema: plain data produced by running `first.config.ts` at
 //! build time. Migrations, schema.php, the typed client, and generated types
 //! all derive from it.
 
@@ -476,7 +476,7 @@ pub struct Schema {
     pub routes: IndexMap<String, Route>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
-    /// Server components (`zero/components/<file>.tsx#<export>`) → their compiled PHP function.
+    /// Server components (`first/components/<file>.tsx#<export>`) → their compiled PHP function.
     pub components: IndexMap<String, String>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
     pub wp_views: bool,

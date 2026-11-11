@@ -1,14 +1,14 @@
-// `this` outside classes, which live Zero 0.8 apps use (zero#138 census): object-literal methods,
+// `this` outside classes, which live Zero 0.8 apps use (first#138 census): object-literal methods,
 // borrowed methods, call/apply and arrows inside methods. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. `this-helpers.mjs` runs the untyped forms.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import * as thisModule from "./this-helpers.mjs";
 import { detached, factory, mod, moduleReceivers, receivers, rich, richReceivers, store } from "./this-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 // A module-level literal is built once, while the config is evaluated. Its methods type `this` as
-// the module object, its fields plus its sibling methods, as an inline literal does (zero#205).
+// the module object, its fields plus its sibling methods, as an inline literal does (first#205).
 const plain = { first() { return this.second(); }, second() { return 1; } };
 const api = {
   n: 2,

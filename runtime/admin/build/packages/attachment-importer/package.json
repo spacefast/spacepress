@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/attachment-importer",
+	"name": "@first-admin/attachment-importer",
 	"version": "1.0.0",
 	"description": "Attachment importer",
 	"type": "module",

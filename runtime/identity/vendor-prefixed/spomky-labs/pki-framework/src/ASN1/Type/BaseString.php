@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
 use InvalidArgumentException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
 use function sprintf;
 use Stringable;
 

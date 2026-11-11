@@ -2,27 +2,27 @@
 
 declare(strict_types=1);
 
-// Lane M: mapping an original Zero (0.8) release onto the new app's schema (Zero\Wp\Legacy\Model).
+// Lane M: mapping an original Zero (0.8) release onto the new app's schema (First\Wp\Legacy\Model).
 // Pure logic; the data migration itself is proven against real WordPress in tests/wp/legacy.
 
-require __DIR__ . '/../../runtime/Zero/bootstrap.php';
+require __DIR__ . '/../../runtime/First/bootstrap.php';
 require __DIR__ . '/harness.php';
 
-use Zero\HttpError;
-use Zero\Schema;
-use Zero\Wp\Legacy\Model;
-use Zero\Wp\Legacy\Users;
+use First\HttpError;
+use First\Schema;
+use First\Wp\Legacy\Model;
+use First\Wp\Legacy\Users;
 
 // The release the original compiler produced for tests/wp/legacy/capsule.ts.
 $release = require __DIR__ . '/../wp/legacy/content-model.php';
 $schema = static fn (array $overrides = []) => new Schema(['version' => 3, 'runtime' => Schema::SERIES, 'collections' => array_replace_recursive([
-    'projects' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'zero_projects', 'metaPrefix' => 'zero_', 'fieldKeyPrefix' => 'field_zero_projects_'], 'columns' => [
+    'projects' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'first_projects', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_projects_'], 'columns' => [
         'id' => ['type' => 'integer', 'primaryKey' => true], 'title' => ['type' => 'text', 'notNull' => true],
         'budget' => ['type' => 'real'], 'active' => ['type' => 'boolean'], 'kickoff' => ['type' => 'timestamp'],
         'stage' => ['type' => 'text', 'enum' => ['idea', 'live', 'done']], 'tags' => ['type' => 'select', 'enum' => ['red', 'green', 'blue']],
         'cover' => ['type' => 'media'], 'gallery' => ['type' => 'mediaList'],
     ]],
-    'tasks' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'zero_tasks', 'metaPrefix' => 'zero_', 'fieldKeyPrefix' => 'field_zero_tasks_'], 'columns' => [
+    'tasks' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'first_tasks', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_tasks_'], 'columns' => [
         'id' => ['type' => 'integer', 'primaryKey' => true], 'title' => ['type' => 'text', 'notNull' => true], 'notes' => ['type' => 'text'],
         'projectId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'projects', 'column' => 'id']],
         'parentId' => ['type' => 'integer', 'references' => ['collection' => 'tasks', 'column' => 'id']],
@@ -131,13 +131,13 @@ $member = static fn (array $columns, string $role = 'subscriber', string $name =
 eq('a member row: email, name and normalized defaults in storage form', $member(['since' => ['type' => 'timestamp', 'default' => ['value' => '2026-03-01T12:00:00+02:00']], 'tags' => ['type' => 'select', 'enum' => ['a', 'b'], 'default' => ['value' => ['a']]]]),
     ['email' => 'ada@example.test', 'name' => 'Ada', 'since' => '2026-03-01T10:00:00.000Z', 'tags' => '["a"]']);
 eq('a column without a default is cleared (validators see the row the move leaves)', $member(['note' => ['type' => 'text']]), ['email' => 'ada@example.test', 'name' => 'Ada', 'note' => null]);
-putenv('ZERO_NOW=2030-01-01T00:00:00.000Z');
-putenv('ZERO_NOW_STEP=1'); // every clock read moves the pinned clock a millisecond
+putenv('FIRST_NOW=2030-01-01T00:00:00.000Z');
+putenv('FIRST_NOW_STEP=1'); // every clock read moves the pinned clock a millisecond
 try {
     $stamps = $member(['joinedAt' => ['type' => 'timestamp', 'default' => ['now' => true]], 'seenAt' => ['type' => 'timestamp', 'default' => ['now' => true]]]);
 } finally {
-    putenv('ZERO_NOW_STEP');
-    putenv('ZERO_NOW');
+    putenv('FIRST_NOW_STEP');
+    putenv('FIRST_NOW');
 }
 eq('a member row\'s now defaults are one instant', [$stamps['joinedAt'], $stamps['seenAt']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
 problem('a name over the member column\'s bound', fn () => $member([], 'subscriber', str_repeat('x', 81)), 422, 'invalid_input', '/users/5/name');
@@ -147,7 +147,7 @@ problem('a media default', fn () => $member(['avatar' => ['type' => 'media', 'de
 problem('a private file default', fn () => $member(['brief' => ['type' => 'file', 'bucket' => 'briefs', 'default' => ['value' => 999]]]), 422, 'legacy_unmappable', '/users/5/brief');
 problem('...or one nested in a group', fn () => $member(['profile' => ['type' => 'group', 'fields' => ['cv' => ['type' => 'file', 'bucket' => 'briefs']], 'default' => ['value' => ['cv' => 999]]]]), 422, 'legacy_unmappable', '/users/5/profile');
 problem('a reference default', fn () => $member(['teamId' => ['type' => 'integer', 'default' => ['value' => 1], 'references' => ['collection' => 'teams', 'column' => 'id']]]), 422, 'legacy_unmappable', '/users/5/teamId');
-eval('namespace ZeroApp; function legacy_role_check($v, $ctx) { return ($ctx->p["data"]->p["role"] === "admin" || $v !== "pro") ? true : "pro needs admin"; }');
+eval('namespace FirstApp; function legacy_role_check($v, $ctx) { return ($ctx->p["data"]->p["role"] === "admin" || $v !== "pro") ? true : "pro needs admin"; }');
 problem('validators see the user\'s role (a subscriber can\'t default to pro)', fn () => $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]]), 422, 'invalid_input', '/users/5/plan');
 eq('...and an admin can', $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]], 'admin')['plan'], 'pro');
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 final class DB
 {
@@ -12,7 +12,7 @@ final class DB
     private array $touched = [];
     public function __construct(public readonly \wpdb $wp)
     {
-        $this->prefix = $wp->prefix . "zero_identity_";
+        $this->prefix = $wp->prefix . "first_identity_";
     }
     public function sql(string $sql, mixed ...$args): string
     {
@@ -55,7 +55,7 @@ final class DB
     }
     /**
      * Run $fn in a transaction. Identity shares WordPress's `$wpdb` connection, so when anyone
-     * already has a transaction open on it (the Zero runtime, another plugin) identity joins it
+     * already has a transaction open on it (the First runtime, another plugin) identity joins it
      * with a savepoint instead of issuing START TRANSACTION, which would silently commit the
      * owner's work. The connection itself is asked, so no host has to cooperate.
      */
@@ -65,7 +65,7 @@ final class DB
         if ($level === 0 && $this->outerTransaction()) {
             $level = 1;
         }
-        $savepoint = "zero_identity_" . $this->depth;
+        $savepoint = "first_identity_" . $this->depth;
         $this->run(
             $level === 0 ? "START TRANSACTION" : "SAVEPOINT " . $savepoint,
         );
@@ -110,13 +110,13 @@ final class DB
     }
     /**
      * Record a user whose wp_users/usermeta rows change here, so a rollback clears their cache.
-     * Inside a host's transaction the host's rollback must clear it too: `zero_identity_touched_user`
-     * tells it which users (the Zero runtime registers the cleanup with its own rollback handler).
+     * Inside a host's transaction the host's rollback must clear it too: `first_identity_touched_user`
+     * tells it which users (the First runtime registers the cleanup with its own rollback handler).
      */
     public function touch(int $uid): void
     {
         $this->touched[$uid] = true;
-        do_action("zero_identity_touched_user", $uid);
+        do_action("first_identity_touched_user", $uid);
     }
     /**
      * Whether this connection has an open transaction that identity didn't start. Outside a
@@ -127,8 +127,8 @@ final class DB
     {
         $suppress = $this->wp->suppress_errors(true);
         try {
-            $this->wp->query("SAVEPOINT zero_identity_probe");
-            return $this->wp->query("RELEASE SAVEPOINT zero_identity_probe") !== false;
+            $this->wp->query("SAVEPOINT first_identity_probe");
+            return $this->wp->query("RELEASE SAVEPOINT first_identity_probe") !== false;
         } finally {
             $this->wp->suppress_errors($suppress);
             $this->wp->last_error = "";

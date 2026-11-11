@@ -1,8 +1,8 @@
 /**
- * `@spacefast/zero-pages`: optional TSX pages for a Zero app, rendered by WordPress.
+ * `@spacefast/first-pages`: optional TSX pages for a First app, rendered by WordPress.
  *
  * Pages run once, at build time, and compile to Gutenberg block markup through
- * Zero Blocks' serializer. Data is never read at build time: a loader's
+ * First Blocks' serializer. Data is never read at build time: a loader's
  * `content.query`, a collection item and route params are symbolic values that
  * PHP fills per request with the viewer's own, access-checked rows. The subset
  * is small on purpose: render a field, loop over rows with `.map`, branch with
@@ -10,8 +10,8 @@
  * Interactivity API island. Anything a build cannot answer honestly is refused
  * with the file, line and column.
  */
-import type { Register, Relations } from "zero";
-import type { ContentNode } from "@spacefast/zero-blocks";
+import type { Register, Relations } from "first";
+import type { ContentNode } from "@spacefast/first-blocks";
 
 import {
   ISLAND_BLOCK, PagesError, RICH_TEXT_BLOCK, SHOW_BLOCK, contentList, describePath, fallbackOf, islandHtml, pathOf, registry, shapeOf,
@@ -25,12 +25,12 @@ export { PagesError } from "./symbolic.ts";
 
 /** A value that exists only per request. Render it, put it in an attribute or a template string, or test it with `<Show>`. */
 export interface Dynamic<T> {
-  readonly " zeroDynamic": T;
+  readonly " firstDynamic": T;
 }
 
 type Entities = Register extends { relations: Relations<infer S, infer _C> } ? S : Record<string, { $inferSelect: Record<string, unknown> }>;
 
-/** Registered collection and table names (from `zero/_generated/db.d.ts`). */
+/** Registered collection and table names (from `first/_generated/db.d.ts`). */
 export type CollectionName = keyof Entities & string;
 
 type RowOf<K extends CollectionName> = Entities[K] extends { $inferSelect: infer R } ? R : never;
@@ -38,11 +38,11 @@ type RowOf<K extends CollectionName> = Entities[K] extends { $inferSelect: infer
 /** One row, field by field, as per-request values. `href` is the item route's URL when the collection has one. */
 export type DynamicRow<K extends CollectionName> = {
   readonly [F in keyof RowOf<K>]-?: Dynamic<RowOf<K>[F]>;
-} & { readonly href: Dynamic<string>; readonly " zeroRow": K };
+} & { readonly href: Dynamic<string>; readonly " firstRow": K };
 
 /** Rows of one query. `.map` becomes a server-rendered loop. */
 export interface DynamicRows<K extends CollectionName> {
-  readonly " zeroRows": K;
+  readonly " firstRows": K;
   map(render: (row: DynamicRow<K>, index: Dynamic<number>) => unknown): ContentNode;
 }
 

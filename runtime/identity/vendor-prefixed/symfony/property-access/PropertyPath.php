@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
 
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\OutOfBoundsException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\OutOfBoundsException;
 
 /**
  * Default implementation of {@link PropertyPathInterface}.

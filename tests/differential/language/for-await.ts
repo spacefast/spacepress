@@ -1,8 +1,8 @@
-// `for await` in authored TypeScript over sync iterables, the narrow form that Zero's blocking
-// model runs exactly: each element is a plain value or the settled result of a Zero call. Async
+// `for await` in authored TypeScript over sync iterables, the narrow form that First's blocking
+// model runs exactly: each element is a plain value or the settled result of a First call. Async
 // iterables and generators work in imported JavaScript (the job queue) and stay refused here.
 // Every action runs under Node and as compiled PHP; the JSON results must be byte-identical.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 

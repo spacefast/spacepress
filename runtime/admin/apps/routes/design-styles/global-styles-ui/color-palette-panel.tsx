@@ -1,4 +1,4 @@
-import type { Color } from '@zero-admin/global-styles-engine';
+import type { Color } from '@first-admin/global-styles-engine';
 import { useViewportMatch } from '@wordpress/compose';
 import {
 	__experimentalPaletteEdit as PaletteEdit,
@@ -52,7 +52,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 
 	return (
 		<VStack
-			className="zero-admin-global-styles-color-palette-panel"
+			className="first-admin-global-styles-color-palette-panel"
 			spacing={ 8 }
 		>
 			<VStack spacing={ 4 }>
@@ -62,7 +62,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 						canOnlyChangeValues
 						colors={ themeColors }
 						onChange={ setThemeColors }
-						paletteLabel={ __( 'Theme', 'zero-admin' ) }
+						paletteLabel={ __( 'Theme', 'first-admin' ) }
 						paletteLabelHeadingLevel={ 3 }
 						popoverProps={ popoverProps }
 					/>
@@ -76,7 +76,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 							icon={ shuffle }
 							onClick={ randomizeThemeColors }
 						>
-							{ __( 'Randomize colors', 'zero-admin' ) }
+							{ __( 'Randomize colors', 'first-admin' ) }
 						</Button>
 					) }
 			</VStack>
@@ -88,7 +88,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 						canOnlyChangeValues
 						colors={ defaultColors }
 						onChange={ setDefaultColors }
-						paletteLabel={ __( 'Default', 'zero-admin' ) }
+						paletteLabel={ __( 'Default', 'first-admin' ) }
 						paletteLabelHeadingLevel={ 3 }
 						popoverProps={ popoverProps }
 					/>
@@ -96,12 +96,12 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 			<PaletteEdit
 				colors={ customColors }
 				onChange={ setCustomColors }
-				paletteLabel={ __( 'Custom', 'zero-admin' ) }
+				paletteLabel={ __( 'Custom', 'first-admin' ) }
 				paletteLabelHeadingLevel={ 3 }
 				slugPrefix="custom-"
 				popoverProps={ popoverProps }
 			/>
-			<ColorVariations title={ __( 'Palettes', 'zero-admin' ) } />
+			<ColorVariations title={ __( 'Palettes', 'first-admin' ) } />
 		</VStack>
 	);
 }

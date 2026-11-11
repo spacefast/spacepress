@@ -2,12 +2,12 @@
 /**
  * Featured image field definition for core post fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'          => 'media',
-	'label'         => __( 'Featured Image', 'zero-admin' ),
+	'label'         => __( 'Featured Image', 'first-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

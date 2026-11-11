@@ -1,8 +1,8 @@
 {
-  "name": "zero-showcase-code-tools",
+  "name": "first-showcase-code-tools",
   "private": true,
   "type": "module",
-  "description": "Offline source lab and real diffs.com viewer for the local Zero showcase.",
+  "description": "Offline source lab and real diffs.com viewer for the local First showcase.",
   "scripts": {"build": "node build.mjs"},
   "dependencies": {
     "@pierre/diffs": "1.6.2",

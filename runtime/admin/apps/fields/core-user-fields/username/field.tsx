@@ -1,7 +1,7 @@
-import { InputControl } from '@zero-admin/design-system';
+import { InputControl } from '@first-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< User > > = {
 	sort: ( a, b, direction ) => {
@@ -25,7 +25,7 @@ export const fieldExtensions: Partial< Field< User > > = {
 				} }
 				description={
 					! isEditable
-						? __( 'Usernames cannot be changed', 'zero-admin' )
+						? __( 'Usernames cannot be changed', 'first-admin' )
 						: ''
 				}
 			/>

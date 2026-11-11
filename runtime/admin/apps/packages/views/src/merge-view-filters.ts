@@ -1,4 +1,4 @@
-import type { View } from '@zero-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 
 /**
  * Merges filters from a base view with tab-specific filters from a default view.

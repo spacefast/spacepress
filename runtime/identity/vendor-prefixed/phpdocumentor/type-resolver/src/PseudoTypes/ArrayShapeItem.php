@@ -11,7 +11,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
 class ArrayShapeItem extends ShapeItem
 {

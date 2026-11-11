@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Signature;
+namespace First\Identity\Vendor\Cose\Signature;
 
-use Zero\Identity\Vendor\CBOR\ByteStringObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use Zero\Identity\Vendor\Cose\Structure\CoseStructure;
+use First\Identity\Vendor\CBOR\ByteStringObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use First\Identity\Vendor\Cose\Structure\CoseStructure;
 
 /**
  * The Sig_structure of a COSE_Sign1 (RFC 9052 section 4.4).

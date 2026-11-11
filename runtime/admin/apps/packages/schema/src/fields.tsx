@@ -192,7 +192,7 @@ function FileField({
 }) {
 	const [busy, setBusy] = useState(false),
 		[error, setError] = useState('');
-	const path = `/zero/v1/files/${encodeURIComponent(column.bucket ?? '')}`;
+	const path = `/first/v1/files/${encodeURIComponent(column.bucket ?? '')}`;
 	const state = useLoad(
 		async () =>
 			value == null
@@ -291,7 +291,7 @@ function JsonField({
 		(accepted.value === serialized ? accepted.source : JSON.stringify(value ?? null, null, 2));
 	const invalid = validation?.drafts.has(path) ?? false;
 	return (
-		<label className="zero-schema-json">
+		<label className="first-schema-json">
 			{column.label}
 			<textarea
 				value={source}
@@ -399,7 +399,7 @@ function Field({
 						onChange(rows.map((r, i) => (i === index ? v : r)));
 					};
 					return (
-						<div className="zero-schema-repeat" key={
+						<div className="first-schema-repeat" key={
 							item !== null && typeof item === 'object'
 								? `${objects.key(item)}:${c.type === 'blocks' ? layout : ''}`
 								: index
@@ -608,7 +608,7 @@ export function Fields({
 	};
 	return (
 		<EditingState.Provider value={state}>
-			<div className="zero-schema-fields">
+			<div className="first-schema-fields">
 				{shownFields(fields, values, editing, state.operation, omit)
 					.map(([key, c]) => (
 						<Field

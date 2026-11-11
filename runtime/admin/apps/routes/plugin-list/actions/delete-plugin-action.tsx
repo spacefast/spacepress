@@ -9,7 +9,7 @@ import {
 } from '@wordpress/components';
 import { useState } from '@wordpress/element';
 import { decodeEntities } from '@wordpress/html-entities';
-import type { Action, RenderModalProps } from '@zero-admin/dataviews';
+import type { Action, RenderModalProps } from '@first-admin/dataviews';
 import usePluginService from '../hooks/use-plugin-service';
 import { bulkAction } from './helpers/bulk-runner';
 
@@ -53,7 +53,7 @@ const DeletePluginModal = ( {
 									'%d plugin deleted.',
 									'%d plugins deleted.',
 									fulfilled,
-									'zero-admin'
+									'first-admin'
 								),
 								fulfilled
 							);
@@ -69,7 +69,7 @@ const DeletePluginModal = ( {
 									'%d plugin failed to delete.',
 									'%d plugins failed to delete.',
 									rejected,
-									'zero-admin'
+									'first-admin'
 								),
 								rejected
 							);
@@ -93,7 +93,7 @@ const DeletePluginModal = ( {
 							// translators: %(name)s is the plugin name.
 							__(
 								'Are you sure you want to delete %(name)s?',
-								'zero-admin'
+								'first-admin'
 							),
 							{ name }
 					  )
@@ -103,7 +103,7 @@ const DeletePluginModal = ( {
 								'Are you sure you want to delete %d plugin?',
 								'Are you sure you want to delete %d plugins?',
 								count,
-								'zero-admin'
+								'first-admin'
 							),
 							count
 					  ) }
@@ -127,7 +127,7 @@ const DeletePluginModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Cancel', 'zero-admin' ) }
+					{ __( 'Cancel', 'first-admin' ) }
 				</Button>
 				<Button
 					__next40pxDefaultSize
@@ -137,7 +137,7 @@ const DeletePluginModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Delete', 'zero-admin' ) }
+					{ __( 'Delete', 'first-admin' ) }
 				</Button>
 			</HStack>
 		</VStack>
@@ -149,7 +149,7 @@ export const useDeletePluginAction = (): Action< Plugin > => {
 
 	return {
 		id: 'delete-plugin',
-		label: __( 'Delete', 'zero-admin' ),
+		label: __( 'Delete', 'first-admin' ),
 		RenderModal: DeletePluginModal,
 		isEligible: ( plugin: Plugin ) =>
 			canUser( 'delete', plugin ) &&

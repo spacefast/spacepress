@@ -1,4 +1,4 @@
-import type { ActionModal } from '@zero-admin/dataviews';
+import type { ActionModal } from '@first-admin/dataviews';
 import {
 	ConfirmRenderModal,
 	type ConfirmRenderModalConfigProps,

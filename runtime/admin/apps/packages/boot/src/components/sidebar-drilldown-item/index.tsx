@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { Icon } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
 import { FlexBlock, __experimentalItem as Item } from '@wordpress/components';
 import { isRTL } from '@wordpress/i18n';
 import { chevronRightSmall, chevronLeftSmall } from '@wordpress/icons';
@@ -64,7 +64,7 @@ export default function SidebarDrilldownItem( {
 	return (
 		<Item
 			className={ clsx(
-				'zero-admin-sidebar-navigation-item',
+				'first-admin-sidebar-navigation-item',
 				className
 			) }
 			onClick={ handleClick }

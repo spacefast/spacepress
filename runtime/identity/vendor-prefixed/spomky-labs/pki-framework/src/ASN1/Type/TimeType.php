@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
 use DateTimeImmutable;
 

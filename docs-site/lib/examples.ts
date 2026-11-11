@@ -22,19 +22,19 @@ export interface Example {
 }
 
 /**
- * Every file of an example a config can import (app code under `zero/` included; build output and
+ * Every file of an example a config can import (app code under `first/` included; build output and
  * the blog's web page left out), plus the committed abilities lock, the one input in `_generated/`.
  * The example's own root `node_modules`, when installed, goes too, code and package.json only: the
  * compiler reads npm packages as sources. Nested ones (a web app's or a tool's) do not.
  */
 export function sources(dir: string): Request["files"] {
-  // Skipped at the project root only (web page, tests, content), except `.zero` and `node_modules`
-  // at any depth: app code under `zero/` may import from its own `zero/content/` or `zero/public/`.
-  const skip = new Set([".zero", "node_modules", "public", "client-tests", "content", "zero/_generated", "zero/dist"]);
-  const anyDepth = new Set([".zero", "node_modules"]);
+  // Skipped at the project root only (web page, tests, content), except `.first` and `node_modules`
+  // at any depth: app code under `first/` may import from its own `first/content/` or `first/public/`.
+  const skip = new Set([".first", "node_modules", "public", "client-tests", "content", "first/_generated", "first/dist"]);
+  const anyDepth = new Set([".first", "node_modules"]);
   const files: Request["files"] = {};
-  const lock = path.join(dir, "zero/_generated/abilities.json");
-  if (existsSync(lock)) files["zero/_generated/abilities.json"] = readFileSync(lock, "utf8");
+  const lock = path.join(dir, "first/_generated/abilities.json");
+  if (existsSync(lock)) files["first/_generated/abilities.json"] = readFileSync(lock, "utf8");
   const walk = (sub: string) => {
     for (const name of readdirSync(path.join(dir, sub))) {
       const rel = sub ? `${sub}/${name}` : name;

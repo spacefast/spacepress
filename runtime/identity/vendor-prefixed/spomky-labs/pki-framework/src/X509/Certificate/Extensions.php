@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
 use LogicException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AuthorityKeyIdentifierExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\BasicConstraintsExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePoliciesExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CRLDistributionPointsExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\ExtendedKeyUsageExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\InhibitAnyPolicyExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\IssuerAlternativeNameExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\KeyUsageExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraintsExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyConstraintsExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappingsExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectAlternativeNameExtension;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectKeyIdentifierExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AuthorityKeyIdentifierExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\BasicConstraintsExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePoliciesExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CRLDistributionPointsExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\ExtendedKeyUsageExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\InhibitAnyPolicyExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\IssuerAlternativeNameExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\KeyUsageExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraintsExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyConstraintsExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappingsExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectAlternativeNameExtension;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectKeyIdentifierExtension;
 use function sprintf;
 use Traversable;
 use UnexpectedValueException;

@@ -34,8 +34,8 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   await command(['dev', owned.directory, '--port', String(await freePort()), '--no-watch']);
   installed = await install(owned.directory);
   const { base, wp, site } = installed;
-  await cp(join(owned.directory, '.zero/dev'), join(evidence, 'receipt'), { recursive: true, filter: (source) => !source.includes('/wordpress') });
-  await wp('config', 'set', 'ZERO_PLUGINS_LOCAL_WEBHOOK', webhookUrl);
+  await cp(join(owned.directory, '.first/dev'), join(evidence, 'receipt'), { recursive: true, filter: (source) => !source.includes('/wordpress') });
+  await wp('config', 'set', 'FIRST_PLUGINS_LOCAL_WEBHOOK', webhookUrl);
   const password = await wp('user', 'application-password', 'create', 'admin', 'official-plugin-acceptance', '--porcelain');
   const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
   async function request(path, { method = 'GET', body, auth = authorization, status = 200, headers = {} } = {}) {
@@ -47,9 +47,9 @@ test('official plugin counterparts persist in real native Studio WordPress and c
     assert.equal(response.status, status, `${method} ${path}: ${text.slice(0, 1800)}`);
     return value.data ?? value;
   }
-  const api = (path, options) => request(`/wp-json/zero-plugins/v1${path}`, options);
-  const zero = (path, options) => request(`/wp-json/zero/v1${path}`, options);
-  assert.equal((await zero('/_schema')).runtime.wp.database.kind, 'sqlite');
+  const api = (path, options) => request(`/wp-json/first-plugins/v1${path}`, options);
+  const first = (path, options) => request(`/wp-json/first/v1${path}`, options);
+  assert.equal((await first('/_schema')).runtime.wp.database.kind, 'sqlite');
   const status = await api('/status', { auth: null });
   assert.equal(status.sandbox.available, false);
   await api('/settings', { auth: null, status: 401 });
@@ -57,32 +57,32 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   await api('/settings', { method: 'POST', body: { webhookUrl, enabled: true, secretToken: 'disposable-plugin-webhook-token', displayName: 'The live plugin workshop' } });
   assert.equal('secretToken' in await api('/settings'), false);
   const fields = { profile: { name: 'Ada', featured: true }, ingredients: [{ name: 'Flour', quantity: 2 }], grid: [{ monday: 'Edit', tuesday: 'Publish' }], tags: ['native', 'free form'], palette: '#336699', embeds: [{ _type: 'youtube', id: 'dQw4w9WgXcQ' }, { _type: 'vimeo', id: '76979871' }] };
-  const entry = await zero('/entries', { method: 'POST', status: 201, body: { title: '  A lexical saffron story  ', body: '<!-- wp:paragraph --><p>Built with real plugins.</p><!-- /wp:paragraph -->', status: 'published', ...fields } });
+  const entry = await first('/entries', { method: 'POST', status: 201, body: { title: '  A lexical saffron story  ', body: '<!-- wp:paragraph --><p>Built with real plugins.</p><!-- /wp:paragraph -->', status: 'published', ...fields } });
   assert.equal(entry.title, 'A lexical saffron story');
-  await request(`/wp-json/wp/v2/zero_entries/${entry.id}`, { method: 'POST', body: { title: 'Native saffron edit', status: 'publish', acf: { zero_profile: { name: 'Grace', featured: false }, zero_ingredients: [{ name: 'Rice', quantity: 3 }], zero_grid: [{ monday: 'Draft', tuesday: 'Review' }], zero_tags: '["native","updated"]', zero_palette: '#bb5522' } } });
-  const saved = await zero(`/entries/${entry.id}`);
+  await request(`/wp-json/wp/v2/first_entries/${entry.id}`, { method: 'POST', body: { title: 'Native saffron edit', status: 'publish', acf: { first_profile: { name: 'Grace', featured: false }, first_ingredients: [{ name: 'Rice', quantity: 3 }], first_grid: [{ monday: 'Draft', tuesday: 'Review' }], first_tags: '["native","updated"]', first_palette: '#bb5522' } } });
+  const saved = await first(`/entries/${entry.id}`);
   assert.equal(saved.title, 'Native saffron edit');
   assert.deepEqual(saved.profile, { name: 'Grace', featured: false });
   assert.deepEqual(saved.ingredients, [{ name: 'Rice', quantity: 3 }]);
   assert.deepEqual(saved.grid, [{ monday: 'Draft', tuesday: 'Review' }]);
   assert.deepEqual(saved.tags, ['native', 'updated']);
   assert.equal(saved.palette, '#bb5522');
-  proofs.push('Zero write + native WP REST/SCF structured save + all four field data shapes + color');
+  proofs.push('First write + native WP REST/SCF structured save + all four field data shapes + color');
   const history = await api('/events');
   const update = history.find((row) => row.event === 'content.updated' && row.data.resourceId === entry.id);
   assert.equal(update.data.before.title, 'A lexical saffron story');
   assert.equal(update.data.after.title, 'Native saffron edit');
-  assert.equal(update.data.after.fields.zero_palette, '#bb5522');
+  assert.equal(update.data.after.fields.first_palette, '#bb5522');
   assert.equal(update.actor, 1);
-  const publication = await (await fetch(`${base}/?zero-plugins=1`)).text();
+  const publication = await (await fetch(`${base}/?first-plugins=1`)).text();
   assert.match(publication, /Native saffron edit/);
   assert.match(publication, /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
   assert.match(publication, /player\.vimeo\.com\/video\/76979871/);
   assert.match(publication, /wp-admin\/plugins\.php/);
   assert.equal(publication.includes('--accent:#bb5522'), true);
   await writeFile(join(evidence, 'publication.html'), publication);
-  const record = await zero('/records', { method: 'POST', status: 201, body: { externalId: 'plugin-test-1', score: 2, payload: { nested: { enabled: true }, list: [1, 2] } } });
-  assert.equal((await zero('/actions/advance', { method: 'POST', body: { id: record.id } })).state, 'processing');
+  const record = await first('/records', { method: 'POST', status: 201, body: { externalId: 'plugin-test-1', score: 2, payload: { nested: { enabled: true }, list: [1, 2] } } });
+  assert.equal((await first('/actions/advance', { method: 'POST', body: { id: record.id } })).state, 'processing');
   await api('/api/kv/demo', { method: 'POST', body: { value: { nested: ['persisted', 2] } } });
   assert.deepEqual((await api('/api/kv/demo')).value, { nested: ['persisted', 2] });
   await api('/api/kv/demo', { method: 'DELETE' });
@@ -97,13 +97,13 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   assert.deepEqual(await request('/wp-json/wp-abilities/v1/abilities/official-plugins/echo/run', { method: 'POST', body: { input: { message: 'Plugin MCP alive' } } }), { message: 'Plugin MCP alive', length: 16 });
   await request('/wp-json/wp-abilities/v1/abilities/official-plugins/echo/run', { method: 'POST', auth: null, status: 401, body: { input: { message: 'Forbidden' } } });
   async function mcp(payload, session) {
-    const response = await fetch(`${base}/wp-json/mcp/zero-official-plugins`, { method: 'POST', headers: { authorization, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-11-25', ...(session ? { 'mcp-session-id': session } : {}) }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
+    const response = await fetch(`${base}/wp-json/mcp/first-official-plugins`, { method: 'POST', headers: { authorization, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-11-25', ...(session ? { 'mcp-session-id': session } : {}) }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
     const text = await response.text();
     assert.equal(response.status, 200, text);
     const data = text.startsWith('data:') || text.includes('\ndata:') ? JSON.parse(text.split('\n').find((line) => line.startsWith('data:')).slice(5)) : JSON.parse(text);
     return { value: data, session: response.headers.get('mcp-session-id') };
   }
-  const init = await mcp({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'zero-official-plugin-acceptance', version: '1' } } });
+  const init = await mcp({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'first-official-plugin-acceptance', version: '1' } } });
   const tools = await mcp({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, init.session);
   const tool = tools.value.result.tools.find((item) => item.name.includes('echo'));
   assert.equal(typeof tool.name, 'string');
@@ -138,7 +138,7 @@ test('official plugin counterparts persist in real native Studio WordPress and c
     page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
     const browserErrors = [];
     page.on('pageerror', (error) => browserErrors.push(error.message));
-    await page.goto(`${base}/?zero-plugins=1`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${base}/?first-plugins=1`, { waitUntil: 'domcontentloaded' });
     const publicForm = page.locator(`.public-form[data-form-id="${form.id}"]`);
     const about = publicForm.getByRole('group', { name: 'About you', exact: true });
     const message = publicForm.getByLabel('Message', { exact: true });
@@ -164,7 +164,7 @@ test('official plugin counterparts persist in real native Studio WordPress and c
       await expect(publicForm.getByLabel(label, { exact: true })).toHaveValue('');
     }
     await page.screenshot({ path: join(evidence, 'public-form-desktop.png'), fullPage: true });
-    const submitted = page.waitForResponse((response) => response.url() === `${base}/wp-json/zero-plugins/v1/forms/${form.id}/submit` && response.request().method() === 'POST');
+    const submitted = page.waitForResponse((response) => response.url() === `${base}/wp-json/first-plugins/v1/forms/${form.id}/submit` && response.request().method() === 'POST');
     await send.click();
     const response = await submitted;
     assert.equal(response.status(), 200, await response.text());
@@ -188,15 +188,15 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   proofs.push('multi-page form definition, conditional required validation, honeypot, actual public multipart media, private persisted inbox, review and pause; Chromium navigation, conditional input visibility, optional blank typed fields and persisted browser submission');
   assert.equal((await api('/search?q=saffron', { auth: null })).results.some((item) => item.id === entry.id), true);
   assert.equal((await api(`/atproto/documents/${entry.id}`, { auth: null }))['$type'], 'site.standard.document');
-  await request(`/wp-json/wp/v2/zero_entries/${entry.id}`, { method: 'POST', body: { password: 'disposable-story-password' } });
-  await request(`/wp-json/wp/v2/zero_entries/${entry.id}`, { auth: null, status: 404 });
-  const locked = await (await fetch(`${base}/?zero-plugin-entry=${entry.id}`)).text();
+  await request(`/wp-json/wp/v2/first_entries/${entry.id}`, { method: 'POST', body: { password: 'disposable-story-password' } });
+  await request(`/wp-json/wp/v2/first_entries/${entry.id}`, { auth: null, status: 404 });
+  const locked = await (await fetch(`${base}/?first-plugin-entry=${entry.id}`)).text();
   assert.match(locked, /post-password-form/);
   assert.doesNotMatch(locked, /Built with real plugins|Grace|youtube-nocookie/);
-  assert.doesNotMatch(await (await fetch(`${base}/?zero-plugins=1`)).text(), /Native saffron edit/);
+  assert.doesNotMatch(await (await fetch(`${base}/?first-plugins=1`)).text(), /Native saffron edit/);
   assert.equal((await api('/search?q=saffron', { auth: null })).results.length, 0);
   await api(`/atproto/documents/${entry.id}`, { auth: null, status: 404 });
-  await request(`/wp-json/wp/v2/zero_entries/${entry.id}`, { method: 'POST', body: { password: '' } });
+  await request(`/wp-json/wp/v2/first_entries/${entry.id}`, { method: 'POST', body: { password: '' } });
 
   await api('/ai-moderation/analyze', { method: 'POST', body: { text: 'hello' }, status: 424 });
   await api('/ai-search/semantic', { method: 'POST', body: { q: 'saffron' }, status: 424 });
@@ -207,8 +207,8 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   const readerAuth = `Basic ${Buffer.from(`plugin-reader:${readerPassword}`).toString('base64')}`;
   await api('/settings', { auth: readerAuth, status: 403 });
   await api('/submissions', { auth: readerAuth, status: 403 });
-  await zero('/actions/echo', { method: 'POST', auth: readerAuth, body: { message: 'Denied' }, status: 403 });
-  await request(`/wp-json/wp/v2/zero_entries/${entry.id}`, { method: 'POST', body: { comment_status: 'open' } });
+  await first('/actions/echo', { method: 'POST', auth: readerAuth, body: { message: 'Denied' }, status: 403 });
+  await request(`/wp-json/wp/v2/first_entries/${entry.id}`, { method: 'POST', body: { comment_status: 'open' } });
   const comment = await request('/wp-json/wp/v2/comments', { method: 'POST', auth: readerAuth, status: 201, body: { post: entry.id, content: 'A local review' } });
   const commentId = String(comment.id);
   assert.equal(await wp('comment', 'get', commentId, '--field=comment_approved'), '0');
@@ -216,9 +216,9 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   const extra = join(site, 'wp-content/plugins/coexistence-proof'); await mkdir(extra);
   await writeFile(join(extra, 'coexistence-proof.php'), '<?php /* Plugin Name: Coexistence proof */ add_filter("the_title", function($title) { return $title; });');
   await wp('plugin', 'activate', 'coexistence-proof');
-  await wp('action-scheduler', 'run', '--hooks=zero_plugins_deliver,zero_plugins_diagnostic');
+  await wp('action-scheduler', 'run', '--hooks=first_plugins_deliver,first_plugins_diagnostic');
   // Run retry through the real Action Scheduler action runner, irrespective of its future due time.
-  const pending = JSON.parse(await wp('eval', 'echo wp_json_encode(as_get_scheduled_actions(["hook"=>"zero_plugins_deliver","status"=>"pending"], "ids"));'));
+  const pending = JSON.parse(await wp('eval', 'echo wp_json_encode(as_get_scheduled_actions(["hook"=>"first_plugins_deliver","status"=>"pending"], "ids"));'));
   for (const id of pending) await wp('action-scheduler', 'action', 'run', String(id));
   const deliveries = await api('/deliveries');
   assert.equal(deliveries.every((row) => row.status === 'success'), true, JSON.stringify(deliveries));
@@ -227,37 +227,37 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   for (const delivery of received) {
     assert.equal(delivery.url, '/webhook');
     assert.equal(delivery.headers.authorization, 'Bearer disposable-plugin-webhook-token');
-    assert.equal(delivery.headers['x-zero-signature'], createHmac('sha256', 'disposable-plugin-webhook-token').update(delivery.body).digest('hex'));
+    assert.equal(delivery.headers['x-first-signature'], createHmac('sha256', 'disposable-plugin-webhook-token').update(delivery.body).digest('hex'));
   }
   assert.equal((await api('/events')).some((row) => row.event === 'diagnostics.cron'), true);
-  await wp('plugin', 'deactivate', 'zero-official-plugins');
-  await wp('plugin', 'activate', 'zero-official-plugins');
+  await wp('plugin', 'deactivate', 'first-official-plugins');
+  await wp('plugin', 'activate', 'first-official-plugins');
   assert.equal((await api('/events')).some((row) => row.event === 'lifecycle.deactivate'), true);
   await command(['dev', 'stop', owned.directory]);
   // Unchanged bounded fields must preserve data without destructive approval.
-  await cp(join(owned.directory, 'zero/_generated/migrations/snapshot.json'), join(evidence, 'snapshot-before-restart.json'));
+  await cp(join(owned.directory, 'first/_generated/migrations/snapshot.json'), join(evidence, 'snapshot-before-restart.json'));
   await command(['dev', owned.directory, '--no-watch']);
-  assert.equal((await zero(`/entries/${entry.id}`)).title, 'Native saffron edit');
-  assert.deepEqual((await zero(`/records/${record.id}`)).payload, { nested: { enabled: true }, list: [1, 2] });
+  assert.equal((await first(`/entries/${entry.id}`)).title, 'Native saffron edit');
+  assert.deepEqual((await first(`/records/${record.id}`)).payload, { nested: { enabled: true }, list: [1, 2] });
   assert.equal((await api('/submissions')).find((row) => row.id === submission.id).notes, 'Follow up');
   const plugins = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));
-  for (const name of ['zero-official-plugins', 'coexistence-proof', 'secure-custom-fields', 'mcp-adapter']) assert.equal(plugins.some((plugin) => plugin.name === name), true, name);
+  for (const name of ['first-official-plugins', 'coexistence-proof', 'secure-custom-fields', 'mcp-adapter']) assert.equal(plugins.some((plugin) => plugin.name === name), true, name);
   const session = JSON.parse(await wp('eval', 'echo wp_json_encode([LOGGED_IN_COOKIE=>wp_generate_auth_cookie(1,time()+3600,"logged_in"),AUTH_COOKIE=>wp_generate_auth_cookie(1,time()+3600,"auth")]);'));
   const cookie = Object.entries(session).map(([name, value]) => `${name}=${value}`).join('; ');
-  for (const path of ['/wp-admin/plugins.php', '/wp-admin/options-general.php', '/wp-admin/admin.php?page=zero-plugin-lab']) {
+  for (const path of ['/wp-admin/plugins.php', '/wp-admin/options-general.php', '/wp-admin/admin.php?page=first-plugin-lab']) {
     const response = await fetch(`${base}${path}`, { headers: { cookie }, redirect: 'manual' });
     assert.equal(response.status, 200, `${path}: ${response.headers.get('location')}`);
     const html = await response.text();
     assert.equal(html.includes('wpadminbar'), true, path);
     await writeFile(join(evidence, path.includes('plugins.php') ? 'native-plugins.html' : path.includes('options-general') ? 'native-settings.html' : 'workshop-admin.html'), html);
   }
-  await zero(`/entries/${entry.id}`, { method: 'DELETE' });
+  await first(`/entries/${entry.id}`, { method: 'DELETE' });
   assert.equal((await api('/events')).some((row) => row.event === 'content.deleted' && row.data.resourceId === entry.id), true);
-  const retained = await zero('/entries', { method: 'POST', status: 201, body: { title: 'Content survives companion plugin uninstall', status: 'published' } });
-  await wp('plugin', 'deactivate', 'zero-official-plugins');
-  await wp('plugin', 'uninstall', 'zero-official-plugins');
-  assert.equal((await zero(`/entries/${retained.id}`)).title, 'Content survives companion plugin uninstall');
-  const remaining = JSON.parse(await wp('eval', 'global $wpdb; echo wp_json_encode(["installed"=>get_option("zero_plugins_installed",null),"records"=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type IN (\'zpl_event\',\'zpl_delivery\',\'zpl_form\',\'zpl_submit\')")]);'));
+  const retained = await first('/entries', { method: 'POST', status: 201, body: { title: 'Content survives companion plugin uninstall', status: 'published' } });
+  await wp('plugin', 'deactivate', 'first-official-plugins');
+  await wp('plugin', 'uninstall', 'first-official-plugins');
+  assert.equal((await first(`/entries/${retained.id}`)).title, 'Content survives companion plugin uninstall');
+  const remaining = JSON.parse(await wp('eval', 'global $wpdb; echo wp_json_encode(["installed"=>get_option("first_plugins_installed",null),"records"=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type IN (\'zpl_event\',\'zpl_delivery\',\'zpl_form\',\'zpl_submit\')")]);'));
   assert.deepEqual(remaining, { installed: null, records: 0 });
   assert.equal(JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json')).some((plugin) => plugin.name === 'coexistence-proof'), true);
   proofs.push('signed local HTTP delivery with real 503/retry + Action Scheduler effects, plugin lifecycle through uninstall, persisted data/coexistence after an unchanged bounded-field rebuild');

@@ -3,7 +3,7 @@
 Generated from `tests/compatibility/registry.json`; run `python3 scripts/compiler-contracts.py` to update.
 
 This is a growing evidence inventory, not an exhaustive language specification. Refusals are verified by running
-`zero check --json` on each registered fixture in `tests/compiler_contracts.rs`. Supported behavior and intentional
+`first check --json` on each registered fixture in `tests/compiler_contracts.rs`. Supported behavior and intentional
 differences link to their executable evidence. A silent, undocumented mismatch is a bug, not an exclusion.
 
 String semantics here describe the current implementation; changes require updating the evidence and this registry.
@@ -20,7 +20,7 @@ Named module-level classes compile inside callbacks: constructors, public fields
 
 Status: **supported**.
 
-Error, TypeError, RangeError and SyntaxError are globals in typed code, imported JavaScript and configuration evaluation, from one list (ERROR_CONSTRUCTORS in src/builtins.rs, generated into Zero\Builtins for the runtime). Calling or constructing one gives name, message, String() and a frameless stack as in JavaScript. instanceof matches the constructor and Error, also for errors the runtime throws, such as the SyntaxError from JSON.parse. Classes can extend any of them. Configuration evaluation can reference them and read typeof but refuses construction, because errors are runtime values. ReferenceError, EvalError, URIError and AggregateError are not globals.
+Error, TypeError, RangeError and SyntaxError are globals in typed code, imported JavaScript and configuration evaluation, from one list (ERROR_CONSTRUCTORS in src/builtins.rs, generated into First\Builtins for the runtime). Calling or constructing one gives name, message, String() and a frameless stack as in JavaScript. instanceof matches the constructor and Error, also for errors the runtime throws, such as the SyntaxError from JSON.parse. Classes can extend any of them. Configuration evaluation can reference them and read typeof but refuses construction, because errors are runtime values. ReferenceError, EvalError, URIError and AggregateError are not globals.
 
 [Evidence](../tests/compiler_contracts.rs) (`private_names_accessors_and_imported_javascript_classes_match_node`)
 
@@ -44,13 +44,13 @@ Imported JavaScript generators and async generators compile to PHP Generators be
 
 Status: **supported**.
 
-ReadableStream (start/pull/cancel, default reader, tee, async iteration), WritableStream and TransformStream, with pipeTo and pipeThrough, are pull-driven chunk queues over the job queue. Byte streams, BYOB readers, size() strategies and pipeTo signals are refused at runtime. Zero\JsReadableStream::fromResource wraps a PHP stream resource.
+ReadableStream (start/pull/cancel, default reader, tee, async iteration), WritableStream and TransformStream, with pipeTo and pipeThrough, are pull-driven chunk queues over the job queue. Byte streams, BYOB readers, size() strategies and pipeTo signals are refused at runtime. First\JsReadableStream::fromResource wraps a PHP stream resource.
 
 [Evidence](../tests/compiler_contracts.rs) (`promise_jobs_generators_and_async_iteration_match_node_in_generated_php`)
 
 ## class-metaprogramming
 
-Status: **refused**. Diagnostic: `Z1101`.
+Status: **refused**. Diagnostic: `F1101`.
 
 Use concrete named classes with public fields and methods. See config-api.md for the supported surface.
 
@@ -58,9 +58,9 @@ Use concrete named classes with public fields and methods. See config-api.md for
 
 ## uninstalled-package
 
-Status: **refused**. Diagnostic: `Z1102`.
+Status: **refused**. Diagnostic: `F1102`.
 
-Install the package with your package manager. Zero reads supported local TypeScript/ESM sources; it does not install packages or execute JavaScript.
+Install the package with your package manager. First reads supported local TypeScript/ESM sources; it does not install packages or execute JavaScript.
 
 [Evidence](../tests/fixtures/reject-uninstalled-package)
 
@@ -84,13 +84,13 @@ Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations 
 
 Status: **supported**.
 
-Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is "symbol", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. `key in object` and `delete object[key]` accept symbol keys. Built-in values and class instances may inherit well-known symbol methods Zero doesn't model, so reading, testing or writing a well-known symbol on them, or any symbol on a class instance without that own symbol, throws TypeError instead of guessing; other symbols on built-in values are absent. Class computed members such as static [Symbol.hasInstance]() belong to the class work.
+Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is "symbol", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. `key in object` and `delete object[key]` accept symbol keys. Built-in values and class instances may inherit well-known symbol methods First doesn't model, so reading, testing or writing a well-known symbol on them, or any symbol on a class instance without that own symbol, throws TypeError instead of guessing; other symbols on built-in values are absent. Class computed members such as static [Symbol.hasInstance]() belong to the class work.
 
 [Evidence](../tests/compiler_contracts.rs) (`symbols_and_weak_collections_match_node_in_imported_javascript`)
 
 ## typescript-symbols
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Authored TypeScript has no symbol type yet. Use a string key, or keep the symbol inside an imported JavaScript module. Symbol-keyed properties can't be created while the config is evaluated.
 
@@ -106,9 +106,9 @@ Imported JavaScript can use WeakMap (get, set, has, delete) and WeakSet (add, ha
 
 ## globalthis-detection
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
-typeof globalThis, typeof globalThis.X and globalThis.X compared with undefined are resolved at compile time when X is one of Zero's globals (its JavaScript typeof) or a runtime Zero never provides (window, document, self, location, Bun, Deno, EdgeRuntime, DOMParser, WebSocketPair, XMLHttpRequest, importScripts, WorkerGlobalScope: undefined). Host globals such as fetch, process, crypto, Buffer, atob and timers, and any other name, are refused at the read; call supported capabilities directly instead of detecting them. Calling an absent global is refused because it always throws.
+typeof globalThis, typeof globalThis.X and globalThis.X compared with undefined are resolved at compile time when X is one of First's globals (its JavaScript typeof) or a runtime First never provides (window, document, self, location, Bun, Deno, EdgeRuntime, DOMParser, WebSocketPair, XMLHttpRequest, importScripts, WorkerGlobalScope: undefined). Host globals such as fetch, process, crypto, Buffer, atob and timers, and any other name, are refused at the read; call supported capabilities directly instead of detecting them. Calling an absent global is refused because it always throws.
 
 [Evidence](../tests/fixtures/reject-globalthis-host)
 
@@ -156,21 +156,21 @@ The global `Boolean` compiles as a call and as a function value in typed code, i
 
 Status: **refused**. Diagnostic: `Z4001`.
 
-`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; Zero has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (Z2001).
+`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (Z2001).
 
 [Evidence](../tests/fixtures/reject-new-boolean)
 
 ## prototype-literal-object
 
-Status: **refused**. Diagnostic: `Z1002`.
+Status: **refused**. Diagnostic: `F1002`.
 
-Only `__proto__: null` is supported. A `__proto__:` key with any other value would install a custom prototype, which Zero doesn't model; copy the shared properties with a spread instead, or use a computed ['__proto__'] key for an own data property.
+Only `__proto__: null` is supported. A `__proto__:` key with any other value would install a custom prototype, which First doesn't model; copy the shared properties with a spread instead, or use a computed ['__proto__'] key for an own data property.
 
 [Evidence](../tests/fixtures/reject-proto-object)
 
 ## prototype-literal-variable
 
-Status: **refused**. Diagnostic: `Z1002`.
+Status: **refused**. Diagnostic: `F1002`.
 
 `__proto__: someVar` is refused even when the variable holds null; write the literal `__proto__: null` for a null-prototype object, or spread the variable's properties for an ordinary one.
 
@@ -186,7 +186,7 @@ Status: **supported**.
 
 ## delete-required-property
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 TypeScript allows `delete` only on optional properties. Declare the property optional (`key?: T`) or build a new object without it.
 
@@ -194,9 +194,9 @@ TypeScript allows `delete` only on optional properties. Declare the property opt
 
 ## delete-array-element
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
-Zero arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead.
+First arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead.
 
 [Evidence](../tests/fixtures/reject-delete-array-element)
 
@@ -220,21 +220,21 @@ Array and object patterns on the left of `=` assign existing variables, object f
 
 Status: **supported**.
 
-In authored TypeScript, `for await` runs over arrays, tuples and strings whose elements are plain values or Zero's own promises, which the blocking model settles exactly. Async iterables, generators and values from imported JavaScript need the job queue and are refused there; imported JavaScript runs every `for await` through it.
+In authored TypeScript, `for await` runs over arrays, tuples and strings whose elements are plain values or First's own promises, which the blocking model settles exactly. Async iterables, generators and values from imported JavaScript need the job queue and are refused there; imported JavaScript runs every `for await` through it.
 
 [Evidence](../tests/compiler_contracts.rs) (`typed_for_await_accepts_only_settled_sync_iterables`)
 
 ## for-await-promise-literal
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
-`for await` awaits each element as the loop reaches it, but Zero's blocking calls would all run before the loop starts. Await each call where it is written: `for (const v of [await a(), await b()])`.
+`for await` awaits each element as the loop reaches it, but First's blocking calls would all run before the loop starts. Await each call where it is written: `for (const v of [await a(), await b()])`.
 
 [Evidence](../tests/fixtures/reject-for-await-promise-literal)
 
 ## for-await-class-instance
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 `for await` adopts an instance with a `then` method as a promise, which needs the job queue. Use `for (const v of items)`, or call the method explicitly.
 
@@ -252,13 +252,13 @@ tag`…${x}…` calls the tag with the call site's strings array, then the subst
 
 Status: **supported**.
 
-BigInt literals, the `bigint` type, BigInt(), BigInt.asIntN/asUintN, Number(b), String(b) and b.toString(radix) compile in typed code and imported JavaScript with ECMAScript semantics, in pure PHP (Zero\JsBigInt, no GMP or bcmath). Arithmetic is exact, division truncates, bitwise operators and shifts act on infinite two's complement, comparisons and loose equality compare mathematically across BigInt, number and numeric strings. Mixing BigInt and number in arithmetic, `>>>`, unary `+`, JSON serialization and Math functions throw JavaScript's TypeError; typed code refuses a static mix at the source. Configuration evaluation refuses BigInt. tests/php/bigint_test.php checks 8,800 Node-computed results.
+BigInt literals, the `bigint` type, BigInt(), BigInt.asIntN/asUintN, Number(b), String(b) and b.toString(radix) compile in typed code and imported JavaScript with ECMAScript semantics, in pure PHP (First\JsBigInt, no GMP or bcmath). Arithmetic is exact, division truncates, bitwise operators and shifts act on infinite two's complement, comparisons and loose equality compare mathematically across BigInt, number and numeric strings. Mixing BigInt and number in arithmetic, `>>>`, unary `+`, JSON serialization and Math functions throw JavaScript's TypeError; typed code refuses a static mix at the source. Configuration evaluation refuses BigInt. tests/php/bigint_test.php checks 8,800 Node-computed results.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
 ## build-time-clock
 
-Status: **refused**. Diagnostic: `Z2101`.
+Status: **refused**. Diagnostic: `F2101`.
 
 Use the clock in a handler or timestamp().defaultNow(). Configuration evaluation stays pure.
 
@@ -266,7 +266,7 @@ Use the clock in a handler or timestamp().defaultNow(). Configuration evaluation
 
 ## access-database-query
 
-Status: **refused**. Diagnostic: `Z4101`.
+Status: **refused**. Diagnostic: `F4101`.
 
 Return a row filter; put database effects in a hook or action.
 
@@ -274,7 +274,7 @@ Return a row filter; put database effects in a hook or action.
 
 ## field-ui-width
 
-Status: **refused**. Diagnostic: `Z3101`.
+Status: **refused**. Diagnostic: `F3101`.
 
 Use an integer percentage from 1 to 100 for .ui({ width }).
 
@@ -330,7 +330,7 @@ Synchronous concrete helpers and inline callbacks can return named-parameter typ
 
 ## finite-key-validation
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 A finite keyof is a literal union, not string.
 
@@ -338,7 +338,7 @@ A finite keyof is a literal union, not string.
 
 ## generic-constraint-validation
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Generic arguments must satisfy their declared structural constraints.
 
@@ -346,7 +346,7 @@ Generic arguments must satisfy their declared structural constraints.
 
 ## generic-required-argument
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Provide every required argument; missing arguments never widen to unknown.
 
@@ -354,7 +354,7 @@ Provide every required argument; missing arguments never widen to unknown.
 
 ## indexed-union-missing-key
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 An indexed key must exist in every member of an object union.
 
@@ -362,7 +362,7 @@ An indexed key must exist in every member of an object union.
 
 ## open-keyof
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Use an explicit string key type for open maps. Array/prototype and symbol key spaces are not modeled.
 
@@ -370,7 +370,7 @@ Use an explicit string key type for open maps. Array/prototype and symbol key sp
 
 ## recursive-type-expansion
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Recursive types are refused by bounded expansion; type operations also have a step and finite-key budget.
 
@@ -378,7 +378,7 @@ Recursive types are refused by bounded expansion; type operations also have a st
 
 ## runtime-generic-functions
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Use generic aliases with concrete PHP-reachable function signatures. There is no generic runtime specialization.
 
@@ -386,7 +386,7 @@ Use generic aliases with concrete PHP-reachable function signatures. There is no
 
 ## finite-record-presence
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Record with finite string keys requires every declared key; it is not an open string map.
 
@@ -394,7 +394,7 @@ Record with finite string keys requires every declared key; it is not an open st
 
 ## boxed-structural-conditional
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Conditional matching of primitive/array prototype properties is refused; use concrete scalar, array or finite object comparisons.
 
@@ -402,7 +402,7 @@ Conditional matching of primitive/array prototype properties is refused; use con
 
 ## type-declaration-merging
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Combine interface declarations explicitly or use interface extends. Repeated declarations never silently replace earlier fields.
 
@@ -410,7 +410,7 @@ Combine interface declarations explicitly or use interface extends. Repeated dec
 
 ## conditional-check-provenance
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Use direct type parameters for distributive checks, or tuple-wrap alias/type-operation checks to make non-distributivity explicit. Alias reduction can otherwise change TypeScript distributivity before instantiation.
 
@@ -418,7 +418,7 @@ Use direct type parameters for distributive checks, or tuple-wrap alias/type-ope
 
 ## mapped-key-provenance
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Use direct keyof T, a direct key parameter constrained by keyof T, or literal key domains. Aliased or reduced mapped key expressions (including Keys<T>, Identity<K> and keyof T | never) are refused before shape emission because reduction can change optional presence. Aliased or reduced key-parameter constraints are also refused.
 
@@ -444,7 +444,7 @@ Global isFinite accepts zero or one argument and applies numeric coercion; Numbe
 
 Status: **supported**.
 
-Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\JsMap`/`Zero\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused.
+Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `First\JsMap`/`First\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused.
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
 
@@ -452,7 +452,7 @@ Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `Zero\Js
 
 Status: **supported**.
 
-`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named Zero classes.
+`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named First classes.
 
 [Evidence](../tests/compiler_contracts.rs) (`url_vectors_agree_in_node_and_generated_php`)
 
@@ -460,7 +460,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for "abort" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `Zero\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`ZERO_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with ZERO_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node.
+`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for "abort" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `First\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`FIRST_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with FIRST_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node.
 
 [Evidence](../tests/compiler_contracts.rs) (`timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler`)
 
@@ -474,7 +474,7 @@ src/builtins.rs owns JavaScript built-in overloads, arity and phase support. Uns
 
 ## locale-collation
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Locale collation depends on the host and cannot be reproduced deterministically. localeCompare is refused in configuration and typed handlers; checked imported JavaScript throws TypeError. Use < or > for deterministic UTF-16 ordering. No byte-order substitute is exposed under the localeCompare name.
 
@@ -506,15 +506,15 @@ undefined denotes the built-in missing value. Runtime bindings named undefined a
 
 ## wordpress-ability-unknown
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
-abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in zero/_generated/abilities.json by `zero abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in first/_generated/abilities.json by `first abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
 
 [Evidence](../tests/fixtures/reject-ability-unknown)
 
 ## wordpress-ability-input
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 An ability's input is checked against the TypeScript type generated from its input JSON Schema (enums, required properties, closed objects). WordPress validates the same schema again at run time; a mismatch the build can see never ships.
 
@@ -522,7 +522,7 @@ An ability's input is checked against the TypeScript type generated from its inp
 
 ## wordpress-ability-name
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 The ability name must be written in place so the build can type the input and result and record which abilities the app uses. Branch between literal calls when the ability depends on data.
 
@@ -532,21 +532,21 @@ The ability name must be written in place so the build can type the input and re
 
 Status: **supported**.
 
-abilities.call("vendor/name", input) compiles to Zero\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from zero/_generated/abilities.json, which build and check read without touching the network. zero/_generated/db.d.ts carries the same types for the editor.
+abilities.call("vendor/name", input) compiles to First\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from first/_generated/abilities.json, which build and check read without touching the network. first/_generated/db.d.ts carries the same types for the editor.
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_abilities_are_typed_from_the_lock_and_the_schema`)
 
 ## wordpress-hook-unknown
 
-Status: **refused**. Diagnostic: `Z3001`.
+Status: **refused**. Diagnostic: `F3001`.
 
-A zero/wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check.
+A first/wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check.
 
 [Evidence](../tests/fixtures/reject-wp-hook-unknown)
 
 ## wordpress-hook-filter-return
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 A filter handler returns the filtered value: its first argument's type, from the catalog. Returning another type would hand WordPress a value its later callbacks do not expect.
 
@@ -554,17 +554,17 @@ A filter handler returns the filtered value: its first argument's type, from the
 
 ## wordpress-hook-no-default
 
-Status: **refused**. Diagnostic: `Z3001`.
+Status: **refused**. Diagnostic: `F3001`.
 
-Each zero/wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module.
+Each first/wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module.
 
 [Evidence](../tests/fixtures/reject-wp-hook-no-default)
 
 ## wordpress-hook-file
 
-Status: **refused**. Diagnostic: `Z1003`.
+Status: **refused**. Diagnostic: `F1003`.
 
-zero/wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register.
+first/wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register.
 
 [Evidence](../tests/fixtures/reject-wp-hook-file)
 
@@ -572,13 +572,13 @@ zero/wp-hooks/ holds only .ts handler files (directly, or one directory deep nam
 
 Status: **supported**.
 
-zero/wp-hooks/<hook>.ts and zero/wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
+first/wp-hooks/<hook>.ts and first/wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
 
 [Evidence](../tests/compiler_contracts.rs) (`wp_hooks_register_in_file_order_with_their_priorities`)
 
 ## wordpress-function-unknown
 
-Status: **refused**. Diagnostic: `Z2001`.
+Status: **refused**. Diagnostic: `F2001`.
 
 "php/wordpress" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter.
 
@@ -586,7 +586,7 @@ Status: **refused**. Diagnostic: `Z2001`.
 
 ## wordpress-function-argument
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 WordPress function arguments are checked against the catalog's types, from the pinned php-stubs/wordpress-stubs signatures and phpdoc, narrowed where a PHP parameter accepts several shapes (get_post takes a post id).
 
@@ -596,21 +596,21 @@ WordPress function arguments are checked against the catalog's types, from the p
 
 Status: **supported**.
 
-Allowlisted WordPress functions compile to Zero\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none).
+Allowlisted WordPress functions compile to First\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none).
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_functions_run_as_the_signed_in_user`)
 
 ## plugin-narrowed-write
 
-Status: **refused**. Diagnostic: `Z4201`.
+Status: **refused**. Diagnostic: `F4201`.
 
-A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed zero/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed first/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
 
 [Evidence](../tests/fixtures/reject-plugin-write)
 
 ## plugin-static-host
 
-Status: **refused**. Diagnostic: `Z4201`.
+Status: **refused**. Diagnostic: `F4201`.
 
 A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop.
 
@@ -618,17 +618,17 @@ A fetch URL with a written https://host/ prefix (string, template or concatenati
 
 ## plugin-cross-import
 
-Status: **refused**. Diagnostic: `Z1201`.
+Status: **refused**. Diagnostic: `F1201`.
 
-A plugin package imports its own modules, "zero" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+A plugin package imports its own modules, "first" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
 
 [Evidence](../tests/fixtures/reject-plugin-isolation)
 
 ## plugin-app-kinds
 
-Status: **refused**. Diagnostic: `Z1201`.
+Status: **refused**. Diagnostic: `F1201`.
 
-A plugin can't import "zero:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
+A plugin can't import "first:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
 
 [Evidence](../tests/fixtures/reject-plugin-db)
 
@@ -636,13 +636,13 @@ A plugin can't import "zero:db": the app's kinds are app values, which a plugin 
 
 Status: **supported**.
 
-Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); crypto.randomUUID(); and from "node:crypto" (import or a top-level const require) createHash and createHmac chains ending in digest("hex" | "base64" | "base64url"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto Zero\Fetch (HTTPS-only egress policy), Zero\Env and Zero\Crypto. See config-api.md.
+Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); crypto.randomUUID(); and from "node:crypto" (import or a top-level const require) createHash and createHmac chains ending in digest("hex" | "base64" | "base64url"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto First\Fetch (HTTPS-only egress policy), First\Env and First\Crypto. See config-api.md.
 
 [Evidence](../tests/compiler_contracts.rs) (`host_globals_match_node_through_generated_php`)
 
 ## fetch-signal
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Every call already ends after 10 s. credentials, mode, cache and the other browser options are refused because they have no effect server-side.
 
@@ -650,7 +650,7 @@ Every call already ends after 10 s. credentials, mode, cache and the other brows
 
 ## fetch-binary-body
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormData, ArrayBuffer and stream bodies are not available.
 
@@ -658,7 +658,7 @@ Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormDat
 
 ## response-streams
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 The body is read in full (at most 1 MiB) before fetch() resolves. Read it with text() or json(); arrayBuffer, blob, formData and clone are refused.
 
@@ -666,7 +666,7 @@ The body is read in full (at most 1 MiB) before fetch() resolves. Read it with t
 
 ## process-env-dynamic
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Name the variable: process.env.NAME or process.env["NAME"]. Computed names, iterating process.env and writes are refused, so request input cannot choose a server variable.
 
@@ -674,7 +674,7 @@ Name the variable: process.env.NAME or process.env["NAME"]. Computed names, iter
 
 ## process-members
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Handlers run in PHP. Only process.env.NAME is supported.
 
@@ -682,7 +682,7 @@ Handlers run in PHP. Only process.env.NAME is supported.
 
 ## env-in-handlers
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 env("NAME") is a deferred reference inside defineConfig (webhook URLs and secrets, action signatures, upload credentials). Handlers read runtime variables with process.env.NAME.
 
@@ -690,7 +690,7 @@ env("NAME") is a deferred reference inside defineConfig (webhook URLs and secret
 
 ## web-crypto-subtle
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 SubtleCrypto needs ArrayBuffers and is not compiled. Hash and sign with createHash and createHmac from "node:crypto".
 
@@ -698,7 +698,7 @@ SubtleCrypto needs ArrayBuffers and is not compiled. Hash and sign with createHa
 
 ## web-crypto-random-values
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Typed arrays are not compiled. Use randomBytes(n).toString("hex") from "node:crypto", or crypto.randomUUID().
 
@@ -706,7 +706,7 @@ Typed arrays are not compiled. Use randomBytes(n).toString("hex") from "node:cry
 
 ## node-crypto-members
 
-Status: **refused**. Diagnostic: `Z2001`.
+Status: **refused**. Diagnostic: `F2001`.
 
 node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingSafeEqual. Ciphers, keys, KDFs and streams are not compiled.
 
@@ -714,7 +714,7 @@ node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingS
 
 ## node-crypto-buffers
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Finish a hash in one expression with a string encoding: createHash("sha256").update(text).digest("hex"). Buffers exist only inside timingSafeEqual(Buffer.from(a), Buffer.from(b)) and Buffer.byteLength(text).
 
@@ -722,7 +722,7 @@ Finish a hash in one expression with a string encoding: createHash("sha256").upd
 
 ## timing-safe-equal-strings
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Pass Buffer.from(a) and Buffer.from(b). As in Node, inputs of different byte lengths throw RangeError, so check Buffer.byteLength first.
 
@@ -730,7 +730,7 @@ Pass Buffer.from(a) and Buffer.from(b). As in Node, inputs of different byte len
 
 ## node-builtins
 
-Status: **refused**. Diagnostic: `Z1102`.
+Status: **refused**. Diagnostic: `F1102`.
 
 Handlers run in PHP. Use the global fetch, process.env.NAME and "node:crypto".
 
@@ -738,19 +738,19 @@ Handlers run in PHP. Use the global fetch, process.env.NAME and "node:crypto".
 
 ## require
 
-Status: **refused**. Diagnostic: `Z1102`.
+Status: **refused**. Diagnostic: `F1102`.
 
 Static CommonJS may require("node:crypto") (or "crypto"); it resolves through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required.
 
 [Evidence](../tests/fixtures/reject-require-module)
 
-## zero-fetch-import
+## first-fetch-import
 
-Status: **refused**. Diagnostic: `Z2001`.
+Status: **refused**. Diagnostic: `F2001`.
 
-fetch and crypto are the standard globals, not "zero" exports. Remove them from the import.
+fetch and crypto are the standard globals, not "first" exports. Remove them from the import.
 
-[Evidence](../tests/fixtures/reject-zero-fetch-import)
+[Evidence](../tests/fixtures/reject-first-fetch-import)
 
 ## build-time-namespaces
 
@@ -762,7 +762,7 @@ A member chain rooted at a module-level object that holds functions (`import * a
 
 ## namespace-value
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 An object that holds functions has no PHP form. Call or read its members directly (`ns.fn(x)`, `ns.value`) instead of passing, storing, spreading, iterating or writing the object.
 
@@ -770,7 +770,7 @@ An object that holds functions has no PHP form. Call or read its members directl
 
 ## function-properties-value
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 A PHP closure can't carry properties. Call the function or read its properties directly (`f(x)`, `f.prop`, `f.method(x)`) instead of using it as a value.
 
@@ -794,7 +794,7 @@ A `const` or `let` whose whole initializer is an arrow or function expression (o
 
 ## self-reference-read-during-initialization
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Reading a `const`/`let` in its own initializer throws a ReferenceError in JavaScript. Compute the value without the binding, or make the initializer a function that refers to itself.
 
@@ -802,7 +802,7 @@ Reading a `const`/`let` in its own initializer throws a ReferenceError in JavaSc
 
 ## self-reference-called-during-initialization
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 A closure that captures its own binding but is created inside a larger initializer, such as an immediately called function, could run before the binding is assigned, where JavaScript throws a ReferenceError. Only a closure that is the whole initializer may capture its binding; restructure so the function is assigned directly.
 
@@ -810,7 +810,7 @@ A closure that captures its own binding but is created inside a larger initializ
 
 ## self-reference-nullable-let
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 A `let` can be reassigned before its closure calls it, so the self-call is checked against the declared type, as TypeScript does. Check the binding first (`if (f) f(n - 1)`), declare it as a function type, or use `const`.
 
@@ -818,7 +818,7 @@ A `let` can be reassigned before its closure calls it, so the self-call is check
 
 ## self-reference-untyped
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 In typed TypeScript a recursive `const` arrow needs its type before its body compiles. Annotate every parameter and the return type, e.g. `const fact = (n: number): number => ...`, or annotate the declaration with a function type.
 
@@ -836,13 +836,13 @@ An ordinary function or object-literal method that reads `this` gets its call re
 
 Status: **supported**.
 
-Functions exported under a capitalized name from `zero/components/*.tsx` compile to PHP functions that return escaped HTML (`\Zero\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md.
+Functions exported under a capitalized name from `first/components/*.tsx` compile to PHP functions that return escaped HTML (`\First\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md.
 
 [Evidence](../tests/compiler.rs) (`compiled_tsx_renders_the_html_react_renders`)
 
 ## jsx-unsafe-url
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top`). A computed URL that fails the same check drops the attribute at render time.
 
@@ -850,7 +850,7 @@ Use an http(s) or mailto URL, or one without a scheme (`/path`, `?page=2`, `#top
 
 ## jsx-server-event-handler
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Event handlers run in the browser; move them into a "use client" component.
 
@@ -858,7 +858,7 @@ Event handlers run in the browser; move them into a "use client" component.
 
 ## jsx-dangerously-set-inner-html
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Render the value as a child, which is escaped. Trusted markup will use `<Html>`.
 
@@ -866,7 +866,7 @@ Render the value as a child, which is escaped. Trusted markup will use `<Html>`.
 
 ## jsx-object-child
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 React throws on an object child; render one of its fields, or map a list to elements.
 
@@ -874,7 +874,7 @@ React throws on an object child; render one of its fields, or map a list to elem
 
 ## jsx-component-props
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Props are type-checked against the component's annotation like any call; pass values of the declared types.
 
@@ -882,7 +882,7 @@ Props are type-checked against the component's annotation like any call; pass va
 
 ## jsx-head-elements
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, and import styles and scripts as modules.
 
@@ -890,15 +890,15 @@ React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` i
 
 ## jsx-in-config
 
-Status: **refused**. Diagnostic: `Z1003`.
+Status: **refused**. Diagnostic: `F1003`.
 
-JSX compiles in `zero/components/`, pages and "use client" files; modules the config imports stay plain TypeScript.
+JSX compiles in `first/components/`, pages and "use client" files; modules the config imports stay plain TypeScript.
 
 [Evidence](../tests/fixtures/reject-jsx-config)
 
 ## jsx-in-action-result
 
-Status: **refused**. Diagnostic: `Z1003`.
+Status: **refused**. Diagnostic: `F1003`.
 
 Rendered JSX exists only while a page renders, so the config (and the actions it defines) can't import a component; return data from actions and render it in a component.
 
@@ -906,7 +906,7 @@ Rendered JSX exists only while a page renders, so the config (and the actions it
 
 ## jsx-textarea-children
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Set a textarea's text with `defaultValue` (or `value`), as React asks.
 
@@ -914,7 +914,7 @@ Set a textarea's text with `defaultValue` (or `value`), as React asks.
 
 ## jsx-srcdoc-value
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 `srcDoc` is a document parsed as HTML, so it is refused even as a literal. Link to the document with `src`; trusted markup will use `<Html>`.
 
@@ -922,7 +922,7 @@ Status: **refused**. Diagnostic: `Z4001`.
 
 ## jsx-raw-text-tag-case
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Tag names are matched case-insensitively, as browsers read them: `<sCript>` is `<script>`.
 
@@ -930,7 +930,7 @@ Tag names are matched case-insensitively, as browsers read them: `<sCript>` is `
 
 ## jsx-raw-text-children
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 `script`, `style`, `textarea`, `title`, `iframe`, `noscript`, `template`, `xmp`, `noembed`, `noframes`, `plaintext`, `object` and `embed` take only literal children, because their content isn't escaped text.
 
@@ -938,7 +938,7 @@ Status: **refused**. Diagnostic: `Z4001`.
 
 ## jsx-raw-text-close
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 A literal child of a raw-text tag can't contain that tag's closing `</tag`.
 
@@ -946,7 +946,7 @@ A literal child of a raw-text tag can't contain that tag's closing `</tag`.
 
 ## jsx-open-spread
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Spread only objects whose type lists their keys; each key is checked as if written out. `Record<string, …>`, index signatures, `any` and `unknown` are refused.
 
@@ -954,7 +954,7 @@ Spread only objects whose type lists their keys; each key is checked as if writt
 
 ## jsx-spread-event-handler
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 A closed spread's keys meet the same rules as written attributes, so a spread can't add an event handler, `srcDoc` or an unsafe literal URL.
 
@@ -962,7 +962,7 @@ A closed spread's keys meet the same rules as written attributes, so a spread ca
 
 ## jsx-computed-style
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 `style` takes an object whose keys are known at build time; values from data are escaped, and values that add declarations or load a `url(` are dropped.
 
@@ -970,7 +970,7 @@ Status: **refused**. Diagnostic: `Z4001`.
 
 ## jsx-attribute-name
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Attribute names match `[a-zA-Z_:][a-zA-Z0-9_.:-]*`.
 
@@ -978,7 +978,7 @@ Attribute names match `[a-zA-Z_:][a-zA-Z0-9_.:-]*`.
 
 ## jsx-svg-animation
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 SVG `animate`/`set` can rewrite their target's attributes: they never target URL or event attributes, and `values`/`to`/`from`/`by`/`attributeName` must be literal.
 
@@ -986,7 +986,7 @@ SVG `animate`/`set` can rewrite their target's attributes: they never target URL
 
 ## jsx-use-client-pending
 
-Status: **refused**. Diagnostic: `Z1003`.
+Status: **refused**. Diagnostic: `F1003`.
 
 Interactive components arrive with the Interactivity API output; until then, remove the directive to render on the server.
 
@@ -994,7 +994,7 @@ Interactive components arrive with the Interactivity API output; until then, rem
 
 ## jsx-children-type
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 `children` is what JSX passes: type it `ReactNode`, `JSX.Element`, `string` or `number`. Taking rendered children apart isn't supported.
 
@@ -1002,15 +1002,15 @@ Status: **refused**. Diagnostic: `Z4001`.
 
 ## jsx-config-reachable
 
-Status: **refused**. Diagnostic: `Z1003`.
+Status: **refused**. Diagnostic: `F1003`.
 
-A `.tsx` module the config imports is refused even when its JSX never runs; components live in `zero/components/`.
+A `.tsx` module the config imports is refused even when its JSX never runs; components live in `first/components/`.
 
 [Evidence](../tests/fixtures/reject-jsx-config-unused)
 
 ## jsx-use-client-after-prologue
 
-Status: **refused**. Diagnostic: `Z1003`.
+Status: **refused**. Diagnostic: `F1003`.
 
 The directive is found anywhere in the file's directive prologue, after comments and other directives such as `"use strict"`.
 
@@ -1018,7 +1018,7 @@ The directive is found anywhere in the file's directive prologue, after comments
 
 ## jsx-children-type-local
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
 Every component's `children`, exported or local, is checked where JSX calls it.
 
@@ -1026,8 +1026,8 @@ Every component's `children`, exported or local, is checked where JSX calls it.
 
 ## jsx-style-spelling
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
-Browsers read `STYLE` and `Style` as `style`, which Zero narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key.
+Browsers read `STYLE` and `Style` as `style`, which First narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key.
 
 [Evidence](../tests/fixtures/reject-jsx-style-case)

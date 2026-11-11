@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 
-const backend = process.env.ZERO_DEV_URL ?? "http://localhost:8794";
+const backend = process.env.FIRST_DEV_URL ?? "http://localhost:8794";
 
 export default defineConfig({
   base: "./",

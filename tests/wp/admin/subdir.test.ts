@@ -1,4 +1,4 @@
-// The zero-admin plugin on a WordPress installed below the origin root (lane A, design §2.4): the
+// The first-admin plugin on a WordPress installed below the origin root (lane A, design §2.4): the
 // mount, wp-admin and login URLs it derives all carry the sub-path, so a direct route resolves and
 // the legacy frame is pointed at the real wp-admin. The stack is ../admin/subdir-run.sh's; the
 // receipt's url is http://host/blog.
@@ -22,21 +22,21 @@ function bootPayload(html: string): { menuItems: any[]; context: Record<string, 
 
 test("the admin is installed below the site root and derives every URL from it", async () => {
   assert.equal(subdir, "/blog", "this lane runs WordPress at /blog");
-  assert.equal(wp("plugin", "get", "zero-admin", "--field=status"), "active");
+  assert.equal(wp("plugin", "get", "first-admin", "--field=status"), "active");
 
   // A direct route under the mount is the plugin's, and anonymous visitors go to this site's login.
-  const anon = await fetch(`${site}/zero-admin/media`, { redirect: "manual" });
+  const anon = await fetch(`${site}/first-admin/media`, { redirect: "manual" });
   assert.equal(anon.status, 302);
   assert.ok(anon.headers.get("location")!.startsWith(`${site}/wp-login.php?`), `login lives under the sub-path: ${anon.headers.get("location")}`);
 
   // Signed in, the same URL serves the app, and the payload tells it where it is mounted and
   // where wp-admin is, both under /blog/.
-  const page = await fetch(`${site}/zero-admin/media`, { headers: { cookie: await loginCookie(site, "editor", `${site}/zero-admin/media`) } });
+  const page = await fetch(`${site}/first-admin/media`, { headers: { cookie: await loginCookie(site, "editor", `${site}/first-admin/media`) } });
   assert.equal(page.status, 200);
   const html = await page.text();
-  assert.ok(html.includes('id="zero-admin-app"'));
+  assert.ok(html.includes('id="first-admin-app"'));
   const { context, menuItems } = bootPayload(html);
-  assert.equal(context.mount_url, `${site}/zero-admin/`);
+  assert.equal(context.mount_url, `${site}/first-admin/`);
   assert.equal(context.admin_url, `${site}/wp-admin/`);
   assert.equal(context.logout_url && String(context.logout_url).startsWith(`${site}/wp-login.php?action=logout`), true);
   assert.ok(Array.isArray(menuItems));

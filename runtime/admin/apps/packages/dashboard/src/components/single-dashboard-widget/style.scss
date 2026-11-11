@@ -1,7 +1,7 @@
 @use "@wordpress/base-styles/colors";
 @use "@wordpress/base-styles/variables";
 
-.zero-admin-dashboard-widget {
+.first-admin-dashboard-widget {
 	display: flex;
 	flex-direction: column;
 	background: var( --wpds-color-bg-surface-neutral-strong );
@@ -18,15 +18,15 @@
 	}
 }
 
-.zero-admin-dashboard-widget--fixed-height {
+.first-admin-dashboard-widget--fixed-height {
 	height: 100%;
 }
 
-.zero-admin-dashboard-widget__header {
+.first-admin-dashboard-widget__header {
 	padding: calc( 4 * var( --wpds-dimension-base ) );
 }
 
-.zero-admin-dashboard-widget__settings {
+.first-admin-dashboard-widget__settings {
 	position: absolute;
 	top: variables.$grid-unit-20;
 	right: variables.$grid-unit-20;
@@ -34,7 +34,7 @@
 	background-color: var( --wpds-color-bg-surface-neutral-strong );
 }
 
-.zero-admin-dashboard-widget__content {
+.first-admin-dashboard-widget__content {
 	overflow: auto;
 	padding: 0 calc( 4 * var( --wpds-dimension-base ) )
 		calc( 4 * var( --wpds-dimension-base ) );
@@ -42,11 +42,11 @@
 	min-height: 0; // Allows flex item to shrink and overflow
 }
 
-.zero-admin-dashboard-widget__content--no-padding {
+.first-admin-dashboard-widget__content--no-padding {
 	padding: 0;
 }
 
-.zero-admin-dashboard-widget--fade-overlay {
+.first-admin-dashboard-widget--fade-overlay {
 	&::after {
 		content: "";
 		position: absolute;
@@ -64,7 +64,7 @@
 	}
 }
 
-.zero-admin-dashboard-widget__title {
+.first-admin-dashboard-widget__title {
 	margin: 0;
 	padding: 0;
 	color: var( --wpds-color-fg-content-neutral );
@@ -74,11 +74,11 @@
 	line-height: var( --wpds-font-line-height-md );
 }
 
-.zero-admin-dashboard-widget__description {
+.first-admin-dashboard-widget__description {
 	color: var( --wpds-color-fg-content-neutral-weak );
 }
 
-.zero-admin-dashboard-widget-actions {
+.first-admin-dashboard-widget-actions {
 	position: absolute;
 	top: variables.$grid-unit-10;
 	right: variables.$grid-unit-10;
@@ -87,12 +87,12 @@
 	box-sizing: border-box;
 }
 
-.zero-admin-dashboard-widget__info-icon {
+.first-admin-dashboard-widget__info-icon {
 	color: var( --wpds-color-fg-content-neutral-weak );
 	display: flex;
 }
 
-.zero-admin-dashboard-widget__info-tooltip {
+.first-admin-dashboard-widget__info-tooltip {
 	max-width: 240px;
 	text-align: left;
 }

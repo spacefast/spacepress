@@ -1,6 +1,6 @@
 @use "@wordpress/base-styles/variables";
 
-.zero-admin-sidebar-dropdown-item__children {
+.first-admin-sidebar-dropdown-item__children {
 	display: flex;
 	flex-direction: column;
 
@@ -17,11 +17,11 @@
 		$padding-to-avoid-cutting-focus-ring;*/
 	overflow: hidden;
 
-	.zero-admin-sidebar-navigation-item {
+	.first-admin-sidebar-navigation-item {
 		padding-left: variables.$grid-unit-40;
 	}
 }
 
-.zero-admin-sidebar-dropdown-item__chevron.is-up {
+.first-admin-sidebar-dropdown-item__chevron.is-up {
 	transform: rotate( 180deg );
 }

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Calls multiple {@link LoaderInterface} instances in a chain.

@@ -1,6 +1,6 @@
 The first four uri-vectors.json inputs and their use in cases.ts are adapted from searchfe/ts2php,
 test/runtime/spec/Ts2Php_HelperTest.php::testencodeURI at revision
-104b497d558d112c5b80cd370b7bcc0f43a29d51. Other inputs are Zero additions.
+104b497d558d112c5b80cd370b7bcc0f43a29d51. Other inputs are First additions.
 Expected values are generated independently by Node.
 
 MIT License

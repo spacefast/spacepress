@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Denormalizer;
+namespace First\Identity\Vendor\Webauthn\Denormalizer;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
-use Zero\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
+use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 final readonly class AttestationStatementDenormalizer implements DenormalizerInterface
 {

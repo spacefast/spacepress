@@ -13,7 +13,7 @@
       "kind": "blob"
     }
   },
-  "zeroBaseline": "ec9bcb79bb23bce0a0d9d97643e504c77cae61e5",
+  "firstBaseline": "ec9bcb79bb23bce0a0d9d97643e504c77cae61e5",
   "qualification": {
     "status": "partial",
     "meaning": "Source audit complete. Recorded native application and browser runs prove explicitly listed subsets on WordPress Studio/SQLite, including final plugin acceptance without a destructive restart override. Source entries, providers and broader upstream contracts are not promoted by a passing owner suite.",
@@ -41,13 +41,13 @@
       "npm --prefix examples/emdash ci",
       "npm --prefix examples/emdash exec -- playwright install chromium",
       "Native WordPress Studio 2.1.1 downloads/runtime available",
-      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with ZERO_BIN",
+      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with FIRST_BIN",
       "npm --prefix examples/emdash/official-sites ci --ignore-scripts when selecting official-source; the runner performs this automatically"
     ],
     "cwd": "repository root",
     "commands": {
       "blank": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/starter/acceptance.test.mjs",
         "testPath": "examples/emdash/starter/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -57,7 +57,7 @@
         "scope": "Only executedRuns.publishing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "starter": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/starter/acceptance.test.mjs",
         "testPath": "examples/emdash/starter/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -67,7 +67,7 @@
         "scope": "Only executedRuns.publishing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "blog": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/starter/acceptance.test.mjs",
         "testPath": "examples/emdash/starter/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -77,7 +77,7 @@
         "scope": "Only executedRuns.publishing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "marketing": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/marketing/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/marketing/acceptance.test.mjs",
         "testPath": "examples/emdash/marketing/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -87,7 +87,7 @@
         "scope": "Only executedRuns.marketing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "portfolio": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/portfolio/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/portfolio/acceptance.test.mjs",
         "testPath": "examples/emdash/portfolio/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -97,7 +97,7 @@
         "scope": "Only executedRuns.portfolio.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "plugins": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/plugins/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/plugins/acceptance.test.mjs",
         "testPath": "examples/emdash/plugins/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -107,7 +107,7 @@
         "scope": "Only executedRuns.plugins.scope is qualified. Form builder/delivery, complete widgets/marketplace, remote embeds and AI/PDS/Worker isolation remain gaps."
       },
       "agents": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/agents/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/agents/acceptance.test.mjs",
         "testPath": "examples/emdash/agents/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -117,7 +117,7 @@
         "scope": "Only executedRuns.agents.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "platform": {
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/platform/acceptance.test.mjs",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/platform/acceptance.test.mjs",
         "testPath": "examples/emdash/platform/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -131,17 +131,17 @@
         "testPath": "examples/emdash/official-sites/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
-        "scope": "Original pinned blank/starter/blog Astro sources against compiled Zero/native WordPress, including the official reading-time helper as compiled PHP. Full source acceptance is separate from earlier PHP frontend counterparts; provider and inline-editor gaps remain.",
+        "scope": "Original pinned blank/starter/blog Astro sources against compiled First/native WordPress, including the official reading-time helper as compiled PHP. Full source acceptance is separate from earlier PHP frontend counterparts; provider and inline-editor gaps remain.",
         "evidence": [
           "official-source"
         ]
       }
     },
-    "lifecycleCommand": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test scripts/dev/acceptance.test.mjs",
+    "lifecycleCommand": "FIRST_BIN=\"$PWD/target/debug/first\" node --test scripts/dev/acceptance.test.mjs",
     "lifecycleStatus": "proven",
     "resourceContract": [
       "Unique disposable project per run",
-      "Dynamically allocated port and project .zero/dev ownership receipt",
+      "Dynamically allocated port and project .first/dev ownership receipt",
       "Dedicated database/uploads and exact Studio site registration",
       "Stop only owned project; delete only owned exact Studio path; retain cleanup evidence",
       "Full native admin/plugins/settings, credentials, data and unrelated plugins preserved"
@@ -152,7 +152,7 @@
       "Mocks presented as live provider proof"
     ],
     "scopeWarning": "These suites cover selected cross-surface seams; even when every suite passes, mapped upstream gaps remain gaps. Prior compiler/JS semantics and lower-level WordPress regressions still belong to their existing owners.",
-    "publicationBrowserCommand": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/starter/browser.test.mjs",
+    "publicationBrowserCommand": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/starter/browser.test.mjs",
     "publicationBrowserStatus": "proven",
     "runner": {
       "command": "node examples/emdash/test.mjs",
@@ -168,19 +168,19 @@
       ],
       "selectionExample": "node examples/emdash/test.mjs marketing portfolio",
       "optionalLifecycle": "node examples/emdash/test.mjs lifecycle",
-      "build": "Runs cargo build --locked unless ZERO_BIN selects an existing matching binary.",
+      "build": "Runs cargo build --locked unless FIRST_BIN selects an existing matching binary.",
       "execution": "Sequential; each suite owns its disposable Studio resources.",
       "lastCombinedResult": "All eight default suites passed on the integrated compiler. The combined run used Astro 7.3.2 and Zod 4.3.6 installed before the dependency patch. All four original-source application tests then passed again on patched Astro 7.4.5/Zod 4.6.7; their source bytes and compiler binary were unchanged.",
-      "receipt": "zero-emdash-suite-kuMcTd/results.json",
+      "receipt": "first-emdash-suite-kuMcTd/results.json",
       "binarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
       "revision": "c3925fe5ec511063ae7487470b6fba8185a71dbd",
       "combinedDependencies": {
         "astro": "7.3.2",
         "zod": "4.3.6"
       },
-      "previousTargetedReceipt": "zero-emdash-suite-XCi02S/results.json",
+      "previousTargetedReceipt": "first-emdash-suite-XCi02S/results.json",
       "previousTargetedBinarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7",
-      "finalTargetedReceipt": "zero-emdash-suite-Pfve5p/results.json",
+      "finalTargetedReceipt": "first-emdash-suite-Pfve5p/results.json",
       "finalTargetedBinarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
       "finalTargetedScope": "Original-source applications on patched frontend dependencies; prior native suites retain their exact integrated receipt."
     },
@@ -188,9 +188,9 @@
       "publishing": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native zero dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/starter/acceptance.test.mjs",
-        "artifact": "zero-emdash-publishing-evidence-5wTIhg",
+        "runtime": "Native first dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "artifact": "first-emdash-publishing-evidence-5wTIhg",
         "result": "4 tests passed; 0 failed",
         "files": [
           "results.json",
@@ -207,18 +207,18 @@
         ],
         "cleanup": "Run output confirms exact project stop, Studio unregister and project removal for blank, starter and blog.",
         "previousArtifacts": [
-          "zero-emdash-publishing-evidence-BSweL8",
-          "zero-emdash-publishing-evidence-uzjS3j"
+          "first-emdash-publishing-evidence-BSweL8",
+          "first-emdash-publishing-evidence-uzjS3j"
         ],
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901",
-        "runnerReceipt": "zero-emdash-suite-elxR7b/results.json"
+        "runnerReceipt": "first-emdash-suite-elxR7b/results.json"
       },
       "publishing-browser": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native zero dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/starter/browser.test.mjs",
-        "artifact": "zero-emdash-publishing-browser-l9kdQ5",
+        "runtime": "Native first dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/starter/browser.test.mjs",
+        "artifact": "first-emdash-publishing-browser-l9kdQ5",
         "result": "1 test passed; 0 failed",
         "files": [
           "results.json",
@@ -236,18 +236,18 @@
         ],
         "cleanup": "cleanup.json records exact owned-site cleanup.",
         "previousArtifacts": [
-          "zero-emdash-publishing-browser-ccXHSk",
-          "zero-emdash-publishing-browser-H6WRJC"
+          "first-emdash-publishing-browser-ccXHSk",
+          "first-emdash-publishing-browser-H6WRJC"
         ],
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901",
-        "runnerReceipt": "zero-emdash-suite-elxR7b/results.json"
+        "runnerReceipt": "first-emdash-suite-elxR7b/results.json"
       },
       "marketing": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native zero dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/marketing/acceptance.test.mjs",
-        "artifact": "zero-emdash-marketing-o5N2dU",
+        "runtime": "Native first dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/marketing/acceptance.test.mjs",
+        "artifact": "first-emdash-marketing-o5N2dU",
         "result": "1 test passed; 0 failed",
         "files": [
           "evidence/results.json",
@@ -265,7 +265,7 @@
         "cleanup": "cleanup.json confirms exact owned-site stop/unregister; project removed.",
         "additionalEvidence": [
           {
-            "artifact": "zero-emdash-marketing-browser-gIbAzr",
+            "artifact": "first-emdash-marketing-browser-gIbAzr",
             "files": [
               "evidence/browser-results.json",
               "evidence/cleanup.json"
@@ -277,18 +277,18 @@
           }
         ],
         "previousArtifacts": [
-          "zero-emdash-marketing-z9zCnI",
-          "zero-emdash-marketing-ruwV5j"
+          "first-emdash-marketing-z9zCnI",
+          "first-emdash-marketing-ruwV5j"
         ],
-        "runnerReceipt": "zero-emdash-suite-elxR7b/results.json",
+        "runnerReceipt": "first-emdash-suite-elxR7b/results.json",
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901"
       },
       "portfolio": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native zero dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/portfolio/acceptance.test.mjs",
-        "artifact": "zero-portfolio-evidence-wJXFW3",
+        "runtime": "Native first dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/portfolio/acceptance.test.mjs",
+        "artifact": "first-portfolio-evidence-wJXFW3",
         "result": "1 test passed; 0 failed",
         "files": [
           "PASS.txt",
@@ -306,7 +306,7 @@
         "cleanup": "Deleted receipt plus cleanup audit confirm exact site unregistered and owned root removed.",
         "additionalEvidence": [
           {
-            "artifact": "zero-portfolio-official-media",
+            "artifact": "first-portfolio-official-media",
             "files": [
               "official-media-manifest.json",
               "browser.json",
@@ -319,18 +319,18 @@
           }
         ],
         "previousArtifacts": [
-          "zero-portfolio-acceptance-complete",
-          "zero-portfolio-evidence-KR63J8"
+          "first-portfolio-acceptance-complete",
+          "first-portfolio-evidence-KR63J8"
         ],
-        "runnerReceipt": "zero-emdash-suite-elxR7b/results.json",
+        "runnerReceipt": "first-emdash-suite-elxR7b/results.json",
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901"
       },
       "agents": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native zero dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/agents/acceptance.test.mjs",
-        "artifact": "zero-emdash-agents-UJoDyI",
+        "runtime": "Native first dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/agents/acceptance.test.mjs",
+        "artifact": "first-emdash-agents-UJoDyI",
         "result": "1 test passed; 0 failed",
         "files": [
           "evidence.json",
@@ -347,18 +347,18 @@
         ],
         "cleanup": "evidence.json confirms exact Studio registration deleted, site offline and project removed.",
         "previousArtifacts": [
-          "zero-emdash-agents-AYnTFW",
-          "zero-emdash-agents-dB85UD"
+          "first-emdash-agents-AYnTFW",
+          "first-emdash-agents-dB85UD"
         ],
-        "runnerReceipt": "zero-emdash-suite-elxR7b/results.json",
+        "runnerReceipt": "first-emdash-suite-elxR7b/results.json",
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901"
       },
       "platform": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native zero dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/platform/acceptance.test.mjs",
-        "artifact": "zero-emdash-platform-X2tWAK-evidence",
+        "runtime": "Native first dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/platform/acceptance.test.mjs",
+        "artifact": "first-emdash-platform-X2tWAK-evidence",
         "result": "1 test passed; all nine journeys passed; 0 failed",
         "files": [
           "results.json",
@@ -372,23 +372,23 @@
           "real PNG upload, original bytes and a served image transform",
           "outbound/inbound HMAC effects using an owned local HTTP receiver",
           "Markdown CLI push/pull, additive/rejected destructive migration and restart persistence",
-          "public locale/relations/media browser rendering and native/Zero admin access"
+          "public locale/relations/media browser rendering and native/First admin access"
         ],
         "cleanup": "cleanup.json records stopped=true, registrationDeleted=true and filesDeleted=true.",
         "previousArtifacts": [
-          "zero-emdash-platform-vovpOc-evidence",
-          "zero-emdash-platform-LdwgT5-evidence",
-          "zero-emdash-platform-C97Oqq-evidence"
+          "first-emdash-platform-vovpOc-evidence",
+          "first-emdash-platform-LdwgT5-evidence",
+          "first-emdash-platform-C97Oqq-evidence"
         ],
-        "runnerReceipt": "zero-emdash-suite-XCi02S/results.json",
+        "runnerReceipt": "first-emdash-suite-XCi02S/results.json",
         "binarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7"
       },
       "lifecycle": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native zero dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test scripts/dev/acceptance.test.mjs",
-        "artifact": "zero-numeric-preservation-KzA5IF",
+        "runtime": "Native first dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test scripts/dev/acceptance.test.mjs",
+        "artifact": "first-numeric-preservation-KzA5IF",
         "result": "1 test passed; 0 failed",
         "files": [
           "acceptance.log"
@@ -404,8 +404,8 @@
       "plugins-prior": {
         "status": "partial",
         "date": "2026-11-03",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/plugins/acceptance.test.mjs",
-        "artifact": "zero-official-plugins-Lv7szC-evidence",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/plugins/acceptance.test.mjs",
+        "artifact": "first-official-plugins-Lv7szC-evidence",
         "files": [
           "results.json",
           "cleanup.json"
@@ -415,7 +415,7 @@
         "binarySha256": "b55d5cca9760c7259ebe8a7f266bf1283fc0db6fcb649d66ed4e99b2ebdcec32",
         "runtime": "Native WordPress Studio 2.1.1, PHP, SQLite, SCF and Action Scheduler; actual local HTTP receiver.",
         "scope": [
-          "native Zero/REST/SCF structured saves and persisted color/object/list/grid/tag data",
+          "native First/REST/SCF structured saves and persisted color/object/list/grid/tag data",
           "options/table/action/taxonomy and scheduled diagnostics",
           "actual Abilities and MCP echo/discovery with anonymous denial",
           "public multi-page form submission, conditional validation, honeypot, media upload and private persisted inbox",
@@ -431,8 +431,8 @@
       "plugins": {
         "status": "proven",
         "date": "2026-11-03",
-        "command": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test examples/emdash/plugins/acceptance.test.mjs",
-        "artifact": "zero-official-plugins-VIXf1f-evidence",
+        "command": "FIRST_BIN=\"$PWD/target/debug/first\" node --test examples/emdash/plugins/acceptance.test.mjs",
+        "artifact": "first-official-plugins-VIXf1f-evidence",
         "files": [
           "results.json",
           "cleanup.json",
@@ -444,12 +444,12 @@
         "binarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7",
         "runtime": "Native WordPress Studio 2.1.1, PHP, SQLite, SCF and Action Scheduler; actual local HTTP receiver.",
         "scope": [
-          "native Zero/REST/SCF structured saves and persisted color/object/list/grid/tag data",
+          "native First/REST/SCF structured saves and persisted color/object/list/grid/tag data",
           "options/table/action/taxonomy and scheduled diagnostics",
           "actual Abilities and MCP echo/discovery with anonymous denial",
           "public multi-page form submission, conditional validation, honeypot, media upload and private persisted inbox",
           "public YouTube/Vimeo markup from saved fields; no remote playback/provider proof",
-          "local notifier sends Bearer authorization plus x-zero-signature HMAC; real HTTP 503/retry observed",
+          "local notifier sends Bearer authorization plus x-first-signature HMAC; real HTTP 503/retry observed",
           "plugin lifecycle/uninstall, unrelated-plugin coexistence and unchanged bounded-field restart persistence",
           "native password protection gates workshop detail/list/search/export",
           "optional empty browser email, URL, date and number fields submit successfully",
@@ -461,18 +461,18 @@
         ],
         "cleanup": "cleanup.json and passing run output confirm exact owned site stopped/unregistered and project deleted.",
         "previousArtifacts": [
-          "zero-official-plugins-5m1GnF-evidence",
-          "zero-official-plugins-5BVhak-evidence",
-          "zero-official-plugins-BFA744-evidence"
+          "first-official-plugins-5m1GnF-evidence",
+          "first-official-plugins-5BVhak-evidence",
+          "first-official-plugins-BFA744-evidence"
         ],
-        "runnerReceipt": "zero-emdash-suite-XCi02S/results.json"
+        "runnerReceipt": "first-emdash-suite-XCi02S/results.json"
       },
       "official-source": {
         "status": "proven",
         "date": "2026-11-03",
         "runtime": "Native WordPress Studio 2.1.1/PHP/SQLite with original Astro Node frontends and Chromium.",
         "command": "node examples/emdash/test.mjs official-source",
-        "artifact": "zero-official-full-app-pi9HkO",
+        "artifact": "first-official-full-app-pi9HkO",
         "result": "4 tests passed; 0 failed; 0 skipped",
         "files": [
           "results.json",
@@ -491,8 +491,8 @@
           "Original reading-time algorithm executes as compiled PHP over native HTTP"
         ],
         "cleanup": "Exact three final projects and all earlier owned projects absent; frontends/backends offline; no owned Studio registrations remain.",
-        "boundaries": "Astro compiles to Node/browser JavaScript. Zero backend and selected helper TS compile to PHP. Provider infrastructure, plugin contributions, staged inline edits and sandbox parity are not qualified.",
-        "runnerReceipt": "zero-emdash-suite-Pfve5p/results.json",
+        "boundaries": "Astro compiles to Node/browser JavaScript. First backend and selected helper TS compile to PHP. Provider infrastructure, plugin contributions, staged inline edits and sandbox parity are not qualified.",
+        "runnerReceipt": "first-emdash-suite-Pfve5p/results.json",
         "binarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
         "dependencies": {
           "astro": "7.4.5",
@@ -513,11 +513,11 @@
       "sourceCommit": "3097db014cec5aed81c7c4e69650d5cddc657bc2",
       "binarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7",
       "command": "tests/php/run.sh",
-      "result": "All fifteen PHP suites passed; native REST, Zero REST and public-page leak reproductions passed for marketing and portfolio.",
+      "result": "All fifteen PHP suites passed; native REST, First REST and public-page leak reproductions passed for marketing and portfolio.",
       "artifacts": [
-        "zero-native-password-param-final.log",
-        "zero-official-plugins-cIvnG3-marketing-password-evidence",
-        "zero-official-plugins-JMiEUm-portfolio-password-evidence"
+        "first-native-password-param-final.log",
+        "first-official-plugins-cIvnG3-marketing-password-evidence",
+        "first-official-plugins-JMiEUm-portfolio-password-evidence"
       ],
       "scope": [
         "Hidden rows cannot leak through filters, projections, pagination, relation matching, HTTP or Abilities.",
@@ -533,7 +533,7 @@
       "owner": "blank",
       "contract": "An empty public welcome page links to the complete CMS admin; no invented sample collections.",
       "requiredProof": "GET welcome page, follow admin link, log in, open Plugins and Settings; retain unrelated plugins and user data.",
-      "zeroCounterpart": "examples/emdash/blank",
+      "firstCounterpart": "examples/emdash/blank",
       "acceptanceCommand": "blank",
       "status": "proven",
       "evidence": [
@@ -545,7 +545,7 @@
       "owner": "starter",
       "contract": "Editable posts/pages, stable slugs, drafts, media, categories/tags, navigation, site title and native admin.",
       "requiredProof": "Create a draft through native WordPress REST/SCF, verify anonymous reads hide it, publish and follow public home/archive/detail/term/menu links; save native settings and observe frontend.",
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "acceptanceCommand": "starter",
       "status": "partial",
       "evidence": [
@@ -563,7 +563,7 @@
       "owner": "blog",
       "contract": "Featured hero, reading time, bylines, related posts, category/tag archives, cursor pages, search, comments, widgets, RSS, SEO/JSON-LD, theme and not-found states.",
       "requiredProof": "Native save must change actual public HTML; search a newly saved token, inspect XML feed and metadata, publish/moderate a comment and observe public effect; check archives and next-page links.",
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "acceptanceCommand": "blog",
       "status": "partial",
       "evidence": [
@@ -580,7 +580,7 @@
       "owner": "marketing",
       "contract": "Eleven editable blocks: hero, features, testimonials, pricing, FAQ, logos, split text/image, stats, CTA, contact and text; arbitrary pages, menus, SEO, theme.",
       "requiredProof": "Reorder/duplicate/add blocks with a real native REST/SCF save, read them back, and inspect resulting public order; create a new page without adding a route file. Contact links send email directly; template has no submission backend.",
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "acceptanceCommand": "marketing",
       "status": "partial",
       "evidence": [
@@ -592,7 +592,7 @@
       "owner": "portfolio",
       "contract": "Projects, galleries, featured selection with newest fallback, work tag filtering/pagination, next project, page layouts, about/contact placeholders, RSS, SEO and theme.",
       "requiredProof": "Upload actual images, save gallery/project/page fields through native WordPress REST/SCF and observe public work/detail/filter/feed; verify unknown term and slug responses and Home redirect.",
-      "zeroCounterpart": "examples/emdash/portfolio",
+      "firstCounterpart": "examples/emdash/portfolio",
       "acceptanceCommand": "portfolio",
       "status": "partial",
       "evidence": [
@@ -604,7 +604,7 @@
       "owner": "plugins",
       "contract": "Content create/update/delete and media-upload events persist audit history, including before/after data where available.",
       "requiredProof": "Make real native content/media changes and query durable audit rows from the publicized history/admin API; do not assert hook invocation.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "partial",
       "evidence": [
@@ -617,9 +617,9 @@
     },
     "webhooks": {
       "owner": "plugins",
-      "contract": "Configured content/media webhook delivery with optional Bearer-token authorization, delivery history, retries and URL safety. Zero built-in webhooks use HMAC; preserve and document that different wire contract.",
+      "contract": "Configured content/media webhook delivery with optional Bearer-token authorization, delivery history, retries and URL safety. First built-in webhooks use HMAC; preserve and document that different wire contract.",
       "requiredProof": "Deliver actual event bytes to an owned real HTTP receiver, verify the declared Bearer-token or HMAC contract, inspect persisted attempts, and retry failure. Local transport is not external SaaS evidence.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "partial",
       "evidence": [
@@ -634,7 +634,7 @@
       "owner": "plugins",
       "contract": "YouTube, Vimeo, Twitter/X, Bluesky, Mastodon, link previews and Gists render from saved content with sanitization.",
       "requiredProof": "Save representative embed fields through native REST/SCF, load real public HTML and verify approved markup/unsafe input behavior; remote playback, oEmbed and metadata need real reachable providers.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "partial",
       "evidence": [
@@ -647,7 +647,7 @@
       "owner": "plugins",
       "contract": "Color hex field and composable JSON object, ordered list, grid and tags widgets preserve values and order.",
       "requiredProof": "Save group/repeater/grid/tags/color through native REST/SCF and inspect resulting public output. JSON storage alone does not prove an editable grid or color-picker UI.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "partial",
       "evidence": [
@@ -664,7 +664,7 @@
       "owner": "plugins",
       "contract": "Admin-defined forms, validation, submission persistence, spam controls and email notifications.",
       "requiredProof": "Submit an actual rendered form, read stored submission, verify validation/honeypot behavior and an observed delivery result. WordPress mail interception proves dispatch only; delivered mail needs a provider.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "partial",
       "evidence": [
@@ -677,7 +677,7 @@
       "owner": "plugins",
       "contract": "Llama Guard comment moderation with configurable categories and clean-comment approval.",
       "requiredProof": "Run real provider-backed clean/flagged comments and inspect persisted moderation and frontend visibility.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
       "evidence": [],
@@ -687,7 +687,7 @@
       "owner": "plugins",
       "contract": "Published content and bylines are indexed in Cloudflare AI Search; deletion/unpublish removes indexed data; public modal and agent search consume results.",
       "requiredProof": "Index native content into a real owned AI Search instance and observe search, removal and attribution in actual responses.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
       "evidence": [],
@@ -697,7 +697,7 @@
       "owner": "plugins",
       "contract": "Syndicate publications/documents and optional Bluesky posts; update/delete, status and metadata links track real PDS records.",
       "requiredProof": "Publish using a disposable PDS account, read the real created record/blob, update/delete and inspect status; restore credentials and do not touch personal accounts.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
       "evidence": [],
@@ -707,7 +707,7 @@
       "owner": "plugins",
       "contract": "Private API fixture exercises plugin identity, KV, storage, content, media and network access.",
       "requiredProof": "Use actual WordPress options/tables/content/media/network effects only where the adaptation declares them; label EmDash PluginContext differences.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "partial",
       "evidence": [
@@ -719,7 +719,7 @@
       "owner": "agents",
       "contract": "Private mcp-smoke echo tool validates a 1–200 character message and returns message plus length.",
       "requiredProof": "Authenticate a real MCP connection, discover and call the generated named tool, inspect value/schema and denied access; observe a subsequent content operation through REST/public page.",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "partial",
       "evidence": [
@@ -734,7 +734,7 @@
       "owner": "plugins",
       "contract": "Worker-isolate capabilities, host allowlists, tenant/plugin storage isolation, consent, lifecycle and Block Kit fixture surfaces.",
       "requiredProof": "Run the actual sandbox boundary and prove denied capabilities/network targets cannot cause effects.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
       "evidence": [],
@@ -744,7 +744,7 @@
       "owner": "agents",
       "contract": "Generated WordPress Abilities and MCP tools execute actual content/global/action/job operations with role/field access and agents visibility.",
       "requiredProof": "Authenticate actual MCP HTTP JSON-RPC; run discoverable operations, verify content/native-editor/public effects and a denied low-privilege operation. Execute a job and observe persisted result.",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "partial",
       "evidence": [
@@ -760,17 +760,17 @@
       "owner": "agents",
       "contract": "Official agent tutorial creates/changes collections and block schemas at runtime, then refreshes generated types.",
       "requiredProof": "Use the claimed agent operation to change schema and persist/read content through the new model.",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "evidence": [],
-      "limitation": "Zero models live in compiled zero.config.ts. Editing config and rebuilding is a supported different workflow, not EmDash runtime schema-mutation MCP parity."
+      "limitation": "First models live in compiled first.config.ts. Editing config and rebuilding is a supported different workflow, not EmDash runtime schema-mutation MCP parity."
     },
     "editorial": {
       "owner": "platform",
       "contract": "Draft visibility, scheduling, autosaves, revisions, trash and restoration affect real native WordPress content.",
       "requiredProof": "Use real REST/native editor saves, execute the actual cron signal where needed, restore a revision and check public visibility/content.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
       "evidence": [
@@ -787,7 +787,7 @@
       "owner": "agents",
       "contract": "Updating a published EmDash item stages a draft while live content remains unchanged; compare/discard/promote use optimistic _rev and edit-lock semantics.",
       "requiredProof": "Edit a published item through the claimed API, prove live content remains old, compare/discard/publish, then exercise stale revision and held lock.",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "evidence": [],
@@ -797,7 +797,7 @@
       "owner": "platform",
       "contract": "Native uploads, local serving, attachment metadata, gallery fields, generated image sizes and private file authorization.",
       "requiredProof": "Upload actual bytes, fetch the served original and variants, save/use attachment IDs through SCF and check authorized versus anonymous private-file access.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
       "evidence": [
@@ -815,7 +815,7 @@
       "owner": "platform",
       "contract": "Localized content, related writers and translated public presentation.",
       "requiredProof": "Save English/French via actual native REST/Polylang, request each locale publicly and verify field values and linked records.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
       "evidence": [
@@ -828,9 +828,9 @@
     },
     "app-data": {
       "owner": "platform",
-      "contract": "Tables, collections, user projections, relations, transactions, hooks, jobs, signed incoming/outgoing webhooks and access rules retain prior Zero behavior.",
+      "contract": "Tables, collections, user projections, relations, transactions, hooks, jobs, signed incoming/outgoing webhooks and access rules retain prior First behavior.",
       "requiredProof": "Drive real persisted rows/relations, hook normalization, queued job completion and signed HTTP effects; exercise a rejected operation with no mutation.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
       "evidence": [
@@ -847,8 +847,8 @@
     "sync": {
       "owner": "platform",
       "contract": "Markdown sync, stable IDs and conflicting native changes preserve data.",
-      "requiredProof": "Run zero sync against owned native WordPress, make an actual native edit, pull/push and inspect canonical content and conflict result.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "requiredProof": "Run first sync against owned native WordPress, make an actual native edit, pull/push and inspect canonical content and conflict result.",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
       "evidence": [
@@ -864,7 +864,7 @@
       "owner": "platform",
       "contract": "Native identity sessions, members, application passwords, role checks and full admin/plugins/settings remain usable.",
       "requiredProof": "Authenticate actual requests; restart owned site and verify credentials, content, uploads, and an unrelated plugin persist.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
       "evidence": [
@@ -881,7 +881,7 @@
       "owner": "platform",
       "contract": "Docker-free Studio dev owns its dynamic port, receipt, database, uploads, rebuilds and exact registration cleanup.",
       "requiredProof": "Use public dev/status/wp/stop lifecycle in an isolated temp project; verify owner receipt and exact Studio deletion. Never stop or delete a different site.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
       "evidence": [
@@ -897,7 +897,7 @@
       "owner": "platform",
       "contract": "Signed draft preview hydrates an isolated database from a source snapshot; signatures and expiry select per-session data.",
       "requiredProof": "Observe a signed snapshot preview isolated from source and other sessions, then reject expired/tampered tokens.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -907,7 +907,7 @@
       "owner": "platform",
       "contract": "Per-browser disposable content/database/storage session with bundled seed media, reset/expiry and no ordinary setup flow.",
       "requiredProof": "Two independent browser sessions edit separate data and media, then observe owned-session reset/expiry.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -917,7 +917,7 @@
       "owner": "platform",
       "contract": "D1 sessions/read consistency, R2, Access role provisioning, Images/Stream, Worker Loader, edge cache and locale fallback.",
       "requiredProof": "Run explicitly credential-gated real provider contracts; observe remote resource identifiers/effects.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -927,7 +927,7 @@
       "owner": "platform",
       "contract": "Blog content on the PostgreSQL adapter, including migrations, queries and persistence.",
       "requiredProof": "Run the real adapter against actual PostgreSQL and serve/save the blog.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -937,7 +937,7 @@
       "owner": "platform",
       "contract": "Portable export/analyze/import/resume/receipt, principals/media/comments mapping and approvals.",
       "requiredProof": "Export actual content/media from an owned source, import into another owned site, resume interruption and verify effects and receipt.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -947,7 +947,7 @@
       "owner": "blog",
       "contract": "Per-entry/site SEO, JSON-LD, canonical/open graph, sitemap, robots, redirects and 404 tracking.",
       "requiredProof": "Save real native SEO fields/settings, request actual public metadata/feed/sitemap/redirect and verify output and persisted 404 where claimed.",
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "acceptanceCommand": "blog",
       "status": "partial",
       "evidence": [
@@ -962,7 +962,7 @@
       "owner": "starter",
       "contract": "Site-managed navigation, centrally shared widget areas and independent-copy reusable sections.",
       "requiredProof": "Save native menu/widget/section equivalents, inspect multiple public pages, and distinguish shared widgets from inserted copies.",
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "acceptanceCommand": "starter",
       "status": "partial",
       "evidence": [
@@ -977,7 +977,7 @@
       "owner": "marketing",
       "contract": "A select field chooses Default/Full Width layout and reusable structured blocks render arbitrary pages.",
       "requiredProof": "Change native layout field, save and inspect actual page layout and content; test duplicate/reorder without losing values.",
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "acceptanceCommand": "marketing",
       "status": "partial",
       "evidence": [
@@ -991,17 +991,17 @@
       "owner": "platform",
       "contract": "Passkeys/magic links, external OAuth providers/AT Protocol, invite and allowlist access.",
       "requiredProof": "Use native identity for local flows; exercise real external provider redirect, token and allowlist outcomes when claiming that provider.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
-      "limitation": "Zero identity is a framework alternative. Atmosphere/Cloudflare Access and each external OAuth flow require their actual providers and separate proof."
+      "limitation": "First identity is a framework alternative. Atmosphere/Cloudflare Access and each external OAuth flow require their actual providers and separate proof."
     },
     "email": {
       "owner": "plugins",
       "contract": "Configured email provider delivers form notifications, login/invitation and transactional email.",
       "requiredProof": "Observe delivery at a real disposable inbox/provider and record message ID; local capture only proves mail construction/dispatch.",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
       "evidence": [],
@@ -1011,7 +1011,7 @@
       "owner": "platform",
       "contract": "HTTP 402 challenge and settlement gating, optional bot-only enforcement and per-entry prices.",
       "requiredProof": "Use real payment/facilitator responses and observe paid versus unpaid route behavior; do not simulate settlement.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -1021,27 +1021,27 @@
       "owner": "agents",
       "contract": "Chat brief clarification, agent-designed model, MCP population, generated frontend, live repair, durable source/CMS history and provider-controlled publishing.",
       "requiredProof": "Run a real model/tool conversation creating and editing a complete native site, stop/resume saved source+CMS state, inspect public effects and publishing result when enabled.",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "evidence": [],
-      "limitation": "echo and CRUD/Abilities prove connectivity only. Zero does not thereby implement BuilderAgent, AI Gateway, Sandbox, Artifacts restoration, or Workers for Platforms publishing."
+      "limitation": "echo and CRUD/Abilities prove connectivity only. First does not thereby implement BuilderAgent, AI Gateway, Sandbox, Artifacts restoration, or Workers for Platforms publishing."
     },
     "content-import": {
       "owner": "platform",
       "contract": "WordPress WXR/exporter and Contentful/Gutenberg conversion retain content, media, author, locale, taxonomy and SEO semantics.",
       "requiredProof": "Import actual exported fixtures into owned native WordPress and check rendered rich text/media/IDs and resumable effects.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
-      "limitation": "Zero already stores Gutenberg directly; EmDash Portable Text converter equivalence and Contentful import are separate unimplemented claims."
+      "limitation": "First already stores Gutenberg directly; EmDash Portable Text converter equivalence and Contentful import are separate unimplemented claims."
     },
     "fts": {
       "owner": "blog",
       "contract": "EmDash FTS ranking/stemming and browser-agent search discovery have observable search semantics.",
       "requiredProof": "Search newly saved terms through real public and agent interfaces and verify supported ranking/matching behavior.",
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "acceptanceCommand": "blog",
       "status": "gap",
       "evidence": [],
@@ -1051,7 +1051,7 @@
       "owner": "blog",
       "contract": "Official archive queries use opaque continuation cursors with stable ordering.",
       "requiredProof": "Follow actual next-page links while saving records; inspect no duplicate/omitted boundary records under the claimed cursor contract.",
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "acceptanceCommand": "blog",
       "status": "gap",
       "evidence": [],
@@ -1061,7 +1061,7 @@
       "owner": "blog",
       "contract": "Multiple reusable bylines include guest identities, linked users and per-locale translations.",
       "requiredProof": "Assign multiple/guest/translated credits through real native authoring and observe public credits and agent readback.",
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "acceptanceCommand": "blog",
       "status": "gap",
       "evidence": [],
@@ -1071,7 +1071,7 @@
       "owner": "starter",
       "contract": "Official public templates carry edit metadata and support inline/visual editing.",
       "requiredProof": "Use an authenticated editor on the live public page, edit a marked field and inspect its saved native/admin/public value.",
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "acceptanceCommand": "starter",
       "status": "gap",
       "evidence": [],
@@ -1081,7 +1081,7 @@
       "owner": "starter",
       "contract": "Official widget areas compose centrally managed components; section insertion makes independent copies.",
       "requiredProof": "Edit widget composition and observe all placements; insert section twice then edit a copy and verify independence.",
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "acceptanceCommand": "starter",
       "status": "gap",
       "evidence": [],
@@ -1091,7 +1091,7 @@
       "owner": "marketing",
       "contract": "Adsense verification/ad script tags and public ads.txt are served; ad approval/serving are external.",
       "requiredProof": "Inspect real public head/script and ads.txt; real Google account needed for approval or ad-delivery claims.",
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "acceptanceCommand": "marketing",
       "status": "gap",
       "evidence": [],
@@ -1101,7 +1101,7 @@
       "owner": "platform",
       "contract": "A site-domain change updates canonical origin, site-managed links and authentication redirects safely.",
       "requiredProof": "Change only an owned disposable site origin, follow generated links and reauthenticate; restore/delete that site.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -1111,7 +1111,7 @@
       "owner": "platform",
       "contract": "Recover complete database plus media with platform-consistent snapshots; not just process restart.",
       "requiredProof": "Restore a snapshot into a second owned native site and verify content, users, media and plugin settings.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -1121,7 +1121,7 @@
       "owner": "portfolio",
       "contract": "A saved dark image variant renders by theme without losing default image/metadata.",
       "requiredProof": "Save both actual attachment variants and inspect public light/dark picture/source selection.",
-      "zeroCounterpart": "examples/emdash/portfolio",
+      "firstCounterpart": "examples/emdash/portfolio",
       "acceptanceCommand": "portfolio",
       "status": "gap",
       "evidence": [],
@@ -1131,7 +1131,7 @@
       "owner": "platform",
       "contract": "Media replacement, focal point/crop, usage tracking and safe deletion update all linked public content.",
       "requiredProof": "Use real native image editing/replacement/deletion and inspect usage, cropped bytes and downstream pages.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -1141,7 +1141,7 @@
       "owner": "platform",
       "contract": "Rich text can include the documented HTML/CSS/JavaScript/page iframe paths under explicit permissions.",
       "requiredProof": "Save through the actual supported native editor path and inspect public execution/rendering and access boundaries.",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
@@ -1183,7 +1183,7 @@
         "blank",
         "identity"
       ],
-      "zeroCounterpart": "examples/emdash/blank",
+      "firstCounterpart": "examples/emdash/blank",
       "owner": "blank",
       "acceptanceCommand": "blank",
       "status": "pending",
@@ -1237,7 +1237,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -1305,7 +1305,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -1368,7 +1368,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "owner": "blog",
       "acceptanceCommand": "blog",
       "status": "pending",
@@ -1440,7 +1440,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "owner": "blog",
       "acceptanceCommand": "blog",
       "status": "pending",
@@ -1495,7 +1495,7 @@
         "marketing",
         "page-layouts"
       ],
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "owner": "marketing",
       "acceptanceCommand": "marketing",
       "status": "pending",
@@ -1557,7 +1557,7 @@
         "page-layouts",
         "cloudflare"
       ],
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "owner": "marketing",
       "acceptanceCommand": "marketing",
       "status": "pending",
@@ -1611,7 +1611,7 @@
         "portfolio",
         "editorial"
       ],
-      "zeroCounterpart": "examples/emdash/portfolio",
+      "firstCounterpart": "examples/emdash/portfolio",
       "owner": "portfolio",
       "acceptanceCommand": "portfolio",
       "status": "pending",
@@ -1674,7 +1674,7 @@
         "editorial",
         "cloudflare"
       ],
-      "zeroCounterpart": "examples/emdash/portfolio",
+      "firstCounterpart": "examples/emdash/portfolio",
       "owner": "portfolio",
       "acceptanceCommand": "portfolio",
       "status": "pending",
@@ -1740,7 +1740,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "owner": "blog",
       "acceptanceCommand": "blog",
       "status": "pending",
@@ -1821,7 +1821,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -1891,7 +1891,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -1954,7 +1954,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -2023,7 +2023,7 @@
         "inline-editing",
         "widget-composition"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -2077,7 +2077,7 @@
         "embeds",
         "plugin-api"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2119,7 +2119,7 @@
       "behaviors": [
         "ai-moderation"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -2155,7 +2155,7 @@
       "behaviors": [
         "ai-search"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -2191,7 +2191,7 @@
       "behaviors": [
         "plugin-api"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2233,7 +2233,7 @@
       "behaviors": [
         "atproto"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -2275,7 +2275,7 @@
       "behaviors": [
         "audit"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2311,7 +2311,7 @@
       "behaviors": [
         "field-kit"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2347,7 +2347,7 @@
       "behaviors": [
         "embeds"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2383,7 +2383,7 @@
       "behaviors": [
         "field-kit"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2419,7 +2419,7 @@
       "behaviors": [
         "forms"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2467,7 +2467,7 @@
       "behaviors": [
         "sandbox"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -2509,7 +2509,7 @@
       "behaviors": [
         "plugin-mcp"
       ],
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "owner": "agents",
       "acceptanceCommand": "agents",
       "status": "pending",
@@ -2551,7 +2551,7 @@
       "behaviors": [
         "sandbox"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -2593,7 +2593,7 @@
       "behaviors": [
         "webhooks"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -2618,7 +2618,7 @@
         "agent-schema",
         "builder"
       ],
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "owner": "agents",
       "acceptanceCommand": "agents",
       "status": "pending",
@@ -2673,7 +2673,7 @@
       "behaviors": [
         "agents"
       ],
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "owner": "agents",
       "acceptanceCommand": "agents",
       "status": "pending",
@@ -2750,7 +2750,7 @@
         "publication",
         "native-lifecycle"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -2837,7 +2837,7 @@
         "publication",
         "native-lifecycle"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -2920,7 +2920,7 @@
         "staged-draft",
         "site-transfer"
       ],
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "owner": "agents",
       "acceptanceCommand": "agents",
       "status": "pending",
@@ -2974,7 +2974,7 @@
         "staged-draft",
         "site-transfer"
       ],
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "owner": "agents",
       "acceptanceCommand": "agents",
       "status": "pending",
@@ -3038,7 +3038,7 @@
         "publication",
         "editorial"
       ],
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "owner": "blog",
       "acceptanceCommand": "blog",
       "status": "pending",
@@ -3110,7 +3110,7 @@
         "media",
         "raw-content"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -3137,7 +3137,7 @@
         "blog",
         "locales"
       ],
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "owner": "blog",
       "acceptanceCommand": "blog",
       "status": "pending",
@@ -3236,7 +3236,7 @@
       "behaviors": [
         "app-data"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -3268,7 +3268,7 @@
         "marketing",
         "page-layouts"
       ],
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "owner": "marketing",
       "acceptanceCommand": "marketing",
       "status": "pending",
@@ -3317,7 +3317,7 @@
       "behaviors": [
         "page-layouts"
       ],
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "owner": "marketing",
       "acceptanceCommand": "marketing",
       "status": "pending",
@@ -3366,7 +3366,7 @@
       "behaviors": [
         "menus-widgets"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -3403,7 +3403,7 @@
       "behaviors": [
         "menus-widgets"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -3452,7 +3452,7 @@
       "behaviors": [
         "menus-widgets"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -3484,7 +3484,7 @@
         "publication",
         "locales"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -3535,7 +3535,7 @@
         "publication",
         "seo"
       ],
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "owner": "starter",
       "acceptanceCommand": "starter",
       "status": "pending",
@@ -3579,7 +3579,7 @@
       "behaviors": [
         "seo"
       ],
-      "zeroCounterpart": "examples/emdash/blog",
+      "firstCounterpart": "examples/emdash/blog",
       "owner": "blog",
       "acceptanceCommand": "blog",
       "status": "pending",
@@ -3630,7 +3630,7 @@
         "media",
         "dark-media"
       ],
-      "zeroCounterpart": "examples/emdash/portfolio",
+      "firstCounterpart": "examples/emdash/portfolio",
       "owner": "portfolio",
       "acceptanceCommand": "portfolio",
       "status": "pending",
@@ -3694,7 +3694,7 @@
         "cloudflare",
         "image-editor"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -3731,7 +3731,7 @@
       "behaviors": [
         "locales"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -3882,7 +3882,7 @@
       "behaviors": [
         "preview"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "gap",
@@ -3998,7 +3998,7 @@
         "identity",
         "provider-auth"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -4089,7 +4089,7 @@
       "behaviors": [
         "provider-auth"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "gap",
@@ -4144,7 +4144,7 @@
       "behaviors": [
         "email"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -4181,7 +4181,7 @@
       "behaviors": [
         "site-transfer"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "gap",
@@ -4300,7 +4300,7 @@
         "cloudflare",
         "backup"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -4417,7 +4417,7 @@
         "native-lifecycle",
         "domain-change"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -4442,7 +4442,7 @@
         "marketing",
         "adsense"
       ],
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "owner": "marketing",
       "acceptanceCommand": "marketing",
       "status": "pending",
@@ -4488,7 +4488,7 @@
       "behaviors": [
         "x402"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "gap",
@@ -4591,7 +4591,7 @@
       "behaviors": [
         "ai-search"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -4646,7 +4646,7 @@
       "behaviors": [
         "field-kit"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -4732,7 +4732,7 @@
         "audit",
         "plugin-api"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -4824,7 +4824,7 @@
         "plugin-api",
         "plugin-mcp"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -4971,7 +4971,7 @@
         "sandbox",
         "field-kit"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5081,7 +5081,7 @@
         "sandbox",
         "webhooks"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5175,7 +5175,7 @@
         "forms",
         "email"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5302,7 +5302,7 @@
       "behaviors": [
         "plugin-api"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5370,7 +5370,7 @@
         "plugin-api",
         "app-data"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5498,7 +5498,7 @@
       "behaviors": [
         "sandbox"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
@@ -5589,7 +5589,7 @@
       "behaviors": [
         "plugin-api"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5686,7 +5686,7 @@
       "behaviors": [
         "field-kit"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5796,7 +5796,7 @@
         "embeds",
         "seo"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5846,7 +5846,7 @@
       "behaviors": [
         "embeds"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -5909,7 +5909,7 @@
         "blog",
         "portfolio"
       ],
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "owner": "marketing",
       "acceptanceCommand": "marketing",
       "status": "pending",
@@ -6023,7 +6023,7 @@
         "locales",
         "content-import"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -6183,7 +6183,7 @@
         "menus-widgets",
         "content-import"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "pending",
@@ -6257,7 +6257,7 @@
       "behaviors": [
         "content-import"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "gap",
@@ -6288,7 +6288,7 @@
       "behaviors": [
         "content-import"
       ],
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "owner": "platform",
       "acceptanceCommand": "platform",
       "status": "gap",
@@ -6326,7 +6326,7 @@
         "plugin-api",
         "sandbox"
       ],
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "owner": "plugins",
       "acceptanceCommand": "plugins",
       "status": "pending",
@@ -7042,7 +7042,7 @@
         "portfolio"
       ],
       "owner": "starter",
-      "zeroCounterpart": "examples/emdash/starter",
+      "firstCounterpart": "examples/emdash/starter",
       "acceptanceCommand": "starter",
       "status": "pending",
       "scopeDecision": "Auto-synced template mirror; canonical source remains the pinned main repository; not additional independent templates.",
@@ -7072,7 +7072,7 @@
         "agent-schema"
       ],
       "owner": "agents",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "scopeDecision": "Synced agent guidance; exact revision differs from the main-repository pin.",
@@ -7119,7 +7119,7 @@
         "agents"
       ],
       "owner": "agents",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "scopeDecision": "Alpha platform application. Publishing disabled in hosted demo; do not turn its Docker/Sandbox prerequisites into a native WordPress dependency.",
@@ -7166,7 +7166,7 @@
         "seo"
       ],
       "owner": "marketing",
-      "zeroCounterpart": "examples/emdash/marketing",
+      "firstCounterpart": "examples/emdash/marketing",
       "acceptanceCommand": "marketing",
       "status": "pending",
       "scopeDecision": "Custom public site extends marketing with capabilities blocks, blog/tag/OG routes and machine-readable onboarding; not an exact template duplicate.",
@@ -7200,7 +7200,7 @@
         "cloudflare"
       ],
       "owner": "plugins",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
       "scopeDecision": "Object-cache and Workers-cache purge actions are availability-gated. WordPress cache flush alone does not prove Workers purge.",
@@ -7233,7 +7233,7 @@
         "content-import"
       ],
       "owner": "platform",
-      "zeroCounterpart": "examples/emdash/platform",
+      "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "gap",
       "scopeDecision": "GPL3 WordPress exporter and guided migration-key REST wizard; inspect separately, do not relabel as MIT.",
@@ -7261,7 +7261,7 @@
         "cloudflare"
       ],
       "owner": "plugins",
-      "zeroCounterpart": "examples/emdash/plugins",
+      "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
       "status": "gap",
       "scopeDecision": "CID-verified PDS blob proxy, MIME checks, moderation labels and cache purge; registry CDN service, not a CMS site template.",
@@ -7289,7 +7289,7 @@
         "builder"
       ],
       "owner": "agents",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "scopeDecision": "Software-factory author/review/advisory orchestration, not an editable CMS example; do not copy or operate GitHub effects.",
@@ -7316,7 +7316,7 @@
         "builder"
       ],
       "owner": "agents",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "scopeDecision": "GitHub-native multiplayer whiteboard, not an EmDash CMS example; collaboration is a separate product.",
@@ -7343,7 +7343,7 @@
         "builder"
       ],
       "owner": "agents",
-      "zeroCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",
       "status": "gap",
       "scopeDecision": "Issue/PR author service with durable cases and execution isolation, not a CMS template; no GitHub actions run.",
@@ -7382,7 +7382,7 @@
         "kind": "tree"
       },
       "classification": "test-infrastructure",
-      "reason": "Upstream acceptance harnesses are evidence of intended behavior, not Zero proof."
+      "reason": "Upstream acceptance harnesses are evidence of intended behavior, not First proof."
     },
     {
       "source": {
@@ -7419,7 +7419,7 @@
   "frameworkDifferences": [
     {
       "upstream": "Astro server-rendered routes and Portable Text blocks",
-      "zero": "Native WordPress/PHP routes, Gutenberg and SCF; preserve saved content and complete frontend",
+      "first": "Native WordPress/PHP routes, Gutenberg and SCF; preserve saved content and complete frontend",
       "status": "partial",
       "evidence": [
         "publishing",
@@ -7431,26 +7431,26 @@
     },
     {
       "upstream": "Webhook notifier optionally sends Authorization: Bearer <token>",
-      "zero": "Built-in webhooks use zero-signature HMAC; an adaptation must state its wire contract",
+      "first": "Built-in webhooks use first-signature HMAC; an adaptation must state its wire contract",
       "status": "gap"
     },
     {
       "upstream": "Runtime schema MCP mutation, staged/live drafts, transfer and signed snapshot sessions",
-      "zero": "Compiled config, native draft/revisions, Markdown sync and native previews cover narrower contracts",
+      "first": "Compiled config, native draft/revisions, Markdown sync and native previews cover narrower contracts",
       "status": "gap"
     },
     {
       "upstream": "Sandboxed Worker isolate, capabilities, host restrictions and private per-plugin storage",
-      "zero": "Trusted PHP plugins and app REST permissions have a different authority boundary",
+      "first": "Trusted PHP plugins and app REST permissions have a different authority boundary",
       "status": "gap"
     },
     {
       "upstream": "Opaque cursors, FTS search, multiple/guest bylines, inline editing and widget/section composition",
-      "zero": "Numbered pages, WordPress database search, native single author and editor; current query sidebar",
+      "first": "Numbered pages, WordPress database search, native single author and editor; current query sidebar",
       "status": "gap"
     }
   ],
-  "snippetLocator": "Use the enclosing source.url plus #L<startLine>-L<endLine>; sha256 hashes the fenced body with LF and one trailing newline. Snippets are source inventory, not runnable Zero proof.",
+  "snippetLocator": "Use the enclosing source.url plus #L<startLine>-L<endLine>; sha256 hashes the fenced body with LF and one trailing newline. Snippets are source inventory, not runnable First proof.",
   "agentReferences": [
     {
       "id": "agent-reference:skills/building-emdash-site/SKILL.md",
@@ -9417,10 +9417,10 @@
       "owner": "plugins; shared runtime/SCF owner for fix",
       "status": "fixed",
       "reportedBy": "Reproduced in native platform/marketing campaigns, then repaired in shared runtime.",
-      "command": "ZERO_BIN=\"$PWD/target/debug/zero\" ZERO_PLUGINS_REPRO_SCF_FALSE=1 node --test examples/emdash/plugins/acceptance.test.mjs",
+      "command": "FIRST_BIN=\"$PWD/target/debug/first\" FIRST_PLUGINS_REPRO_SCF_FALSE=1 node --test examples/emdash/plugins/acceptance.test.mjs",
       "expected": "Native REST/SCF save of nullable group boolean false reads back as false.",
       "reportedObserved": "Group profile.featured reads null on baseline.",
-      "recommendation": "Trace native REST/SCF boolean decoding; distinguish explicit false/zero from missing nullable input. Strengthen the existing behavioral owner; do not patch common runtime from a docs owner.",
+      "recommendation": "Trace native REST/SCF boolean decoding; distinguish explicit false/first from missing nullable input. Strengthen the existing behavioral owner; do not patch common runtime from a docs owner.",
       "evidence": [
         "platform"
       ],

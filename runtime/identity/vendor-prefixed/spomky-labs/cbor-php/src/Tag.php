@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR;
+namespace First\Identity\Vendor\CBOR;
 
-use Zero\Identity\Vendor\CBOR\Tag\TagInterface;
+use First\Identity\Vendor\CBOR\Tag\TagInterface;
 use function chr;
 use InvalidArgumentException;
 

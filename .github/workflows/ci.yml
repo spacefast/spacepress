@@ -49,7 +49,7 @@ jobs:
         shard: [compiler, rest]
     env:
       SHARD: ${{ matrix.shard }}
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -72,7 +72,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .zero/cache/plugins
+          path: .first/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       # tests/sync.rs serves a WordPress-on-SQLite site (tests/php/wp.php).
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -105,13 +105,13 @@ jobs:
         if: matrix.shard == 'compiler'
         run: |
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
-          ZERO_BIN="$GITHUB_WORKSPACE/target/debug/zero" node examples/npm-compat/verify.mjs --isolated
+          FIRST_BIN="$GITHUB_WORKSPACE/target/debug/first" node examples/npm-compat/verify.mjs --isolated
       - if: matrix.shard == 'rest'
-        run: target/debug/zero check examples/showcase
+        run: target/debug/first check examples/showcase
       - name: Zero 0.8 census tool
         if: matrix.shard == 'rest'
         env:
-          ZERO_BIN: ${{ github.workspace }}/target/debug/zero
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
         run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
@@ -119,7 +119,7 @@ jobs:
       - name: Offline deployment and recovery acceptance
         if: matrix.shard == 'rest'
         env:
-          ZERO_DEPLOY_BIN: ${{ github.workspace }}/target/debug/zero
+          FIRST_DEPLOY_BIN: ${{ github.workspace }}/target/debug/first
         run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs
 
   host:
@@ -133,7 +133,7 @@ jobs:
       - run: cargo build --locked --no-default-features --features host --target x86_64-unknown-linux-musl
       - run: cargo clippy --locked --lib --no-default-features --target wasm32-unknown-unknown -- -D warnings
       - run: cargo build --locked --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
-      - run: cargo build --locked --bin zero
+      - run: cargo build --locked --bin first
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
@@ -238,7 +238,7 @@ jobs:
       - run: npm install --global typescript@5.9.3
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       - run: tsc -p tests/host-types
-      - run: tsc -p types/zero/tests
+      - run: tsc -p types/first/tests
       # The WordPress hook catalog and its declarations match the pinned sources.
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -252,7 +252,7 @@ jobs:
       - run: node --test runtime/client/index.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
-      - run: node --test packages/cli/test/*.test.mjs packages/create-zero/test/*.test.mjs scripts/release/archive.test.mjs
+      - run: node --test packages/cli/test/*.test.mjs packages/create-first/test/*.test.mjs scripts/release/archive.test.mjs
 
   pages:
     if: github.event_name != 'pull_request'
@@ -266,8 +266,8 @@ jobs:
       - run: corepack enable
       # The pages build reads the example's compiled schema, so the compiler builds it first.
       - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
-      - run: cargo build --locked --bin zero
-      - run: target/debug/zero build examples/full-site
+      - run: cargo build --locked --bin first
+      - run: target/debug/first build examples/full-site
       - run: pnpm install --frozen-lockfile
         working-directory: packages/blocks
       - run: pnpm build
@@ -279,22 +279,22 @@ jobs:
       - name: The committed render artifact is current
         run: |
           (cd packages/pages && pnpm build)
-          node packages/pages/bin/zero-pages.mjs build examples/full-site
-          git diff --exit-code examples/full-site/zero/pages.json
+          node packages/pages/bin/first-pages.mjs build examples/full-site
+          git diff --exit-code examples/full-site/first/pages.json
       - run: pnpm test:package
         working-directory: packages/pages
       - run: npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
       - run: pnpm test:wp
         working-directory: packages/pages
         env:
-          ZERO_BIN: ${{ github.workspace }}/target/debug/zero
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
 
   wp:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -315,7 +315,7 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .zero/cache/plugins
+            .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: corepack enable
@@ -327,13 +327,13 @@ jobs:
       # their own jobs below: on one runner the three together reached the 40-minute limit.
       - run: tests/wp/run.sh
         env:
-          ZERO_WP_SKIP_MIGRATE: '1'
+          FIRST_WP_SKIP_MIGRATE: '1'
       - name: Preserve failed native admin browser evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wp-admin-browser-${{ github.run_attempt }}
-          path: /tmp/zero-admin-browser
+          path: /tmp/first-admin-browser
           if-no-files-found: ignore
           retention-days: 7
 
@@ -342,7 +342,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -363,16 +363,16 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .zero/cache/plugins
+            .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       # The app migration lane renders converted static pages with packages/pages, built with pnpm.
       - run: corepack enable
-      - run: cargo build --locked --bin zero
+      - run: cargo build --locked --bin first
       - name: Zero 0.8 site, app-user and application migrations
-        run: ZERO_WP_PROJECT=zero-wp-migrate ZERO_WP_PORT=8794 tests/wp/migrate-run.sh
+        run: FIRST_WP_PROJECT=first-wp-migrate FIRST_WP_PORT=8794 tests/wp/migrate-run.sh
       - name: Spacefast cross-prefix migration and session continuity
-        run: ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+        run: FIRST_WP_PROJECT=first-wp-spacefast FIRST_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
 
   # Schema checks, seeding, outbound fetch and WordPress abilities: split from wp-migrate, which
   # ran past its timeout once both halves shared one runner.
@@ -381,7 +381,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -402,27 +402,27 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .zero/cache/plugins
+            .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: cargo build --locked --bin zero
+      - run: cargo build --locked --bin first
       - name: Deploy-time schema check against live rows
-        run: ZERO_WP_PROJECT=zero-wp-schema-check ZERO_WP_PORT=8902 tests/wp/schema-check/run.sh
+        run: FIRST_WP_PROJECT=first-wp-schema-check FIRST_WP_PORT=8902 tests/wp/schema-check/run.sh
       - name: First-publish seed and sync adoption
-        run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
+        run: FIRST_WP_PROJECT=first-wp-seed FIRST_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals
-        run: ZERO_WP_PROJECT=zero-wp-fetch ZERO_WP_PORT=8899 tests/wp/fetch/run.sh
+        run: FIRST_WP_PROJECT=first-wp-fetch FIRST_WP_PORT=8899 tests/wp/fetch/run.sh
       - name: WordPress abilities and wp-hooks from TypeScript
-        run: ZERO_WP_PROJECT=zero-wp-wordpress ZERO_WP_PORT=8898 tests/wp/wordpress/run.sh
+        run: FIRST_WP_PROJECT=first-wp-wordpress FIRST_WP_PORT=8898 tests/wp/wordpress/run.sh
       - name: Opinionated WordPress hardening, and stock WordPress without an app
-        run: ZERO_WP_PROJECT=zero-wp-hardening ZERO_WP_PORT=8896 tests/wp/hardening/run.sh
+        run: FIRST_WP_PROJECT=first-wp-hardening FIRST_WP_PORT=8896 tests/wp/hardening/run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -443,19 +443,19 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .zero/cache/plugins
+            .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - name: Shared S3 storage across disposable replicas
-        run: ZERO_WP_PROJECT=zero-wp-s3 ZERO_WP_PORT=8792 ZERO_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
+        run: FIRST_WP_PROJECT=first-wp-s3 FIRST_WP_PORT=8792 FIRST_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
 
-  # Hosted TSX pages, the island in Chromium and custom HTTP routes, from `zero compile-sources`.
+  # Hosted TSX pages, the island in Chromium and custom HTTP routes, from `first compile-sources`.
   wp-pages:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -476,25 +476,25 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .zero/cache/plugins
+            .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: corepack enable
-      - run: cargo build --locked --bin zero
+      - run: cargo build --locked --bin first
       - name: Hosted pages, island, action and HTTP routes from compile-sources
         run: |
           (cd packages/blocks && pnpm install --frozen-lockfile && pnpm build)
           (cd packages/pages && pnpm install --frozen-lockfile)
           npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
-          ZERO_WP_PROJECT=zero-wp-pages ZERO_WP_PORT=8873 tests/wp/hosted-pages-run.sh
+          FIRST_WP_PROJECT=first-wp-pages FIRST_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 
-  # `zero dev` from a release binary after removing its build checkout.
+  # `first dev` from a release binary after removing its build checkout.
   installed:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -514,7 +514,7 @@ jobs:
           key: rust-release-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .zero/cache/plugins
+          path: .first/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: tests/wp/installed/run.sh
 
@@ -523,7 +523,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -544,7 +544,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .zero/cache/plugins
+          path: .first/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: tests/system/run.sh
 

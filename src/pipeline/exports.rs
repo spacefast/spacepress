@@ -1,11 +1,11 @@
 //! Registers what the app's modules export (docs/spec/spec.md §1.1). Every exported kind, action
-//! and job in a module under `zero/` registers under its export name, whatever the file is called
+//! and job in a module under `first/` registers under its export name, whatever the file is called
 //! and whether or not anything imports it. Other exports are ignored, so helper modules need no
 //! special place.
 //!
 //! Registration fills the config's own registries (`collections`, `tables`, `users`, `globals`,
 //! `actions`, `jobs`), so everything after it reads one shape. An export and a config entry for the
-//! same value are the same registration; anything else that shares a name is `Z1221`.
+//! same value are the same registration; anything else that shares a name is `F1221`.
 
 use crate::diag::{Code, Diag, Result, Span};
 use crate::eval::Evaluator;
@@ -21,7 +21,7 @@ struct Taken {
     span: Span,
 }
 
-/// The registry an exported value belongs in, or `None` for an export Zero ignores.
+/// The registry an exported value belongs in, or `None` for an export First ignores.
 fn registry(value: &Value) -> Option<&'static str> {
     Some(match value {
         Value::Collection(c) => match c.kind {
@@ -60,7 +60,7 @@ fn duplicate(root: &Path, name: &str, first: Span, second: Span) -> Diag {
         crate::diag::position(first, root).map_or_else(|| "the config".to_string(), |(f, l, _)| format!("{f}:{l}"));
     Diag::new(second, format!("`{name}` names two things: at {at} and here"))
         .code(Code::DuplicateExport)
-        .help("export names are the API (zero.<name>(), its route and its Ability); rename one")
+        .help("export names are the API (first.<name>(), its route and its Ability); rename one")
 }
 
 /// Evaluates every app module, then adds their exports to `config`'s registries in place, so the
@@ -144,7 +144,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             }
         }
     }
-    // `"zero:db"` resolves to every registered kind, by its registry key.
+    // `"first:db"` resolves to every registered kind, by its registry key.
     let mut kinds = IndexMap::new();
     for registry in ["collections", "tables", "users"] {
         if let Some(Value::Object(entries)) = cfg.borrow().get(registry) {
@@ -154,8 +154,8 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
         }
     }
     ev.bind_db(&kinds)?;
-    // `zero/wp-hooks/` modules declare no kinds, so they run once every kind is registered: their
-    // `"zero:db"` imports bind as each module evaluates.
+    // `first/wp-hooks/` modules declare no kinds, so they run once every kind is registered: their
+    // `"first:db"` imports bind as each module evaluates.
     for file in &program.wp_hooks {
         ev.run_module(file.module).map_err(|d| d.phase(Code::Evaluation))?;
     }

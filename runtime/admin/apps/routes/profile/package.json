@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/zero-admin-route-profile",
+	"name": "@first-admin/first-admin-route-profile",
 	"version": "1.0.0",
 	"route": {
 		"path": "/profile",
@@ -10,7 +10,7 @@
 		}
 	},
 	"dependencies": {
-		"@zero-admin/core-data-next": "workspace:*",
+		"@first-admin/core-data-next": "workspace:*",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",
 		"@wordpress/i18n": "catalog:"

@@ -1,5 +1,5 @@
 import fastDeepEqual from 'fast-deep-equal/es6';
-import type { GlobalStylesConfig } from '@zero-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@first-admin/global-styles-engine';
 
 /**
  * Removes all instances of properties from an object.

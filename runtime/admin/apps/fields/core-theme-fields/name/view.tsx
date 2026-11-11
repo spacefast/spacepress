@@ -1,4 +1,4 @@
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import {
 	privateApis as componentsPrivateApis,
 	__experimentalHStack as HStack,
@@ -14,7 +14,7 @@ export default function ThemeNameView( { item }: { item: Theme } ) {
 	return (
 		<HStack alignment="center" justify="text-start">
 			<span>{ themeName }</span>
-			{ activeTheme && <Badge>{ __( 'Active', 'zero-admin' ) }</Badge> }
+			{ activeTheme && <Badge>{ __( 'Active', 'first-admin' ) }</Badge> }
 		</HStack>
 	);
 }

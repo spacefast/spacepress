@@ -1,5 +1,5 @@
 {
-  "schema": "zero-js-reference-pipeline",
+  "schema": "first-js-reference-pipeline",
   "version": 1,
   "before": "3b73fa7d",
   "after": "handle implementation",

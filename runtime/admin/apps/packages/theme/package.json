@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/theme",
+	"name": "@first-admin/theme",
 	"version": "1.0.0",
 	"description": "Theme provider for WordPress Admin",
 	"type": "module",
@@ -8,7 +8,7 @@
 		".": "./src/index.ts"
 	},
 	"dependencies": {
-		"@zero-admin/private-apis": "workspace:*",
+		"@first-admin/private-apis": "workspace:*",
 		"@wordpress/theme": "catalog:"
 	},
 	"license": "GPL-2.0-or-later"

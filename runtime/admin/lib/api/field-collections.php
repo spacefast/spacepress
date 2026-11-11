@@ -2,17 +2,17 @@
 /**
  * Field Collections Registration System
  *
- * This file provides the API for registering field collections in Zero Admin.
+ * This file provides the API for registering field collections in First Admin.
  *
- * @package ZeroAdmin
+ * @package FirstAdmin
  */
 
 // Global storage for registered field collections.
-global $zero_admin_field_collections;
-$zero_admin_field_collections = array();
+global $first_admin_field_collections;
+$first_admin_field_collections = array();
 
 /**
- * Register a field collection for Zero Admin.
+ * Register a field collection for First Admin.
  *
  * This function registers a field collection that will be available
  * for specific entities (postType, taxonomy, user, etc.).
@@ -25,8 +25,8 @@ $zero_admin_field_collections = array();
  * @param array       $fields        Array of field definitions keyed by field ID.
  * @param string|null $fields_module The script module handle for field extensions.
  */
-function zero_admin_register_field_collection( $id, $kind, $name, $fields, $fields_module = null ) {
-	global $zero_admin_field_collections;
+function first_admin_register_field_collection( $id, $kind, $name, $fields, $fields_module = null ) {
+	global $first_admin_field_collections;
 
 	if ( empty( $id ) || empty( $kind ) || empty( $fields ) ) {
 		_doing_it_wrong( __FUNCTION__, 'Field collection must have "id", "kind", and "fields".', '1.0.0' );
@@ -34,7 +34,7 @@ function zero_admin_register_field_collection( $id, $kind, $name, $fields, $fiel
 	}
 
 	// Check if collection with same ID already exists.
-	foreach ( $zero_admin_field_collections as $existing_collection ) {
+	foreach ( $first_admin_field_collections as $existing_collection ) {
 		if ( $existing_collection['id'] === $id ) {
 			return;
 		}
@@ -48,7 +48,7 @@ function zero_admin_register_field_collection( $id, $kind, $name, $fields, $fiel
 		'fields_module' => $fields_module,
 	);
 
-	$zero_admin_field_collections[] = $collection;
+	$first_admin_field_collections[] = $collection;
 }
 
 /**
@@ -58,12 +58,12 @@ function zero_admin_register_field_collection( $id, $kind, $name, $fields, $fiel
  * @param string $name Entity name (attachment, product, etc.).
  * @return array Array of matching collections.
  */
-function zero_admin_get_field_collections( $kind, $name ) {
-	global $zero_admin_field_collections;
+function first_admin_get_field_collections( $kind, $name ) {
+	global $first_admin_field_collections;
 
 	$matching_collections = array();
 
-	foreach ( $zero_admin_field_collections as $collection ) {
+	foreach ( $first_admin_field_collections as $collection ) {
 		// Must match kind.
 		if ( $collection['kind'] !== $kind ) {
 			continue;
@@ -83,7 +83,7 @@ function zero_admin_get_field_collections( $kind, $name ) {
  *
  * @return array Array of all registered collections.
  */
-function zero_admin_get_all_field_collections() {
-	global $zero_admin_field_collections;
-	return $zero_admin_field_collections ?? array();
+function first_admin_get_all_field_collections() {
+	global $first_admin_field_collections;
+	return $first_admin_field_collections ?? array();
 }

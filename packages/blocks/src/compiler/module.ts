@@ -28,14 +28,14 @@ import type { ContentNode, SourceLocation } from "../nodes.ts";
 
 const requireFromHere = createRequire(import.meta.url);
 
-const RUNTIME_SPECIFIER = /^@spacefast\/zero-blocks(?:\/(?:jsx-runtime|jsx-dev-runtime))?$/;
+const RUNTIME_SPECIFIER = /^@spacefast\/first-blocks(?:\/(?:jsx-runtime|jsx-dev-runtime))?$/;
 
 function runtimePlugin(): Plugin {
   return {
-    name: "zero-blocks-runtime",
+    name: "first-blocks-runtime",
     setup(b) {
       b.onResolve({ filter: RUNTIME_SPECIFIER }, (args) => {
-        const sub = args.path === "@spacefast/zero-blocks" ? "index" : args.path.slice("@spacefast/zero-blocks/".length);
+        const sub = args.path === "@spacefast/first-blocks" ? "index" : args.path.slice("@spacefast/first-blocks/".length);
         // During development the sources are .ts beside this file; a built package has .js.
         for (const ext of [".ts", ".js"]) {
           try {
@@ -102,7 +102,7 @@ function thrownLocation(error: unknown, bundlePath: string, map: SourceMap, scra
 export async function renderModule(file: string): Promise<ModuleResult> {
   const entry = path.resolve(file);
   const root = path.dirname(entry);
-  const scratch = await mkdtemp(path.join(tmpdir(), "zero-blocks-"));
+  const scratch = await mkdtemp(path.join(tmpdir(), "first-blocks-"));
   const bundlePath = path.join(scratch, "module.mjs");
   let code: string;
   let map: SourceMap;
@@ -118,11 +118,11 @@ export async function renderModule(file: string): Promise<ModuleResult> {
       target: "es2023",
       jsx: "automatic",
       jsxDev: true,
-      jsxImportSource: "@spacefast/zero-blocks",
+      jsxImportSource: "@spacefast/first-blocks",
       tsconfigRaw: {},
       // esbuild writes jsxDEV's fileName relative to absWorkingDir; the runtime resolves it
       // against this, so every location is absolute whatever the caller's cwd is.
-      define: { "globalThis.__zeroBlocksSourceRoot": JSON.stringify(root) },
+      define: { "globalThis.__firstBlocksSourceRoot": JSON.stringify(root) },
       outfile: bundlePath,
       sourcemap: "external",
       sourcesContent: false,

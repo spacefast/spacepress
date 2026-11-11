@@ -1,7 +1,7 @@
 /**
- * The JSX runtime for pages (`jsxImportSource: "@spacefast/zero-pages"`).
+ * The JSX runtime for pages (`jsxImportSource: "@spacefast/first-pages"`).
  *
- * It is Zero Blocks' runtime with one step in front: per-request values become
+ * It is First Blocks' runtime with one step in front: per-request values become
  * tokens before Blocks sees them, so the tree Blocks maps and serializes is
  * ordinary content with placeholders in text and attributes. Function
  * components still receive the values themselves (a `<Show when>` needs the
@@ -11,12 +11,12 @@
  */
 import {
   Fragment, createElement as blocksCreateElement, jsx as blocksJsx, jsxDEV as blocksJsxDEV, toContentNodes,
-} from "@spacefast/zero-blocks/jsx-runtime";
+} from "@spacefast/first-blocks/jsx-runtime";
 
 import { PagesError, hasToken, pathOf, registry, tokenize } from "./symbolic.ts";
 
 export { Fragment, toContentNodes };
-export type { JSX } from "@spacefast/zero-blocks/jsx-runtime";
+export type { JSX } from "@spacefast/first-blocks/jsx-runtime";
 
 /** Structure, styling and behavior are code-owned; a per-request value there is refused rather than half-supported. */
 const STATIC_PROPS = new Set(["class", "className", "id", "style", "key", "ref", "dangerouslySetInnerHTML", "srcset", "srcSet", "sizes", "tabIndex", "role"]);

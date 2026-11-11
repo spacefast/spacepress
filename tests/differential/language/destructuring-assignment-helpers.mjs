@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/destructuring-assignment.ts: these run
-// through Zero's checked JavaScript dispatch rather than typed TypeScript compilation.
+// through First's checked JavaScript dispatch rather than typed TypeScript compilation.
 
 export function destructuringUntyped() {
   let a = 1;

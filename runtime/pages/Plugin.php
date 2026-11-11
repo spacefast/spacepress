@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Pages;
+namespace First\Pages;
 
 /**
  * The pages plugin: route claiming, head, assets, region blocks and the
@@ -43,7 +43,7 @@ final class Plugin
         $directory = dirname($mainFile);
         $manifest = json_decode((string) file_get_contents($directory . '/manifest.json'), true);
         if (!is_array($manifest) || ($manifest['version'] ?? null) !== 1 || ($manifest['app'] ?? null) !== $app) {
-            add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('Zero pages: the build manifest is missing or for another app; rebuild with zero-pages.')));
+            add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('First pages: the build manifest is missing or for another app; rebuild with first-pages.')));
             return;
         }
         self::$instance = new self($directory, plugin_dir_url($mainFile), $manifest);
@@ -71,7 +71,7 @@ final class Plugin
         add_filter('post_type_link', [$this, 'itemLink'], 10, 3);
         add_filter('get_canonical_url', [$this, 'canonicalUrl'], 10, 2);
         // A code Page's stored body is a template, not what its URL shows: no Markdown twin for it.
-        add_filter('zero_markdown_twin', fn (bool $twin, \WP_Post $post): bool => $twin && !$this->routes->isCodePage($post->ID), 10, 2);
+        add_filter('first_markdown_twin', fn (bool $twin, \WP_Post $post): bool => $twin && !$this->routes->isCodePage($post->ID), 10, 2);
         // Hidden outside the editing workspace: admin lists, edit-context REST and pickers.
         add_action('pre_get_posts', [$this, 'hideFromAdmin']);
         add_filter('rest_page_query', [$this, 'hideFromRest'], 10, 2);
@@ -91,7 +91,7 @@ final class Plugin
             return;
         }
         printf('<div class="notice notice-error"><p>%s</p></div>', esc_html(
-            'Zero pages could not update its managed Pages. ' . $error . ' WordPress remains available; Zero will retry on the next request.',
+            'First pages could not update its managed Pages. ' . $error . ' WordPress remains available; First will retry on the next request.',
         ));
     }
 
@@ -102,14 +102,14 @@ final class Plugin
             return;
         }
         printf('<div class="notice notice-error"><p>%s</p></div>', esc_html(sprintf(
-            'Zero pages: %s already belong to other WordPress content, so Zero does not serve them. Rename the route or move that content.',
+            'First pages: %s already belong to other WordPress content, so First does not serve them. Rename the route or move that content.',
             implode(', ', $conflicts),
         )));
     }
 
-    public function db(): \Zero\Db
+    public function db(): \First\Db
     {
-        $plugin = \Zero\Wp\Runtime::plugin() ?? throw new \RuntimeException('Zero app is not active');
+        $plugin = \First\Wp\Runtime::plugin() ?? throw new \RuntimeException('First app is not active');
         return $plugin->db();
     }
 
@@ -123,9 +123,9 @@ final class Plugin
     public function registerBlocks(): void
     {
         foreach (['each', 'show', 'island', 'rich-text'] as $name) {
-            register_block_type('zero-pages/' . $name, [
+            register_block_type('first-pages/' . $name, [
                 'api_version' => 3,
-                'title' => 'Zero page region',
+                'title' => 'First page region',
                 'category' => 'design',
                 'attributes' => ['region' => ['type' => 'string']],
                 'supports' => ['inserter' => false, 'html' => false, 'reusable' => false],
@@ -142,26 +142,26 @@ final class Plugin
 
     public function reconcile(): void
     {
-        if (\Zero\Wp\Runtime::plugin() === null || \Zero\Wp\Runtime::plugin()->unavailable() !== null) {
+        if (\First\Wp\Runtime::plugin() === null || \First\Wp\Runtime::plugin()->unavailable() !== null) {
             return;
         }
         $this->routes->reconcile($this->directory);
     }
 
-    /** The reserved-slug guard on Zero's own write path (REST, CLI, hooks). */
+    /** The reserved-slug guard on First's own write path (REST, CLI, hooks). */
     public function guardWrites(): void
     {
         $reserved = $this->routes->reservedByCollection();
         if ($reserved === []) {
             return;
         }
-        \Zero\Extensions::onWrite(function (string $op, string $collection, array &$data) use ($reserved): void {
+        \First\Extensions::onWrite(function (string $op, string $collection, array &$data) use ($reserved): void {
             if ($op === 'delete' || !isset($reserved[$collection])) {
                 return;
             }
             $column = $this->db()->schema()->collection($collection)['slug'] ?? null;
             if ($column !== null && isset($data[$column]) && in_array((string) $data[$column], $reserved[$collection], true)) {
-                throw new \Zero\HttpError(409, 'reserved_slug', sprintf('"%s" is the URL of a page; choose another slug', (string) $data[$column]), '/' . $column);
+                throw new \First\HttpError(409, 'reserved_slug', sprintf('"%s" is the URL of a page; choose another slug', (string) $data[$column]), '/' . $column);
             }
         });
     }
@@ -323,13 +323,13 @@ final class Plugin
         if ($match['route']['pattern'] === '/' && !is_front_page()) {
             return;
         }
-        if (\Zero\Wp\Runtime::plugin() === null || \Zero\Wp\Runtime::plugin()->unavailable() !== null) {
+        if (\First\Wp\Runtime::plugin() === null || \First\Wp\Runtime::plugin()->unavailable() !== null) {
             $this->respond(503, null, '<p>' . esc_html__('This page is temporarily unavailable.') . '</p>');
         }
         $route = $match['route'];
         nocache_headers();
         header('Cache-Control: private, no-store, max-age=0');
-        $viewer = \Zero\Wp\CoreAccess::viewer();
+        $viewer = \First\Wp\CoreAccess::viewer();
         if ($viewer === null) {
             // A suspended account is refused everywhere; render nothing for it.
             $this->notFound();
@@ -345,11 +345,11 @@ final class Plugin
     }
 
     /** The routed row by slug, read as the visitor, or null when they may not see it. */
-    private function item(array $route, string $slug, \Zero\Viewer $viewer): ?array
+    private function item(array $route, string $slug, \First\Viewer $viewer): ?array
     {
         try {
             $row = $this->db()->findFirst((string) $route['collection'], ['where' => [(string) $route['slugColumn'] => $slug]], $viewer);
-        } catch (\Zero\HttpError) {
+        } catch (\First\HttpError) {
             return null;
         }
         if ($row === null) {
@@ -371,19 +371,19 @@ final class Plugin
         nocache_headers();
         header('Cache-Control: private, no-store, max-age=0');
         $route = $this->manifest['notFound'] ?? null;
-        $viewer = \Zero\Wp\CoreAccess::viewer();
+        $viewer = \First\Wp\CoreAccess::viewer();
         if (!is_array($route) || $viewer === null) {
             $this->respond(404, null, '<h1>' . esc_html__('Page not found') . '</h1>');
         }
         $this->serve($route, $viewer, null, [], 404);
     }
 
-    private function serve(array $route, \Zero\Viewer $viewer, ?array $item, array $params, int $status): never
+    private function serve(array $route, \First\Viewer $viewer, ?array $item, array $params, int $status): never
     {
         $request = new Request($route, $viewer, $item, $params, $this);
         try {
             $request->load();
-        } catch (\Zero\HttpError $error) {
+        } catch (\First\HttpError $error) {
             if ($status === 404) {
                 $this->respond(404, null, '<h1>' . esc_html__('Page not found') . '</h1>');
             }
@@ -490,7 +490,7 @@ final class Plugin
         $this->title = $title ?? (string) $route['title'];
         if ($canonical === null || $canonical === '') {
             $canonical = $route['param'] === null
-                ? ($route['id'] === 'zero:not-found' ? null : $this->routes->urlFor((string) $route['pattern']))
+                ? ($route['id'] === 'first:not-found' ? null : $this->routes->urlFor((string) $route['pattern']))
                 : ($this->request?->item !== null ? $this->routes->itemUrl((string) $route['collection'], $this->request->item) : null);
         } elseif (str_starts_with($canonical, '/') && !str_starts_with($canonical, '//')) {
             $canonical = home_url($canonical);
@@ -502,7 +502,7 @@ final class Plugin
     {
         add_action('wp_enqueue_scripts', function () use ($route): void {
             foreach ($route['css'] as $index => $file) {
-                wp_enqueue_style('zero-pages-' . $route['key'] . '-' . $index, $this->url . $file, [], null);
+                wp_enqueue_style('first-pages-' . $route['key'] . '-' . $index, $this->url . $file, [], null);
             }
         });
     }
@@ -517,12 +517,12 @@ final class Plugin
             return;
         }
         $this->islands[$namespace] = true;
-        $handle = 'zero-pages-' . sanitize_key(str_replace('/', '-', $namespace));
+        $handle = 'first-pages-' . sanitize_key(str_replace('/', '-', $namespace));
         wp_register_script_module($handle, $this->url . $island['file'], ['@wordpress/interactivity'], null);
         wp_enqueue_script_module($handle);
         $actions = [];
         foreach ($island['actions'] as $action) {
-            $actions[$action] = rest_url('zero/v1/actions/' . rawurlencode((string) $action));
+            $actions[$action] = rest_url('first/v1/actions/' . rawurlencode((string) $action));
         }
         // A REST nonce lets the island call actions as the signed-in visitor; anonymous visitors call as anonymous.
         wp_interactivity_config($namespace, ['actions' => $actions, 'nonce' => wp_create_nonce('wp_rest')]);
@@ -538,7 +538,7 @@ final class Plugin
         nocache_headers();
         header('Cache-Control: private, no-store, max-age=0');
         header('Content-Type: text/html; charset=' . get_option('blog_charset'));
-        // Zero emits the only <title> and canonical for claimed routes.
+        // First emits the only <title> and canonical for claimed routes.
         remove_action('wp_head', '_wp_render_title_tag', 1);
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', 'rel_canonical');
@@ -564,7 +564,7 @@ final class Plugin
             echo '<link rel="canonical" href="' . esc_url($head['canonical']) . "\">\n";
         }
         wp_head();
-        echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('zero-pages'))) . "\">\n";
+        echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('first-pages'))) . "\">\n";
         wp_body_open();
         echo '<div class="wp-site-blocks">' . $body . "</div>\n";
         wp_footer();

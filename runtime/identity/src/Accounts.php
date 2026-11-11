@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 final class Accounts
 {
@@ -177,11 +177,11 @@ final class Accounts
             $this->security->event($uid, "email.removed", ["email_id" => $id]);
         });
     }
-    private const DUMMY_PASSWORD_HASH = "zero_identity_dummy_password_hash";
-    private const PASSWORD_PROFILES = "zero_identity_password_profiles";
+    private const DUMMY_PASSWORD_HASH = "first_identity_dummy_password_hash";
+    private const PASSWORD_PROFILES = "first_identity_password_profiles";
 
     private const UNSUPPORTED_PASSWORD_PROFILE = 'unsupported';
-    private const PASSWORD_INVENTORY = "zero_identity_password_inventory";
+    private const PASSWORD_INVENTORY = "first_identity_password_inventory";
     // Operational ceilings, including imported hashes; see docs/identity-security.md.
     private const MAX_BCRYPT_COST = 15;
     private const MAX_PHPASS_LOG2 = 16;
@@ -206,7 +206,7 @@ final class Accounts
             self::initializePasswordOption(self::PASSWORD_INVENTORY, ['after' => 0, 'complete' => false]);
         }
         if (!get_option(self::PASSWORD_INVENTORY)['complete'] && !wp_next_scheduled(self::PASSWORD_INVENTORY)) {
-            wp_schedule_event(time() + 60, 'zero_identity_minute', self::PASSWORD_INVENTORY);
+            wp_schedule_event(time() + 60, 'first_identity_minute', self::PASSWORD_INVENTORY);
         }
     }
 
@@ -550,7 +550,7 @@ final class Accounts
             }
             // A host that already keeps a WordPress user for this identity (its own verified
             // platform accounts) names it here; the identity then signs in to that account.
-            $uid = $linkUid ?: ((int) apply_filters("zero_identity_provider_account", 0, $issuer, $subject, $name) ?: null);
+            $uid = $linkUid ?: ((int) apply_filters("first_identity_provider_account", 0, $issuer, $subject, $name) ?: null);
             if (!$uid) {
                 if (!$email) {
                     throw new Failure(
@@ -600,7 +600,7 @@ final class Accounts
             }
         });
     }
-    /** The account state the Zero runtime enforces on every channel (§3.5). */
+    /** The account state the First runtime enforces on every channel (§3.5). */
     public function status(int $uid): string
     {
         $row = $this->db->row(
@@ -609,17 +609,17 @@ final class Accounts
         );
         return $row ? (string) $row["status"] : "none";
     }
-    /** Mint a session + token pair without a browser flow; reserved for the Zero runtime (§3.5). */
+    /** Mint a session + token pair without a browser flow; reserved for the First runtime (§3.5). */
     public function issueForUser(int $wpUserId, string $clientId): array
     {
         return (new OAuth($this->db, $this))->issueForUser($wpUserId, $clientId);
     }
     public static function isGuest(int $uid): bool
     {
-        return in_array("zero_guest", (array) get_userdata($uid)?->roles, true);
+        return in_array("first_guest", (array) get_userdata($uid)?->roles, true);
     }
     /**
-     * Sign in with a verified email address. A guest (role `zero_guest`) holding the current
+     * Sign in with a verified email address. A guest (role `first_guest`) holding the current
      * session keeps its user id: the address is attached to it and it becomes a subscriber. An
      * address that already belongs to someone signs into that account; the guest is left as is.
      *
@@ -674,7 +674,7 @@ final class Accounts
             $user->set_role("subscriber");
             clean_user_cache($guest);
             $this->security->event($guest, "guest.upgraded");
-            do_action("zero_identity_guest_upgraded", $guest);
+            do_action("first_identity_guest_upgraded", $guest);
             return $guest;
         });
     }

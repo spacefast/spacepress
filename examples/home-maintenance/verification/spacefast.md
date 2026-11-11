@@ -1,12 +1,12 @@
 # Spacefast verification
 
 Checked on 2026-11-08 using `spacefast/0.8.0` against the production service.
-The example was compiled locally from Zero main
+The example was compiled locally from First main
 `b66e98b3866037061198c51ebef9534609a5e301`.
 
 ## Commands and receipt
 
-`sf zero check` returned:
+`sf first check` returned:
 
 ```text
 Command zero:check not found.
@@ -56,7 +56,7 @@ reported:
 The published version records base revision
 `b66e98b3866037061198c51ebef9534609a5e301` and `dirty: true`. It contains the
 source present during the publish attempt, not the final PR revision. The
-available CLI did not capture a Zero runtime. This is a restricted static
+available CLI did not capture a First runtime. This is a restricted static
 source publication, not a working hosted app.
 
 ## Access restriction
@@ -80,7 +80,7 @@ owning-team versions grant. A temporary machine credential, restricted to the
 tested paths and expiring after 30 minutes, was created for verification and
 then revoked. No credential is included in this report.
 
-`sf share check --as public --path /wp-json/zero/v1/systems` returned no
+`sf share check --as public --path /wp-json/first/v1/systems` returned no
 matching grants and no capabilities. The same check with `--as team` returned
 the owning-team grant and `page.view`.
 
@@ -89,7 +89,7 @@ the owning-team grant and `page.view`.
 The collection probe:
 
 ```sh
-curl -i https://home-maintenance.space.fast/wp-json/zero/v1/systems
+curl -i https://home-maintenance.space.fast/wp-json/first/v1/systems
 ```
 
 returned HTTP 403 and an HTML page titled `This space is private`.
@@ -98,10 +98,10 @@ Authenticated machine probes used a temporary `Authorization: Bearer` header:
 
 | Request | Result |
 | --- | --- |
-| `GET /wp-json/zero/v1/systems` | HTTP 403 |
-| `POST /wp-json/zero/v1/actions/dueNext`, body `{"days":30}` | HTTP 403 |
+| `GET /wp-json/first/v1/systems` | HTTP 403 |
+| `POST /wp-json/first/v1/actions/dueNext`, body `{"days":30}` | HTTP 403 |
 | `GET /wp-login.php` | HTTP 403 |
-| `GET /zero-identity/sign-in` | HTTP 403 |
+| `GET /first-identity/sign-in` | HTTP 403 |
 
 Every machine probe returned this exact body:
 
@@ -110,6 +110,6 @@ Every machine probe returned this exact body:
 ```
 
 The access restriction is verified. A live collection read, action execution,
-WordPress sign-in, private manual download, and Zero Admin are not verified.
-The current service and CLI must support the documented Zero deployment
+WordPress sign-in, private manual download, and First Admin are not verified.
+The current service and CLI must support the documented First deployment
 contract before those checks can succeed.

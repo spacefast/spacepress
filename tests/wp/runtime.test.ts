@@ -2,7 +2,7 @@
 // proves what Polylang and MySQL add.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { api, auth, http, ok, qs, run, sql, wp, zero } from "./env.ts";
+import { api, auth, http, ok, qs, run, sql, wp, first } from "./env.ts";
 
 const tree = (rows: any[]) => rows.map((r) => [`${r.locale}:${r.title}`, r.legs.map((l: any) => `${l.locale}:${l.title}`)]);
 
@@ -43,7 +43,7 @@ test("a bulk update over several rows of one translation group runs each row's h
   assert.deepEqual(rows.map((r: any) => r.price), [7, 7, 7]);
 });
 
-// Guest pruning (§6.2): `zero.prune-guests`, an Action Scheduler recurring action.
+// Guest pruning (§6.2): `first.prune-guests`, an Action Scheduler recurring action.
 const guest = async () => {
   const res = await http("POST", `${api}/auth/guest`, {});
   assert.equal(res.status, 201, JSON.stringify(res.json));
@@ -52,34 +52,34 @@ const guest = async () => {
 /** Make a guest look inactive since $days ago: registration and every refresh token it was minted. */
 const age = (id: number, days: number) => {
   sql(`UPDATE wp_users SET user_registered = UTC_TIMESTAMP() - INTERVAL ${days} DAY WHERE ID = ${id}`);
-  sql(`UPDATE wp_zero_identity_tokens SET expires_at = expires_at - ${days * 86400} WHERE wp_user_id = ${id}`);
+  sql(`UPDATE wp_first_identity_tokens SET expires_at = expires_at - ${days * 86400} WHERE wp_user_id = ${id}`);
 };
 const user = (id: number) => sql(`SELECT ID FROM wp_users WHERE ID = ${id}`).length === 1;
 const runPrune = () => {
-  const [action] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g ON g.group_id = a.group_id WHERE a.hook = 'zero.prune-guests' AND a.status = 'pending' AND g.slug = 'zero'");
-  assert.ok(action, "the recurring action is scheduled in group zero");
+  const [action] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g ON g.group_id = a.group_id WHERE a.hook = 'first.prune-guests' AND a.status = 'pending' AND g.slug = 'first'");
+  assert.ok(action, "the recurring action is scheduled in group first");
   wp("action-scheduler", "action", "run", action.action_id);
 };
 
-test("zero.prune-guests deletes stale guests with what they own, per onDelete, and keeps the rest", async () => {
+test("first.prune-guests deletes stale guests with what they own, per onDelete, and keeps the rest", async () => {
   const [stale, pinned, fresh, author] = [await guest(), await guest(), await guest(), await guest()];
   const id = (g: any) => g.user.id as number;
   // Members are readable only to themselves; pruning fixtures use trusted setup.
-  const cart = zero("insert", "guest_carts", JSON.stringify({ memberId: id(stale) }))[0];
-  const note = zero("insert", "guest_notes", JSON.stringify({ body: "mine", memberId: id(stale) }))[0];
+  const cart = first("insert", "guest_carts", JSON.stringify({ memberId: id(stale) }))[0];
+  const note = first("insert", "guest_notes", JSON.stringify({ body: "mine", memberId: id(stale) }))[0];
   // guestbook.memberId has no onDelete: the row still requires its guest.
-  const entry = zero("insert", "guestbook", JSON.stringify({ message: `pinned ${run}`, memberId: id(pinned) }))[0];
+  const entry = first("insert", "guestbook", JSON.stringify({ message: `pinned ${run}`, memberId: id(pinned) }))[0];
   // A post the guest authored stays, without an author.
-  const post = Number(wp("post", "create", "--post_type=zero_posts", "--post_status=publish", `--post_title=Guest ${run}`, `--post_author=${id(author)}`, "--porcelain"));
+  const post = Number(wp("post", "create", "--post_type=first_posts", "--post_status=publish", `--post_title=Guest ${run}`, `--post_author=${id(author)}`, "--porcelain"));
   for (const g of [stale, pinned, author]) age(id(g), 40);
   age(id(fresh), 5);
   runPrune();
   assert.deepEqual([stale, pinned, fresh, author].map((g) => user(id(g))), [false, true, true, false]);
-  assert.deepEqual(sql(`SELECT id FROM wp_zero_guest_carts WHERE id = ${cart.id}`), [], "cascade deleted the guest's cart");
-  assert.deepEqual(sql(`SELECT memberId FROM wp_zero_guest_notes WHERE id = ${note.id}`), [{ memberId: "NULL" }], "set null kept the note, unowned");
-  assert.deepEqual(sql(`SELECT memberId FROM wp_zero_guestbook WHERE id = ${entry.id}`), [{ memberId: String(id(pinned)) }], "the required reference kept its guest");
+  assert.deepEqual(sql(`SELECT id FROM wp_first_guest_carts WHERE id = ${cart.id}`), [], "cascade deleted the guest's cart");
+  assert.deepEqual(sql(`SELECT memberId FROM wp_first_guest_notes WHERE id = ${note.id}`), [{ memberId: "NULL" }], "set null kept the note, unowned");
+  assert.deepEqual(sql(`SELECT memberId FROM wp_first_guestbook WHERE id = ${entry.id}`), [{ memberId: String(id(pinned)) }], "the required reference kept its guest");
   assert.deepEqual(sql(`SELECT post_author FROM wp_posts WHERE ID = ${post}`), [{ post_author: "0" }]);
-  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_zero_identity_tokens WHERE wp_user_id = ${id(stale)}`), [{ n: "0" }], "identity forgot the pruned guest");
+  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_first_identity_tokens WHERE wp_user_id = ${id(stale)}`), [{ n: "0" }], "identity forgot the pruned guest");
   const me = await fetch(`${api}/me`, { headers: { authorization: `Bearer ${stale.accessToken}` } });
   assert.equal(me.status, 401, "the pruned guest's token no longer signs in");
   // Without an auth collection, a core deletion hook can fail after priming empty metadata.
@@ -90,26 +90,26 @@ test("zero.prune-guests deletes stale guests with what they own, per onDelete, a
   age(id(rollbackGuest), 40);
   age(id(laterGuest), 40);
   const restored = JSON.parse(wp("eval", `
-    $original = \\Zero\\Wp\\Runtime::plugin()->app()->db;
-    \\Zero\\Db::setInstance(new \\Zero\\Db($original->store(), new \\Zero\\Schema([]), $original->media(), 'wp'));
+    $original = \\First\\Wp\\Runtime::plugin()->app()->db;
+    \\First\\Db::setInstance(new \\First\\Db($original->store(), new \\First\\Schema([]), $original->media(), 'wp'));
     add_action('deleted_user', static function ($userId): void {
       if ($userId === ${id(rollbackGuest)}) {
         get_user_meta($userId);
         throw new RuntimeException('keep guest');
       }
     });
-    $result = \\Zero\\Wp\\Guests::prune();
+    $result = \\First\\Wp\\Guests::prune();
     $user = new WP_User(${id(rollbackGuest)});
     echo wp_json_encode([$result, $user->exists(), $user->roles, get_userdata(${id(laterGuest)}) === false]);
   `));
-  assert.deepEqual(restored, [{ pruned: [id(laterGuest)], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["zero_guest"], true]);
+  assert.deepEqual(restored, [{ pruned: [id(laterGuest)], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["first_guest"], true]);
 });
 
 test("compiled arithmetic on stored and input integers past 2^53 matches JS; lookups stay exact", async () => {
   // MariaDB keeps 9007199254740993 exactly; JS can't even write it, so Node computes from the double.
   const exact = "9007199254740993";
-  sql(`INSERT INTO wp_zero_big_counts (n) VALUES (${exact})`);
-  const [row] = sql(`SELECT id FROM wp_zero_big_counts WHERE n = ${exact}`);
+  sql(`INSERT INTO wp_first_big_counts (n) VALUES (${exact})`);
+  const [row] = sql(`SELECT id FROM wp_first_big_counts WHERE n = ${exact}`);
   const n = Number(exact), m = 2 ** 53 + 3; // what JS sees: both rounded to doubles
   const body = `{"id":${row.id},"m":9007199254740995}`;
   const res = await fetch(`${api}/actions/bigMath`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body });

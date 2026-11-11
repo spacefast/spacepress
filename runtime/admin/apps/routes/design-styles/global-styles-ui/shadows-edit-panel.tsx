@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import {
 	__experimentalHStack as HStack,
 	__experimentalVStack as VStack,
@@ -20,7 +20,7 @@ import {
 	Modal,
 	privateApis as componentsPrivateApis,
 } from '@wordpress/components';
-import { InputControl } from '@zero-admin/design-system';
+import { InputControl } from '@first-admin/design-system';
 import { __, sprintf } from '@wordpress/i18n';
 import {
 	plus,
@@ -43,18 +43,18 @@ const { Menu } = unlock( componentsPrivateApis );
 
 const customShadowMenuItems = [
 	{
-		label: __( 'Rename', 'zero-admin' ),
+		label: __( 'Rename', 'first-admin' ),
 		action: 'rename',
 	},
 	{
-		label: __( 'Delete', 'zero-admin' ),
+		label: __( 'Delete', 'first-admin' ),
 		action: 'delete',
 	},
 ];
 
 const presetShadowMenuItems = [
 	{
-		label: __( 'Reset', 'zero-admin' ),
+		label: __( 'Reset', 'first-admin' ),
 		action: 'reset',
 	},
 ];
@@ -158,7 +158,7 @@ export default function ShadowsEditPanel() {
 									<Button
 										size="small"
 										icon={ moreVertical }
-										label={ __( 'Menu', 'zero-admin' ) }
+										label={ __( 'Menu', 'first-admin' ) }
 									/>
 								}
 							/>
@@ -188,7 +188,7 @@ export default function ShadowsEditPanel() {
 					</Spacer>
 				</FlexItem>
 			</HStack>
-			<div className="zero-admin-global-styles-screen">
+			<div className="first-admin-global-styles-screen">
 				<ShadowsPreview shadow={ selectedShadow.shadow } />
 				<ShadowEditor
 					shadow={ selectedShadow.shadow }
@@ -205,14 +205,14 @@ export default function ShadowsEditPanel() {
 					onCancel={ () => {
 						setIsConfirmDialogVisible( false );
 					} }
-					confirmButtonText={ __( 'Delete', 'zero-admin' ) }
+					confirmButtonText={ __( 'Delete', 'first-admin' ) }
 					size="medium"
 				>
 					{ sprintf(
 						/* translators: %s: Name of the shadow preset. */
 						__(
 							'Are you sure you want to delete "%s" shadow preset?',
-							'zero-admin'
+							'first-admin'
 						),
 						selectedShadow.name
 					) }
@@ -220,7 +220,7 @@ export default function ShadowsEditPanel() {
 			) }
 			{ isRenameModalVisible && (
 				<Modal
-					title={ __( 'Rename', 'zero-admin' ) }
+					title={ __( 'Rename', 'first-admin' ) }
 					onRequestClose={ () => setIsRenameModalVisible( false ) }
 					size="small"
 				>
@@ -233,8 +233,8 @@ export default function ShadowsEditPanel() {
 					>
 						<InputControl
 							autoComplete="off"
-							label={ __( 'Name', 'zero-admin' ) }
-							placeholder={ __( 'Shadow name', 'zero-admin' ) }
+							label={ __( 'Name', 'first-admin' ) }
+							placeholder={ __( 'Shadow name', 'first-admin' ) }
 							value={ shadowName ?? '' }
 							onValueChange={ setShadowName }
 						/>
@@ -252,7 +252,7 @@ export default function ShadowsEditPanel() {
 										setIsRenameModalVisible( false )
 									}
 								>
-									{ __( 'Cancel', 'zero-admin' ) }
+									{ __( 'Cancel', 'first-admin' ) }
 								</Button>
 							</FlexItem>
 							<FlexItem>
@@ -261,7 +261,7 @@ export default function ShadowsEditPanel() {
 									variant="primary"
 									type="submit"
 								>
-									{ __( 'Save', 'zero-admin' ) }
+									{ __( 'Save', 'first-admin' ) }
 								</Button>
 							</FlexItem>
 						</Flex>
@@ -286,10 +286,10 @@ function ShadowsPreview( { shadow }: ShadowsPreviewProps ) {
 			<HStack
 				alignment="center"
 				justify="center"
-				className="zero-admin-global-styles__shadow-preview-panel"
+				className="first-admin-global-styles__shadow-preview-panel"
 			>
 				<div
-					className="zero-admin-global-styles__shadow-preview-block"
+					className="first-admin-global-styles__shadow-preview-block"
 					style={ shadowStyle }
 				/>
 			</HStack>
@@ -326,13 +326,13 @@ function ShadowEditor( { shadow, onChange }: ShadowEditorProps ) {
 			<VStack spacing={ 2 }>
 				<HStack justify="space-between">
 					<Subtitle level={ 3 }>
-						{ __( 'Shadows', 'zero-admin' ) }
+						{ __( 'Shadows', 'first-admin' ) }
 					</Subtitle>
-					<FlexItem className="zero-admin-global-styles__shadows-panel__options-container">
+					<FlexItem className="first-admin-global-styles__shadows-panel__options-container">
 						<Button
 							size="small"
 							icon={ plus }
-							label={ __( 'Add shadow', 'zero-admin' ) }
+							label={ __( 'Add shadow', 'first-admin' ) }
 							onClick={ () => {
 								onAddShadowPart();
 							} }
@@ -388,12 +388,12 @@ function ShadowItem( {
 	return (
 		<Dropdown
 			popoverProps={ popoverProps }
-			className="zero-admin-global-styles__shadow-editor__dropdown"
+			className="first-admin-global-styles__shadow-editor__dropdown"
 			renderToggle={ ( { onToggle, isOpen } ) => {
 				const toggleProps = {
 					onClick: onToggle,
 					className: clsx(
-						'zero-admin-global-styles__shadow-editor__dropdown-toggle',
+						'first-admin-global-styles__shadow-editor__dropdown-toggle',
 						{ 'is-open': isOpen }
 					),
 					'aria-expanded': isOpen,
@@ -406,10 +406,10 @@ function ShadowItem( {
 						onRemove();
 					},
 					className: clsx(
-						'zero-admin-global-styles__shadow-editor__remove-button',
+						'first-admin-global-styles__shadow-editor__remove-button',
 						{ 'is-open': isOpen }
 					),
-					label: __( 'Remove shadow', 'zero-admin' ),
+					label: __( 'Remove shadow', 'first-admin' ),
 				};
 
 				return (
@@ -420,8 +420,8 @@ function ShadowItem( {
 							{ ...toggleProps }
 						>
 							{ shadowObj.inset
-								? __( 'Inner shadow', 'zero-admin' )
-								: __( 'Drop shadow', 'zero-admin' ) }
+								? __( 'Inner shadow', 'first-admin' )
+								: __( 'Drop shadow', 'first-admin' ) }
 						</Button>
 						{ canRemove && (
 							<Button
@@ -436,7 +436,7 @@ function ShadowItem( {
 			renderContent={ () => (
 				<DropdownContentWrapper
 					paddingSize="medium"
-					className="zero-admin-global-styles__shadow-editor__dropdown-content"
+					className="first-admin-global-styles__shadow-editor__dropdown-content"
 				>
 					<ShadowPopover
 						shadowObj={ shadowObj }
@@ -468,7 +468,7 @@ function ShadowPopover( { shadowObj, onChange }: ShadowPopoverProps ) {
 	return (
 		<VStack
 			spacing={ 4 }
-			className="zero-admin-global-styles__shadow-editor-panel"
+			className="first-admin-global-styles__shadow-editor-panel"
 		>
 			<ColorPalette
 				clearable={ false }
@@ -480,7 +480,7 @@ function ShadowPopover( { shadowObj, onChange }: ShadowPopoverProps ) {
 				onChange={ ( value ) => onShadowChange( 'color', value ) }
 			/>
 			<ToggleGroupControl
-				label={ __( 'Shadow Type', 'zero-admin' ) }
+				label={ __( 'Shadow Type', 'first-admin' ) }
 				__nextHasNoMarginBottom
 				value={ shadowObj.inset ? 'inset' : 'outset' }
 				isBlock
@@ -492,31 +492,31 @@ function ShadowPopover( { shadowObj, onChange }: ShadowPopoverProps ) {
 			>
 				<ToggleGroupControlOption
 					value="outset"
-					label={ __( 'Outset', 'zero-admin' ) }
+					label={ __( 'Outset', 'first-admin' ) }
 				/>
 				<ToggleGroupControlOption
 					value="inset"
-					label={ __( 'Inset', 'zero-admin' ) }
+					label={ __( 'Inset', 'first-admin' ) }
 				/>
 			</ToggleGroupControl>
 			<Grid columns={ 2 } gap={ 4 }>
 				<ShadowInputControl
-					label={ __( 'X Position', 'zero-admin' ) }
+					label={ __( 'X Position', 'first-admin' ) }
 					value={ shadowObj.x }
 					onChange={ ( value ) => onShadowChange( 'x', value ) }
 				/>
 				<ShadowInputControl
-					label={ __( 'Y Position', 'zero-admin' ) }
+					label={ __( 'Y Position', 'first-admin' ) }
 					value={ shadowObj.y }
 					onChange={ ( value ) => onShadowChange( 'y', value ) }
 				/>
 				<ShadowInputControl
-					label={ __( 'Blur', 'zero-admin' ) }
+					label={ __( 'Blur', 'first-admin' ) }
 					value={ shadowObj.blur }
 					onChange={ ( value ) => onShadowChange( 'blur', value ) }
 				/>
 				<ShadowInputControl
-					label={ __( 'Spread', 'zero-admin' ) }
+					label={ __( 'Spread', 'first-admin' ) }
 					value={ shadowObj.spread }
 					onChange={ ( value ) => onShadowChange( 'spread', value ) }
 				/>

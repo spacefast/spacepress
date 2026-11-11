@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+namespace First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 /**
  * Represents the exact shape of an array.

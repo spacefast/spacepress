@@ -1,4 +1,4 @@
-import type { DashboardWidgetType } from '@zero-admin/dashboard';
+import type { DashboardWidgetType } from '@first-admin/dashboard';
 import { __ } from '@wordpress/i18n';
 
 type WeatherWidgetType = {
@@ -11,22 +11,22 @@ const widget: Omit<
 	'render_module'
 > = {
 	name: 'core/weather',
-	title: __( 'Weather (example data)', 'zero-admin' ),
+	title: __( 'Weather (example data)', 'first-admin' ),
 	attributes: [
 		{
 			id: 'location',
 			type: 'text',
-			label: __( 'Location', 'zero-admin' ),
+			label: __( 'Location', 'first-admin' ),
 		},
 		{
 			id: 'unit',
 			type: 'text',
-			label: __( 'Temperature Unit', 'zero-admin' ),
+			label: __( 'Temperature Unit', 'first-admin' ),
 			elements: [
-				{ value: 'celsius', label: __( 'Celsius', 'zero-admin' ) },
+				{ value: 'celsius', label: __( 'Celsius', 'first-admin' ) },
 				{
 					value: 'fahrenheit',
-					label: __( 'Fahrenheit', 'zero-admin' ),
+					label: __( 'Fahrenheit', 'first-admin' ),
 				},
 			],
 		},

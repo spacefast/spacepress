@@ -1,4 +1,4 @@
-import { EmptyState } from '@zero-admin/design-system';
+import { EmptyState } from '@first-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import { useDashboardContext } from '../dashboard/context';
 import { emptyDashboardIcon } from './empty-state-icon';
@@ -14,12 +14,12 @@ export function DashboardEmpty() {
 		<EmptyState.Root>
 			<EmptyState.Icon icon={ emptyDashboardIcon } />
 			<EmptyState.Title>
-				{ __( 'All widgets have been removed', 'zero-admin' ) }
+				{ __( 'All widgets have been removed', 'first-admin' ) }
 			</EmptyState.Title>
 			<EmptyState.Description>
 				{ __(
 					"Add widgets to track your store's performance and activity.",
-					'zero-admin'
+					'first-admin'
 				) }
 			</EmptyState.Description>
 		</EmptyState.Root>

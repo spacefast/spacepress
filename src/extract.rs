@@ -49,7 +49,7 @@ pub enum Slot {
     WpHook {
         index: usize,
     },
-    /// A server component exported from `zero/components/`; `name` keys `Schema::components`.
+    /// A server component exported from `first/components/`; `name` keys `Schema::components`.
     Component {
         name: String,
     },
@@ -70,7 +70,7 @@ pub struct Extracted {
     pub roots: Vec<Root>,
     /// Schema-key → collection value, for resolving captured collections.
     pub collections: Vec<Rc<CollectionVal>>,
-    /// Non-fatal advice printed by `zero build` (§3.5.1 postmeta hint).
+    /// Non-fatal advice printed by `first build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
@@ -118,8 +118,8 @@ const COLLECTION_OPTIONS: &[&str] = &[
 const RESERVED_COLLECTIONS: &[&str] = &[
     "media", "files", "globals", "actions", "me", "_schema", "auth", "services",
 ];
-/// WordPress limits post types to 20 characters; Zero prefixes `zero_`.
-const MAX_POST_TYPE_TABLE: usize = 15;
+/// WordPress limits post types to 20 characters; First prefixes `first_`.
+const MAX_POST_TYPE_TABLE: usize = 20 - "first_".len();
 /// MySQL utf8mb4 index prefix limit.
 const MAX_UNIQUE_TEXT: f64 = 191.0;
 const MAX_NESTING: usize = 3;
@@ -199,7 +199,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     other.describe()
                 ),
             )
-            .help("it becomes the WordPress plugin slug `zero-<name>`"));
+            .help("it becomes the WordPress plugin slug `first-<name>`"));
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
@@ -266,7 +266,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             if RESERVED_COLLECTIONS.contains(&canonical.as_str()) {
                 return Err(Diag::new(
                     c.span,
-                    format!("\"{canonical}\" is reserved: Zero serves a built-in route with that name"),
+                    format!("\"{canonical}\" is reserved: First serves a built-in route with that name"),
                 ));
             }
             let table = match c.options.as_ref().and_then(|options| {
@@ -280,7 +280,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 Some(_) => {
                     return Err(
                         Diag::new(span, "`storageName` must be an identifier starting with a letter")
-                            .help("use the existing physical name without the WordPress or zero_ prefix"),
+                            .help("use the existing physical name without the WordPress or first_ prefix"),
                     );
                 }
             };
@@ -290,7 +290,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             {
                 return Err(Diag::new(
                     c.span,
-                    format!("\"{table}\" is reserved: Zero serves a built-in route with that name"),
+                    format!("\"{table}\" is reserved: First serves a built-in route with that name"),
                 ));
             }
             if let Some(other) = out.schema.collections.get(&table) {
@@ -855,7 +855,7 @@ fn collection_options(
                 span("was"),
                 "`was` takes the table's old storage name, and only on table()",
             )
-            .help("write `was: \"old_name\"`: the name in zero/_generated/migrations/snapshot.json"));
+            .help("write `was: \"old_name\"`: the name in first/_generated/migrations/snapshot.json"));
         }
     };
     if let Some(name) = &existing_table
@@ -909,7 +909,7 @@ fn collection_options(
         return Err(Diag::new(
             c.span,
             format!(
-                "\"{}\" is too long for an editor collection: WordPress post types are limited to 20 characters and Zero prefixes `zero_`",
+                "\"{}\" is too long for an editor collection: WordPress post types are limited to 20 characters and First prefixes `first_`",
                 c.table()
             ),
         )
@@ -2305,10 +2305,10 @@ fn signature_config(v: &Value, span: Span) -> Result<Json> {
         .is_match(&header)
     {
         return Err(Diag::new(span, "signature.header must be an HTTP header name")
-            .help("use stripe-signature or zero-signature"));
+            .help("use stripe-signature or first-signature"));
     }
     let scheme = string(o.get("scheme"), span, "signature.scheme")?;
-    if scheme != "zero" && scheme != "hmac-sha256" {
+    if scheme != "first" && scheme != "hmac-sha256" {
         return Err(
             Diag::new(span, "signature.scheme must be zero or hmac-sha256").help("choose a supported HMAC scheme")
         );
@@ -2987,7 +2987,7 @@ fn route_shape(path: &str) -> String {
         .join("/")
 }
 
-/// First segments WordPress, Zero and the host own; a route may not shadow them.
+/// First segments WordPress, First and the host own; a route may not shadow them.
 const RESERVED_ROUTE_FIRST: &[&str] = &[
     ".well-known",
     "__spacefast",
@@ -3041,7 +3041,7 @@ fn route_path(path: &str, span: Span) -> Result<String> {
         || crate::pages::RESERVED_FIRST.contains(&first.as_str())
         || RESERVED_ROUTE_FIRST.contains(&first.as_str())
     {
-        return Err(bad("starts with a segment WordPress or Zero owns"));
+        return Err(bad("starts with a segment WordPress or First owns"));
     }
     Ok(format!("/{rest}"))
 }

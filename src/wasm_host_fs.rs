@@ -1,4 +1,4 @@
-//! Synchronous host filesystem. Each import returns a zero_alloc-owned, length-prefixed
+//! Synchronous host filesystem. Each import returns a first_alloc-owned, length-prefixed
 //! UTF-8 JSON result: {data: value} or {error: {kind, message}}. No WASI dependency.
 use crate::loader::Fs;
 use serde::de::DeserializeOwned;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Brick\Math\Internal;
+namespace First\Identity\Vendor\Brick\Math\Internal;
 
 use function extension_loaded;
 

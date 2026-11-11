@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Uid\Command;
+namespace First\Identity\Vendor\Symfony\Component\Uid\Command;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -20,9 +20,9 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Zero\Identity\Vendor\Symfony\Component\Uid\Exception\LogicException;
-use Zero\Identity\Vendor\Symfony\Component\Uid\Factory\UuidFactory;
-use Zero\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use First\Identity\Vendor\Symfony\Component\Uid\Exception\LogicException;
+use First\Identity\Vendor\Symfony\Component\Uid\Factory\UuidFactory;
+use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
 
 #[AsCommand(name: 'uuid:generate', description: 'Generate a UUID')]
 class GenerateUuidCommand extends Command

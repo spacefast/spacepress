@@ -16,7 +16,7 @@ export default function SaveButton( {
 	isDisabled: isDisabledFromProp = false,
 	onSave = () => {},
 	onError = () => {},
-	label = __( 'Save', 'zero-admin' ),
+	label = __( 'Save', 'first-admin' ),
 }: SaveButtonProps ) {
 	const registry = useRegistry();
 	const [ isPendingSave, setIsPendingSave ] = useState( false );
@@ -40,10 +40,10 @@ export default function SaveButton( {
 		! hasChanges || isDisabledFromProp || isPendingSave || isSaving;
 	return (
 		<Button
-			className="zero-admin-save-button"
+			className="first-admin-save-button"
 			loading={ isPendingSave || isSaving }
 			disabled={ isSaveButtonDisabled }
-			loadingAnnouncement={ __( 'Saving', 'zero-admin' ) }
+			loadingAnnouncement={ __( 'Saving', 'first-admin' ) }
 			size="compact"
 			onClick={ () => {
 				if ( isSaveButtonDisabled || isPendingSaveRef.current ) {

@@ -1,5 +1,5 @@
-// The site project as a user handles it: a working copy of examples/site, the `zero` binary that
-// tests/system/run.sh built, the additive upgrade a later release of the app makes, and `zero doctor`.
+// The site project as a user handles it: a working copy of examples/site, the `first` binary that
+// tests/system/run.sh built, the additive upgrade a later release of the app makes, and `first doctor`.
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHmac } from "node:crypto";
@@ -12,18 +12,18 @@ import type { Role, UpgradedClient } from "./journey.ts";
 
 export const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const work = join(repo, "tests/system/.work");
-const zeroBin = join(process.env.CARGO_TARGET_DIR ?? join(repo, "target"), "debug/zero");
+const firstBin = join(process.env.CARGO_TARGET_DIR ?? join(repo, "target"), "debug/first");
 
 /** A fresh copy of examples/site (config, committed migrations and client; no build output). */
 export function copySite(dest: string): string {
   rmSync(dest, { recursive: true, force: true });
-  cpSync(join(repo, "examples/site"), dest, { recursive: true, filter: (src) => !src.includes("/.zero") });
+  cpSync(join(repo, "examples/site"), dest, { recursive: true, filter: (src) => !src.includes("/.first") });
   return dest;
 }
 
 /** The next release of the app: one new post field and one new comment column, both additive. */
 export function upgrade(project: string): void {
-  const file = join(project, "zero.config.ts");
+  const file = join(project, "first.config.ts");
   let src = readFileSync(file, "utf8");
   const add = (anchor: string, line: string) => {
     assert.ok(src.includes(anchor), `upgrade anchor missing: ${anchor}`);
@@ -34,15 +34,15 @@ export function upgrade(project: string): void {
   writeFileSync(file, src);
 }
 
-/** `zero sync <dir> --only posts --no-commit --json` with the given site credentials; the result's data. */
+/** `first sync <dir> --only posts --no-commit --json` with the given site credentials; the result's data. */
 export function sync(dir: string, site: string, appPassword: string): { applied: number; conflicts: unknown[]; refused: string[] } {
-  const r = spawnSync(zeroBin, ["sync", dir, "--only", "posts", "--no-commit", "--json", "--site", site], { encoding: "utf8", env: { ...process.env, ZERO_APP_PASSWORD: appPassword } });
+  const r = spawnSync(firstBin, ["sync", dir, "--only", "posts", "--no-commit", "--json", "--site", site], { encoding: "utf8", env: { ...process.env, FIRST_APP_PASSWORD: appPassword } });
   assert.equal(r.status, 0, r.stdout + r.stderr);
   return JSON.parse(r.stdout).data;
 }
 
-export function zero(...args: string[]): string {
-  return execFileSync(zeroBin, args, { encoding: "utf8", env: { ...process.env } });
+export function first(...args: string[]): string {
+  return execFileSync(firstBin, args, { encoding: "utf8", env: { ...process.env } });
 }
 
 export interface Doctor {
@@ -50,9 +50,9 @@ export interface Doctor {
   checks: { name: string; ok: boolean; detail: string }[];
 }
 
-/** `zero doctor ... --json`: the diagnosis, after checking it exits 1 exactly when a check fails. */
+/** `first doctor ... --json`: the diagnosis, after checking it exits 1 exactly when a check fails. */
 export function doctor(...args: string[]): Doctor {
-  const r = spawnSync(zeroBin, ["doctor", ...args, "--json"], { encoding: "utf8" });
+  const r = spawnSync(firstBin, ["doctor", ...args, "--json"], { encoding: "utf8" });
   const diagnosis: Doctor = JSON.parse(r.stdout).data;
   assert.equal(diagnosis.ok, diagnosis.checks.every((c) => c.ok));
   assert.equal(r.status, diagnosis.ok ? 0 : 1, r.stderr);
@@ -134,7 +134,7 @@ export function pngCentre(png: Uint8Array): { width: number; height: number; col
 export interface Delivery {
   event: string;
   data: { row: Record<string, unknown> };
-  /** The receiver checked `zero-signature` against the secret: t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body")). */
+  /** The receiver checked `first-signature` against the secret: t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body")). */
   verified: boolean;
 }
 
@@ -157,7 +157,7 @@ export async function receiver(secret: string) {
       req.on("end", () => {
         if (req.method !== "POST" || req.url !== "/hook") { res.writeHead(404).end(); return; }
         if (failNext) { failNext = false; res.writeHead(500).end("try again"); return; }
-        appendFileSync(${JSON.stringify(log)}, JSON.stringify({ signature: req.headers["zero-signature"] ?? "", body }) + "\\n");
+        appendFileSync(${JSON.stringify(log)}, JSON.stringify({ signature: req.headers["first-signature"] ?? "", body }) + "\\n");
         res.writeHead(200).end("ok");
       });
     });
@@ -183,6 +183,6 @@ export async function receiver(secret: string) {
 
 /** The typed client a rebuilt project generated, loaded the way a frontend imports it. */
 export async function clientOf(project: string, make: (createClient: (o: object) => unknown, role: Role) => unknown) {
-  const mod = await import(pathToFileURL(join(project, "zero/_generated/client/index.ts")).href);
+  const mod = await import(pathToFileURL(join(project, "first/_generated/client/index.ts")).href);
   return (role: Role) => make(mod.createClient, role) as UpgradedClient;
 }

@@ -1,5 +1,5 @@
 {
-  "name": "zero-npm-compat",
+  "name": "first-npm-compat",
   "private": true,
   "type": "module",
   "scripts": {

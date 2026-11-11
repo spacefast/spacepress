@@ -1,6 +1,6 @@
-//! `zero abilities pull [dir] --site <url> [--only vendor/*]...`: list a site's abilities over
-//! `wp-abilities/v1` and write the committed lock `zero/_generated/abilities.json`. Credentials come only from
-//! `ZERO_APP_PASSWORD` (`user:application-password`), never a flag that lands in shell history.
+//! `first abilities pull [dir] --site <url> [--only vendor/*]...`: list a site's abilities over
+//! `wp-abilities/v1` and write the committed lock `first/_generated/abilities.json`. Credentials come only from
+//! `FIRST_APP_PASSWORD` (`user:application-password`), never a flag that lands in shell history.
 
 use crate::wordpress::abilities::{self, LOCK};
 use serde_json::{Value, json};
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-const USAGE: &str = "usage: zero abilities pull [project-dir] --site <url> [--only vendor/*]...\n       credentials: ZERO_APP_PASSWORD=user:application-password (optional)";
+const USAGE: &str = "usage: first abilities pull [project-dir] --site <url> [--only vendor/*]...\n       credentials: FIRST_APP_PASSWORD=user:application-password (optional)";
 
 pub fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -35,7 +35,7 @@ fn run(args: &[String]) -> Result<(), String> {
         }
     }
     let site = site.ok_or(format!("--site is required\n{USAGE}"))?;
-    let credential = std::env::var("ZERO_APP_PASSWORD").ok().filter(|s| !s.is_empty());
+    let credential = std::env::var("FIRST_APP_PASSWORD").ok().filter(|s| !s.is_empty());
     let listed = list(&site, credential.as_deref())?;
     let kept: Vec<Value> = listed
         .into_iter()
@@ -147,7 +147,7 @@ pub(crate) fn list(site: &str, credential: Option<&str>) -> Result<Vec<Value>, S
             200 => {}
             401 | 403 => {
                 return Err(format!(
-                    "{site}: listing abilities needs a signed-in user; set ZERO_APP_PASSWORD=user:application-password"
+                    "{site}: listing abilities needs a signed-in user; set FIRST_APP_PASSWORD=user:application-password"
                 ));
             }
             404 => {

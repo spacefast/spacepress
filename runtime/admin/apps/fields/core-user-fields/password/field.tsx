@@ -1,12 +1,12 @@
 import { Button, IconButton } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { InputControl, InputLayout } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { InputControl, InputLayout } from '@first-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import { useState } from '@wordpress/element';
 import { seen, unseen } from '@wordpress/icons';
 import { Flex } from '@wordpress/components';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 import { estimatePasswordStrength } from '../util/password';
 import './style.scss';
 
@@ -97,8 +97,8 @@ export const fieldExtensions: Partial< Field< User > > = {
 							<IconButton
 								label={
 									show
-										? __( 'Hide password', 'zero-admin' )
-										: __( 'Show password', 'zero-admin' )
+										? __( 'Hide password', 'first-admin' )
+										: __( 'Show password', 'first-admin' )
 								}
 								onClick={ () => setShow( ! show ) }
 								icon={ show ? unseen : seen }
@@ -115,7 +115,7 @@ export const fieldExtensions: Partial< Field< User > > = {
 					variant="outline"
 					onClick={ handleGeneratePassword }
 				>
-					{ __( 'Generate', 'zero-admin' ) }
+					{ __( 'Generate', 'first-admin' ) }
 				</Button>
 			</>
 		);

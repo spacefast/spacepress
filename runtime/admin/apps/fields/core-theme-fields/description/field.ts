@@ -1,6 +1,6 @@
 import type { Theme } from '@wordpress/core-data';
 import { decodeEntities } from '@wordpress/html-entities';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< Theme > > = {
 	getValue: ( { item }: { item: Theme } ) => item.description.raw,

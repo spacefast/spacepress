@@ -1,5 +1,5 @@
 import { __, sprintf } from '@wordpress/i18n';
-import { EmptyState } from '@zero-admin/design-system';
+import { EmptyState } from '@first-admin/design-system';
 
 interface UserListEmptyStateProps {
 	slug: string;
@@ -10,26 +10,26 @@ export function UserListEmptyState( { slug }: UserListEmptyStateProps ) {
 	let description: string;
 
 	if ( slug === 'all' ) {
-		title = __( 'No users', 'zero-admin' );
-		description = __( 'Any users will appear here.', 'zero-admin' );
+		title = __( 'No users', 'first-admin' );
+		description = __( 'Any users will appear here.', 'first-admin' );
 	} else {
 		// Get translatable role name
 		const getRoleName = ( role: string ) => {
 			switch ( role ) {
 				case 'administrator':
-					return __( 'administrator', 'zero-admin' );
+					return __( 'administrator', 'first-admin' );
 				case 'shop_manager':
-					return __( 'store manager', 'zero-admin' );
+					return __( 'store manager', 'first-admin' );
 				case 'customer':
-					return __( 'customer', 'zero-admin' );
+					return __( 'customer', 'first-admin' );
 				case 'subscriber':
-					return __( 'subscriber', 'zero-admin' );
+					return __( 'subscriber', 'first-admin' );
 				case 'contributor':
-					return __( 'contributor', 'zero-admin' );
+					return __( 'contributor', 'first-admin' );
 				case 'author':
-					return __( 'author', 'zero-admin' );
+					return __( 'author', 'first-admin' );
 				case 'editor':
-					return __( 'editor', 'zero-admin' );
+					return __( 'editor', 'first-admin' );
 				default:
 					// Fallback for custom roles
 					return role.replace( /_/g, ' ' );
@@ -39,12 +39,12 @@ export function UserListEmptyState( { slug }: UserListEmptyStateProps ) {
 		const roleName = getRoleName( slug );
 		title = sprintf(
 			/* translators: %s: role name (e.g., administrator, shop manager) */
-			__( 'No %s', 'zero-admin' ),
+			__( 'No %s', 'first-admin' ),
 			roleName
 		);
 		description = sprintf(
 			/* translators: %s: role name (e.g., administrator, shop manager) */
-			__( 'Any users with the %s role will appear here.', 'zero-admin' ),
+			__( 'Any users with the %s role will appear here.', 'first-admin' ),
 			roleName
 		);
 	}

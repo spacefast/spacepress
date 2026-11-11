@@ -9,7 +9,7 @@ declare(strict_types=1);
  * derivation, revisions, hook ctx, globals, media (+ delete nulling), FK actions, extension seams.
  */
 
-use Zero\App;
+use First\App;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -22,9 +22,9 @@ $open['content'] = null;
 $open['columns'] = array_intersect_key($open['columns'], array_flip(['id', 'title', 'slug']));
 $open['hooks'] = $open['relations'] = [];
 $open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'anyone']);
-$open['wp'] = ['postType' => 'zero_open_notes', 'groupKey' => 'group_zero_open_notes', 'metaPrefix' => 'zero_', 'fieldKeyPrefix' => 'field_zero_open_notes_'];
+$open['wp'] = ['postType' => 'first_open_notes', 'groupKey' => 'group_first_open_notes', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_open_notes_'];
 $schema['collections']['openNotes'] = $open;
-// Signed-in-only action: on a site without zero-identity, only WordPress itself can sign anyone in.
+// Signed-in-only action: on a site without first-identity, only WordPress itself can sign anyone in.
 $schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated'], 'handler' => 'action__publishedCount'] + $schema['actions']['publishedCount'];
 $wp = wpSite('blog', [
     'schema' => $schema,
@@ -32,31 +32,31 @@ $wp = wpSite('blog', [
     'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
 ]);
 $app = $wp->app();
-$db = \Zero\db();
-eq('WordPress and the request pipeline share the validated schema', $app->schema === \Zero\Wp\Runtime::plugin()->schema, true);
+$db = \First\db();
+eq('WordPress and the request pipeline share the validated schema', $app->schema === \First\Wp\Runtime::plugin()->schema, true);
 eq('the database uses the validated schema', $db->schema() === $app->schema, true);
-$anonymous = new \Zero\Viewer(null);
+$anonymous = new \First\Viewer(null);
 eq('an unprotected collection retains unrestricted storage visibility', $db->store()->readGuards('openNotes', $anonymous), []);
 $openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true, $anonymous)[0];
 eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
 eq('native unrestricted reads do not enumerate every primary key', $db->permittedKeys('openNotes', 'read', $anonymous), null);
 
 // Internal REST calls can discard their response before WordPress serves a different one.
-$internal = new \WP_REST_Request('GET', '/zero/v1/posts');
+$internal = new \WP_REST_Request('GET', '/first/v1/posts');
 $internal->set_url_params(['path' => 'posts']);
-$discarded = \Zero\Wp\Rest::dispatch($app, $internal);
+$discarded = \First\Wp\Rest::dispatch($app, $internal);
 unset($discarded);
 $unrelated = new \WP_REST_Response(['native' => true]);
 ob_start();
-$served = \Zero\Wp\Rest::serve(false, $unrelated);
+$served = \First\Wp\Rest::serve(false, $unrelated);
 $output = ob_get_clean();
-eq('discarded Zero responses cannot hijack another response', [$served, $output], [false, '']);
-$response = \Zero\Wp\Rest::dispatch($app, $internal);
+eq('discarded First responses cannot hijack another response', [$served, $output], [false, '']);
+$response = \First\Wp\Rest::dispatch($app, $internal);
 ob_start();
-$served = \Zero\Wp\Rest::serve(false, $response);
+$served = \First\Wp\Rest::serve(false, $response);
 $output = ob_get_clean();
-eq('live Zero responses still serve their committed body', [$served, json_decode($output, true)], [true, ['data' => []]]);
-eq('a response body is consumed once', \Zero\Wp\Rest::serve(false, $response), false);
+eq('live First responses still serve their committed body', [$served, json_decode($output, true)], [true, ['data' => []]]);
+eq('a response body is consumed once', \First\Wp\Rest::serve(false, $response), false);
 
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
@@ -117,19 +117,19 @@ eq('… editors see every status', array_column(req('GET', '/authors', as: 'ed',
 eq('… authors are below editor', array_column(req('GET', '/authors', as: 'alice')[1], 'name'), ['Alice']);
 eq('GET /me', [req('GET', '/me')[1], req('GET', '/me', as: 'alice')[1]], [null, $users['alice']]);
 // No identity plugin: there is no issuer, and the only signed-in viewer is a WordPress user.
-eq('without zero-identity, Zero has no issuer and no guests', [class_exists(\Zero\Identity\Plugin::class, false), req('GET', '/auth/config')[1]], [false, ['issuer' => null, 'guests' => false]]);
-isProblem('without zero-identity, there are no guest sessions', req('POST', '/auth/guest', []), 404, 'not_found');
-eq('without zero-identity, an "anyone" action runs anonymously', req('POST', '/actions/publishedCount')[0], 200);
-isProblem('without zero-identity, an "authenticated" action refuses anonymous', req('POST', '/actions/signedInCount'), 401, 'unauthenticated');
-eq('without zero-identity, a WordPress user is authenticated', req('POST', '/actions/signedInCount', as: 'sub')[0], 200);
+eq('without first-identity, First has no issuer and no guests', [class_exists(\First\Identity\Plugin::class, false), req('GET', '/auth/config')[1]], [false, ['issuer' => null, 'guests' => false]]);
+isProblem('without first-identity, there are no guest sessions', req('POST', '/auth/guest', []), 404, 'not_found');
+eq('without first-identity, an "anyone" action runs anonymously', req('POST', '/actions/publishedCount')[0], 200);
+isProblem('without first-identity, an "authenticated" action refuses anonymous', req('POST', '/actions/signedInCount'), 401, 'unauthenticated');
+eq('without first-identity, a WordPress user is authenticated', req('POST', '/actions/signedInCount', as: 'sub')[0], 200);
 
 // Native post passwords constrain every viewer-bound read before selection, not just its rendered body.
 $protected = $db->insert('posts', ['title' => 'Protected native post', 'body' => '<p>native-password-secret</p>'], true)[0];
 $public = $db->insert('posts', ['title' => 'Public next page'], true)[0];
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
-$anon = new \Zero\Viewer(null);
+$anon = new \First\Viewer(null);
 $protectedWhere = ['id' => $protected['id']];
-isProblem('native password masks Zero item', req('GET', "/posts/{$protected['id']}"), 404, 'not_found');
+isProblem('native password masks First item', req('GET', "/posts/{$protected['id']}"), 404, 'not_found');
 eq('native password constrains body-filtered projections', $db->findMany('posts', [
     'where' => ['body' => ['like' => '%native-password-secret%']], 'columns' => ['body' => true],
 ], $anon), []);
@@ -143,17 +143,17 @@ eq('native password prevents relation-filter inference', $db->findMany('comments
     'where' => ['id' => $linked['id'], 'post' => ['body' => ['like' => '%native-password-secret%']]],
 ], $anon), []);
 $wp->actAs('admin');
-$nativeController = new \WP_REST_Posts_Controller('zero_posts');
+$nativeController = new \WP_REST_Posts_Controller('first_posts');
 add_filter('post_password_required', [$nativeController, 'check_password_required'], 10, 2);
 eq('native edit-context filter trusts the ambient administrator', post_password_required($protected['id']), false);
 eq('anonymous viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
-eq('subscriber viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], new \Zero\Viewer($users['sub'])), []);
+eq('subscriber viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], new \First\Viewer($users['sub'])), []);
 remove_filter('post_password_required', [$nativeController, 'check_password_required']);
 $wp->actAs(null);
-eq('explicit editor retains native protected-post editing', $db->findFirst('posts', ['where' => $protectedWhere], new \Zero\Viewer($users['ed']))['body'] ?? null, $protected['body']);
+eq('explicit editor retains native protected-post editing', $db->findFirst('posts', ['where' => $protectedWhere], new \First\Viewer($users['ed']))['body'] ?? null, $protected['body']);
 eq('trusted null viewer retains server authority', $db->findFirst('posts', ['where' => $protectedWhere])['body'], $protected['body']);
 $wp->actAs('ed');
-$nativeEdit = new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $protected['id']);
+$nativeEdit = new \WP_REST_Request('GET', '/wp/v2/first_posts/' . $protected['id']);
 $nativeEdit->set_param('context', 'edit');
 $nativeEdited = rest_do_request($nativeEdit);
 eq('native editor can still load protected content for editing', [$nativeEdited->get_status(), $nativeEdited->get_data()['content']['raw'] ?? null], [200, $protected['body']]);
@@ -166,18 +166,18 @@ foreach (['0 ', ' ', 'Native-secret', 'native-secret '] as $password) {
 }
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
 $coreRead = static function () use ($protected) {
-    return rest_do_request(new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $protected['id']));
+    return rest_do_request(new \WP_REST_Request('GET', '/wp/v2/first_posts/' . $protected['id']));
 };
 eq('native core access shares the password row boundary', $coreRead()->get_status(), 404);
 wp_update_post(['ID' => $public['id'], 'post_password' => 'another-native-secret']);
 $corePassword = static function (string $password, bool $list = false) use ($protected, $public) {
-    $request = new \WP_REST_Request('GET', '/wp/v2/zero_posts' . ($list ? '' : '/' . $protected['id']));
+    $request = new \WP_REST_Request('GET', '/wp/v2/first_posts' . ($list ? '' : '/' . $protected['id']));
     $request->set_query_params(['password' => $password] + ($list ? ['include' => [$protected['id'], $public['id']]] : []));
 
     return rest_do_request($request);
 };
 eq('native item rejects a wrong password parameter', $corePassword('wrong-password')->get_status(), 403);
-$concealed = new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $draft['id']);
+$concealed = new \WP_REST_Request('GET', '/wp/v2/first_posts/' . $draft['id']);
 $concealed->set_query_params(['password' => 'wrong-password']);
 eq('wrong native password cannot distinguish a schema-hidden row', rest_do_request($concealed)->get_status(), 404);
 $unlocked = $corePassword('native-secret');
@@ -185,7 +185,7 @@ eq('native item accepts its password parameter', [$unlocked->get_status(), str_c
 $unlockedList = $corePassword('native-secret', true);
 eq('native list accepts its password parameter for matching rows', [$unlockedList->get_status(), array_column($unlockedList->get_data(), 'id'), str_contains($unlockedList->get_data()[0]['content']['rendered'] ?? '', 'native-password-secret')], [200, [$protected['id']], true]);
 eq('native list keeps rows locked with the wrong password', $corePassword('wrong-password', true)->get_data(), []);
-eq('native password parameter does not authorize a subsequent Zero read', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
+eq('native password parameter does not authorize a subsequent First read', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
 $nestedProof = null;
 $inspectProof = static function ($response, $post) use (&$nestedProof, $coreRead, $corePassword, $db, $protectedWhere, $anon) {
     if ($nestedProof === null) {
@@ -195,9 +195,9 @@ $inspectProof = static function ($response, $post) use (&$nestedProof, $coreRead
 
     return $response;
 };
-add_filter('rest_prepare_zero_posts', $inspectProof, 20, 2);
+add_filter('rest_prepare_first_posts', $inspectProof, 20, 2);
 $corePassword('native-secret');
-remove_filter('rest_prepare_zero_posts', $inspectProof);
+remove_filter('rest_prepare_first_posts', $inspectProof);
 eq('nested native requests suspend and then restore the outer password proof', $nestedProof, [404, 403, $protected['body']]);
 $wp->actAs('admin');
 $borrowedProof = null;
@@ -206,9 +206,9 @@ $inspectViewer = static function ($response) use (&$borrowedProof, $db, $protect
 
     return $response;
 };
-add_filter('rest_prepare_zero_posts', $inspectViewer);
+add_filter('rest_prepare_first_posts', $inspectViewer);
 $corePassword('native-secret');
-remove_filter('rest_prepare_zero_posts', $inspectViewer);
+remove_filter('rest_prepare_first_posts', $inspectViewer);
 $wp->actAs(null);
 eq('native admin password proof does not authorize an explicit anonymous viewer', $borrowedProof, []);
 wp_update_post(['ID' => $public['id'], 'post_password' => '']);
@@ -223,7 +223,7 @@ eq('valid native cookie unlocks the same viewer-bound body as WordPress', [post_
 unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
 eq('removing password proof invalidates visibility', [$db->findMany('posts', ['where' => $protectedWhere], $anon), $coreRead()->get_status()], [[], 404]);
 $wp->startServer();
-$wire = json_decode(file_get_contents($wp->url() . '/wp-json/zero/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
+$wire = json_decode(file_get_contents($wp->url() . '/wp-json/first/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
 eq('anonymous HTTP cannot read a native password-protected record', [$wire['status'] ?? null, $wire['code'] ?? null], [404, 'not_found']);
 $db->delete('comments', ['id' => $linked['id']]);
 $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);
@@ -232,10 +232,10 @@ $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);
 $wp->actAs(null);
 $protectedIds = [];
 for ($i = 0; $i < 40; $i++) {
-    $protectedIds[] = wp_insert_post(['post_type' => 'zero_posts', 'post_title' => "Batch protected $i", 'post_password' => "batch-secret-$i", 'post_status' => 'publish']);
+    $protectedIds[] = wp_insert_post(['post_type' => 'first_posts', 'post_title' => "Batch protected $i", 'post_password' => "batch-secret-$i", 'post_status' => 'publish']);
 }
 wp_cache_flush();
-\Zero\Wp\CoreAccess::flush();
+\First\Wp\CoreAccess::flush();
 $queries = $wpdb->num_queries;
 $page = $db->findMany('posts', ['where' => ['id' => ['in' => array_merge($protectedIds, [$pub['id']])]], 'orderBy' => ['id' => 'asc'], 'limit' => 1], $anon);
 $firstQueries = $wpdb->num_queries - $queries;
@@ -245,17 +245,17 @@ eq('anonymous pagination never primes unrelated protected posts', wp_cache_get($
 $proofChecks = 0;
 $countCapabilities = static function ($caps) use (&$proofChecks) { $proofChecks++; return $caps; };
 add_filter('map_meta_cap', $countCapabilities, 1);
-$viewer = new \Zero\Viewer($users['ed']);
+$viewer = new \First\Viewer($users['ed']);
 $db->findMany('posts', ['limit' => 1], $viewer);
 $firstChecks = $proofChecks;
 $db->findMany('posts', ['limit' => 1], $viewer);
 remove_filter('map_meta_cap', $countCapabilities, 1);
 eq('same viewer and proof reuse visibility without rechecking every protected capability', [$firstChecks > 0, $proofChecks], [true, $firstChecks]);
 wp_cache_flush();
-\Zero\Wp\CoreAccess::flush();
+\First\Wp\CoreAccess::flush();
 $failPostLookup = static function (string $sql) use ($wpdb): string {
     return preg_match('/^\s*SELECT\b/i', $sql) && str_contains($sql, $wpdb->posts)
-        ? 'SELECT * FROM zero_missing_post_storage'
+        ? 'SELECT * FROM first_missing_post_storage'
         : $sql;
 };
 add_filter('query', $failPostLookup);
@@ -334,7 +334,7 @@ eq('… and listed for editors with its date', [in_array('Later', $titles(req('G
 
 $p = req('POST', '/posts', ['title' => 'Rev 1', 'excerpt' => 'first'], 'alice')[1];
 req('PATCH', "/posts/{$p['id']}", ['title' => 'Rev 2', 'excerpt' => 'second'], 'alice');
-\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer): array {
+\First\Extensions::onRead(static function (array $rows, string $c, ?\First\Viewer $viewer): array {
     if ($c === 'posts' && $viewer !== null) {
         foreach ($rows as &$row) {
             if (in_array($row['title'], ['Rev 1', 'Rev 2'], true)) {
@@ -373,7 +373,7 @@ eq('patch merges; untouched fields keep their defaults', req('PATCH', '/globals/
 eq('trusted db sees the same values', $db->globalGet('settings')['postsPerPage'], 20);
 isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
 
-// Native SCF writes cross WordPress's scalar-meta serialization before Zero decodes them.
+// Native SCF writes cross WordPress's scalar-meta serialization before First decodes them.
 // A nullable boolean must retain explicit false separately from null and an omitted default.
 (static function () use ($db): void {
     $fields = ['featured' => ['type' => 'boolean', 'default' => ['value' => false]]];
@@ -383,9 +383,9 @@ isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
         'repeater' => ['type' => 'repeater', 'fields' => $fields],
         'blocks' => ['type' => 'blocks', 'layouts' => ['toggle' => $fields]],
     ] as $type => $def) {
-        $key = 'field_zero_nullable_' . $type;
-        $field = \Zero\Wp\Scf::fieldFor($db->schema(), $key, 'zero_nullable_' . $type, 'probe', $def, []);
-        acf_add_local_field_group(['key' => 'group_zero_nullable_' . $type, 'title' => 'Nullable probe', 'fields' => [$field]]);
+        $key = 'field_first_nullable_' . $type;
+        $field = \First\Wp\Scf::fieldFor($db->schema(), $key, 'first_nullable_' . $type, 'probe', $def, []);
+        acf_add_local_field_group(['key' => 'group_first_nullable_' . $type, 'title' => 'Nullable probe', 'fields' => [$field]]);
         $id = wp_insert_post(['post_type' => 'post', 'post_title' => 'SCF round trip', 'post_status' => 'draft']);
         $save = static function (array $input) use ($id, $key, $def, $type): mixed {
             $raw = match ($type) {
@@ -394,7 +394,7 @@ isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
                 'blocks' => [['acf_fc_layout' => 'toggle'] + $input],
             };
             update_field($key, $raw, $id);
-            $row = \Zero\Wp\Scf::fromScf($def, get_field($key, $id, false), $key);
+            $row = \First\Wp\Scf::fromScf($def, get_field($key, $id, false), $key);
 
             return ($type === 'group' ? $row : $row[0])['featured'];
         };
@@ -408,7 +408,7 @@ isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
     }
 })();
 
-\Zero\Features::register(); // Re-registering bootstrap modules must not duplicate the media route.
+\First\Features::register(); // Re-registering bootstrap modules must not duplicate the media route.
 
 // ================================================================ media (§4.6)
 
@@ -450,24 +450,24 @@ eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['
 
 // ================================================================ extension seams
 
-\Zero\SystemTables::register('seam', [
-    'CREATE TABLE IF NOT EXISTS `{prefix}zero__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
-    static function (\Zero\Store $store): void {
-        $db = $store instanceof \Zero\Wp\CompositeStore ? $store->db : throw new \LogicException('the upgrade needs the WordPress store');
-        $have = $db->run('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$db->prefix() . 'zero__seam', 'extra']);
+\First\SystemTables::register('seam', [
+    'CREATE TABLE IF NOT EXISTS `{prefix}first__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
+    static function (\First\Store $store): void {
+        $db = $store instanceof \First\Wp\CompositeStore ? $store->db : throw new \LogicException('the upgrade needs the WordPress store');
+        $have = $db->run('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$db->prefix() . 'first__seam', 'extra']);
         if ($have === []) {
-            $store->applySystemStatements(['ALTER TABLE `{prefix}zero__seam` ADD COLUMN `extra` LONGTEXT']);
+            $store->applySystemStatements(['ALTER TABLE `{prefix}first__seam` ADD COLUMN `extra` LONGTEXT']);
         }
     },
 ]);
-\Zero\SystemTables::apply($db->store());
-$wp->exec('INSERT INTO {prefix}zero__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);
-\Zero\SystemTables::apply($db->store());
-eq('idempotent system DDL and guarded ALTER preserve data', $wp->sql('SELECT `event`, `extra` FROM {prefix}zero__seam')[0], ['event' => 'kept', 'extra' => 'upgraded']);
-problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \Zero\SystemTables::apply($db->store())), 500, 'internal');
+\First\SystemTables::apply($db->store());
+$wp->exec('INSERT INTO {prefix}first__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);
+\First\SystemTables::apply($db->store());
+eq('idempotent system DDL and guarded ALTER preserve data', $wp->sql('SELECT `event`, `extra` FROM {prefix}first__seam')[0], ['event' => 'kept', 'extra' => 'upgraded']);
+problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \First\SystemTables::apply($db->store())), 500, 'internal');
 
 $transformMutationRows = false;
-\Zero\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {
+\First\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {
     if ($transformMutationRows && $c === 'posts') {
         foreach ($rows as &$row) {
             $row['excerpt'] = 'display only';
@@ -477,7 +477,7 @@ $transformMutationRows = false;
 
     return $rows;
 }, constraintSafe: true);
-\Zero\Extensions::normalizeWrite(static function (string $op, string $c, array &$data, ?array $existing): void {
+\First\Extensions::normalizeWrite(static function (string $op, string $c, array &$data, ?array $existing): void {
     if ($c === 'posts') {
         unset($data['translationOf']);
         if (array_key_exists('password', $data)) {
@@ -487,7 +487,7 @@ $transformMutationRows = false;
         }
     }
 });
-\Zero\Extensions::onWrite(static function (string $op, string $c, array &$data, ?array $existing, ?\Zero\Viewer $viewer, array $provided): void {
+\First\Extensions::onWrite(static function (string $op, string $c, array &$data, ?array $existing, ?\First\Viewer $viewer, array $provided): void {
     if ($c === 'posts' && ($data['title'] ?? '') === 'Extension') {
         eq('write extension retains virtual input and distinguishes it from defaults', $provided, ['title' => 'Extension', 'translationOf' => 123]);
         // Defaults precede the extension, and the application hook derives authorId afterwards.
@@ -499,19 +499,19 @@ $transformMutationRows = false;
         $data['excerpt'] = $existing['excerpt'] . ' revised';
     }
     if ($c === 'posts' && $op === 'delete' && $data['excerpt'] === 'extension revised') {
-        throw new \Zero\JsError('extension refused delete');
+        throw new \First\JsError('extension refused delete');
     }
 });
-\Zero\Extensions::onWritten(static function (string $op, string $c, array $row, ?array $previous) use ($db): void {
+\First\Extensions::onWritten(static function (string $op, string $c, array $row, ?array $previous) use ($db): void {
     if ($c !== 'posts' || !str_starts_with($row['excerpt'] ?? '', 'extension')) {
         return;
     }
     $db->insert('comments', ['postId' => $row['id'], 'name' => $op, 'body' => $previous['excerpt'] ?? 'created']);
     if ($row['excerpt'] === 'extension fail') {
-        throw new \Zero\JsError('extension rolled back');
+        throw new \First\JsError('extension rolled back');
     }
-    \Zero\Extensions::afterCommit(static function () use ($db, $op, $row): void {
-        $GLOBALS['wp']->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', [$op . ':' . $row['excerpt']]);
+    \First\Extensions::afterCommit(static function () use ($db, $op, $row): void {
+        $GLOBALS['wp']->exec('INSERT INTO {prefix}first__seam (`event`) VALUES (?)', [$op . ':' . $row['excerpt']]);
     });
 });
 $seamAuthor = $db->insert('authors', ['name' => 'Alice again', 'email' => 'again@example.com', 'userId' => $users['alice']['id']], true)[0];
@@ -527,13 +527,13 @@ isProblem('normalization still rejects unconsumed create inputs', req('POST', '/
 isProblem('normalization still rejects unconsumed update inputs', req('PATCH', '/posts/' . $seam['id'], ['unknown' => true], 'ed'), 422, 'invalid_input', '/unknown');
 eq('written extension can nest writes and schedule durable effects', [
     array_column($db->findMany('comments', ['where' => ['postId' => $seam['id']], 'orderBy' => ['id' => 'asc']]), 'body'),
-    array_column($wp->sql('SELECT `event` FROM {prefix}zero__seam ORDER BY `id`'), 'event'),
+    array_column($wp->sql('SELECT `event` FROM {prefix}first__seam ORDER BY `id`'), 'event'),
 ], [['created', 'extension'], ['kept', 'create:extension', 'update:extension revised']]);
 isProblem('written extension failure rolls back row and nested effects', req('PATCH', '/posts/' . $seam['id'], ['excerpt' => 'extension fail'], 'ed'), 422, 'rejected');
 eq('failed write preserves row and nested data', [
     $db->findFirst('posts', ['where' => ['id' => $seam['id']]])['excerpt'],
     count($db->findMany('comments', ['where' => ['postId' => $seam['id']]])),
-    $wp->scalar('SELECT COUNT(*) FROM {prefix}zero__seam'),
+    $wp->scalar('SELECT COUNT(*) FROM {prefix}first__seam'),
 ], ['extension revised', 2, 3]);
 $transformMutationRows = true;
 isProblem('delete extension receives stored data before deletion', req('DELETE', '/posts/' . $seam['id'], as: 'ed'), 422, 'rejected');
@@ -541,11 +541,11 @@ $transformMutationRows = false;
 
 // The lookup seam primes a page cache which a read transform consumes, including nested relations.
 $cache = [];
-\Zero\Extensions::onLookup(static function (string $c, array $pks) use (&$cache): void {
+\First\Extensions::onLookup(static function (string $c, array $pks) use (&$cache): void {
     $cache[$c] = array_fill_keys($pks, 'looked up');
 });
 // Receipt display changes no row membership or constraint values.
-\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer) use (&$cache): array {
+\First\Extensions::onRead(static function (array $rows, string $c, ?\First\Viewer $viewer) use (&$cache): array {
     if ($viewer !== null && $c === 'posts') {
         foreach ($rows as &$row) {
             if ($row['title'] === 'Replay seam') {
@@ -560,21 +560,21 @@ $cache = [];
 
 // The receipt and download proofs run before the linkage-hiding read transform below is registered:
 // that transform is not constraint-safe, so viewer-bound unique writes are refused once it exists (#72).
-\Zero\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\Zero\Viewer $viewer, callable $next) use ($wp): \Zero\Response {
+\First\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\First\Viewer $viewer, callable $next) use ($wp): \First\Response {
     if (!isset($headers['idempotency-key'])) {
         return $next();
     }
     $key = 'receipt:' . $scope . ':' . ($viewer?->user['id'] ?? 'anonymous') . ':' . $headers['idempotency-key'];
-    $stored = $wp->scalar('SELECT `extra` FROM {prefix}zero__seam WHERE `event` = ?', [$key]);
+    $stored = $wp->scalar('SELECT `extra` FROM {prefix}first__seam WHERE `event` = ?', [$key]);
     if ($stored !== null) {
         $receipt = json_decode($stored, true);
 
-        return \Zero\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
+        return \First\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
     }
     $result = $next();
-    $wp->exec('INSERT INTO {prefix}zero__seam (`event`, `extra`) VALUES (?, ?)', [$key, json_encode(\Zero\Seam::toWire(['status' => $result->status, 'data' => $result->data]))]);
+    $wp->exec('INSERT INTO {prefix}first__seam (`event`, `extra`) VALUES (?, ?)', [$key, json_encode(\First\Seam::toWire(['status' => $result->status, 'data' => $result->data]))]);
     if ($headers['idempotency-key'] === 'fail') {
-        throw new \Zero\JsError('Receipt persistence failed');
+        throw new \First\JsError('Receipt persistence failed');
     }
 
     return $result;
@@ -592,15 +592,15 @@ eq('create authorization still runs before replay middleware', $wp->handle('POST
 $failedReceipt = $wp->handle('POST', '/posts', '{"title":"Rolled back receipt"}', 'ed', ['Idempotency-Key' => 'fail']);
 eq('failed operation wrapper rolls back both its result and receipt', [
     $failedReceipt[0], $db->findMany('posts', ['where' => ['title' => 'Rolled back receipt']]),
-    $wp->scalar('SELECT COUNT(*) FROM {prefix}zero__seam WHERE `event` LIKE ?', ['receipt:%:fail']),
+    $wp->scalar('SELECT COUNT(*) FROM {prefix}first__seam WHERE `event` LIKE ?', ['receipt:%:fail']),
 ], [422, [], 0]);
 
-\Zero\Extensions::route('download-proof', static function () use ($wp): \Zero\Response {
-    $wp->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', ['download prepared']);
-    \Zero\Extensions::afterCommit(static fn () => $wp->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', ['download committed']));
+\First\Extensions::route('download-proof', static function () use ($wp): \First\Response {
+    $wp->exec('INSERT INTO {prefix}first__seam (`event`) VALUES (?)', ['download prepared']);
+    \First\Extensions::afterCommit(static fn () => $wp->exec('INSERT INTO {prefix}first__seam (`event`) VALUES (?)', ['download committed']));
 
-    return \Zero\Response::raw(static function () use ($wp): void {
-        echo "file\0bytes:" . $wp->scalar('SELECT `event` FROM {prefix}zero__seam ORDER BY `id` DESC LIMIT 1');
+    return \First\Response::raw(static function () use ($wp): void {
+        echo "file\0bytes:" . $wp->scalar('SELECT `event` FROM {prefix}first__seam ORDER BY `id` DESC LIMIT 1');
     }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
         ->withHeaders(['CACHE-CONTROL' => 'private, no-store',
             'access-control-allow-origin' => 'https://app.example',
@@ -608,7 +608,7 @@ eq('failed operation wrapper rolls back both its result and receipt', [
 });
 [$downloadStatus, $downloadHeaders, $downloadBody] = $wp->handle('GET', '/download-proof');
 ob_start();
-\Zero\Response::emit($downloadBody);
+\First\Response::emit($downloadBody);
 $emitted = ob_get_clean();
 eq('download response streams raw bytes and headers after commit', [
     $downloadStatus, $downloadHeaders['content-type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['CACHE-CONTROL'], $emitted,
@@ -616,7 +616,7 @@ eq('download response streams raw bytes and headers after commit', [
     count($downloadHeaders) === count(array_change_key_case($downloadHeaders)),
 ], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", 'https://app.example', 'Content-Disposition', true]);
 
-\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer) use (&$cache): array {
+\First\Extensions::onRead(static function (array $rows, string $c, ?\First\Viewer $viewer) use (&$cache): array {
     if ($viewer === null) {
         return $rows;
     }
@@ -643,7 +643,7 @@ eq('read stripping keeps relation linkage private and does not resurrect populat
 $revisionId = $db->revisions('posts', $seam['id'])[0]['id'];
 eq('revisions use the same read transform', array_key_exists('authorId', req('GET', '/posts/' . $seam['id'] . '/revisions/' . $revisionId, as: 'ed')[1]), false);
 eq('write responses use the read transform after trusted hooks', array_key_exists('authorId', req('PATCH', '/posts/' . $seam['id'], ['body' => 'changed'], 'ed')[1]), false);
-\Zero\Extensions::beforeRead(static function (string $c, array &$opts, ?\Zero\Viewer $viewer): void {
+\First\Extensions::beforeRead(static function (string $c, array &$opts, ?\First\Viewer $viewer): void {
     if (isset($opts['idsOnly'])) {
         $opts['columns'] = ['id' => true];
         unset($opts['idsOnly']);
@@ -652,7 +652,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
         return;
     }
     if ($viewer !== null && isset($opts['orderBy']['excerpt'])) {
-        throw new \Zero\HttpError(403, 'forbidden', 'Cannot order by transformed data', '/orderBy/excerpt');
+        throw new \First\HttpError(403, 'forbidden', 'Cannot order by transformed data', '/orderBy/excerpt');
     }
     if (isset($opts['seamId'])) {
         $opts['where'] = ['id' => $opts['seamId']];
@@ -660,7 +660,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
     }
     if (array_key_exists('locale', $opts)) {
         if ($opts['locale'] !== 'de') {
-            throw \Zero\HttpError::invalidQuery('Unsupported test locale', '/locale');
+            throw \First\HttpError::invalidQuery('Unsupported test locale', '/locale');
         }
         $opts['where'] = ['AND' => [$opts['where'] ?? [], ['title' => 'published alice']]];
         unset($opts['locale']);
@@ -669,7 +669,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
 eq('query extensions normalize filters and projections at every relation level', $db->findMany('posts', [
     'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['author' => ['idsOnly' => true]],
 ]), [['id' => $seam['id'], 'author' => ['id' => $seamAuthor['id']]]]);
-problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'])), 403, 'forbidden', '/orderBy/excerpt');
+problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \First\Viewer($users['ed'])), 403, 'forbidden', '/orderBy/excerpt');
 eq('REST list and item queries deliver feature options before SQL', [
     array_column(req('GET', '/posts', as: 'ed', query: ['locale' => 'de'])[1], 'id'),
     req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['locale' => 'de'])[1]['id'],
@@ -678,16 +678,16 @@ isProblem('feature query validation reaches item REST', req('GET', '/posts/' . $
 isProblem('unconsumed feature options remain invalid on other collections', req('GET', '/authors', query: ['locale' => 'de']), 400, 'invalid_query', '/locale');
 
 $db->setActor($users['sub']);
-$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \Zero\Viewer($users['ed']));
+$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \First\Viewer($users['ed']));
 eq('operation invocation uses explicit authority and restores its caller actor', [$db->findFirst('comments', ['where' => ['id' => $invoked['id']]])['approved'], $db->actor()], [true, $users['sub']]);
-problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \Zero\Viewer($users['sub'])), 403, 'forbidden');
+problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \First\Viewer($users['sub'])), 403, 'forbidden');
 eq('throwing operation invocation also restores the caller actor', $db->actor(), $users['sub']);
 $db->setActor(null);
 
-\Zero\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
+\First\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
 eq('public schema description extensions reach HTTP', req('GET', '/_schema')[1]['seam'], ['version' => 1]);
 
-\Zero\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \Zero\Viewer $viewer, array $files, array $form): array {
+\First\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \First\Viewer $viewer, array $files, array $form): array {
     App::allow($method, ['POST']);
 
     return [202, [$segments, $query, $body, $viewer->user['name'] ?? null, $files, $form]];
@@ -698,12 +698,12 @@ eq('route extension owns a prefix before collections and receives all request pa
 isProblem('extension errors use the normal problem envelope', req('GET', '/posts'), 405, 'method_not_allowed');
 isProblem('prefix dispatch matches complete segments', req('GET', '/postsExtra'), 404, 'not_found');
 
-\Zero\Extensions::beforeAction(static function (array $spec, string $name, string $raw, array $headers, ?\Zero\Viewer $viewer): void {
+\First\Extensions::beforeAction(static function (array $spec, string $name, string $raw, array $headers, ?\First\Viewer $viewer): void {
     if ($name === 'approveComment' && ($headers['x-proof'] ?? '') !== hash('sha256', $raw)) {
-        throw new \Zero\HttpError(403, 'forbidden', 'Bad raw-body proof');
+        throw new \First\HttpError(403, 'forbidden', 'Bad raw-body proof');
     }
     if ($name === 'publishedCount' && $viewer === null && trim($raw) === '{"reject":true}') {
-        throw new \Zero\JsError('CLI action extension');
+        throw new \First\JsError('CLI action extension');
     }
 });
 $seamComment = $db->findFirst('comments', ['where' => ['postId' => $seam['id']]]);
@@ -720,10 +720,10 @@ $actionHeaders['x-proof'] = 'invalid';
 eq('action signature guard still runs before replay middleware', $wp->handle('POST', '/actions/approveComment', $raw, 'ed', $actionHeaders)[0], 403);
 [$code, $out] = $app->cli(['action', 'publishedCount', '{"reject":true}']);
 eq('trusted CLI actions share the invocation extension', [$code, json_decode($out, true)['error']['code']], [1, 'rejected']);
-\Zero\Extensions::cli('seam', static function (array $args, array $flags) use ($wp): array {
-    $wp->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', [$args[0]]);
+\First\Extensions::cli('seam', static function (array $args, array $flags) use ($wp): array {
+    $wp->exec('INSERT INTO {prefix}first__seam (`event`) VALUES (?)', [$args[0]]);
     if (isset($flags['fail'])) {
-        throw new \Zero\JsError('CLI extension rollback');
+        throw new \First\JsError('CLI extension rollback');
     }
 
     return ['args' => $args, 'flags' => $flags];
@@ -731,10 +731,10 @@ eq('trusted CLI actions share the invocation extension', [$code, json_decode($ou
 [$code, $out] = $app->cli(['seam', 'saved', '--mode=local']);
 eq('CLI extension runs through the canonical envelope', [$code, json_decode($out, true)['data']], [0, ['args' => ['saved'], 'flags' => ['mode' => 'local']]]);
 $app->cli(['seam', 'discarded', '--fail']);
-eq('CLI extension effects join the command transaction', $wp->scalar('SELECT `event` FROM {prefix}zero__seam ORDER BY `id` DESC LIMIT 1'), 'saved');
+eq('CLI extension effects join the command transaction', $wp->scalar('SELECT `event` FROM {prefix}first__seam ORDER BY `id` DESC LIMIT 1'), 'saved');
 
 try {
-    \Zero\Extensions::route('sync', static fn (): array => [200, null]);
+    \First\Extensions::route('sync', static fn (): array => [200, null]);
     check('a second owner for an extension route is refused', false);
 } catch (\LogicException) {
     check('a second owner for an extension route is refused', true);

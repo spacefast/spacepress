@@ -1,5 +1,5 @@
 <?php
-// DDL follows stattic-runtime-core/src/zero.rs zero_db_migration_statements,
+// DDL follows stattic-runtime-core/src/first.rs zero_db_migration_statements,
 // scalar encodings follow zero-compile/src/runtime-host.ts rowFromDb.
 // Seed before activating either Zero plugin, as an existing Space would be.
 declare(strict_types=1);

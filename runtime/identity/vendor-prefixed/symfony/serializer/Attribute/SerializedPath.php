@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Attribute;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Attribute;
 
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
 
 /**
  * @author Tobias Bönner <tobi@boenner.family>
@@ -42,6 +42,6 @@ class SerializedPath
     }
 }
 
-if (!class_exists(\Zero\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class, false)) {
-    class_alias(SerializedPath::class, \Zero\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class);
+if (!class_exists(\First\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class, false)) {
+    class_alias(SerializedPath::class, \First\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class);
 }

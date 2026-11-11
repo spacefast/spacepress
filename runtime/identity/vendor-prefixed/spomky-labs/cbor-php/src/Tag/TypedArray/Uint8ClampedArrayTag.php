@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 68: an array of unsigned 8 bit integers with clamped arithmetic, i.e. the JavaScript Uint8ClampedArray.

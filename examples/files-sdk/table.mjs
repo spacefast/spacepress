@@ -1,8 +1,8 @@
-// Print the `zero check --json` diagnostics of both probe variants as one
+// Print the `first check --json` diagnostics of both probe variants as one
 // stable Markdown table: count per (code, message), largest first. Locations
 // are left out so two runs diff cleanly.
 //
-//   ZERO_BIN=/abs/zero node table.mjs [--probes] [--json out.json] [--label "main 15bea535"]
+//   FIRST_BIN=/abs/first node table.mjs [--probes] [--json out.json] [--label "main 15bea535"]
 //
 // --probes adds a second section: one small app per host API (probes.mjs), in
 // typed TS and in imported JS, because the syntax pass hides that layer.
@@ -17,22 +17,22 @@ import { probeTable, runProbes } from "./probes.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
-export function check(zero, app) {
-  const result = spawnSync(zero, ["check", app, "--json"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+export function check(first, app) {
+  const result = spawnSync(first, ["check", app, "--json"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (result.error) throw result.error;
   let report;
   try {
     report = JSON.parse(result.stdout);
   } catch {
-    throw new Error(`zero check printed no JSON (exit ${result.status}):\n${result.stderr}`);
+    throw new Error(`first check printed no JSON (exit ${result.status}):\n${result.stderr}`);
   }
   return { ok: report.ok === true, compilerVersion: report.compilerVersion, diagnostics: report.diagnostics };
 }
 
-export async function measure(zero) {
+export async function measure(first) {
   const variants = { dist: path.join(root, "app"), raw: await buildRawSrc() };
   const out = {};
-  for (const [name, app] of Object.entries(variants)) out[name] = check(zero, app);
+  for (const [name, app] of Object.entries(variants)) out[name] = check(first, app);
   return out;
 }
 
@@ -69,10 +69,10 @@ if (realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({
     options: { json: { type: "string" }, label: { type: "string" }, probes: { type: "boolean", default: false } },
   });
-  const zero = path.resolve(process.env.ZERO_BIN ?? path.join(root, "../../target/debug/zero"));
-  const results = await measure(zero);
-  if (values.probes) results.probes = await runProbes(zero, path.join(root, ".work/probes"));
+  const first = path.resolve(process.env.FIRST_BIN ?? path.join(root, "../../target/debug/first"));
+  const results = await measure(first);
+  if (values.probes) results.probes = await runProbes(first, path.join(root, ".work/probes"));
   if (values.json) await writeFile(values.json, JSON.stringify(results, null, 2) + "\n");
-  console.log(table(results, values.label ?? `zero ${results.dist.compilerVersion}`));
-  if (results.probes) console.log(`\n**Host APIs** (one probe app each, \`zero check\`)\n\n${probeTable(results.probes)}`);
+  console.log(table(results, values.label ?? `first ${results.dist.compilerVersion}`));
+  if (results.probes) console.log(`\n**Host APIs** (one probe app each, \`first check\`)\n\n${probeTable(results.probes)}`);
 }

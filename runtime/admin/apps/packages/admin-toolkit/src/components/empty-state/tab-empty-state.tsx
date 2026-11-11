@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { __ } from '@wordpress/i18n';
-import type { View } from '@zero-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 import { Spinner } from '@wordpress/components';
 import { Button, Icon } from '@wordpress/ui';
 import { chevronRight } from '@wordpress/icons';
-import { EmptyState } from '@zero-admin/design-system';
+import { EmptyState } from '@first-admin/design-system';
 import './style.scss';
 
 export interface EmptyStateAction {
@@ -30,12 +30,12 @@ export interface TabEmptyStateProps< TView extends View = View > {
 
 const DEFAULT_FILTERED_TITLE = __(
 	'No items match your filters',
-	'zero-admin'
+	'first-admin'
 );
 
 const DEFAULT_FILTERED_DESCRIPTION = __(
 	'Try clearing some filters or adjusting your search query.',
-	'zero-admin'
+	'first-admin'
 );
 
 export function TabEmptyState< TView extends View = View >( {
@@ -77,7 +77,7 @@ export function TabEmptyState< TView extends View = View >( {
 					<EmptyState.Actions>
 						<Button variant="outline" onClick={ onClearFilters }>
 							{ filteredButtonLabel ??
-								__( 'Clear filters', 'zero-admin' ) }
+								__( 'Clear filters', 'first-admin' ) }
 						</Button>
 					</EmptyState.Actions>
 				) }
@@ -99,7 +99,7 @@ export function TabEmptyState< TView extends View = View >( {
 							loading={ true }
 							loadingAnnouncement={ __(
 								'Loading…',
-								'zero-admin'
+								'first-admin'
 							) }
 						>
 							{ actions[ 0 ].label }

@@ -3,8 +3,8 @@ import {
 	mergeGlobalStyles,
 	type GlobalStylesConfig,
 } from '@wordpress/global-styles-engine';
-import { useThemeProviderStyles } from '@zero-admin/theme';
-import { store as coreDataNextStore } from '@zero-admin/core-data-next';
+import { useThemeProviderStyles } from '@first-admin/theme';
+import { store as coreDataNextStore } from '@first-admin/core-data-next';
 import { store as coreStore } from '@wordpress/core-data';
 import { useMemo, useSyncExternalStore } from '@wordpress/element';
 import { useSelect } from '@wordpress/data';

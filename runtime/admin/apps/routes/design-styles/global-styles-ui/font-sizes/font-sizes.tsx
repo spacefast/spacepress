@@ -1,5 +1,5 @@
-import { unlock } from '@zero-admin/admin-toolkit';
-import type { FontSize } from '@zero-admin/global-styles-engine';
+import { unlock } from '@first-admin/admin-toolkit';
+import type { FontSize } from '@first-admin/global-styles-engine';
 import { __, sprintf, isRTL } from '@wordpress/i18n';
 import {
 	privateApis as componentsPrivateApis,
@@ -51,11 +51,11 @@ function FontSizeGroup( {
 		origin === 'custom'
 			? __(
 					'Are you sure you want to remove all custom font size presets?',
-					'zero-admin'
+					'first-admin'
 			  )
 			: __(
 					'Are you sure you want to reset all font size presets to their default values?',
-					'zero-admin'
+					'first-admin'
 			  );
 
 	return (
@@ -65,8 +65,8 @@ function FontSizeGroup( {
 					text={ resetDialogText }
 					confirmButtonText={
 						origin === 'custom'
-							? __( 'Remove', 'zero-admin' )
-							: __( 'Reset', 'zero-admin' )
+							? __( 'Remove', 'first-admin' )
+							: __( 'Reset', 'first-admin' )
 					}
 					isOpen={ isResetDialogOpen }
 					toggleOpen={ toggleResetDialog }
@@ -76,10 +76,10 @@ function FontSizeGroup( {
 			<VStack spacing={ 4 }>
 				<HStack>
 					<Subtitle level={ 3 }>{ label }</Subtitle>
-					<FlexItem className="zero-admin-global-styles__typography-panel__options-container">
+					<FlexItem className="first-admin-global-styles__typography-panel__options-container">
 						{ origin === 'custom' && (
 							<Button
-								label={ __( 'Add font size', 'zero-admin' ) }
+								label={ __( 'Add font size', 'first-admin' ) }
 								icon={ plus }
 								size="small"
 								onClick={ handleAddFontSize }
@@ -94,7 +94,7 @@ function FontSizeGroup( {
 											icon={ moreVertical }
 											label={ __(
 												'Font size presets options',
-												'zero-admin'
+												'first-admin'
 											) }
 										/>
 									}
@@ -105,11 +105,11 @@ function FontSizeGroup( {
 											{ origin === 'custom'
 												? __(
 														'Remove font size presets',
-														'zero-admin'
+														'first-admin'
 												  )
 												: __(
 														'Reset font size presets',
-														'zero-admin'
+														'first-admin'
 												  ) }
 										</Menu.ItemLabel>
 									</Menu.Item>
@@ -127,7 +127,7 @@ function FontSizeGroup( {
 								path={ `/typography/font-sizes/${ origin }/${ size.slug }` }
 							>
 								<HStack>
-									<FlexItem className="zero-admin-font-size__item">
+									<FlexItem className="first-admin-font-size__item">
 										{ size.name }
 									</FlexItem>
 									<FlexItem display="flex">
@@ -179,7 +179,7 @@ function FontSizes() {
 		const index = getNewIndexFromPresets( customFontSizes, 'custom-' );
 		const newFontSize = {
 			/* translators: %d: font size index */
-			name: sprintf( __( 'New Font Size %d', 'zero-admin' ), index ),
+			name: sprintf( __( 'New Font Size %d', 'first-admin' ), index ),
 			size: '16px',
 			slug: `custom-${ index }`,
 		};
@@ -194,10 +194,10 @@ function FontSizes() {
 	return (
 		<VStack spacing={ 2 }>
 			<ScreenHeader
-				title={ __( 'Font size presets', 'zero-admin' ) }
+				title={ __( 'Font size presets', 'first-admin' ) }
 				description={ __(
 					'Create and edit the presets used for font sizes across the site.',
-					'zero-admin'
+					'first-admin'
 				) }
 			/>
 
@@ -206,7 +206,7 @@ function FontSizes() {
 					<VStack spacing={ 8 }>
 						{ !! themeFontSizes?.length && (
 							<FontSizeGroup
-								label={ __( 'Theme', 'zero-admin' ) }
+								label={ __( 'Theme', 'first-admin' ) }
 								origin="theme"
 								sizes={ themeFontSizes }
 								handleAddFontSize={ handleAddFontSize }
@@ -227,7 +227,7 @@ function FontSizes() {
 						{ defaultFontSizesEnabled &&
 							!! defaultFontSizes?.length && (
 								<FontSizeGroup
-									label={ __( 'Default', 'zero-admin' ) }
+									label={ __( 'Default', 'first-admin' ) }
 									origin="default"
 									sizes={ defaultFontSizes }
 									handleAddFontSize={ handleAddFontSize }
@@ -246,7 +246,7 @@ function FontSizes() {
 							) }
 
 						<FontSizeGroup
-							label={ __( 'Custom', 'zero-admin' ) }
+							label={ __( 'Custom', 'first-admin' ) }
 							origin="custom"
 							sizes={ customFontSizes }
 							handleAddFontSize={ handleAddFontSize }

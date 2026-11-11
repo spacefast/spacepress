@@ -1,4 +1,4 @@
-//! `zero sync` (design §5.4): files ⇄ records against a running site. Conversion of bodies and body
+//! `first sync` (design §5.4): files ⇄ records against a running site. Conversion of bodies and body
 //! merges run on the server (`/sync/{c}/convert`, `/sync/{c}/merge`); this side reads and writes
 //! files, keeps bases, merges fields and writes conflict files.
 

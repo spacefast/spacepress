@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import clsx from 'clsx';
 import { Tooltip } from '@base-ui/react/tooltip';
-import { ThemeProvider } from '@zero-admin/theme';
+import { ThemeProvider } from '@first-admin/theme';
 import { type PopupProps } from './types';
 import resetStyles from '../utils/css/resets.module.css';
 import styles from './style.module.css';

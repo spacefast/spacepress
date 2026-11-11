@@ -1,11 +1,11 @@
 <?php declare(strict_types=1); defined('ABSPATH') || exit; ?>
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Everyday app services · Zero</title>
+<title>Everyday app services · First</title>
 <style>
 body{font:17px/1.5 system-ui,sans-serif;background:#f8f6f0;color:#17291d;margin:auto;max-width:900px;padding:40px 20px}h1{font-size:clamp(2rem,6vw,3.6rem);line-height:1.05}section{background:white;border:1px solid #d6decf;border-radius:14px;padding:24px;margin:24px 0}label{display:block;margin:12px 0}input,textarea,button{font:inherit;padding:10px;border-radius:6px;border:1px solid #a8b5a2}input,textarea{box-sizing:border-box;width:100%}button{background:#213e2a;color:white;cursor:pointer}button:disabled{opacity:.6}output{display:block;margin-top:14px;white-space:pre-wrap}.trap{position:absolute;left:-10000px}a{color:#245538}.muted{color:#5d685d}
 </style></head><body>
-<p>ZERO / WORDPRESS</p><h1>Small app. Useful services.</h1>
+<p>FIRST / WORDPRESS</p><h1>Small app. Useful services.</h1>
 <p>Send a message, find a published story, or open a secure hosted checkout.</p>
 <section><h2>Leave a message</h2><form id="contact">
 <label>Your email<input name="email" type="email" required maxlength="191" autocomplete="email"></label>
@@ -44,7 +44,7 @@ byId('search').addEventListener('submit', async (event) => {
     for (const row of result.results) { const li = document.createElement('li'); li.textContent = row.title + (row.excerpt ? ' — ' + row.excerpt : ''); byId('results').append(li); }
   } catch (error) { byId('search-state').textContent = error.message; }
 });
-let checkoutToken = sessionStorage.getItem('zero-services-checkout');
+let checkoutToken = sessionStorage.getItem('first-services-checkout');
 let checkoutKey = crypto.randomUUID();
 async function refresh() {
   if (!checkoutToken) return;
@@ -59,7 +59,7 @@ async function refresh() {
 }
 byId('checkout').addEventListener('click', async () => {
   byId('checkout').disabled = true;
-  try { const result = await post('/checkout', { product: 'workshop' }, checkoutKey); checkoutToken = result.token; sessionStorage.setItem('zero-services-checkout', checkoutToken); await refresh(); }
+  try { const result = await post('/checkout', { product: 'workshop' }, checkoutKey); checkoutToken = result.token; sessionStorage.setItem('first-services-checkout', checkoutToken); await refresh(); }
   catch (error) { byId('checkout-state').textContent = error.message; }
   finally { byId('checkout').disabled = false; }
 });

@@ -7,7 +7,7 @@ interface SubtitleProps {
 
 export function Subtitle( { children, level = 2 }: SubtitleProps ) {
 	return (
-		<Heading className="zero-admin-global-styles-subtitle" level={ level }>
+		<Heading className="first-admin-global-styles-subtitle" level={ level }>
 			{ children }
 		</Heading>
 	);

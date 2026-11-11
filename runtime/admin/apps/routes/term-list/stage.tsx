@@ -4,20 +4,20 @@ import {
 	useSearch,
 	privateApis as routePrivateApis,
 } from '@wordpress/route';
-import type { View } from '@zero-admin/dataviews';
-import { Page, RouterLink, unlock } from '@zero-admin/admin-toolkit';
+import type { View } from '@first-admin/dataviews';
+import { Page, RouterLink, unlock } from '@first-admin/admin-toolkit';
 import { Button } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { EmptyState, Tabs } from '@zero-admin/design-system';
-import { useTaxonomyTermFields } from '@zero-admin/fields-next';
-import { useView, DataViews, useViewConfig } from '@zero-admin/views';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { EmptyState, Tabs } from '@first-admin/design-system';
+import { useTaxonomyTermFields } from '@first-admin/fields-next';
+import { useView, DataViews, useViewConfig } from '@first-admin/views';
 import { useCallback, useMemo } from '@wordpress/element';
 import {
 	serializeFilters,
 	usePageView,
 	useTrack,
 	useTrackedDataView,
-} from '@zero-admin/telemetry';
+} from '@first-admin/telemetry';
 import {
 	store as coreStore,
 	privateApis as coreDataPrivateApis,
@@ -226,7 +226,7 @@ function TaxonomyTerms() {
 			}
 		>
 			{ hasResolved && terms.length === 0 && ! searchParams.search ? (
-				<EmptyState.Root className="zero-admin-terms-list-content__no-terms">
+				<EmptyState.Root className="first-admin-terms-list-content__no-terms">
 					<EmptyState.Icon icon={ tag } />
 					<EmptyState.Title>
 						{ taxonomyObject.labels.no_terms }
@@ -236,7 +236,7 @@ function TaxonomyTerms() {
 							// translators: %s: Taxonomy name.
 							__(
 								'No %s have been created yet. Create one to start organizing your content.',
-								'zero-admin'
+								'first-admin'
 							),
 							taxonomyObject.labels.name.toLocaleLowerCase()
 						) }
@@ -306,7 +306,7 @@ function TaxonomyTerms() {
 						<Tabs.Root>
 							<Tabs.List density="compact">
 								<Tabs.Tab value="all">
-									{ __( 'All', 'zero-admin' ) }
+									{ __( 'All', 'first-admin' ) }
 								</Tabs.Tab>
 							</Tabs.List>
 						</Tabs.Root>
@@ -322,7 +322,7 @@ function TaxonomyTerms() {
 									// translators: %s: Taxonomy singular name.
 									__(
 										'Try adjusting your search or create a new %s.',
-										'zero-admin'
+										'first-admin'
 									),
 									taxonomyObject.labels.singular_name.toLocaleLowerCase()
 								) }
@@ -343,7 +343,7 @@ function TaxonomyTerms() {
 										} )
 									}
 								>
-									{ __( 'Clear search', 'zero-admin' ) }
+									{ __( 'Clear search', 'first-admin' ) }
 								</Button>
 								<Button
 									variant="solid"

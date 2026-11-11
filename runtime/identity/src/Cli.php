@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 /**
- * `wp zero identity …` (and `zero identity …`), registered with the runtime's `wp zero` dispatcher.
- * Prints `{"data": …}` or `{"error": {code, detail}}` like every other `wp zero` command.
+ * `wp first identity …` (and `first identity …`), registered with the runtime's `wp first` dispatcher.
+ * Prints `{"data": …}` or `{"error": {code, detail}}` like every other `wp first` command.
  */
 final class Cli
 {

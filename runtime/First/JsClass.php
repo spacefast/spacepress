@@ -15,6 +15,18 @@ final class JsClass
     private ?\WeakMap $brands = null;
     /** @var array<string, \Closure> */
     private array $methodValues = [];
+    /**
+     * Symbol-keyed prototype members by spl_object_id(symbol): computed methods
+     * (['m', symbol, closure]) and Object.defineProperty(C.prototype, symbol, ...) data
+     * (['d', symbol, value, enumerable, writable, configurable]); a later definition replaces.
+     * @var array<int, array>
+     */
+    private array $prototypeSymbols = [];
+    /** @var array<int, array{0: JsSymbol, 1: \Closure}> static symbol-keyed methods */
+    private array $staticSymbols = [];
+    /** @var array<string, \Closure> one function value per symbol member */
+    private array $symbolValues = [];
+    private ?JsPrototype $prototype = null;
 
     public function __construct(
         public readonly ?self $parent,
@@ -34,7 +46,118 @@ final class JsClass
         private readonly array $prototypeData = [],
         /** The built-in constructor this descriptor models (one of Builtins::ERROR_CONSTRUCTORS), if any. */
         public readonly ?string $builtin = null,
-    ) {}
+        /** @var list<array{0: JsSymbol, 1: \Closure}> `[symbol](...) {}` prototype methods */
+        array $symbolMethods = [],
+        /** @var list<array{0: JsSymbol, 1: \Closure}> `static [symbol](...) {}` methods */
+        array $staticSymbolMethods = [],
+        /** @var list<array{0: JsSymbol, 1: mixed, 2: bool, 3: bool, 4: bool}> prototype data defined at build time */
+        array $prototypeSymbols = [],
+    ) {
+        foreach ($symbolMethods as [$symbol, $method]) { $this->prototypeSymbols[spl_object_id($symbol)] = ['m', $symbol, $method]; }
+        foreach ($staticSymbolMethods as [$symbol, $method]) { $this->staticSymbols[spl_object_id($symbol)] = [$symbol, $method]; }
+        foreach ($prototypeSymbols as [$symbol, $value, $enumerable, $writable, $configurable]) {
+            $this->prototypeSymbols[spl_object_id($symbol)] = ['d', $symbol, $value, $enumerable, $writable, $configurable];
+        }
+    }
+
+    /** `C.prototype`: one object per class descriptor, so identity comparisons hold. */
+    public function prototype(): JsPrototype
+    {
+        return $this->prototype ??= new JsPrototype($this);
+    }
+
+    /** The nearest symbol-keyed member along the chain: a prototype slot, or [symbol, closure] for static. */
+    private function symbolSlot(JsSymbol $key, bool $static): ?array
+    {
+        $id = spl_object_id($key);
+        for ($class = $this; $class !== null; $class = $class->parent) {
+            $slot = ($static ? $class->staticSymbols : $class->prototypeSymbols)[$id] ?? null;
+            if ($slot !== null) { return $static ? ['m', $slot[0], $slot[1], $class] : [...$slot, $class]; }
+        }
+        return null;
+    }
+
+    /**
+     * [[Get]] of a symbol key that is not an own property: the class chain's member, or
+     * absent(). Class prototypes inherit from Object.prototype (or Error.prototype), which
+     * own no symbol keys, so a miss here is exact. Static lookups end at Function.prototype,
+     * whose only symbol member is Symbol.hasInstance.
+     */
+    public function symbolGet(JsSymbol $key, bool $static): mixed
+    {
+        $slot = $this->symbolSlot($key, $static);
+        if ($slot === null) {
+            return $static && $key === JsSymbol::wellKnown('hasInstance') ? self::ordinaryHasInstanceFunction() : self::absent();
+        }
+        if ($slot[0] === 'd') { return $slot[2]; }
+        $owner = $slot[3];
+        $cache = ($static ? 'static:' : '') . spl_object_id($key);
+        $method = $slot[2];
+        return $owner->symbolValues[$cache] ??= Js::dynamicMethodFunction(
+            static fn (...$args) => $method(JsUndefined::Value, ...$args),
+            static fn ($thisArg, JsArray $args) => $method($thisArg, ...$args->a),
+        );
+    }
+
+    /** Whether an inherited symbol data property is read-only (a strict-mode write throws). */
+    public function symbolReadOnly(JsSymbol $key): bool
+    {
+        $slot = $this->symbolSlot($key, false);
+        return $slot !== null && $slot[0] === 'd' && !$slot[4];
+    }
+
+    /** Object.defineProperty(C.prototype, symbol, { value, ... }) with a data descriptor. */
+    public function defineSymbol(JsSymbol $key, mixed $value, bool $enumerable, bool $writable, bool $configurable): void
+    {
+        $id = spl_object_id($key);
+        $existing = $this->prototypeSymbols[$id] ?? null;
+        if ($existing !== null && $existing[0] === 'd' && !$existing[5]) {
+            throw new JsError('Cannot redefine property: ' . $key->descriptiveString(), 'TypeError');
+        }
+        unset($this->symbolValues[(string) $id]);
+        $this->prototypeSymbols[$id] = ['d', $key, $value, $enumerable, $writable, $configurable];
+    }
+
+    /**
+     * `value instanceof C` (ECMAScript InstanceofOperator): a static [Symbol.hasInstance]
+     * method on the class chain decides, called with C as its receiver; otherwise the
+     * ordinary prototype-chain walk.
+     */
+    public static function instanceOf(mixed $value, self $constructor): bool
+    {
+        $slot = $constructor->symbolSlot(JsSymbol::wellKnown('hasInstance'), true);
+        if ($slot !== null) { return Js::truthy(($slot[2])($constructor, $value)); }
+        return self::isInstance($value, $constructor);
+    }
+
+    /** Function.prototype[Symbol.hasInstance] (OrdinaryHasInstance); call/apply supply the constructor. */
+    public static function ordinaryHasInstanceFunction(): \Closure
+    {
+        static $function;
+        if ($function === null) {
+            $function = Js::dynamicMethodFunction(
+                static fn (mixed $value = JsUndefined::Value) => self::ordinaryHasInstance(JsUndefined::Value, $value),
+                static fn ($thisArg, JsArray $args) => self::ordinaryHasInstance($thisArg, array_key_exists(0, $args->a) ? $args->a[0] : JsUndefined::Value),
+            );
+        }
+        return $function;
+    }
+
+    /** OrdinaryHasInstance(C, O): a non-callable C is false; a class walks its own chain. */
+    public static function ordinaryHasInstance(mixed $constructor, mixed $value): bool
+    {
+        if ($constructor instanceof self) { return self::isInstance($value, $constructor); }
+        if (is_string($constructor) && in_array($constructor, Builtins::ERROR_CONSTRUCTORS, true)) { return Js::isError($value, $constructor); }
+        if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
+        return false;
+    }
+
+    /** `Function.prototype[key]`: only Symbol.hasInstance is modeled. */
+    public static function functionPrototypeGet(mixed $key): mixed
+    {
+        if ($key === JsSymbol::wellKnown('hasInstance')) { return self::ordinaryHasInstanceFunction(); }
+        throw new JsError('Function.prototype members other than Symbol.hasInstance are not supported', 'TypeError');
+    }
 
     /** @var array<string, self> */
     private static array $builtins = [];
@@ -136,7 +259,7 @@ final class JsClass
     }
 
     /** [[Get]] for a name that is not an own data property: accessor first, then methods. */
-    public function readInherited(JsObject|self $receiver, string $name, bool $static): mixed
+    public function readInherited(JsObject|self|JsPrototype $receiver, string $name, bool $static): mixed
     {
         $accessor = $this->accessor($name, $static);
         if ($accessor !== null) {

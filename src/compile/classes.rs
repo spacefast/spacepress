@@ -546,6 +546,38 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 (false, true) => private_methods.push(entry),
             }
         }
+        // `[symbol](...) {}` methods: the evaluator resolved each key when the class was defined.
+        let mut symbol_entries = [Vec::new(), Vec::new()];
+        for (method, key) in c.symbol_methods.iter().zip(&class.symbol_keys) {
+            if !javascript {
+                return err_help(
+                    method.func.span,
+                    "symbol-keyed class methods only work in imported JavaScript",
+                    "name the method",
+                );
+            }
+            let helper = self.unique_name(&format!("{}_symbol_method", c.name));
+            let closure = Rc::new(Closure::new(method.func.clone(), env.clone()));
+            let params = vec![Ty::Dynamic; method.func.params.len()];
+            self.compile_function(&closure, &helper, Some(params), None, no_db)?;
+            let key = self.symbol_php(key);
+            symbol_entries[method.is_static as usize].push(format!(
+                "[{}, \\Closure::fromCallable({})]",
+                key,
+                php_str(&format!("\\FirstApp\\{helper}"))
+            ));
+        }
+        let mut prototype_symbols = Vec::new();
+        for (key, value, enumerable, writable, configurable) in class.prototype_symbols.borrow().iter() {
+            let key = self.symbol_php(key);
+            let value = match value {
+                Value::Symbol(symbol) => self.symbol_php(symbol),
+                other => self.captured_data(other)?,
+            };
+            prototype_symbols.push(format!("[{key}, {value}, {enumerable}, {writable}, {configurable}]"));
+        }
+        let [symbol_methods, static_symbol_methods] = symbol_entries.map(|entries| entries.join(", "));
+        let prototype_symbols = prototype_symbols.join(", ");
         validate_captured_data(&static_data, c.span, &mut HashSet::new())?;
         let data = self.captured_data(&static_data)?;
         let private_statics = match &private_static_data {
@@ -560,7 +592,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (None, Some(builtin)) => format!("\\First\\JsClass::builtin({})", php_str(builtin)),
             (None, None) => "null".into(),
         };
-        writeln!(self.output, "function {name}(): \\First\\JsClass\n{{\n    static $class;\n    return $class ??= new \\First\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}]);\n}}\n", php_str(&format!("\\FirstApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
+        writeln!(self.output, "function {name}(): \\First\\JsClass\n{{\n    static $class;\n    return $class ??= new \\First\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}], symbolMethods: [{symbol_methods}], staticSymbolMethods: [{static_symbol_methods}], prototypeSymbols: [{prototype_symbols}]);\n}}\n", php_str(&format!("\\FirstApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
         Ok(id)
     }
 

@@ -564,6 +564,14 @@ final class Js
         return is_int($v) || (is_float($v) && is_finite($v));
     }
 
+    /** The global `Boolean` as a value: ToBoolean of the first argument, one shared closure. */
+    public static function booleanFunction(): \Closure
+    {
+        static $function;
+
+        return $function ??= static fn (mixed $value = false): bool => self::truthy($value);
+    }
+
     public static function numberIsFiniteFunction(): \Closure
     {
         static $function;

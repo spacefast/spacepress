@@ -1987,6 +1987,9 @@ impl<'p> Evaluator<'p> {
                             "use `new Date()` inside a hook, an action, or `$default(() => ...)`; those run in PHP",
                         );
                     }
+                    Value::Builtin(Builtin::Global(g @ ("Boolean" | "String" | "Number"))) => {
+                        return Err(Ctl::Err(crate::builtins::wrapper_object_refusal(g, e.span)));
+                    }
                     other => return err(callee.span, format!("can't use `new` with {}", other.describe())),
                 }
             }
@@ -4515,6 +4518,47 @@ mod tests {
         assert_eq!(
             super::to_json(&result).unwrap(),
             serde_json::json!([[1, 2], [1, 2.5], [10, null, 2], ["a", ""], false, [1, null]])
+        );
+    }
+
+    #[test]
+    fn boolean_is_a_function_value_at_build_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("first.config.ts");
+        std::fs::write(
+            &entry,
+            r#"const truth = Boolean;
+function applyEach(fn: (value: unknown) => boolean, values: unknown[]): boolean[] { return values.map((value) => fn(value)); }
+const values: unknown[] = [0, -0, NaN, "", null, undefined, false, "0", "false", [], {}, () => 0];
+export default [values.map(truth), applyEach(Boolean, values), values.filter(globalThis.Boolean).length, truth === Boolean, truth(), typeof truth];"#,
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let result = super::Evaluator::new(&program).run().unwrap();
+        // Node prints the same for these expressions.
+        let truthiness = [
+            false, false, false, false, false, false, false, true, true, true, true, true,
+        ];
+        assert_eq!(
+            super::to_json(&result).unwrap(),
+            serde_json::json!([truthiness, truthiness, 5, true, false, "function"])
+        );
+    }
+
+    #[test]
+    fn new_boolean_is_refused_at_build_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("first.config.ts");
+        std::fs::write(&entry, "export default new Boolean(false);").unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let diag = super::Evaluator::new(&program).run().unwrap_err();
+        assert_eq!(
+            diag.message,
+            "`new Boolean(...)` creates a wrapper object, which isn't supported"
+        );
+        assert_eq!(
+            diag.help.as_deref(),
+            Some("call `Boolean(value)` without `new` for a primitive boolean")
         );
     }
 

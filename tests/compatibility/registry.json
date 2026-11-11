@@ -125,6 +125,21 @@
       "guidance": "`{ __proto__: null, ... }` (a non-computed, non-shorthand `__proto__` key with the literal `null`) creates a null-prototype object in typed code, imported JavaScript and configuration evaluation, including tables built at module scope and captured by handlers. Reads of keys the object doesn't own are undefined, also for Object.prototype names such as constructor, toString and hasOwnProperty; `in` sees own keys only; calling an inherited method throws TypeError; string and number conversion throw TypeError (refused during configuration evaluation); `__proto__` and other Object.prototype names are ordinary own keys when written. Object.keys, for…in, spread and JSON.stringify behave as on an ordinary object with the same own keys, and a spread copy has the ordinary prototype. TypeScript's `__proto__: null` field is not part of the literal's type. Object.getPrototypeOf, Object.create and Object.setPrototypeOf are not supported."
     },
     {
+      "id": "boolean-function-value",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "The global `Boolean` compiles as a call and as a function value in typed code, imported JavaScript and configuration evaluation: `.filter(Boolean)`, `.map(Boolean)`, `.some`/`.every`/`.find(Boolean)`, local and captured aliases, `globalThis.Boolean`, and arguments to user functions. Calls and the value both apply ToBoolean to the first argument and ignore the rest: 0, -0, NaN, \"\", null, undefined, false and 0n are false; every other value, including \"0\", \"false\", arrays, objects and functions, is true. The value is one shared function, so aliases compare equal to `Boolean`. `Boolean.name`, `Boolean.length` and `Boolean.prototype` are not supported."
+    },
+    {
+      "id": "primitive-wrapper-objects",
+      "status": "refused",
+      "code": "F4001",
+      "fixture": "tests/fixtures/reject-new-boolean",
+      "message": "creates a wrapper object",
+      "guidance": "`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001)."
+    },
+    {
       "id": "prototype-literal-object",
       "status": "refused",
       "code": "F1002",

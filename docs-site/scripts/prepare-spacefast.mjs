@@ -2,9 +2,10 @@
 //
 // 1. _headers: Blume writes rules such as `/*.md` that set a header by file extension. Spacefast
 //    allows a wildcard only at the end of a path segment and refuses the whole file otherwise.
-//    Those rules set Content-Type, which Spacefast already sets from the extension, and two sandbox
-//    headers on Blume's SVG assets. This drops every rule with a mid-segment wildcard and keeps the
-//    rest. It also sets `application/wasm` on the playground's compiler. Spacefast sends .wasm as
+//    Rules that set Content-Type are dropped: Spacefast already sets it from the extension, and
+//    widened to `/*` they would label every file with one type. Other mid-segment rules, the two
+//    sandbox headers on Blume's SVG assets, are widened to their folder. It also sets
+//    `application/wasm` on the playground's compiler. Spacefast sends .wasm as
 //    application/octet-stream, which makes the browser read the whole file before compiling it.
 //    And it allows any origin to read /files/, where WordPress Playground fetches the examples'
 //    blueprints and plugin zips.

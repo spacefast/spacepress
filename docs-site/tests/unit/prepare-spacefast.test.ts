@@ -8,23 +8,8 @@ import { test } from "node:test";
 
 import { site } from "./helpers.ts";
 
-const blumeHeaders = `/*.md
-  Content-Type: text/markdown; charset=utf-8
-/*.mdx
-  Content-Type: text/markdown; charset=utf-8
-/*.txt
-  Content-Type: text/plain; charset=utf-8
-/*
-  X-Powered-By: Blume
-/.well-known/api-catalog
-  Content-Type: application/linkset+json
-/.well-known/agent-skills/*.md
-  Content-Type: text/markdown; charset=utf-8
-/blume-assets/*.svg
-  Content-Security-Policy: sandbox
-/blume-assets/*.svg
-  X-Content-Type-Options: nosniff
-`;
+// Kept as Blume 2.2.7 wrote it for this site, rule for rule.
+const blumeHeaders = readFileSync(path.join(site, "tests/unit/fixtures/blume-headers.txt"), "utf8");
 
 /** The rules a _headers file holds: path → header lines. */
 function parse(text: string): [string, string[]][] {
@@ -58,14 +43,16 @@ test("every rule has a wildcard only as its last segment", () => {
 	for (const [rule] of prepare().headers) assert.match(rule, /^[^*]*(\/\*)?$/, rule);
 });
 
-test("the SVG sandbox covers /blume-assets/, the compiler is wasm and /files/ allows any origin", () => {
+test("the SVG sandbox, the agent discovery headers and the Link header stay; the compiler is wasm and /files/ allows any origin", () => {
 	// Rules for one path add up, as they do on the server.
 	const headers = new Map<string, string[]>();
 	for (const [rule, lines] of prepare().headers) headers.set(rule, [...(headers.get(rule) ?? []), ...lines]);
 	assert.deepEqual(headers.get("/blume-assets/*"), ["Content-Security-Policy: sandbox", "X-Content-Type-Options: nosniff"]);
 	assert.deepEqual(headers.get("/compiler.wasm"), ["Content-Type: application/wasm"]);
 	assert.deepEqual(headers.get("/files/*"), ["Access-Control-Allow-Origin: *"]);
-	assert.deepEqual(headers.get("/.well-known/api-catalog"), ["Content-Type: application/linkset+json"]);
+	assert.deepEqual(headers.get("/.well-known/api-catalog"), ['Content-Type: application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"', "Access-Control-Allow-Origin: *"]);
+	assert.deepEqual(headers.get("/.well-known/ai-catalog.json"), ["Access-Control-Allow-Origin: *"]);
+	assert.match(headers.get("/")?.join("\n") ?? "", /^Link: <\/\.well-known\/api-catalog>; rel="api-catalog"/);
 });
 
 test("Markdown copies are served as written", () => {

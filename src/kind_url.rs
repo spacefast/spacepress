@@ -31,6 +31,13 @@ pub const RESERVED_FIRST_SEGMENTS: &[&str] = &[
     "page",
     "comments",
     "embed",
+    "type",
+    "attachment",
+    "trackback",
+    "wp-activate.php",
+    "wp-trackback.php",
+    "wp-comments-post.php",
+    "wp-mail.php",
 ];
 
 /// What the pattern may refer to on its kind.
@@ -40,8 +47,9 @@ pub struct UrlKind<'a> {
     pub dated: bool,
     /// `:path` is the parent chain of a hierarchical kind.
     pub hierarchical: bool,
-    /// Whether a referenced kind (by storage name) has items with a slug, for `:field.slug`.
-    pub has_slug: &'a dyn Fn(&str) -> bool,
+    /// Whether a referenced kind (by storage name) is a collection anyone may read, so its items'
+    /// slugs can be public, for `:field.slug`.
+    pub public_slug: &'a dyn Fn(&str) -> bool,
 }
 
 /// One segment of a checked pattern.
@@ -122,6 +130,12 @@ pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<Vec<Segment>, Invalid>
         return Err(invalid(
             format!("the url pattern \"{pattern}\" has an empty segment (`//`)"),
             "remove the extra `/`",
+        ));
+    }
+    if segments[0].starts_with(':') {
+        return Err(invalid(
+            format!("the url pattern \"{pattern}\" starts with a placeholder"),
+            "start it with your own literal segment, e.g. \"/blog/:slug\": WordPress's posts, pages, archives and feeds own every other first segment",
         ));
     }
     if let Some(reserved) = RESERVED_FIRST_SEGMENTS
@@ -244,12 +258,12 @@ fn placeholder(name: &str, pattern: &str, kind: &UrlKind<'_>) -> Result<(), Inva
             format!("use `:{field}` itself, or reference another kind from `{field}`"),
         )),
         Some("slug") => match &col.references {
-            Some(r) if (kind.has_slug)(&r.collection) => Ok(()),
+            Some(r) if (kind.public_slug)(&r.collection) => Ok(()),
             _ => Err(invalid(
                 format!(
-                    "`:{name}` in \"{pattern}\" reads the slug of a referenced row, but `{field}` refers to a table, whose rows have no slug"
+                    "`:{name}` in \"{pattern}\" reads the slug of what `{field}` refers to, which isn't a collection anyone can read"
                 ),
-                format!("use `:{field}` (the row's id), or refer to a collection"),
+                format!("a URL is public: refer to a collection anyone reads, or use `:{field}` (the id) instead"),
             )),
         },
         Some(through) => Err(invalid(
@@ -396,7 +410,7 @@ mod tests {
                 columns: &cols,
                 dated,
                 hierarchical,
-                has_slug: &collection_named,
+                public_slug: &collection_named,
             },
         )
     }
@@ -412,7 +426,7 @@ mod tests {
     #[test]
     fn patterns_return_their_segments() {
         assert_eq!(post("/blog/:slug").unwrap(), [L("blog".into()), P]);
-        assert_eq!(post("/:year/:month/:slug").unwrap(), [P, P, P]);
+        assert_eq!(post("/n/:year/:month/:slug").unwrap(), [L("n".into()), P, P, P]);
         assert_eq!(post("/by/:author.slug/:slug").unwrap(), [L("by".into()), P, P]);
         assert_eq!(post("/top/:rank/:id").unwrap(), [L("top".into()), P, P]);
         assert_eq!(
@@ -438,29 +452,31 @@ mod tests {
         assert!(message("/__first/:slug").contains("already serves"));
         assert!(message("/category/:slug").contains("already serves"));
         assert!(message("/blog/:title").contains("doesn't identify an item"));
-        assert!(message("/:slug/:slug").contains("appears twice"));
+        assert!(message("/n/:slug/:slug").contains("appears twice"));
+        assert!(message("/:topic/:slug").contains("starts with a placeholder"));
+        assert!(message("/type/:slug").contains("already serves"));
         assert!(message("/x/:year/:year/:slug").contains("appears twice"));
     }
 
     #[test]
     fn placeholders_must_name_what_the_kind_has() {
-        assert!(message("/:path").contains("needs a hierarchical kind"));
-        assert!(message("/:titel/:slug").contains("names no field"));
-        assert_eq!(post("/:titel/:slug").unwrap_err().help, "did you mean `:title`?");
-        assert!(message("/:body/:slug").contains("can't be a URL segment"));
-        assert!(message("/:title.slug/:slug").contains("isn't a reference"));
-        assert!(message("/:author.name/:slug").contains("only its `slug`"));
-        assert!(message("/:tally.slug/:slug").contains("refers to a table"));
+        assert!(message("/n/:path").contains("needs a hierarchical kind"));
+        assert!(message("/n/:titel/:slug").contains("names no field"));
+        assert_eq!(post("/n/:titel/:slug").unwrap_err().help, "did you mean `:title`?");
+        assert!(message("/n/:body/:slug").contains("can't be a URL segment"));
+        assert!(message("/n/:title.slug/:slug").contains("isn't a reference"));
+        assert!(message("/n/:author.name/:slug").contains("only its `slug`"));
+        assert!(message("/n/:tally.slug/:slug").contains("isn't a collection anyone can read"));
         assert!(message("/s/:secret/:slug").contains("has a read rule"));
         assert!(message("/s/:subtitle/:slug").contains("can be empty"));
         assert!(
-            checked("/:year/:slug", false, false)
+            checked("/n/:year/:slug", false, false)
                 .unwrap_err()
                 .message
                 .contains("publishedAt")
         );
         assert!(
-            checked("/:path/x", false, true)
+            checked("/n/:path/x", false, true)
                 .unwrap_err()
                 .message
                 .contains("last segment")
@@ -472,10 +488,10 @@ mod tests {
         let seg = |p: &str| checked(p, true, true).unwrap();
         let overlap = |a: &str, b: &str| overlaps(&seg(a), &seg(b)) && overlaps(&seg(b), &seg(a));
         assert!(overlap("/blog/:slug", "/blog/:id"));
-        assert!(overlap("/blog/:slug", "/:rank/:slug"));
+        assert!(overlap("/blog/:rank/:slug", "/blog/x/:id"));
         assert!(overlap("/docs/:path", "/docs/:slug"));
         assert!(overlap("/docs/:path", "/docs/a/:slug"));
-        assert!(overlap("/:path", "/blog/:slug"));
+        assert!(overlap("/blog/:path", "/blog/a/:slug"));
         assert!(!overlap("/blog/:slug", "/docs/:slug"));
         assert!(!overlap("/blog/:slug", "/blog/:year/:slug"));
         assert!(!overlaps(&seg("/docs/:path"), &[L("docs".into())]));

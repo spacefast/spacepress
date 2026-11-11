@@ -34,6 +34,9 @@ const SKIP = [
   /^Cargo\.lock$/,
   /(^|\/)composer\.lock$/,
   /^scripts\/rename-to-first\.mjs$/,
+  // The docs' map from the old names to First: its rules name the old spellings on purpose.
+  /^docs-site\/lib\/names\.ts$/,
+  /^docs-site\/tests\/unit\/names\.test\.ts$/,
   // Zero 0.8 apps, captured as they were: the converter's inputs.
   /^tests\/fixtures\/app-migrate\//,
   /^tests\/fixtures\/config-migrate\/legacy-zero\.ts$/,

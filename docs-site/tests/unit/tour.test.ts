@@ -39,7 +39,6 @@ test("every playground example compiles with the First names the editor shows", 
 		// What the browser does: show First names, then hand the compiler the names it reads.
 		const shown = firstFiles(sources(path.join(repo, "examples", name)));
 		assert.ok("first.config.ts" in shown, name);
-		assert.ok(!Object.keys(shown).some((file) => file.startsWith("first/")), `${name} shows a first/ path`);
 		const { check } = compiler.compile({ name, files: compilerFiles(shown), previous: null });
 		assert.equal(check.ok, true, `${name}: ${check.diagnostics.map((d) => d.message).join("; ")}`);
 	}

@@ -39,7 +39,7 @@ Reuse the `Number.isFinite` mechanism (`number_is_finite_function` in
 `src/compile.rs`, `Js::numberIsFiniteFunction` in the runtime):
 
 1. The runtime gets `Js::booleanFunction(): \Closure`, one static closure
-   `fn (mixed $value = null): bool => self::truthy($value)`. It is the same
+   `fn (mixed $value = false): bool => self::truthy($value)`. It is the same
    object on every read, so `Boolean === Boolean` and aliases compare equal.
    `Js::truthy` already implements ToBoolean: `0`, `-0`, `NaN`, `""`, `null`,
    `undefined`, `false` and `0n` are false; every other value, including `"0"`,
@@ -70,6 +70,14 @@ identical.
 ## Not covered
 
 `Boolean.name`, `Boolean.length` and `Boolean.prototype` stay refused.
+
+`new` on a `Boolean` reached through a stored reference in imported JavaScript
+(`const o = { B: Boolean }; new o.B(false)`, or a parameter) can't be seen at
+build time. It throws a TypeError at run time with the same wrapper-object
+message as the build-time refusal, instead of returning a primitive that Node
+would not. Reading `.name` from an alias (`const B = Boolean; B.name`) and
+`sort(Boolean)` throw at run time the same way as for any other function alias
+or non-numeric comparator.
 
 ## Tests
 

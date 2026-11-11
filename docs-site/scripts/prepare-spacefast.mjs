@@ -8,8 +8,9 @@
 //    `application/wasm` on the playground's compiler. Spacefast sends .wasm as
 //    application/octet-stream, which makes the browser read the whole file before compiling it.
 //    It adds no CORS rule for /files/, where WordPress Playground fetches the examples' blueprints
-//    and plugin zips: Spacefast already sends `Access-Control-Allow-Origin: *` on every response, and
-//    a rule of ours sends it a second time, which browsers read as `*, *` and refuse.
+//    and plugin zips: Spacefast already answers files under /files/ with
+//    `Access-Control-Allow-Origin: *` and `Access-Control-Allow-Methods: GET, HEAD`. A rule of ours
+//    sends the origin header a second time, which browsers read as `*, *` and refuse.
 // 2. Markdown: Spacefast renders each .md file into a page and keeps the .md itself private.
 //    Blume's .md files are the plain-Markdown copies agents read (`/getting-started.md`), so each
 //    one gets `raw: true` in its frontmatter, which tells Spacefast to serve the file as written.

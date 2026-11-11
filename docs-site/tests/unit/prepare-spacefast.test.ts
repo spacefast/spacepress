@@ -49,7 +49,7 @@ test("the SVG sandbox, the agent discovery headers and the Link header stay; and
 	for (const [rule, lines] of prepare().headers) headers.set(rule, [...(headers.get(rule) ?? []), ...lines]);
 	assert.deepEqual(headers.get("/blume-assets/*"), ["Content-Security-Policy: sandbox", "X-Content-Type-Options: nosniff"]);
 	assert.deepEqual(headers.get("/compiler.wasm"), ["Content-Type: application/wasm"]);
-	// Spacefast sends the CORS header on every response; a second copy would break Playground's fetch.
+	// Spacefast sends CORS on /files/ itself; a second copy would break Playground's fetch.
 	assert.equal(headers.get("/files/*"), undefined);
 	assert.deepEqual(headers.get("/.well-known/api-catalog"), ['Content-Type: application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"', "Access-Control-Allow-Origin: *"]);
 	assert.deepEqual(headers.get("/.well-known/ai-catalog.json"), ["Access-Control-Allow-Origin: *"]);
